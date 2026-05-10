@@ -1,4 +1,4 @@
-# MEMORIA.md — Histórico do Projeto NexusSocial
+# MEMORIA.md — Histórico do Projeto AutoScale
 
 Registro cronológico de decisões, problemas encontrados, soluções adotadas e estado de cada fase.
 
@@ -6,7 +6,7 @@ Registro cronológico de decisões, problemas encontrados, soluções adotadas e
 
 ## Contexto Geral
 
-**Projeto:** NexusSocial / AutoScale AI
+**Projeto:** AutoScale / AutoScale AI
 **Objetivo:** SaaS para automação de Instagram — scraping de Reels, limpeza de metadados via FFmpeg, biblioteca de vídeos e agendamento de postagens para múltiplas contas.
 **Dev:** Davi Pereira (solo)
 **Repositório:** https://github.com/daviprdev/AutoScale-IA.git

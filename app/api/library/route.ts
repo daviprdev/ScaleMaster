@@ -83,7 +83,7 @@ function getMockVideos() {
     public_url: `https://example.com/reel_${i}.mp4`,
     file_size: Math.floor(Math.random() * 80_000_000) + 5_000_000,
     owner_username: owners[i % owners.length],
-    caption: `Conteúdo incrível número ${i + 1} — salvo da biblioteca do NexusSocial!`,
+    caption: `Conteúdo incrível número ${i + 1} — salvo da biblioteca do AutoScale!`,
     views: Math.floor(Math.random() * 900_000) + 10_000,
     likes: Math.floor(Math.random() * 50_000) + 500,
     comments: Math.floor(Math.random() * 2_000) + 20,

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "NexusSocial — Automação Inteligente para Instagram",
+  title: "AutoScale — Automação Inteligente para Instagram",
   description:
     "Gerencie múltiplas contas, faça scraping de Reels e automatize postagens com IA.",
 };

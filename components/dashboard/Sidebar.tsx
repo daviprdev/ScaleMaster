@@ -82,7 +82,7 @@ export function Sidebar() {
               transition={{ duration: 0.2 }}
               className="ml-3 font-bold text-lg gradient-text whitespace-nowrap"
             >
-              NexusSocial
+              AutoScale
             </motion.span>
           )}
         </AnimatePresence>

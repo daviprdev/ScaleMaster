@@ -98,7 +98,7 @@ export default function LandingPage() {
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center">
             <Zap className="w-4 h-4 text-white" />
           </div>
-          <span className="text-xl font-bold gradient-text">NexusSocial</span>
+          <span className="text-xl font-bold gradient-text">AutoScale</span>
         </motion.div>
 
         <motion.div
@@ -300,7 +300,7 @@ export default function LandingPage() {
               <span className="gradient-text">em um só lugar</span>
             </h2>
             <p className="text-white/50 text-lg max-w-2xl mx-auto">
-              Do scraping à postagem automatizada, NexusSocial cobre todo o
+              Do scraping à postagem automatizada, AutoScale cobre todo o
               fluxo de trabalho do seu Instagram.
             </p>
           </motion.div>
@@ -351,7 +351,7 @@ export default function LandingPage() {
               </h2>
               <p className="text-white/50 text-lg mb-8 max-w-xl mx-auto">
                 Junte-se a milhares de criadores que já automatizam seu
-                conteúdo com NexusSocial.
+                conteúdo com AutoScale.
               </p>
               <div className="flex flex-col sm:flex-row justify-center gap-4">
                 <Link
@@ -380,10 +380,10 @@ export default function LandingPage() {
             <div className="w-6 h-6 rounded-md bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center">
               <Zap className="w-3 h-3 text-white" />
             </div>
-            <span className="font-bold gradient-text">NexusSocial</span>
+            <span className="font-bold gradient-text">AutoScale</span>
           </div>
           <p className="text-white/30 text-sm">
-            © 2025 NexusSocial. Todos os direitos reservados.
+            © 2025 AutoScale. Todos os direitos reservados.
           </p>
           <div className="flex gap-6 text-sm text-white/40">
             <a href="#" className="hover:text-white transition-colors">

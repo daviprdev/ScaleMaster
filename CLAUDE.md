@@ -1,4 +1,4 @@
-# CLAUDE.md — NexusSocial (AutoScale AI)
+# CLAUDE.md — AutoScale (AutoScale AI)
 
 Este arquivo é lido automaticamente pelo Claude Code em toda conversa.
 Contém as instruções, contexto e estado atual do projeto.
@@ -7,7 +7,7 @@ Contém as instruções, contexto e estado atual do projeto.
 
 ## Visão Geral do Projeto
 
-**Nome provisório:** NexusSocial
+**Nome:** AutoScale
 **Nome do repositório:** AutoScale-IA
 **Dono:** Davi Pereira (`daviprdev`)
 **Repositório:** https://github.com/daviprdev/AutoScale-IA.git
