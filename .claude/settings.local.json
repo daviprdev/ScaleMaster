@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth *)",
+      "PowerShell(npm *)",
+      "Bash(rm -f \"package.json\" \"package-lock.json\")",
+      "Bash(rm -rf \"node_modules\")",
+      "Bash(rm -rf \"Sem título\")",
+      "Bash(mkdir -p \"app\")",
+      "Bash(mkdir -p \"app/auth/login\")",
+      "Bash(mkdir -p \"app/auth/register\")",
+      "Bash(mkdir -p \"app/dashboard\")",
+      "Bash(mkdir -p \"components/ui\")",
+      "Bash(npm install *)",
+      "Bash(npm run *)"
+    ]
+  }
+}

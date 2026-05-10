@@ -1,0 +1,227 @@
+{
+  "main": {
+    "id": "23799ce4e27694d1",
+    "type": "split",
+    "children": [
+      {
+        "id": "813935f7cb82ad3c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4650e5053e1a5d28",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Visualização em gráfico"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "88e44bc1dc82781c",
+    "type": "split",
+    "children": [
+      {
+        "id": "bdff0b2b22f7c1c6",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f902e54245a49199",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de arquivos"
+            }
+          },
+          {
+            "id": "ce40824466e04f1f",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Procurar"
+            }
+          },
+          {
+            "id": "e5030821a579dcaa",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "5c3df538633d60ba",
+    "type": "split",
+    "children": [
+      {
+        "id": "378aeb7436676eed",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "60f89487e8f09da5",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Links inversos"
+            }
+          },
+          {
+            "id": "81b296458a5119d3",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Links de saída"
+            }
+          },
+          {
+            "id": "f72dd03aa7606e83",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "c7152349ecb3fa87",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas as propriedades"
+            }
+          },
+          {
+            "id": "2b2f7f979d659394",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Sumário"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir a troca rápida": false,
+      "graph:Abrir visualização em gráfico": false,
+      "canvas:Criar novo canvas": false,
+      "daily-notes:Abrir a nota de hoje": false,
+      "templates:Inserir modelo": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Criar nova base": false
+    }
+  },
+  "active": "4650e5053e1a5d28",
+  "lastOpenFiles": [
+    "node_modules/next/dist/server/post-process.js.map",
+    "node_modules/next/dist/server/app-render/get-script-nonce-from-header.js.map",
+    "node_modules/next/dist/server/lib/router-utils/decode-path-params.js.map",
+    "node_modules/next/dist/server/app-render/interop-default.js.map",
+    "node_modules/next/dist/server/lib/trace/utils.js.map",
+    "node_modules/next/dist/server/get-page-files.js.map",
+    "node_modules/next/dist/compiled/next-server/pages.runtime.dev.js.map",
+    "lib/ffmpeg-process.ts.tmp.12948.e620fda7a131",
+    "node_modules/next/dist/shared/lib/page-path/normalize-data-path.js.map",
+    "node_modules/next/dist/shared/lib/htmlescape.js.map",
+    "node_modules/next/dist/client/request-idle-callback.js.map",
+    "node_modules/@types/fluent-ffmpeg/README.md",
+    "node_modules/@ffmpeg-installer/win32-x64/README.md",
+    "node_modules/fluent-ffmpeg/tools/jsdoc-template/README.md",
+    "node_modules/fluent-ffmpeg/node_modules/which/README.md",
+    "node_modules/fluent-ffmpeg/node_modules/which/CHANGELOG.md",
+    "node_modules/fluent-ffmpeg/coverage/lcov-report/favicon.png",
+    "node_modules/fluent-ffmpeg/coverage/lcov-report/sort-arrow-sprite.png",
+    "node_modules/fluent-ffmpeg/OLD/README.md",
+    "node_modules/fluent-ffmpeg/README.md",
+    "node_modules/@supabase/phoenix/priv/static/phoenix.png",
+    "node_modules/@supabase/phoenix/priv/static/phoenix-orange.png",
+    "node_modules/@supabase/supabase-js/README.md",
+    "node_modules/@supabase/storage-js/README.md",
+    "node_modules/@supabase/realtime-js/README.md",
+    "node_modules/@supabase/postgrest-js/README.md",
+    "node_modules/@supabase/functions-js/README.md",
+    "node_modules/@supabase/phoenix/README.md",
+    "node_modules/@supabase/phoenix/LICENSE.md",
+    "node_modules/@supabase/auth-js/README.md",
+    "node_modules/@ffmpeg-installer/ffmpeg/README.md",
+    "node_modules/async/README.md",
+    "node_modules/iceberg-js/README.md",
+    "node_modules/fast-levenshtein/README.md",
+    "node_modules/fast-levenshtein/LICENSE.md",
+    "node_modules/define-properties/README.md",
+    "node_modules/define-properties/CHANGELOG.md",
+    "node_modules/json-buffer/README.md",
+    "node_modules/path-is-absolute/readme.md",
+    "node_modules/resolve-from/readme.md",
+    "nexussocial/public/window.svg",
+    "nexussocial/public/vercel.svg",
+    "nexussocial/public/next.svg",
+    "nexussocial/public/globe.svg",
+    "nexussocial/public/file.svg"
+  ]
+}
