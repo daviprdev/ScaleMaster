@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Zap,
   LayoutDashboard,
@@ -14,10 +14,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Instagram,
-  Bell,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 
 const navItems = [
   {
@@ -49,7 +49,27 @@ const bottomItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [userName, setUserName] = useState("Usuário");
+  const [userInitial, setUserInitial] = useState("U");
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        const name = user.user_metadata?.full_name || user.email || "Usuário";
+        setUserName(name);
+        setUserInitial(name.charAt(0).toUpperCase());
+      }
+    });
+  }, []);
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/auth/login");
+  };
 
   const isActive = (href: string, exact = false) => {
     if (exact) return pathname === href;
@@ -222,7 +242,7 @@ export function Sidebar() {
           )}
         >
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 text-xs font-bold">
-            D
+            {userInitial}
           </div>
           <AnimatePresence>
             {!collapsed && (
@@ -233,7 +253,7 @@ export function Sidebar() {
                 className="flex-1 min-w-0"
               >
                 <p className="text-xs font-semibold text-white/80 truncate">
-                  Davi Pereira
+                  {userName}
                 </p>
                 <p className="text-[10px] text-white/30 truncate">Pro Plan</p>
               </motion.div>
@@ -245,6 +265,7 @@ export function Sidebar() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
+                onClick={handleLogout}
                 className="text-white/20 hover:text-red-400 transition-colors"
               >
                 <LogOut size={14} />
