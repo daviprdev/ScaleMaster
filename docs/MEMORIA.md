@@ -142,20 +142,40 @@ O repositório `Saas` estava inicializado na pasta home do usuário, não na pas
 
 ---
 
-### 🔲 Fase 6 — Integração Supabase Auth
-**Status:** Pendente
-**Planejado:**
-- Conectar formulários de Login/Register ao Supabase Auth
-- Middleware de proteção de rotas do dashboard
-- Substituir `user_id: null` nas inserções pelo `auth.uid()` real
+### ✅ Fase 6 — Integração Supabase Auth
+**Data:** 10/05/2026
+**Commit:** `feat(auth): Phase 6 - Supabase Auth integration`
+
+#### O que foi feito
+- `lib/supabase/client.ts` — browser client via `createBrowserClient` (`@supabase/ssr`)
+- `lib/supabase/server.ts` — server client com leitura/escrita de cookies para SSR correto
+- `middleware.ts` — protege `/dashboard/*` (sem sessão → `/auth/login`), redireciona usuários autenticados de `/auth/*` para `/dashboard`
+- `app/auth/callback/route.ts` — troca código de confirmação de e-mail por sessão (`exchangeCodeForSession`)
+- Login: `signInWithPassword()` real + Google OAuth (`signInWithOAuth`) + mensagens de erro em português
+- Register: `signUp()` com `emailRedirectTo` + tela de sucesso pedindo confirmação
+- Sidebar: logout via `signOut()`, nome e inicial do usuário vindos da sessão real (`getUser()`)
 
 ---
 
-### 🔲 Fase 7 — Integração Real Apify
-**Status:** Pendente
-**Planejado:**
-- Configurar `APIFY_API_TOKEN` no ambiente
-- Testar fluxo completo: busca → card → download → biblioteca
+### ✅ Fase 7 — Integração Real Apify + user_id nos uploads
+**Data:** 10/05/2026
+**Commit:** `feat: Fase 7 — Apify real com waitForFinish e user_id nos uploads`
+
+#### O que foi feito
+- Rota `/api/apify/scrape` reescrita para produção:
+  - `export const maxDuration = 60` para não timeout no Vercel
+  - Substituído loop de polling por `waitForFinish=55` na chamada do Actor (mais eficiente e confiável)
+  - Dataset buscado via `defaultDatasetId` retornado no run (sem segundo request de status)
+  - Filtro de itens sem `videoUrl`, campo `owner` via `ownerUsername`
+  - Mensagens de erro da própria API Apify propagadas ao frontend
+- Rota `/api/video/process` atualizada:
+  - Busca o usuário autenticado via `createClient()` (server) + `auth.getUser()`
+  - Passa `userId` real ao insert na tabela `videos_library` (substituindo o `null` fixo)
+- Sidebar e header: "Pesquisa de Reels" → "Inspirações"; contas inline removidas e transformadas em item de menu "Contas"
+- Página de Inspirações: botão "Baixar todos" com progresso `X/total` e banner de sucesso verde
+
+#### Decisão: `waitForFinish` vs polling manual
+O polling manual com `while` e `setTimeout(3000)` bloqueava a Route Handler por tempo indeterminado e podia exceder o timeout do Vercel. O parâmetro `waitForFinish=55` delega a espera para a API do Apify, que retorna quando o Actor termina ou após 55s — dentro do `maxDuration = 60` da rota.
 
 ---
 

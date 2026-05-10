@@ -1,20 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// ─────────────────────────────────────────────
-// TODO: Insira sua chave de API do Apify aqui,
-// ou defina a variável de ambiente APIFY_API_TOKEN
-// no arquivo .env.local:
-//   APIFY_API_TOKEN=apify_api_xxxxxxxxxxxxxxxxxxxx
-//
-// Actor utilizado: apify/instagram-reel-scraper
-// Documentação: https://apify.com/apify/instagram-reel-scraper
-// ─────────────────────────────────────────────
+export const maxDuration = 60;
+
 const APIFY_TOKEN = process.env.APIFY_API_TOKEN ?? "";
 const ACTOR_ID = "apify~instagram-reel-scraper";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { username } = body as { username: string };
+  const { username, limit = 20 } = body as { username: string; limit?: number };
 
   if (!username) {
     return NextResponse.json(
@@ -23,67 +16,69 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Modo de desenvolvimento: retorna dados mockados ──
   if (!APIFY_TOKEN) {
     return NextResponse.json({ reels: getMockReels(username) });
   }
 
-  // ── Produção: chama o Apify Actor ────────────────────
   try {
-    // 1. Dispara o run do Actor
+    // Dispara o Actor com waitForFinish — elimina polling manual
     const runRes = await fetch(
-      `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_TOKEN}`,
+      `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_TOKEN}&waitForFinish=55`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           directUrls: [`https://www.instagram.com/${username}/reels/`],
-          resultsLimit: 20,
+          resultsLimit: Math.min(limit, 30),
         }),
       }
     );
 
     if (!runRes.ok) {
-      throw new Error(`Apify run error: ${runRes.status}`);
-    }
-
-    const runData = await runRes.json();
-    const runId: string = runData.data.id;
-
-    // 2. Aguarda conclusão (polling simples)
-    let status = "RUNNING";
-    while (status === "RUNNING" || status === "READY") {
-      await new Promise((r) => setTimeout(r, 3000));
-      const statusRes = await fetch(
-        `https://api.apify.com/v2/actor-runs/${runId}?token=${APIFY_TOKEN}`
+      const errBody = await runRes.json().catch(() => ({})) as { error?: { message?: string } };
+      throw new Error(
+        errBody?.error?.message ?? `Apify respondeu com status ${runRes.status}`
       );
-      const statusData = await statusRes.json();
-      status = statusData.data.status;
     }
+
+    const runData = await runRes.json() as {
+      data: { status: string; defaultDatasetId: string };
+    };
+    const { status, defaultDatasetId } = runData.data;
 
     if (status !== "SUCCEEDED") {
-      throw new Error(`Actor terminou com status: ${status}`);
+      throw new Error(`O Actor encerrou com status inesperado: ${status}`);
     }
 
-    // 3. Busca o dataset
+    // Busca os itens do dataset pelo ID retornado no run
     const datasetRes = await fetch(
-      `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${APIFY_TOKEN}`
+      `https://api.apify.com/v2/datasets/${defaultDatasetId}/items?token=${APIFY_TOKEN}&clean=true`
     );
-    const items = await datasetRes.json();
 
-    // 4. Normaliza para o formato do frontend
-    const reels = items.map((item: Record<string, unknown>) => ({
-      id: item.id ?? item.shortCode,
-      shortCode: item.shortCode,
-      thumbnailUrl: item.displayUrl ?? item.thumbnailUrl,
-      videoUrl: item.videoUrl,
-      caption: (item.caption as string)?.slice(0, 120) ?? "",
-      views: item.videoViewCount ?? 0,
-      likes: item.likesCount ?? 0,
-      comments: item.commentsCount ?? 0,
-      duration: item.videoDuration ?? 0,
-      owner: username,
-    }));
+    if (!datasetRes.ok) {
+      throw new Error("Erro ao buscar os resultados do dataset Apify.");
+    }
+
+    const items = await datasetRes.json() as Record<string, unknown>[];
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ reels: [] });
+    }
+
+    const reels = items
+      .filter((item) => item.videoUrl)
+      .map((item) => ({
+        id: (item.id ?? item.shortCode) as string,
+        shortCode: item.shortCode as string,
+        thumbnailUrl: (item.displayUrl ?? item.thumbnailUrl ?? null) as string | null,
+        videoUrl: item.videoUrl as string,
+        caption: ((item.caption as string) ?? "").slice(0, 120),
+        views: (item.videoViewCount as number) ?? 0,
+        likes: (item.likesCount as number) ?? 0,
+        comments: (item.commentsCount as number) ?? 0,
+        duration: (item.videoDuration as number) ?? 0,
+        owner: (item.ownerUsername as string) ?? username,
+      }));
 
     return NextResponse.json({ reels });
   } catch (err) {
@@ -92,7 +87,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ── Dados mockados para desenvolvimento sem chave Apify ──
 function getMockReels(username: string) {
   return Array.from({ length: 12 }, (_, i) => ({
     id: `mock_${i}`,

@@ -12,6 +12,8 @@ import {
   ArrowDownAZ,
   TrendingUp,
   Clock,
+  Download,
+  CheckCircle2,
 } from "lucide-react";
 import { ReelGrid, ReelGridSkeleton } from "@/components/search/ReelGrid";
 import type { Reel } from "@/components/search/ReelCard";
@@ -42,6 +44,8 @@ export default function SearchPage() {
   const [error, setError] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("views");
   const [showFilters, setShowFilters] = useState(false);
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const [downloadedCount, setDownloadedCount] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleSearch = async (query?: string) => {
@@ -73,6 +77,20 @@ export default function SearchPage() {
   };
 
   const sortedReels = [...reels].sort((a, b) => b[sortBy] - a[sortBy]);
+
+  const handleDownloadAll = async () => {
+    setDownloadingAll(true);
+    setDownloadedCount(0);
+    for (const reel of sortedReels) {
+      try {
+        await handleDownload(reel);
+      } catch {
+        // continua mesmo se um falhar
+      }
+      setDownloadedCount((c) => c + 1);
+    }
+    setDownloadingAll(false);
+  };
 
   const handleDownload = async (reel: Reel) => {
     const res = await fetch("/api/video/process", {
@@ -224,7 +242,46 @@ export default function SearchPage() {
                 <SlidersHorizontal size={12} />
                 Ordenar
               </button>
+
+              <motion.button
+                onClick={handleDownloadAll}
+                disabled={downloadingAll}
+                whileTap={{ scale: 0.96 }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all
+                  bg-gradient-to-r from-violet-600/80 to-cyan-600/80
+                  border-violet-500/40 text-white font-medium
+                  hover:from-violet-500/90 hover:to-cyan-500/90
+                  hover:shadow-[0_0_12px_rgba(139,92,246,0.3)]
+                  disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {downloadingAll ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" />
+                    {downloadedCount}/{sortedReels.length}
+                  </>
+                ) : (
+                  <>
+                    <Download size={12} />
+                    Baixar todos
+                  </>
+                )}
+              </motion.button>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Download all success banner */}
+      <AnimatePresence>
+        {!downloadingAll && downloadedCount > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm"
+          >
+            <CheckCircle2 size={16} />
+            {downloadedCount} {downloadedCount === 1 ? "reel salvo" : "reels salvos"} na biblioteca com sucesso!
           </motion.div>
         )}
       </AnimatePresence>

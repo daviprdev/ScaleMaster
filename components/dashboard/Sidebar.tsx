@@ -9,11 +9,11 @@ import {
   Search,
   FolderOpen,
   CalendarClock,
+  Users,
   Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Instagram,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -27,7 +27,7 @@ const navItems = [
     exact: true,
   },
   {
-    label: "Pesquisa de Reels",
+    label: "Inspirações",
     href: "/dashboard/search",
     icon: Search,
   },
@@ -40,6 +40,11 @@ const navItems = [
     label: "Agendamento",
     href: "/dashboard/schedule",
     icon: CalendarClock,
+  },
+  {
+    label: "Contas",
+    href: "/dashboard/accounts",
+    icon: Users,
   },
 ];
 
@@ -175,38 +180,6 @@ export function Sidebar() {
           );
         })}
 
-        {/* Accounts section */}
-        <AnimatePresence>
-          {!collapsed && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-widest text-white/25">
-                Contas Instagram
-              </p>
-              <div className="space-y-1">
-                {["@minha_marca", "@loja_oficial"].map((account, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/5 cursor-pointer transition-all"
-                  >
-                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-pink-500 to-orange-500 flex items-center justify-center flex-shrink-0">
-                      <Instagram size={10} className="text-white" />
-                    </div>
-                    <span className="text-xs truncate">{account}</span>
-                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                  </div>
-                ))}
-                <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-violet-400/60 hover:text-violet-300 hover:bg-violet-600/10 cursor-pointer transition-all text-xs">
-                  <span className="text-lg leading-none">+</span>
-                  Adicionar conta
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </nav>
 
       {/* Bottom */}

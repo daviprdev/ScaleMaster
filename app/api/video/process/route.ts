@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { downloadAndStripMetadata } from "@/lib/ffmpeg-process";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 
 // ── Configuração de runtime ───────────────────────────────────
 // Next.js precisa do runtime Node.js para usar FFmpeg e fs
@@ -71,6 +72,11 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Obtém o usuário autenticado via cookies da sessão
+  const supabaseUser = await createClient();
+  const { data: { user } } = await supabaseUser.auth.getUser();
+  const userId = user?.id ?? null;
+
   let cleanup: (() => void) | null = null;
 
   try {
@@ -107,11 +113,10 @@ export async function POST(req: NextRequest) {
     const publicUrl = urlData.publicUrl;
 
     // 5. Salva registro na tabela videos_library
-    // TODO: Substituir null por auth.uid() quando Supabase Auth estiver integrado
     const { data: record, error: dbError } = await getSupabaseAdmin()
       .from("videos_library")
       .insert({
-        user_id: null,
+        user_id: userId,
         filename: path.basename(storagePath),
         original_url: videoUrl,
         storage_path: storagePath,

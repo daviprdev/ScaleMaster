@@ -10,7 +10,7 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     subtitle: "Bem-vindo de volta, Davi",
   },
   "/dashboard/search": {
-    title: "Pesquisa de Reels",
+    title: "Inspirações",
     subtitle: "Encontre e baixe Reels de qualquer perfil",
   },
   "/dashboard/library": {

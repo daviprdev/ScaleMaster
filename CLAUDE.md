@@ -143,8 +143,8 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fase 3** | Pesquisa de Reels + Grid + API Apify | ✅ Concluída |
 | **Fase 4** | FFmpeg + Upload Supabase Storage | ✅ Concluída |
 | **Fase 5** | Biblioteca de Mídia + Agendamento multi-conta | ✅ Concluída |
-| **Fase 6** | Integração real Supabase Auth | 🔲 Pendente |
-| **Fase 7** | Integração real Apify (scraping real) | 🔲 Pendente |
+| **Fase 6** | Integração real Supabase Auth | ✅ Concluída |
+| **Fase 7** | Integração real Apify (scraping real) | ✅ Concluída |
 | **Fase 8** | Deploy Vercel + configuração de produção | 🔲 Pendente |
 
 ---
