@@ -108,6 +108,10 @@ APIFY_API_TOKEN=
 |----------|--------|-----------|
 | `/api/apify/scrape` | POST | Scraping de Reels de um perfil. Body: `{ username }` |
 | `/api/video/process` | POST | Download + FFmpeg strip + upload Supabase. Body: `{ videoUrl, filename, reelData }` |
+| `/api/library` | GET | Lista vídeos da tabela `videos_library` |
+| `/api/library` | DELETE | Remove vídeo do Storage e do banco. Body: `{ id, storage_path }` |
+| `/api/schedule` | POST | Cria postagens agendadas. Body: `{ video_id, account_ids, caption, scheduled_at }` |
+| `/api/schedule` | GET | Lista postagens agendadas com joins |
 
 **Modo mock:** Sem as variáveis de ambiente configuradas, ambas as rotas retornam dados simulados para desenvolvimento local.
 
@@ -138,7 +142,7 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fase 2** | Layout do Dashboard + Sidebar + Rotas | ✅ Concluída |
 | **Fase 3** | Pesquisa de Reels + Grid + API Apify | ✅ Concluída |
 | **Fase 4** | FFmpeg + Upload Supabase Storage | ✅ Concluída |
-| **Fase 5** | Biblioteca de Mídia + Agendamento multi-conta | 🔲 Pendente |
+| **Fase 5** | Biblioteca de Mídia + Agendamento multi-conta | ✅ Concluída |
 | **Fase 6** | Integração real Supabase Auth | 🔲 Pendente |
 | **Fase 7** | Integração real Apify (scraping real) | 🔲 Pendente |
 | **Fase 8** | Deploy Vercel + configuração de produção | 🔲 Pendente |

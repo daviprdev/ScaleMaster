@@ -124,12 +124,21 @@ O repositório `Saas` estava inicializado na pasta home do usuário, não na pas
 
 ---
 
-### 🔲 Fase 5 — Biblioteca de Mídia + Agendamento Multi-conta
-**Status:** Pendente
-**Planejado:**
-- `/dashboard/library`: grid de vídeos do Supabase Storage com opções "Agendar" e "Excluir"
-- `/dashboard/schedule`: seleção de múltiplas contas + vídeo da biblioteca + data/hora
-- Integração real com tabelas `videos_library`, `instagram_accounts`, `scheduled_posts`
+### ✅ Fase 5 — Biblioteca de Mídia + Agendamento Multi-conta
+**Data:** 10/05/2026
+**Commit:** `feat: Fase 5 — biblioteca de mídia e agendamento multi-conta`
+
+#### O que foi feito
+- `/api/library` (GET + DELETE): lista vídeos e remove do Storage + banco; modo mock sem Supabase
+- `/api/schedule` (POST + GET): cria agendamentos para múltiplas contas; modo mock sem Supabase
+- `VideoCard`: card 16:9 com hover revelando "Agendar este vídeo" e "Excluir" com confirmação visual
+- `/dashboard/library`: busca em tempo real, ordenação por data/views/tamanho/duração, toggle grid/lista, skeleton loader, estados vazio e sem resultados
+- `AccountSelector`: multi-seleção de contas com avatares, status online, botões Todas/Limpar
+- `/dashboard/schedule`: stepper de 4 passos (Vídeo → Contas → Detalhes → Confirmar), suporte a `?videoId=` para navegar da biblioteca direto ao agendamento, tela de sucesso animada
+- Wrapper `Suspense` na página de schedule (obrigatório por causa de `useSearchParams` no Next.js 15)
+
+#### Fluxo completo implementado
+`Pesquisa` → Download → `Biblioteca` → "Agendar este vídeo" → `Schedule` (pré-seleciona o vídeo) → Escolhe contas → Define legenda + data → Confirma → Tela de sucesso
 
 ---
 
