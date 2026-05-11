@@ -259,3 +259,33 @@ A Graph API do Instagram exige aprovação de app e não suporta contas pessoais
 PYTHON_CMD=python   # ou python3, py, caminho absoluto
 ```
 Adicionar ao `.env.local` se o comando padrão não funcionar.
+
+---
+
+### ✅ Fase 12 — Fluxo de 2FA e Checkpoint (verificação de segurança)
+**Data:** 11/05/2026
+**Commits:** `feat: suporte a autenticacao 2FA`, `fix: inclui versao 2FA do instagram_login.py`, `feat: Fase 12 — fluxo unificado 2FA e checkpoint`
+
+#### O que foi feito
+- `python_scripts/instagram_login.py` reescrito com formato de resposta unificado:
+  - Retorna `{"status": "ok"|"requires_code"|"error", ...}` em vez de `{"success": bool}`
+  - `TwoFactorRequired` → `status: requires_code`, `challenge_type: "2fa"`, `verification_method: "authenticator"`
+  - `ChallengeRequired` → chama `cl.challenge_resolve(last_json)` para disparar SMS/email, salva estado completo (settings + last_json) em `/tmp/ig_session_{uuid}.json`, retorna `challenge_type: "checkpoint"`, `verification_method: "sms"|"email"`
+  - Método de verificação detectado a partir de `step_name` e `contact_point` da resposta do desafio
+- `python_scripts/instagram_verify_code.py` criado (script unificado para ambos os tipos):
+  - Args: `username`, `code`, `challenge_type`, `session_token`, `[two_factor_identifier]`
+  - Para `2fa`: chama `cl.two_factor_login(verification_code, two_factor_identifier, username)`
+  - Para `checkpoint`: restaura `cl.last_json` do estado salvo, chama `cl.challenge_send_security_code(int(code))`
+  - Remove o arquivo de sessão temporário após login bem-sucedido
+- `app/api/accounts/login/route.ts` atualizado: detecta `status === "requires_code"` e retorna `{requires_code: true, challenge_type, verification_method, session_token, ...}` ao frontend (HTTP 200)
+- `app/api/accounts/verify/route.ts` criado (rota unificada `/api/accounts/verify`): chama `instagram_verify_code.py` e faz upsert no Supabase em caso de sucesso
+- `app/dashboard/accounts/page.tsx` reescrito com modal de duas etapas:
+  - Etapa 1: usuário + senha (igual ao anterior)
+  - Etapa 2: exibida quando backend retorna `requires_code: true`; campo de código 6 dígitos; ícone e texto de hint mudam conforme `verification_method` (authenticator/sms/email); botão "Voltar" retorna à etapa 1
+
+#### Sessão temporária
+O estado do cliente instagrapi é serializado com `cl.get_settings()` e `cl.last_json`, persistido em `/tmp/ig_session_{uuid}.json`. O token UUID é retornado ao frontend e reenviado na verificação, permitindo retomar a mesma sessão de login. O arquivo é deletado após sucesso.
+
+#### Fluxo checkpoint vs 2FA
+- **2FA (app autenticador/SMS do app):** `TwoFactorRequired` — código TOTP ou de texto do app de autenticação
+- **Checkpoint (segurança):** `ChallengeRequired` — `challenge_resolve` dispara um código de verificação por SMS ou email; o código é submetido via `challenge_send_security_code`

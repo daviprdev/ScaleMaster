@@ -10,11 +10,19 @@ export const maxDuration = 60;
 
 const execFileAsync = promisify(execFile);
 
-// Permite override via env var — útil se Python estiver em caminho não-padrão
 const PYTHON_CMD = process.env.PYTHON_CMD ?? (process.platform === "win32" ? "python" : "python3");
 
+type ChallengeType = "2fa" | "checkpoint";
+type VerificationMethod = "authenticator" | "sms" | "email";
+
 interface PythonResult {
-  success: boolean;
+  status: "ok" | "requires_code" | "error";
+  // requires_code fields
+  challenge_type?: ChallengeType;
+  verification_method?: VerificationMethod;
+  session_token?: string;
+  two_factor_identifier?: string;
+  // ok fields
   username?: string;
   full_name?: string;
   biography?: string;
@@ -22,7 +30,24 @@ interface PythonResult {
   following?: number;
   profile_pic_url?: string | null;
   is_private?: boolean;
+  // error field
   error?: string;
+}
+
+async function runScript(args: string[]): Promise<PythonResult> {
+  const { stdout } = await execFileAsync(PYTHON_CMD, args, {
+    timeout: 55_000,
+    maxBuffer: 1024 * 512,
+  });
+
+  const raw = stdout.trim();
+  if (!raw) throw new Error("O script Python não retornou dados.");
+
+  const lines = raw.split("\n");
+  const jsonLine = lines.reverse().find(l => l.trim().startsWith("{"));
+  if (!jsonLine) throw new Error("Resposta do script Python não contém JSON válido.");
+
+  return JSON.parse(jsonLine) as PythonResult;
 }
 
 export async function POST(req: NextRequest) {
@@ -30,10 +55,7 @@ export async function POST(req: NextRequest) {
   const { username, password } = body;
 
   if (!username?.trim() || !password?.trim()) {
-    return NextResponse.json(
-      { error: "Usuário e senha são obrigatórios." },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Usuário e senha são obrigatórios." }, { status: 400 });
   }
 
   const cleanUsername = username.replace(/^@/, "").trim();
@@ -42,30 +64,13 @@ export async function POST(req: NextRequest) {
   let result: PythonResult;
 
   try {
-    const { stdout } = await execFileAsync(
-      PYTHON_CMD,
-      [scriptPath, cleanUsername, password],
-      {
-        timeout: 55_000,
-        maxBuffer: 1024 * 512, // 512 KB — mais que suficiente para o JSON de resposta
-      }
-    );
-
-    const raw = stdout.trim();
-    if (!raw) throw new Error("O script Python não retornou dados.");
-
-    // Pega apenas a última linha com JSON válido (ignora qualquer log anterior)
-    const lines = raw.split("\n");
-    const jsonLine = lines.reverse().find(l => l.trim().startsWith("{"));
-    if (!jsonLine) throw new Error("Resposta do script Python não contém JSON válido.");
-
-    result = JSON.parse(jsonLine) as PythonResult;
+    result = await runScript([scriptPath, cleanUsername, password]);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro ao executar o script Python.";
 
     if (msg.includes("ENOENT")) {
       return NextResponse.json(
-        { error: `Comando '${PYTHON_CMD}' não encontrado. Verifique se o Python está instalado e no PATH, ou defina a variável PYTHON_CMD no .env.local.` },
+        { error: `Comando '${PYTHON_CMD}' não encontrado. Verifique se o Python está instalado e no PATH.` },
         { status: 500 }
       );
     }
@@ -75,15 +80,26 @@ export async function POST(req: NextRequest) {
         { status: 408 }
       );
     }
-
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 
-  if (!result.success) {
+  // Código de verificação necessário (2FA ou checkpoint)
+  if (result.status === "requires_code") {
+    return NextResponse.json({
+      requires_code: true,
+      challenge_type: result.challenge_type,
+      verification_method: result.verification_method,
+      session_token: result.session_token,
+      two_factor_identifier: result.two_factor_identifier ?? "",
+      username: result.username ?? cleanUsername,
+    });
+  }
+
+  if (result.status === "error") {
     return NextResponse.json({ error: result.error ?? "Login falhou." }, { status: 401 });
   }
 
-  // ── Salva no Supabase ──────────────────────────────────────
+  // status === "ok" — salva no Supabase
   if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
     try {
       const supabaseUser = await createClient();
@@ -92,7 +108,6 @@ export async function POST(req: NextRequest) {
       if (user) {
         const admin = getSupabaseAdmin();
 
-        // Verifica se a conta já existe para esse usuário
         const { data: existing } = await admin
           .from("instagram_accounts")
           .select("id")
@@ -122,7 +137,6 @@ export async function POST(req: NextRequest) {
         }
       }
     } catch (dbErr) {
-      // Não falha o request por erro de DB — retorna sucesso com aviso
       console.error("[accounts/login] DB error:", dbErr);
       return NextResponse.json({
         success: true,

@@ -16,6 +16,8 @@ import {
   ShieldCheck,
   KeyRound,
   ArrowLeft,
+  Smartphone,
+  Mail,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -44,13 +46,29 @@ function avatarColor(username: string) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-type ModalStep = "credentials" | "2fa";
+type ModalStep = "credentials" | "verify_code";
+type ChallengeType = "2fa" | "checkpoint";
+type VerificationMethod = "authenticator" | "sms" | "email";
 
-interface TwoFAState {
+interface PendingChallenge {
+  challengeType: ChallengeType;
+  verificationMethod: VerificationMethod;
   sessionToken: string;
   twoFactorIdentifier: string;
   username: string;
 }
+
+const METHOD_LABEL: Record<VerificationMethod, string> = {
+  authenticator: "app autenticador (TOTP)",
+  sms: "SMS no número cadastrado",
+  email: "e-mail cadastrado",
+};
+
+const METHOD_ICON: Record<VerificationMethod, React.ReactNode> = {
+  authenticator: <KeyRound size={14} />,
+  sms: <Smartphone size={14} />,
+  email: <Mail size={14} />,
+};
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -58,13 +76,13 @@ export default function AccountsPage() {
   const [showModal, setShowModal] = useState(false);
   const [step, setStep] = useState<ModalStep>("credentials");
 
-  // Step 1 state
+  // Step 1 — credentials
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // Step 2 state
-  const [twoFAState, setTwoFAState] = useState<TwoFAState | null>(null);
+  // Step 2 — verification code
+  const [challenge, setChallenge] = useState<PendingChallenge | null>(null);
   const [code, setCode] = useState("");
 
   // Shared
@@ -89,6 +107,7 @@ export default function AccountsPage() {
 
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
+  // ── Step 1: credenciais ───────────────────────────────────
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) return;
@@ -106,20 +125,23 @@ export default function AccountsPage() {
       const data = await res.json() as {
         success?: boolean;
         error?: string;
-        warning?: string;
-        requires_2fa?: boolean;
+        requires_code?: boolean;
+        challenge_type?: ChallengeType;
+        verification_method?: VerificationMethod;
         session_token?: string;
         two_factor_identifier?: string;
         username?: string;
       };
 
-      if (data.requires_2fa) {
-        setTwoFAState({
+      if (data.requires_code) {
+        setChallenge({
+          challengeType: data.challenge_type ?? "2fa",
+          verificationMethod: data.verification_method ?? "authenticator",
           sessionToken: data.session_token ?? "",
           twoFactorIdentifier: data.two_factor_identifier ?? "",
           username: data.username ?? username.trim(),
         });
-        setStep("2fa");
+        setStep("verify_code");
         setError("");
         return;
       }
@@ -138,22 +160,24 @@ export default function AccountsPage() {
     }
   };
 
-  const handleVerify2FA = async (e: React.FormEvent) => {
+  // ── Step 2: código de verificação ────────────────────────
+  const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code.trim() || !twoFAState) return;
+    if (!code.trim() || !challenge) return;
 
     setConnecting(true);
     setError("");
 
     try {
-      const res = await fetch("/api/accounts/verify2fa", {
+      const res = await fetch("/api/accounts/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          username: twoFAState.username,
+          username: challenge.username,
           code: code.replace(/\s/g, ""),
-          two_factor_identifier: twoFAState.twoFactorIdentifier,
-          session_token: twoFAState.sessionToken,
+          challenge_type: challenge.challengeType,
+          session_token: challenge.sessionToken,
+          two_factor_identifier: challenge.twoFactorIdentifier,
         }),
       });
 
@@ -200,19 +224,11 @@ export default function AccountsPage() {
     setShowPassword(false);
     setCode("");
     setError("");
-    setTwoFAState(null);
+    setChallenge(null);
   };
 
-  const closeModal = () => {
-    if (connecting) return;
-    resetAndClose();
-  };
-
-  const backToCredentials = () => {
-    setStep("credentials");
-    setCode("");
-    setError("");
-  };
+  const closeModal = () => { if (!connecting) resetAndClose(); };
+  const backToCredentials = () => { setStep("credentials"); setCode(""); setError(""); };
 
   const active = accounts.filter(a => a.is_active).length;
 
@@ -272,7 +288,6 @@ export default function AccountsPage() {
                 exit={{ opacity: 0, height: 0 }}
                 className="flex items-center gap-4 px-5 py-4"
               >
-                {/* Avatar */}
                 {account.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -289,7 +304,6 @@ export default function AccountsPage() {
                   </div>
                 )}
 
-                {/* Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold text-white/85">@{account.username}</p>
@@ -308,7 +322,6 @@ export default function AccountsPage() {
                   </p>
                 </div>
 
-                {/* Actions */}
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <motion.button
                     onClick={() => handleToggle(account)}
@@ -365,7 +378,9 @@ export default function AccountsPage() {
             >
               <div className="glass neon-border rounded-2xl p-6">
                 <AnimatePresence mode="wait">
-                  {step === "credentials" ? (
+
+                  {/* ─── Step 1: credenciais ─── */}
+                  {step === "credentials" && (
                     <motion.div
                       key="step-credentials"
                       initial={{ opacity: 0, x: -16 }}
@@ -373,7 +388,6 @@ export default function AccountsPage() {
                       exit={{ opacity: 0, x: -16 }}
                       transition={{ duration: 0.2 }}
                     >
-                      {/* Header */}
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <LogIn size={18} className="text-violet-400" />
@@ -384,7 +398,6 @@ export default function AccountsPage() {
                         </button>
                       </div>
 
-                      {/* Security notice */}
                       <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-violet-600/10 border border-violet-500/20 mb-5">
                         <ShieldCheck size={14} className="text-violet-400 mt-0.5 flex-shrink-0" />
                         <p className="text-[11px] text-violet-300/80 leading-relaxed">
@@ -394,9 +407,7 @@ export default function AccountsPage() {
 
                       <form onSubmit={handleConnect} className="space-y-4">
                         <div>
-                          <label className="text-xs font-semibold text-white/50 mb-1.5 block">
-                            Usuário do Instagram
-                          </label>
+                          <label className="text-xs font-semibold text-white/50 mb-1.5 block">Usuário do Instagram</label>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25 text-sm">@</span>
                             <input
@@ -404,26 +415,21 @@ export default function AccountsPage() {
                               value={username}
                               onChange={e => setUsername(e.target.value.replace(/^@/, ""))}
                               placeholder="seu_perfil"
-                              required
-                              autoFocus
-                              disabled={connecting}
+                              required autoFocus disabled={connecting}
                               className="input-glass pl-7 w-full disabled:opacity-50"
                             />
                           </div>
                         </div>
 
                         <div>
-                          <label className="text-xs font-semibold text-white/50 mb-1.5 block">
-                            Senha
-                          </label>
+                          <label className="text-xs font-semibold text-white/50 mb-1.5 block">Senha</label>
                           <div className="relative">
                             <input
                               type={showPassword ? "text" : "password"}
                               value={password}
                               onChange={e => setPassword(e.target.value)}
                               placeholder="••••••••"
-                              required
-                              disabled={connecting}
+                              required disabled={connecting}
                               className="input-glass pr-10 w-full disabled:opacity-50"
                             />
                             <button
@@ -450,19 +456,12 @@ export default function AccountsPage() {
                         )}
 
                         <div className="flex gap-3 pt-1">
-                          <button
-                            type="button"
-                            onClick={closeModal}
-                            disabled={connecting}
-                            className="btn-ghost flex-1 text-sm py-2.5 disabled:opacity-40"
-                          >
+                          <button type="button" onClick={closeModal} disabled={connecting}
+                            className="btn-ghost flex-1 text-sm py-2.5 disabled:opacity-40">
                             Cancelar
                           </button>
-                          <button
-                            type="submit"
-                            disabled={connecting || !username.trim() || !password.trim()}
-                            className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2 disabled:opacity-50"
-                          >
+                          <button type="submit" disabled={connecting || !username.trim() || !password.trim()}
+                            className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2 disabled:opacity-50">
                             {connecting
                               ? <><Loader2 size={14} className="animate-spin" /> Conectando...</>
                               : <><LogIn size={14} /> Conectar</>}
@@ -470,35 +469,37 @@ export default function AccountsPage() {
                         </div>
                       </form>
                     </motion.div>
-                  ) : (
+                  )}
+
+                  {/* ─── Step 2: código de verificação ─── */}
+                  {step === "verify_code" && challenge && (
                     <motion.div
-                      key="step-2fa"
+                      key="step-verify"
                       initial={{ opacity: 0, x: 16 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: 16 }}
                       transition={{ duration: 0.2 }}
                     >
-                      {/* Header */}
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <KeyRound size={18} className="text-violet-400" />
-                          <h2 className="font-semibold text-white">Verificação em duas etapas</h2>
+                          {METHOD_ICON[challenge.verificationMethod]}
+                          <h2 className="font-semibold text-white">Verificação de segurança</h2>
                         </div>
                         <button onClick={closeModal} disabled={connecting} className="text-white/20 hover:text-white/60 transition-colors disabled:opacity-40">
                           <X size={18} />
                         </button>
                       </div>
 
-                      {/* Info */}
                       <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-violet-600/10 border border-violet-500/20 mb-5">
                         <ShieldCheck size={14} className="text-violet-400 mt-0.5 flex-shrink-0" />
                         <p className="text-[11px] text-violet-300/80 leading-relaxed">
                           O Instagram solicitou verificação para{" "}
-                          <strong>@{twoFAState?.username}</strong>. Digite o código de 6 dígitos do seu aplicativo autenticador ou SMS.
+                          <strong>@{challenge.username}</strong>. Digite o código de 6 dígitos enviado via{" "}
+                          <strong>{METHOD_LABEL[challenge.verificationMethod]}</strong>.
                         </p>
                       </div>
 
-                      <form onSubmit={handleVerify2FA} className="space-y-4">
+                      <form onSubmit={handleVerifyCode} className="space-y-4">
                         <div>
                           <label className="text-xs font-semibold text-white/50 mb-1.5 block">
                             Código de verificação
@@ -508,9 +509,7 @@ export default function AccountsPage() {
                             value={code}
                             onChange={e => setCode(e.target.value.replace(/[^0-9 ]/g, "").slice(0, 7))}
                             placeholder="000 000"
-                            required
-                            autoFocus
-                            disabled={connecting}
+                            required autoFocus disabled={connecting}
                             maxLength={7}
                             inputMode="numeric"
                             className="input-glass w-full text-center text-lg tracking-[0.3em] disabled:opacity-50"
@@ -525,25 +524,16 @@ export default function AccountsPage() {
                         )}
 
                         {connecting && (
-                          <p className="text-[11px] text-white/30 text-center">
-                            Verificando código…
-                          </p>
+                          <p className="text-[11px] text-white/30 text-center">Verificando código…</p>
                         )}
 
                         <div className="flex gap-3 pt-1">
-                          <button
-                            type="button"
-                            onClick={backToCredentials}
-                            disabled={connecting}
-                            className="btn-ghost flex items-center justify-center gap-1.5 px-4 text-sm py-2.5 disabled:opacity-40"
-                          >
+                          <button type="button" onClick={backToCredentials} disabled={connecting}
+                            className="btn-ghost flex items-center justify-center gap-1.5 px-4 text-sm py-2.5 disabled:opacity-40">
                             <ArrowLeft size={13} /> Voltar
                           </button>
-                          <button
-                            type="submit"
-                            disabled={connecting || code.replace(/\s/g, "").length < 6}
-                            className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2 disabled:opacity-50"
-                          >
+                          <button type="submit" disabled={connecting || code.replace(/\s/g, "").length < 6}
+                            className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2 disabled:opacity-50">
                             {connecting
                               ? <><Loader2 size={14} className="animate-spin" /> Verificando...</>
                               : <><KeyRound size={14} /> Confirmar</>}
@@ -552,6 +542,7 @@ export default function AccountsPage() {
                       </form>
                     </motion.div>
                   )}
+
                 </AnimatePresence>
               </div>
             </motion.div>
