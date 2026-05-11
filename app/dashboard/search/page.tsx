@@ -78,6 +78,30 @@ export default function InspiracoesPage() {
 
   const sortedReels = [...reels].sort((a, b) => b[sortBy] - a[sortBy]);
 
+  const handleProcess = async (reel: InspirationReel) => {
+    const res = await fetch("/api/video/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        videoUrl: reel.videoUrl,
+        filename: `reel_${reel.owner}_${reel.shortCode}`,
+        reelData: {
+          caption: reel.caption,
+          views: reel.views,
+          likes: reel.likes,
+          comments: reel.comments,
+          duration: reel.duration,
+          owner: reel.owner,
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error ?? "Erro ao processar vídeo.");
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-full">
       {/* Search hero */}
@@ -237,7 +261,7 @@ export default function InspiracoesPage() {
       {status === "loading" && <InspirationGridSkeleton />}
 
       {status === "done" && reels.length > 0 && (
-        <InspirationGrid reels={sortedReels} />
+        <InspirationGrid reels={sortedReels} onProcess={handleProcess} />
       )}
 
       {/* Idle state */}

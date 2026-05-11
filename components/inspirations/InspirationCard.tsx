@@ -10,6 +10,8 @@ import {
   Clock,
   Download,
   CheckCircle2,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,8 +29,11 @@ export interface InspirationReel {
   gradient?: string;
 }
 
+type ProcessState = "idle" | "downloading" | "processing" | "done" | "error";
+
 interface InspirationCardProps {
   reel: InspirationReel;
+  onProcess: (reel: InspirationReel) => Promise<void>;
 }
 
 function fmt(n: number): string {
@@ -43,18 +48,37 @@ function fmtDur(s: number): string {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
-export function InspirationCard({ reel }: InspirationCardProps) {
+export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
   const [hovered, setHovered] = useState(false);
-  const [queued, setQueued] = useState(false);
+  const [processState, setProcessState] = useState<ProcessState>("idle");
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const handlePrepare = (e: React.MouseEvent) => {
+  const handleProcess = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (queued) return;
-    setQueued(true);
-    setTimeout(() => setQueued(false), 3000);
+    if (processState !== "idle" && processState !== "error") return;
+
+    setProcessState("downloading");
+    setErrorMsg("");
+
+    // Simula fase de download antes do FFmpeg reportar progresso
+    const downloadTimer = setTimeout(() => {
+      setProcessState("processing");
+    }, 1500);
+
+    try {
+      await onProcess(reel);
+      clearTimeout(downloadTimer);
+      setProcessState("done");
+      setTimeout(() => setProcessState("idle"), 4000);
+    } catch (err) {
+      clearTimeout(downloadTimer);
+      setErrorMsg(err instanceof Error ? err.message : "Erro ao processar");
+      setProcessState("error");
+    }
   };
 
   const gradient = reel.gradient ?? "from-violet-600 to-purple-800";
+  const busy = processState === "downloading" || processState === "processing";
 
   return (
     <motion.div
@@ -138,22 +162,54 @@ export function InspirationCard({ reel }: InspirationCardProps) {
                 {reel.caption || `Reel de @${reel.owner}`}
               </p>
 
+              {/* Error message */}
+              {processState === "error" && (
+                <p className="text-[10px] text-red-400 flex items-center gap-1">
+                  <AlertCircle size={10} />
+                  {errorMsg || "Erro ao processar"}
+                </p>
+              )}
+
               <motion.button
-                onClick={handlePrepare}
-                whileTap={{ scale: 0.96 }}
+                onClick={handleProcess}
+                whileTap={busy ? {} : { scale: 0.96 }}
+                disabled={busy}
                 className={cn(
                   "w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200",
-                  queued
+                  processState === "done"
                     ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400"
+                    : processState === "error"
+                    ? "bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/20"
+                    : busy
+                    ? "bg-white/5 border border-white/10 text-white/50 cursor-not-allowed"
                     : "bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white hover:shadow-[0_0_18px_rgba(139,92,246,0.45)]"
                 )}
               >
-                {queued ? (
+                {processState === "downloading" && (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Baixando...
+                  </>
+                )}
+                {processState === "processing" && (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Processando...
+                  </>
+                )}
+                {processState === "done" && (
                   <>
                     <CheckCircle2 size={14} />
-                    Adicionado à fila
+                    Salvo na biblioteca
                   </>
-                ) : (
+                )}
+                {processState === "error" && (
+                  <>
+                    <Download size={14} />
+                    Tentar novamente
+                  </>
+                )}
+                {processState === "idle" && (
                   <>
                     <Download size={14} />
                     Preparar Download
