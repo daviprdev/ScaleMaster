@@ -227,3 +227,35 @@ Criados componentes separados em `components/inspirations/` para não acoplar o 
 
 #### Botão "Preparar Download"
 UI-only: ao clicar, muda para "Adicionado à fila ✓" (verde) por 3s e volta ao estado inicial. A integração real com FFmpeg e a fila de downloads será implementada na próxima fase.
+
+---
+
+### ✅ Fase 11 — Login Instagram via instagrapi + child_process
+**Data:** 11/05/2026
+**Commit:** `feat: Fase 11 — login Instagram via instagrapi e child_process`
+
+#### O que foi feito
+- `python_scripts/instagram_login.py` — script Python que recebe `username` e `password` via `sys.argv`, faz login com `instagrapi.Client`, e retorna JSON no stdout com os dados do perfil (`username`, `full_name`, `followers`, `profile_pic_url`, etc.)
+  - Trata exceções específicas do instagrapi: `BadPassword`, `TwoFactorRequired`, `ChallengeRequired`, `PleaseWaitFewMinutes`, `LoginRequired`
+  - Suprime logs internos do instagrapi para não poluir o stdout com output fora do JSON
+- `app/api/accounts/login/route.ts` — rota `POST /api/accounts/login` com `runtime: "nodejs"` e `maxDuration: 60`
+  - Usa `child_process.execFile` (promisificado) para chamar o script Python
+  - Comando Python configurável via `PYTHON_CMD` env var (padrão: `python` no Windows, `python3` no Linux/Mac)
+  - Parseia a última linha JSON do stdout (ignora logs residuais)
+  - Em caso de sucesso: faz upsert na tabela `instagram_accounts` (verifica existência por `user_id + username`)
+  - Erros mapeados: `ENOENT` (Python não encontrado), timeout (ETIMEDOUT), erro de login
+- `app/dashboard/accounts/page.tsx` reescrito:
+  - Modal com campos `@usuário` e senha (com toggle show/hide)
+  - Aviso de segurança explicando que a senha não é armazenada
+  - Loading de até 30s com mensagem contextual
+  - Lista de contas atualizada para exibir `avatar_url` real quando disponível
+  - Handler chama `/api/accounts/login` em vez de inserir diretamente no Supabase
+
+#### Decisão: instagrapi via child_process
+A Graph API do Instagram exige aprovação de app e não suporta contas pessoais facilmente. O `instagrapi` faz login via API privada do Instagram (mesma usada pelo app móvel). Como o Next.js é JavaScript/TypeScript, a integração é feita via `child_process` que invoca o script Python. **Funciona apenas em execução local** — não funciona no Vercel (sem Python no ambiente serverless). Para produção, seria necessário um servidor Python separado (FastAPI/Flask) ou um runner dedicado.
+
+#### Variável de ambiente opcional
+```
+PYTHON_CMD=python   # ou python3, py, caminho absoluto
+```
+Adicionar ao `.env.local` se o comando padrão não funcionar.
