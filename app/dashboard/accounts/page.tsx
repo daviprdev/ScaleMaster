@@ -14,6 +14,8 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
+  KeyRound,
+  ArrowLeft,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -42,15 +44,30 @@ function avatarColor(username: string) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
+type ModalStep = "credentials" | "2fa";
+
+interface TwoFAState {
+  sessionToken: string;
+  twoFactorIdentifier: string;
+  username: string;
+}
+
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [step, setStep] = useState<ModalStep>("credentials");
 
-  // Form state
+  // Step 1 state
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+
+  // Step 2 state
+  const [twoFAState, setTwoFAState] = useState<TwoFAState | null>(null);
+  const [code, setCode] = useState("");
+
+  // Shared
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
 
@@ -86,16 +103,68 @@ export default function AccountsPage() {
         body: JSON.stringify({ username: username.trim(), password }),
       });
 
-      const data = await res.json() as { success?: boolean; error?: string; warning?: string };
+      const data = await res.json() as {
+        success?: boolean;
+        error?: string;
+        warning?: string;
+        requires_2fa?: boolean;
+        session_token?: string;
+        two_factor_identifier?: string;
+        username?: string;
+      };
+
+      if (data.requires_2fa) {
+        setTwoFAState({
+          sessionToken: data.session_token ?? "",
+          twoFactorIdentifier: data.two_factor_identifier ?? "",
+          username: data.username ?? username.trim(),
+        });
+        setStep("2fa");
+        setError("");
+        return;
+      }
 
       if (!res.ok || !data.success) {
         setError(data.error ?? "Falha ao conectar a conta.");
         return;
       }
 
-      setUsername("");
-      setPassword("");
-      setShowModal(false);
+      resetAndClose();
+      fetchAccounts();
+    } catch {
+      setError("Erro de rede. Verifique sua conexão e tente novamente.");
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleVerify2FA = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!code.trim() || !twoFAState) return;
+
+    setConnecting(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/accounts/verify2fa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: twoFAState.username,
+          code: code.replace(/\s/g, ""),
+          two_factor_identifier: twoFAState.twoFactorIdentifier,
+          session_token: twoFAState.sessionToken,
+        }),
+      });
+
+      const data = await res.json() as { success?: boolean; error?: string };
+
+      if (!res.ok || !data.success) {
+        setError(data.error ?? "Código inválido. Tente novamente.");
+        return;
+      }
+
+      resetAndClose();
       fetchAccounts();
     } catch {
       setError("Erro de rede. Verifique sua conexão e tente novamente.");
@@ -123,13 +192,26 @@ export default function AccountsPage() {
     setDeletingId(null);
   };
 
-  const closeModal = () => {
-    if (connecting) return;
+  const resetAndClose = () => {
     setShowModal(false);
+    setStep("credentials");
     setUsername("");
     setPassword("");
-    setError("");
     setShowPassword(false);
+    setCode("");
+    setError("");
+    setTwoFAState(null);
+  };
+
+  const closeModal = () => {
+    if (connecting) return;
+    resetAndClose();
+  };
+
+  const backToCredentials = () => {
+    setStep("credentials");
+    setCode("");
+    setError("");
   };
 
   const active = accounts.filter(a => a.is_active).length;
@@ -263,7 +345,7 @@ export default function AccountsPage() {
         )}
       </motion.div>
 
-      {/* Connect modal */}
+      {/* Modal */}
       <AnimatePresence>
         {showModal && (
           <>
@@ -282,107 +364,195 @@ export default function AccountsPage() {
               className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md px-4"
             >
               <div className="glass neon-border rounded-2xl p-6">
-                {/* Modal header */}
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <LogIn size={18} className="text-violet-400" />
-                    <h2 className="font-semibold text-white">Conectar conta do Instagram</h2>
-                  </div>
-                  <button onClick={closeModal} disabled={connecting} className="text-white/20 hover:text-white/60 transition-colors disabled:opacity-40">
-                    <X size={18} />
-                  </button>
-                </div>
-
-                {/* Security notice */}
-                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-violet-600/10 border border-violet-500/20 mb-5">
-                  <ShieldCheck size={14} className="text-violet-400 mt-0.5 flex-shrink-0" />
-                  <p className="text-[11px] text-violet-300/80 leading-relaxed">
-                    Suas credenciais são usadas apenas para autenticar via <strong>instagrapi</strong> localmente. A senha não é armazenada.
-                  </p>
-                </div>
-
-                <form onSubmit={handleConnect} className="space-y-4">
-                  {/* Username */}
-                  <div>
-                    <label className="text-xs font-semibold text-white/50 mb-1.5 block">
-                      Usuário do Instagram
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25 text-sm">@</span>
-                      <input
-                        type="text"
-                        value={username}
-                        onChange={e => setUsername(e.target.value.replace(/^@/, ""))}
-                        placeholder="seu_perfil"
-                        required
-                        autoFocus
-                        disabled={connecting}
-                        className="input-glass pl-7 w-full disabled:opacity-50"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Password */}
-                  <div>
-                    <label className="text-xs font-semibold text-white/50 mb-1.5 block">
-                      Senha
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        required
-                        disabled={connecting}
-                        className="input-glass pr-10 w-full disabled:opacity-50"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(p => !p)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors"
-                      >
-                        {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Error */}
-                  {error && (
-                    <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
-                      <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
-                      {error}
-                    </div>
-                  )}
-
-                  {/* Loading hint */}
-                  {connecting && (
-                    <p className="text-[11px] text-white/30 text-center">
-                      Conectando ao Instagram… pode levar até 30 segundos.
-                    </p>
-                  )}
-
-                  {/* Actions */}
-                  <div className="flex gap-3 pt-1">
-                    <button
-                      type="button"
-                      onClick={closeModal}
-                      disabled={connecting}
-                      className="btn-ghost flex-1 text-sm py-2.5 disabled:opacity-40"
+                <AnimatePresence mode="wait">
+                  {step === "credentials" ? (
+                    <motion.div
+                      key="step-credentials"
+                      initial={{ opacity: 0, x: -16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -16 }}
+                      transition={{ duration: 0.2 }}
                     >
-                      Cancelar
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={connecting || !username.trim() || !password.trim()}
-                      className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2 disabled:opacity-50"
+                      {/* Header */}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <LogIn size={18} className="text-violet-400" />
+                          <h2 className="font-semibold text-white">Conectar conta do Instagram</h2>
+                        </div>
+                        <button onClick={closeModal} disabled={connecting} className="text-white/20 hover:text-white/60 transition-colors disabled:opacity-40">
+                          <X size={18} />
+                        </button>
+                      </div>
+
+                      {/* Security notice */}
+                      <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-violet-600/10 border border-violet-500/20 mb-5">
+                        <ShieldCheck size={14} className="text-violet-400 mt-0.5 flex-shrink-0" />
+                        <p className="text-[11px] text-violet-300/80 leading-relaxed">
+                          Suas credenciais são usadas apenas para autenticar via <strong>instagrapi</strong> localmente. A senha não é armazenada.
+                        </p>
+                      </div>
+
+                      <form onSubmit={handleConnect} className="space-y-4">
+                        <div>
+                          <label className="text-xs font-semibold text-white/50 mb-1.5 block">
+                            Usuário do Instagram
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25 text-sm">@</span>
+                            <input
+                              type="text"
+                              value={username}
+                              onChange={e => setUsername(e.target.value.replace(/^@/, ""))}
+                              placeholder="seu_perfil"
+                              required
+                              autoFocus
+                              disabled={connecting}
+                              className="input-glass pl-7 w-full disabled:opacity-50"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold text-white/50 mb-1.5 block">
+                            Senha
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showPassword ? "text" : "password"}
+                              value={password}
+                              onChange={e => setPassword(e.target.value)}
+                              placeholder="••••••••"
+                              required
+                              disabled={connecting}
+                              className="input-glass pr-10 w-full disabled:opacity-50"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(p => !p)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors"
+                            >
+                              {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {error && (
+                          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                            <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                            {error}
+                          </div>
+                        )}
+
+                        {connecting && (
+                          <p className="text-[11px] text-white/30 text-center">
+                            Conectando ao Instagram… pode levar até 30 segundos.
+                          </p>
+                        )}
+
+                        <div className="flex gap-3 pt-1">
+                          <button
+                            type="button"
+                            onClick={closeModal}
+                            disabled={connecting}
+                            className="btn-ghost flex-1 text-sm py-2.5 disabled:opacity-40"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={connecting || !username.trim() || !password.trim()}
+                            className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            {connecting
+                              ? <><Loader2 size={14} className="animate-spin" /> Conectando...</>
+                              : <><LogIn size={14} /> Conectar</>}
+                          </button>
+                        </div>
+                      </form>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="step-2fa"
+                      initial={{ opacity: 0, x: 16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 16 }}
+                      transition={{ duration: 0.2 }}
                     >
-                      {connecting
-                        ? <><Loader2 size={14} className="animate-spin" /> Conectando...</>
-                        : <><LogIn size={14} /> Conectar</>}
-                    </button>
-                  </div>
-                </form>
+                      {/* Header */}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <KeyRound size={18} className="text-violet-400" />
+                          <h2 className="font-semibold text-white">Verificação em duas etapas</h2>
+                        </div>
+                        <button onClick={closeModal} disabled={connecting} className="text-white/20 hover:text-white/60 transition-colors disabled:opacity-40">
+                          <X size={18} />
+                        </button>
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-violet-600/10 border border-violet-500/20 mb-5">
+                        <ShieldCheck size={14} className="text-violet-400 mt-0.5 flex-shrink-0" />
+                        <p className="text-[11px] text-violet-300/80 leading-relaxed">
+                          O Instagram solicitou verificação para{" "}
+                          <strong>@{twoFAState?.username}</strong>. Digite o código de 6 dígitos do seu aplicativo autenticador ou SMS.
+                        </p>
+                      </div>
+
+                      <form onSubmit={handleVerify2FA} className="space-y-4">
+                        <div>
+                          <label className="text-xs font-semibold text-white/50 mb-1.5 block">
+                            Código de verificação
+                          </label>
+                          <input
+                            type="text"
+                            value={code}
+                            onChange={e => setCode(e.target.value.replace(/[^0-9 ]/g, "").slice(0, 7))}
+                            placeholder="000 000"
+                            required
+                            autoFocus
+                            disabled={connecting}
+                            maxLength={7}
+                            inputMode="numeric"
+                            className="input-glass w-full text-center text-lg tracking-[0.3em] disabled:opacity-50"
+                          />
+                        </div>
+
+                        {error && (
+                          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                            <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                            {error}
+                          </div>
+                        )}
+
+                        {connecting && (
+                          <p className="text-[11px] text-white/30 text-center">
+                            Verificando código…
+                          </p>
+                        )}
+
+                        <div className="flex gap-3 pt-1">
+                          <button
+                            type="button"
+                            onClick={backToCredentials}
+                            disabled={connecting}
+                            className="btn-ghost flex items-center justify-center gap-1.5 px-4 text-sm py-2.5 disabled:opacity-40"
+                          >
+                            <ArrowLeft size={13} /> Voltar
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={connecting || code.replace(/\s/g, "").length < 6}
+                            className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            {connecting
+                              ? <><Loader2 size={14} className="animate-spin" /> Verificando...</>
+                              : <><KeyRound size={14} /> Confirmar</>}
+                          </button>
+                        </div>
+                      </form>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </motion.div>
           </>
