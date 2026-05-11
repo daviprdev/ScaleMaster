@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Instagram,
   Plus,
@@ -93,16 +93,21 @@ export default function AccountsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  const supabase = createClient();
+  // Instância estável do cliente Supabase — sem useMemo causaria re-render infinito
+  // pois createClient() retorna novo objeto a cada chamada
+  const supabase = useMemo(() => createClient(), []);
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("instagram_accounts")
-      .select("id, username, display_name, avatar_url, is_active, connected_at")
-      .order("connected_at", { ascending: false });
-    setAccounts(data ?? []);
-    setLoading(false);
+    try {
+      const { data } = await supabase
+        .from("instagram_accounts")
+        .select("id, username, display_name, avatar_url, is_active, connected_at")
+        .order("connected_at", { ascending: false });
+      setAccounts(data ?? []);
+    } finally {
+      setLoading(false);
+    }
   }, [supabase]);
 
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
@@ -198,22 +203,30 @@ export default function AccountsPage() {
   };
 
   const handleToggle = async (account: Account) => {
+    if (togglingId) return;
     setTogglingId(account.id);
-    await supabase
-      .from("instagram_accounts")
-      .update({ is_active: !account.is_active })
-      .eq("id", account.id);
-    setAccounts(prev =>
-      prev.map(a => a.id === account.id ? { ...a, is_active: !a.is_active } : a)
-    );
-    setTogglingId(null);
+    try {
+      await supabase
+        .from("instagram_accounts")
+        .update({ is_active: !account.is_active })
+        .eq("id", account.id);
+      setAccounts(prev =>
+        prev.map(a => a.id === account.id ? { ...a, is_active: !a.is_active } : a)
+      );
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   const handleDelete = async (id: string) => {
+    if (deletingId) return;
     setDeletingId(id);
-    await supabase.from("instagram_accounts").delete().eq("id", id);
-    setAccounts(prev => prev.filter(a => a.id !== id));
-    setDeletingId(null);
+    try {
+      await supabase.from("instagram_accounts").delete().eq("id", id);
+      setAccounts(prev => prev.filter(a => a.id !== id));
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const resetAndClose = () => {
@@ -233,7 +246,7 @@ export default function AccountsPage() {
   const active = accounts.filter(a => a.is_active).length;
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
 
       {/* Header */}
       <motion.div
@@ -326,10 +339,10 @@ export default function AccountsPage() {
                   <motion.button
                     onClick={() => handleToggle(account)}
                     whileTap={{ scale: 0.9 }}
-                    disabled={togglingId === account.id}
+                    disabled={!!togglingId}
                     title={account.is_active ? "Desativar" : "Ativar"}
                     className={cn(
-                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50",
                       account.is_active
                         ? "text-emerald-400 hover:bg-emerald-500/10"
                         : "text-white/20 hover:bg-white/5 hover:text-white/50"
@@ -343,9 +356,9 @@ export default function AccountsPage() {
                   <motion.button
                     onClick={() => handleDelete(account.id)}
                     whileTap={{ scale: 0.9 }}
-                    disabled={deletingId === account.id}
+                    disabled={!!deletingId}
                     title="Remover conta"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-white/20 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-white/20 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-50"
                   >
                     {deletingId === account.id
                       ? <Loader2 size={14} className="animate-spin" />
@@ -358,23 +371,27 @@ export default function AccountsPage() {
         )}
       </motion.div>
 
-      {/* Modal */}
+      {/* Modal — overlay cobre toda a viewport via flex centering */}
       <AnimatePresence>
         {showModal && (
-          <>
+          <motion.div
+            key="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          >
+            {/* Click-away */}
+            <div className="absolute inset-0" onClick={closeModal} />
+
+            {/* Card */}
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={closeModal}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md px-4"
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ type: "spring", bounce: 0.18, duration: 0.35 }}
+              className="relative w-full max-w-md"
             >
               <div className="glass neon-border rounded-2xl p-6">
                 <AnimatePresence mode="wait">
@@ -386,7 +403,7 @@ export default function AccountsPage() {
                       initial={{ opacity: 0, x: -16 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -16 }}
-                      transition={{ duration: 0.2 }}
+                      transition={{ duration: 0.18 }}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
@@ -478,7 +495,7 @@ export default function AccountsPage() {
                       initial={{ opacity: 0, x: 16 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: 16 }}
-                      transition={{ duration: 0.2 }}
+                      transition={{ duration: 0.18 }}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
@@ -546,7 +563,7 @@ export default function AccountsPage() {
                 </AnimatePresence>
               </div>
             </motion.div>
-          </>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

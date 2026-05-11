@@ -289,3 +289,35 @@ O estado do cliente instagrapi é serializado com `cl.get_settings()` e `cl.last
 #### Fluxo checkpoint vs 2FA
 - **2FA (app autenticador/SMS do app):** `TwoFactorRequired` — código TOTP ou de texto do app de autenticação
 - **Checkpoint (segurança):** `ChallengeRequired` — `challenge_resolve` dispara um código de verificação por SMS ou email; o código é submetido via `challenge_send_security_code`
+
+---
+
+### ✅ Fase 13 — Faxina de UI e Performance
+**Data:** 11/05/2026
+**Commit:** `fix: Fase 13 — correcao de modal, layout e loop infinito de renders`
+
+#### Bugs corrigidos
+
+**1. Loop infinito de re-renders (accounts/page.tsx)**
+`createClient()` de `@supabase/ssr` retorna uma **nova instância** a cada chamada. O componente chamava `createClient()` no nível do render, o que criava uma nova referência `supabase` a cada render. Como `useCallback(fetchAccounts, [supabase])` dependia dessa referência instável, `fetchAccounts` também era recriada a cada render. Isso fazia o `useEffect(() => { fetchAccounts() }, [fetchAccounts])` disparar novamente, que chamava `setLoading()`, que causava um novo render, formando um loop. Resultado: dezenas de re-renders por segundo, sluggishness total e necessidade de 2–3 cliques para registrar qualquer ação.
+**Correção:** `const supabase = useMemo(() => createClient(), [])` — instância estável por todo o ciclo de vida do componente.
+
+**2. Modal aparecendo cortado/fora de posição**
+O modal usava `fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2` para centralizar. Em certos contextos de viewport (scroll, transforms de ancestrais, telas menores), essa abordagem de transform-based centering falha.
+**Correção:** O overlay agora é `fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4`. O modal fica dentro do flex container, centralizado por `items-center justify-center` — confiável em qualquer viewport.
+
+**3. Layout espremido na esquerda (accounts/page.tsx)**
+O container principal tinha `max-w-3xl` (768px) sem `mx-auto`, colando o conteúdo na lateral esquerda. Removido o `max-w` — o conteúdo agora preenche toda a área disponível do main.
+
+**4. Botões sem proteção contra duplo-clique**
+`handleToggle` e `handleDelete` não tinham `try/finally`, então se o Supabase falhasse, o estado `togglingId`/`deletingId` ficava travado para sempre. Adicionado `try/finally` e guard `if (togglingId) return` / `if (deletingId) return` para impedir acionamento concorrente.
+
+#### Regra importante para evitar o bug de loop
+Sempre que um componente precisar do cliente Supabase browser em múltiplas funções:
+```tsx
+// ✅ Correto — instância estável
+const supabase = useMemo(() => createClient(), []);
+
+// ❌ Errado — nova instância a cada render
+const supabase = createClient();
+```
