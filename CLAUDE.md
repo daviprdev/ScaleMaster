@@ -145,7 +145,7 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fase 5** | Biblioteca de Mídia + Agendamento multi-conta | ✅ Concluída |
 | **Fase 6** | Integração real Supabase Auth | ✅ Concluída |
 | **Fase 7** | Integração real Apify (scraping real) | ✅ Concluída |
-| **Fase 8** | Deploy Vercel + configuração de produção | 🔲 Pendente |
+| **Fase 8** | Deploy Vercel + configuração de produção | ✅ Concluída |
 
 ---
 
@@ -157,5 +157,5 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 - Usar `serverExternalPackages` no `next.config.ts` para pacotes com binários nativos (ffmpeg)
 - Commitar por fase com mensagens descritivas em português
 - Ao terminar cada fase: atualizar o status em `CLAUDE.md` e `docs/MEMORIA.md`, depois commitar e fazer push
-- Rodar sempre de dentro de `C:\Users\davip\OneDrive\Documentos\AutoScale AI`
+- Rodar sempre de dentro de `C:\Users\Recepção\Documents\AutoScale IA`
 - Branch principal: `main` no remote `origin`

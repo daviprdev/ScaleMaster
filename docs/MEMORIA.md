@@ -179,10 +179,26 @@ O polling manual com `while` e `setTimeout(3000)` bloqueava a Route Handler por 
 
 ---
 
-### 🔲 Fase 8 — Deploy e Produção
-**Status:** Pendente
-**Planejado:**
-- Deploy no Vercel
-- Configurar variáveis de ambiente no painel do Vercel
-- Considerar solução de fila para processamento FFmpeg em produção (Inngest ou Trigger.dev)
-- Observação: Vercel Free tem limite de 10s por função — para vídeos grandes usar Vercel Pro (300s) ou fila assíncrona
+### ✅ Fase 8 — Deploy e Produção
+**Data:** 11/05/2026
+**Commit:** `feat: Fase 8 — deploy Vercel com variáveis de ambiente configuradas`
+
+#### O que foi feito
+- Corrigido bug de build: `outputFileTracingRoot` adicionado ao `next.config.ts` para resolver conflito de workspace root (havia um `package-lock.json` em `C:\Users\Recepção\` que fazia o Next.js apontar para a pasta errada, quebrando a resolução dos módulos de API)
+- Deploy na Vercel via CLI (`vercel --prod`)
+- Projeto vinculado ao repositório GitHub automaticamente pela Vercel
+- 4 variáveis de ambiente configuradas em production + preview via `vercel env add`
+- Redeploy realizado para ativar as variáveis
+
+#### URLs de produção
+- **App:** https://autoscale-ia.vercel.app
+- **Painel Vercel:** https://vercel.com/daviprdev-4623s-projects/autoscale-ia
+
+#### Problemas encontrados e soluções
+| Problema | Solução |
+|----------|---------|
+| `PageNotFoundError` para `/api/apify/scrape` no build | `outputFileTracingRoot: path.resolve(__dirname)` no `next.config.ts` |
+| Nome do projeto inválido (espaço + maiúsculas na pasta) | Flag `--name autoscale-ia` no primeiro deploy |
+
+#### Observação sobre FFmpeg em produção
+A rota `/api/video/process` usa FFmpeg com binário nativo. O Vercel Free tem limite de 10s por função — para vídeos grandes pode ser necessário migrar para Vercel Pro (300s) ou fila assíncrona (Inngest / Trigger.dev).
