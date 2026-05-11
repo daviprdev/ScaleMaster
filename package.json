@@ -12,6 +12,7 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.4",
+    "apify-client": "^2.23.3",
     "clsx": "^2.1.1",
     "fluent-ffmpeg": "^2.1.3",
     "framer-motion": "^11.0.0",

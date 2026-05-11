@@ -9,22 +9,24 @@ import {
   Loader2,
   AlertCircle,
   SlidersHorizontal,
-  ArrowDownAZ,
   TrendingUp,
   Clock,
-  Download,
-  CheckCircle2,
+  Heart,
+  MessageCircle,
 } from "lucide-react";
-import { ReelGrid, ReelGridSkeleton } from "@/components/search/ReelGrid";
-import type { Reel } from "@/components/search/ReelCard";
+import {
+  InspirationGrid,
+  InspirationGridSkeleton,
+} from "@/components/inspirations/InspirationGrid";
+import type { InspirationReel } from "@/components/inspirations/InspirationCard";
 
 type SortKey = "views" | "likes" | "comments" | "duration";
 
 const SORT_OPTIONS: { key: SortKey; label: string; icon: React.ElementType }[] =
   [
     { key: "views", label: "Mais vistos", icon: TrendingUp },
-    { key: "likes", label: "Mais curtidos", icon: ArrowDownAZ },
-    { key: "comments", label: "Mais comentados", icon: ArrowDownAZ },
+    { key: "likes", label: "Mais curtidos", icon: Heart },
+    { key: "comments", label: "Mais comentados", icon: MessageCircle },
     { key: "duration", label: "Mais longos", icon: Clock },
   ];
 
@@ -35,17 +37,15 @@ const RECENT_SEARCHES = [
   "moda_masculina",
 ];
 
-export default function SearchPage() {
+export default function InspiracoesPage() {
   const [username, setUsername] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
     "idle"
   );
-  const [reels, setReels] = useState<Reel[]>([]);
+  const [reels, setReels] = useState<InspirationReel[]>([]);
   const [error, setError] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("views");
   const [showFilters, setShowFilters] = useState(false);
-  const [downloadingAll, setDownloadingAll] = useState(false);
-  const [downloadedCount, setDownloadedCount] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleSearch = async (query?: string) => {
@@ -58,7 +58,7 @@ export default function SearchPage() {
     setReels([]);
 
     try {
-      const res = await fetch("/api/apify/scrape", {
+      const res = await fetch("/api/inspirations/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: target }),
@@ -68,7 +68,7 @@ export default function SearchPage() {
 
       if (!res.ok) throw new Error(data.error ?? "Erro ao buscar Reels.");
 
-      setReels(data.reels as Reel[]);
+      setReels(data.reels as InspirationReel[]);
       setStatus("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido.");
@@ -77,44 +77,6 @@ export default function SearchPage() {
   };
 
   const sortedReels = [...reels].sort((a, b) => b[sortBy] - a[sortBy]);
-
-  const handleDownloadAll = async () => {
-    setDownloadingAll(true);
-    setDownloadedCount(0);
-    for (const reel of sortedReels) {
-      try {
-        await handleDownload(reel);
-      } catch {
-        // continua mesmo se um falhar
-      }
-      setDownloadedCount((c) => c + 1);
-    }
-    setDownloadingAll(false);
-  };
-
-  const handleDownload = async (reel: Reel) => {
-    const res = await fetch("/api/video/process", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        videoUrl: reel.videoUrl,
-        filename: `reel_${reel.owner}_${reel.shortCode}`,
-        reelData: {
-          caption: reel.caption,
-          views: reel.views,
-          likes: reel.likes,
-          comments: reel.comments,
-          duration: reel.duration,
-          owner: reel.owner,
-        },
-      }),
-    });
-
-    if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error ?? "Erro ao processar vídeo.");
-    }
-  };
 
   return (
     <div className="space-y-6 max-w-full">
@@ -130,12 +92,12 @@ export default function SearchPage() {
           <div className="flex items-center gap-2 mb-1">
             <Instagram size={16} className="text-pink-400" />
             <span className="text-sm font-semibold text-white/70">
-              Pesquisar perfil do Instagram
+              Buscar inspirações no Instagram
             </span>
           </div>
           <p className="text-xs text-white/30 mb-5">
-            Digite o @ de qualquer perfil público para visualizar e baixar os
-            Reels
+            Digite o @ de qualquer perfil público para visualizar os Reels e
+            preparar downloads
           </p>
 
           {/* Input row */}
@@ -214,7 +176,7 @@ export default function SearchPage() {
         )}
       </AnimatePresence>
 
-      {/* Results header + filters */}
+      {/* Results header */}
       <AnimatePresence>
         {status === "done" && reels.length > 0 && (
           <motion.div
@@ -229,59 +191,17 @@ export default function SearchPage() {
               <p className="text-xs text-white/30">de @{username}</p>
             </div>
 
-            {/* Sort / filter bar */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all ${
-                  showFilters
-                    ? "bg-violet-600/20 border-violet-500/30 text-violet-300"
-                    : "bg-white/5 border-white/10 text-white/40 hover:text-white/70"
-                }`}
-              >
-                <SlidersHorizontal size={12} />
-                Ordenar
-              </button>
-
-              <motion.button
-                onClick={handleDownloadAll}
-                disabled={downloadingAll}
-                whileTap={{ scale: 0.96 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all
-                  bg-gradient-to-r from-violet-600/80 to-cyan-600/80
-                  border-violet-500/40 text-white font-medium
-                  hover:from-violet-500/90 hover:to-cyan-500/90
-                  hover:shadow-[0_0_12px_rgba(139,92,246,0.3)]
-                  disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {downloadingAll ? (
-                  <>
-                    <Loader2 size={12} className="animate-spin" />
-                    {downloadedCount}/{sortedReels.length}
-                  </>
-                ) : (
-                  <>
-                    <Download size={12} />
-                    Baixar todos
-                  </>
-                )}
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Download all success banner */}
-      <AnimatePresence>
-        {!downloadingAll && downloadedCount > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm"
-          >
-            <CheckCircle2 size={16} />
-            {downloadedCount} {downloadedCount === 1 ? "reel salvo" : "reels salvos"} na biblioteca com sucesso!
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all ${
+                showFilters
+                  ? "bg-violet-600/20 border-violet-500/30 text-violet-300"
+                  : "bg-white/5 border-white/10 text-white/40 hover:text-white/70"
+              }`}
+            >
+              <SlidersHorizontal size={12} />
+              Ordenar
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -314,13 +234,13 @@ export default function SearchPage() {
       </AnimatePresence>
 
       {/* Grid */}
-      {status === "loading" && <ReelGridSkeleton />}
+      {status === "loading" && <InspirationGridSkeleton />}
 
       {status === "done" && reels.length > 0 && (
-        <ReelGrid reels={sortedReels} onDownload={handleDownload} />
+        <InspirationGrid reels={sortedReels} />
       )}
 
-      {/* Idle / empty state */}
+      {/* Idle state */}
       {status === "idle" && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -331,12 +251,13 @@ export default function SearchPage() {
             <Search size={32} className="text-white/15" />
           </div>
           <p className="text-white/30 text-sm max-w-xs">
-            Digite o nome de um perfil do Instagram acima para começar a
-            pesquisar Reels
+            Digite o nome de um perfil do Instagram para buscar Reels e se
+            inspirar
           </p>
         </motion.div>
       )}
 
+      {/* Empty state */}
       {status === "done" && reels.length === 0 && (
         <motion.div
           initial={{ opacity: 0 }}

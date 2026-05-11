@@ -202,3 +202,28 @@ O polling manual com `while` e `setTimeout(3000)` bloqueava a Route Handler por 
 
 #### Observação sobre FFmpeg em produção
 A rota `/api/video/process` usa FFmpeg com binário nativo. O Vercel Free tem limite de 10s por função — para vídeos grandes pode ser necessário migrar para Vercel Pro (300s) ou fila assíncrona (Inngest / Trigger.dev).
+
+---
+
+### ✅ Fase 9 — Seção Inspirações com apify-client + UI de hover
+**Data:** 11/05/2026
+**Commit:** `feat: Fase 9 — seção Inspirações com apify-client e overlay de métricas`
+
+#### O que foi feito
+- `apify-client@2.23.3` instalado como dependência oficial para comunicação com a API Apify
+- Nova rota `POST /api/inspirations/scrape` criada usando `ApifyClient` com:
+  - Actor `apify/instagram-scraper` (mais completo e oficial que o `instagram-reel-scraper`)
+  - Input: `{ directUrls: ["/username/reels/"], resultsType: "posts", maxRequestsPerCrawl: 30 }`
+  - `waitSecs: 55` na chamada `.call()` do SDK (mesmo padrão da Fase 7 mas via SDK em vez de fetch raw)
+  - Filtro por `item.type === "Video" || item.videoUrl`
+  - Modo mock sem `APIFY_API_TOKEN`
+- Componentes dedicados em `components/inspirations/`:
+  - `InspirationCard.tsx` — card 9:16 com overlay de hover revelando Views, Curtidas e Comentários com ícones coloridos (cyan / pink / violet) + botão "Preparar Download" com estado visual de confirmação ("Adicionado à fila ✓")
+  - `InspirationGrid.tsx` — grid responsivo 2→6 colunas + skeleton loader
+- Página `/dashboard/search` reescrita para usar a nova rota e os novos componentes, mantendo: search input com `@`, pesquisas recentes, ordenação por views/likes/comentários/duração, estados idle/loading/done/error
+
+#### Decisão: componentes dedicados vs reutilizar ReelCard
+Criados componentes separados em `components/inspirations/` para não acoplar o fluxo de "Inspirações" (sem FFmpeg) ao fluxo existente de "Pesquisa + Download" (`components/search/`). Facilita implementar FFmpeg na Fase 10 sem alterar a lógica da Inspirações.
+
+#### Botão "Preparar Download"
+UI-only: ao clicar, muda para "Adicionado à fila ✓" (verde) por 3s e volta ao estado inicial. A integração real com FFmpeg e a fila de downloads será implementada na próxima fase.
