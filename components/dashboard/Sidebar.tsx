@@ -27,6 +27,11 @@ const navItems = [
     exact: true,
   },
   {
+    label: "Contas",
+    href: "/dashboard/accounts",
+    icon: Users,
+  },
+  {
     label: "Inspirações",
     href: "/dashboard/search",
     icon: Search,
@@ -40,11 +45,6 @@ const navItems = [
     label: "Agendamento",
     href: "/dashboard/schedule",
     icon: CalendarClock,
-  },
-  {
-    label: "Contas",
-    href: "/dashboard/accounts",
-    icon: Users,
   },
 ];
 
