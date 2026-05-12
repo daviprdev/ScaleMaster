@@ -11,7 +11,6 @@ import {
   FolderOpen,
   CalendarClock,
   Users,
-  Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -29,10 +28,6 @@ const navItems = [
   { label: "Inspirações", href: "/dashboard/search", icon: Search },
   { label: "Biblioteca", href: "/dashboard/library", icon: FolderOpen },
   { label: "Agendamento", href: "/dashboard/schedule", icon: CalendarClock },
-];
-
-const bottomItems = [
-  { label: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -74,9 +69,9 @@ export function Sidebar() {
 
   useEffect(() => {
     if (!menuOpen) return;
-    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeMenu(); };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeMenu(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen, closeMenu]);
 
   const handleLogout = async () => {
@@ -87,19 +82,18 @@ export function Sidebar() {
     router.push("/auth/login");
   };
 
-  const isActive = (href: string, exact = false) => {
-    if (exact) return pathname === href;
-    return pathname.startsWith(href);
-  };
+  const isActive = (href: string, exact = false) =>
+    exact ? pathname === href : pathname.startsWith(href);
 
+  // Position dropdown ABOVE trigger when expanded, to the RIGHT when collapsed
   const dropdownStyle: React.CSSProperties | null = menuRect
     ? collapsed
-      ? { position: "fixed", top: menuRect.top, left: menuRect.right + 8, width: 224 }
+      ? { position: "fixed", top: menuRect.top, left: menuRect.right + 8, width: 240 }
       : {
           position: "fixed",
-          bottom: window.innerHeight - menuRect.top + 6,
+          bottom: window.innerHeight - menuRect.top + 8,
           left: menuRect.left,
-          width: Math.max(menuRect.width, 224),
+          width: Math.max(menuRect.width, 240),
         }
     : null;
 
@@ -107,50 +101,65 @@ export function Sidebar() {
     menuOpen && dropdownStyle && mounted
       ? createPortal(
           <>
+            {/* Invisible backdrop to close on outside click */}
             <div className="fixed inset-0 z-[190]" onClick={closeMenu} />
+
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: collapsed ? 0 : 6 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.15, ease: "easeOut" }}
+              initial={{ opacity: 0, y: 6, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.97 }}
+              transition={{ duration: 0.14, ease: "easeOut" }}
               style={dropdownStyle}
-              className="z-[200] bg-[#141720] border border-white/[0.10] rounded-xl shadow-2xl overflow-hidden py-1"
+              className="z-[200] bg-gray-900 border border-gray-800 rounded-xl shadow-2xl overflow-hidden"
             >
-              {/* User info header */}
-              <div className="px-3 py-2.5 border-b border-white/[0.06]">
-                <p className="text-xs font-semibold text-white/80 truncate">{userName}</p>
-                <p className="text-[10px] text-white/30 truncate">{userEmail}</p>
+              {/* Header */}
+              <div className="flex items-center gap-3 px-4 py-3.5">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-sm font-bold text-white flex-shrink-0 shadow-[0_0_10px_rgba(139,92,246,0.35)]">
+                  {userInitial}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-white truncate leading-tight">
+                    {userName}
+                  </p>
+                  <p className="text-xs text-gray-500 leading-tight">
+                    Configurações da conta
+                  </p>
+                </div>
               </div>
 
-              {/* Menu items */}
-              <div className="py-1">
+              <div className="border-t border-gray-800" />
+
+              {/* Navigation items */}
+              <div className="p-1.5 space-y-0.5">
                 <button
                   onClick={() => { closeMenu(); router.push("/dashboard/settings"); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/65 hover:text-white hover:bg-white/[0.05] transition-colors"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/[0.05] transition-colors"
                 >
-                  <User size={14} className="flex-shrink-0 text-white/40" />
-                  Meu Perfil
+                  <User size={15} className="flex-shrink-0 text-gray-500" />
+                  Perfil
                 </button>
-
                 <button
                   disabled
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/25 cursor-not-allowed"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-600 cursor-not-allowed"
                 >
-                  <CreditCard size={14} className="flex-shrink-0 text-white/20" />
-                  <span className="flex-1 text-left">Pagamento / Assinatura</span>
-                  <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-violet-500/20 text-violet-400 flex-shrink-0">
+                  <CreditCard size={15} className="flex-shrink-0 text-gray-700" />
+                  <span className="flex-1 text-left">Pagamentos</span>
+                  <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded-md bg-violet-500/15 text-violet-500/60">
                     Em breve
                   </span>
                 </button>
+              </div>
 
-                <div className="mx-3 my-1 border-t border-white/[0.06]" />
+              <div className="border-t border-gray-800" />
 
+              {/* Logout */}
+              <div className="p-1.5">
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/[0.07] transition-colors"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-500 hover:text-red-400 hover:bg-red-500/[0.07] transition-colors"
                 >
-                  <LogOut size={14} className="flex-shrink-0" />
-                  Sair da Conta
+                  <LogOut size={15} className="flex-shrink-0" />
+                  Sair
                 </button>
               </div>
             </motion.div>
@@ -164,11 +173,9 @@ export function Sidebar() {
       animate={{ width: collapsed ? 72 : 240 }}
       transition={{ duration: 0.3, ease: "easeInOut" }}
       className="relative flex-shrink-0 h-screen flex flex-col
-        bg-[#0c0e15]
-        border-r border-white/[0.08]
-        overflow-hidden z-20"
+        bg-[#0c0e15] border-r border-white/[0.08] overflow-hidden z-20"
     >
-      {/* Glow accent */}
+      {/* Glow */}
       <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-violet-600/10 to-transparent pointer-events-none" />
 
       {/* Logo */}
@@ -253,48 +260,21 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Bottom section */}
-      <div className="p-3 border-t border-white/[0.07] space-y-1">
-        {bottomItems.map((item) => (
-          <Link key={item.href} href={item.href}>
-            <motion.div
-              whileTap={{ scale: 0.97 }}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all",
-                isActive(item.href)
-                  ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
-                  : "text-white/40 hover:text-white/80 hover:bg-white/5"
-              )}
-            >
-              <item.icon size={18} className="flex-shrink-0" />
-              <AnimatePresence>
-                {!collapsed && (
-                  <motion.span
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="text-sm font-medium whitespace-nowrap"
-                  >
-                    {item.label}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          </Link>
-        ))}
-
-        {/* User card — clickable, opens portal dropdown */}
+      {/* User trigger button */}
+      <div className="p-3 border-t border-white/[0.07]">
         <div
           ref={triggerRef}
           onClick={menuOpen ? closeMenu : openMenu}
           className={cn(
-            "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all select-none",
+            "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-150 select-none",
             collapsed ? "justify-center" : "",
-            menuOpen ? "bg-white/[0.08] border border-white/[0.10]" : "hover:bg-white/[0.05]"
+            menuOpen
+              ? "bg-white/[0.08] border border-white/[0.12]"
+              : "hover:bg-white/[0.05] border border-transparent"
           )}
         >
           {/* Avatar */}
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 text-xs font-bold text-white shadow-[0_0_8px_rgba(139,92,246,0.3)]">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 text-sm font-bold text-white shadow-[0_0_8px_rgba(139,92,246,0.3)]">
             {userInitial}
           </div>
 
@@ -306,8 +286,10 @@ export function Sidebar() {
                 exit={{ opacity: 0 }}
                 className="flex-1 min-w-0"
               >
-                <p className="text-xs font-semibold text-white/80 truncate">{userName}</p>
-                <p className="text-[10px] text-white/30 truncate">Plano Gratuito</p>
+                <p className="text-sm font-semibold text-white/85 truncate leading-tight">
+                  {userName}
+                </p>
+                <p className="text-[11px] text-white/35 leading-tight">Minha Conta</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -318,10 +300,10 @@ export function Sidebar() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="text-white/25 flex-shrink-0"
+                className="flex-shrink-0 text-white/25"
               >
                 <ChevronUp
-                  size={13}
+                  size={14}
                   className={cn(
                     "transition-transform duration-200",
                     menuOpen ? "rotate-180" : ""
@@ -341,7 +323,7 @@ export function Sidebar() {
         {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
       </button>
 
-      {/* Portal dropdown */}
+      {/* Portal-rendered dropdown (bypasses overflow-hidden) */}
       <AnimatePresence>{dropdownPortal}</AnimatePresence>
     </motion.aside>
   );
