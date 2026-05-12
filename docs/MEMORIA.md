@@ -447,3 +447,39 @@ Para o volume atual (usuário único, poucas contas), sessões em memória com l
 
 #### Decisão: manter fallback child_process
 Os scripts Python em `python_scripts/` continuam funcionando para desenvolvimento local sem precisar subir o FastAPI. O fallback é transparente: se `PYTHON_SERVER_URL` não estiver no `.env.local`, o comportamento é idêntico ao das fases anteriores.
+
+---
+
+### ✅ Fase 17 — Página de Configurações + Otimização de Performance
+**Data:** 12/05/2026
+**Commits:** `perf: remover backdrop-blur...` + `feat: Fase 17 — pagina de Configuracoes`
+
+#### Página de Configurações (`app/dashboard/settings/page.tsx`)
+
+**Seção Perfil:**
+- Busca usuário via `supabase.auth.getUser()` em `useEffect`
+- Exibe avatar com inicial gerada, e-mail somente leitura
+- Campo de nome editável com `supabase.auth.updateUser({ data: { full_name } })`
+- Botão "Salvar alterações": mostra spinner enquanto salva, muda para "Salvo! ✓" por 3 segundos após sucesso
+- `useRef _savingRef` para guard síncrono contra duplo-clique
+
+**Seção Assinatura (UI Only):**
+- Card com gradiente violet/cyan no cabeçalho
+- Badge "GRATUITO" no canto
+- Grid 3 colunas com limites: 3 contas, 50 vídeos, 30 posts/mês
+- Botão "Fazer Upgrade para Pro" → `alert("Em breve!")` — placeholder para futura integração de pagamento
+
+**Seção Sessão:**
+- Exibe e-mail do usuário com indicador "Ativo" (dot verde com glow)
+- Botão "Sair da Conta": `supabase.auth.signOut()` + `router.push("/auth/login")`
+- `useRef _loggingOutRef` para guard síncrono
+
+**Header atualizado:**
+- `/dashboard/accounts` e `/dashboard/settings` adicionados ao mapa `pageTitles` (anteriormente exibiam "Dashboard" genérico)
+
+#### Otimização de performance (commit anterior)
+- Removido `backdrop-blur-xl/md/sm` de Sidebar, Header, `.glass`, `.glass-card`, `.btn-ghost`, `.input-glass`, badges de VideoCard e InspirationCard
+- Header: substituído `motion.header` com animação de entrada por `<header>` simples
+- Dashboard layout: removidos os dois círculos decorativos com `blur-[100px]` e `blur-[80px]`
+- `app/dashboard/loading.tsx` criado: spinner instantâneo durante navegação entre páginas
+- `useRef` guards adicionados em: `handleConnect`, `handleVerifyCode`, `handleToggle`, `handleDelete` (accounts), `handleDelete` (library), `handleSearch`, `handleBulkDownload` (search)

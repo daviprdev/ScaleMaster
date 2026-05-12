@@ -21,6 +21,14 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     title: "Agendamento",
     subtitle: "Programe postagens para múltiplas contas",
   },
+  "/dashboard/accounts": {
+    title: "Contas",
+    subtitle: "Gerencie suas contas do Instagram",
+  },
+  "/dashboard/settings": {
+    title: "Configurações",
+    subtitle: "Perfil, assinatura e sessão",
+  },
 };
 
 export function Header() {
