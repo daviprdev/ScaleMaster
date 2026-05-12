@@ -59,7 +59,16 @@ AutoScale AI/
 ├── lib/
 │   ├── utils.ts                      ← cn() helper
 │   ├── supabase.ts                   ← Clientes Supabase (lazy init)
-│   └── ffmpeg-process.ts             ← Pipeline de processamento de vídeo
+│   ├── ffmpeg-process.ts             ← Pipeline de processamento de vídeo
+│   └── python-server.ts              ← Helper HTTP para o servidor FastAPI
+├── python_server/
+│   ├── main.py                       ← FastAPI: /auth/login, /auth/verify, /posts/publish
+│   ├── requirements.txt              ← fastapi, uvicorn, instagrapi
+│   └── Dockerfile                    ← Para deploy em Railway/Render/VPS
+├── python_scripts/                   ← Scripts legados (fallback local sem FastAPI)
+│   ├── instagram_login.py
+│   ├── instagram_verify_code.py
+│   └── instagram_post.py
 ├── supabase/
 │   ├── schema.sql                    ← Tabelas + RLS
 │   └── storage.sql                   ← Bucket videos-library
@@ -78,6 +87,10 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 APIFY_API_TOKEN=
+
+# Fase 16 — Servidor FastAPI (opcional; sem ela, usa child_process local)
+PYTHON_SERVER_URL=http://localhost:8000
+PYTHON_SERVER_SECRET=
 ```
 
 ---
@@ -152,6 +165,7 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fase 13** | Correção de modal, layout e loop infinito de renders | ✅ Concluída |
 | **Fase 14** | Download real das Inspirações + botão Baixar Todos | ✅ Concluída |
 | **Fase 15** | Postagem real no Instagram via instagrapi | ✅ Concluída |
+| **Fase 16** | Servidor FastAPI para viabilizar operações Python em produção | ✅ Concluída |
 
 ---
 

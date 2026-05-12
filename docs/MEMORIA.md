@@ -388,3 +388,62 @@ Postagem via instagrapi funciona **apenas localmente** (sem Python/instagrapi no
 
 #### Fluxo completo
 `Biblioteca → hover card → "Postar agora" → PostModal → seleciona contas → legenda → Postar → resultado por conta`
+
+---
+
+### ✅ Fase 16 — Servidor FastAPI (Python em produção)
+**Data:** 12/05/2026
+**Commit:** `feat: Fase 16 — servidor FastAPI para operações Python em produção`
+
+#### O que foi feito
+
+**`python_server/main.py`** — servidor FastAPI com 3 rotas:
+- `GET /health` — health check
+- `POST /auth/login` — login instagrapi (lógica portada do `instagram_login.py`); sessões 2FA/checkpoint armazenadas em memória com TTL de 5 minutos
+- `POST /auth/verify` — verificação de código 2FA ou checkpoint (portada do `instagram_verify_code.py`)
+- `POST /posts/publish` — postagem de Reel via `clip_upload` (portada do `instagram_post.py`); recebe `session_json` diretamente no body, sem arquivo temporário
+- Autenticação por `x-api-key` header (variável `PYTHON_SERVER_SECRET`)
+- Sessões 2FA/checkpoint em dict em memória com lock thread-safe e limpeza automática de expirados
+
+**`python_server/requirements.txt`** — `fastapi`, `uvicorn[standard]`, `instagrapi`
+
+**`python_server/Dockerfile`** — imagem `python:3.11-slim` para deploy em Railway/Render/VPS
+
+**`lib/python-server.ts`** — helper TypeScript:
+- `hasPythonServer()` — retorna `true` se `PYTHON_SERVER_URL` está configurado
+- `callPythonServer<T>(endpoint, body)` — faz `fetch` POST com `x-api-key` e trata erros HTTP
+
+**Rotas Next.js atualizadas com modo duplo:**
+- `app/api/accounts/login/route.ts`
+- `app/api/accounts/verify/route.ts`
+- `app/api/posts/publish/route.ts`
+- Cada rota verifica `hasPythonServer()`: se `true` → chama FastAPI via HTTP; se `false` → fallback para `child_process` (scripts locais, comportamento anterior)
+- Lógica de Supabase (upsert de conta, busca de sessão) permanece no Next.js em ambos os modos
+
+#### Variáveis de ambiente novas
+```
+PYTHON_SERVER_URL=http://localhost:8000   # URL do servidor FastAPI
+PYTHON_SERVER_SECRET=                     # Chave compartilhada (opcional mas recomendado)
+```
+
+#### Como rodar localmente
+```bash
+# Terminal 1 — Next.js
+npm run dev
+
+# Terminal 2 — FastAPI
+cd python_server
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### Deploy recomendado
+- **Railway** ou **Render** — free tier suficiente para este volume
+- Definir `PYTHON_SERVER_SECRET` no painel de env vars do Railway/Render
+- Definir `PYTHON_SERVER_URL` + `PYTHON_SERVER_SECRET` no Vercel (env vars de production)
+
+#### Decisão: sessões em memória vs Redis
+Para o volume atual (usuário único, poucas contas), sessões em memória com lock thread-safe são suficientes. O TTL de 5 minutos cobre o tempo de digitar o código 2FA. Em escala maior, trocar por Redis com `redis-py`.
+
+#### Decisão: manter fallback child_process
+Os scripts Python em `python_scripts/` continuam funcionando para desenvolvimento local sem precisar subir o FastAPI. O fallback é transparente: se `PYTHON_SERVER_URL` não estiver no `.env.local`, o comportamento é idêntico ao das fases anteriores.

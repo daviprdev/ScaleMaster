@@ -4,12 +4,12 @@ import { promisify } from "util";
 import * as path from "path";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createClient } from "@/lib/supabase/server";
+import { hasPythonServer, callPythonServer } from "@/lib/python-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const execFileAsync = promisify(execFile);
-
 const PYTHON_CMD = process.env.PYTHON_CMD ?? (process.platform === "win32" ? "python" : "python3");
 
 interface PythonResult {
@@ -23,6 +23,36 @@ interface PythonResult {
   profile_pic_url?: string | null;
   is_private?: boolean;
   error?: string;
+}
+
+async function saveToSupabase(result: PythonResult): Promise<void> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
+
+  const supabaseUser = await createClient();
+  const { data: { user } } = await supabaseUser.auth.getUser();
+  if (!user) return;
+
+  const admin = getSupabaseAdmin();
+
+  const { data: existing } = await admin
+    .from("instagram_accounts")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("username", result.username!)
+    .maybeSingle();
+
+  const payload = {
+    display_name: result.full_name || null,
+    avatar_url: result.profile_pic_url || null,
+    access_token: result.session_json || null,
+    is_active: true,
+  };
+
+  if (existing) {
+    await admin.from("instagram_accounts").update(payload).eq("id", existing.id);
+  } else {
+    await admin.from("instagram_accounts").insert({ user_id: user.id, username: result.username!, ...payload });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -43,96 +73,75 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const scriptPath = path.join(process.cwd(), "python_scripts", "instagram_verify_code.py");
-
-  const args = [
-    scriptPath,
-    username.trim(),
-    code.replace(/\s/g, ""),
-    challenge_type.trim(),
-    session_token.trim(),
-    two_factor_identifier ?? "",
-  ];
-
   let result: PythonResult;
 
-  try {
-    const { stdout } = await execFileAsync(PYTHON_CMD, args, {
-      timeout: 55_000,
-      maxBuffer: 1024 * 512,
-    });
-
-    const raw = stdout.trim();
-    if (!raw) throw new Error("O script Python não retornou dados.");
-
-    const lines = raw.split("\n");
-    const jsonLine = lines.reverse().find(l => l.trim().startsWith("{"));
-    if (!jsonLine) throw new Error("Resposta do script Python não contém JSON válido.");
-
-    result = JSON.parse(jsonLine) as PythonResult;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Erro ao executar o script Python.";
-
-    if (msg.includes("ENOENT")) {
-      return NextResponse.json({ error: `Comando '${PYTHON_CMD}' não encontrado.` }, { status: 500 });
+  if (hasPythonServer()) {
+    // --- Modo FastAPI ---
+    try {
+      result = await callPythonServer<PythonResult>("/auth/verify", {
+        username: username.trim(),
+        code: code.replace(/\s/g, ""),
+        challenge_type: challenge_type.trim(),
+        session_token: session_token.trim(),
+        two_factor_identifier: two_factor_identifier ?? "",
+      });
+    } catch (err) {
+      const e = err as Error & { status?: number };
+      const httpStatus = e.status === 401 ? 401 : e.status === 400 ? 400 : 500;
+      return NextResponse.json({ error: e.message }, { status: httpStatus });
     }
-    if (msg.includes("ETIMEDOUT") || msg.includes("timeout")) {
-      return NextResponse.json({ error: "Timeout ao verificar código. Tente novamente." }, { status: 408 });
+  } else {
+    // --- Modo child_process (dev local) ---
+    const scriptPath = path.join(process.cwd(), "python_scripts", "instagram_verify_code.py");
+    const args = [
+      scriptPath,
+      username.trim(),
+      code.replace(/\s/g, ""),
+      challenge_type.trim(),
+      session_token.trim(),
+      two_factor_identifier ?? "",
+    ];
+
+    try {
+      const { stdout } = await execFileAsync(PYTHON_CMD, args, {
+        timeout: 55_000,
+        maxBuffer: 1024 * 512,
+      });
+
+      const raw = stdout.trim();
+      if (!raw) throw new Error("O script Python não retornou dados.");
+
+      const lines = raw.split("\n");
+      const jsonLine = lines.reverse().find(l => l.trim().startsWith("{"));
+      if (!jsonLine) throw new Error("Resposta do script Python não contém JSON válido.");
+
+      result = JSON.parse(jsonLine) as PythonResult;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao executar o script Python.";
+      if (msg.includes("ENOENT")) {
+        return NextResponse.json({ error: `Comando '${PYTHON_CMD}' não encontrado.` }, { status: 500 });
+      }
+      if (msg.includes("ETIMEDOUT") || msg.includes("timeout")) {
+        return NextResponse.json({ error: "Timeout ao verificar código. Tente novamente." }, { status: 408 });
+      }
+      return NextResponse.json({ error: msg }, { status: 500 });
     }
-    return NextResponse.json({ error: msg }, { status: 500 });
   }
 
   if (result.status === "error") {
     return NextResponse.json({ error: result.error ?? "Verificação falhou." }, { status: 401 });
   }
 
-  // status === "ok" — salva no Supabase
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    try {
-      const supabaseUser = await createClient();
-      const { data: { user } } = await supabaseUser.auth.getUser();
-
-      if (user) {
-        const admin = getSupabaseAdmin();
-
-        const { data: existing } = await admin
-          .from("instagram_accounts")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("username", result.username!)
-          .maybeSingle();
-
-        if (existing) {
-          await admin
-            .from("instagram_accounts")
-            .update({
-              display_name: result.full_name || null,
-              avatar_url: result.profile_pic_url || null,
-              access_token: result.session_json || null,
-              is_active: true,
-            })
-            .eq("id", existing.id);
-        } else {
-          await admin
-            .from("instagram_accounts")
-            .insert({
-              user_id: user.id,
-              username: result.username!,
-              display_name: result.full_name || null,
-              avatar_url: result.profile_pic_url || null,
-              access_token: result.session_json || null,
-              is_active: true,
-            });
-        }
-      }
-    } catch (dbErr) {
-      console.error("[accounts/verify] DB error:", dbErr);
-      return NextResponse.json({
-        success: true,
-        account: result,
-        warning: "Conta conectada mas houve erro ao salvar no banco.",
-      });
-    }
+  // status === "ok" — persiste no Supabase
+  try {
+    await saveToSupabase(result);
+  } catch (dbErr) {
+    console.error("[accounts/verify] DB error:", dbErr);
+    return NextResponse.json({
+      success: true,
+      account: result,
+      warning: "Conta conectada mas houve erro ao salvar no banco.",
+    });
   }
 
   return NextResponse.json({ success: true, account: result });
