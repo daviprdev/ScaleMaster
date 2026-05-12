@@ -14,21 +14,22 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
-// ── Password strength indicator ────────────────────────────────────────────
+// ── Password strength ──────────────────────────────────────────────────────
 function PasswordStrength({ password }: { password: string }) {
-  const criteria = [/.{8,}/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/];
-  const score = !password ? 0 : criteria.filter((r) => r.test(password)).length;
-
+  const score = !password
+    ? 0
+    : [/.{8,}/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((r) =>
+        r.test(password)
+      ).length;
   if (!password) return null;
-
-  const labels = ["", "Fraca", "Razoável", "Boa", "Forte"];
   const bar = ["", "bg-red-500", "bg-yellow-500", "bg-blue-500", "bg-emerald-500"];
   const text = ["", "text-red-400", "text-yellow-400", "text-blue-400", "text-emerald-400"];
-
+  const labels = ["", "Fraca", "Razoável", "Boa", "Forte"];
   return (
     <div className="space-y-1.5 mt-2">
       <div className="flex gap-1">
@@ -47,7 +48,7 @@ function PasswordStrength({ password }: { password: string }) {
   );
 }
 
-// ── Reusable section card ──────────────────────────────────────────────────
+// ── Section card ───────────────────────────────────────────────────────────
 function Section({
   icon,
   title,
@@ -85,6 +86,13 @@ export default function SettingsPage() {
   const [profileError, setProfileError] = useState("");
   const _savingProfileRef = useRef(false);
 
+  // Avatar
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
+  const _uploadingAvatarRef = useRef(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
   // Security
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -107,11 +115,47 @@ export default function SettingsPage() {
         setFullName(user.user_metadata?.full_name ?? "");
         setNickname(user.user_metadata?.nickname ?? "");
         setPhone(user.user_metadata?.phone ?? "");
+        setAvatarUrl(user.user_metadata?.avatar_url ?? null);
       }
       setLoadingUser(false);
     });
   }, [supabase]);
 
+  // ── Avatar upload ──────────────────────────────────────────
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite re-selecionar o mesmo arquivo
+    if (!file || _uploadingAvatarRef.current) return;
+
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setAvatarError("Use JPG, PNG ou WebP.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError("Máximo 5 MB.");
+      return;
+    }
+
+    _uploadingAvatarRef.current = true;
+    setUploadingAvatar(true);
+    setAvatarError("");
+
+    try {
+      const form = new FormData();
+      form.append("avatar", file);
+      const res = await fetch("/api/profile/avatar", { method: "POST", body: form });
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Erro no upload.");
+      setAvatarUrl(data.url!);
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : "Erro ao fazer upload.");
+    } finally {
+      _uploadingAvatarRef.current = false;
+      setUploadingAvatar(false);
+    }
+  };
+
+  // ── Profile save ───────────────────────────────────────────
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (_savingProfileRef.current) return;
@@ -138,6 +182,7 @@ export default function SettingsPage() {
     }
   };
 
+  // ── Password save ──────────────────────────────────────────
   const handleSavePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (_savingPasswordRef.current) return;
@@ -166,6 +211,7 @@ export default function SettingsPage() {
     }
   };
 
+  // ── Coupon ─────────────────────────────────────────────────
   const handleApplyCoupon = async () => {
     if (_couponRef.current || !coupon.trim()) return;
     _couponRef.current = true;
@@ -181,30 +227,74 @@ export default function SettingsPage() {
   return (
     <div className="max-w-2xl space-y-5">
 
-      {/* ── Foto e Perfil ─────────────────────────────────────────────── */}
+      {/* ── Foto e Perfil ──────────────────────────────────── */}
       <Section icon={<User size={15} />} title="Foto e Perfil">
         <form onSubmit={handleSaveProfile} className="space-y-5">
+
           {/* Avatar */}
           <div className="flex items-center gap-5">
-            <div className="relative group cursor-pointer flex-shrink-0">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-2xl font-bold text-white shadow-[0_0_20px_rgba(139,92,246,0.3)]">
-                {initial}
-              </div>
+            {/* Hidden file input */}
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleAvatarChange}
+            />
+
+            {/* Avatar circle — click to upload */}
+            <div
+              className="relative group cursor-pointer flex-shrink-0"
+              onClick={() => !uploadingAvatar && avatarInputRef.current?.click()}
+              title="Clique para alterar foto"
+            >
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt="Foto de perfil"
+                  className="w-16 h-16 rounded-full object-cover shadow-[0_0_20px_rgba(139,92,246,0.3)]"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-2xl font-bold text-white shadow-[0_0_20px_rgba(139,92,246,0.3)]">
+                  {initial}
+                </div>
+              )}
+              {/* Overlay */}
               <div className="absolute inset-0 rounded-full bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <Camera size={16} className="text-white" />
+                {uploadingAvatar ? (
+                  <Loader2 size={16} className="text-white animate-spin" />
+                ) : (
+                  <Camera size={16} className="text-white" />
+                )}
               </div>
             </div>
+
             <div>
               <p className="text-sm font-semibold text-white/75">Foto de perfil</p>
-              <p className="text-xs text-white/30 mt-0.5">JPG, PNG · Máx 5 MB</p>
+              <p className="text-xs text-white/30 mt-0.5">JPG, PNG, WebP · Máx 5 MB</p>
               <button
                 type="button"
-                className="text-xs text-violet-400 hover:text-violet-300 mt-1.5 transition-colors"
+                disabled={uploadingAvatar}
+                onClick={() => avatarInputRef.current?.click()}
+                className="text-xs text-violet-400 hover:text-violet-300 mt-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Alterar foto
+                {uploadingAvatar ? "Enviando..." : "Alterar foto"}
               </button>
             </div>
           </div>
+
+          {/* Avatar error */}
+          {avatarError && (
+            <div className="flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={13} className="flex-shrink-0" />
+                {avatarError}
+              </div>
+              <button type="button" onClick={() => setAvatarError("")}>
+                <X size={13} />
+              </button>
+            </div>
+          )}
 
           {loadingUser ? (
             <div className="flex items-center gap-2 py-2 text-white/30 text-sm">
@@ -257,7 +347,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              {/* E-mail (readonly) */}
+              {/* E-mail readonly */}
               <div className="sm:col-span-2">
                 <label className="text-[11px] font-medium text-white/35 block mb-1.5">
                   E-mail{" "}
@@ -297,10 +387,9 @@ export default function SettingsPage() {
         </form>
       </Section>
 
-      {/* ── Segurança ─────────────────────────────────────────────────── */}
+      {/* ── Segurança ──────────────────────────────────────── */}
       <Section icon={<Shield size={15} />} title="Segurança">
         <form onSubmit={handleSavePassword} className="space-y-4">
-          {/* Senha atual */}
           <div>
             <label className="text-[11px] font-medium text-white/35 block mb-1.5">
               Senha Atual
@@ -323,7 +412,6 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Nova senha */}
           <div>
             <label className="text-[11px] font-medium text-white/35 block mb-1.5">
               Nova Senha
@@ -377,10 +465,9 @@ export default function SettingsPage() {
         </form>
       </Section>
 
-      {/* ── Assinatura ────────────────────────────────────────────────── */}
+      {/* ── Assinatura ─────────────────────────────────────── */}
       <Section icon={<Crown size={15} />} title="Assinatura">
         <div className="space-y-4">
-          {/* Current plan row */}
           <div className="flex items-center justify-between px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center shadow-[0_0_8px_rgba(139,92,246,0.35)] flex-shrink-0">
@@ -398,11 +485,8 @@ export default function SettingsPage() {
             </span>
           </div>
 
-          {/* Upgrade */}
           <button
-            onClick={() =>
-              alert("Em breve! O plano Pro está sendo preparado.")
-            }
+            onClick={() => alert("Em breve! O plano Pro está sendo preparado.")}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl
               bg-gradient-to-r from-violet-600 to-cyan-600
               hover:from-violet-500 hover:to-cyan-500
@@ -414,7 +498,6 @@ export default function SettingsPage() {
             Fazer Upgrade para Pro
           </button>
 
-          {/* Coupon */}
           <div className="pt-2 border-t border-white/[0.06] space-y-2.5">
             <label className="flex items-center gap-1.5 text-[11px] font-medium text-white/35">
               <Tag size={12} />

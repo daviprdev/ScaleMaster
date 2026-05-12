@@ -39,6 +39,7 @@ export function Sidebar() {
   const [userName, setUserName] = useState("Usuário");
   const [userEmail, setUserEmail] = useState("");
   const [userInitial, setUserInitial] = useState("U");
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -58,6 +59,7 @@ export function Sidebar() {
         setUserName(name);
         setUserEmail(user.email ?? "");
         setUserInitial(name.charAt(0).toUpperCase());
+        setUserAvatar(user.user_metadata?.avatar_url ?? null);
       }
     });
   }, [supabase]);
@@ -205,9 +207,17 @@ export function Sidebar() {
                 : "hover:bg-white/[0.05] border border-transparent"
             )}
           >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 text-sm font-bold text-white shadow-[0_0_8px_rgba(139,92,246,0.3)]">
-              {userInitial}
-            </div>
+            {userAvatar ? (
+              <img
+                src={userAvatar}
+                alt="Avatar"
+                className="w-8 h-8 rounded-full object-cover flex-shrink-0 shadow-[0_0_8px_rgba(139,92,246,0.3)]"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 text-sm font-bold text-white shadow-[0_0_8px_rgba(139,92,246,0.3)]">
+                {userInitial}
+              </div>
+            )}
 
             <AnimatePresence>
               {!collapsed && (
@@ -286,9 +296,17 @@ export function Sidebar() {
               >
                 {/* Header */}
                 <div className="flex items-center gap-3 px-4 py-3.5">
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-sm font-bold text-white flex-shrink-0 shadow-[0_0_10px_rgba(139,92,246,0.35)]">
-                    {userInitial}
-                  </div>
+                  {userAvatar ? (
+                    <img
+                      src={userAvatar}
+                      alt="Avatar"
+                      className="w-9 h-9 rounded-full object-cover flex-shrink-0 shadow-[0_0_10px_rgba(139,92,246,0.35)]"
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-sm font-bold text-white flex-shrink-0 shadow-[0_0_10px_rgba(139,92,246,0.35)]">
+                      {userInitial}
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-white truncate leading-tight">
                       {userName}
