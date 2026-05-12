@@ -28,14 +28,11 @@ export function Header() {
   const page = pageTitles[pathname] ?? { title: "Dashboard", subtitle: "" };
 
   return (
-    <motion.header
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
+    <header
       className="h-16 flex items-center justify-between px-6
-        bg-white/[0.02] backdrop-blur-xl
-        border-b border-white/[0.07]
-        sticky top-0 z-10"
+        bg-[#0a0c13]
+        border-b border-white/[0.08]
+        sticky top-0 z-10 flex-shrink-0"
     >
       {/* Page title */}
       <div>
@@ -47,13 +44,11 @@ export function Header() {
 
       {/* Actions */}
       <div className="flex items-center gap-3">
-        {/* Notification bell */}
         <button className="relative w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-white/80 hover:border-white/20 transition-all">
           <Bell size={15} />
           <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-violet-500" />
         </button>
 
-        {/* New post CTA — only on schedule page */}
         {pathname === "/dashboard/schedule" && (
           <motion.button
             whileTap={{ scale: 0.96 }}
@@ -69,6 +64,6 @@ export function Header() {
           </motion.button>
         )}
       </div>
-    </motion.header>
+    </header>
   );
 }

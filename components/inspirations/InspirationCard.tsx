@@ -121,7 +121,7 @@ export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
             transition={{ duration: 0.15 }}
             className="absolute inset-0 flex items-center justify-center"
           >
-            <div className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center">
+            <div className="w-11 h-11 rounded-full bg-white/15 border border-white/20 flex items-center justify-center">
               <Play size={18} className="text-white ml-0.5" fill="white" />
             </div>
           </motion.div>
@@ -129,13 +129,13 @@ export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
       </AnimatePresence>
 
       {/* Duration badge */}
-      <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-sm text-[10px] text-white/80 font-medium">
+      <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/75 text-[10px] text-white/80 font-medium">
         <Clock size={9} />
         {fmtDur(reel.duration)}
       </div>
 
       {/* Owner badge */}
-      <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-sm text-[10px] text-white/60 font-medium max-w-[45%] truncate">
+      <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-full bg-black/75 text-[10px] text-white/60 font-medium max-w-[45%] truncate">
         @{reel.owner}
       </div>
 
@@ -147,7 +147,7 @@ export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="absolute inset-0 bg-black/80 backdrop-blur-[3px] flex flex-col justify-between p-4"
+            className="absolute inset-0 bg-black/85 flex flex-col justify-between p-4"
           >
             {/* Metrics */}
             <div className="space-y-2">

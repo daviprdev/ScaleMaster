@@ -86,8 +86,8 @@ export function Sidebar() {
       animate={{ width: collapsed ? 72 : 240 }}
       transition={{ duration: 0.3, ease: "easeInOut" }}
       className="relative flex-shrink-0 h-screen flex flex-col
-        bg-white/[0.03] backdrop-blur-xl
-        border-r border-white/[0.07]
+        bg-[#0c0e15]
+        border-r border-white/[0.08]
         overflow-hidden z-20"
     >
       {/* Glow accent */}

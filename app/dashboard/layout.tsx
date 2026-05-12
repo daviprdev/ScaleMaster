@@ -8,12 +8,8 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="flex h-screen bg-gray-950 overflow-hidden">
-      {/* Fixed background effects */}
+      {/* Subtle grid background */}
       <div className="fixed inset-0 grid-bg opacity-20 pointer-events-none" />
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/2 w-[600px] h-[300px] bg-violet-600/5 rounded-full blur-[100px]" />
-        <div className="absolute bottom-1/3 right-1/4 w-[300px] h-[300px] bg-cyan-500/5 rounded-full blur-[80px]" />
-      </div>
 
       {/* Sidebar */}
       <Sidebar />

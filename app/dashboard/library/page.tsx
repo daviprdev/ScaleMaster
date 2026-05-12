@@ -37,6 +37,7 @@ export default function LibraryPage() {
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const _deletingRef = useRef<string | null>(null);
   const [postingVideo, setPostingVideo] = useState<LibraryVideo | null>(null);
 
   const fetchVideos = useCallback(async () => {
@@ -136,12 +137,18 @@ export default function LibraryPage() {
   const clearDoneUploads = () => setUploads(prev => prev.filter(u => u.status !== "done" && u.status !== "error"));
 
   const handleDelete = async (video: LibraryVideo) => {
-    const res = await fetch("/api/library", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: video.id, storage_path: video.storage_path }),
-    });
-    if (res.ok) setVideos(prev => prev.filter(v => v.id !== video.id));
+    if (_deletingRef.current === video.id) return;
+    _deletingRef.current = video.id;
+    try {
+      const res = await fetch("/api/library", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: video.id, storage_path: video.storage_path }),
+      });
+      if (res.ok) setVideos(prev => prev.filter(v => v.id !== video.id));
+    } finally {
+      _deletingRef.current = null;
+    }
   };
 
   const handleSchedule = (video: LibraryVideo) => {

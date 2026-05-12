@@ -49,15 +49,19 @@ export default function InspiracoesPage() {
   const [sortBy, setSortBy] = useState<SortKey>("views");
   const [showFilters, setShowFilters] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const _searchingRef = useRef(false);
+  const _bulkRef = useRef(false);
 
   // Bulk download state
   const [bulkProgress, setBulkProgress] = useState<{ done: number; errors: number; total: number } | null>(null);
   const [bulkDone, setBulkDone] = useState(false);
 
   const handleSearch = async (query?: string) => {
+    if (_searchingRef.current) return;
     const target = (query ?? username).replace(/^@/, "").trim();
     if (!target) return;
 
+    _searchingRef.current = true;
     setUsername(target);
     setStatus("loading");
     setError("");
@@ -81,13 +85,16 @@ export default function InspiracoesPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido.");
       setStatus("error");
+    } finally {
+      _searchingRef.current = false;
     }
   };
 
   const sortedReels = [...reels].sort((a, b) => b[sortBy] - a[sortBy]);
 
   const handleBulkDownload = async () => {
-    if (bulkProgress !== null || sortedReels.length === 0) return;
+    if (_bulkRef.current || sortedReels.length === 0) return;
+    _bulkRef.current = true;
 
     setBulkDone(false);
     setBulkProgress({ done: 0, errors: 0, total: sortedReels.length });
@@ -107,6 +114,7 @@ export default function InspiracoesPage() {
 
     setBulkProgress(null);
     setBulkDone(true);
+    _bulkRef.current = false;
   };
 
   const handleProcess = async (reel: InspirationReel) => {

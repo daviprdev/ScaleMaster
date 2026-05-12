@@ -98,7 +98,7 @@ export function VideoCard({ video, onSchedule, onPost, onDelete }: VideoCardProp
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
 
         {/* Duration badge */}
-        <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-sm text-[10px] text-white/80">
+        <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/75 text-[10px] text-white/80">
           <Clock size={9} />
           {formatDuration(video.duration)}
         </div>
@@ -112,7 +112,7 @@ export function VideoCard({ video, onSchedule, onPost, onDelete }: VideoCardProp
               exit={{ opacity: 0 }}
               className="absolute inset-0 flex items-center justify-center"
             >
-              <div className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-full bg-white/15 border border-white/20 flex items-center justify-center">
                 <Play size={18} className="text-white ml-0.5" fill="white" />
               </div>
             </motion.div>
@@ -127,7 +127,7 @@ export function VideoCard({ video, onSchedule, onPost, onDelete }: VideoCardProp
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="absolute inset-0 bg-black/70 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2.5 p-4"
+              className="absolute inset-0 bg-black/82 flex flex-col items-center justify-center gap-2.5 p-4"
             >
               <motion.button
                 onClick={() => onPost(video)}

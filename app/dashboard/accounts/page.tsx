@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   Instagram,
   Plus,
@@ -93,9 +93,12 @@ export default function AccountsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  // Instância estável do cliente Supabase — sem useMemo causaria re-render infinito
-  // pois createClient() retorna novo objeto a cada chamada
+  // Instância estável do cliente Supabase
   const supabase = useMemo(() => createClient(), []);
+  // Guards síncronos para evitar duplo-clique antes do re-render
+  const _connectingRef = useRef(false);
+  const _togglingRef = useRef<string | null>(null);
+  const _deletingRef = useRef<string | null>(null);
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
@@ -115,8 +118,8 @@ export default function AccountsPage() {
   // ── Step 1: credenciais ───────────────────────────────────
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || !password.trim()) return;
-
+    if (_connectingRef.current || !username.trim() || !password.trim()) return;
+    _connectingRef.current = true;
     setConnecting(true);
     setError("");
 
@@ -161,6 +164,7 @@ export default function AccountsPage() {
     } catch {
       setError("Erro de rede. Verifique sua conexão e tente novamente.");
     } finally {
+      _connectingRef.current = false;
       setConnecting(false);
     }
   };
@@ -168,8 +172,8 @@ export default function AccountsPage() {
   // ── Step 2: código de verificação ────────────────────────
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code.trim() || !challenge) return;
-
+    if (_connectingRef.current || !code.trim() || !challenge) return;
+    _connectingRef.current = true;
     setConnecting(true);
     setError("");
 
@@ -198,12 +202,14 @@ export default function AccountsPage() {
     } catch {
       setError("Erro de rede. Verifique sua conexão e tente novamente.");
     } finally {
+      _connectingRef.current = false;
       setConnecting(false);
     }
   };
 
   const handleToggle = async (account: Account) => {
-    if (togglingId) return;
+    if (_togglingRef.current) return;
+    _togglingRef.current = account.id;
     setTogglingId(account.id);
     try {
       await supabase
@@ -214,17 +220,20 @@ export default function AccountsPage() {
         prev.map(a => a.id === account.id ? { ...a, is_active: !a.is_active } : a)
       );
     } finally {
+      _togglingRef.current = null;
       setTogglingId(null);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (deletingId) return;
+    if (_deletingRef.current) return;
+    _deletingRef.current = id;
     setDeletingId(id);
     try {
       await supabase.from("instagram_accounts").delete().eq("id", id);
       setAccounts(prev => prev.filter(a => a.id !== id));
     } finally {
+      _deletingRef.current = null;
       setDeletingId(null);
     }
   };
@@ -380,7 +389,7 @@ export default function AccountsPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
           >
             {/* Click-away */}
             <div className="absolute inset-0" onClick={closeModal} />
