@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import {
   Zap,
   LayoutDashboard,
@@ -14,38 +15,20 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  User,
+  CreditCard,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
 const navItems = [
-  {
-    label: "Visão Geral",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-    exact: true,
-  },
-  {
-    label: "Contas",
-    href: "/dashboard/accounts",
-    icon: Users,
-  },
-  {
-    label: "Inspirações",
-    href: "/dashboard/search",
-    icon: Search,
-  },
-  {
-    label: "Biblioteca",
-    href: "/dashboard/library",
-    icon: FolderOpen,
-  },
-  {
-    label: "Agendamento",
-    href: "/dashboard/schedule",
-    icon: CalendarClock,
-  },
+  { label: "Visão Geral", href: "/dashboard", icon: LayoutDashboard, exact: true },
+  { label: "Contas", href: "/dashboard/accounts", icon: Users },
+  { label: "Inspirações", href: "/dashboard/search", icon: Search },
+  { label: "Biblioteca", href: "/dashboard/library", icon: FolderOpen },
+  { label: "Agendamento", href: "/dashboard/schedule", icon: CalendarClock },
 ];
 
 const bottomItems = [
@@ -55,23 +38,51 @@ const bottomItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+
   const [collapsed, setCollapsed] = useState(false);
   const [userName, setUserName] = useState("Usuário");
+  const [userEmail, setUserEmail] = useState("");
   const [userInitial, setUserInitial] = useState("U");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuRect, setMenuRect] = useState<DOMRect | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const loggingOutRef = useRef(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
-    const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
         const name = user.user_metadata?.full_name || user.email || "Usuário";
         setUserName(name);
+        setUserEmail(user.email ?? "");
         setUserInitial(name.charAt(0).toUpperCase());
       }
     });
+  }, [supabase]);
+
+  const openMenu = useCallback(() => {
+    if (!triggerRef.current) return;
+    setMenuRect(triggerRef.current.getBoundingClientRect());
+    setMenuOpen(true);
   }, []);
 
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeMenu(); };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [menuOpen, closeMenu]);
+
   const handleLogout = async () => {
-    const supabase = createClient();
+    if (loggingOutRef.current) return;
+    loggingOutRef.current = true;
+    closeMenu();
     await supabase.auth.signOut();
     router.push("/auth/login");
   };
@@ -80,6 +91,73 @@ export function Sidebar() {
     if (exact) return pathname === href;
     return pathname.startsWith(href);
   };
+
+  const dropdownStyle: React.CSSProperties | null = menuRect
+    ? collapsed
+      ? { position: "fixed", top: menuRect.top, left: menuRect.right + 8, width: 224 }
+      : {
+          position: "fixed",
+          bottom: window.innerHeight - menuRect.top + 6,
+          left: menuRect.left,
+          width: Math.max(menuRect.width, 224),
+        }
+    : null;
+
+  const dropdownPortal =
+    menuOpen && dropdownStyle && mounted
+      ? createPortal(
+          <>
+            <div className="fixed inset-0 z-[190]" onClick={closeMenu} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: collapsed ? 0 : 6 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+              style={dropdownStyle}
+              className="z-[200] bg-[#141720] border border-white/[0.10] rounded-xl shadow-2xl overflow-hidden py-1"
+            >
+              {/* User info header */}
+              <div className="px-3 py-2.5 border-b border-white/[0.06]">
+                <p className="text-xs font-semibold text-white/80 truncate">{userName}</p>
+                <p className="text-[10px] text-white/30 truncate">{userEmail}</p>
+              </div>
+
+              {/* Menu items */}
+              <div className="py-1">
+                <button
+                  onClick={() => { closeMenu(); router.push("/dashboard/settings"); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/65 hover:text-white hover:bg-white/[0.05] transition-colors"
+                >
+                  <User size={14} className="flex-shrink-0 text-white/40" />
+                  Meu Perfil
+                </button>
+
+                <button
+                  disabled
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/25 cursor-not-allowed"
+                >
+                  <CreditCard size={14} className="flex-shrink-0 text-white/20" />
+                  <span className="flex-1 text-left">Pagamento / Assinatura</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-violet-500/20 text-violet-400 flex-shrink-0">
+                    Em breve
+                  </span>
+                </button>
+
+                <div className="mx-3 my-1 border-t border-white/[0.06]" />
+
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/[0.07] transition-colors"
+                >
+                  <LogOut size={14} className="flex-shrink-0" />
+                  Sair da Conta
+                </button>
+              </div>
+            </motion.div>
+          </>,
+          document.body
+        )
+      : null;
 
   return (
     <motion.aside
@@ -115,7 +193,6 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="relative flex-1 p-3 space-y-1 overflow-y-auto overflow-x-hidden">
-        {/* Section label */}
         <AnimatePresence>
           {!collapsed && (
             <motion.p
@@ -137,7 +214,7 @@ export function Sidebar() {
                 whileHover={{ x: 2 }}
                 whileTap={{ scale: 0.97 }}
                 className={cn(
-                  "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 group",
+                  "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200",
                   active
                     ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
                     : "text-white/40 hover:text-white/80 hover:bg-white/5"
@@ -151,10 +228,7 @@ export function Sidebar() {
                   />
                 )}
                 <item.icon
-                  className={cn(
-                    "w-4.5 h-4.5 flex-shrink-0 relative z-10",
-                    active ? "text-violet-400" : ""
-                  )}
+                  className={cn("flex-shrink-0 relative z-10", active ? "text-violet-400" : "")}
                   size={18}
                 />
                 <AnimatePresence>
@@ -170,8 +244,6 @@ export function Sidebar() {
                     </motion.span>
                   )}
                 </AnimatePresence>
-
-                {/* Active dot for collapsed */}
                 {collapsed && active && (
                   <div className="absolute right-1.5 top-1/2 -translate-y-1/2 w-1 h-4 rounded-full bg-violet-400" />
                 )}
@@ -179,16 +251,20 @@ export function Sidebar() {
             </Link>
           );
         })}
-
       </nav>
 
-      {/* Bottom */}
+      {/* Bottom section */}
       <div className="p-3 border-t border-white/[0.07] space-y-1">
         {bottomItems.map((item) => (
           <Link key={item.href} href={item.href}>
             <motion.div
               whileTap={{ scale: 0.97 }}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/40 hover:text-white/80 hover:bg-white/5 cursor-pointer transition-all"
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all",
+                isActive(item.href)
+                  ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
+                  : "text-white/40 hover:text-white/80 hover:bg-white/5"
+              )}
             >
               <item.icon size={18} className="flex-shrink-0" />
               <AnimatePresence>
@@ -207,16 +283,21 @@ export function Sidebar() {
           </Link>
         ))}
 
-        {/* User card */}
+        {/* User card — clickable, opens portal dropdown */}
         <div
+          ref={triggerRef}
+          onClick={menuOpen ? closeMenu : openMenu}
           className={cn(
-            "flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 cursor-pointer transition-all",
-            collapsed ? "justify-center" : ""
+            "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all select-none",
+            collapsed ? "justify-center" : "",
+            menuOpen ? "bg-white/[0.08] border border-white/[0.10]" : "hover:bg-white/[0.05]"
           )}
         >
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 text-xs font-bold">
+          {/* Avatar */}
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 text-xs font-bold text-white shadow-[0_0_8px_rgba(139,92,246,0.3)]">
             {userInitial}
           </div>
+
           <AnimatePresence>
             {!collapsed && (
               <motion.div
@@ -225,24 +306,28 @@ export function Sidebar() {
                 exit={{ opacity: 0 }}
                 className="flex-1 min-w-0"
               >
-                <p className="text-xs font-semibold text-white/80 truncate">
-                  {userName}
-                </p>
-                <p className="text-[10px] text-white/30 truncate">Pro Plan</p>
+                <p className="text-xs font-semibold text-white/80 truncate">{userName}</p>
+                <p className="text-[10px] text-white/30 truncate">Plano Gratuito</p>
               </motion.div>
             )}
           </AnimatePresence>
+
           <AnimatePresence>
             {!collapsed && (
-              <motion.button
+              <motion.span
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={handleLogout}
-                className="text-white/20 hover:text-red-400 transition-colors"
+                className="text-white/25 flex-shrink-0"
               >
-                <LogOut size={14} />
-              </motion.button>
+                <ChevronUp
+                  size={13}
+                  className={cn(
+                    "transition-transform duration-200",
+                    menuOpen ? "rotate-180" : ""
+                  )}
+                />
+              </motion.span>
             )}
           </AnimatePresence>
         </div>
@@ -253,12 +338,11 @@ export function Sidebar() {
         onClick={() => setCollapsed(!collapsed)}
         className="absolute -right-3 top-[72px] w-6 h-6 rounded-full bg-gray-800 border border-white/10 flex items-center justify-center text-white/40 hover:text-white hover:border-violet-500/50 transition-all z-30"
       >
-        {collapsed ? (
-          <ChevronRight size={12} />
-        ) : (
-          <ChevronLeft size={12} />
-        )}
+        {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
       </button>
+
+      {/* Portal dropdown */}
+      <AnimatePresence>{dropdownPortal}</AnimatePresence>
     </motion.aside>
   );
 }

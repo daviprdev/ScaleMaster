@@ -483,3 +483,56 @@ Os scripts Python em `python_scripts/` continuam funcionando para desenvolviment
 - Dashboard layout: removidos os dois círculos decorativos com `blur-[100px]` e `blur-[80px]`
 - `app/dashboard/loading.tsx` criado: spinner instantâneo durante navegação entre páginas
 - `useRef` guards adicionados em: `handleConnect`, `handleVerifyCode`, `handleToggle`, `handleDelete` (accounts), `handleDelete` (library), `handleSearch`, `handleBulkDownload` (search)
+
+---
+
+### ✅ Fase 18 — Redesign Premium: Sidebar Dropdown + Settings com Tabs
+**Data:** 12/05/2026
+**Commit:** `feat: Fase 18 — sidebar dropdown portal + settings premium redesign`
+
+#### Sidebar — Menu de usuário via portal (`components/dashboard/Sidebar.tsx`)
+
+**Problema:** Sidebar usa `overflow-hidden` (obrigatório para a animação de colapso), o que clipa qualquer dropdown filho.
+
+**Solução:** `createPortal(dropdown, document.body)` com `position: fixed` calculado via `getBoundingClientRect()` no momento de abertura.
+
+**Comportamento do dropdown:**
+- **Sidebar expandida:** dropdown abre ACIMA do user card (`bottom = window.innerHeight - rect.top + 6`)
+- **Sidebar colapsada:** dropdown abre À DIREITA do user card (`top = rect.top, left = rect.right + 8`)
+- Backdrop invisível `fixed inset-0 z-[190]` fecha ao clicar fora; `Escape` também fecha
+- Animação `framer-motion` de entrada (scale + opacity)
+
+**Itens do dropdown:**
+1. "Meu Perfil" → `router.push("/dashboard/settings")`
+2. "Pagamento / Assinatura" — `disabled`, badge "Em breve" (violet)
+3. Separador + "Sair da Conta" — `supabase.auth.signOut()` + redirect
+
+**Dados exibidos:** Nome de usuário + e-mail do Supabase no cabeçalho do dropdown.
+
+**Estado `mounted`:** checado antes de chamar `createPortal` para evitar erro de SSR (`document` não existe no servidor).
+
+#### Página de Configurações Redesenhada (`app/dashboard/settings/page.tsx`)
+
+**Layout:** `flex-col lg:flex-row` com nav de tabs vertical (44 wide) + conteúdo à direita.
+
+**3 tabs com `AnimatePresence mode="wait"` para transição suave entre elas:**
+
+| Tab | Conteúdo |
+|-----|----------|
+| **Perfil** | Avatar circular (gradiente com inicial + overlay camera no hover), grid 2 colunas: Nome Completo, Apelido, Telefone + E-mail (somente leitura) |
+| **Segurança** | Senha Atual (com toggle show/hide), Nova Senha + indicador de força (4 critérios: 8 chars, maiúscula, número, especial), Confirmar Senha + validação inline |
+| **Assinatura** | Card plano atual (idêntico ao anterior), input de cupom com botão "Aplicar" (mock delay + alert) |
+
+**Guards `useRef` em todos os formulários:**
+- `_savingProfileRef` — previne duplo-submit de perfil
+- `_savingPasswordRef` — previne duplo-submit de senha
+- `_couponRef` — previne duplo-clique em "Aplicar cupom"
+
+**Indicador de força de senha (`PasswordStrength`):**
+- Componente inline que avalia 4 critérios via regex
+- Barra segmentada 4 divisões com cor gradual (vermelho → amarelo → azul → verde)
+- Labels: Fraca / Razoável / Boa / Forte
+
+**Dados salvos via Supabase:**
+- Perfil: `supabase.auth.updateUser({ data: { full_name, nickname, phone } })`
+- Senha: `supabase.auth.updateUser({ password: newPassword })`
