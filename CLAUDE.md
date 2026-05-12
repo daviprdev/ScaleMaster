@@ -151,6 +151,7 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fase 12** | Fluxo unificado 2FA e checkpoint para login Instagram | ✅ Concluída |
 | **Fase 13** | Correção de modal, layout e loop infinito de renders | ✅ Concluída |
 | **Fase 14** | Download real das Inspirações + botão Baixar Todos | ✅ Concluída |
+| **Fase 15** | Postagem real no Instagram via instagrapi | ✅ Concluída |
 
 ---
 

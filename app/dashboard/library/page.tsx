@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { VideoCard, type LibraryVideo } from "@/components/library/VideoCard";
+import { PostModal } from "@/components/library/PostModal";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +37,7 @@ export default function LibraryPage() {
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [postingVideo, setPostingVideo] = useState<LibraryVideo | null>(null);
 
   const fetchVideos = useCallback(async () => {
     setLoading(true);
@@ -146,8 +148,22 @@ export default function LibraryPage() {
     router.push(`/dashboard/schedule?videoId=${video.id}`);
   };
 
+  const handlePost = (video: LibraryVideo) => {
+    setPostingVideo(video);
+  };
+
   return (
     <div className="space-y-5 max-w-full">
+
+      {/* Post modal */}
+      <AnimatePresence>
+        {postingVideo && (
+          <PostModal
+            video={postingVideo}
+            onClose={() => setPostingVideo(null)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Upload zone */}
       <motion.div
@@ -250,7 +266,7 @@ export default function LibraryPage() {
         <AnimatePresence mode="popLayout">
           <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {videos.map(video => (
-              <VideoCard key={video.id} video={video} onSchedule={handleSchedule} onDelete={handleDelete} />
+              <VideoCard key={video.id} video={video} onSchedule={handleSchedule} onPost={handlePost} onDelete={handleDelete} />
             ))}
           </motion.div>
         </AnimatePresence>

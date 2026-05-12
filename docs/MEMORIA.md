@@ -342,3 +342,49 @@ const supabase = createClient();
 #### Fluxo completo validado
 `Inspirações (busca) → "Preparar Download" (individual, card)` — FFmpeg → Supabase → Biblioteca  
 `Inspirações (busca) → "Baixar todos" (lote, header)` — processa todos sequencialmente → banner de sucesso → Biblioteca
+
+---
+
+### ✅ Fase 15 — Postagem Real no Instagram
+**Data:** 12/05/2026
+**Commit:** `feat: Fase 15 — postagem real no Instagram via instagrapi`
+
+#### O que foi feito
+
+**Scripts Python:**
+- `instagram_login.py` e `instagram_verify_code.py` atualizados: `_return_profile` agora inclui `session_json` (resultado de `cl.get_settings()`) no payload de retorno `{"status": "ok"}`
+- `python_scripts/instagram_post.py` criado:
+  - Args: `username`, `video_url`, `caption`, `session_file` (caminho para JSON de sessão)
+  - Restaura sessão via `cl.set_settings(settings)`
+  - Baixa vídeo para arquivo temporário via `urllib.request.urlretrieve`
+  - Posta como Reel via `cl.clip_upload(tmp_video, caption=caption)`
+  - Retorna `{"status": "ok", "media_id": "...", "code": "..."}` ou `{"status": "error", "error": "..."}`
+  - Limpa arquivo temporário no `finally`
+
+**Banco de dados:**
+- `access_token` na tabela `instagram_accounts` agora armazena o JSON completo de sessão do instagrapi (cookies, device_id, etc.) após login bem-sucedido
+- Rotas `accounts/login` e `accounts/verify` atualizadas para salvar `session_json` no campo `access_token`
+
+**Backend:**
+- `app/api/accounts/list/route.ts` criada (GET): lista contas ativas do usuário autenticado (incluindo `access_token` para verificar se sessão está salva)
+- `app/api/posts/publish/route.ts` criada (POST):
+  - Body: `{ video_id, account_ids, caption }`
+  - Busca `public_url` do vídeo e sessão de cada conta no Supabase
+  - Para cada conta: escreve sessão em arquivo temp → chama `instagram_post.py` → limpa temp
+  - Retorna `{ results: PostResult[] }` com status por conta
+
+**UI:**
+- `components/library/PostModal.tsx` criado:
+  - Carrega contas via `/api/accounts/list`
+  - Pré-seleciona contas com sessão salva; desabilita as sem sessão
+  - Campo de legenda (pré-preenchido com `video.caption`)
+  - Botão "Postar agora" com contador de contas selecionadas
+  - Loading inline por conta; resultados por conta (✓/✗ com media_id ou mensagem de erro)
+- `VideoCard` atualizado: novo prop `onPost`, botão "Postar agora" (gradiente rosa→violet) acima do "Agendar"
+- `library/page.tsx` atualizado: estado `postingVideo`, handler `handlePost`, `<PostModal>` com `AnimatePresence`
+
+#### Limitação conhecida
+Postagem via instagrapi funciona **apenas localmente** (sem Python/instagrapi no ambiente serverless do Vercel). Em produção exigiria um servidor Python separado (FastAPI/Flask) ou um worker dedicado.
+
+#### Fluxo completo
+`Biblioteca → hover card → "Postar agora" → PostModal → seleciona contas → legenda → Postar → resultado por conta`

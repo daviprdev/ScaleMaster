@@ -36,9 +36,15 @@ def _save_session(cl, extra: dict) -> str:
 
 def _return_profile(cl, username: str):
     try:
+        session_json = json.dumps(cl.get_settings())
+    except Exception:
+        session_json = ""
+
+    try:
         user_info = cl.account_info()
         print(json.dumps({
             "status": "ok",
+            "session_json": session_json,
             "username": user_info.username,
             "full_name": user_info.full_name or "",
             "biography": user_info.biography or "",
@@ -50,6 +56,7 @@ def _return_profile(cl, username: str):
     except Exception:
         print(json.dumps({
             "status": "ok",
+            "session_json": session_json,
             "username": username,
             "full_name": "",
             "biography": "",

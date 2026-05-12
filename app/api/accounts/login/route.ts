@@ -23,6 +23,7 @@ interface PythonResult {
   session_token?: string;
   two_factor_identifier?: string;
   // ok fields
+  session_json?: string;
   username?: string;
   full_name?: string;
   biography?: string;
@@ -121,6 +122,7 @@ export async function POST(req: NextRequest) {
             .update({
               display_name: result.full_name || null,
               avatar_url: result.profile_pic_url || null,
+              access_token: result.session_json || null,
               is_active: true,
             })
             .eq("id", existing.id);
@@ -132,6 +134,7 @@ export async function POST(req: NextRequest) {
               username: result.username!,
               display_name: result.full_name || null,
               avatar_url: result.profile_pic_url || null,
+              access_token: result.session_json || null,
               is_active: true,
             });
         }

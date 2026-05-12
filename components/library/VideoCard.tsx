@@ -11,6 +11,7 @@ import {
   Clock,
   HardDrive,
   Loader2,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +33,7 @@ export interface LibraryVideo {
 interface VideoCardProps {
   video: LibraryVideo;
   onSchedule: (video: LibraryVideo) => void;
+  onPost: (video: LibraryVideo) => void;
   onDelete: (video: LibraryVideo) => Promise<void>;
 }
 
@@ -60,7 +62,7 @@ function timeAgo(iso: string) {
   return `há ${d} dia${d > 1 ? "s" : ""}`;
 }
 
-export function VideoCard({ video, onSchedule, onDelete }: VideoCardProps) {
+export function VideoCard({ video, onSchedule, onPost, onDelete }: VideoCardProps) {
   const [hovered, setHovered] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -128,17 +130,29 @@ export function VideoCard({ video, onSchedule, onDelete }: VideoCardProps) {
               className="absolute inset-0 bg-black/70 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2.5 p-4"
             >
               <motion.button
-                onClick={() => onSchedule(video)}
+                onClick={() => onPost(video)}
                 whileTap={{ scale: 0.95 }}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl
-                  bg-gradient-to-r from-violet-600 to-cyan-600
-                  hover:from-violet-500 hover:to-cyan-500
+                  bg-gradient-to-r from-pink-600 to-violet-600
+                  hover:from-pink-500 hover:to-violet-500
                   text-white text-sm font-semibold
-                  hover:shadow-[0_0_15px_rgba(139,92,246,0.5)]
+                  hover:shadow-[0_0_15px_rgba(219,39,119,0.45)]
                   transition-all duration-200"
               >
-                <CalendarClock size={15} />
-                Agendar este vídeo
+                <Send size={14} />
+                Postar agora
+              </motion.button>
+
+              <motion.button
+                onClick={() => onSchedule(video)}
+                whileTap={{ scale: 0.95 }}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl
+                  border border-white/15 bg-white/[0.05]
+                  text-white/60 hover:bg-white/[0.10] hover:text-white/80
+                  text-sm font-medium transition-all duration-200"
+              >
+                <CalendarClock size={14} />
+                Agendar
               </motion.button>
 
               <motion.button
