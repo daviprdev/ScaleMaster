@@ -321,3 +321,24 @@ const supabase = useMemo(() => createClient(), []);
 // ❌ Errado — nova instância a cada render
 const supabase = createClient();
 ```
+
+---
+
+### ✅ Fase 14 — Download Real das Inspirações + Baixar Todos
+**Data:** 12/05/2026
+**Commit:** `feat: Fase 14 — download real das inspirações e botão baixar todos`
+
+#### O que foi feito
+- Constatado que o fluxo individual já estava parcialmente implementado: `InspirationCard` chamava `onProcess` (desde Fase 9) e a página já repassava a chamada para `/api/video/process` (rota completa com FFmpeg + Supabase Storage desde Fase 4)
+- O que estava faltando: orquestração de download em lote na página
+- `app/dashboard/search/page.tsx` atualizado:
+  - Estado `bulkProgress: { done, errors, total } | null` para rastrear progresso do lote
+  - Estado `bulkDone: boolean` para exibir banner de conclusão
+  - Função `handleBulkDownload`: itera `sortedReels` sequencialmente com `for...of`, chama `handleProcess` para cada reel, conta erros sem interromper o loop, atualiza o contador a cada iteração
+  - Botão "Baixar todos" no results header: desabilitado durante o lote, mostra spinner + contador `X/total baixados` em tempo real
+  - Banner verde de sucesso animado (Framer Motion) ao término do lote
+  - Estados de bulk resetados a cada nova busca
+
+#### Fluxo completo validado
+`Inspirações (busca) → "Preparar Download" (individual, card)` — FFmpeg → Supabase → Biblioteca  
+`Inspirações (busca) → "Baixar todos" (lote, header)` — processa todos sequencialmente → banner de sucesso → Biblioteca

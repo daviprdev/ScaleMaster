@@ -13,6 +13,8 @@ import {
   Clock,
   Heart,
   MessageCircle,
+  Download,
+  CheckCircle2,
 } from "lucide-react";
 import {
   InspirationGrid,
@@ -48,6 +50,10 @@ export default function InspiracoesPage() {
   const [showFilters, setShowFilters] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Bulk download state
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; errors: number; total: number } | null>(null);
+  const [bulkDone, setBulkDone] = useState(false);
+
   const handleSearch = async (query?: string) => {
     const target = (query ?? username).replace(/^@/, "").trim();
     if (!target) return;
@@ -56,6 +62,8 @@ export default function InspiracoesPage() {
     setStatus("loading");
     setError("");
     setReels([]);
+    setBulkProgress(null);
+    setBulkDone(false);
 
     try {
       const res = await fetch("/api/inspirations/scrape", {
@@ -77,6 +85,29 @@ export default function InspiracoesPage() {
   };
 
   const sortedReels = [...reels].sort((a, b) => b[sortBy] - a[sortBy]);
+
+  const handleBulkDownload = async () => {
+    if (bulkProgress !== null || sortedReels.length === 0) return;
+
+    setBulkDone(false);
+    setBulkProgress({ done: 0, errors: 0, total: sortedReels.length });
+
+    let done = 0;
+    let errors = 0;
+
+    for (const reel of sortedReels) {
+      try {
+        await handleProcess(reel);
+      } catch {
+        errors++;
+      }
+      done++;
+      setBulkProgress({ done, errors, total: sortedReels.length });
+    }
+
+    setBulkProgress(null);
+    setBulkDone(true);
+  };
 
   const handleProcess = async (reel: InspirationReel) => {
     const res = await fetch("/api/video/process", {
@@ -206,7 +237,7 @@ export default function InspiracoesPage() {
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex items-center justify-between"
+            className="flex items-center justify-between gap-3"
           >
             <div>
               <p className="text-sm font-semibold text-white/80">
@@ -215,17 +246,58 @@ export default function InspiracoesPage() {
               <p className="text-xs text-white/30">de @{username}</p>
             </div>
 
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all ${
-                showFilters
-                  ? "bg-violet-600/20 border-violet-500/30 text-violet-300"
-                  : "bg-white/5 border-white/10 text-white/40 hover:text-white/70"
-              }`}
-            >
-              <SlidersHorizontal size={12} />
-              Ordenar
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Bulk download button */}
+              <motion.button
+                onClick={handleBulkDownload}
+                disabled={bulkProgress !== null}
+                whileTap={bulkProgress !== null ? {} : { scale: 0.96 }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all ${
+                  bulkProgress !== null
+                    ? "bg-violet-600/10 border-violet-500/20 text-violet-400/60 cursor-not-allowed"
+                    : "bg-violet-600/15 border-violet-500/25 text-violet-300 hover:bg-violet-600/25 hover:border-violet-500/40"
+                }`}
+              >
+                {bulkProgress !== null ? (
+                  <>
+                    <Loader2 size={11} className="animate-spin" />
+                    {bulkProgress.done}/{bulkProgress.total} baixados
+                  </>
+                ) : (
+                  <>
+                    <Download size={11} />
+                    Baixar todos
+                  </>
+                )}
+              </motion.button>
+
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border transition-all ${
+                  showFilters
+                    ? "bg-violet-600/20 border-violet-500/30 text-violet-300"
+                    : "bg-white/5 border-white/10 text-white/40 hover:text-white/70"
+                }`}
+              >
+                <SlidersHorizontal size={12} />
+                Ordenar
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bulk done banner */}
+      <AnimatePresence>
+        {bulkDone && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm"
+          >
+            <CheckCircle2 size={16} />
+            Todos os vídeos foram salvos na biblioteca!
           </motion.div>
         )}
       </AnimatePresence>

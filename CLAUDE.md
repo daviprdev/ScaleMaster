@@ -146,6 +146,11 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fase 6** | Integração real Supabase Auth | ✅ Concluída |
 | **Fase 7** | Integração real Apify (scraping real) | ✅ Concluída |
 | **Fase 8** | Deploy Vercel + configuração de produção | ✅ Concluída |
+| **Fase 9** | Seção Inspirações com apify-client + UI de hover | ✅ Concluída |
+| **Fase 11** | Login Instagram via instagrapi + child_process | ✅ Concluída |
+| **Fase 12** | Fluxo unificado 2FA e checkpoint para login Instagram | ✅ Concluída |
+| **Fase 13** | Correção de modal, layout e loop infinito de renders | ✅ Concluída |
+| **Fase 14** | Download real das Inspirações + botão Baixar Todos | ✅ Concluída |
 
 ---
 
