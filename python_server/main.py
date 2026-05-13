@@ -190,7 +190,8 @@ def login(req: LoginRequest):
             "settings": cl.get_settings(),
             "last_json": cl.last_json or {},
             "username": username,
-            "password": req.password,  # necessário para completar o 2FA
+            "password": req.password,
+            "two_factor_identifier": two_factor_id,
         })
         return {
             "status": "requires_code",
@@ -259,12 +260,27 @@ def verify(req: VerifyRequest):
 
     try:
         if req.challenge_type == "2fa":
-            password = session_data.get("password", "")
-            cl.login(
-                req.username,
-                password,
-                verification_code=code,
-            )
+            two_factor_id = req.two_factor_identifier or session_data.get("two_factor_identifier", "")
+            if hasattr(cl, "two_factor_login"):
+                # instagrapi < 2.x
+                cl.two_factor_login(
+                    verification_code=code,
+                    two_factor_identifier=two_factor_id,
+                    username=req.username,
+                )
+            else:
+                # instagrapi 2.x — chama o endpoint privado diretamente
+                cl.private_request(
+                    "accounts/two_factor_login/",
+                    {
+                        "verification_code": code,
+                        "two_factor_identifier": two_factor_id,
+                        "_csrftoken": cl.token,
+                        "username": req.username,
+                        "_uuid": cl.uuid,
+                        "trusted_device": "0",
+                    },
+                )
         elif req.challenge_type == "checkpoint":
             try:
                 cl.challenge_send_security_code(int(code))
