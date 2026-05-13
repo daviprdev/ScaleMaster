@@ -5,17 +5,16 @@ export const maxDuration = 60;
 
 const ACTOR_ID = "apify/instagram-scraper";
 
-// ── Token rotation ────────────────────────────────────────────────
+// ── Token pool ────────────────────────────────────────────────────
+// Combina APIFY_API_TOKENS (vírgula) + APIFY_API_TOKEN (legado), sem duplicatas
 function getTokens(): string[] {
-  const multi = process.env.APIFY_API_TOKENS ?? "";
-  if (multi) return multi.split(",").map((t) => t.trim()).filter(Boolean);
-  const single = process.env.APIFY_API_TOKEN ?? "";
-  return single ? [single] : [];
-}
-
-// Rotaciona baseado no tempo (1 token diferente por minuto)
-function startIndex(total: number): number {
-  return Math.floor(Date.now() / 60_000) % total;
+  const multi = (process.env.APIFY_API_TOKENS ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const single = (process.env.APIFY_API_TOKEN ?? "").trim();
+  const all = single ? [...multi, single] : multi;
+  return [...new Set(all)]; // remove duplicatas
 }
 
 // Erros que indicam token inválido/expirado/bloqueado → tenta o próximo
@@ -92,27 +91,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reels: getMockReels(username) });
   }
 
-  const start = startIndex(tokens.length);
   let lastError = "Erro desconhecido";
 
   for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[(start + i) % tokens.length];
     try {
-      const reels = await scrapeWithToken(token, username, limit);
+      const reels = await scrapeWithToken(tokens[i], username, limit);
       return NextResponse.json({ reels });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (isTokenError(msg)) {
         lastError = msg;
-        continue; // tenta o próximo token
+        continue; // token inválido/bloqueado → tenta o próximo
       }
-      // Erro não relacionado ao token (ex: actor falhou) — retorna direto
+      // Erro não relacionado ao token (actor falhou, perfil privado, etc.)
       return NextResponse.json({ error: msg }, { status: 500 });
     }
   }
 
   return NextResponse.json(
-    { error: `Todos os tokens Apify estão indisponíveis. Último erro: ${lastError}` },
+    {
+      error: `Todos os ${tokens.length} tokens Apify estão indisponíveis. Verifique as contas no painel do Apify. Último erro: ${lastError}`,
+    },
     { status: 503 }
   );
 }
