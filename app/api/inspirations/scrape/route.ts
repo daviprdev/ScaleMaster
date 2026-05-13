@@ -5,6 +5,76 @@ export const maxDuration = 60;
 
 const ACTOR_ID = "apify/instagram-scraper";
 
+// ── Token rotation ────────────────────────────────────────────────
+function getTokens(): string[] {
+  const multi = process.env.APIFY_API_TOKENS ?? "";
+  if (multi) return multi.split(",").map((t) => t.trim()).filter(Boolean);
+  const single = process.env.APIFY_API_TOKEN ?? "";
+  return single ? [single] : [];
+}
+
+// Rotaciona baseado no tempo (1 token diferente por minuto)
+function startIndex(total: number): number {
+  return Math.floor(Date.now() / 60_000) % total;
+}
+
+// Erros que indicam token inválido/expirado/bloqueado → tenta o próximo
+function isTokenError(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return (
+    m.includes("unauthorized") ||
+    m.includes("authentication") ||
+    m.includes("forbidden") ||
+    m.includes("rate limit") ||
+    m.includes("quota") ||
+    m.includes("429") ||
+    m.includes("403") ||
+    m.includes("401")
+  );
+}
+
+async function scrapeWithToken(
+  token: string,
+  username: string,
+  limit: number
+) {
+  const client = new ApifyClient({ token });
+
+  const run = await client.actor(ACTOR_ID).call(
+    {
+      directUrls: [`https://www.instagram.com/${username}/reels/`],
+      resultsType: "posts",
+      maxRequestsPerCrawl: Math.min(limit, 30),
+    },
+    { waitSecs: 55 }
+  );
+
+  if (run.status !== "SUCCEEDED") {
+    throw new Error(`Actor encerrou com status inesperado: ${run.status}`);
+  }
+
+  const { items } = await client.dataset(run.defaultDatasetId).listItems();
+
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  return items
+    .filter((item) => item.type === "Video" || item.videoUrl)
+    .map((item, i) => ({
+      id: String(item.id ?? item.shortCode ?? i),
+      shortCode: String(item.shortCode ?? ""),
+      thumbnailUrl: ((item.displayUrl ?? item.thumbnailUrl) as string) ?? null,
+      videoUrl: String(item.videoUrl ?? ""),
+      caption: String(item.caption ?? "").slice(0, 120),
+      views: Number(item.videoViewCount ?? 0),
+      likes: Number(item.likesCount ?? 0),
+      comments: Number(item.commentsCount ?? 0),
+      duration: Number(item.videoDuration ?? 0),
+      owner: String(item.ownerUsername ?? username),
+      gradient: GRADIENTS[i % GRADIENTS.length],
+    }));
+}
+
+// ── Handler ───────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { username, limit = 20 } = body as { username: string; limit?: number };
@@ -16,59 +86,38 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const token = process.env.APIFY_API_TOKEN ?? "";
+  const tokens = getTokens();
 
-  if (!token) {
+  if (tokens.length === 0) {
     return NextResponse.json({ reels: getMockReels(username) });
   }
 
-  try {
-    const client = new ApifyClient({ token });
+  const start = startIndex(tokens.length);
+  let lastError = "Erro desconhecido";
 
-    const run = await client.actor(ACTOR_ID).call(
-      {
-        directUrls: [`https://www.instagram.com/${username}/reels/`],
-        resultsType: "posts",
-        maxRequestsPerCrawl: Math.min(limit, 30),
-      },
-      { waitSecs: 55 }
-    );
-
-    if (run.status !== "SUCCEEDED") {
-      throw new Error(`Actor encerrou com status inesperado: ${run.status}`);
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[(start + i) % tokens.length];
+    try {
+      const reels = await scrapeWithToken(token, username, limit);
+      return NextResponse.json({ reels });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isTokenError(msg)) {
+        lastError = msg;
+        continue; // tenta o próximo token
+      }
+      // Erro não relacionado ao token (ex: actor falhou) — retorna direto
+      return NextResponse.json({ error: msg }, { status: 500 });
     }
-
-    const { items } = await client
-      .dataset(run.defaultDatasetId)
-      .listItems();
-
-    if (!Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ reels: [] });
-    }
-
-    const reels = items
-      .filter((item) => item.type === "Video" || item.videoUrl)
-      .map((item, i) => ({
-        id: String(item.id ?? item.shortCode ?? i),
-        shortCode: String(item.shortCode ?? ""),
-        thumbnailUrl: ((item.displayUrl ?? item.thumbnailUrl) as string) ?? null,
-        videoUrl: String(item.videoUrl ?? ""),
-        caption: String(item.caption ?? "").slice(0, 120),
-        views: Number(item.videoViewCount ?? 0),
-        likes: Number(item.likesCount ?? 0),
-        comments: Number(item.commentsCount ?? 0),
-        duration: Number(item.videoDuration ?? 0),
-        owner: String(item.ownerUsername ?? username),
-        gradient: GRADIENTS[i % GRADIENTS.length],
-      }));
-
-    return NextResponse.json({ reels });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Erro desconhecido";
-    return NextResponse.json({ error: message }, { status: 500 });
   }
+
+  return NextResponse.json(
+    { error: `Todos os tokens Apify estão indisponíveis. Último erro: ${lastError}` },
+    { status: 503 }
+  );
 }
 
+// ── Mock ──────────────────────────────────────────────────────────
 function getMockReels(username: string) {
   return Array.from({ length: 12 }, (_, i) => ({
     id: `mock_${i}`,
