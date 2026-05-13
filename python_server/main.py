@@ -264,7 +264,6 @@ def verify(req: VerifyRequest):
                 req.username,
                 password,
                 verification_code=code,
-                two_factor_identifier=req.two_factor_identifier or "",
             )
         elif req.challenge_type == "checkpoint":
             try:
