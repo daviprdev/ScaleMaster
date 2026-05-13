@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const ACTOR_ID = "apify/instagram-scraper";
 
@@ -26,17 +26,14 @@ function isQuotaError(msg: string): boolean {
 async function scrapeWithToken(token: string, username: string, limit: number) {
   const client = new ApifyClient({ token });
 
-  const run = await client.actor(ACTOR_ID).call(
-    {
-      directUrls: [`https://www.instagram.com/${username}/reels/`],
-      resultsType: "posts",
-      maxRequestsPerCrawl: Math.min(limit, 30),
-    },
-    { waitSecs: 55 }
-  );
+  const run = await client.actor(ACTOR_ID).call({
+    directUrls: [`https://www.instagram.com/${username}/reels/`],
+    resultsType: "posts",
+    maxRequestsPerCrawl: Math.min(limit, 30),
+  });
 
   if (run.status !== "SUCCEEDED") {
-    throw new Error(`Actor encerrou com status inesperado: ${run.status}`);
+    throw new Error(`Falha no Apify. Status: ${run.status}`);
   }
 
   const { items } = await client.dataset(run.defaultDatasetId).listItems();
