@@ -591,5 +591,21 @@ Os scripts Python em `python_scripts/` continuam funcionando para desenvolviment
 #### Lição aprendida: `.call()` com `waitSecs`
 Usar `.call(input, { waitSecs: 55 })` faz o SDK retornar o objeto de run com `status: "RUNNING"` quando o ator demora mais de 55s — não lança exceção. Nosso código jogava esse status no catch como erro não-quota, retornando 500 direto em vez de continuar o loop. Solução: remover `waitSecs` do `.call()` e deixar o SDK aguardar a conclusão naturalmente (padrão do SDK). `maxDuration` da rota elevado para 120s para cobrir atores mais lentos.
 
+---
+
+### ✅ Loading Modal de Inspirações (Fase 21)
+**Data:** 13/05/2026
+
+#### O que foi feito
+- Componente `ImportingModal` inline em `app/dashboard/search/page.tsx`
+- Abre imediatamente ao clicar "Buscar Reels" (antes do fetch terminar)
+- Barra de progresso simulada: incremento aleatório de 0→95% a cada 350ms; pula para 100% quando API responde
+- Spinner CSS (`border-t-cyan-400 animate-spin`) vira verde e para de girar ao completar
+- Status items: "Buscando posts via API" (spinner azul → check) + "Processando resultados" (círculo vazio → check)
+- Ao sucesso: `modalDone=true` por 700ms (mostra estado done) → fecha modal → exibe grid
+- Ao erro: fecha modal imediatamente → exibe toast vermelho
+- `InspirationGridSkeleton` removido (substituído pelo modal)
+- `status` simplificado para `"idle" | "done" | "error"` (sem `"loading"`, controlado por `showModal`)
+
 #### Lição aprendida: instagrapi 2.x e 2FA
 O instagrapi 2.x removeu `two_factor_login()` e mudou `login()` para não aceitar `two_factor_identifier`. A solução correta é chamar `cl.private_request("accounts/two_factor_login/", {...})` diretamente com `csrftoken`, `uuid` e `two_factor_identifier` restaurados da sessão salva. Nunca chamar `cl.login()` novamente num cliente novo para completar 2FA — o Instagram trata o username como email/telefone nesse fluxo e rejeita.
