@@ -87,8 +87,12 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       const e = err as Error & { status?: number };
+      const isNetworkError = !e.status && (e.message.includes("fetch failed") || e.message.includes("ECONNREFUSED") || e.message.includes("ENOTFOUND"));
+      const msg = isNetworkError
+        ? `Servidor Python inacessível (${process.env.PYTHON_SERVER_URL}). Verifique se ele está em execução.`
+        : e.message;
       const httpStatus = e.status === 401 ? 401 : e.status === 400 ? 400 : 500;
-      return NextResponse.json({ error: e.message }, { status: httpStatus });
+      return NextResponse.json({ error: msg }, { status: httpStatus });
     }
   } else {
     // --- Modo child_process (dev local) ---

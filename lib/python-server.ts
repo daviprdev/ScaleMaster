@@ -1,4 +1,5 @@
-const SERVER_URL = (process.env.PYTHON_SERVER_URL ?? "").replace(/\/$/, "");
+const raw = (process.env.PYTHON_SERVER_URL ?? "").trim().replace(/\/$/, "");
+const SERVER_URL = raw && !raw.startsWith("http") ? `https://${raw}` : raw;
 const SERVER_SECRET = process.env.PYTHON_SERVER_SECRET ?? "";
 
 export function hasPythonServer(): boolean {

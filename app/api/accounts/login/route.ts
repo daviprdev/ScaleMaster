@@ -89,6 +89,15 @@ export async function POST(req: NextRequest) {
   const cleanUsername = username.replace(/^@/, "").trim();
   let result: PythonResult;
 
+  if (!hasPythonServer()) {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        { error: "Login do Instagram não está disponível em produção sem o servidor Python configurado. Defina PYTHON_SERVER_URL nas variáveis de ambiente do Vercel." },
+        { status: 503 }
+      );
+    }
+  }
+
   if (hasPythonServer()) {
     // --- Modo FastAPI ---
     try {
@@ -98,8 +107,12 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       const e = err as Error & { status?: number };
+      const isNetworkError = !e.status && (e.message.includes("fetch failed") || e.message.includes("ECONNREFUSED") || e.message.includes("ENOTFOUND"));
+      const msg = isNetworkError
+        ? `Servidor Python inacessível (${process.env.PYTHON_SERVER_URL}). Verifique se ele está em execução.`
+        : e.message;
       const httpStatus = e.status === 401 ? 401 : e.status === 429 ? 429 : 500;
-      return NextResponse.json({ error: e.message }, { status: httpStatus });
+      return NextResponse.json({ error: msg }, { status: httpStatus });
     }
   } else {
     // --- Modo child_process (dev local sem servidor Python) ---
