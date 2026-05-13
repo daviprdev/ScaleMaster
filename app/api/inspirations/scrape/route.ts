@@ -6,15 +6,13 @@ export const maxDuration = 60;
 const ACTOR_ID = "apify/instagram-scraper";
 
 // ── Token pool ────────────────────────────────────────────────────
-// Combina APIFY_API_TOKENS (vírgula) + APIFY_API_TOKEN (legado), sem duplicatas
+// Lê APIFY_API_TOKENS e APIFY_API_TOKEN, ambos aceitam vírgulas, sem duplicatas
 function getTokens(): string[] {
-  const multi = (process.env.APIFY_API_TOKENS ?? "")
-    .split(",")
-    .map((t) => t.trim())
-    .filter(Boolean);
-  const single = (process.env.APIFY_API_TOKEN ?? "").trim();
-  const all = single ? [...multi, single] : multi;
-  return [...new Set(all)]; // remove duplicatas
+  const fromMulti = (process.env.APIFY_API_TOKENS ?? "")
+    .split(",").map((t) => t.trim()).filter(Boolean);
+  const fromSingle = (process.env.APIFY_API_TOKEN ?? "")
+    .split(",").map((t) => t.trim()).filter(Boolean);
+  return [...new Set([...fromMulti, ...fromSingle])];
 }
 
 // Erros que indicam token inválido/expirado/bloqueado → tenta o próximo
