@@ -536,3 +536,41 @@ Os scripts Python em `python_scripts/` continuam funcionando para desenvolviment
 **Dados salvos via Supabase:**
 - Perfil: `supabase.auth.updateUser({ data: { full_name, nickname, phone } })`
 - Senha: `supabase.auth.updateUser({ password: newPassword })`
+
+---
+
+### ✅ Fase 19 — Dashboard Overview com Dados Reais
+**Data:** 13/05/2026
+**Commit:** `feat: Fase 19 — dashboard overview com dados reais do Supabase`
+
+#### O que foi feito
+- Nova rota `GET /api/dashboard/stats`: 9 queries em paralelo no Supabase (Promise.all), todas filtradas por `user_id`
+  - Contas conectadas: total + quantas este mês
+  - Vídeos baixados: total + quantas esta semana
+  - Postagens pendentes: count + `scheduled_at` da próxima
+  - Posts publicados: total
+  - Feed de atividade recente: últimos 5 eventos (downloads + agendamentos mesclados por `created_at`)
+  - Próximas 4 postagens futuras com conta e horário
+- Dashboard `page.tsx` reescrito: fetch client-side + skeletons pulsando + empty states
+- Helpers sem dependências externas: `timeAgo`, `nextPostIn`, `formatScheduled`
+- 4º card substituído de "Engajamento Médio" (mock) → "Posts Publicados" (real)
+
+---
+
+### ✅ Fase 20 — Deploy FastAPI no Railway + Correções de Login em Produção
+**Data:** 13/05/2026
+**Commits:** múltiplos fixes de login Instagram em produção
+
+#### O que foi feito
+- Servidor FastAPI deployado no Railway via Dockerfile em `python_server/`
+- URL de produção: `https://autoscale-ia-production.up.railway.app`
+- `PYTHON_SERVER_URL` e `PYTHON_SERVER_SECRET` configurados no Vercel
+- `lib/python-server.ts`: auto-prefixo `https://` se URL vier sem protocolo
+- `app/api/accounts/login/route.ts`: erro claro quando servidor Python inacessível em produção
+- Correções iterativas do fluxo 2FA no instagrapi 2.x:
+  - `two_factor_login()` removido no instagrapi 2.x → substituído por `private_request("accounts/two_factor_login/")`
+  - `two_factor_identifier` armazenado na sessão em memória durante o login
+  - Fallback com `hasattr` para compatibilidade com versões antigas
+
+#### Lição aprendida: instagrapi 2.x e 2FA
+O instagrapi 2.x removeu `two_factor_login()` e mudou `login()` para não aceitar `two_factor_identifier`. A solução correta é chamar `cl.private_request("accounts/two_factor_login/", {...})` diretamente com `csrftoken`, `uuid` e `two_factor_identifier` restaurados da sessão salva. Nunca chamar `cl.login()` novamente num cliente novo para completar 2FA — o Instagram trata o username como email/telefone nesse fluxo e rejeita.

@@ -25,7 +25,7 @@ Contém as instruções, contexto e estado atual do projeto.
 | Backend/BaaS | Supabase (PostgreSQL + Auth + Storage) |
 | Scraping | Apify — Actor `apify~instagram-reel-scraper` |
 | Vídeo | FFmpeg via `fluent-ffmpeg` + `@ffmpeg-installer/ffmpeg` |
-| Deploy | Vercel (planejado) |
+| Deploy | Vercel (Next.js) + Railway (FastAPI Python) |
 
 ---
 
@@ -166,6 +166,8 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fase 14** | Download real das Inspirações + botão Baixar Todos | ✅ Concluída |
 | **Fase 15** | Postagem real no Instagram via instagrapi | ✅ Concluída |
 | **Fase 16** | Servidor FastAPI para viabilizar operações Python em produção | ✅ Concluída |
+| **Fase 19** | Dashboard overview com dados reais do Supabase | ✅ Concluída |
+| **Fase 20** | Deploy do servidor FastAPI no Railway + correções de login Instagram em produção | ✅ Concluída |
 
 ---
 
