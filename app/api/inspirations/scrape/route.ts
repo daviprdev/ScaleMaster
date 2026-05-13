@@ -5,36 +5,25 @@ export const maxDuration = 60;
 
 const ACTOR_ID = "apify/instagram-scraper";
 
-// ── Token pool ────────────────────────────────────────────────────
-// Lê APIFY_API_TOKENS e APIFY_API_TOKEN, ambos aceitam vírgulas, sem duplicatas
-function getTokens(): string[] {
-  const fromMulti = (process.env.APIFY_API_TOKENS ?? "")
-    .split(",").map((t) => t.trim()).filter(Boolean);
-  const fromSingle = (process.env.APIFY_API_TOKEN ?? "")
-    .split(",").map((t) => t.trim()).filter(Boolean);
-  return [...new Set([...fromMulti, ...fromSingle])];
-}
-
-// Erros que indicam token inválido/expirado/bloqueado → tenta o próximo
-function isTokenError(msg: string): boolean {
+// Qualquer sinal de cota/limite/auth → tenta o próximo token
+function isQuotaError(msg: string): boolean {
   const m = msg.toLowerCase();
   return (
+    m.includes("limit exceeded") ||
+    m.includes("usage") ||
+    m.includes("quota") ||
+    m.includes("rate limit") ||
+    m.includes("429") ||
+    m.includes("401") ||
+    m.includes("403") ||
     m.includes("unauthorized") ||
     m.includes("authentication") ||
     m.includes("forbidden") ||
-    m.includes("rate limit") ||
-    m.includes("quota") ||
-    m.includes("429") ||
-    m.includes("403") ||
-    m.includes("401")
+    m.includes("not found or authentication")
   );
 }
 
-async function scrapeWithToken(
-  token: string,
-  username: string,
-  limit: number
-) {
+async function scrapeWithToken(token: string, username: string, limit: number) {
   const client = new ApifyClient({ token });
 
   const run = await client.actor(ACTOR_ID).call(
@@ -83,32 +72,44 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const tokens = getTokens();
+  // Lê todos os tokens de APIFY_API_TOKENS e APIFY_API_TOKEN (ambos aceitam vírgulas)
+  const tokens = [
+    ...process.env.APIFY_API_TOKENS?.split(",") ?? [],
+    ...process.env.APIFY_API_TOKEN?.split(",") ?? [],
+  ]
+    .map((t) => t.trim())
+    .filter(Boolean);
 
-  if (tokens.length === 0) {
+  // Remove duplicatas preservando a ordem
+  const uniqueTokens = [...new Set(tokens)];
+
+  if (uniqueTokens.length === 0) {
     return NextResponse.json({ reels: getMockReels(username) });
   }
 
   let lastError = "Erro desconhecido";
 
-  for (let i = 0; i < tokens.length; i++) {
+  for (const token of uniqueTokens) {
     try {
-      const reels = await scrapeWithToken(tokens[i], username, limit);
+      const reels = await scrapeWithToken(token, username, limit);
       return NextResponse.json({ reels });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (isTokenError(msg)) {
+
+      if (isQuotaError(msg)) {
+        console.warn(`[Apify] Token ...${token.slice(-6)} esgotado: ${msg}. Tentando próximo.`);
         lastError = msg;
-        continue; // token inválido/bloqueado → tenta o próximo
+        continue;
       }
-      // Erro não relacionado ao token (actor falhou, perfil privado, etc.)
+
+      // Erro não relacionado ao token (perfil privado, actor falhou, etc.) — retorna direto
       return NextResponse.json({ error: msg }, { status: 500 });
     }
   }
 
   return NextResponse.json(
     {
-      error: `Todos os ${tokens.length} tokens Apify estão indisponíveis. Verifique as contas no painel do Apify. Último erro: ${lastError}`,
+      error: `Todas as ${uniqueTokens.length} chaves Apify estão esgotadas ou inválidas. Último erro: ${lastError}`,
     },
     { status: 503 }
   );

@@ -572,5 +572,21 @@ Os scripts Python em `python_scripts/` continuam funcionando para desenvolviment
   - `two_factor_identifier` armazenado na sessão em memória durante o login
   - Fallback com `hasattr` para compatibilidade com versões antigas
 
+---
+
+### ✅ Rotação de Tokens Apify (Inspirações)
+**Data:** 13/05/2026
+
+#### Lógica implementada
+- `APIFY_API_TOKENS` (vírgula) + `APIFY_API_TOKEN` (legado, também aceita vírgulas) são combinados num único array sem duplicatas
+- Loop `for...of` instancia um `ApifyClient` diferente por token
+- `isQuotaError()` captura: `"limit exceeded"`, `"usage"`, `"quota"`, `"rate limit"`, `429`, `401`, `403`, `unauthorized`, `authentication`, `forbidden`, `"not found or authentication"`
+- Em caso de quota/auth → `console.warn` com os últimos 6 chars do token + `continue`
+- Erro não relacionado a token (perfil privado, actor falhou) → retorna erro imediatamente sem tentar próximo
+- Se todos falharem → 503 com contagem e último erro
+
+#### Lição aprendida
+`"Monthly usage hard limit exceeded"` não contém `"429"` nem `"rate limit"` — a string `"limit exceeded"` e `"usage"` precisam estar explicitamente no `isQuotaError`. Sempre testar o texto exato do erro do Apify antes de definir os critérios de fallback.
+
 #### Lição aprendida: instagrapi 2.x e 2FA
 O instagrapi 2.x removeu `two_factor_login()` e mudou `login()` para não aceitar `two_factor_identifier`. A solução correta é chamar `cl.private_request("accounts/two_factor_login/", {...})` diretamente com `csrftoken`, `uuid` e `two_factor_identifier` restaurados da sessão salva. Nunca chamar `cl.login()` novamente num cliente novo para completar 2FA — o Instagram trata o username como email/telefone nesse fluxo e rejeita.
