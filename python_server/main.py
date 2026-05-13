@@ -189,6 +189,8 @@ def login(req: LoginRequest):
         token = _save_session({
             "settings": cl.get_settings(),
             "last_json": cl.last_json or {},
+            "username": username,
+            "password": req.password,  # necessário para completar o 2FA
         })
         return {
             "status": "requires_code",
@@ -257,10 +259,12 @@ def verify(req: VerifyRequest):
 
     try:
         if req.challenge_type == "2fa":
-            cl.two_factor_login(
+            password = session_data.get("password", "")
+            cl.login(
+                req.username,
+                password,
                 verification_code=code,
                 two_factor_identifier=req.two_factor_identifier or "",
-                username=req.username,
             )
         elif req.challenge_type == "checkpoint":
             try:
