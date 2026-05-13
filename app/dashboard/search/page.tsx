@@ -179,11 +179,10 @@ function HistoryCard({
           {profile.profile_pic_url && !imgError ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={profile.profile_pic_url}
+              src={`/api/proxy-image?url=${encodeURIComponent(profile.profile_pic_url)}`}
               alt={profile.username}
               className="w-full h-full object-cover"
               onError={() => setImgError(true)}
-              referrerPolicy="no-referrer"
             />
           ) : (
             <span className="text-white text-sm font-bold">{initial}</span>

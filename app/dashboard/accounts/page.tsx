@@ -313,7 +313,7 @@ export default function AccountsPage() {
                 {account.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={account.avatar_url}
+                    src={`/api/proxy-image?url=${encodeURIComponent(account.avatar_url)}`}
                     alt={account.username}
                     className="w-10 h-10 rounded-full object-cover flex-shrink-0"
                   />

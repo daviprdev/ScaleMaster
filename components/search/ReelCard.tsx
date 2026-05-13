@@ -84,7 +84,7 @@ export function ReelCard({ reel, onDownload }: ReelCardProps) {
       {reel.thumbnailUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={reel.thumbnailUrl}
+          src={`/api/proxy-image?url=${encodeURIComponent(reel.thumbnailUrl)}`}
           alt={reel.caption}
           className="absolute inset-0 w-full h-full object-cover"
         />

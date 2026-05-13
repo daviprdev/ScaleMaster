@@ -657,3 +657,28 @@ create policy "users_manage_own_scraped_profiles"
 
 #### Decisão: `videos_data` no SELECT da history list
 Incluir o JSONB completo na listagem evita um segundo fetch ao clicar "Ver Vídeos". Para 10-20 perfis × 20 reels cada, o payload estimado é ~100-200KB — aceitável. Se escalar, criar endpoint separado `/api/inspirations/history/[id]/videos` e paginar.
+
+---
+
+### ✅ Proxy de Imagens Instagram (Fase 23)
+**Data:** 13/05/2026
+**Commit:** `feat: proxy de imagens para contornar CORS/Referrer do CDN do Instagram`
+
+#### Problema
+Thumbnails e fotos de perfil do Instagram quebram no browser com erro CORS/Referrer. O CDN (`scontent*.cdninstagram.com`, `fbcdn.net`) valida o header `Referer` da requisição e bloqueia origem fora de `instagram.com`.
+
+#### Solução
+Nova rota `GET /api/proxy-image?url=<encoded>`:
+- Executa no servidor Node.js (sem CORS)
+- Faz `fetch` da URL com headers que simulam browser dentro do Instagram: `Referer: https://www.instagram.com/`, `User-Agent: Mozilla/5.0...`, `sec-fetch-dest: image`
+- Devolve os bytes da imagem com `Content-Type` original
+- `Cache-Control: public, max-age=86400, stale-while-revalidate=604800` — cache de 1 dia, stale-while-revalidate de 7 dias
+- Allowlist de hosts: apenas `cdninstagram.com`, `fbcdn.net`, `instagram.com`, `lookaside.fbsbx.com` — previne uso como proxy genérico (SSRF)
+- Retorna 403 para URLs fora da allowlist
+
+#### Componentes atualizados
+Todos os `<img src={url}>` onde `url` pode ser do CDN do Instagram foram substituídos por `<img src={/api/proxy-image?url=${encodeURIComponent(url)}} />`:
+- `components/inspirations/InspirationCard.tsx` — thumbnail do Reel
+- `components/search/ReelCard.tsx` — thumbnail do Reel (seção search)
+- `app/dashboard/search/page.tsx` (HistoryCard) — foto de perfil no card de histórico
+- `app/dashboard/accounts/page.tsx` — avatar da conta Instagram conectada
