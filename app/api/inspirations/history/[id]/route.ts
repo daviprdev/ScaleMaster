@@ -23,6 +23,8 @@ export async function DELETE(
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
+  console.log(`[history] DELETE id=${id} para user ${user.id}`);
+
   const admin = getSupabaseAdmin();
   const { error } = await admin
     .from("scraped_profiles")
@@ -31,8 +33,10 @@ export async function DELETE(
     .eq("user_id", user.id);
 
   if (error) {
+    console.error(`[history] DELETE erro — code: ${error.code}, message: ${error.message}`);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  console.log(`[history] DELETE OK — id=${id}`);
   return NextResponse.json({ ok: true });
 }

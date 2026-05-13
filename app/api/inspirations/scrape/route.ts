@@ -3,6 +3,7 @@ import { ApifyClient } from "apify-client";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
+export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const ACTOR_ID = "apify/instagram-scraper";
@@ -66,6 +67,72 @@ async function scrapeWithToken(token: string, username: string, limit: number) {
   return { reels, fullName, profilePicUrl };
 }
 
+// ── Salvar no histórico ───────────────────────────────────────────
+async function saveToHistory(
+  username: string,
+  reels: object[],
+  fullName: string,
+  profilePicUrl: string | null
+) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    console.log("[scraped_profiles] Supabase não configurado, pulando save.");
+    return;
+  }
+
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError) {
+      console.error("[scraped_profiles] Erro de autenticação:", authError.message);
+      return;
+    }
+
+    if (!user) {
+      console.warn("[scraped_profiles] Usuário não autenticado — upsert ignorado.");
+      return;
+    }
+
+    console.log(`[scraped_profiles] Salvando @${username} para user ${user.id} (${reels.length} reels)`);
+
+    const admin = getSupabaseAdmin();
+    const { data, error } = await admin
+      .from("scraped_profiles")
+      .upsert(
+        {
+          user_id: user.id,
+          username,
+          full_name: fullName,
+          profile_pic_url: profilePicUrl,
+          videos_data: reels,
+          video_count: reels.length,
+          scraped_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,username", ignoreDuplicates: false }
+      )
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error(
+        `[scraped_profiles] Upsert falhou — code: ${error.code}, message: ${error.message}, hint: ${error.hint ?? "—"}, details: ${error.details ?? "—"}`
+      );
+      if (error.code === "42P01") {
+        console.error(
+          "[scraped_profiles] TABELA NÃO EXISTE. Execute o SQL da Fase 22 no Supabase Dashboard → SQL Editor."
+        );
+      }
+    } else {
+      console.log(`[scraped_profiles] Upsert OK — id: ${data?.id}`);
+    }
+  } catch (err) {
+    console.error("[scraped_profiles] Exceção inesperada:", err);
+  }
+}
+
 // ── Handler ───────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -88,6 +155,7 @@ export async function POST(req: NextRequest) {
   const uniqueTokens = [...new Set(tokens)];
 
   if (uniqueTokens.length === 0) {
+    console.log("[scrape] Sem tokens Apify — retornando mock.");
     return NextResponse.json({ reels: getMockReels(username) });
   }
 
@@ -97,33 +165,8 @@ export async function POST(req: NextRequest) {
     try {
       const { reels, fullName, profilePicUrl } = await scrapeWithToken(token, username, limit);
 
-      // Save to history (best-effort — never fail the scrape response)
-      if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
-        try {
-          const supabase = await createClient();
-          const {
-            data: { user },
-          } = await supabase.auth.getUser();
-
-          if (user) {
-            const admin = getSupabaseAdmin();
-            await admin.from("scraped_profiles").upsert(
-              {
-                user_id: user.id,
-                username,
-                full_name: fullName,
-                profile_pic_url: profilePicUrl,
-                videos_data: reels,
-                video_count: reels.length,
-                scraped_at: new Date().toISOString(),
-              },
-              { onConflict: "user_id,username" }
-            );
-          }
-        } catch (saveErr) {
-          console.error("[scraped_profiles] upsert error:", saveErr);
-        }
-      }
+      // Salvar no histórico — não bloqueia a resposta em caso de falha
+      await saveToHistory(username, reels, fullName, profilePicUrl);
 
       return NextResponse.json({ reels });
     } catch (err) {

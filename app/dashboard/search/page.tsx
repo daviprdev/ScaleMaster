@@ -246,19 +246,34 @@ export default function InspiracoesPage() {
 
   useEffect(() => {
     fetch("/api/inspirations/history")
-      .then((r) => r.json())
-      .then((data) => {
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok || data.error) {
+          console.error("[history] Resposta de erro:", r.status, data.error ?? data);
+        } else {
+          console.log(`[history] ${(data.profiles ?? []).length} perfis carregados.`);
+        }
         setHistory(data.profiles ?? []);
         setHistoryLoading(false);
       })
-      .catch(() => setHistoryLoading(false));
+      .catch((err) => {
+        console.error("[history] fetch falhou:", err);
+        setHistoryLoading(false);
+      });
   }, []);
 
   const refreshHistory = () => {
     fetch("/api/inspirations/history")
-      .then((r) => r.json())
-      .then((data) => setHistory(data.profiles ?? []))
-      .catch(() => {});
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok || data.error) {
+          console.error("[history] refreshHistory erro:", r.status, data.error ?? data);
+        } else {
+          console.log(`[history] refreshHistory: ${(data.profiles ?? []).length} perfis.`);
+        }
+        setHistory(data.profiles ?? []);
+      })
+      .catch((err) => console.error("[history] refreshHistory falhou:", err));
   };
 
   const handleSearch = async (query?: string) => {
