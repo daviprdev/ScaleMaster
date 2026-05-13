@@ -244,9 +244,14 @@ export default function InspiracoesPage() {
   const _bulkRef      = useRef(false);
 
   useEffect(() => {
-    fetch("/api/inspirations/history")
+    fetch("/api/inspirations/history", { cache: "no-store" })
       .then(async (r) => {
         const data = await r.json();
+        if (r.status === 401) {
+          console.warn("[history] Sessão expirada — redirecionando para login.");
+          window.location.href = "/auth/login";
+          return;
+        }
         if (!r.ok || data.error) {
           console.error("[history] Resposta de erro:", r.status, data.error ?? data);
         } else {
@@ -262,9 +267,14 @@ export default function InspiracoesPage() {
   }, []);
 
   const refreshHistory = () => {
-    fetch("/api/inspirations/history")
+    fetch("/api/inspirations/history", { cache: "no-store" })
       .then(async (r) => {
         const data = await r.json();
+        if (r.status === 401) {
+          console.warn("[history] refreshHistory — sessão expirada.");
+          window.location.href = "/auth/login";
+          return;
+        }
         if (!r.ok || data.error) {
           console.error("[history] refreshHistory erro:", r.status, data.error ?? data);
         } else {

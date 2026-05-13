@@ -682,3 +682,27 @@ Todos os `<img src={url}>` onde `url` pode ser do CDN do Instagram foram substit
 - `components/search/ReelCard.tsx` — thumbnail do Reel (seção search)
 - `app/dashboard/search/page.tsx` (HistoryCard) — foto de perfil no card de histórico
 - `app/dashboard/accounts/page.tsx` — avatar da conta Instagram conectada
+
+---
+
+### ✅ Fix — Cache Busting e Tratamento de Sessão no Histórico de Inspirações
+**Data:** 13/05/2026
+**Commit:** `fix: cache busting e tratamento de sessão no histórico de Inspirações`
+
+#### Problema
+Ao fechar o sistema e entrar novamente, o histórico de pesquisas da página Inspirações aparecia vazio, mesmo com dados no Supabase. A causa era dupla:
+1. **Cache do Next.js:** a rota `GET /api/inspirations/history` não tinha diretivas `force-dynamic` nem `revalidate = 0`, então o framework podia servir uma resposta cacheada vazia da sessão anterior.
+2. **Falha silenciosa em 401:** quando o cookie de sessão ainda não havia sido restaurado no cliente (race condition na montagem do componente), a API retornava `401` e o frontend simplesmente definia `history = []` sem mostrar feedback nem forçar re-autenticação.
+
+#### Correções aplicadas
+
+**`app/api/inspirations/history/route.ts`**
+- Adicionado `export const dynamic = "force-dynamic"` — instrui o Next.js a nunca fazer cache desta rota.
+- Adicionado `export const revalidate = 0` — garante que o Next.js não aplique ISR ou revalidação incremental.
+
+**`app/dashboard/search/page.tsx`**
+- Ambos os `fetch("/api/inspirations/history")` (montagem + `refreshHistory`) receberam `{ cache: "no-store" }` — impede o cache do browser e do service worker.
+- Tratamento de `r.status === 401` adicionado em ambos: `console.warn` + `window.location.href = "/auth/login"` imediato. Isso resolve o caso em que a sessão expirou e elimina a lista silenciosamente vazia.
+
+#### Lição aprendida
+Em Next.js 15 com App Router, rotas de API autenticadas que dependem de cookies de sessão devem sempre ter `export const dynamic = "force-dynamic"`. Sem isso, o framework pode memorizar a resposta de um usuário deslogado e servi-la novamente após re-login. Além disso, nunca deixar erros 401 silenciosos em fetches de dados de usuário — sempre redirecionar para login.
