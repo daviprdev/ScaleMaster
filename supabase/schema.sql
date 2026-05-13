@@ -101,3 +101,33 @@ create policy "users_manage_own_posts"
   on public.scheduled_posts for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+
+-- ──────────────────────────────────────────────────────────────
+-- 5. Tabela: scraped_profiles
+--    Cache de perfis raspados — evita re-scraping ao recarregar
+-- ──────────────────────────────────────────────────────────────
+create table if not exists public.scraped_profiles (
+  id              uuid        primary key default gen_random_uuid(),
+  user_id         uuid        not null references auth.users(id) on delete cascade,
+  username        text        not null,
+  full_name       text        not null default '',
+  profile_pic_url text,
+  videos_data     jsonb       not null default '[]',
+  video_count     integer     not null default 0,
+  scraped_at      timestamptz not null default now(),
+  constraint uq_scraped_profiles_user_username unique (user_id, username)
+);
+
+create index if not exists scraped_profiles_user_id_idx
+  on public.scraped_profiles(user_id);
+
+create index if not exists scraped_profiles_scraped_at_idx
+  on public.scraped_profiles(scraped_at desc);
+
+alter table public.scraped_profiles enable row level security;
+
+create policy "users_manage_own_scraped_profiles"
+  on public.scraped_profiles for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);

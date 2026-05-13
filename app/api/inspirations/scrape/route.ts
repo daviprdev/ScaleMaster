@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
+import { createClient } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const maxDuration = 120;
 
 const ACTOR_ID = "apify/instagram-scraper";
 
-// Qualquer sinal de cota/limite/auth → tenta o próximo token
 function isQuotaError(msg: string): boolean {
   const m = msg.toLowerCase();
   return (
@@ -38,9 +39,15 @@ async function scrapeWithToken(token: string, username: string, limit: number) {
 
   const { items } = await client.dataset(run.defaultDatasetId).listItems();
 
-  if (!Array.isArray(items) || items.length === 0) return [];
+  if (!Array.isArray(items) || items.length === 0) {
+    return { reels: [], fullName: username, profilePicUrl: null as string | null };
+  }
 
-  return items
+  const first = items[0] as Record<string, unknown>;
+  const fullName = String(first.ownerFullName ?? first.ownerUsername ?? username);
+  const profilePicUrl = (first.ownerProfilePicUrl as string | undefined) ?? null;
+
+  const reels = items
     .filter((item) => item.type === "Video" || item.videoUrl)
     .map((item, i) => ({
       id: String(item.id ?? item.shortCode ?? i),
@@ -55,6 +62,8 @@ async function scrapeWithToken(token: string, username: string, limit: number) {
       owner: String(item.ownerUsername ?? username),
       gradient: GRADIENTS[i % GRADIENTS.length],
     }));
+
+  return { reels, fullName, profilePicUrl };
 }
 
 // ── Handler ───────────────────────────────────────────────────────
@@ -69,7 +78,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Lê todos os tokens de APIFY_API_TOKENS e APIFY_API_TOKEN (ambos aceitam vírgulas)
   const tokens = [
     ...process.env.APIFY_API_TOKENS?.split(",") ?? [],
     ...process.env.APIFY_API_TOKEN?.split(",") ?? [],
@@ -77,7 +85,6 @@ export async function POST(req: NextRequest) {
     .map((t) => t.trim())
     .filter(Boolean);
 
-  // Remove duplicatas preservando a ordem
   const uniqueTokens = [...new Set(tokens)];
 
   if (uniqueTokens.length === 0) {
@@ -88,7 +95,36 @@ export async function POST(req: NextRequest) {
 
   for (const token of uniqueTokens) {
     try {
-      const reels = await scrapeWithToken(token, username, limit);
+      const { reels, fullName, profilePicUrl } = await scrapeWithToken(token, username, limit);
+
+      // Save to history (best-effort — never fail the scrape response)
+      if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+        try {
+          const supabase = await createClient();
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+
+          if (user) {
+            const admin = getSupabaseAdmin();
+            await admin.from("scraped_profiles").upsert(
+              {
+                user_id: user.id,
+                username,
+                full_name: fullName,
+                profile_pic_url: profilePicUrl,
+                videos_data: reels,
+                video_count: reels.length,
+                scraped_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id,username" }
+            );
+          }
+        } catch (saveErr) {
+          console.error("[scraped_profiles] upsert error:", saveErr);
+        }
+      }
+
       return NextResponse.json({ reels });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -99,7 +135,6 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      // Erro não relacionado ao token (perfil privado, actor falhou, etc.) — retorna direto
       return NextResponse.json({ error: msg }, { status: 500 });
     }
   }

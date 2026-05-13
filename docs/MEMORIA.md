@@ -609,3 +609,51 @@ Usar `.call(input, { waitSecs: 55 })` faz o SDK retornar o objeto de run com `st
 
 #### Lição aprendida: instagrapi 2.x e 2FA
 O instagrapi 2.x removeu `two_factor_login()` e mudou `login()` para não aceitar `two_factor_identifier`. A solução correta é chamar `cl.private_request("accounts/two_factor_login/", {...})` diretamente com `csrftoken`, `uuid` e `two_factor_identifier` restaurados da sessão salva. Nunca chamar `cl.login()` novamente num cliente novo para completar 2FA — o Instagram trata o username como email/telefone nesse fluxo e rejeita.
+
+---
+
+### ✅ Fase 22 — Histórico de Pesquisas de Inspirações
+**Data:** 13/05/2026
+**Commit:** `feat: Fase 22 — histórico de pesquisas com cache no Supabase`
+
+#### O que foi feito
+- Nova tabela `scraped_profiles` no Supabase com constraint UNIQUE em `(user_id, username)`
+  - Campos: `id`, `user_id`, `username`, `full_name`, `profile_pic_url`, `videos_data` (JSONB), `video_count`, `scraped_at`
+  - RLS habilitado: usuário só acessa seus próprios registros
+- `app/api/inspirations/scrape/route.ts` agora faz **upsert** em `scraped_profiles` após cada scraping bem-sucedido
+  - `scrapeWithToken` retorna `{ reels, fullName, profilePicUrl }` extraindo dados do primeiro item Apify
+  - Upsert usa `onConflict: "user_id,username"` para atualizar registros existentes
+  - Bloco try/catch independente — falha no upsert nunca impede a resposta de reels ao usuário
+- `GET /api/inspirations/history` — retorna todos os perfis do usuário ordenados por `scraped_at desc` (inclui `videos_data` para "Ver Vídeos" instantâneo)
+- `DELETE /api/inspirations/history/[id]` — remove registro do histórico, com guard `user_id` para segurança
+- `app/dashboard/search/page.tsx` reescrito com duas views:
+  - **`view === "history"`**: grid de cards de perfil (`HistoryCard`) com avatar (fallback gradiente+inicial se imagem falhar), username, full_name, video_count, timeAgo, botão "Ver Vídeos", botão de lixeira (aparece no hover)
+  - **`view === "grid"`**: grid de reels com botão "← Voltar", igual ao anterior
+- Fluxo: nova busca → modal loading → scrape + upsert DB → fecha modal 700ms → view="grid" + refreshHistory()
+- "Ver Vídeos" → carrega reels do cache local (sem nova request)
+- Lixeira → remoção otimista da UI + DELETE em background
+- Skeletons enquanto carrega o histórico inicial (4 cards pulsando)
+
+#### SQL para executar no Supabase Dashboard
+```sql
+create table if not exists public.scraped_profiles (
+  id              uuid        primary key default gen_random_uuid(),
+  user_id         uuid        not null references auth.users(id) on delete cascade,
+  username        text        not null,
+  full_name       text        not null default '',
+  profile_pic_url text,
+  videos_data     jsonb       not null default '[]',
+  video_count     integer     not null default 0,
+  scraped_at      timestamptz not null default now(),
+  constraint uq_scraped_profiles_user_username unique (user_id, username)
+);
+
+create index if not exists scraped_profiles_user_id_idx on public.scraped_profiles(user_id);
+alter table public.scraped_profiles enable row level security;
+create policy "users_manage_own_scraped_profiles"
+  on public.scraped_profiles for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+#### Decisão: `videos_data` no SELECT da history list
+Incluir o JSONB completo na listagem evita um segundo fetch ao clicar "Ver Vídeos". Para 10-20 perfis × 20 reels cada, o payload estimado é ~100-200KB — aceitável. Se escalar, criar endpoint separado `/api/inspirations/history/[id]/videos` e paginar.
