@@ -18,6 +18,11 @@ import {
   ArrowLeft,
   Smartphone,
   Mail,
+  MoreHorizontal,
+  RefreshCw,
+  Users,
+  FileText,
+  Clock,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -29,6 +34,11 @@ interface Account {
   avatar_url: string | null;
   is_active: boolean;
   connected_at: string;
+  followers_count: number | null;
+  posts_count: number | null;
+  last_post_at: string | null;
+  has_active_stories: boolean | null;
+  profile_refreshed_at: string | null;
 }
 
 const AVATAR_COLORS = [
@@ -44,6 +54,25 @@ function avatarColor(username: string) {
   let hash = 0;
   for (const c of username) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff;
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function formatNumber(n: number | null | undefined): string {
+  if (n == null) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff / 60_000);
+  if (m < 1) return "agora";
+  if (m < 60) return `${m}min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h atrás`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d atrás`;
+  return new Date(dateStr).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 }
 
 type ModalStep = "credentials" | "verify_code";
@@ -70,44 +99,270 @@ const METHOD_ICON: Record<VerificationMethod, React.ReactNode> = {
   email: <Mail size={14} />,
 };
 
+// ── Chip de métrica ───────────────────────────────────────────
+function Metric({
+  icon,
+  label,
+  muted = false,
+  blue = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  muted?: boolean;
+  blue?: boolean;
+}) {
+  return (
+    <div className={cn(
+      "flex items-center gap-1 whitespace-nowrap text-[11px] flex-shrink-0",
+      blue ? "text-blue-400" : muted ? "text-white/20" : "text-white/45"
+    )}>
+      <span className={cn(
+        "flex-shrink-0",
+        blue ? "text-blue-400" : muted ? "text-white/15" : "text-white/30"
+      )}>
+        {icon}
+      </span>
+      {label}
+    </div>
+  );
+}
+
+// ── Card de conta ─────────────────────────────────────────────
+function AccountCard({
+  account,
+  onRefresh,
+  onToggle,
+  onDelete,
+  refreshing,
+  toggling,
+  deleting,
+}: {
+  account: Account;
+  onRefresh: (id: string) => void;
+  onToggle: (acc: Account) => void;
+  onDelete: (id: string) => void;
+  refreshing: boolean;
+  toggling: boolean;
+  deleting: boolean;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [menuOpen]);
+
+  const proxyImg = (url: string) => `/api/proxy-image?url=${encodeURIComponent(url)}`;
+  const busy = refreshing || toggling || deleting;
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.2 }}
+      className="glass-card rounded-2xl"
+    >
+      {/* ── Cabeçalho ── */}
+      <div className="flex items-start gap-3 p-5 pb-4">
+        {account.avatar_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={proxyImg(account.avatar_url)}
+            alt={account.username}
+            className="w-12 h-12 rounded-full object-cover flex-shrink-0 ring-2 ring-white/10"
+          />
+        ) : (
+          <div className={cn(
+            "w-12 h-12 rounded-full bg-gradient-to-br flex items-center justify-center flex-shrink-0 ring-2 ring-white/10",
+            avatarColor(account.username)
+          )}>
+            <Instagram size={20} className="text-white" />
+          </div>
+        )}
+
+        <div className="flex-1 min-w-0 pt-0.5">
+          <p className="text-sm font-bold text-white/90 truncate">@{account.username}</p>
+          <div className="flex items-center gap-1.5 mt-1">
+            <Instagram size={9} className="text-pink-400 flex-shrink-0" />
+            <span className="text-[10px] text-white/30">Instagram</span>
+            <span className={cn(
+              "inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide flex-shrink-0",
+              account.is_active
+                ? "bg-emerald-500/15 text-emerald-400"
+                : "bg-white/[0.05] text-white/20"
+            )}>
+              <span className={cn(
+                "w-1.5 h-1.5 rounded-full",
+                account.is_active ? "bg-emerald-400" : "bg-white/20"
+              )} />
+              {account.is_active ? "ATIVA" : "INATIVA"}
+            </span>
+          </div>
+        </div>
+
+        {/* Menu três pontos */}
+        <div className="relative flex-shrink-0" ref={menuRef}>
+          <button
+            onClick={() => !busy && setMenuOpen((o) => !o)}
+            disabled={busy}
+            title="Opções"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-white/25 hover:text-white/70 hover:bg-white/[0.06] transition-colors disabled:opacity-40"
+          >
+            {(refreshing || deleting) ? (
+              <Loader2 size={13} className="animate-spin text-cyan-400" />
+            ) : (
+              <MoreHorizontal size={15} />
+            )}
+          </button>
+
+          <AnimatePresence>
+            {menuOpen && (
+              <motion.div
+                key="menu"
+                initial={{ opacity: 0, scale: 0.9, y: -6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: -6 }}
+                transition={{ duration: 0.1 }}
+                className="absolute right-0 top-full mt-1.5 z-30 min-w-[168px] bg-[#111318] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden"
+              >
+                <button
+                  onClick={() => { onRefresh(account.id); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
+                >
+                  <RefreshCw size={12} className="text-cyan-400" />
+                  Atualizar Dados
+                </button>
+                <button
+                  onClick={() => { onToggle(account); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
+                >
+                  <Power size={12} className={account.is_active ? "text-amber-400" : "text-emerald-400"} />
+                  {account.is_active ? "Desativar conta" : "Ativar conta"}
+                </button>
+                <div className="h-px bg-white/[0.06]" />
+                <button
+                  onClick={() => { onDelete(account.id); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-red-400/70 hover:bg-red-500/[0.08] hover:text-red-400 transition-colors"
+                >
+                  <Trash2 size={12} />
+                  Remover Conta
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* ── Divisor ── */}
+      <div className="h-px bg-white/[0.05] mx-5" />
+
+      {/* ── Métricas ── */}
+      <div className="flex items-center gap-3.5 px-5 py-3 overflow-x-auto">
+        <Metric
+          icon={<Users size={11} />}
+          label={`${formatNumber(account.followers_count)} seg.`}
+          muted={account.followers_count == null}
+        />
+        <Metric
+          icon={<FileText size={11} />}
+          label={`${account.posts_count ?? "—"} posts`}
+          muted={account.posts_count == null}
+        />
+        <Metric
+          icon={<Clock size={11} />}
+          label={account.last_post_at ? timeAgo(account.last_post_at) : "—"}
+          muted={!account.last_post_at}
+        />
+        <Metric
+          icon={
+            <span className={cn(
+              "w-1.5 h-1.5 rounded-full inline-block flex-shrink-0",
+              account.profile_refreshed_at ? "bg-emerald-400" : "bg-white/20"
+            )} />
+          }
+          label={account.profile_refreshed_at
+            ? `online ${timeAgo(account.profile_refreshed_at)}`
+            : "não atualizado"}
+          muted={!account.profile_refreshed_at}
+        />
+        {account.has_active_stories === true && (
+          <Metric
+            icon={
+              <span className="w-1.5 h-1.5 rounded-full inline-block bg-blue-400 ring-1 ring-blue-400/40 flex-shrink-0" />
+            }
+            label="story ativo"
+            blue
+          />
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Skeleton ──────────────────────────────────────────────────
+function AccountSkeleton() {
+  return (
+    <div className="glass-card rounded-2xl animate-pulse">
+      <div className="flex items-start gap-3 p-5 pb-4">
+        <div className="w-12 h-12 rounded-full bg-white/[0.07] flex-shrink-0" />
+        <div className="flex-1 space-y-2 pt-1">
+          <div className="h-3.5 bg-white/[0.07] rounded-full w-28" />
+          <div className="h-2.5 bg-white/[0.04] rounded-full w-36" />
+        </div>
+        <div className="w-7 h-7 rounded-lg bg-white/[0.04]" />
+      </div>
+      <div className="h-px bg-white/[0.05] mx-5" />
+      <div className="flex items-center gap-3 px-5 py-3">
+        {[52, 40, 48, 56].map((w, i) => (
+          <div key={i} style={{ width: w }} className="h-2.5 bg-white/[0.05] rounded-full flex-shrink-0" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Página principal ──────────────────────────────────────────
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [step, setStep] = useState<ModalStep>("credentials");
 
-  // Step 1 — credentials
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // Step 2 — verification code
   const [challenge, setChallenge] = useState<PendingChallenge | null>(null);
   const [code, setCode] = useState("");
 
-  // Shared
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
 
-  // Row actions
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  // Instância estável do cliente Supabase
   const supabase = useMemo(() => createClient(), []);
-  // Guards síncronos para evitar duplo-clique antes do re-render
   const _connectingRef = useRef(false);
   const _togglingRef = useRef<string | null>(null);
   const _deletingRef = useRef<string | null>(null);
+  const _refreshingRef = useRef<string | null>(null);
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await supabase
         .from("instagram_accounts")
-        .select("id, username, display_name, avatar_url, is_active, connected_at")
+        .select("id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at")
         .order("connected_at", { ascending: false });
-      setAccounts(data ?? []);
+      setAccounts((data ?? []) as unknown as Account[]);
     } finally {
       setLoading(false);
     }
@@ -115,7 +370,26 @@ export default function AccountsPage() {
 
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
-  // ── Step 1: credenciais ───────────────────────────────────
+  const handleRefresh = useCallback(async (id: string) => {
+    if (_refreshingRef.current) return;
+    _refreshingRef.current = id;
+    setRefreshingId(id);
+    try {
+      const res = await fetch("/api/accounts/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: id }),
+      });
+      if (res.ok) await fetchAccounts();
+    } catch (e) {
+      console.error("[accounts/refresh]", e);
+    } finally {
+      _refreshingRef.current = null;
+      setRefreshingId(null);
+    }
+  }, [fetchAccounts]);
+
+  // ── Credenciais ───────────────────────────────────────────
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
     if (_connectingRef.current || !username.trim() || !password.trim()) return;
@@ -169,7 +443,7 @@ export default function AccountsPage() {
     }
   };
 
-  // ── Step 2: código de verificação ────────────────────────
+  // ── Código de verificação ─────────────────────────────────
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (_connectingRef.current || !code.trim() || !challenge) return;
@@ -216,8 +490,8 @@ export default function AccountsPage() {
         .from("instagram_accounts")
         .update({ is_active: !account.is_active })
         .eq("id", account.id);
-      setAccounts(prev =>
-        prev.map(a => a.id === account.id ? { ...a, is_active: !a.is_active } : a)
+      setAccounts((prev) =>
+        prev.map((a) => a.id === account.id ? { ...a, is_active: !a.is_active } : a)
       );
     } finally {
       _togglingRef.current = null;
@@ -231,7 +505,7 @@ export default function AccountsPage() {
     setDeletingId(id);
     try {
       await supabase.from("instagram_accounts").delete().eq("id", id);
-      setAccounts(prev => prev.filter(a => a.id !== id));
+      setAccounts((prev) => prev.filter((a) => a.id !== id));
     } finally {
       _deletingRef.current = null;
       setDeletingId(null);
@@ -252,12 +526,12 @@ export default function AccountsPage() {
   const closeModal = () => { if (!connecting) resetAndClose(); };
   const backToCredentials = () => { setStep("credentials"); setCode(""); setError(""); };
 
-  const active = accounts.filter(a => a.is_active).length;
+  const active = accounts.filter((a) => a.is_active).length;
 
   return (
     <div className="space-y-6">
 
-      {/* Header */}
+      {/* Cabeçalho da página */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -279,108 +553,49 @@ export default function AccountsPage() {
         </motion.button>
       </motion.div>
 
-      {/* Account list */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.08 }}
-        className="glass-card divide-y divide-white/[0.06]"
-      >
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 size={22} className="animate-spin text-white/25" />
+      {/* Grid de cards */}
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => <AccountSkeleton key={i} />)}
+        </div>
+      ) : accounts.length === 0 ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="glass-card rounded-2xl flex flex-col items-center gap-3 py-20 text-center px-6"
+        >
+          <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center">
+            <Instagram size={24} className="text-white/20" />
           </div>
-        ) : accounts.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-center px-6">
-            <div className="w-12 h-12 rounded-2xl bg-white/[0.04] flex items-center justify-center">
-              <Instagram size={22} className="text-white/20" />
-            </div>
-            <p className="text-white/30 text-sm">Nenhuma conta conectada ainda.</p>
-            <button onClick={() => setShowModal(true)} className="btn-primary text-sm px-5 py-2">
-              Conectar primeira conta
-            </button>
-          </div>
-        ) : (
-          <AnimatePresence initial={false}>
-            {accounts.map(account => (
-              <motion.div
+          <p className="text-white/30 text-sm">Nenhuma conta conectada ainda.</p>
+          <button onClick={() => setShowModal(true)} className="btn-primary text-sm px-5 py-2">
+            Conectar primeira conta
+          </button>
+        </motion.div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"
+        >
+          <AnimatePresence>
+            {accounts.map((account) => (
+              <AccountCard
                 key={account.id}
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="flex items-center gap-4 px-5 py-4"
-              >
-                {account.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={`/api/proxy-image?url=${encodeURIComponent(account.avatar_url)}`}
-                    alt={account.username}
-                    className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-                  />
-                ) : (
-                  <div className={cn(
-                    "w-10 h-10 rounded-full bg-gradient-to-br flex items-center justify-center flex-shrink-0",
-                    avatarColor(account.username)
-                  )}>
-                    <Instagram size={16} className="text-white" />
-                  </div>
-                )}
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-white/85">@{account.username}</p>
-                    <span className={cn(
-                      "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
-                      account.is_active
-                        ? "bg-emerald-500/15 text-emerald-400"
-                        : "bg-white/[0.06] text-white/25"
-                    )}>
-                      {account.is_active ? "Ativa" : "Inativa"}
-                    </span>
-                  </div>
-                  <p className="text-xs text-white/30 truncate mt-0.5">
-                    {account.display_name ?? "—"} · conectada em{" "}
-                    {new Date(account.connected_at).toLocaleDateString("pt-BR")}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <motion.button
-                    onClick={() => handleToggle(account)}
-                    whileTap={{ scale: 0.9 }}
-                    disabled={!!togglingId}
-                    title={account.is_active ? "Desativar" : "Ativar"}
-                    className={cn(
-                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50",
-                      account.is_active
-                        ? "text-emerald-400 hover:bg-emerald-500/10"
-                        : "text-white/20 hover:bg-white/5 hover:text-white/50"
-                    )}
-                  >
-                    {togglingId === account.id
-                      ? <Loader2 size={14} className="animate-spin" />
-                      : <Power size={14} />}
-                  </motion.button>
-
-                  <motion.button
-                    onClick={() => handleDelete(account.id)}
-                    whileTap={{ scale: 0.9 }}
-                    disabled={!!deletingId}
-                    title="Remover conta"
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-white/20 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-50"
-                  >
-                    {deletingId === account.id
-                      ? <Loader2 size={14} className="animate-spin" />
-                      : <Trash2 size={14} />}
-                  </motion.button>
-                </div>
-              </motion.div>
+                account={account}
+                onRefresh={handleRefresh}
+                onToggle={handleToggle}
+                onDelete={handleDelete}
+                refreshing={refreshingId === account.id}
+                toggling={togglingId === account.id}
+                deleting={deletingId === account.id}
+              />
             ))}
           </AnimatePresence>
-        )}
-      </motion.div>
+        </motion.div>
+      )}
 
-      {/* Modal — overlay cobre toda a viewport via flex centering */}
+      {/* Modal de conexão */}
       <AnimatePresence>
         {showModal && (
           <motion.div
@@ -391,10 +606,8 @@ export default function AccountsPage() {
             transition={{ duration: 0.2 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
           >
-            {/* Click-away */}
             <div className="absolute inset-0" onClick={closeModal} />
 
-            {/* Card */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -405,7 +618,7 @@ export default function AccountsPage() {
               <div className="glass neon-border rounded-2xl p-6">
                 <AnimatePresence mode="wait">
 
-                  {/* ─── Step 1: credenciais ─── */}
+                  {/* Step 1 — credenciais */}
                   {step === "credentials" && (
                     <motion.div
                       key="step-credentials"
@@ -419,7 +632,8 @@ export default function AccountsPage() {
                           <LogIn size={18} className="text-violet-400" />
                           <h2 className="font-semibold text-white">Conectar conta do Instagram</h2>
                         </div>
-                        <button onClick={closeModal} disabled={connecting} className="text-white/20 hover:text-white/60 transition-colors disabled:opacity-40">
+                        <button onClick={closeModal} disabled={connecting}
+                          className="text-white/20 hover:text-white/60 transition-colors disabled:opacity-40">
                           <X size={18} />
                         </button>
                       </div>
@@ -427,19 +641,22 @@ export default function AccountsPage() {
                       <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-violet-600/10 border border-violet-500/20 mb-5">
                         <ShieldCheck size={14} className="text-violet-400 mt-0.5 flex-shrink-0" />
                         <p className="text-[11px] text-violet-300/80 leading-relaxed">
-                          Suas credenciais são usadas apenas para autenticar via <strong>instagrapi</strong> localmente. A senha não é armazenada.
+                          Suas credenciais são usadas apenas para autenticar via{" "}
+                          <strong>instagrapi</strong> localmente. A senha não é armazenada.
                         </p>
                       </div>
 
                       <form onSubmit={handleConnect} className="space-y-4">
                         <div>
-                          <label className="text-xs font-semibold text-white/50 mb-1.5 block">Usuário do Instagram</label>
+                          <label className="text-xs font-semibold text-white/50 mb-1.5 block">
+                            Usuário do Instagram
+                          </label>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25 text-sm">@</span>
                             <input
                               type="text"
                               value={username}
-                              onChange={e => setUsername(e.target.value.replace(/^@/, ""))}
+                              onChange={(e) => setUsername(e.target.value.replace(/^@/, ""))}
                               placeholder="seu_perfil"
                               required autoFocus disabled={connecting}
                               className="input-glass pl-7 w-full disabled:opacity-50"
@@ -453,14 +670,14 @@ export default function AccountsPage() {
                             <input
                               type={showPassword ? "text" : "password"}
                               value={password}
-                              onChange={e => setPassword(e.target.value)}
+                              onChange={(e) => setPassword(e.target.value)}
                               placeholder="••••••••"
                               required disabled={connecting}
                               className="input-glass pr-10 w-full disabled:opacity-50"
                             />
                             <button
                               type="button"
-                              onClick={() => setShowPassword(p => !p)}
+                              onClick={() => setShowPassword((p) => !p)}
                               className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors"
                             >
                               {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -486,7 +703,8 @@ export default function AccountsPage() {
                             className="btn-ghost flex-1 text-sm py-2.5 disabled:opacity-40">
                             Cancelar
                           </button>
-                          <button type="submit" disabled={connecting || !username.trim() || !password.trim()}
+                          <button type="submit"
+                            disabled={connecting || !username.trim() || !password.trim()}
                             className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2 disabled:opacity-50">
                             {connecting
                               ? <><Loader2 size={14} className="animate-spin" /> Conectando...</>
@@ -497,7 +715,7 @@ export default function AccountsPage() {
                     </motion.div>
                   )}
 
-                  {/* ─── Step 2: código de verificação ─── */}
+                  {/* Step 2 — código de verificação */}
                   {step === "verify_code" && challenge && (
                     <motion.div
                       key="step-verify"
@@ -511,7 +729,8 @@ export default function AccountsPage() {
                           {METHOD_ICON[challenge.verificationMethod]}
                           <h2 className="font-semibold text-white">Verificação de segurança</h2>
                         </div>
-                        <button onClick={closeModal} disabled={connecting} className="text-white/20 hover:text-white/60 transition-colors disabled:opacity-40">
+                        <button onClick={closeModal} disabled={connecting}
+                          className="text-white/20 hover:text-white/60 transition-colors disabled:opacity-40">
                           <X size={18} />
                         </button>
                       </div>
@@ -533,7 +752,7 @@ export default function AccountsPage() {
                           <input
                             type="text"
                             value={code}
-                            onChange={e => setCode(e.target.value.replace(/[^0-9 ]/g, "").slice(0, 7))}
+                            onChange={(e) => setCode(e.target.value.replace(/[^0-9 ]/g, "").slice(0, 7))}
                             placeholder="000 000"
                             required autoFocus disabled={connecting}
                             maxLength={7}
@@ -558,7 +777,8 @@ export default function AccountsPage() {
                             className="btn-ghost flex items-center justify-center gap-1.5 px-4 text-sm py-2.5 disabled:opacity-40">
                             <ArrowLeft size={13} /> Voltar
                           </button>
-                          <button type="submit" disabled={connecting || code.replace(/\s/g, "").length < 6}
+                          <button type="submit"
+                            disabled={connecting || code.replace(/\s/g, "").length < 6}
                             className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2 disabled:opacity-50">
                             {connecting
                               ? <><Loader2 size={14} className="animate-spin" /> Verificando...</>

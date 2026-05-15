@@ -77,6 +77,14 @@ create policy "users_manage_own_accounts"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+-- Fase 25 — Métricas de perfil em tempo real (execute se a tabela já existir)
+alter table public.instagram_accounts
+  add column if not exists followers_count    integer,
+  add column if not exists posts_count        integer,
+  add column if not exists last_post_at       timestamptz,
+  add column if not exists has_active_stories boolean,   -- reservado; actor atual retorna null
+  add column if not exists profile_refreshed_at timestamptz;
+
 
 -- ──────────────────────────────────────────────────────────────
 -- 4. Tabela: scheduled_posts

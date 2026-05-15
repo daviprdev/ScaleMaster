@@ -706,3 +706,51 @@ Ao fechar o sistema e entrar novamente, o histórico de pesquisas da página Ins
 
 #### Lição aprendida
 Em Next.js 15 com App Router, rotas de API autenticadas que dependem de cookies de sessão devem sempre ter `export const dynamic = "force-dynamic"`. Sem isso, o framework pode memorizar a resposta de um usuário deslogado e servi-la novamente após re-login. Além disso, nunca deixar erros 401 silenciosos em fetches de dados de usuário — sempre redirecionar para login.
+
+---
+
+### ✅ Fase 25 — Página de Contas Refatorada com Dados em Tempo Real
+**Data:** 15/05/2026
+**Commit:** `feat: Fase 25 — grid de cards em Contas com refresh de dados via Apify`
+
+#### O que foi feito
+
+**Backend — `app/api/accounts/refresh/route.ts`** (nova rota)
+- `POST /api/accounts/refresh` recebe `{ accountId }`, valida que o usuário autenticado é dono da conta
+- Usa o actor `apify/instagram-scraper` com `resultsType: "details"` na URL de perfil para buscar:
+  - `followersCount` (seguidores)
+  - `postsCount` (total de posts)
+  - `lastPostAt` — extraído de `latestPosts[0].timestamp`
+  - `has_active_stories` — **não suportado** pelo actor atual (requer autenticação + ator dedicado); sempre `null`
+- Lógica de rotação de tokens idêntica à de Inspirações (`isQuotaError` → próximo token)
+- Modo mock (sem tokens Apify): gera dados aleatórios realistas para desenvolvimento local
+- Após busca bem-sucedida, faz `UPDATE` em `instagram_accounts` com os novos campos
+
+**Banco de dados — `supabase/schema.sql`**
+Adicionadas 5 novas colunas à tabela `instagram_accounts` (execute `ALTER TABLE` se a tabela já existir):
+```sql
+alter table public.instagram_accounts
+  add column if not exists followers_count    integer,
+  add column if not exists posts_count        integer,
+  add column if not exists last_post_at       timestamptz,
+  add column if not exists has_active_stories boolean,
+  add column if not exists profile_refreshed_at timestamptz;
+```
+
+**Frontend — `app/dashboard/accounts/page.tsx`** (reescrito)
+- Layout de lista (`divide-y`) substituído por **grid responsivo** de cards (`grid-cols-1 sm:grid-cols-2 xl:grid-cols-3`)
+- Componente `AccountCard` encapsula cada card com estado local do menu dropdown
+- Cada card exibe:
+  - **Cabeçalho:** avatar (via proxy) ou inicial com gradiente, `@username`, badge "● ATIVA / INATIVA"
+  - **Menu ⋯:** AnimatePresence com click-outside via `useEffect + menuRef`; opções: Atualizar Dados, Ativar/Desativar, Remover
+  - **Métricas:** seguidores, posts, último post (`timeAgo`), status online (`profile_refreshed_at`), story ativo (só aparece se `has_active_stories === true`)
+- Componente `AccountSkeleton`: 3 cards pulsando durante carregamento
+- `fetchAccounts` atualizado para selecionar os 5 novos campos do Supabase
+- `handleRefresh(id)`: chama `/api/accounts/refresh` e re-fetcha a lista; guard `_refreshingRef` evita chamadas paralelas
+- Helpers `formatNumber` (1K/1M) e `timeAgo` inline no arquivo
+
+#### Limitação documentada: Stories
+O actor `apify/instagram-scraper` não expõe dados de stories — eles exigem autenticação e são efêmeros (24h). Para suportar `has_active_stories` no futuro, seria necessário um ator dedicado (ex: `apify/instagram-stories-scraper`) com credenciais de login. O campo já existe na tabela e na interface do frontend, mas sempre virá como `null` por enquanto.
+
+#### Decisão: estado de menu por card (local) vs global
+O `menuOpen` é gerenciado dentro de cada `AccountCard` (não no pai) pois cada card tem seu próprio `menuRef` para click-outside. Isso evita um único `openMenuId` no pai que exigiria passar props extras. Com poucas contas (< 10 tipicamente), o overhead de múltiplos `useEffect` é desprezível.
