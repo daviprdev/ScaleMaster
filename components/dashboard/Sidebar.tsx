@@ -10,6 +10,7 @@ import {
   Search,
   FolderOpen,
   CalendarClock,
+  CalendarRange,
   Users,
   LogOut,
   ChevronLeft,
@@ -27,6 +28,7 @@ const navItems = [
   { label: "Contas", href: "/dashboard/accounts", icon: Users },
   { label: "Inspirações", href: "/dashboard/search", icon: Search },
   { label: "Biblioteca", href: "/dashboard/library", icon: FolderOpen },
+  { label: "Postagens", href: "/dashboard/posts", icon: CalendarRange },
   { label: "Agendamento", href: "/dashboard/schedule", icon: CalendarClock },
 ];
 

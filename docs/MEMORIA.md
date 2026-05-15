@@ -754,3 +754,65 @@ O actor `apify/instagram-scraper` não expõe dados de stories — eles exigem a
 
 #### Decisão: estado de menu por card (local) vs global
 O `menuOpen` é gerenciado dentro de cada `AccountCard` (não no pai) pois cada card tem seu próprio `menuRef` para click-outside. Isso evita um único `openMenuId` no pai que exigiria passar props extras. Com poucas contas (< 10 tipicamente), o overhead de múltiplos `useEffect` é desprezível.
+
+---
+
+### ✅ Fase 26 — Página de Postagens (Agendamento em Massa)
+**Data:** 15/05/2026
+**Commit:** `feat: Fase 26 — agendamento em massa com algoritmo de distribuição inteligente`
+
+#### O que foi feito
+
+**Backend — `app/api/posts/schedule/route.ts`** (nova rota)
+- `POST /api/posts/schedule` recebe `{ video_ids, account_ids, captions, start_datetime, videos_per_batch, interval_hours }`
+- **Algoritmo Fisher-Yates:** para cada conta, cria shuffles independentes dos vídeos e das legendas — garante que Conta A não poste o mesmo vídeo da Conta B no mesmo horário
+- **Cálculo de lotes:** `batchIndex = floor(i / videos_per_batch)` → `scheduled_at = start + batchIndex × interval_hours × 3.600.000ms`
+- **Distribuição de legendas:** round-robin sobre as captions embaralhadas (`i % captions.length`)
+- **Inserção em massa:** todos os posts calculados são inseridos num único `admin.from("scheduled_posts").insert(posts)`
+- Validações: ao menos 1 vídeo, 1 conta, 1 legenda não-vazia e data de início válida
+
+**Banco de dados**
+```sql
+-- Adicione se a tabela scheduled_posts já existia antes desta fase:
+alter table public.scheduled_posts
+  add column if not exists video_url text;
+```
+
+**Frontend — `app/dashboard/posts/page.tsx`** (nova página)
+4 seções em cartões glassmorphism com step badges numéricos que viram ✓ quando preenchidos:
+
+| Seção | Componente | Comportamento |
+|-------|-----------|---------------|
+| 1. Vídeos | Grid 4-8 colunas `aspect-[9/16]` | Click para selecionar; borda violet + checkmark overlay; "Todos / Limpar"; max-h com scroll |
+| 2. Contas | Grid 1-3 colunas | Mostra apenas contas ativas; avatar via proxy + followers_count |
+| 3. Legendas | Textareas dinâmicos com AnimatePresence | Até 10 variações; contador de chars; botão Adicionar |
+| 4. Config de Lote | 3 inputs: datetime-local, videosPerBatch, intervalHours | Preview calculado em tempo real com data do último lote |
+
+- **Barra de ação sticky (`sticky bottom-0`)** com fundo gradient fade e rodapé glassmorphism: mostra resumo "X posts · N contas · M lotes" e botão "Agendar X Posts" com Loader2 durante `scheduling`
+- **Tela de sucesso:** AnimatePresence com `CheckCircle2`, contadores e links "Agendar Mais" e "Ver Agendamentos"
+
+**Sidebar — `components/dashboard/Sidebar.tsx`**
+- Novo item "Postagens" com ícone `CalendarRange` inserido antes de "Agendamento"
+- `CalendarRange` = agendamento em intervalo de datas; `CalendarClock` existente = evento pontual
+
+**Header — `components/dashboard/Header.tsx`**
+- Adicionado título `"Postagens"` / subtitle `"Agendamento em massa..."` para `/dashboard/posts`
+
+#### Algoritmo de distribuição inteligente — exemplo
+```
+Vídeos selecionados: [A, B, C, D, E]  |  videos_per_batch: 2  |  interval: 3h
+Conta 1 (shuffle): [C, A, E, B, D]
+  → Lote 0 (C, A): scheduled_at = T+0h
+  → Lote 1 (E, B): scheduled_at = T+3h
+  → Lote 2 (D):   scheduled_at = T+6h
+Conta 2 (shuffle): [E, D, B, A, C]
+  → Lote 0 (E, D): scheduled_at = T+0h   ← vídeo diferente da Conta 1 no mesmo horário ✓
+  → Lote 1 (B, A): scheduled_at = T+3h
+  → Lote 2 (C):   scheduled_at = T+6h
+```
+
+#### SQL para executar no Supabase Dashboard (se tabela já existia)
+```sql
+alter table public.scheduled_posts
+  add column if not exists video_url text;
+```

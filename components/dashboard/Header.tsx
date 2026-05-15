@@ -17,6 +17,10 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     title: "Biblioteca de Vídeos",
     subtitle: "Seus vídeos processados e prontos para postar",
   },
+  "/dashboard/posts": {
+    title: "Postagens",
+    subtitle: "Agendamento em massa com distribuição inteligente",
+  },
   "/dashboard/schedule": {
     title: "Agendamento",
     subtitle: "Programe postagens para múltiplas contas",

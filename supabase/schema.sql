@@ -110,6 +110,10 @@ create policy "users_manage_own_posts"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+-- Fase 26 — Agendamento em Massa (execute se a tabela já existir)
+alter table public.scheduled_posts
+  add column if not exists video_url text;
+
 
 -- ──────────────────────────────────────────────────────────────
 -- 5. Tabela: scraped_profiles
