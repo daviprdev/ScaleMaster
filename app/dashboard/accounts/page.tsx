@@ -7,22 +7,16 @@ import {
   Plus,
   Trash2,
   Power,
-  X,
   Loader2,
-  LogIn,
   AlertCircle,
-  Eye,
-  EyeOff,
-  ShieldCheck,
-  KeyRound,
-  ArrowLeft,
-  Smartphone,
-  Mail,
   MoreHorizontal,
   RefreshCw,
   Users,
   FileText,
   Clock,
+  CheckCircle2,
+  ExternalLink,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -39,6 +33,7 @@ interface Account {
   last_post_at: string | null;
   has_active_stories: boolean | null;
   profile_refreshed_at: string | null;
+  ig_business_account_id: string | null;
 }
 
 const AVATAR_COLORS = [
@@ -75,28 +70,14 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 }
 
-type ModalStep = "credentials" | "verify_code";
-type ChallengeType = "2fa" | "checkpoint";
-type VerificationMethod = "authenticator" | "sms" | "email";
-
-interface PendingChallenge {
-  challengeType: ChallengeType;
-  verificationMethod: VerificationMethod;
-  sessionToken: string;
-  twoFactorIdentifier: string;
-  username: string;
-}
-
-const METHOD_LABEL: Record<VerificationMethod, string> = {
-  authenticator: "app autenticador (TOTP)",
-  sms: "SMS no número cadastrado",
-  email: "e-mail cadastrado",
-};
-
-const METHOD_ICON: Record<VerificationMethod, React.ReactNode> = {
-  authenticator: <KeyRound size={14} />,
-  sms: <Smartphone size={14} />,
-  email: <Mail size={14} />,
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  cancelled: "Conexão cancelada. Nenhuma conta foi adicionada.",
+  state_mismatch: "Erro de segurança (state inválido). Tente novamente.",
+  no_code: "Código de autorização ausente. Tente novamente.",
+  no_ig_accounts:
+    "Nenhuma conta Business ou Creator do Instagram foi encontrada vinculada a este Facebook. " +
+    "Certifique-se de que sua conta IG está vinculada a uma Página do Facebook.",
+  server_error: "Erro interno ao salvar a conta. Verifique o console e tente novamente.",
 };
 
 // ── Chip de métrica ───────────────────────────────────────────
@@ -112,14 +93,18 @@ function Metric({
   blue?: boolean;
 }) {
   return (
-    <div className={cn(
-      "flex items-center gap-1 whitespace-nowrap text-[11px] flex-shrink-0",
-      blue ? "text-blue-400" : muted ? "text-white/20" : "text-white/45"
-    )}>
-      <span className={cn(
-        "flex-shrink-0",
-        blue ? "text-blue-400" : muted ? "text-white/15" : "text-white/30"
-      )}>
+    <div
+      className={cn(
+        "flex items-center gap-1 whitespace-nowrap text-[11px] flex-shrink-0",
+        blue ? "text-blue-400" : muted ? "text-white/20" : "text-white/45"
+      )}
+    >
+      <span
+        className={cn(
+          "flex-shrink-0",
+          blue ? "text-blue-400" : muted ? "text-white/15" : "text-white/30"
+        )}
+      >
         {icon}
       </span>
       {label}
@@ -159,6 +144,7 @@ function AccountCard({
 
   const proxyImg = (url: string) => `/api/proxy-image?url=${encodeURIComponent(url)}`;
   const busy = refreshing || toggling || deleting;
+  const isMetaConnected = !!account.ig_business_account_id;
 
   return (
     <motion.div
@@ -179,29 +165,41 @@ function AccountCard({
             className="w-12 h-12 rounded-full object-cover flex-shrink-0 ring-2 ring-white/10"
           />
         ) : (
-          <div className={cn(
-            "w-12 h-12 rounded-full bg-gradient-to-br flex items-center justify-center flex-shrink-0 ring-2 ring-white/10",
-            avatarColor(account.username)
-          )}>
+          <div
+            className={cn(
+              "w-12 h-12 rounded-full bg-gradient-to-br flex items-center justify-center flex-shrink-0 ring-2 ring-white/10",
+              avatarColor(account.username)
+            )}
+          >
             <Instagram size={20} className="text-white" />
           </div>
         )}
 
         <div className="flex-1 min-w-0 pt-0.5">
           <p className="text-sm font-bold text-white/90 truncate">@{account.username}</p>
-          <div className="flex items-center gap-1.5 mt-1">
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             <Instagram size={9} className="text-pink-400 flex-shrink-0" />
             <span className="text-[10px] text-white/30">Instagram</span>
-            <span className={cn(
-              "inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide flex-shrink-0",
-              account.is_active
-                ? "bg-emerald-500/15 text-emerald-400"
-                : "bg-white/[0.05] text-white/20"
-            )}>
-              <span className={cn(
-                "w-1.5 h-1.5 rounded-full",
-                account.is_active ? "bg-emerald-400" : "bg-white/20"
-              )} />
+            {isMetaConnected && (
+              <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide bg-blue-500/15 text-blue-300 flex-shrink-0">
+                <span className="w-1 h-1 rounded-full bg-blue-400" />
+                META API
+              </span>
+            )}
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide flex-shrink-0",
+                account.is_active
+                  ? "bg-emerald-500/15 text-emerald-400"
+                  : "bg-white/[0.05] text-white/20"
+              )}
+            >
+              <span
+                className={cn(
+                  "w-1.5 h-1.5 rounded-full",
+                  account.is_active ? "bg-emerald-400" : "bg-white/20"
+                )}
+              />
               {account.is_active ? "ATIVA" : "INATIVA"}
             </span>
           </div>
@@ -215,7 +213,7 @@ function AccountCard({
             title="Opções"
             className="w-7 h-7 rounded-lg flex items-center justify-center text-white/25 hover:text-white/70 hover:bg-white/[0.06] transition-colors disabled:opacity-40"
           >
-            {(refreshing || deleting) ? (
+            {refreshing || deleting ? (
               <Loader2 size={13} className="animate-spin text-cyan-400" />
             ) : (
               <MoreHorizontal size={15} />
@@ -233,22 +231,34 @@ function AccountCard({
                 className="absolute right-0 top-full mt-1.5 z-30 min-w-[168px] bg-[#111318] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden"
               >
                 <button
-                  onClick={() => { onRefresh(account.id); setMenuOpen(false); }}
+                  onClick={() => {
+                    onRefresh(account.id);
+                    setMenuOpen(false);
+                  }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
                 >
                   <RefreshCw size={12} className="text-cyan-400" />
                   Atualizar Dados
                 </button>
                 <button
-                  onClick={() => { onToggle(account); setMenuOpen(false); }}
+                  onClick={() => {
+                    onToggle(account);
+                    setMenuOpen(false);
+                  }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
                 >
-                  <Power size={12} className={account.is_active ? "text-amber-400" : "text-emerald-400"} />
+                  <Power
+                    size={12}
+                    className={account.is_active ? "text-amber-400" : "text-emerald-400"}
+                  />
                   {account.is_active ? "Desativar conta" : "Ativar conta"}
                 </button>
                 <div className="h-px bg-white/[0.06]" />
                 <button
-                  onClick={() => { onDelete(account.id); setMenuOpen(false); }}
+                  onClick={() => {
+                    onDelete(account.id);
+                    setMenuOpen(false);
+                  }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-red-400/70 hover:bg-red-500/[0.08] hover:text-red-400 transition-colors"
                 >
                   <Trash2 size={12} />
@@ -282,14 +292,18 @@ function AccountCard({
         />
         <Metric
           icon={
-            <span className={cn(
-              "w-1.5 h-1.5 rounded-full inline-block flex-shrink-0",
-              account.profile_refreshed_at ? "bg-emerald-400" : "bg-white/20"
-            )} />
+            <span
+              className={cn(
+                "w-1.5 h-1.5 rounded-full inline-block flex-shrink-0",
+                account.profile_refreshed_at ? "bg-emerald-400" : "bg-white/20"
+              )}
+            />
           }
-          label={account.profile_refreshed_at
-            ? `online ${timeAgo(account.profile_refreshed_at)}`
-            : "não atualizado"}
+          label={
+            account.profile_refreshed_at
+              ? `online ${timeAgo(account.profile_refreshed_at)}`
+              : "não atualizado"
+          }
           muted={!account.profile_refreshed_at}
         />
         {account.has_active_stories === true && (
@@ -332,35 +346,50 @@ function AccountSkeleton() {
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [step, setStep] = useState<ModalStep>("credentials");
-
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-
-  const [challenge, setChallenge] = useState<PendingChallenge | null>(null);
-  const [code, setCode] = useState("");
-
-  const [connecting, setConnecting] = useState(false);
-  const [error, setError] = useState("");
+  const [notification, setNotification] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
 
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const supabase = useMemo(() => createClient(), []);
-  const _connectingRef = useRef(false);
   const _togglingRef = useRef<string | null>(null);
   const _deletingRef = useRef<string | null>(null);
   const _refreshingRef = useRef<string | null>(null);
+
+  // Processa parâmetros de retorno do OAuth
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("connected");
+    const error = params.get("error");
+
+    if (connected) {
+      const count = parseInt(connected, 10);
+      setNotification({
+        type: "success",
+        message: `${count} conta${count !== 1 ? "s" : ""} conectada${count !== 1 ? "s" : ""} com sucesso via Meta Graph API!`,
+      });
+      window.history.replaceState({}, "", "/dashboard/accounts");
+    } else if (error) {
+      setNotification({
+        type: "error",
+        message: OAUTH_ERROR_MESSAGES[error] ?? "Ocorreu um erro ao conectar. Tente novamente.",
+      });
+      window.history.replaceState({}, "", "/dashboard/accounts");
+    }
+  }, []);
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await supabase
         .from("instagram_accounts")
-        .select("id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at")
+        .select(
+          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id"
+        )
         .order("connected_at", { ascending: false });
       setAccounts((data ?? []) as unknown as Account[]);
     } finally {
@@ -368,118 +397,31 @@ export default function AccountsPage() {
     }
   }, [supabase]);
 
-  useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
-
-  const handleRefresh = useCallback(async (id: string) => {
-    if (_refreshingRef.current) return;
-    _refreshingRef.current = id;
-    setRefreshingId(id);
-    try {
-      const res = await fetch("/api/accounts/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: id }),
-      });
-      if (res.ok) await fetchAccounts();
-    } catch (e) {
-      console.error("[accounts/refresh]", e);
-    } finally {
-      _refreshingRef.current = null;
-      setRefreshingId(null);
-    }
+  useEffect(() => {
+    fetchAccounts();
   }, [fetchAccounts]);
 
-  // ── Credenciais ───────────────────────────────────────────
-  const handleConnect = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (_connectingRef.current || !username.trim() || !password.trim()) return;
-    _connectingRef.current = true;
-    setConnecting(true);
-    setError("");
-
-    try {
-      const res = await fetch("/api/accounts/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password }),
-      });
-
-      const data = await res.json() as {
-        success?: boolean;
-        error?: string;
-        requires_code?: boolean;
-        challenge_type?: ChallengeType;
-        verification_method?: VerificationMethod;
-        session_token?: string;
-        two_factor_identifier?: string;
-        username?: string;
-      };
-
-      if (data.requires_code) {
-        setChallenge({
-          challengeType: data.challenge_type ?? "2fa",
-          verificationMethod: data.verification_method ?? "authenticator",
-          sessionToken: data.session_token ?? "",
-          twoFactorIdentifier: data.two_factor_identifier ?? "",
-          username: data.username ?? username.trim(),
+  const handleRefresh = useCallback(
+    async (id: string) => {
+      if (_refreshingRef.current) return;
+      _refreshingRef.current = id;
+      setRefreshingId(id);
+      try {
+        const res = await fetch("/api/accounts/refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountId: id }),
         });
-        setStep("verify_code");
-        setError("");
-        return;
+        if (res.ok) await fetchAccounts();
+      } catch (e) {
+        console.error("[accounts/refresh]", e);
+      } finally {
+        _refreshingRef.current = null;
+        setRefreshingId(null);
       }
-
-      if (!res.ok || !data.success) {
-        setError(data.error ?? "Falha ao conectar a conta.");
-        return;
-      }
-
-      resetAndClose();
-      fetchAccounts();
-    } catch {
-      setError("Erro de rede. Verifique sua conexão e tente novamente.");
-    } finally {
-      _connectingRef.current = false;
-      setConnecting(false);
-    }
-  };
-
-  // ── Código de verificação ─────────────────────────────────
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (_connectingRef.current || !code.trim() || !challenge) return;
-    _connectingRef.current = true;
-    setConnecting(true);
-    setError("");
-
-    try {
-      const res = await fetch("/api/accounts/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: challenge.username,
-          code: code.replace(/\s/g, ""),
-          challenge_type: challenge.challengeType,
-          session_token: challenge.sessionToken,
-          two_factor_identifier: challenge.twoFactorIdentifier,
-        }),
-      });
-
-      const data = await res.json() as { success?: boolean; error?: string };
-
-      if (!res.ok || !data.success) {
-        setError(data.error ?? "Código inválido. Tente novamente.");
-        return;
-      }
-
-      resetAndClose();
-      fetchAccounts();
-    } catch {
-      setError("Erro de rede. Verifique sua conexão e tente novamente.");
-    } finally {
-      _connectingRef.current = false;
-      setConnecting(false);
-    }
-  };
+    },
+    [fetchAccounts]
+  );
 
   const handleToggle = async (account: Account) => {
     if (_togglingRef.current) return;
@@ -491,7 +433,7 @@ export default function AccountsPage() {
         .update({ is_active: !account.is_active })
         .eq("id", account.id);
       setAccounts((prev) =>
-        prev.map((a) => a.id === account.id ? { ...a, is_active: !a.is_active } : a)
+        prev.map((a) => (a.id === account.id ? { ...a, is_active: !a.is_active } : a))
       );
     } finally {
       _togglingRef.current = null;
@@ -512,24 +454,42 @@ export default function AccountsPage() {
     }
   };
 
-  const resetAndClose = () => {
-    setShowModal(false);
-    setStep("credentials");
-    setUsername("");
-    setPassword("");
-    setShowPassword(false);
-    setCode("");
-    setError("");
-    setChallenge(null);
-  };
-
-  const closeModal = () => { if (!connecting) resetAndClose(); };
-  const backToCredentials = () => { setStep("credentials"); setCode(""); setError(""); };
-
   const active = accounts.filter((a) => a.is_active).length;
 
   return (
     <div className="space-y-6">
+
+      {/* Banner de notificação OAuth */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div
+            key="notification"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className={cn(
+              "flex items-start gap-2.5 px-4 py-3 rounded-xl text-sm",
+              notification.type === "success"
+                ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300"
+                : "bg-red-500/10 border border-red-500/20 text-red-300"
+            )}
+          >
+            {notification.type === "success" ? (
+              <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0" />
+            ) : (
+              <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+            )}
+            <span className="flex-1">{notification.message}</span>
+            <button
+              onClick={() => setNotification(null)}
+              className="text-white/30 hover:text-white/60 transition-colors flex-shrink-0"
+            >
+              <X size={14} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Cabeçalho da página */}
       <motion.div
@@ -540,11 +500,12 @@ export default function AccountsPage() {
         <div>
           <h1 className="text-xl font-bold text-white">Contas do Instagram</h1>
           <p className="text-sm text-white/35 mt-0.5">
-            {accounts.length} conectada{accounts.length !== 1 ? "s" : ""} · {active} ativa{active !== 1 ? "s" : ""}
+            {accounts.length} conectada{accounts.length !== 1 ? "s" : ""} · {active} ativa
+            {active !== 1 ? "s" : ""}
           </p>
         </div>
         <motion.button
-          onClick={() => setShowModal(true)}
+          onClick={() => { window.location.href = "/api/meta/auth"; }}
           whileTap={{ scale: 0.97 }}
           className="btn-primary flex items-center gap-2 text-sm px-4 py-2.5"
         >
@@ -553,10 +514,40 @@ export default function AccountsPage() {
         </motion.button>
       </motion.div>
 
+      {/* Banner informativo — Meta Graph API */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.08 }}
+        className="flex items-start gap-3 px-4 py-3.5 rounded-xl bg-blue-500/[0.07] border border-blue-500/20"
+      >
+        <div className="w-7 h-7 rounded-lg bg-blue-600/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <span className="text-blue-400 font-bold text-sm leading-none">f</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-blue-200/80 leading-relaxed">
+            <strong className="text-blue-200">Conexão oficial via Meta Graph API.</strong>{" "}
+            Conecte contas <strong>Business</strong> ou <strong>Creator</strong> do Instagram
+            vinculadas a uma Página do Facebook. O fluxo é 100% OAuth — nenhuma senha é armazenada.
+          </p>
+        </div>
+        <a
+          href="https://developers.facebook.com/docs/instagram-api/"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Documentação da Meta Graph API"
+          className="flex-shrink-0 text-blue-400/50 hover:text-blue-300 transition-colors mt-1"
+        >
+          <ExternalLink size={12} />
+        </a>
+      </motion.div>
+
       {/* Grid de cards */}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => <AccountSkeleton key={i} />)}
+          {[1, 2, 3].map((i) => (
+            <AccountSkeleton key={i} />
+          ))}
         </div>
       ) : accounts.length === 0 ? (
         <motion.div
@@ -568,7 +559,10 @@ export default function AccountsPage() {
             <Instagram size={24} className="text-white/20" />
           </div>
           <p className="text-white/30 text-sm">Nenhuma conta conectada ainda.</p>
-          <button onClick={() => setShowModal(true)} className="btn-primary text-sm px-5 py-2">
+          <button
+            onClick={() => { window.location.href = "/api/meta/auth"; }}
+            className="btn-primary text-sm px-5 py-2"
+          >
             Conectar primeira conta
           </button>
         </motion.div>
@@ -594,207 +588,6 @@ export default function AccountsPage() {
           </AnimatePresence>
         </motion.div>
       )}
-
-      {/* Modal de conexão */}
-      <AnimatePresence>
-        {showModal && (
-          <motion.div
-            key="modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
-          >
-            <div className="absolute inset-0" onClick={closeModal} />
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 16 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 16 }}
-              transition={{ type: "spring", bounce: 0.18, duration: 0.35 }}
-              className="relative w-full max-w-md"
-            >
-              <div className="glass neon-border rounded-2xl p-6">
-                <AnimatePresence mode="wait">
-
-                  {/* Step 1 — credenciais */}
-                  {step === "credentials" && (
-                    <motion.div
-                      key="step-credentials"
-                      initial={{ opacity: 0, x: -16 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -16 }}
-                      transition={{ duration: 0.18 }}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <LogIn size={18} className="text-violet-400" />
-                          <h2 className="font-semibold text-white">Conectar conta do Instagram</h2>
-                        </div>
-                        <button onClick={closeModal} disabled={connecting}
-                          className="text-white/20 hover:text-white/60 transition-colors disabled:opacity-40">
-                          <X size={18} />
-                        </button>
-                      </div>
-
-                      <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-violet-600/10 border border-violet-500/20 mb-5">
-                        <ShieldCheck size={14} className="text-violet-400 mt-0.5 flex-shrink-0" />
-                        <p className="text-[11px] text-violet-300/80 leading-relaxed">
-                          Suas credenciais são usadas apenas para autenticar via{" "}
-                          <strong>instagrapi</strong> localmente. A senha não é armazenada.
-                        </p>
-                      </div>
-
-                      <form onSubmit={handleConnect} className="space-y-4">
-                        <div>
-                          <label className="text-xs font-semibold text-white/50 mb-1.5 block">
-                            Usuário do Instagram
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25 text-sm">@</span>
-                            <input
-                              type="text"
-                              value={username}
-                              onChange={(e) => setUsername(e.target.value.replace(/^@/, ""))}
-                              placeholder="seu_perfil"
-                              required autoFocus disabled={connecting}
-                              className="input-glass pl-7 w-full disabled:opacity-50"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-semibold text-white/50 mb-1.5 block">Senha</label>
-                          <div className="relative">
-                            <input
-                              type={showPassword ? "text" : "password"}
-                              value={password}
-                              onChange={(e) => setPassword(e.target.value)}
-                              placeholder="••••••••"
-                              required disabled={connecting}
-                              className="input-glass pr-10 w-full disabled:opacity-50"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowPassword((p) => !p)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors"
-                            >
-                              {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                            </button>
-                          </div>
-                        </div>
-
-                        {error && (
-                          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
-                            <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
-                            {error}
-                          </div>
-                        )}
-
-                        {connecting && (
-                          <p className="text-[11px] text-white/30 text-center">
-                            Conectando ao Instagram… pode levar até 30 segundos.
-                          </p>
-                        )}
-
-                        <div className="flex gap-3 pt-1">
-                          <button type="button" onClick={closeModal} disabled={connecting}
-                            className="btn-ghost flex-1 text-sm py-2.5 disabled:opacity-40">
-                            Cancelar
-                          </button>
-                          <button type="submit"
-                            disabled={connecting || !username.trim() || !password.trim()}
-                            className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2 disabled:opacity-50">
-                            {connecting
-                              ? <><Loader2 size={14} className="animate-spin" /> Conectando...</>
-                              : <><LogIn size={14} /> Conectar</>}
-                          </button>
-                        </div>
-                      </form>
-                    </motion.div>
-                  )}
-
-                  {/* Step 2 — código de verificação */}
-                  {step === "verify_code" && challenge && (
-                    <motion.div
-                      key="step-verify"
-                      initial={{ opacity: 0, x: 16 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 16 }}
-                      transition={{ duration: 0.18 }}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          {METHOD_ICON[challenge.verificationMethod]}
-                          <h2 className="font-semibold text-white">Verificação de segurança</h2>
-                        </div>
-                        <button onClick={closeModal} disabled={connecting}
-                          className="text-white/20 hover:text-white/60 transition-colors disabled:opacity-40">
-                          <X size={18} />
-                        </button>
-                      </div>
-
-                      <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-violet-600/10 border border-violet-500/20 mb-5">
-                        <ShieldCheck size={14} className="text-violet-400 mt-0.5 flex-shrink-0" />
-                        <p className="text-[11px] text-violet-300/80 leading-relaxed">
-                          O Instagram solicitou verificação para{" "}
-                          <strong>@{challenge.username}</strong>. Digite o código de 6 dígitos enviado via{" "}
-                          <strong>{METHOD_LABEL[challenge.verificationMethod]}</strong>.
-                        </p>
-                      </div>
-
-                      <form onSubmit={handleVerifyCode} className="space-y-4">
-                        <div>
-                          <label className="text-xs font-semibold text-white/50 mb-1.5 block">
-                            Código de verificação
-                          </label>
-                          <input
-                            type="text"
-                            value={code}
-                            onChange={(e) => setCode(e.target.value.replace(/[^0-9 ]/g, "").slice(0, 7))}
-                            placeholder="000 000"
-                            required autoFocus disabled={connecting}
-                            maxLength={7}
-                            inputMode="numeric"
-                            className="input-glass w-full text-center text-lg tracking-[0.3em] disabled:opacity-50"
-                          />
-                        </div>
-
-                        {error && (
-                          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
-                            <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
-                            {error}
-                          </div>
-                        )}
-
-                        {connecting && (
-                          <p className="text-[11px] text-white/30 text-center">Verificando código…</p>
-                        )}
-
-                        <div className="flex gap-3 pt-1">
-                          <button type="button" onClick={backToCredentials} disabled={connecting}
-                            className="btn-ghost flex items-center justify-center gap-1.5 px-4 text-sm py-2.5 disabled:opacity-40">
-                            <ArrowLeft size={13} /> Voltar
-                          </button>
-                          <button type="submit"
-                            disabled={connecting || code.replace(/\s/g, "").length < 6}
-                            className="btn-primary flex-1 text-sm py-2.5 flex items-center justify-center gap-2 disabled:opacity-50">
-                            {connecting
-                              ? <><Loader2 size={14} className="animate-spin" /> Verificando...</>
-                              : <><KeyRound size={14} /> Confirmar</>}
-                          </button>
-                        </div>
-                      </form>
-                    </motion.div>
-                  )}
-
-                </AnimatePresence>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

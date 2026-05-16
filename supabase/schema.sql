@@ -85,6 +85,14 @@ alter table public.instagram_accounts
   add column if not exists has_active_stories boolean,   -- reservado; actor atual retorna null
   add column if not exists profile_refreshed_at timestamptz;
 
+-- Fase 27 — Meta Graph API OAuth (execute se a tabela já existir)
+-- Abandona credenciais instagrapi e adota tokens OAuth oficiais
+alter table public.instagram_accounts
+  add column if not exists meta_access_token      text,        -- Long-lived User Access Token (~60 dias)
+  add column if not exists ig_business_account_id text,        -- ID da conta IG Business ou Creator
+  add column if not exists fb_page_id             text,        -- ID da Página do Facebook vinculada
+  add column if not exists token_expires_at       timestamptz; -- Data de expiração do token
+
 
 -- ──────────────────────────────────────────────────────────────
 -- 4. Tabela: scheduled_posts

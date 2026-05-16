@@ -816,3 +816,92 @@ Conta 2 (shuffle): [E, D, B, A, C]
 alter table public.scheduled_posts
   add column if not exists video_url text;
 ```
+
+---
+
+### ✅ Fase 27 — Migração para Meta Graph API (OAuth Oficial)
+**Data:** 16/05/2026
+**Commit:** `feat: Fase 27 — autenticação OAuth oficial via Meta Graph API`
+
+#### Motivação (pivot de arquitetura)
+Após análise competitiva, foi decidido abandonar o `instagrapi` (API privada não-oficial) e migrar para a **Meta Graph API** oficial. Benefícios:
+- Segurança: fluxo OAuth 2.0 padrão — nenhuma senha armazenada
+- Estabilidade: endpoint oficial, sem risco de bloqueio por mudanças internas do Instagram
+- Compliance: conformidade com os Termos de Uso da plataforma
+- Suporte a contas **Business** e **Creator** (Professional Accounts)
+
+#### Banco de dados — novas colunas em `instagram_accounts`
+```sql
+alter table public.instagram_accounts
+  add column if not exists meta_access_token      text,
+  add column if not exists ig_business_account_id text,
+  add column if not exists fb_page_id             text,
+  add column if not exists token_expires_at       timestamptz;
+```
+
+#### Rotas de API criadas
+
+**`app/api/meta/auth/route.ts`** — inicia o fluxo OAuth
+- `GET /api/meta/auth`: gera `state` UUID, armazena em cookie httpOnly com TTL de 10 minutos, redireciona para `https://www.facebook.com/v19.0/dialog/oauth`
+- Escopos solicitados: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`
+- Variáveis necessárias: `NEXT_PUBLIC_META_CLIENT_ID`, `NEXT_PUBLIC_APP_URL`
+
+**`app/api/meta/callback/route.ts`** — processa o retorno do Facebook
+1. Trata cancelamento (`?error=...`)
+2. Verifica CSRF via comparação `state` vs cookie `meta_oauth_state`
+3. Troca `code` por User Access Token (short-lived) via `POST /oauth/access_token`
+4. Troca short token por Long-Lived Token (~60 dias) via `GET /oauth/access_token?grant_type=fb_exchange_token`
+5. Consulta `GET /me/accounts` com campos `instagram_business_account{id,username,name,profile_picture_url}` para listar Páginas FB e suas contas IG Business vinculadas
+6. Salva/atualiza cada conta em `instagram_accounts` (select + insert/update manual, sem constraint UNIQUE)
+7. Redireciona para `/dashboard/accounts?connected=N`
+- Variáveis necessárias: `META_CLIENT_SECRET`, `NEXT_PUBLIC_APP_URL`
+
+#### Frontend — `app/dashboard/accounts/page.tsx`
+- **Removido:** modal de credenciais (username/password) + fluxo 2FA completo + todos os estados associados
+- **Adicionado:** botão "Conectar conta" faz `window.location.href = '/api/meta/auth'` (navegação completa, não fetch)
+- **Adicionado:** banner informativo azul explicando o fluxo OAuth e exigência de conta Business/Creator
+- **Adicionado:** badge `META API` (azul) nos cards de contas conectadas via Graph API (`ig_business_account_id` preenchido)
+- **Adicionado:** sistema de notificação que lê `?connected=N` ou `?error=...` da URL após o callback, exibe banner de sucesso/erro e limpa a URL com `history.replaceState`
+- `Account` interface: novo campo `ig_business_account_id`
+- `fetchAccounts`: inclui `ig_business_account_id` no SELECT
+
+#### Variáveis de ambiente necessárias
+```env
+# Meta for Developers → Meu App → Configurações → Básico
+NEXT_PUBLIC_META_CLIENT_ID=   # App ID (público — aparece no client side)
+META_CLIENT_SECRET=           # App Secret (secreto — nunca expor no frontend)
+NEXT_PUBLIC_APP_URL=          # URL base (ex: https://autoscale.vercel.app ou http://localhost:3000)
+```
+
+#### Configuração no Meta for Developers
+1. Criar app em https://developers.facebook.com → Tipo: Business
+2. Adicionar produto: **Instagram Graph API**
+3. Em "Facebook Login" → "Configurações": adicionar URI de redirecionamento válido:
+   - Produção: `https://sua-url.vercel.app/api/meta/callback`
+   - Desenvolvimento: `http://localhost:3000/api/meta/callback`
+4. Solicitar as permissões: `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement`
+5. Em produção: submeter para revisão da Meta para usar permissões avançadas
+
+#### Segurança implementada
+- **CSRF:** `state` UUID gerado no servidor, salvo em cookie httpOnly (SameSite=Lax, TTL 10min), verificado no callback
+- **Client Secret:** nunca exposto no frontend (somente em variáveis server-side sem `NEXT_PUBLIC_`)
+- **Token expirado:** campo `token_expires_at` salvo para futuro refresh automático
+- **Usuário cancelou:** `?error=access_denied` → redirect para accounts com mensagem amigável
+
+#### Fluxo completo
+```
+Usuário → "Conectar conta" → GET /api/meta/auth
+  → redireciona para Facebook (dialog OAuth)
+  → usuário autoriza
+  → Facebook redireciona para GET /api/meta/callback?code=...&state=...
+  → troca code por short token → long-lived token
+  → busca Páginas FB + contas IG Business vinculadas
+  → salva em instagram_accounts
+  → redireciona para /dashboard/accounts?connected=N
+```
+
+#### Limitação: contas pessoais
+A Meta Graph API **não suporta** contas pessoais (apenas Business e Creator). Contas pessoais precisam ser convertidas em Professional Account no Instagram antes de conectar.
+
+#### Decisão: manter rotas legadas do instagrapi
+As rotas `/api/accounts/login`, `/api/accounts/verify`, `/api/posts/publish` e o servidor FastAPI continuam no codebase. A remoção será feita em fase futura após validar o fluxo Meta em produção e migrar a publicação de posts para a Graph API também.
