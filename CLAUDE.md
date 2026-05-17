@@ -173,6 +173,7 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fase 25** | Página de Contas refatorada: grid de cards + dados em tempo real via Apify | ✅ Concluída |
 | **Fase 26** | Página de Postagens: agendamento em massa com distribuição inteligente por lotes | ✅ Concluída |
 | **Fase 27** | Migração para Meta Graph API: OAuth oficial, abandono do instagrapi para conexão de contas | ✅ Concluída |
+| **Fase 28** | Publicação de posts via Meta Graph API: roteamento automático Meta vs instagrapi por conta | ✅ Concluída |
 
 ---
 

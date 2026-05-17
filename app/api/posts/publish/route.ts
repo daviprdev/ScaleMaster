@@ -8,6 +8,7 @@ import * as crypto from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createClient } from "@/lib/supabase/server";
 import { hasPythonServer, callPythonServer } from "@/lib/python-server";
+import { publishViaMetaAPI } from "@/lib/meta-publish";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
 
   const { data: accounts, error: accsErr } = await admin
     .from("instagram_accounts")
-    .select("id, username, access_token")
+    .select("id, username, access_token, meta_access_token, ig_business_account_id")
     .in("id", account_ids)
     .eq("is_active", true);
 
@@ -90,12 +91,31 @@ export async function POST(req: NextRequest) {
   const results: PostResult[] = [];
 
   for (const account of accounts) {
+    // ── Meta Graph API (contas conectadas via OAuth oficial) ──────────────
+    if (account.meta_access_token && account.ig_business_account_id) {
+      const metaResult = await publishViaMetaAPI(
+        account.ig_business_account_id,
+        account.meta_access_token,
+        video.public_url,
+        caption
+      );
+      results.push({
+        account_id: account.id,
+        username: account.username,
+        status: metaResult.status,
+        media_id: metaResult.media_id,
+        error: metaResult.error,
+      });
+      continue;
+    }
+
+    // ── instagrapi (legado) ───────────────────────────────────────────────
     if (!account.access_token) {
       results.push({
         account_id: account.id,
         username: account.username,
         status: "error",
-        error: "Sessão não salva. Reconecte a conta no painel.",
+        error: "Sem credenciais. Reconecte a conta em Contas.",
       });
       continue;
     }

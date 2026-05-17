@@ -904,4 +904,55 @@ Usuário → "Conectar conta" → GET /api/meta/auth
 A Meta Graph API **não suporta** contas pessoais (apenas Business e Creator). Contas pessoais precisam ser convertidas em Professional Account no Instagram antes de conectar.
 
 #### Decisão: manter rotas legadas do instagrapi
-As rotas `/api/accounts/login`, `/api/accounts/verify`, `/api/posts/publish` e o servidor FastAPI continuam no codebase. A remoção será feita em fase futura após validar o fluxo Meta em produção e migrar a publicação de posts para a Graph API também.
+As rotas `/api/accounts/login`, `/api/accounts/verify` e o servidor FastAPI continuam no codebase. A remoção será feita em fase futura após validar o fluxo Meta em produção. `/api/posts/publish` foi atualizado na Fase 28 para rotear automaticamente entre Meta API e instagrapi.
+
+---
+
+### ✅ Fase 28 — Publicação via Meta Graph API
+**Data:** 17/05/2026
+**Commit:** `feat: Fase 28 — publicação de posts via Meta Graph API`
+
+#### O que foi feito
+
+**`lib/meta-publish.ts`** (novo helper compartilhado)
+- `publishViaMetaAPI(igBusinessAccountId, metaAccessToken, videoUrl, caption)` — encapsula o fluxo de 3 etapas
+- Etapa 1: `POST /{ig-id}/media` com `media_type=REELS`, `video_url`, `caption` → retorna `creation_id`
+- Etapa 2: poll `GET /{creation_id}?fields=status_code` a cada 10s (5s inicial) até `status_code=FINISHED` — timeout em 12 tentativas (~2 min)
+- Etapa 3: `POST /{ig-id}/media_publish` com `creation_id` → retorna `media_id`
+- Retorna `MetaPublishResult { status: "ok"|"error", media_id?, error? }`
+
+**`app/api/meta/publish/route.ts`** (novo endpoint)
+- `POST /api/meta/publish` com `{ account_id, video_url, caption }`
+- Verifica autenticação Supabase + busca `meta_access_token` e `ig_business_account_id` da conta
+- `maxDuration = 120` para suportar o polling de até 2 minutos
+
+**`app/api/posts/publish/route.ts`** (atualizado)
+- SELECT de contas agora inclui `meta_access_token, ig_business_account_id`
+- Por conta: se tem `meta_access_token` → usa `publishViaMetaAPI` (Meta Graph API); senão → usa instagrapi (legacy)
+- Suporta mix: algumas contas Meta, outras instagrapi na mesma chamada
+
+**`app/api/accounts/list/route.ts`** (atualizado)
+- SELECT agora inclui `ig_business_account_id` para o frontend identificar contas Meta
+
+**`components/library/PostModal.tsx`** (atualizado)
+- Interface `Account`: novo campo `ig_business_account_id: string | null`
+- `hasSession` = `!!access_token || !!ig_business_account_id` (ambos tipos habilitam o botão)
+- Badge `META` azul nos cards de contas conectadas via Graph API
+- Removido aviso "instagrapi funciona apenas localmente" (Meta API funciona em produção)
+
+#### Fluxo de publicação via Meta Graph API
+```
+PostModal → /api/posts/publish
+  → conta tem meta_access_token?
+    sim → publishViaMetaAPI(ig_business_account_id, meta_access_token, video_url, caption)
+           → POST /v19.0/{ig-id}/media (cria container REELS)
+           → poll status_code a cada 10s até FINISHED
+           → POST /v19.0/{ig-id}/media_publish
+           → retorna media_id
+    não → instagrapi (FastAPI ou child_process)
+```
+
+#### Limitação do fluxo Meta API
+- O `video_url` deve ser uma URL publicamente acessível (bucket Supabase Storage é público ✓)
+- Apenas contas Business/Creator (já documentado na Fase 27)
+- Tokens expiram em ~60 dias — refresh automático pendente para Fase 29
