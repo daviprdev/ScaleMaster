@@ -17,6 +17,9 @@ import {
   CheckCircle2,
   ExternalLink,
   X,
+  Key,
+  Copy,
+  ChevronRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -342,6 +345,151 @@ function AccountSkeleton() {
   );
 }
 
+// ── Modal: conectar com Access Token ─────────────────────────
+function TokenConnectModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (n: number) => void }) {
+  const [token, setToken] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleConnect = async () => {
+    if (!token.trim() || loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/meta/connect-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_token: token.trim() }),
+      });
+      const data = await res.json() as { success?: boolean; connected?: number; usernames?: string[]; error?: string };
+      if (!res.ok || !data.success) throw new Error(data.error ?? "Erro ao conectar conta.");
+      onSuccess(data.connected ?? 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro desconhecido.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const EXPLORER_URL =
+    "https://developers.facebook.com/tools/explorer/?method=GET&path=me%2Faccounts&version=v19.0";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ duration: 0.2 }}
+        className="glass w-full max-w-lg rounded-2xl border border-white/[0.08] overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-blue-600 flex items-center justify-center">
+              <Key size={13} className="text-white" />
+            </div>
+            <p className="text-sm font-semibold text-white/85">Conectar com Access Token</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg bg-white/[0.05] hover:bg-white/[0.10] flex items-center justify-center text-white/40 hover:text-white/70 transition-all">
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Passos */}
+          <div className="space-y-2.5">
+            {[
+              {
+                n: 1,
+                text: "Abra o Graph API Explorer",
+                action: (
+                  <a href={EXPLORER_URL} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 underline underline-offset-2 transition-colors">
+                    abrir <ExternalLink size={10} />
+                  </a>
+                ),
+              },
+              {
+                n: 2,
+                text: 'Selecione o app "AutoScale" no menu superior direito',
+              },
+              {
+                n: 3,
+                text: 'Clique em "Gerar token de acesso" e marque as permissões:',
+                extra: (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {["instagram_basic", "instagram_content_publish", "pages_show_list", "pages_read_engagement"].map(p => (
+                      <span key={p} className="px-2 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.09] text-[10px] font-mono text-white/50">
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                ),
+              },
+              { n: 4, text: "Copie o token gerado e cole no campo abaixo" },
+            ].map(({ n, text, action, extra }) => (
+              <div key={n} className="flex items-start gap-3">
+                <span className="w-5 h-5 rounded-full bg-violet-500/20 border border-violet-500/30 text-violet-300 text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                  {n}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-white/60 leading-relaxed">
+                    {text} {action}
+                  </p>
+                  {extra}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Input do token */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-white/40 uppercase tracking-wider">
+              Access Token
+            </label>
+            <textarea
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="EAAxxxxxxxxxxxxx..."
+              rows={3}
+              className="w-full input-glass rounded-xl px-3.5 py-3 text-xs font-mono resize-none placeholder:text-white/20"
+            />
+          </div>
+
+          {/* Erro */}
+          {error && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-red-500/8 border border-red-500/15 text-red-400 text-xs">
+              <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
+              {error}
+            </div>
+          )}
+
+          {/* Ações */}
+          <div className="flex gap-2.5 pt-1">
+            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/50 hover:text-white/70 text-sm font-medium transition-all">
+              Cancelar
+            </button>
+            <motion.button
+              onClick={handleConnect}
+              disabled={!token.trim() || loading}
+              whileTap={token.trim() && !loading ? { scale: 0.97 } : {}}
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all",
+                !token.trim() || loading
+                  ? "bg-white/5 border border-white/10 text-white/30 cursor-not-allowed"
+                  : "bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 text-white"
+              )}
+            >
+              {loading ? <><Loader2 size={14} className="animate-spin" /> Conectando...</> : <><ChevronRight size={14} /> Conectar</>}
+            </motion.button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 // ── Página principal ──────────────────────────────────────────
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -350,6 +498,7 @@ export default function AccountsPage() {
     type: "success" | "error";
     message: string;
   } | null>(null);
+  const [tokenModalOpen, setTokenModalOpen] = useState(false);
 
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -459,6 +608,21 @@ export default function AccountsPage() {
   return (
     <div className="space-y-6">
 
+      {/* Modal de token manual */}
+      <AnimatePresence>
+        {tokenModalOpen && (
+          <TokenConnectModal
+            key="token-modal"
+            onClose={() => setTokenModalOpen(false)}
+            onSuccess={(n) => {
+              setTokenModalOpen(false);
+              setNotification({ type: "success", message: `${n} conta${n !== 1 ? "s" : ""} conectada${n !== 1 ? "s" : ""} com sucesso!` });
+              fetchAccounts();
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Banner de notificação OAuth */}
       <AnimatePresence>
         {notification && (
@@ -504,14 +668,23 @@ export default function AccountsPage() {
             {active !== 1 ? "s" : ""}
           </p>
         </div>
-        <motion.button
-          onClick={() => { window.location.href = "/api/meta/auth"; }}
-          whileTap={{ scale: 0.97 }}
-          className="btn-primary flex items-center gap-2 text-sm px-4 py-2.5"
-        >
-          <Plus size={15} />
-          Conectar conta
-        </motion.button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setTokenModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-white/[0.07] text-xs font-medium transition-all"
+          >
+            <Key size={13} />
+            Token manual
+          </button>
+          <motion.button
+            onClick={() => { window.location.href = "/api/meta/auth"; }}
+            whileTap={{ scale: 0.97 }}
+            className="btn-primary flex items-center gap-2 text-sm px-4 py-2.5"
+          >
+            <Plus size={15} />
+            Conectar conta
+          </motion.button>
+        </div>
       </motion.div>
 
       {/* Banner informativo — Meta Graph API */}

@@ -71,7 +71,8 @@ interface IGAccountData {
   igProfilePicture: string | null;
 }
 
-// Consulta /me/accounts para listar Páginas FB e IDs de contas IG Business vinculadas
+// Consulta /me/accounts para listar Páginas FB e IDs de contas IG Business vinculadas.
+// Fallback: tenta buscar conta IG diretamente no token do usuário (contas Creator).
 async function getLinkedIGAccounts(longToken: string): Promise<IGAccountData[]> {
   const fields =
     "id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}";
@@ -93,11 +94,13 @@ async function getLinkedIGAccounts(longToken: string): Promise<IGAccountData[]> 
     error?: { message: string };
   };
 
+  console.log("[meta/callback] /me/accounts status:", res.status, "pages:", data.data?.length ?? 0);
+
   if (!res.ok) {
     throw new Error(data.error?.message ?? "Falha ao listar Páginas do Facebook.");
   }
 
-  return (data.data ?? [])
+  const fromPages = (data.data ?? [])
     .filter((page) => !!page.instagram_business_account)
     .map((page) => ({
       fbPageId: page.id,
@@ -106,6 +109,36 @@ async function getLinkedIGAccounts(longToken: string): Promise<IGAccountData[]> 
       igName: page.instagram_business_account!.name ?? null,
       igProfilePicture: page.instagram_business_account!.profile_picture_url ?? null,
     }));
+
+  if (fromPages.length > 0) return fromPages;
+
+  // Fallback: conta IG acessível diretamente pelo token (alguns perfis Creator)
+  console.log("[meta/callback] Nenhuma conta via Pages, tentando fallback direto no token...");
+  const fallbackRes = await fetch(
+    `${GRAPH_API}/me?fields=instagram_business_account{id,username,name,profile_picture_url}&access_token=${longToken}`
+  );
+  const fallbackData = (await fallbackRes.json()) as {
+    instagram_business_account?: {
+      id: string;
+      username: string;
+      name?: string;
+      profile_picture_url?: string;
+    };
+  };
+  console.log("[meta/callback] Fallback direto:", JSON.stringify(fallbackData).slice(0, 200));
+
+  const ig = fallbackData.instagram_business_account;
+  if (ig?.id && ig?.username) {
+    return [{
+      fbPageId: "",
+      igBusinessAccountId: ig.id,
+      igUsername: ig.username,
+      igName: ig.name ?? null,
+      igProfilePicture: ig.profile_picture_url ?? null,
+    }];
+  }
+
+  return [];
 }
 
 export async function GET(req: NextRequest) {
