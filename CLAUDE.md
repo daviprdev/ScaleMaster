@@ -178,6 +178,8 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fase 30** | Executor de posts agendados: Vercel Cron Job horário com claim atômico e auto-refresh de token | ✅ Concluída |
 | **Fase 31** | Gestão de agendamentos: lista real por status, cancelar/reagendar/remover, auto-refresh durante publicação | ✅ Concluída |
 | **Fase 32** | Analytics de posts publicados: métricas reais via Meta API (curtidas, comentários, alcance, plays, shares, salvos), página dedicada com cards de resumo e botão Atualizar por post | ✅ Concluída |
+| **Fase 33** | Múltiplos Meta Apps: suporte a N apps via env vars `META_APP{N}_*`, modal de seleção no frontend, state codificado com app_id para CSRF + rastreabilidade, coluna `meta_app_used` no banco | ✅ Concluída |
+| **Fix** | Correção da URL OAuth do Instagram Login: `URLSearchParams` codificava vírgulas do scope como `%2C`, causando 404. Substituído por concatenação manual com `encodeURIComponent` apenas em `redirect_uri` e `state` | ✅ Aplicado |
 
 ---
 

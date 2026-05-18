@@ -1178,3 +1178,76 @@ Métricas não são buscadas automaticamente ao publicar para evitar latência e
 
 #### Permissão `instagram_manage_insights`
 Esta permissão requer **App Review** pela Meta para apps em produção (não-development). No modo Development, funciona para contas de teste. Contas existentes precisam ser reconectadas via OAuth para incluir o novo escopo.
+
+---
+
+### ✅ Fase 33 — Múltiplos Meta Apps
+**Data:** 18/05/2026
+**Commits:** `feat: Fase 33 — múltiplos Meta Apps para contingência e distribuição de carga` + `fix: corrige montagem da URL OAuth do Instagram Login`
+
+#### Motivação
+Contingência e distribuição de carga: se um app Meta atingir limite de rate, bater em quota de tokens ou for bloqueado, outro app assume imediatamente. O usuário escolhe qual app usar ao conectar cada conta.
+
+#### Arquitetura
+
+**`lib/meta-apps.ts`** (novo helper central)
+- `getMetaApps()` — lê `META_APP{N}_CLIENT_ID`, `META_APP{N}_CLIENT_SECRET`, `META_APP{N}_NAME` do env (N=1..10); fallback retrocompatível: se `META_APP1_*` ausente, usa `NEXT_PUBLIC_META_CLIENT_ID` + `META_CLIENT_SECRET`
+- `getMetaApp(id)` — busca app pelo id (`"app1"`, `"app2"`, etc.)
+
+**`GET /api/meta/apps`** (novo endpoint)
+- Retorna `[{id, name}]` sem secrets — consumido pelo frontend para montar o modal
+
+**`GET /api/instagram/auth?app_id=appN`** (atualizado)
+- Aceita `app_id` explícito; se ausente, usa o primeiro app disponível
+- State codificado como `"{appId}:{uuid}"` — permite ao callback identificar qual app foi usado sem estado servidor
+
+**`GET /api/meta/callback`** (atualizado)
+- Extrai `appId` do state fazendo `indexOf(":")` + `substring(0, colonIdx)`
+- Busca credenciais via `getMetaApp(appId)` — usa `client_id` e `client_secret` corretos para a troca de token
+- Salva `meta_app_used: appId` na coluna nova do banco
+
+**`app/dashboard/accounts/page.tsx`** (atualizado)
+- Carrega lista de apps via `GET /api/meta/apps` na montagem
+- `handleConnectClick`: se `apps.length > 1` → abre `AppSelectModal`; se 1 app → redireciona direto sem modal
+- `AppSelectModal`: lista glassmorphism com número do app, nome, id (mono) e chevron; clique redireciona para `/api/instagram/auth?app_id=appN`
+
+#### Variáveis de ambiente
+```env
+# App 1 (retrocompatível com variáveis já existentes)
+META_APP1_CLIENT_ID=       # ou NEXT_PUBLIC_META_CLIENT_ID como fallback
+META_APP1_CLIENT_SECRET=   # ou META_CLIENT_SECRET como fallback
+META_APP1_NAME=AutoPost 1  # opcional
+
+# Apps adicionais
+META_APP2_CLIENT_ID=...
+META_APP2_CLIENT_SECRET=...
+META_APP2_NAME=AutoPost 2
+```
+
+#### SQL para executar no Supabase
+```sql
+alter table public.instagram_accounts
+  add column if not exists meta_app_used text;
+```
+
+#### Bug crítico corrigido: URL OAuth com %2C no scope
+`URLSearchParams` codifica vírgulas como `%2C`. O endpoint `api.instagram.com/oauth/authorize` espera vírgulas literais no parâmetro `scope` — com `%2C` retornava 404 direto.
+
+**Antes (quebrado):**
+```ts
+const params = new URLSearchParams({ scope: "instagram_business_basic,..." });
+// → scope=instagram_business_basic%2C...  ← 404
+```
+
+**Depois (correto):**
+```ts
+const oauthUrl =
+  `https://api.instagram.com/oauth/authorize` +
+  `?client_id=${app.clientId}` +
+  `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+  `&scope=${SCOPES}` +           // ← vírgulas literais
+  `&response_type=code` +
+  `&state=${encodeURIComponent(state)}`;
+```
+
+Regra: para OAuth do Instagram Login API, **nunca usar `URLSearchParams` para montar a URL inteira** — usar concatenação manual com `encodeURIComponent` apenas em `redirect_uri` e `state`.
