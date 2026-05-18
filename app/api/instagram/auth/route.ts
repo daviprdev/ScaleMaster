@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const clientId = process.env.NEXT_PUBLIC_META_CLIENT_ID;
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
-  const redirectUri = `${appUrl}/api/instagram/callback`;
+  const redirectUri = `${appUrl}/api/meta/callback`;
 
   if (!clientId) {
     return NextResponse.json(
@@ -29,7 +29,7 @@ export async function GET() {
     `https://api.instagram.com/oauth/authorize?${params}`
   );
 
-  response.cookies.set("ig_oauth_state", state, {
+  response.cookies.set("meta_oauth_state", state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
