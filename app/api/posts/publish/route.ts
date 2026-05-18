@@ -9,6 +9,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { createClient } from "@/lib/supabase/server";
 import { hasPythonServer, callPythonServer } from "@/lib/python-server";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
+import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
 
   const { data: accounts, error: accsErr } = await admin
     .from("instagram_accounts")
-    .select("id, username, access_token, meta_access_token, ig_business_account_id")
+    .select("id, username, access_token, meta_access_token, ig_business_account_id, token_expires_at")
     .in("id", account_ids)
     .eq("is_active", true);
 
@@ -93,9 +94,25 @@ export async function POST(req: NextRequest) {
   for (const account of accounts) {
     // ── Meta Graph API (contas conectadas via OAuth oficial) ──────────────
     if (account.meta_access_token && account.ig_business_account_id) {
+      // Auto-renova token se expira em menos de 7 dias
+      let tokenToUse = account.meta_access_token;
+      if (isTokenExpiringSoon(account.token_expires_at, 7)) {
+        try {
+          const { token, expiresAt } = await refreshMetaToken(account.meta_access_token);
+          await admin
+            .from("instagram_accounts")
+            .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })
+            .eq("id", account.id);
+          tokenToUse = token;
+          console.log(`[posts/publish] Token renovado automaticamente para @${account.username}`);
+        } catch (refreshErr) {
+          console.warn(`[posts/publish] Falha ao renovar token para @${account.username}:`, refreshErr);
+        }
+      }
+
       const metaResult = await publishViaMetaAPI(
         account.ig_business_account_id,
-        account.meta_access_token,
+        tokenToUse,
         video.public_url,
         caption
       );

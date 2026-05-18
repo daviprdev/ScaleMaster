@@ -955,4 +955,66 @@ PostModal → /api/posts/publish
 #### Limitação do fluxo Meta API
 - O `video_url` deve ser uma URL publicamente acessível (bucket Supabase Storage é público ✓)
 - Apenas contas Business/Creator (já documentado na Fase 27)
-- Tokens expiram em ~60 dias — refresh automático pendente para Fase 29
+- Tokens expiram em ~60 dias — renovação automática implementada na Fase 29
+
+---
+
+### ✅ Fase 29 — Refresh Automático de Token Meta
+**Data:** 18/05/2026
+**Commit:** `feat: Fase 29 — refresh automático de token Meta`
+
+#### O que foi feito
+
+**`lib/meta-refresh.ts`** (novo helper)
+- `refreshMetaToken(currentToken)` — chama `GET /oauth/access_token?grant_type=fb_exchange_token` na Graph API, retorna `{ token, expiresAt }` com novo Long-Lived Token (~60 dias)
+- `isTokenExpiringSoon(tokenExpiresAt, thresholdDays)` — retorna `true` se o token expira dentro de `thresholdDays` dias (padrão: 7) ou já expirou
+
+**`app/api/meta/refresh-token/route.ts`** (novo endpoint)
+- `POST /api/meta/refresh-token` com `{ account_id }`
+- Verifica autenticação Supabase + ownership da conta
+- Chama `refreshMetaToken`, salva novo token e `token_expires_at` no banco
+- Usado tanto pelo frontend (manual) quanto pela lógica de auto-refresh na carga da página
+
+**`app/api/meta/publish/route.ts`** (atualizado)
+- SELECT inclui `token_expires_at`
+- Antes de publicar: `isTokenExpiringSoon(token_expires_at, 7)` → se verdadeiro, chama `refreshMetaToken` e atualiza DB; usa novo token na publicação
+- Falha no refresh não bloqueia publicação (warn + continua com token atual)
+
+**`app/api/posts/publish/route.ts`** (atualizado)
+- SELECT inclui `token_expires_at` para contas Meta
+- Mesma lógica de auto-refresh antes de chamar `publishViaMetaAPI` para cada conta Meta
+
+**`app/dashboard/accounts/page.tsx`** (atualizado)
+- `Account` interface: novo campo `token_expires_at: string | null`
+- Helpers `daysUntilExpiry` e `tokenStatusChip` para calcular status do token
+- Badge de status no cabeçalho de cada card Meta:
+  - Chip âmbar "Expira em Xd" para 8–15 dias restantes
+  - Chip vermelho "Expira em Xd" para ≤ 7 dias restantes
+  - Chip vermelho "Token expirado" se já expirou
+  - Sem chip se token saudável (> 15 dias)
+- Menu dropdown de cada card Meta: novo item "Renovar Token" (ícone `KeyRound` violeta)
+- `handleRefreshToken` — chama `/api/meta/refresh-token`, atualiza `token_expires_at` local na UI sem re-fetch
+- Auto-refresh na carga da página: após o primeiro `fetchAccounts`, detecta contas com token expirando em < 7 dias e renova silenciosamente; exibe banner de sucesso se renovações ocorreram
+
+#### Fluxo de renovação
+```
+Carga da página Contas
+  → fetchAccounts()
+  → detecta tokens expirando em < 7 dias
+  → POST /api/meta/refresh-token para cada conta
+  → atualiza DB + exibe banner "X tokens renovados automaticamente"
+
+Publicação (PostModal / botão Postar)
+  → /api/posts/publish ou /api/meta/publish
+  → isTokenExpiringSoon(token_expires_at, 7) ?
+    sim → refreshMetaToken → salva novo token no DB → usa novo token
+    não → usa token atual
+
+Manual (menu ⋯ → "Renovar Token")
+  → POST /api/meta/refresh-token
+  → atualiza token_expires_at na UI
+  → exibe "Token Meta renovado com sucesso!"
+```
+
+#### Decisão: renovar preventivamente em 7 dias, não no dia da expiração
+Tokens Meta podem demorar algumas horas para propagar. Renovar com 7 dias de antecedência garante margem contra falhas temporárias na API do Facebook sem ser excessivamente agressivo (não renovar todo dia).

@@ -16,6 +16,8 @@ import {
   Clock,
   CheckCircle2,
   X,
+  KeyRound,
+  AlertTriangle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -33,6 +35,22 @@ interface Account {
   has_active_stories: boolean | null;
   profile_refreshed_at: string | null;
   ig_business_account_id: string | null;
+  token_expires_at: string | null;
+}
+
+function daysUntilExpiry(tokenExpiresAt: string | null): number | null {
+  if (!tokenExpiresAt) return null;
+  return Math.floor((new Date(tokenExpiresAt).getTime() - Date.now()) / 86_400_000);
+}
+
+function tokenStatusChip(tokenExpiresAt: string | null, isMetaAccount: boolean) {
+  if (!isMetaAccount || !tokenExpiresAt) return null;
+  const days = daysUntilExpiry(tokenExpiresAt);
+  if (days === null) return null;
+  if (days < 0) return { label: "Token expirado", color: "bg-red-500/15 text-red-400", icon: "danger" } as const;
+  if (days <= 7) return { label: `Expira em ${days}d`, color: "bg-red-500/15 text-red-400", icon: "danger" } as const;
+  if (days <= 15) return { label: `Expira em ${days}d`, color: "bg-amber-500/15 text-amber-400", icon: "warning" } as const;
+  return null; // saudável — não exibir chip
 }
 
 const AVATAR_COLORS = [
@@ -107,17 +125,21 @@ function AccountCard({
   onRefresh,
   onToggle,
   onDelete,
+  onRefreshToken,
   refreshing,
   toggling,
   deleting,
+  tokenRefreshing,
 }: {
   account: Account;
   onRefresh: (id: string) => void;
   onToggle: (acc: Account) => void;
   onDelete: (id: string) => void;
+  onRefreshToken: (id: string) => void;
   refreshing: boolean;
   toggling: boolean;
   deleting: boolean;
+  tokenRefreshing: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -132,8 +154,9 @@ function AccountCard({
   }, [menuOpen]);
 
   const proxyImg = (url: string) => `/api/proxy-image?url=${encodeURIComponent(url)}`;
-  const busy = refreshing || toggling || deleting;
+  const busy = refreshing || toggling || deleting || tokenRefreshing;
   const isMetaConnected = !!account.ig_business_account_id;
+  const tokenChip = tokenStatusChip(account.token_expires_at, isMetaConnected);
 
   return (
     <motion.div
@@ -173,6 +196,18 @@ function AccountCard({
                 META API
               </span>
             )}
+            {tokenChip && (
+              <span className={cn(
+                "inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide flex-shrink-0",
+                tokenChip.color
+              )}>
+                {tokenChip.icon === "danger"
+                  ? <AlertTriangle size={8} className="flex-shrink-0" />
+                  : <AlertCircle size={8} className="flex-shrink-0" />
+                }
+                {tokenChip.label}
+              </span>
+            )}
             <span className={cn(
               "inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide flex-shrink-0",
               account.is_active
@@ -192,7 +227,7 @@ function AccountCard({
             disabled={busy}
             className="w-7 h-7 rounded-lg flex items-center justify-center text-white/25 hover:text-white/70 hover:bg-white/[0.06] transition-colors disabled:opacity-40"
           >
-            {refreshing || deleting
+            {refreshing || deleting || tokenRefreshing
               ? <Loader2 size={13} className="animate-spin text-cyan-400" />
               : <MoreHorizontal size={15} />
             }
@@ -221,6 +256,14 @@ function AccountCard({
                   <Power size={12} className={account.is_active ? "text-amber-400" : "text-emerald-400"} />
                   {account.is_active ? "Desativar conta" : "Ativar conta"}
                 </button>
+                {isMetaConnected && (
+                  <button
+                    onClick={() => { onRefreshToken(account.id); setMenuOpen(false); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
+                  >
+                    <KeyRound size={12} className="text-violet-400" /> Renovar Token
+                  </button>
+                )}
                 <div className="h-px bg-white/[0.06]" />
                 <button
                   onClick={() => { onDelete(account.id); setMenuOpen(false); }}
@@ -291,11 +334,14 @@ export default function AccountsPage() {
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [tokenRefreshingId, setTokenRefreshingId] = useState<string | null>(null);
 
   const supabase = useMemo(() => createClient(), []);
   const _togglingRef = useRef<string | null>(null);
   const _deletingRef = useRef<string | null>(null);
   const _refreshingRef = useRef<string | null>(null);
+  const _tokenRefreshingRef = useRef<string | null>(null);
+  const _autoRefreshDone = useRef(false);
 
   // Lê parâmetros de retorno do OAuth (?connected=1 ou ?error=xxx)
   useEffect(() => {
@@ -318,22 +364,57 @@ export default function AccountsPage() {
     }
   }, []);
 
-  const fetchAccounts = useCallback(async () => {
+  const fetchAccounts = useCallback(async (): Promise<Account[]> => {
     setLoading(true);
     try {
       const { data } = await supabase
         .from("instagram_accounts")
         .select(
-          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id"
+          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at"
         )
         .order("connected_at", { ascending: false });
-      setAccounts((data ?? []) as unknown as Account[]);
+      const fetched = (data ?? []) as unknown as Account[];
+      setAccounts(fetched);
+      return fetched;
     } finally {
       setLoading(false);
     }
   }, [supabase]);
 
-  useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
+  // Auto-renova tokens expirando em < 7 dias na primeira carga da página
+  useEffect(() => {
+    fetchAccounts().then(async (fetched) => {
+      if (_autoRefreshDone.current) return;
+      _autoRefreshDone.current = true;
+
+      const expiring = fetched.filter(
+        (a) => a.ig_business_account_id && (daysUntilExpiry(a.token_expires_at) ?? 99) <= 7
+      );
+      if (expiring.length === 0) return;
+
+      const results = await Promise.allSettled(
+        expiring.map((acc) =>
+          fetch("/api/meta/refresh-token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ account_id: acc.id }),
+          }).then((r) => r.json() as Promise<{ ok?: boolean; expires_at?: string }>)
+        )
+      );
+
+      const renewed = results.filter(
+        (r) => r.status === "fulfilled" && r.value.ok
+      ).length;
+
+      if (renewed > 0) {
+        setNotification({
+          type: "success",
+          message: `${renewed} token${renewed !== 1 ? "s" : ""} Meta renovado${renewed !== 1 ? "s" : ""} automaticamente.`,
+        });
+        fetchAccounts();
+      }
+    });
+  }, [fetchAccounts]);
 
   const handleRefresh = useCallback(async (id: string) => {
     if (_refreshingRef.current) return;
@@ -351,6 +432,31 @@ export default function AccountsPage() {
       setRefreshingId(null);
     }
   }, [fetchAccounts]);
+
+  const handleRefreshToken = useCallback(async (id: string) => {
+    if (_tokenRefreshingRef.current) return;
+    _tokenRefreshingRef.current = id;
+    setTokenRefreshingId(id);
+    try {
+      const res = await fetch("/api/meta/refresh-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ account_id: id }),
+      });
+      const data = (await res.json()) as { ok?: boolean; expires_at?: string; error?: string };
+      if (data.ok && data.expires_at) {
+        setNotification({ type: "success", message: "Token Meta renovado com sucesso!" });
+        setAccounts((prev) =>
+          prev.map((a) => (a.id === id ? { ...a, token_expires_at: data.expires_at! } : a))
+        );
+      } else {
+        setNotification({ type: "error", message: data.error ?? "Falha ao renovar token." });
+      }
+    } finally {
+      _tokenRefreshingRef.current = null;
+      setTokenRefreshingId(null);
+    }
+  }, []);
 
   const handleToggle = async (account: Account) => {
     if (_togglingRef.current) return;
@@ -475,9 +581,11 @@ export default function AccountsPage() {
                 onRefresh={handleRefresh}
                 onToggle={handleToggle}
                 onDelete={handleDelete}
+                onRefreshToken={handleRefreshToken}
                 refreshing={refreshingId === account.id}
                 toggling={togglingId === account.id}
                 deleting={deletingId === account.id}
+                tokenRefreshing={tokenRefreshingId === account.id}
               />
             ))}
           </AnimatePresence>
