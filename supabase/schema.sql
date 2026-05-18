@@ -122,6 +122,27 @@ create policy "users_manage_own_posts"
 alter table public.scheduled_posts
   add column if not exists video_url text;
 
+-- Fase 30 — Executor de Posts Agendados (execute se a tabela já existir)
+-- Adiciona status 'publishing' para travamento atômico anti-duplicata
+do $$
+begin
+  alter table public.scheduled_posts
+    drop constraint if exists scheduled_posts_status_check;
+  alter table public.scheduled_posts
+    add constraint scheduled_posts_status_check
+    check (status in ('pending', 'publishing', 'published', 'failed', 'cancelled'));
+exception when others then null;
+end $$;
+
+alter table public.scheduled_posts
+  add column if not exists published_at  timestamptz,
+  add column if not exists media_id      text;
+
+-- Índice parcial: acelera a query do cron (apenas linhas pendentes/em publicação)
+create index if not exists scheduled_posts_cron_idx
+  on public.scheduled_posts(scheduled_at)
+  where status in ('pending', 'publishing');
+
 
 -- ──────────────────────────────────────────────────────────────
 -- 5. Tabela: scraped_profiles

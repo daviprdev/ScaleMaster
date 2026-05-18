@@ -1018,3 +1018,82 @@ Manual (menu ⋯ → "Renovar Token")
 
 #### Decisão: renovar preventivamente em 7 dias, não no dia da expiração
 Tokens Meta podem demorar algumas horas para propagar. Renovar com 7 dias de antecedência garante margem contra falhas temporárias na API do Facebook sem ser excessivamente agressivo (não renovar todo dia).
+
+---
+
+### ✅ Fase 30 — Executor de Posts Agendados (Vercel Cron)
+**Data:** 18/05/2026
+**Commit:** `feat: Fase 30 — executor de posts agendados via Vercel Cron`
+
+#### O que foi feito
+
+**`supabase/schema.sql`** (atualizado)
+- Check constraint de `status` recriado para incluir `'publishing'` (travamento atômico)
+- Colunas adicionadas: `published_at timestamptz`, `media_id text`
+- Índice parcial `scheduled_posts_cron_idx ON (scheduled_at) WHERE status IN ('pending','publishing')` — acelera a query do cron
+
+**`app/api/cron/publish-scheduled/route.ts`** (novo endpoint)
+- `POST /api/cron/publish-scheduled` — protegido por `Authorization: Bearer CRON_SECRET`
+- `runtime = "nodejs"`, `maxDuration = 300` (5 minutos para batch de até 20 posts)
+- Fluxo por post:
+  1. **Claim atômico**: `UPDATE status='publishing' WHERE id=? AND status='pending'` — previne dupla publicação em invocações concorrentes
+  2. Validação: conta ativa + `video_url` disponível
+  3. **Meta API**: auto-refresh de token se < 7 dias → `publishViaMetaAPI` → atualiza `status='published'`, `published_at`, `media_id`
+  4. **instagrapi (fallback)**: se `PYTHON_SERVER_URL` configurado, chama FastAPI `/posts/publish`
+  5. Qualquer erro → `status='failed'`, `error_message` salvo
+- Retorna `{ ok, total, published, failed, skipped }`
+
+**`vercel.json`** (novo arquivo)
+```json
+{
+  "crons": [{ "path": "/api/cron/publish-scheduled", "schedule": "0 * * * *" }]
+}
+```
+Executa a cada hora no minuto 0. Requer plano Vercel Pro para intervalos menores que 1 hora.
+
+#### Variável de ambiente necessária
+```env
+CRON_SECRET=<gerar com: openssl rand -hex 32>
+```
+Adicionar em `.env.local` (dev) e nas variáveis de ambiente do Vercel (produção).
+
+#### Configuração no Supabase Dashboard (se a tabela já existia)
+```sql
+-- Recriar constraint com 'publishing'
+do $$
+begin
+  alter table public.scheduled_posts drop constraint if exists scheduled_posts_status_check;
+  alter table public.scheduled_posts add constraint scheduled_posts_status_check
+    check (status in ('pending', 'publishing', 'published', 'failed', 'cancelled'));
+exception when others then null;
+end $$;
+
+alter table public.scheduled_posts
+  add column if not exists published_at timestamptz,
+  add column if not exists media_id     text;
+
+create index if not exists scheduled_posts_cron_idx
+  on public.scheduled_posts(scheduled_at) where status in ('pending', 'publishing');
+```
+
+#### Teste manual do cron
+```bash
+curl -X POST https://autoscale.vercel.app/api/cron/publish-scheduled \
+  -H "Authorization: Bearer <CRON_SECRET>"
+```
+
+#### Fluxo completo
+```
+[Horário X] Usuário agenda post via /dashboard/posts
+  → scheduled_posts: { status: 'pending', scheduled_at: X }
+
+[Toda hora] Vercel dispara POST /api/cron/publish-scheduled
+  → busca posts pending com scheduled_at <= now()
+  → claim atômico: status = 'publishing'
+  → publica via Meta API (ou instagrapi)
+  → status = 'published' + published_at + media_id
+  → ou status = 'failed' + error_message
+```
+
+#### Decisão: claim atômico com status 'publishing'
+Sem o status intermediário, duas execuções paralelas do cron (possível se o job leva mais de 1 hora) publicariam o mesmo post duas vezes. O UPDATE com `WHERE status='pending'` é atômico no PostgreSQL — apenas uma das execuções consegue "reclamar" cada post.
