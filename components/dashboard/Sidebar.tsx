@@ -12,6 +12,7 @@ import {
   CalendarClock,
   CalendarRange,
   Users,
+  BarChart2,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -30,6 +31,7 @@ const navItems = [
   { label: "Biblioteca", href: "/dashboard/library", icon: FolderOpen },
   { label: "Postagens", href: "/dashboard/posts", icon: CalendarRange },
   { label: "Agendamentos", href: "/dashboard/schedule", icon: CalendarClock },
+  { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
 ];
 
 export function Sidebar() {

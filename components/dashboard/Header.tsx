@@ -33,6 +33,10 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     title: "Configurações",
     subtitle: "Perfil, assinatura e sessão",
   },
+  "/dashboard/analytics": {
+    title: "Analytics",
+    subtitle: "Métricas reais dos posts publicados via Meta API",
+  },
 };
 
 export function Header() {
