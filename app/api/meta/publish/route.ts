@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const { data: account, error: accErr } = await admin
     .from("instagram_accounts")
-    .select("id, username, meta_access_token, ig_business_account_id, token_expires_at")
+    .select("id, username, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id")
     .eq("id", account_id)
     .eq("user_id", user.id)
     .single();
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   let tokenToUse = account.meta_access_token;
   if (isTokenExpiringSoon(account.token_expires_at, 7)) {
     try {
-      const { token, expiresAt } = await refreshMetaToken(account.meta_access_token);
+      const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id);
       await admin
         .from("instagram_accounts")
         .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })

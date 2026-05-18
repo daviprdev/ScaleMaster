@@ -1,4 +1,5 @@
-const GRAPH_API = "https://graph.facebook.com/v19.0";
+const GRAPH_FB = "https://graph.facebook.com/v19.0";
+const GRAPH_IG = "https://graph.instagram.com";
 
 export interface TokenRefreshResult {
   token: string;
@@ -6,27 +7,63 @@ export interface TokenRefreshResult {
 }
 
 /**
- * Troca um Long-Lived Token Meta por um novo via fb_exchange_token.
- * Tokens Meta expiram em ~60 dias; renovar antes de expirar evita
- * interrupção nas publicações.
+ * Renova um Long-Lived Token Meta, escolhendo o endpoint correto pelo tipo de conexão.
+ *
+ * - Instagram Login (fbPageId ausente/nulo):
+ *     GET graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token
+ *     Não exige client_id nem client_secret.
+ *
+ * - Facebook Login (fbPageId preenchido):
+ *     GET graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token
+ *     Exige client_id e client_secret.
  */
-export async function refreshMetaToken(currentToken: string): Promise<TokenRefreshResult> {
+export async function refreshMetaToken(
+  currentToken: string,
+  fbPageId?: string | null
+): Promise<TokenRefreshResult> {
+  return fbPageId
+    ? refreshFacebookToken(currentToken)
+    : refreshInstagramToken(currentToken);
+}
+
+async function refreshInstagramToken(currentToken: string): Promise<TokenRefreshResult> {
   const params = new URLSearchParams({
-    grant_type: "fb_exchange_token",
-    client_id: process.env.NEXT_PUBLIC_META_CLIENT_ID!,
-    client_secret: process.env.META_CLIENT_SECRET!,
-    fb_exchange_token: currentToken,
+    grant_type: "ig_refresh_token",
+    access_token: currentToken,
   });
-  const res = await fetch(`${GRAPH_API}/oauth/access_token?${params}`);
+  const res = await fetch(`${GRAPH_IG}/refresh_access_token?${params}`);
   const data = (await res.json()) as {
     access_token?: string;
     expires_in?: number;
     error?: { message: string };
   };
   if (!res.ok || !data.access_token) {
-    throw new Error(data.error?.message ?? "Falha ao renovar token Meta.");
+    throw new Error(data.error?.message ?? "Falha ao renovar token Instagram Login.");
   }
-  const expiresIn = data.expires_in ?? 5_184_000; // 60 dias como fallback
+  const expiresIn = data.expires_in ?? 5_184_000;
+  return {
+    token: data.access_token,
+    expiresAt: new Date(Date.now() + expiresIn * 1_000),
+  };
+}
+
+async function refreshFacebookToken(currentToken: string): Promise<TokenRefreshResult> {
+  const params = new URLSearchParams({
+    grant_type: "fb_exchange_token",
+    client_id: process.env.NEXT_PUBLIC_META_CLIENT_ID!,
+    client_secret: process.env.META_CLIENT_SECRET!,
+    fb_exchange_token: currentToken,
+  });
+  const res = await fetch(`${GRAPH_FB}/oauth/access_token?${params}`);
+  const data = (await res.json()) as {
+    access_token?: string;
+    expires_in?: number;
+    error?: { message: string };
+  };
+  if (!res.ok || !data.access_token) {
+    throw new Error(data.error?.message ?? "Falha ao renovar token Facebook Login.");
+  }
+  const expiresIn = data.expires_in ?? 5_184_000;
   return {
     token: data.access_token,
     expiresAt: new Date(Date.now() + expiresIn * 1_000),

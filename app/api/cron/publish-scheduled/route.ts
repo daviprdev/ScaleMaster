@@ -15,6 +15,7 @@ interface AccountRow {
   ig_business_account_id: string | null;
   token_expires_at: string | null;
   access_token: string | null;
+  fb_page_id: string | null;
 }
 
 interface PostRow {
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
     .from("scheduled_posts")
     .select(
       "id, video_id, video_url, caption, account_id, " +
-      "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, access_token), " +
+      "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, access_token, fb_page_id), " +
       "videos_library(public_url)"
     )
     .eq("status", "pending")
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
 
         if (isTokenExpiringSoon(account.token_expires_at, 7)) {
           try {
-            const { token, expiresAt } = await refreshMetaToken(account.meta_access_token);
+            const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id);
             await admin
               .from("instagram_accounts")
               .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })

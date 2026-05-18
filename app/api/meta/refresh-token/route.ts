@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const { data: account } = await admin
     .from("instagram_accounts")
-    .select("id, meta_access_token, username")
+    .select("id, meta_access_token, username, fb_page_id")
     .eq("id", account_id)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { token, expiresAt } = await refreshMetaToken(account.meta_access_token);
+    const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id);
 
     await admin
       .from("instagram_accounts")
