@@ -14,20 +14,23 @@ function redirectWithError(code: string, appUrl: string): NextResponse {
 
 // Troca o code de autorização por um User Access Token de curta duração
 async function exchangeCodeForShortToken(code: string, redirectUri: string): Promise<string> {
+  // A Meta Graph API exige application/x-www-form-urlencoded neste endpoint — JSON não é aceito
+  const body = new URLSearchParams({
+    client_id: process.env.NEXT_PUBLIC_META_CLIENT_ID!,
+    client_secret: process.env.META_CLIENT_SECRET!,
+    redirect_uri: redirectUri,
+    code,
+  });
   const res = await fetch(`${GRAPH_API}/oauth/access_token`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_id: process.env.NEXT_PUBLIC_META_CLIENT_ID,
-      client_secret: process.env.META_CLIENT_SECRET,
-      redirect_uri: redirectUri,
-      code,
-    }),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
   });
   const data = (await res.json()) as {
     access_token?: string;
     error?: { message: string; type: string };
   };
+  console.log("[meta/callback] exchangeCodeForShortToken status:", res.status, JSON.stringify(data).slice(0, 200));
   if (!res.ok || !data.access_token) {
     throw new Error(data.error?.message ?? "Falha ao trocar authorization code por token.");
   }
@@ -144,8 +147,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const shortToken = await exchangeCodeForShortToken(code, redirectUri);
+    console.log("[meta/callback] Short token obtido, trocando por long-lived token...");
+
     const { token: longToken, expiresAt } = await getLongLivedToken(shortToken);
+    console.log("[meta/callback] Long-lived token obtido, expira em:", expiresAt.toISOString());
+
     const igAccounts = await getLinkedIGAccounts(longToken);
+    console.log(`[meta/callback] Contas IG encontradas: ${igAccounts.length}`, igAccounts.map(a => a.igUsername));
 
     if (igAccounts.length === 0) {
       return redirectWithError("no_ig_accounts", appUrl);
