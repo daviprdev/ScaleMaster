@@ -4,6 +4,13 @@ import { getMetaApp, getMetaApps } from "@/lib/meta-apps";
 
 export const dynamic = "force-dynamic";
 
+// Scopes do Instagram Login API (api.instagram.com)
+const SCOPES = [
+  "instagram_business_basic",
+  "instagram_business_content_publish",
+  "instagram_business_manage_insights",
+].join(",");
+
 export async function GET(req: NextRequest) {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   const redirectUri = `${appUrl}/api/meta/callback`;
@@ -11,7 +18,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const requestedAppId = searchParams.get("app_id");
 
-  // Resolve o app a usar: parâmetro explícito → primeiro disponível
+  // Resolve o app: parâmetro explícito → primeiro disponível
   const app = requestedAppId
     ? getMetaApp(requestedAppId)
     : getMetaApps()[0] ?? null;
@@ -23,21 +30,20 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // State = "{appId}:{uuid}" — app_id recuperado no callback para CSRF + seleção do secret
+  // State = "{appId}:{uuid}" — recuperado no callback para CSRF + seleção do secret
   const uuid = crypto.randomUUID();
   const state = `${app.id}:${uuid}`;
 
-  const params = new URLSearchParams({
-    client_id: app.clientId,
-    redirect_uri: redirectUri,
-    scope: "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights",
-    response_type: "code",
-    state,
-  });
+  // Monta a URL manualmente para não codificar as vírgulas do scope (%2C quebra o Instagram OAuth)
+  const oauthUrl =
+    `https://api.instagram.com/oauth/authorize` +
+    `?client_id=${app.clientId}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&scope=${SCOPES}` +
+    `&response_type=code` +
+    `&state=${encodeURIComponent(state)}`;
 
-  const response = NextResponse.redirect(
-    `https://api.instagram.com/oauth/authorize?${params}`
-  );
+  const response = NextResponse.redirect(oauthUrl);
 
   response.cookies.set("meta_oauth_state", state, {
     httpOnly: true,
