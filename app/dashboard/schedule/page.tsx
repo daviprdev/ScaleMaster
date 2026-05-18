@@ -1,555 +1,465 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState, useCallback, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   CalendarClock,
-  Play,
   CheckCircle2,
-  ArrowRight,
-  ArrowLeft,
-  Loader2,
+  XCircle,
   Clock,
-  AlignLeft,
-  Send,
-  FolderOpen,
+  Loader2,
+  Trash2,
+  RotateCcw,
+  X,
+  AlertCircle,
+  Instagram,
+  CalendarRange,
 } from "lucide-react";
-import {
-  AccountSelector,
-  type InstagramAccount,
-} from "@/components/schedule/AccountSelector";
-import type { LibraryVideo } from "@/components/library/VideoCard";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
-// ── Contas mock para desenvolvimento ─────────────────────────
-const MOCK_ACCOUNTS: InstagramAccount[] = [
-  {
-    id: "acc_1",
-    username: "minha_marca",
-    display_name: "Minha Marca Oficial",
-    avatar_color: "bg-gradient-to-br from-violet-500 to-purple-600",
-    followers: 12400,
-    is_active: true,
-  },
-  {
-    id: "acc_2",
-    username: "loja_oficial",
-    display_name: "Loja Oficial",
-    avatar_color: "bg-gradient-to-br from-pink-500 to-rose-600",
-    followers: 8900,
-    is_active: true,
-  },
-  {
-    id: "acc_3",
-    username: "canal_conteudo",
-    display_name: "Canal de Conteúdo",
-    avatar_color: "bg-gradient-to-br from-cyan-500 to-blue-600",
-    followers: 31200,
-    is_active: false,
-  },
-];
+type PostStatus = "pending" | "publishing" | "published" | "failed" | "cancelled";
 
-function formatDuration(s: number) {
-  const m = Math.floor(s / 60);
-  return `${m}:${(s % 60).toString().padStart(2, "0")}`;
+interface ScheduledPost {
+  id: string;
+  video_id: string | null;
+  video_url: string | null;
+  caption: string | null;
+  scheduled_at: string;
+  status: PostStatus;
+  error_message: string | null;
+  published_at: string | null;
+  media_id: string | null;
+  created_at: string;
+  instagram_accounts: {
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  } | null;
+  videos_library: {
+    filename: string;
+    public_url: string;
+  } | null;
 }
 
-// ── Stepper ───────────────────────────────────────────────────
-const STEPS = ["Vídeo", "Contas", "Detalhes", "Confirmar"];
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function StepIndicator({ current }: { current: number }) {
+const AVATAR_COLORS = [
+  "from-violet-500 to-purple-600",
+  "from-pink-500 to-rose-600",
+  "from-cyan-500 to-blue-600",
+  "from-emerald-500 to-teal-600",
+  "from-amber-500 to-orange-600",
+  "from-fuchsia-500 to-purple-600",
+];
+
+function avatarGradient(username: string) {
+  let hash = 0;
+  for (const c of username) hash = (hash * 31 + c.charCodeAt(0)) & 0xffffffff;
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function relativeTime(iso: string, future = false): string {
+  const diff = future
+    ? new Date(iso).getTime() - Date.now()
+    : Date.now() - new Date(iso).getTime();
+  if (diff < 0) return future ? "vencido" : "agora";
+  const m = Math.floor(diff / 60_000);
+  if (m < 1) return future ? "em instantes" : "agora";
+  if (m < 60) return future ? `em ${m}min` : `${m}min atrás`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return future ? `em ${h}h` : `${h}h atrás`;
+  const d = Math.floor(h / 24);
+  return future ? `em ${d}d` : `${d}d atrás`;
+}
+
+// ── Status config ─────────────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<PostStatus, { label: string; color: string }> = {
+  pending:    { label: "Pendente",      color: "bg-amber-500/15 text-amber-400 border-amber-500/20" },
+  publishing: { label: "Publicando...", color: "bg-blue-500/15 text-blue-400 border-blue-500/20" },
+  published:  { label: "Publicado",     color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" },
+  failed:     { label: "Falha",         color: "bg-red-500/15 text-red-400 border-red-500/20" },
+  cancelled:  { label: "Cancelado",     color: "bg-white/[0.05] text-white/20 border-white/[0.06]" },
+};
+
+function StatusIcon({ status }: { status: PostStatus }) {
+  if (status === "publishing") return <Loader2 size={10} className="animate-spin flex-shrink-0" />;
+  if (status === "published")  return <CheckCircle2 size={10} className="flex-shrink-0" />;
+  if (status === "failed")     return <XCircle size={10} className="flex-shrink-0" />;
+  if (status === "cancelled")  return <X size={10} className="flex-shrink-0" />;
+  return <Clock size={10} className="flex-shrink-0" />;
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+
+type FilterKey = "all" | PostStatus;
+
+const TAB_KEYS: FilterKey[] = ["all", "pending", "publishing", "published", "failed", "cancelled"];
+const TAB_LABELS: Record<FilterKey, string> = {
+  all: "Todos", pending: "Pendentes", publishing: "Publicando",
+  published: "Publicados", failed: "Com falha", cancelled: "Cancelados",
+};
+
+// ── PostRow ───────────────────────────────────────────────────────────────────
+
+function PostRow({
+  post,
+  onCancel,
+  onRetry,
+  onDelete,
+  actionId,
+}: {
+  post: ScheduledPost;
+  onCancel: (id: string) => void;
+  onRetry: (id: string) => void;
+  onDelete: (id: string) => void;
+  actionId: string | null;
+}) {
+  const account = post.instagram_accounts;
+  const cfg = STATUS_CONFIG[post.status];
+  const busy = actionId === post.id;
+
   return (
-    <div className="flex items-center gap-0">
-      {STEPS.map((label, i) => (
-        <div key={i} className="flex items-center">
-          <div className="flex flex-col items-center gap-1">
-            <div
-              className={cn(
-                "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all duration-300",
-                i < current
-                  ? "bg-violet-600 border-violet-600 text-white"
-                  : i === current
-                  ? "bg-violet-600/20 border-violet-500 text-violet-300"
-                  : "bg-white/[0.04] border-white/10 text-white/25"
-              )}
-            >
-              {i < current ? <CheckCircle2 size={14} /> : i + 1}
-            </div>
-            <span
-              className={cn(
-                "text-[10px] font-medium whitespace-nowrap",
-                i === current ? "text-violet-300" : "text-white/25"
-              )}
-            >
-              {label}
-            </span>
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.97 }}
+      transition={{ duration: 0.18 }}
+      className="glass-card rounded-xl p-4 flex items-start gap-4"
+    >
+      {/* Thumbnail 9:16 */}
+      <div
+        className={cn(
+          "w-10 rounded-lg flex-shrink-0 bg-gradient-to-br",
+          account ? avatarGradient(account.username) : "from-violet-600 to-purple-800"
+        )}
+        style={{ aspectRatio: "9/16" }}
+      />
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white/85 truncate">
+              @{account?.username ?? "—"}
+            </p>
+            {post.caption && (
+              <p className="text-xs text-white/35 mt-0.5 line-clamp-1 leading-snug">
+                {post.caption}
+              </p>
+            )}
           </div>
-          {i < STEPS.length - 1 && (
-            <div
-              className={cn(
-                "w-12 h-px mb-4 mx-1 transition-all duration-500",
-                i < current ? "bg-violet-600" : "bg-white/10"
-              )}
-            />
+
+          <span className={cn(
+            "inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold border flex-shrink-0",
+            cfg.color
+          )}>
+            <StatusIcon status={post.status} />
+            {cfg.label}
+          </span>
+        </div>
+
+        {/* Meta */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-[11px] text-white/30">
+          <span className="flex items-center gap-1">
+            <CalendarClock size={10} className="flex-shrink-0" />
+            {formatDate(post.scheduled_at)}
+          </span>
+          {post.status === "pending" && (
+            <span className={cn(
+              new Date(post.scheduled_at) < new Date() ? "text-red-400/70" : "text-amber-400/70"
+            )}>
+              {relativeTime(post.scheduled_at, true)}
+            </span>
+          )}
+          {post.status === "published" && post.published_at && (
+            <span className="text-emerald-400/60">
+              publicado {relativeTime(post.published_at)}
+            </span>
+          )}
+          {post.media_id && (
+            <span className="font-mono text-white/15">#{post.media_id.slice(-8)}</span>
           )}
         </div>
-      ))}
+
+        {/* Error box */}
+        {post.status === "failed" && post.error_message && (
+          <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-red-500/8 border border-red-500/15">
+            <p className="text-[11px] text-red-400/80 line-clamp-2 leading-snug">
+              {post.error_message}
+            </p>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center gap-3 mt-2.5">
+          {post.status === "pending" && (
+            <button
+              onClick={() => onCancel(post.id)}
+              disabled={busy}
+              className="flex items-center gap-1 text-[11px] text-white/30 hover:text-white/60 transition-colors disabled:opacity-40"
+            >
+              {busy ? <Loader2 size={9} className="animate-spin" /> : <X size={9} />}
+              Cancelar
+            </button>
+          )}
+          {post.status === "failed" && (
+            <button
+              onClick={() => onRetry(post.id)}
+              disabled={busy}
+              className="flex items-center gap-1 text-[11px] text-amber-400/70 hover:text-amber-400 transition-colors disabled:opacity-40"
+            >
+              {busy ? <Loader2 size={9} className="animate-spin" /> : <RotateCcw size={9} />}
+              Reagendar
+            </button>
+          )}
+          {(post.status === "cancelled" || post.status === "failed" || post.status === "published") && (
+            <button
+              onClick={() => onDelete(post.id)}
+              disabled={busy}
+              className="flex items-center gap-1 text-[11px] text-red-400/40 hover:text-red-400 transition-colors disabled:opacity-40"
+            >
+              {busy ? <Loader2 size={9} className="animate-spin" /> : <Trash2 size={9} />}
+              Remover
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function RowSkeleton() {
+  return (
+    <div className="glass-card rounded-xl p-4 flex items-start gap-4 animate-pulse">
+      <div className="w-10 rounded-lg bg-white/[0.06] flex-shrink-0" style={{ aspectRatio: "9/16" }} />
+      <div className="flex-1 space-y-2 pt-1">
+        <div className="flex justify-between">
+          <div className="h-3 bg-white/[0.07] rounded-full w-28" />
+          <div className="h-4 bg-white/[0.05] rounded-full w-20" />
+        </div>
+        <div className="h-2.5 bg-white/[0.04] rounded-full w-48" />
+        <div className="h-2.5 bg-white/[0.04] rounded-full w-36" />
+      </div>
     </div>
   );
 }
 
-// ── Mini VideoCard para seleção ───────────────────────────────
-function MiniVideoCard({
-  video,
-  selected,
-  onClick,
-}: {
-  video: LibraryVideo;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  const gradient = video.gradient ?? "from-violet-600 to-purple-800";
+// ── Page ─────────────────────────────────────────────────────────────────────
+
+export default function SchedulePage() {
+  const [posts, setPosts] = useState<ScheduledPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const [actionId, setActionId] = useState<string | null>(null);
+  const _actionRef = useRef<string | null>(null);
+
+  const supabase = useMemo(() => createClient(), []);
+
+  const fetchPosts = useCallback(async () => {
+    const { data } = await supabase
+      .from("scheduled_posts")
+      .select(
+        "id, video_id, video_url, caption, scheduled_at, status, error_message, published_at, media_id, created_at, " +
+        "instagram_accounts(username, display_name, avatar_url), " +
+        "videos_library(filename, public_url)"
+      )
+      .order("scheduled_at", { ascending: true });
+    setPosts((data ?? []) as unknown as ScheduledPost[]);
+  }, [supabase]);
+
+  // Carga inicial
+  useEffect(() => {
+    setLoading(true);
+    fetchPosts().finally(() => setLoading(false));
+  }, [fetchPosts]);
+
+  // Auto-refresh a cada 15s enquanto houver posts em 'publishing'
+  useEffect(() => {
+    const hasPublishing = posts.some(p => p.status === "publishing");
+    if (!hasPublishing) return;
+    const id = setInterval(fetchPosts, 15_000);
+    return () => clearInterval(id);
+  }, [posts, fetchPosts]);
+
+  // Contadores por status
+  const counts = useMemo(() => {
+    const c: Record<FilterKey, number> = { all: posts.length, pending: 0, publishing: 0, published: 0, failed: 0, cancelled: 0 };
+    for (const p of posts) c[p.status]++;
+    return c;
+  }, [posts]);
+
+  // Posts filtrados
+  const filtered = useMemo(
+    () => filter === "all" ? posts : posts.filter(p => p.status === filter),
+    [posts, filter]
+  );
+
+  const handleCancel = useCallback(async (id: string) => {
+    if (_actionRef.current) return;
+    _actionRef.current = id;
+    setActionId(id);
+    try {
+      await supabase
+        .from("scheduled_posts")
+        .update({ status: "cancelled" })
+        .eq("id", id)
+        .eq("status", "pending");
+      setPosts(prev => prev.map(p => p.id === id ? { ...p, status: "cancelled" as PostStatus } : p));
+    } finally {
+      _actionRef.current = null;
+      setActionId(null);
+    }
+  }, [supabase]);
+
+  const handleRetry = useCallback(async (id: string) => {
+    if (_actionRef.current) return;
+    _actionRef.current = id;
+    setActionId(id);
+    try {
+      await supabase
+        .from("scheduled_posts")
+        .update({ status: "pending", error_message: null })
+        .eq("id", id)
+        .eq("status", "failed");
+      setPosts(prev => prev.map(p => p.id === id ? { ...p, status: "pending" as PostStatus, error_message: null } : p));
+    } finally {
+      _actionRef.current = null;
+      setActionId(null);
+    }
+  }, [supabase]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    if (_actionRef.current) return;
+    _actionRef.current = id;
+    setActionId(id);
+    try {
+      await supabase.from("scheduled_posts").delete().eq("id", id);
+      setPosts(prev => prev.filter(p => p.id !== id));
+    } finally {
+      _actionRef.current = null;
+      setActionId(null);
+    }
+  }, [supabase]);
+
   return (
-    <motion.button
-      onClick={onClick}
-      whileTap={{ scale: 0.97 }}
-      className={cn(
-        "relative rounded-xl overflow-hidden border-2 transition-all duration-200 text-left",
-        selected
-          ? "border-violet-500 shadow-[0_0_15px_rgba(139,92,246,0.4)]"
-          : "border-white/[0.07] hover:border-white/20"
-      )}
-    >
-      <div
-        className={cn("aspect-video bg-gradient-to-br", gradient)}
-      />
-      {selected && (
-        <div className="absolute inset-0 bg-violet-600/20 flex items-center justify-center">
-          <CheckCircle2 size={24} className="text-violet-300" />
-        </div>
-      )}
-      {/* Duration */}
-      <div className="absolute top-1.5 right-1.5 text-[9px] px-1.5 py-0.5 rounded-full bg-black/60 text-white/70 flex items-center gap-0.5">
-        <Clock size={8} />
-        {formatDuration(video.duration)}
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80">
-        <p className="text-[10px] text-white/70 truncate">
-          @{video.owner_username ?? "desconhecido"}
-        </p>
-      </div>
-    </motion.button>
-  );
-}
+    <div className="space-y-6">
 
-// ── Componente principal ──────────────────────────────────────
-function SchedulePageInner() {
-  const searchParams = useSearchParams();
-  const preselectedVideoId = searchParams.get("videoId");
-
-  const [step, setStep] = useState(0);
-  const [videos, setVideos] = useState<LibraryVideo[]>([]);
-  const [loadingVideos, setLoadingVideos] = useState(true);
-  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(
-    preselectedVideoId
-  );
-  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
-  const [caption, setCaption] = useState("");
-  const [scheduledAt, setScheduledAt] = useState(() => {
-    const d = new Date();
-    d.setHours(d.getHours() + 1, 0, 0, 0);
-    return d.toISOString().slice(0, 16);
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
-
-  const fetchVideos = useCallback(async () => {
-    setLoadingVideos(true);
-    try {
-      const res = await fetch("/api/library");
-      const data = await res.json();
-      setVideos(data.videos ?? []);
-    } finally {
-      setLoadingVideos(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchVideos();
-  }, [fetchVideos]);
-
-  // Se veio com ?videoId, pula direto para o passo de contas
-  useEffect(() => {
-    if (preselectedVideoId && !loadingVideos) {
-      setStep(1);
-    }
-  }, [preselectedVideoId, loadingVideos]);
-
-  const selectedVideo = videos.find((v) => v.id === selectedVideoId) ?? null;
-
-  const canNext = [
-    !!selectedVideoId,
-    selectedAccounts.length > 0,
-    !!scheduledAt,
-    true,
-  ][step];
-
-  const handleSubmit = async () => {
-    if (!selectedVideoId || !selectedAccounts.length) return;
-    setSubmitting(true);
-    try {
-      await fetch("/api/schedule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          video_id: selectedVideoId,
-          account_ids: selectedAccounts,
-          caption,
-          scheduled_at: new Date(scheduledAt).toISOString(),
-        }),
-      });
-      setDone(true);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // ── Tela de sucesso ───────────────────────────────────────
-  if (done) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="flex flex-col items-center justify-center py-24 gap-6 text-center"
-      >
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ type: "spring", bounce: 0.5, delay: 0.1 }}
-          className="w-20 h-20 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center"
-        >
-          <CheckCircle2 size={36} className="text-emerald-400" />
-        </motion.div>
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white mb-2">
-            Postagem agendada!
-          </h2>
-          <p className="text-white/40 text-sm max-w-sm">
-            Agendada para{" "}
-            <span className="text-violet-300">
-              {selectedAccounts.length} conta
-              {selectedAccounts.length > 1 ? "s" : ""}
-            </span>{" "}
-            em {new Date(scheduledAt).toLocaleString("pt-BR", {
-              dateStyle: "short",
-              timeStyle: "short",
-            })}
+          <h1 className="text-xl font-bold text-white">Agendamentos</h1>
+          <p className="text-sm text-white/35 mt-0.5">
+            {counts.all} total · {counts.pending} pendente{counts.pending !== 1 ? "s" : ""} · {counts.published} publicado{counts.published !== 1 ? "s" : ""}
+            {counts.failed > 0 && <span className="text-red-400/70"> · {counts.failed} com falha</span>}
           </p>
         </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => {
-              setDone(false);
-              setStep(0);
-              setSelectedVideoId(null);
-              setSelectedAccounts([]);
-              setCaption("");
-            }}
-            className="btn-ghost text-sm px-6 py-2.5"
-          >
-            Novo agendamento
-          </button>
-          <a href="/dashboard" className="btn-primary text-sm px-6 py-2.5">
-            Ir para o Dashboard
-          </a>
-        </div>
-      </motion.div>
-    );
-  }
-
-  return (
-    <div className="max-w-5xl space-y-6">
-      {/* Stepper */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass-card p-5 flex justify-center"
-      >
-        <StepIndicator current={step} />
+        <a href="/dashboard/posts" className="btn-primary flex items-center gap-2 text-sm px-4 py-2.5">
+          <CalendarRange size={15} />
+          Novo agendamento
+        </a>
       </motion.div>
 
-      {/* Step content */}
-      <AnimatePresence mode="wait">
-        {/* ── Step 0: Escolher vídeo ─────────────────────── */}
-        {step === 0 && (
-          <motion.div
-            key="step-0"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="glass-card p-5 space-y-4"
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <Play size={16} className="text-violet-400" />
-              <h2 className="font-semibold text-white/80">
-                Escolha o vídeo da Biblioteca
-              </h2>
-            </div>
-
-            {loadingVideos ? (
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="aspect-video rounded-xl bg-white/[0.04] animate-pulse" />
-                ))}
-              </div>
-            ) : videos.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 py-12 text-center">
-                <FolderOpen size={32} className="text-white/15" />
-                <p className="text-white/30 text-sm">
-                  Biblioteca vazia. Baixe Reels primeiro na página de Pesquisa.
-                </p>
-                <a href="/dashboard/search" className="btn-primary text-sm px-5 py-2">
-                  Ir para Pesquisa
-                </a>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-                {videos.map((video) => (
-                  <MiniVideoCard
-                    key={video.id}
-                    video={video}
-                    selected={selectedVideoId === video.id}
-                    onClick={() => setSelectedVideoId(video.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </motion.div>
-        )}
-
-        {/* ── Step 1: Selecionar contas ──────────────────── */}
-        {step === 1 && (
-          <motion.div
-            key="step-1"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="grid grid-cols-1 md:grid-cols-2 gap-5"
-          >
-            {/* Vídeo selecionado (preview) */}
-            {selectedVideo && (
-              <div className="glass-card p-4 space-y-3">
-                <p className="text-xs font-semibold text-white/40 uppercase tracking-widest">
-                  Vídeo selecionado
-                </p>
-                <div
-                  className={cn(
-                    "w-full aspect-video rounded-xl bg-gradient-to-br",
-                    selectedVideo.gradient ?? "from-violet-600 to-purple-800"
-                  )}
-                />
-                <p className="text-xs text-white/60 truncate">
-                  @{selectedVideo.owner_username}
-                </p>
-              </div>
-            )}
-
-            {/* Account selector */}
-            <div className="glass-card p-5">
-              <AccountSelector
-                accounts={MOCK_ACCOUNTS}
-                selected={selectedAccounts}
-                onChange={setSelectedAccounts}
-              />
-            </div>
-          </motion.div>
-        )}
-
-        {/* ── Step 2: Detalhes (legenda + data) ─────────── */}
-        {step === 2 && (
-          <motion.div
-            key="step-2"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="glass-card p-5 space-y-5"
-          >
-            {/* Caption */}
-            <div>
-              <label className="flex items-center gap-1.5 text-sm font-semibold text-white/60 mb-2">
-                <AlignLeft size={14} />
-                Legenda
-              </label>
-              <textarea
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                placeholder="Escreva a legenda do post (opcional)..."
-                rows={5}
-                className="input-glass w-full resize-none text-sm leading-relaxed"
-              />
-              <p className="text-[10px] text-white/20 mt-1 text-right">
-                {caption.length} / 2200 caracteres
-              </p>
-            </div>
-
-            {/* Date & time */}
-            <div>
-              <label className="flex items-center gap-1.5 text-sm font-semibold text-white/60 mb-2">
-                <Clock size={14} />
-                Data e horário de publicação
-              </label>
-              <input
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={(e) => setScheduledAt(e.target.value)}
-                min={new Date().toISOString().slice(0, 16)}
-                className="input-glass w-full sm:w-64 text-sm [color-scheme:dark]"
-              />
-            </div>
-          </motion.div>
-        )}
-
-        {/* ── Step 3: Confirmação ────────────────────────── */}
-        {step === 3 && (
-          <motion.div
-            key="step-3"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="glass-card p-6 space-y-5"
-          >
-            <h2 className="font-semibold text-white/80">
-              Confirmar agendamento
-            </h2>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Video summary */}
-              <div className="space-y-2">
-                <p className="text-xs text-white/30 uppercase tracking-widest font-semibold">
-                  Vídeo
-                </p>
-                {selectedVideo && (
-                  <div className="flex gap-3 items-center">
-                    <div
-                      className={cn(
-                        "w-16 aspect-video rounded-lg bg-gradient-to-br flex-shrink-0",
-                        selectedVideo.gradient ?? "from-violet-600 to-purple-800"
-                      )}
-                    />
-                    <div>
-                      <p className="text-sm text-white/70 truncate">
-                        @{selectedVideo.owner_username}
-                      </p>
-                      <p className="text-xs text-white/30">
-                        {formatDuration(selectedVideo.duration)}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Accounts summary */}
-              <div className="space-y-2">
-                <p className="text-xs text-white/30 uppercase tracking-widest font-semibold">
-                  Contas ({selectedAccounts.length})
-                </p>
-                <div className="space-y-1">
-                  {MOCK_ACCOUNTS.filter((a) =>
-                    selectedAccounts.includes(a.id)
-                  ).map((a) => (
-                    <div key={a.id} className="flex items-center gap-2 text-sm text-white/60">
-                      <div className={cn("w-5 h-5 rounded-full", a.avatar_color)} />
-                      @{a.username}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Date summary */}
-              <div className="space-y-1">
-                <p className="text-xs text-white/30 uppercase tracking-widest font-semibold">
-                  Publicação
-                </p>
-                <p className="text-sm text-white/70 flex items-center gap-1.5">
-                  <CalendarClock size={14} className="text-violet-400" />
-                  {new Date(scheduledAt).toLocaleString("pt-BR", {
-                    dateStyle: "full",
-                    timeStyle: "short",
-                  })}
-                </p>
-              </div>
-
-              {/* Caption summary */}
-              {caption && (
-                <div className="space-y-1">
-                  <p className="text-xs text-white/30 uppercase tracking-widest font-semibold">
-                    Legenda
-                  </p>
-                  <p className="text-sm text-white/50 line-clamp-3 leading-relaxed">
-                    {caption}
-                  </p>
-                </div>
+      {/* Filter tabs */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-1 flex-wrap">
+        {TAB_KEYS.map(key => {
+          const count = counts[key];
+          if (key !== "all" && count === 0) return null;
+          return (
+            <button
+              key={key}
+              onClick={() => setFilter(key)}
+              className={cn(
+                "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors",
+                filter === key
+                  ? "bg-violet-600/25 text-violet-300 border border-violet-500/30"
+                  : "text-white/35 hover:text-white/60 hover:bg-white/[0.04] border border-transparent"
               )}
-            </div>
+            >
+              {TAB_LABELS[key]}
+              {count > 0 && (
+                <span className={cn(
+                  "text-[10px] px-1.5 py-px rounded-full",
+                  filter === key ? "bg-violet-500/30 text-violet-300" : "bg-white/[0.06] text-white/30"
+                )}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </motion.div>
+
+      {/* Lista */}
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map(i => <RowSkeleton key={i} />)}
+        </div>
+      ) : filtered.length === 0 ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="glass-card rounded-2xl flex flex-col items-center gap-4 py-20 text-center px-6"
+        >
+          <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center">
+            {filter === "all"
+              ? <CalendarClock size={24} className="text-white/20" />
+              : <AlertCircle size={24} className="text-white/20" />
+            }
+          </div>
+          <div className="space-y-1">
+            <p className="text-white/40 text-sm font-medium">
+              {filter === "all" ? "Nenhum post agendado" : `Nenhum post ${TAB_LABELS[filter].toLowerCase()}`}
+            </p>
+            {filter === "all" && (
+              <p className="text-white/20 text-xs max-w-xs">
+                Crie agendamentos em massa na página Postagens para preencher sua fila.
+              </p>
+            )}
+          </div>
+          {filter === "all" && (
+            <a href="/dashboard/posts" className="btn-primary text-sm px-5 py-2.5 flex items-center gap-2">
+              <CalendarRange size={14} /> Criar agendamentos
+            </a>
+          )}
+        </motion.div>
+      ) : (
+        <div className="space-y-3">
+          <AnimatePresence>
+            {filtered.map(post => (
+              <PostRow
+                key={post.id}
+                post={post}
+                onCancel={handleCancel}
+                onRetry={handleRetry}
+                onDelete={handleDelete}
+                actionId={actionId}
+              />
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* Nota: auto-refresh ativo */}
+      <AnimatePresence>
+        {posts.some(p => p.status === "publishing") && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            className="flex items-center gap-2 text-xs text-blue-400/70"
+          >
+            <Loader2 size={11} className="animate-spin" />
+            Atualizando automaticamente enquanto há posts sendo publicados...
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Navigation buttons */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="flex items-center justify-between"
-      >
-        <button
-          onClick={() => setStep((s) => s - 1)}
-          disabled={step === 0}
-          className="btn-ghost flex items-center gap-1.5 text-sm px-5 py-2.5 disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <ArrowLeft size={15} />
-          Voltar
-        </button>
-
-        {step < STEPS.length - 1 ? (
-          <button
-            onClick={() => setStep((s) => s + 1)}
-            disabled={!canNext}
-            className="btn-primary flex items-center gap-1.5 text-sm px-6 py-2.5 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Próximo
-            <ArrowRight size={15} />
-          </button>
-        ) : (
-          <motion.button
-            onClick={handleSubmit}
-            disabled={submitting}
-            whileTap={{ scale: 0.97 }}
-            className="btn-primary flex items-center gap-2 px-8 py-3 text-sm disabled:opacity-60"
-          >
-            {submitting ? (
-              <>
-                <Loader2 size={15} className="animate-spin" />
-                Agendando...
-              </>
-            ) : (
-              <>
-                <Send size={15} />
-                Agendar postagem
-              </>
-            )}
-          </motion.button>
-        )}
-      </motion.div>
     </div>
-  );
-}
-
-// Wrapper com Suspense (necessário por causa de useSearchParams)
-export default function SchedulePage() {
-  return (
-    <Suspense>
-      <SchedulePageInner />
-    </Suspense>
   );
 }

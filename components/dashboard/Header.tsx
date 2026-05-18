@@ -22,8 +22,8 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     subtitle: "Agendamento em massa com distribuição inteligente",
   },
   "/dashboard/schedule": {
-    title: "Agendamento",
-    subtitle: "Programe postagens para múltiplas contas",
+    title: "Agendamentos",
+    subtitle: "Acompanhe o status de todos os posts agendados",
   },
   "/dashboard/accounts": {
     title: "Contas",

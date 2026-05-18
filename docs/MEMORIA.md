@@ -1097,3 +1097,39 @@ curl -X POST https://autoscale.vercel.app/api/cron/publish-scheduled \
 
 #### Decisão: claim atômico com status 'publishing'
 Sem o status intermediário, duas execuções paralelas do cron (possível se o job leva mais de 1 hora) publicariam o mesmo post duas vezes. O UPDATE com `WHERE status='pending'` é atômico no PostgreSQL — apenas uma das execuções consegue "reclamar" cada post.
+
+---
+
+### ✅ Fase 31 — Gestão de Agendamentos
+**Data:** 18/05/2026
+**Commit:** `feat: Fase 31 — gestão de agendamentos com status real`
+
+#### O que foi feito
+
+**`app/dashboard/schedule/page.tsx`** (reescrito completamente)
+- Substituiu o wizard legado com contas mock pela tela de gestão real
+- Usa o cliente Supabase browser com RLS — só exibe posts do usuário autenticado
+- SELECT com joins: `instagram_accounts(username, display_name, avatar_url)` + `videos_library(filename, public_url)` + todos os campos novos (`published_at`, `media_id`, `error_message`)
+- **Tabs de filtro**: Todos | Pendentes | Publicando | Publicados | Com falha | Cancelados — tabs com contadores, apenas exibidas quando count > 0
+- **PostRow**: thumbnail 9:16 com gradiente por conta, badge de status, data agendada + tempo relativo ("em 2h" / "publicado 3h atrás"), box de erro para posts failed, botões de ação
+- **Ações**:
+  - Cancelar (pending → cancelled): update otimista local + Supabase
+  - Reagendar (failed → pending): reseta error_message, nova tentativa no próximo cron
+  - Remover (cancelled/failed/published): DELETE + remove do estado local
+- **Auto-refresh a cada 15s** enquanto houver posts com `status = 'publishing'` — mostra indicador animado
+- **Header** com contadores reais e link "Novo agendamento" → `/dashboard/posts`
+- Skeletons de loading (4 linhas pulsando) enquanto busca dados
+
+**`components/dashboard/Sidebar.tsx`**
+- "Agendamento" → "Agendamentos"
+
+**`components/dashboard/Header.tsx`**
+- Título: "Agendamentos" | Subtitle: "Acompanhe o status de todos os posts agendados"
+
+#### Ciclo completo do agendamento (Fases 26 + 30 + 31)
+```
+/dashboard/posts  → cria N posts agendados (status='pending') no Supabase
+/dashboard/schedule → usuário vê a fila, pode cancelar ou reagendar
+Vercel Cron (1×h)   → publica posts vencidos, atualiza status → 'published'/'failed'
+/dashboard/schedule → auto-refresh mostra status final com media_id ou erro
+```
