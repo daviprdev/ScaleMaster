@@ -1133,3 +1133,48 @@ Sem o status intermediário, duas execuções paralelas do cron (possível se o 
 Vercel Cron (1×h)   → publica posts vencidos, atualiza status → 'published'/'failed'
 /dashboard/schedule → auto-refresh mostra status final com media_id ou erro
 ```
+
+---
+
+### ✅ Fase 32 — Analytics de Posts Publicados
+**Data:** 18/05/2026
+**Commit:** `feat: Fase 32 — analytics de posts publicados via Meta API`
+
+#### O que foi feito
+
+**`app/api/meta/insights/route.ts`** (novo endpoint)
+- `POST /api/meta/insights` com `{ post_id }`
+- **Métricas básicas** (`instagram_basic` — já disponível): `GET /{media-id}?fields=like_count,comments_count`
+- **Métricas avançadas** (`instagram_manage_insights` — requer reconexão das contas): `GET /{media-id}/insights?metric=reach,plays,shares,saved&period=lifetime` — falha graciosamente se permissão não concedida
+- Salva resultados nas novas colunas de `scheduled_posts` e retorna `{ ok, metrics }`
+
+**`app/api/analytics/summary/route.ts`** (novo endpoint)
+- `GET /api/analytics/summary` — lista todos os posts publicados do usuário com joins, calcula totais agregados de todas as métricas
+
+**`app/dashboard/analytics/page.tsx`** (nova página)
+- 7 cards de resumo: Publicados, Curtidas, Comentários, Alcance, Plays, Shares, Salvos
+- Grid de PostRow: thumbnail, conta, data publicação, legenda, métricas por linha, botão "Atualizar" individual
+- Botão "Atualizar todos" no header da página
+- Aviso ambar explicando que Alcance/Plays/Shares/Salvos exigem `instagram_manage_insights`
+- Empty state quando não há posts publicados
+
+**`app/api/meta/auth/route.ts`** (atualizado)
+- Adicionado `instagram_manage_insights` ao escopo OAuth — contas precisam ser reconectadas para habilitar métricas avançadas
+
+#### SQL para executar no Supabase Dashboard
+```sql
+alter table public.scheduled_posts
+  add column if not exists insights_likes      integer,
+  add column if not exists insights_comments   integer,
+  add column if not exists insights_reach      integer,
+  add column if not exists insights_plays      integer,
+  add column if not exists insights_shares     integer,
+  add column if not exists insights_saved      integer,
+  add column if not exists insights_fetched_at timestamptz;
+```
+
+#### Decisão: buscar métricas sob demanda (não automático)
+Métricas não são buscadas automaticamente ao publicar para evitar latência extra no cron. O usuário clica "Atualizar" por post ou "Atualizar todos" quando quiser ver os dados — dá controle e evita rate limit da Meta API.
+
+#### Permissão `instagram_manage_insights`
+Esta permissão requer **App Review** pela Meta para apps em produção (não-development). No modo Development, funciona para contas de teste. Contas existentes precisam ser reconectadas via OAuth para incluir o novo escopo.
