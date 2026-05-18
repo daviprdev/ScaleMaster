@@ -1,26 +1,36 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { getMetaApp, getMetaApps } from "@/lib/meta-apps";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const clientId = process.env.NEXT_PUBLIC_META_CLIENT_ID;
+export async function GET(req: NextRequest) {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   const redirectUri = `${appUrl}/api/meta/callback`;
 
-  if (!clientId) {
+  const { searchParams } = new URL(req.url);
+  const requestedAppId = searchParams.get("app_id");
+
+  // Resolve o app a usar: parâmetro explícito → primeiro disponível
+  const app = requestedAppId
+    ? getMetaApp(requestedAppId)
+    : getMetaApps()[0] ?? null;
+
+  if (!app) {
     return NextResponse.json(
-      { error: "NEXT_PUBLIC_META_CLIENT_ID não configurado." },
+      { error: "Nenhum Meta App configurado. Adicione META_APP1_CLIENT_ID e META_APP1_CLIENT_SECRET ao .env.local." },
       { status: 500 }
     );
   }
 
-  const state = crypto.randomUUID();
+  // State = "{appId}:{uuid}" — app_id recuperado no callback para CSRF + seleção do secret
+  const uuid = crypto.randomUUID();
+  const state = `${app.id}:${uuid}`;
 
   const params = new URLSearchParams({
-    client_id: clientId,
+    client_id: app.clientId,
     redirect_uri: redirectUri,
-    scope: "instagram_business_basic,instagram_business_content_publish",
+    scope: "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights",
     response_type: "code",
     state,
   });

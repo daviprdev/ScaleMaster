@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { getMetaApp } from "@/lib/meta-apps";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +15,15 @@ function redirectWithError(code: string, appUrl: string): NextResponse {
 }
 
 // Troca o authorization code por um Short-Lived Instagram User Token
-async function exchangeCodeForShortToken(code: string, redirectUri: string): Promise<string> {
+async function exchangeCodeForShortToken(
+  code: string,
+  redirectUri: string,
+  clientId: string,
+  clientSecret: string
+): Promise<string> {
   const body = new URLSearchParams({
-    client_id: process.env.NEXT_PUBLIC_META_CLIENT_ID!,
-    client_secret: process.env.META_CLIENT_SECRET!,
+    client_id: clientId,
+    client_secret: clientSecret,
     grant_type: "authorization_code",
     redirect_uri: redirectUri,
     code,
@@ -46,7 +52,6 @@ async function getLongLivedToken(
 ): Promise<{ token: string; expiresAt: Date }> {
   const params = new URLSearchParams({
     grant_type: "ig_exchange_token",
-    client_secret: process.env.META_CLIENT_SECRET!,
     access_token: shortToken,
   });
   const res = await fetch(`${GRAPH_IG}/access_token?${params}`);
@@ -60,7 +65,7 @@ async function getLongLivedToken(
   if (!res.ok || !data.access_token) {
     throw new Error(data.error?.message ?? "Falha ao obter Long-Lived Token.");
   }
-  const expiresIn = data.expires_in ?? 5_184_000; // 60 dias padrão
+  const expiresIn = data.expires_in ?? 5_184_000;
   return {
     token: data.access_token,
     expiresAt: new Date(Date.now() + expiresIn * 1_000),
@@ -101,12 +106,21 @@ export async function GET(req: NextRequest) {
     return redirectWithError("cancelled", appUrl);
   }
 
-  // Verificação CSRF
+  // Verificação CSRF — compara state completo (inclui app_id)
   const state = searchParams.get("state");
   const cookieState = req.cookies.get("meta_oauth_state")?.value;
   if (!state || !cookieState || state !== cookieState) {
     console.error("[meta/callback] State inválido — possível CSRF ou cookie expirado.");
     return redirectWithError("state_mismatch", appUrl);
+  }
+
+  // Extrai o app_id do state: formato "{appId}:{uuid}"
+  const colonIdx = state.indexOf(":");
+  const appId = colonIdx > 0 ? state.substring(0, colonIdx) : state;
+  const app = getMetaApp(appId);
+  if (!app) {
+    console.error("[meta/callback] App não encontrado:", appId);
+    return redirectWithError("invalid_app", appUrl);
   }
 
   const code = searchParams.get("code");
@@ -116,9 +130,7 @@ export async function GET(req: NextRequest) {
 
   // Verifica usuário autenticado no Supabase
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.redirect(`${appUrl}/auth/login`);
   }
@@ -126,14 +138,14 @@ export async function GET(req: NextRequest) {
   const admin = getSupabaseAdmin();
 
   try {
-    const shortToken = await exchangeCodeForShortToken(code, redirectUri);
-    console.log("[meta/callback] Short token obtido.");
+    const shortToken = await exchangeCodeForShortToken(code, redirectUri, app.clientId, app.clientSecret);
+    console.log("[meta/callback] Short token obtido via", app.id);
 
     const { token: longToken, expiresAt } = await getLongLivedToken(shortToken);
     console.log("[meta/callback] Long-lived token obtido, expira em:", expiresAt.toISOString());
 
     const profile = await getIGProfile(longToken);
-    console.log("[meta/callback] Perfil:", profile.username, "(id:", profile.id + ")");
+    console.log("[meta/callback] Perfil:", profile.username, "(id:", profile.id + ")", "app:", app.id);
 
     const { data: existing } = await admin
       .from("instagram_accounts")
@@ -151,7 +163,8 @@ export async function GET(req: NextRequest) {
       fb_page_id: null,
       token_expires_at: expiresAt.toISOString(),
       access_token: null,
-    };
+      meta_app_used: app.id,
+    } as unknown as Record<string, unknown>;
 
     if (existing) {
       await admin.from("instagram_accounts").update(payload).eq("id", existing.id);
@@ -164,7 +177,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    console.log(`[meta/callback] Conta @${profile.username} salva para user ${user.id}`);
+    console.log(`[meta/callback] Conta @${profile.username} salva via ${app.id} para user ${user.id}`);
 
     const response = NextResponse.redirect(`${appUrl}/dashboard/accounts?connected=1`);
     response.cookies.set("meta_oauth_state", "", { maxAge: 0, path: "/" });
