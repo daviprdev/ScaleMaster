@@ -1,4 +1,5 @@
-const GRAPH_API = "https://graph.facebook.com/v19.0";
+// Tokens gerados via Instagram Login funcionam com graph.instagram.com
+const GRAPH_API = "https://graph.instagram.com/v21.0";
 
 export interface MetaPublishResult {
   status: "ok" | "error";
