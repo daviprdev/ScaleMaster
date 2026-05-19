@@ -15,28 +15,28 @@ export async function GET(request: NextRequest) {
   }
 
   // ── Fluxo normal ──────────────────────────────────────────────────────────
-  const clientId = process.env.NEXT_PUBLIC_META_CLIENT_ID;
+  const clientId = process.env.INSTAGRAM_APP_ID;
 
   if (!clientId) {
     return NextResponse.json(
-      { error: "NEXT_PUBLIC_META_CLIENT_ID não configurada." },
+      { error: "INSTAGRAM_APP_ID não configurada." },
       { status: 500 }
     );
   }
 
   const state = crypto.randomUUID();
   const redirectUri = "https://autoscale-ia.vercel.app/api/instagram/callback";
-  const scope = "instagram_business_basic,instagram_business_content_publish";
 
+  // scope com vírgulas brutas — não pode passar por encodeURIComponent
   const oauthUrl =
     "https://api.instagram.com/oauth/authorize" +
     "?client_id=" + clientId +
     "&redirect_uri=" + encodeURIComponent(redirectUri) +
-    "&scope=" + scope +
+    "&scope=instagram_business_basic,instagram_business_content_publish" +
     "&response_type=code" +
     "&state=" + state;
 
-  console.log("[instagram/auth] clientId:", clientId);
+  console.log("[instagram/auth] clientId (INSTAGRAM_APP_ID):", clientId);
 
   return new Response(null, {
     status: 302,
