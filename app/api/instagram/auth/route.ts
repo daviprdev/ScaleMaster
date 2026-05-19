@@ -3,29 +3,40 @@ import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
+// Instagram App ID — variável dedicada tem prioridade sobre o App ID do Facebook
+const IG_APP_ID =
+  process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ??
+  process.env.NEXT_PUBLIC_META_CLIENT_ID ??
+  "";
+
+// Scopes montados como string literal — vírgulas NÃO podem ser %2C no api.instagram.com
+const SCOPES =
+  "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights";
+
+const REDIRECT_URI = "https://autoscale-ia.vercel.app/api/instagram/callback";
+
 export async function GET(req: NextRequest) {
-  const clientId = process.env.NEXT_PUBLIC_META_CLIENT_ID!;
-  const clientSecret = process.env.META_CLIENT_SECRET!;
-  const redirectUri = "https://autoscale-ia.vercel.app/api/instagram/callback";
+  if (!IG_APP_ID) {
+    return NextResponse.json(
+      { error: "NEXT_PUBLIC_INSTAGRAM_APP_ID não configurado na Vercel." },
+      { status: 500 }
+    );
+  }
 
   const state = crypto.randomUUID();
 
+  // URL montada manualmente — NÃO usar URLSearchParams para o scope
   const oauthUrl =
-    `https://www.facebook.com/v19.0/dialog/oauth` +
-    `?client_id=${clientId}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&scope=instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement` +
+    `https://api.instagram.com/oauth/authorize` +
+    `?client_id=${IG_APP_ID}` +
+    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+    `&scope=${SCOPES}` +
     `&response_type=code` +
     `&state=${encodeURIComponent(state)}`;
 
-  // ?debug=1 → retorna JSON para diagnóstico sem redirecionar
-  if (new URL(req.url).searchParams.get("debug") === "1") {
-    return NextResponse.json({
-      oauthUrl,
-      clientId,
-      hasSecret: !!clientSecret,
-      redirectUri,
-    });
+  const { searchParams } = new URL(req.url);
+  if (searchParams.get("debug") === "1") {
+    return NextResponse.json({ oauthUrl, client_id: IG_APP_ID, redirect_uri: REDIRECT_URI, scopes: SCOPES });
   }
 
   console.log("[instagram/auth] oauthUrl:", oauthUrl);

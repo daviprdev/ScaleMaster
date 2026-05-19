@@ -99,6 +99,7 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   state_mismatch: "Erro de segurança (state inválido). Tente novamente.",
   no_code: "Código de autorização ausente. Tente novamente.",
   server_error: "Erro interno ao processar a conexão. Verifique os logs e tente novamente.",
+  personal_account: "Sua conta precisa ser Comercial ou de Criador de Conteúdo no Instagram. Acesse as Configurações do Instagram → Conta → Mudar para conta profissional.",
 };
 
 // ── Modal de seleção de App Meta ─────────────────────────────
