@@ -172,3 +172,47 @@ create policy "users_manage_own_scraped_profiles"
   on public.scraped_profiles for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+
+-- ──────────────────────────────────────────────────────────────
+-- 6. Tabela: user_roles
+--    Controle de permissões por usuário (user | admin | banned)
+--    Criada automaticamente via trigger ao registrar novo usuário
+-- ──────────────────────────────────────────────────────────────
+create table if not exists public.user_roles (
+  id         uuid        primary key default gen_random_uuid(),
+  user_id    uuid        not null references auth.users(id) on delete cascade,
+  role       text        not null default 'user'
+                         check (role in ('user', 'admin', 'banned')),
+  created_at timestamptz default now(),
+  constraint uq_user_roles_user_id unique (user_id)
+);
+
+alter table public.user_roles enable row level security;
+
+-- Usuários só leem o próprio role; escrita apenas pelo service_role
+create policy "users_read_own_role"
+  on public.user_roles for select
+  using (auth.uid() = user_id);
+
+-- Trigger: insere role 'user' automaticamente ao criar conta
+create or replace function public.handle_new_user_role()
+returns trigger language plpgsql security definer as $$
+begin
+  insert into public.user_roles (user_id, role)
+  values (new.id, 'user')
+  on conflict (user_id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created_role on auth.users;
+create trigger on_auth_user_created_role
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user_role();
+
+
+-- ──────────────────────────────────────────────────────────────
+-- Para promover um usuário a admin, execute:
+--   update public.user_roles set role = 'admin' where user_id = '<uuid>';
+-- ──────────────────────────────────────────────────────────────
