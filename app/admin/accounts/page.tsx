@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Instagram,
   Loader2,
@@ -8,17 +9,25 @@ import {
   ShieldCheck,
   Clock,
   Trash2,
+  ChevronDown,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface ConnectedAccount {
+interface AccountRow {
   id: string;
   username: string;
   display_name: string | null;
   is_active: boolean;
   connected_at: string;
   token_expires_at: string | null;
-  user_email: string;
+}
+
+interface UserRow {
+  id: string;
+  email: string;
+  created_at: string;
+  accounts: AccountRow[];
 }
 
 function daysUntil(iso: string | null): number | null {
@@ -26,18 +35,15 @@ function daysUntil(iso: string | null): number | null {
   return Math.floor((new Date(iso).getTime() - Date.now()) / 86_400_000);
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+function userInitial(email: string) {
+  return email.charAt(0).toUpperCase();
 }
 
 export default function AdminAccountsPage() {
-  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
+  const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openUsers, setOpenUsers] = useState<Set<string>>(new Set());
   const [pendingRevoke, setPendingRevoke] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
 
@@ -46,13 +52,28 @@ export default function AdminAccountsPage() {
       .then((r) => r.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
-        setAccounts(data.accounts);
+        setUsers(data.users);
+        // Expand first user by default if only one
+        if (data.users?.length === 1) {
+          setOpenUsers(new Set([data.users[0].id]));
+        }
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  async function revokeAccount(accountId: string) {
+  function toggleUser(userId: string) {
+    setPendingRevoke(null);
+    setOpenUsers((prev) => {
+      const next = new Set(prev);
+      next.has(userId) ? next.delete(userId) : next.add(userId);
+      return next;
+    });
+  }
+
+  const totalAccounts = users.reduce((sum, u) => sum + u.accounts.length, 0);
+
+  async function revokeAccount(accountId: string, userId: string) {
     if (pendingRevoke !== accountId) {
       setPendingRevoke(accountId);
       return;
@@ -65,7 +86,15 @@ export default function AdminAccountsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setAccounts((prev) => prev.filter((a) => a.id !== accountId));
+      setUsers((prev) =>
+        prev
+          .map((u) =>
+            u.id === userId
+              ? { ...u, accounts: u.accounts.filter((a) => a.id !== accountId) }
+              : u
+          )
+          .filter((u) => u.accounts.length > 0)
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao revogar conta");
     } finally {
@@ -75,18 +104,24 @@ export default function AdminAccountsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Contas Conectadas</h1>
           <p className="mt-1 text-sm text-white/40">
-            Todas as contas Instagram vinculadas na plataforma
+            Perfis Instagram agrupados por usuário
           </p>
         </div>
         {!loading && (
-          <span className="text-sm text-white/30">{accounts.length} contas</span>
+          <div className="flex items-center gap-3 text-sm text-white/30">
+            <span>{users.length} usuários</span>
+            <span className="w-1 h-1 rounded-full bg-white/20" />
+            <span>{totalAccounts} contas</span>
+          </div>
         )}
       </div>
 
+      {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-white/40 gap-2">
           <Loader2 className="w-5 h-5 animate-spin" />
@@ -94,6 +129,7 @@ export default function AdminAccountsPage() {
         </div>
       )}
 
+      {/* Error */}
       {error && (
         <div className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           <AlertCircle className="w-4 h-4 shrink-0" />
@@ -107,115 +143,186 @@ export default function AdminAccountsPage() {
         </div>
       )}
 
+      {/* Accordion list */}
       {!loading && !error && (
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/10 text-white/40 text-left">
-                <th className="px-4 py-3 font-medium">Conta Instagram</th>
-                <th className="px-4 py-3 font-medium">Usuário</th>
-                <th className="px-4 py-3 font-medium">Conectada em</th>
-                <th className="px-4 py-3 font-medium">Token</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {accounts.map((acc) => {
-                const days = daysUntil(acc.token_expires_at);
-                const tokenOk = days === null || days > 7;
-                const isRevoking = revoking === acc.id;
-                const isPending = pendingRevoke === acc.id;
+        <>
+          {users.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-white/30 rounded-xl border border-white/10 bg-white/[0.03]">
+              <Users className="w-8 h-8" />
+              <p className="text-sm">Nenhuma conta conectada na plataforma</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {users.map((user) => {
+                const isOpen = openUsers.has(user.id);
+                const activeCount = user.accounts.filter(
+                  (a) => a.is_active && (daysUntil(a.token_expires_at) ?? 1) > 0
+                ).length;
 
                 return (
-                  <tr
-                    key={acc.id}
-                    className="hover:bg-white/[0.02] transition-colors"
+                  <div
+                    key={user.id}
+                    className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden"
                   >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Instagram className="w-4 h-4 text-pink-400 shrink-0" />
-                        <div>
-                          <p className="text-white font-medium">
-                            @{acc.username}
-                          </p>
-                          {acc.display_name && (
-                            <p className="text-xs text-white/30">
-                              {acc.display_name}
-                            </p>
-                          )}
-                        </div>
+                    {/* User row — clickable header */}
+                    <button
+                      onClick={() => toggleUser(user.id)}
+                      className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-white/[0.03] transition-colors text-left"
+                    >
+                      {/* Avatar initial */}
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/60 to-cyan-500/60 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
+                        {userInitial(user.email)}
                       </div>
-                    </td>
-                    <td className="px-4 py-3 text-white/50 text-xs">
-                      {acc.user_email}
-                    </td>
-                    <td className="px-4 py-3 text-white/40">
-                      {formatDate(acc.connected_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {days !== null ? (
+
+                      {/* Email */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-white truncate">
+                          {user.email}
+                        </p>
+                      </div>
+
+                      {/* Account count badge */}
+                      <div className="flex items-center gap-2 flex-shrink-0">
                         <span
                           className={cn(
-                            "inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5",
-                            days < 0
-                              ? "bg-red-500/10 text-red-400 border-red-500/20"
-                              : days <= 7
-                              ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
+                            activeCount > 0
+                              ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+                              : "bg-white/5 text-white/30 border-white/10"
                           )}
                         >
-                          <Clock className="w-3 h-3" />
-                          {days < 0 ? "Expirado" : `${days}d restantes`}
+                          <Instagram className="w-3 h-3" />
+                          {user.accounts.length}{" "}
+                          {user.accounts.length === 1 ? "conta" : "contas"}
                         </span>
-                      ) : (
-                        <span className="text-white/20 text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          "inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5",
-                          acc.is_active && tokenOk
-                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            : "bg-red-500/10 text-red-400 border-red-500/20"
-                        )}
-                      >
-                        <ShieldCheck className="w-3 h-3" />
-                        {acc.is_active && tokenOk ? "Ativa" : "Inativa"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {isRevoking ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-white/40 ml-auto" />
-                      ) : (
-                        <button
-                          onClick={() => revokeAccount(acc.id)}
-                          className={cn(
-                            "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
-                            isPending
-                              ? "border-red-400/40 bg-red-400/20 text-red-300"
-                              : "border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20"
-                          )}
+
+                        {/* Chevron */}
+                        <motion.span
+                          animate={{ rotate: isOpen ? 180 : 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="text-white/30"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          {isPending ? "Confirmar?" : "Revogar"}
-                        </button>
+                          <ChevronDown className="w-4 h-4" />
+                        </motion.span>
+                      </div>
+                    </button>
+
+                    {/* Expandable accounts list */}
+                    <AnimatePresence initial={false}>
+                      {isOpen && (
+                        <motion.div
+                          key="content"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.22, ease: "easeInOut" }}
+                          style={{ overflow: "hidden" }}
+                        >
+                          <div className="border-t border-white/[0.06] divide-y divide-white/[0.04]">
+                            {user.accounts.length === 0 ? (
+                              <p className="px-12 py-4 text-xs text-white/25">
+                                Nenhuma conta conectada
+                              </p>
+                            ) : (
+                              user.accounts.map((acc) => {
+                                const days = daysUntil(acc.token_expires_at);
+                                const tokenOk = days === null || days > 0;
+                                const isActive = acc.is_active && tokenOk;
+                                const isRevoking = revoking === acc.id;
+                                const isPending = pendingRevoke === acc.id;
+
+                                return (
+                                  <div
+                                    key={acc.id}
+                                    className="flex items-center gap-3 px-4 pl-16 py-3"
+                                  >
+                                    {/* Instagram icon */}
+                                    <div className="w-8 h-8 rounded-full bg-pink-500/10 border border-pink-500/20 flex items-center justify-center flex-shrink-0">
+                                      <Instagram className="w-4 h-4 text-pink-400" />
+                                    </div>
+
+                                    {/* Username */}
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-white/90">
+                                        @{acc.username}
+                                      </p>
+                                      {acc.display_name && (
+                                        <p className="text-xs text-white/30 truncate">
+                                          {acc.display_name}
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    {/* Token status */}
+                                    {days !== null ? (
+                                      <span
+                                        className={cn(
+                                          "inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 flex-shrink-0",
+                                          days < 0
+                                            ? "bg-red-500/10 text-red-400 border-red-500/20"
+                                            : days <= 7
+                                            ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                                            : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                        )}
+                                      >
+                                        <Clock className="w-3 h-3" />
+                                        {days < 0
+                                          ? "Expirado"
+                                          : `${days}d restantes`}
+                                      </span>
+                                    ) : (
+                                      <span className="text-white/20 text-xs flex-shrink-0">
+                                        —
+                                      </span>
+                                    )}
+
+                                    {/* Active badge */}
+                                    <span
+                                      className={cn(
+                                        "inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 flex-shrink-0",
+                                        isActive
+                                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                          : "bg-red-500/10 text-red-400 border-red-500/20"
+                                      )}
+                                    >
+                                      <ShieldCheck className="w-3 h-3" />
+                                      {isActive ? "Ativa" : "Inativa"}
+                                    </span>
+
+                                    {/* Revoke button */}
+                                    {isRevoking ? (
+                                      <Loader2 className="w-4 h-4 animate-spin text-white/30 flex-shrink-0" />
+                                    ) : (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          revokeAccount(acc.id, user.id);
+                                        }}
+                                        className={cn(
+                                          "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-all flex-shrink-0",
+                                          isPending
+                                            ? "border-red-400/40 bg-red-400/20 text-red-300"
+                                            : "border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                                        )}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        {isPending ? "Confirmar?" : "Revogar"}
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        </motion.div>
                       )}
-                    </td>
-                  </tr>
+                    </AnimatePresence>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-
-          {accounts.length === 0 && (
-            <div className="flex flex-col items-center justify-center gap-3 py-16 text-white/30">
-              <Instagram className="w-8 h-8" />
-              <p className="text-sm">Nenhuma conta conectada</p>
             </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );

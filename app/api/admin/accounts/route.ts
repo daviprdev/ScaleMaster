@@ -6,7 +6,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -30,14 +32,23 @@ export async function GET() {
       .order("connected_at", { ascending: false }),
   ]);
 
-  const emailMap = new Map(
-    (authData?.users ?? []).map((u) => [u.id, u.email ?? "—"])
-  );
+  // Group accounts by user_id
+  const accountsByUser = new Map<string, typeof accounts>();
+  for (const acc of accounts ?? []) {
+    if (!accountsByUser.has(acc.user_id)) accountsByUser.set(acc.user_id, []);
+    accountsByUser.get(acc.user_id)!.push(acc);
+  }
 
-  const result = (accounts ?? []).map((acc) => ({
-    ...acc,
-    user_email: emailMap.get(acc.user_id) ?? "—",
-  }));
+  // Return only users that have at least one account, sorted by count desc
+  const users = (authData?.users ?? [])
+    .filter((u) => accountsByUser.has(u.id))
+    .map((u) => ({
+      id: u.id,
+      email: u.email ?? "—",
+      created_at: u.created_at,
+      accounts: accountsByUser.get(u.id) ?? [],
+    }))
+    .sort((a, b) => b.accounts.length - a.accounts.length);
 
-  return NextResponse.json({ accounts: result });
+  return NextResponse.json({ users });
 }
