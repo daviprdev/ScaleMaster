@@ -3,22 +3,14 @@ import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
-  // ── DEBUG: deve ser a PRIMEIRA coisa — retorna JSON puro, sem redirect ──
-  if (req.nextUrl.searchParams.get("debug") === "1") {
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  if (searchParams.get('debug') === '1') {
     return NextResponse.json({
-      NEXT_PUBLIC_META_CLIENT_ID: process.env.NEXT_PUBLIC_META_CLIENT_ID ?? "(não definida)",
-      NEXT_PUBLIC_INSTAGRAM_APP_ID: process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? "(não definida)",
-      INSTAGRAM_APP_SECRET: process.env.INSTAGRAM_APP_SECRET ? "(definida)" : "(não definida)",
-      META_CLIENT_SECRET: process.env.META_CLIENT_SECRET ? "(definida)" : "(não definida)",
-      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? "(não definida)",
-      urlQueSeriaGerada:
-        "https://api.instagram.com/oauth/authorize" +
-        "?client_id=" + (process.env.NEXT_PUBLIC_META_CLIENT_ID ?? "AUSENTE") +
-        "&redirect_uri=" + encodeURIComponent("https://autoscale-ia.vercel.app/api/instagram/callback") +
-        "&scope=instagram_business_basic,instagram_business_content_publish" +
-        "&response_type=code" +
-        "&state=DEBUG_STATE",
+      NEXT_PUBLIC_META_CLIENT_ID: process.env.NEXT_PUBLIC_META_CLIENT_ID || 'Não definida',
+      INSTAGRAM_APP_ID: process.env.INSTAGRAM_APP_ID || 'Não definida',
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'Não definida',
+      mensagem: "Redirecionamento travado com sucesso para análise."
     });
   }
 
