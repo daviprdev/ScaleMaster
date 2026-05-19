@@ -183,6 +183,18 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Refactor** | Migração completa para Instagram Login API (`api.instagram.com`): client_id via `NEXT_PUBLIC_INSTAGRAM_APP_ID`, remoção do fluxo Facebook OAuth (`meta/auth`, `meta/callback`, `meta/connect-token`, `meta/apps`, `lib/meta-apps.ts`), cookie de state via `NextResponse.cookies.set()` | ✅ Aplicado |
 | **Fase 34** | Admin Dashboard base: tabela `user_roles` no schema com trigger automático, layout sidebar protegido (redireciona não-admin para `/dashboard`), páginas Visão Geral + Usuários + Contas Conectadas + Suporte, API `/api/admin/accounts` | ✅ Concluída |
 | **Fase 34b** | Admin ações: PATCH `/api/admin/users/[userId]` (ban/unban/promover/rebaixar), DELETE `/api/admin/accounts/[accountId]` (revogar conta); UI com confirmação inline de dois cliques; protege automodificação de role | ✅ Concluída |
+| **Fase 34c** | Navegação admin: redirecionamento inteligente no login (admin→`/admin`, user→`/dashboard`), mesmo no callback OAuth; botão "Painel Admin" na Sidebar do dashboard visível apenas para admins | ✅ Concluída |
+| **Fase 34d** | Admin Contas: refatoração para accordion agrupado por usuário com animação framer-motion; API retorna `{ users: [...] }` com contas aninhadas; revogar remove linha do usuário se ficar vazio | ✅ Concluída |
+| **Fase 35a** | Stories Ativos no Dashboard: `GET /api/instagram/stories` chama `graph.facebook.com/v19.0/{id}/stories?fields=id,timestamp`; integrado ao `/api/dashboard/stats`; card âmbar com countdown de expiração (24h rule) | ✅ Concluída |
+| **Fase 35b** | Fluxo de aprovação manual: coluna `account_status` (`pending`/`approved`/`banned`) em `user_roles` (default `pending`); dashboard layout bloqueia pending → `/pending`; admins isentos; página `/pending` com glassmorphism; Admin Usuários com highlight âmbar, badge de contagem e botão Aprovar | ✅ Concluída |
+
+**SQL pendente (executar no Supabase):**
+```sql
+ALTER TABLE public.user_roles
+  ADD COLUMN IF NOT EXISTS account_status text NOT NULL DEFAULT 'pending'
+  CHECK (account_status IN ('pending', 'approved', 'banned'));
+UPDATE public.user_roles SET account_status = 'approved';
+```
 
 ---
 
