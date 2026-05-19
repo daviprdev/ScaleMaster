@@ -5,8 +5,7 @@ import { getMetaApp } from "@/lib/meta-apps";
 
 export const dynamic = "force-dynamic";
 
-const IG_API = "https://api.instagram.com";
-const GRAPH_IG = "https://graph.instagram.com";
+const GRAPH = "https://graph.facebook.com/v19.0";
 
 function redirectWithError(code: string, appUrl: string): NextResponse {
   const response = NextResponse.redirect(`${appUrl}/dashboard/accounts?error=${code}`);
@@ -14,8 +13,8 @@ function redirectWithError(code: string, appUrl: string): NextResponse {
   return response;
 }
 
-// Troca o authorization code por um Short-Lived Instagram User Token
-async function exchangeCodeForShortToken(
+// Troca o authorization code por um User Access Token (Facebook Graph API)
+async function exchangeCodeForToken(
   code: string,
   redirectUri: string,
   clientId: string,
@@ -24,40 +23,40 @@ async function exchangeCodeForShortToken(
   const body = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
-    grant_type: "authorization_code",
     redirect_uri: redirectUri,
     code,
   });
-  const res = await fetch(`${IG_API}/oauth/access_token`, {
+  const res = await fetch(`${GRAPH}/oauth/access_token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
   });
   const data = (await res.json()) as {
     access_token?: string;
-    user_id?: number;
-    error_type?: string;
-    error_message?: string;
+    error?: { message: string };
   };
   console.log("[meta/callback] exchangeCode status:", res.status, JSON.stringify(data).slice(0, 200));
   if (!res.ok || !data.access_token) {
-    throw new Error(data.error_message ?? "Falha ao trocar authorization code por token.");
+    throw new Error(data.error?.message ?? "Falha ao trocar authorization code por token.");
   }
   return data.access_token;
 }
 
-// Troca o Short-Lived Token por um Long-Lived Instagram User Token (~60 dias)
+// Troca o Short-Lived Token por um Long-Lived Token (~60 dias) via Facebook
 async function getLongLivedToken(
-  shortToken: string
+  shortToken: string,
+  clientId: string,
+  clientSecret: string
 ): Promise<{ token: string; expiresAt: Date }> {
   const params = new URLSearchParams({
-    grant_type: "ig_exchange_token",
-    access_token: shortToken,
+    grant_type: "fb_exchange_token",
+    client_id: clientId,
+    client_secret: clientSecret,
+    fb_exchange_token: shortToken,
   });
-  const res = await fetch(`${GRAPH_IG}/access_token?${params}`);
+  const res = await fetch(`https://graph.facebook.com/oauth/access_token?${params}`);
   const data = (await res.json()) as {
     access_token?: string;
-    token_type?: string;
     expires_in?: number;
     error?: { message: string };
   };
@@ -77,20 +76,52 @@ interface IGProfile {
   username: string;
   name?: string;
   profile_picture_url?: string;
+  fb_page_id: string;
 }
 
+// Busca as Páginas do Facebook e retorna a primeira com Instagram Business conectado
 async function getIGProfile(longToken: string): Promise<IGProfile> {
   const params = new URLSearchParams({
-    fields: "id,username,name,profile_picture_url",
+    fields: "id,name,instagram_business_account{id,username,name,profile_picture_url}",
     access_token: longToken,
   });
-  const res = await fetch(`${GRAPH_IG}/me?${params}`);
-  const data = (await res.json()) as IGProfile & { error?: { message: string } };
-  console.log("[meta/callback] profile status:", res.status, JSON.stringify(data).slice(0, 200));
-  if (!res.ok || !data.id) {
-    throw new Error((data as { error?: { message: string } }).error?.message ?? "Falha ao obter perfil do Instagram.");
+  const res = await fetch(`${GRAPH}/me/accounts?${params}`);
+  const data = (await res.json()) as {
+    data?: {
+      id: string;
+      name: string;
+      instagram_business_account?: {
+        id: string;
+        username?: string;
+        name?: string;
+        profile_picture_url?: string;
+      };
+    }[];
+    error?: { message: string };
+  };
+  console.log("[meta/callback] accounts status:", res.status, JSON.stringify(data).slice(0, 400));
+
+  if (!res.ok || !data.data) {
+    throw new Error(data.error?.message ?? "Falha ao obter Páginas do Facebook.");
   }
-  return data;
+
+  for (const page of data.data) {
+    if (page.instagram_business_account) {
+      const ig = page.instagram_business_account;
+      return {
+        id: ig.id,
+        username: ig.username ?? page.name,
+        name: ig.name ?? page.name,
+        profile_picture_url: ig.profile_picture_url ?? undefined,
+        fb_page_id: page.id,
+      };
+    }
+  }
+
+  throw new Error(
+    "Nenhuma conta do Instagram Business está conectada às suas Páginas do Facebook. " +
+    "Acesse as configurações do Facebook e vincule sua conta do Instagram."
+  );
 }
 
 export async function GET(req: NextRequest) {
@@ -99,14 +130,12 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
 
-  // Usuário cancelou a autorização
   if (searchParams.get("error")) {
     const desc = searchParams.get("error_description") ?? searchParams.get("error") ?? "cancelled";
     console.warn("[meta/callback] OAuth cancelado:", desc);
     return redirectWithError("cancelled", appUrl);
   }
 
-  // Verificação CSRF — compara state completo (inclui app_id)
   const state = searchParams.get("state");
   const cookieState = req.cookies.get("meta_oauth_state")?.value;
   if (!state || !cookieState || state !== cookieState) {
@@ -114,7 +143,6 @@ export async function GET(req: NextRequest) {
     return redirectWithError("state_mismatch", appUrl);
   }
 
-  // Extrai o app_id do state: formato "{appId}:{uuid}"
   const colonIdx = state.indexOf(":");
   const appId = colonIdx > 0 ? state.substring(0, colonIdx) : state;
   const app = getMetaApp(appId);
@@ -128,7 +156,6 @@ export async function GET(req: NextRequest) {
     return redirectWithError("no_code", appUrl);
   }
 
-  // Verifica usuário autenticado no Supabase
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
@@ -138,14 +165,14 @@ export async function GET(req: NextRequest) {
   const admin = getSupabaseAdmin();
 
   try {
-    const shortToken = await exchangeCodeForShortToken(code, redirectUri, app.clientId, app.clientSecret);
+    const shortToken = await exchangeCodeForToken(code, redirectUri, app.clientId, app.clientSecret);
     console.log("[meta/callback] Short token obtido via", app.id);
 
-    const { token: longToken, expiresAt } = await getLongLivedToken(shortToken);
+    const { token: longToken, expiresAt } = await getLongLivedToken(shortToken, app.clientId, app.clientSecret);
     console.log("[meta/callback] Long-lived token obtido, expira em:", expiresAt.toISOString());
 
     const profile = await getIGProfile(longToken);
-    console.log("[meta/callback] Perfil:", profile.username, "(id:", profile.id + ")", "app:", app.id);
+    console.log("[meta/callback] Perfil:", profile.username, "(ig_id:", profile.id, "| page_id:", profile.fb_page_id + ")", "app:", app.id);
 
     const { data: existing } = await admin
       .from("instagram_accounts")
@@ -160,7 +187,7 @@ export async function GET(req: NextRequest) {
       is_active: true,
       meta_access_token: longToken,
       ig_business_account_id: profile.id,
-      fb_page_id: null,
+      fb_page_id: profile.fb_page_id,
       token_expires_at: expiresAt.toISOString(),
       access_token: null,
       meta_app_used: app.id,
@@ -185,6 +212,10 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[meta/callback] Erro:", msg);
-    return redirectWithError("server_error", appUrl);
+    // Redireciona com a mensagem de erro para exibir na UI
+    const errParam = encodeURIComponent(msg.slice(0, 120));
+    const response = NextResponse.redirect(`${appUrl}/dashboard/accounts?error=server_error&detail=${errParam}`);
+    response.cookies.set("meta_oauth_state", "", { maxAge: 0, path: "/" });
+    return response;
   }
 }

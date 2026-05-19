@@ -4,11 +4,11 @@ import { getMetaApp, getMetaApps } from "@/lib/meta-apps";
 
 export const dynamic = "force-dynamic";
 
-// Scopes do Instagram Login API (api.instagram.com)
 const SCOPES = [
-  "instagram_business_basic",
-  "instagram_business_content_publish",
-  "instagram_business_manage_insights",
+  "instagram_basic",
+  "instagram_content_publish",
+  "pages_show_list",
+  "pages_read_engagement",
 ].join(",");
 
 export async function GET(req: NextRequest) {
@@ -20,7 +20,6 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const requestedAppId = searchParams.get("app_id");
 
-  // Resolve o app: parâmetro explícito → primeiro disponível
   const app = requestedAppId
     ? getMetaApp(requestedAppId)
     : getMetaApps()[0] ?? null;
@@ -32,13 +31,12 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // State = "{appId}:{uuid}" — recuperado no callback para CSRF + seleção do secret
   const uuid = crypto.randomUUID();
   const state = `${app.id}:${uuid}`;
 
-  // Monta a URL manualmente para não codificar as vírgulas do scope (%2C quebra o Instagram OAuth)
+  // Facebook Graph API OAuth — compatível com "Login do Facebook para Empresas"
   const oauthUrl =
-    `https://api.instagram.com/oauth/authorize` +
+    `https://www.facebook.com/v19.0/dialog/oauth` +
     `?client_id=${app.clientId}` +
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&scope=${SCOPES}` +
