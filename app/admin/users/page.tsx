@@ -10,6 +10,8 @@ import {
   Instagram,
   Crown,
   UserMinus,
+  CheckCircle2,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -25,6 +27,7 @@ interface AdminUser {
   email: string;
   created_at: string;
   role: "user" | "admin" | "banned";
+  account_status: "pending" | "approved" | "banned";
   accounts: Account[];
 }
 
@@ -32,6 +35,18 @@ const ROLE_BADGE: Record<AdminUser["role"], string> = {
   admin: "bg-violet-500/20 text-violet-300 border-violet-500/30",
   user: "bg-white/5 text-white/50 border-white/10",
   banned: "bg-red-500/20 text-red-400 border-red-500/30",
+};
+
+const STATUS_BADGE: Record<AdminUser["account_status"], string> = {
+  pending: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+  approved: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+  banned: "bg-red-500/20 text-red-400 border-red-500/30",
+};
+
+const STATUS_LABEL: Record<AdminUser["account_status"], string> = {
+  pending: "Pendente",
+  approved: "Aprovado",
+  banned: "Banido",
 };
 
 function formatDate(iso: string) {
@@ -88,6 +103,28 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function approveUser(userId: string) {
+    setActioning(userId);
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ account_status: "approved" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userId ? { ...u, account_status: "approved" } : u
+        )
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao aprovar usuário");
+    } finally {
+      setActioning(null);
+    }
+  }
+
   function requestAction(userId: string, role: AdminUser["role"]) {
     if (pending?.userId === userId && pending.role === role) {
       applyRole(userId, role);
@@ -95,6 +132,8 @@ export default function AdminUsersPage() {
       setPending({ userId, role });
     }
   }
+
+  const pendingCount = users.filter((u) => u.account_status === "pending").length;
 
   return (
     <div className="space-y-6">
@@ -106,9 +145,17 @@ export default function AdminUsersPage() {
             Todos os usuários cadastrados na plataforma
           </p>
         </div>
-        {!loading && (
-          <span className="text-sm text-white/30">{users.length} registros</span>
-        )}
+        <div className="flex items-center gap-3">
+          {pendingCount > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
+              <Clock className="w-3 h-3" />
+              {pendingCount} aguardando aprovação
+            </span>
+          )}
+          {!loading && (
+            <span className="text-sm text-white/30">{users.length} registros</span>
+          )}
+        </div>
       </div>
 
       {loading && (
@@ -138,6 +185,7 @@ export default function AdminUsersPage() {
               <tr className="border-b border-white/10 text-white/40 text-left">
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Criado em</th>
+                <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Cargo</th>
                 <th className="px-4 py-3 font-medium">Contas Meta</th>
                 <th className="px-4 py-3 font-medium text-right">Ações</th>
@@ -148,20 +196,46 @@ export default function AdminUsersPage() {
                 const isSelf = u.id === currentUserId;
                 const isActioning = actioning === u.id;
                 const isPending = pending?.userId === u.id;
+                const isPendingApproval = u.account_status === "pending";
 
                 return (
                   <tr
                     key={u.id}
-                    className="hover:bg-white/[0.02] transition-colors"
+                    className={cn(
+                      "transition-colors",
+                      isPendingApproval
+                        ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.07] border-l-2 border-l-amber-500/40"
+                        : "hover:bg-white/[0.02]"
+                    )}
                   >
                     {/* Email */}
-                    <td className="px-4 py-3 text-white font-medium">
-                      {u.email}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-medium">{u.email}</span>
+                        {isPendingApproval && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300 font-medium">
+                            <Clock className="w-2.5 h-2.5" />
+                            Novo
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Created at */}
                     <td className="px-4 py-3 text-white/40">
                       {formatDate(u.created_at)}
+                    </td>
+
+                    {/* Account status badge */}
+                    <td className="px-4 py-3">
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium",
+                          STATUS_BADGE[u.account_status]
+                        )}
+                      >
+                        {STATUS_LABEL[u.account_status]}
+                      </span>
                     </td>
 
                     {/* Role badge */}
@@ -203,12 +277,12 @@ export default function AdminUsersPage() {
                     {/* Actions */}
                     <td className="px-4 py-3">
                       {isSelf ? (
-                        <span className="text-white/20 text-xs">—</span>
+                        <span className="text-white/20 text-xs text-right block">—</span>
                       ) : (
                         <div className="flex items-center justify-end gap-2">
                           {isPending && (
                             <span className="text-xs text-amber-400/80 mr-1">
-                              Clique para confirmar
+                              Confirmar?
                             </span>
                           )}
 
@@ -216,76 +290,84 @@ export default function AdminUsersPage() {
                             <Loader2 className="w-4 h-4 animate-spin text-white/40" />
                           ) : (
                             <>
-                              {/* Banned → Unban */}
-                              {u.role === "banned" && (
+                              {/* Approve button — only for pending users */}
+                              {isPendingApproval && (
                                 <button
-                                  onClick={() => requestAction(u.id, "user")}
-                                  className={cn(
-                                    "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
-                                    isPending && pending?.role === "user"
-                                      ? "border-emerald-400/40 bg-emerald-400/20 text-emerald-300"
-                                      : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                                  )}
+                                  onClick={() => approveUser(u.id)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/25 transition-all font-medium"
                                 >
-                                  <ShieldCheck className="w-3.5 h-3.5" />
-                                  {isPending && pending?.role === "user"
-                                    ? "Confirmar?"
-                                    : "Desbanir"}
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Aprovar
                                 </button>
                               )}
 
-                              {/* User → Promote to admin */}
-                              {u.role === "user" && (
-                                <button
-                                  onClick={() => requestAction(u.id, "admin")}
-                                  className={cn(
-                                    "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
-                                    isPending && pending?.role === "admin"
-                                      ? "border-violet-400/40 bg-violet-400/20 text-violet-300"
-                                      : "border-violet-500/20 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20"
+                              {/* Role actions — only for approved users */}
+                              {!isPendingApproval && (
+                                <>
+                                  {/* Banned → Unban */}
+                                  {u.role === "banned" && (
+                                    <button
+                                      onClick={() => requestAction(u.id, "user")}
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
+                                        isPending && pending?.role === "user"
+                                          ? "border-emerald-400/40 bg-emerald-400/20 text-emerald-300"
+                                          : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                                      )}
+                                    >
+                                      <ShieldCheck className="w-3.5 h-3.5" />
+                                      {isPending && pending?.role === "user" ? "Confirmar?" : "Desbanir"}
+                                    </button>
                                   )}
-                                >
-                                  <Crown className="w-3.5 h-3.5" />
-                                  {isPending && pending?.role === "admin"
-                                    ? "Confirmar?"
-                                    : "Admin"}
-                                </button>
-                              )}
 
-                              {/* Admin → Demote */}
-                              {u.role === "admin" && (
-                                <button
-                                  onClick={() => requestAction(u.id, "user")}
-                                  className={cn(
-                                    "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
-                                    isPending && pending?.role === "user"
-                                      ? "border-amber-400/40 bg-amber-400/20 text-amber-300"
-                                      : "border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                                  {/* User → Promote to admin */}
+                                  {u.role === "user" && (
+                                    <button
+                                      onClick={() => requestAction(u.id, "admin")}
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
+                                        isPending && pending?.role === "admin"
+                                          ? "border-violet-400/40 bg-violet-400/20 text-violet-300"
+                                          : "border-violet-500/20 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20"
+                                      )}
+                                    >
+                                      <Crown className="w-3.5 h-3.5" />
+                                      {isPending && pending?.role === "admin" ? "Confirmar?" : "Admin"}
+                                    </button>
                                   )}
-                                >
-                                  <UserMinus className="w-3.5 h-3.5" />
-                                  {isPending && pending?.role === "user"
-                                    ? "Confirmar?"
-                                    : "Rebaixar"}
-                                </button>
-                              )}
 
-                              {/* Ban — visible for non-banned users */}
-                              {u.role !== "banned" && (
-                                <button
-                                  onClick={() => requestAction(u.id, "banned")}
-                                  className={cn(
-                                    "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
-                                    isPending && pending?.role === "banned"
-                                      ? "border-red-400/40 bg-red-400/20 text-red-300"
-                                      : "border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                                  {/* Admin → Demote */}
+                                  {u.role === "admin" && (
+                                    <button
+                                      onClick={() => requestAction(u.id, "user")}
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
+                                        isPending && pending?.role === "user"
+                                          ? "border-amber-400/40 bg-amber-400/20 text-amber-300"
+                                          : "border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                                      )}
+                                    >
+                                      <UserMinus className="w-3.5 h-3.5" />
+                                      {isPending && pending?.role === "user" ? "Confirmar?" : "Rebaixar"}
+                                    </button>
                                   )}
-                                >
-                                  <ShieldBan className="w-3.5 h-3.5" />
-                                  {isPending && pending?.role === "banned"
-                                    ? "Confirmar?"
-                                    : "Banir"}
-                                </button>
+
+                                  {/* Ban */}
+                                  {u.role !== "banned" && (
+                                    <button
+                                      onClick={() => requestAction(u.id, "banned")}
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
+                                        isPending && pending?.role === "banned"
+                                          ? "border-red-400/40 bg-red-400/20 text-red-300"
+                                          : "border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                                      )}
+                                    >
+                                      <ShieldBan className="w-3.5 h-3.5" />
+                                      {isPending && pending?.role === "banned" ? "Confirmar?" : "Banir"}
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </>
                           )}

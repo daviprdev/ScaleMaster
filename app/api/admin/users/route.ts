@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export async function GET() {
-  // 1. Verifica sessão e role do requisitante
   const supabase = await createClient();
   const {
     data: { user },
@@ -23,7 +22,6 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // 2. Busca dados com service_role (sem RLS)
   const admin = getSupabaseAdmin();
 
   const [
@@ -32,7 +30,8 @@ export async function GET() {
     { data: accounts },
   ] = await Promise.all([
     admin.auth.admin.listUsers({ perPage: 1000 }),
-    admin.from("user_roles").select("user_id, role"),
+    // Include account_status alongside role
+    admin.from("user_roles").select("user_id, role, account_status"),
     admin
       .from("instagram_accounts")
       .select("user_id, username, is_active, token_expires_at"),
@@ -42,8 +41,13 @@ export async function GET() {
     return NextResponse.json({ error: authError.message }, { status: 500 });
   }
 
-  // 3. Cruza os dados
-  const rolesMap = new Map(roles?.map((r) => [r.user_id, r.role]) ?? []);
+  type RoleRow = { user_id: string; role: string; account_status: string };
+  const rolesMap = new Map(
+    (roles as unknown as RoleRow[] ?? []).map((r) => [
+      r.user_id,
+      { role: r.role, account_status: r.account_status ?? "pending" },
+    ])
+  );
 
   const accountsMap = new Map<string, typeof accounts>();
   for (const acc of accounts ?? []) {
@@ -51,13 +55,24 @@ export async function GET() {
     accountsMap.get(acc.user_id)!.push(acc);
   }
 
-  const users = (authData?.users ?? []).map((u) => ({
-    id: u.id,
-    email: u.email ?? "—",
-    created_at: u.created_at,
-    role: rolesMap.get(u.id) ?? "user",
-    accounts: accountsMap.get(u.id) ?? [],
-  }));
+  const users = (authData?.users ?? []).map((u) => {
+    const rd = rolesMap.get(u.id);
+    return {
+      id: u.id,
+      email: u.email ?? "—",
+      created_at: u.created_at,
+      role: rd?.role ?? "user",
+      account_status: rd?.account_status ?? "pending",
+      accounts: accountsMap.get(u.id) ?? [],
+    };
+  });
+
+  // Sort: pending first, then by created_at desc
+  users.sort((a, b) => {
+    if (a.account_status === "pending" && b.account_status !== "pending") return -1;
+    if (a.account_status !== "pending" && b.account_status === "pending") return 1;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
 
   return NextResponse.json({ users });
 }
