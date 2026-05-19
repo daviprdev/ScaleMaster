@@ -4,15 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-const IG_APP_ID =
-  process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ??
-  process.env.NEXT_PUBLIC_META_CLIENT_ID ??
-  "";
-
-const IG_APP_SECRET =
-  process.env.INSTAGRAM_APP_SECRET ??
-  process.env.META_CLIENT_SECRET ??
-  "";
+const IG_APP_ID = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? "";
+const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET ?? "";
 
 const REDIRECT_URI = "https://autoscale-ia.vercel.app/api/instagram/callback";
 const GRAPH_IG = "https://graph.instagram.com";

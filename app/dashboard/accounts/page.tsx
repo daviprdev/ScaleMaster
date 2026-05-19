@@ -18,16 +18,9 @@ import {
   X,
   KeyRound,
   AlertTriangle,
-  ChevronRight,
-  Layers,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-
-interface MetaAppInfo {
-  id: string;
-  name: string;
-}
 
 interface Account {
   id: string;
@@ -102,92 +95,6 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   personal_account: "Sua conta precisa ser Comercial ou de Criador de Conteúdo no Instagram. Acesse as Configurações do Instagram → Conta → Mudar para conta profissional.",
 };
 
-// ── Modal de seleção de App Meta ─────────────────────────────
-function AppSelectModal({
-  apps,
-  onSelect,
-  onClose,
-}: {
-  apps: MetaAppInfo[];
-  onSelect: (appId: string) => void;
-  onClose: () => void;
-}) {
-  return (
-    <AnimatePresence>
-      <motion.div
-        key="app-modal-backdrop"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-        onClick={onClose}
-      >
-        <motion.div
-          key="app-modal"
-          initial={{ opacity: 0, scale: 0.95, y: 12 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 12 }}
-          transition={{ duration: 0.18 }}
-          className="w-full max-w-sm bg-[#0f1117] border border-white/[0.09] rounded-2xl shadow-2xl overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.07]">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-violet-600/20 flex items-center justify-center">
-                <Layers size={15} className="text-violet-400" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-white">Selecionar App Meta</p>
-                <p className="text-[11px] text-white/35">Qual app usar para esta conexão?</p>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/[0.06] transition-colors"
-            >
-              <X size={14} />
-            </button>
-          </div>
-
-          {/* App list */}
-          <div className="p-3 space-y-1.5">
-            {apps.map((app, idx) => (
-              <button
-                key={app.id}
-                onClick={() => onSelect(app.id)}
-                className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left
-                  bg-white/[0.04] border border-white/[0.07]
-                  hover:bg-violet-600/[0.12] hover:border-violet-500/30
-                  transition-all group"
-              >
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500/30 to-cyan-500/20 flex items-center justify-center flex-shrink-0 text-xs font-bold text-violet-300">
-                  {idx + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white/85 group-hover:text-white transition-colors truncate">
-                    {app.name}
-                  </p>
-                  <p className="text-[11px] text-white/30 font-mono">{app.id}</p>
-                </div>
-                <ChevronRight size={14} className="text-white/20 group-hover:text-violet-400 transition-colors flex-shrink-0" />
-              </button>
-            ))}
-          </div>
-
-          <div className="px-5 pb-4 pt-1">
-            <button
-              onClick={onClose}
-              className="w-full py-2.5 rounded-xl text-sm text-white/40 hover:text-white/70 hover:bg-white/[0.04] transition-colors"
-            >
-              Cancelar
-            </button>
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-}
 
 // ── Chip de métrica ───────────────────────────────────────────
 function Metric({
@@ -426,8 +333,6 @@ export default function AccountsPage() {
     message: string;
   } | null>(null);
 
-  const [metaApps, setMetaApps] = useState<MetaAppInfo[]>([]);
-  const [showAppModal, setShowAppModal] = useState(false);
 
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -441,27 +346,8 @@ export default function AccountsPage() {
   const _tokenRefreshingRef = useRef<string | null>(null);
   const _autoRefreshDone = useRef(false);
 
-  // Carrega lista de Meta Apps disponíveis
-  useEffect(() => {
-    fetch("/api/meta/apps")
-      .then((r) => r.json())
-      .then((d: { apps?: MetaAppInfo[] }) => setMetaApps(d.apps ?? []))
-      .catch(() => setMetaApps([]));
-  }, []);
-
-  // Abre modal se há múltiplos apps, ou redireciona diretamente se há apenas 1
   const handleConnectClick = useCallback(() => {
-    if (metaApps.length > 1) {
-      setShowAppModal(true);
-    } else {
-      const appId = metaApps[0]?.id ?? "app1";
-      window.location.href = `/api/instagram/auth?app_id=${appId}`;
-    }
-  }, [metaApps]);
-
-  const handleAppSelect = useCallback((appId: string) => {
-    setShowAppModal(false);
-    window.location.href = `/api/instagram/auth?app_id=${appId}`;
+    window.location.href = "/api/instagram/auth";
   }, []);
 
   // Lê parâmetros de retorno do OAuth (?connected=1 ou ?error=xxx)
@@ -609,14 +495,6 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Modal de seleção de app */}
-      {showAppModal && (
-        <AppSelectModal
-          apps={metaApps}
-          onSelect={handleAppSelect}
-          onClose={() => setShowAppModal(false)}
-        />
-      )}
 
       {/* Banner de notificação OAuth */}
       <AnimatePresence>

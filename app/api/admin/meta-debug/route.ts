@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getMetaApps } from "@/lib/meta-apps";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Diagnóstico das variáveis do Meta OAuth — visível apenas para admins.
+ * Diagnóstico das variáveis do Instagram OAuth — visível apenas para admins.
  * Nunca expõe client_secret.
  */
 export async function GET() {
@@ -27,14 +26,12 @@ export async function GET() {
   }
 
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
-  const redirectUri = appUrl ? `${appUrl}/api/meta/callback` : null;
-  const apps = getMetaApps().map((a) => ({ id: a.id, name: a.name, clientId: a.clientId }));
 
   return NextResponse.json({
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? "(não definida)",
-    redirectUri: redirectUri ?? "(NEXT_PUBLIC_APP_URL ausente → usará http://localhost:3000)",
-    appsConfigured: apps.length,
-    apps,
+    NEXT_PUBLIC_INSTAGRAM_APP_ID: process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? "(não definida)",
+    INSTAGRAM_APP_SECRET: process.env.INSTAGRAM_APP_SECRET ? "(definida)" : "(não definida)",
+    redirectUri: appUrl ? `${appUrl}/api/instagram/callback` : "(NEXT_PUBLIC_APP_URL ausente)",
     isLocalhost: appUrl.includes("localhost"),
     warning: appUrl.includes("localhost")
       ? "NEXT_PUBLIC_APP_URL aponta para localhost. Em produção a redirect_uri será rejeitada pelo Instagram."
