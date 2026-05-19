@@ -45,6 +45,17 @@ export async function GET(req: NextRequest) {
     `&response_type=code` +
     `&state=${encodeURIComponent(state)}`;
 
+  // ?debug=1 → retorna a URL sem redirecionar (diagnóstico)
+  if (searchParams.get("debug") === "1") {
+    return NextResponse.json({
+      oauthUrl,
+      clientId: app.clientId,
+      redirectUri,
+      scopes: SCOPES,
+      appId: app.id,
+    });
+  }
+
   const response = NextResponse.redirect(oauthUrl);
 
   response.cookies.set("meta_oauth_state", state, {
