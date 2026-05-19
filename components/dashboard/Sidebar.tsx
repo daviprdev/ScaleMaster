@@ -19,6 +19,7 @@ import {
   ChevronUp,
   User,
   CreditCard,
+  Shield,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,7 @@ export function Sidebar() {
   const [userEmail, setUserEmail] = useState("");
   const [userInitial, setUserInitial] = useState("U");
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -58,13 +60,21 @@ export function Sidebar() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        const name = user.user_metadata?.full_name || user.email || "Usuário";
-        setUserName(name);
-        setUserEmail(user.email ?? "");
-        setUserInitial(name.charAt(0).toUpperCase());
-        setUserAvatar(user.user_metadata?.avatar_url ?? null);
-      }
+      if (!user) return;
+      const name = user.user_metadata?.full_name || user.email || "Usuário";
+      setUserName(name);
+      setUserEmail(user.email ?? "");
+      setUserInitial(name.charAt(0).toUpperCase());
+      setUserAvatar(user.user_metadata?.avatar_url ?? null);
+
+      supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.role === "admin") setIsAdmin(true);
+        });
     });
   }, [supabase]);
 
@@ -193,6 +203,55 @@ export function Sidebar() {
               </Link>
             );
           })}
+
+          {/* Admin shortcut — only rendered for admins */}
+          {isAdmin && (
+            <>
+              <div className="my-2 border-t border-white/[0.06]" />
+              <AnimatePresence>
+                {!collapsed && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-amber-500/40"
+                  >
+                    Sistema
+                  </motion.p>
+                )}
+              </AnimatePresence>
+              <Link href="/admin">
+                <motion.div
+                  whileHover={{ x: 2 }}
+                  whileTap={{ scale: 0.97 }}
+                  className={cn(
+                    "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200",
+                    pathname.startsWith("/admin")
+                      ? "bg-amber-500/15 text-amber-300 border border-amber-500/25"
+                      : "text-amber-500/50 hover:text-amber-400 hover:bg-amber-500/10"
+                  )}
+                >
+                  <Shield className="flex-shrink-0 relative z-10" size={18} />
+                  <AnimatePresence>
+                    {!collapsed && (
+                      <motion.span
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -8 }}
+                        transition={{ duration: 0.2 }}
+                        className="text-sm font-medium whitespace-nowrap relative z-10"
+                      >
+                        Painel Admin
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                  {collapsed && pathname.startsWith("/admin") && (
+                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2 w-1 h-4 rounded-full bg-amber-400" />
+                  )}
+                </motion.div>
+              </Link>
+            </>
+          )}
         </nav>
 
         {/* User trigger */}

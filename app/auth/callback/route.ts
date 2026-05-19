@@ -1,17 +1,32 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-// Rota chamada pelo Supabase após confirmação de e-mail
+// Rota chamada pelo Supabase após confirmação de e-mail ou OAuth
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/dashboard";
+  const explicitNext = searchParams.get("next");
 
   if (code) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+      // Se um destino foi passado explicitamente, respeita
+      if (explicitNext) {
+        return NextResponse.redirect(`${origin}${explicitNext}`);
+      }
+      // Caso contrário, redireciona conforme o role
+      const { data: { user } } = await supabase.auth.getUser();
+      let dest = "/dashboard";
+      if (user) {
+        const { data: roleData } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
+          .single();
+        if (roleData?.role === "admin") dest = "/admin";
+      }
+      return NextResponse.redirect(`${origin}${dest}`);
     }
   }
 

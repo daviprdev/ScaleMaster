@@ -21,7 +21,7 @@ export default function LoginPage() {
     setError("");
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setError(
@@ -33,7 +33,18 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/dashboard");
+    const userId = data.user?.id;
+    let dest = "/dashboard";
+    if (userId) {
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .single();
+      if (roleData?.role === "admin") dest = "/admin";
+    }
+
+    router.push(dest);
     router.refresh();
   };
 
