@@ -24,11 +24,13 @@ export async function GET(request: NextRequest) {
     "&response_type=code" +
     "&state=" + state;
 
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: oauthUrl,
-      "Set-Cookie": `ig_oauth_state=${state}; HttpOnly; Secure; SameSite=Lax; Max-Age=600; Path=/`,
-    },
+  const response = NextResponse.redirect(oauthUrl);
+  response.cookies.set("ig_oauth_state", state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 3600,
   });
+  return response;
 }
