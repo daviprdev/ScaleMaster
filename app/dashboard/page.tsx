@@ -21,6 +21,7 @@ interface DashboardStats {
   videos: { total: number; this_week: number };
   scheduled: { pending: number; next_at: string | null };
   published: { total: number };
+  stories: { total: number; expiring_first_at: string | null };
   recent_activity: {
     type: "download" | "schedule";
     text: string;
@@ -32,11 +33,6 @@ interface DashboardStats {
     scheduled_at: string;
     gradient: string;
   }[];
-}
-
-interface StoriesData {
-  total: number;
-  expiring_first_at: string | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -122,28 +118,12 @@ function StatSkeleton() {
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [stories, setStories] = useState<StoriesData>({ total: 0, expiring_first_at: null });
-  const [storiesLoading, setStoriesLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch dashboard stats and stories in parallel
-    Promise.all([
-      fetch("/api/dashboard/stats").then((r) => r.json()),
-      fetch("/api/instagram/stories").then((r) => r.json()),
-    ]).then(([statsData, storiesData]) => {
-      if (!statsData.error) setStats(statsData);
-      if (!storiesData.error) {
-        setStories({
-          total: storiesData.total ?? 0,
-          expiring_first_at: storiesData.expiring_first_at ?? null,
-        });
-      }
-      setLoading(false);
-      setStoriesLoading(false);
-    }).catch(() => {
-      setLoading(false);
-      setStoriesLoading(false);
-    });
+    fetch("/api/dashboard/stats")
+      .then((r) => r.json())
+      .then((data) => { if (!data.error) setStats(data); })
+      .finally(() => setLoading(false));
   }, []);
 
   // Build stat cards from fetched data
@@ -251,7 +231,7 @@ export default function DashboardPage() {
 
       {/* Stories Ativos card — full width strip */}
       <motion.div variants={fadeUp}>
-        {storiesLoading ? (
+        {loading || !stats ? (
           <div className="glass-card p-5 animate-pulse flex items-center gap-5">
             <div className="w-12 h-12 rounded-xl bg-white/10 flex-shrink-0" />
             <div className="flex-1 space-y-2">
@@ -280,19 +260,19 @@ export default function DashboardPage() {
                   Stories Ativos
                 </p>
                 <p className="text-[11px] text-white/25 truncate">
-                  {stories.total === 0
+                  {stats.stories.total === 0
                     ? "Nenhum story ativo no momento"
-                    : storyExpiresIn(stories.expiring_first_at)}
+                    : storyExpiresIn(stats.stories.expiring_first_at)}
                 </p>
               </div>
 
               {/* Count */}
               <div className="flex-shrink-0 text-right">
                 <span className="text-3xl font-black text-white leading-none">
-                  {stories.total}
+                  {stats.stories.total}
                 </span>
                 <p className="text-[10px] text-white/25 mt-0.5">
-                  {stories.total === 1 ? "story" : "stories"}
+                  {stats.stories.total === 1 ? "story" : "stories"}
                 </p>
               </div>
             </div>

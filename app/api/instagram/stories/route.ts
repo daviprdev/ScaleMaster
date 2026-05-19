@@ -4,35 +4,30 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-const IG_API = "https://graph.instagram.com/v21.0";
+interface AccountToken {
+  ig_business_account_id: string;
+  meta_access_token: string;
+}
 
-interface StoryMedia {
+interface StoryItem {
   id: string;
   timestamp: string;
 }
 
-interface StoryResult {
-  total: number;
-  expiring_first_at: string | null; // ISO timestamp of oldest story (expires soonest)
-}
-
-async function fetchStoriesForAccount(
-  igUserId: string,
-  accessToken: string
-): Promise<StoryMedia[]> {
+async function fetchStoriesForAccount(acc: AccountToken): Promise<StoryItem[]> {
   try {
     const url =
-      `${IG_API}/${igUserId}/stories` +
+      `https://graph.facebook.com/v19.0/${acc.ig_business_account_id}/stories` +
       `?fields=id,timestamp` +
-      `&access_token=${encodeURIComponent(accessToken)}`;
+      `&access_token=${encodeURIComponent(acc.meta_access_token)}`;
 
-    const res = await fetch(url, { next: { revalidate: 0 } });
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return [];
 
     const json = await res.json();
     if (json.error || !Array.isArray(json.data)) return [];
 
-    return json.data as StoryMedia[];
+    return json.data as StoryItem[];
   } catch {
     return [];
   }
@@ -50,7 +45,6 @@ export async function GET() {
 
   const admin = getSupabaseAdmin();
 
-  // Fetch accounts that have a Meta token and IG business account ID
   const { data: accounts } = await admin
     .from("instagram_accounts")
     .select("ig_business_account_id, meta_access_token")
@@ -58,32 +52,31 @@ export async function GET() {
     .eq("is_active", true)
     .not("ig_business_account_id", "is", null)
     .not("meta_access_token", "is", null) as unknown as {
-      data: { ig_business_account_id: string; meta_access_token: string }[] | null;
+      data: AccountToken[] | null;
     };
 
-  if (!accounts || accounts.length === 0) {
-    return NextResponse.json<StoryResult>({ total: 0, expiring_first_at: null });
+  const tokenedAccounts = (accounts ?? []).filter(
+    (a) => a.ig_business_account_id && a.meta_access_token
+  );
+
+  if (tokenedAccounts.length === 0) {
+    return NextResponse.json({ total: 0, expiring_first_at: null });
   }
 
-  // Fetch stories for all accounts in parallel
   const allStories = (
-    await Promise.all(
-      accounts.map((acc) =>
-        fetchStoriesForAccount(acc.ig_business_account_id, acc.meta_access_token)
-      )
-    )
+    await Promise.all(tokenedAccounts.map(fetchStoriesForAccount))
   ).flat();
 
   if (allStories.length === 0) {
-    return NextResponse.json<StoryResult>({ total: 0, expiring_first_at: null });
+    return NextResponse.json({ total: 0, expiring_first_at: null });
   }
 
-  // The story expiring soonest is the one with the earliest timestamp
+  // Oldest published story expires soonest
   const sorted = [...allStories].sort(
     (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
   );
 
-  return NextResponse.json<StoryResult>({
+  return NextResponse.json({
     total: allStories.length,
     expiring_first_at: sorted[0].timestamp,
   });
