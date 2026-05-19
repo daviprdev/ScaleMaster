@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Instagram, Loader2, AlertCircle, ShieldCheck, Clock } from "lucide-react";
+import {
+  Instagram,
+  Loader2,
+  AlertCircle,
+  ShieldCheck,
+  Clock,
+  Trash2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ConnectedAccount {
@@ -31,6 +38,8 @@ export default function AdminAccountsPage() {
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingRevoke, setPendingRevoke] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/accounts")
@@ -42,6 +51,27 @@ export default function AdminAccountsPage() {
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  async function revokeAccount(accountId: string) {
+    if (pendingRevoke !== accountId) {
+      setPendingRevoke(accountId);
+      return;
+    }
+    setPendingRevoke(null);
+    setRevoking(accountId);
+    try {
+      const res = await fetch(`/api/admin/accounts/${accountId}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setAccounts((prev) => prev.filter((a) => a.id !== accountId));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao revogar conta");
+    } finally {
+      setRevoking(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -68,6 +98,12 @@ export default function AdminAccountsPage() {
         <div className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
+          <button
+            onClick={() => setError(null)}
+            className="ml-auto text-red-400/60 hover:text-red-400"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -81,27 +117,42 @@ export default function AdminAccountsPage() {
                 <th className="px-4 py-3 font-medium">Conectada em</th>
                 <th className="px-4 py-3 font-medium">Token</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
               {accounts.map((acc) => {
                 const days = daysUntil(acc.token_expires_at);
                 const tokenOk = days === null || days > 7;
+                const isRevoking = revoking === acc.id;
+                const isPending = pendingRevoke === acc.id;
+
                 return (
-                  <tr key={acc.id} className="hover:bg-white/[0.02] transition-colors">
+                  <tr
+                    key={acc.id}
+                    className="hover:bg-white/[0.02] transition-colors"
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <Instagram className="w-4 h-4 text-pink-400 shrink-0" />
                         <div>
-                          <p className="text-white font-medium">@{acc.username}</p>
+                          <p className="text-white font-medium">
+                            @{acc.username}
+                          </p>
                           {acc.display_name && (
-                            <p className="text-xs text-white/30">{acc.display_name}</p>
+                            <p className="text-xs text-white/30">
+                              {acc.display_name}
+                            </p>
                           )}
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-white/50 text-xs">{acc.user_email}</td>
-                    <td className="px-4 py-3 text-white/40">{formatDate(acc.connected_at)}</td>
+                    <td className="px-4 py-3 text-white/50 text-xs">
+                      {acc.user_email}
+                    </td>
+                    <td className="px-4 py-3 text-white/40">
+                      {formatDate(acc.connected_at)}
+                    </td>
                     <td className="px-4 py-3">
                       {days !== null ? (
                         <span
@@ -133,6 +184,24 @@ export default function AdminAccountsPage() {
                         <ShieldCheck className="w-3 h-3" />
                         {acc.is_active && tokenOk ? "Ativa" : "Inativa"}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {isRevoking ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-white/40 ml-auto" />
+                      ) : (
+                        <button
+                          onClick={() => revokeAccount(acc.id)}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
+                            isPending
+                              ? "border-red-400/40 bg-red-400/20 text-red-300"
+                              : "border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                          )}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          {isPending ? "Confirmar?" : "Revogar"}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
