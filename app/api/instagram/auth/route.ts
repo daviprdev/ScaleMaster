@@ -15,6 +15,8 @@ export async function GET(req: NextRequest) {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   const redirectUri = `${appUrl}/api/meta/callback`;
 
+  console.log("[instagram/auth] redirectUri:", redirectUri);
+
   const { searchParams } = new URL(req.url);
   const requestedAppId = searchParams.get("app_id");
 
