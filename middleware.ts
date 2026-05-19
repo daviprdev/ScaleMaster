@@ -32,8 +32,10 @@ export async function middleware(request: NextRequest) {
   const isDashboard = pathname.startsWith("/dashboard");
   const isAuthPage = pathname.startsWith("/auth");
 
-  // Sem sessão tentando acessar o dashboard → redireciona para login
-  if (!user && isDashboard) {
+  const isAdmin = pathname.startsWith("/admin");
+
+  // Sem sessão tentando acessar o dashboard ou admin → redireciona para login
+  if (!user && (isDashboard || isAdmin)) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
     return NextResponse.redirect(url);
@@ -52,6 +54,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/dashboard/:path*",
+    "/admin/:path*",
     "/auth/login",
     "/auth/register",
   ],
