@@ -27,6 +27,7 @@ interface LoopAccountRow {
 
 interface LoopRow {
   id: string;
+  user_id: string;
   name: string;
   folder_id: string | null;
   is_infinite: boolean;
@@ -41,6 +42,14 @@ interface LoopRow {
   loop_accounts: LoopAccountRow[];
 }
 
+interface HumanScheduleRow {
+  user_id: string;
+  is_active: boolean;
+  start_time: string; // "HH:MM:SS"
+  end_time: string;
+  timezone: string;
+}
+
 interface VideoRow {
   id: string;
   public_url: string;
@@ -49,6 +58,39 @@ interface VideoRow {
 
 // ---------------------------------------------------------------------------
 // Video effects stub
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Human schedule helper — no external deps, pure Intl
+// ---------------------------------------------------------------------------
+
+function isWithinHumanSchedule(
+  now: Date,
+  timezone: string,
+  startTime: string, // "HH:MM" or "HH:MM:SS"
+  endTime: string
+): boolean {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const parts = fmt.formatToParts(now);
+    const h = Number(parts.find(p => p.type === "hour")?.value ?? 0);
+    const m = Number(parts.find(p => p.type === "minute")?.value ?? 0);
+    const cur = h * 60 + m;
+    const toMin = (t: string) => {
+      const [th, tm] = t.split(":").map(Number);
+      return th * 60 + (tm ?? 0);
+    };
+    return cur >= toMin(startTime) && cur < toMin(endTime);
+  } catch {
+    return true; // fail open — don't block on tz parse error
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 /**
@@ -102,7 +144,7 @@ export async function GET(req: NextRequest) {
   const { data: loopRows, error: fetchErr } = await admin
     .from("loops")
     .select(`
-      id, name, folder_id, is_infinite, cycles, cycles_done,
+      id, user_id, name, folder_id, is_infinite, cycles, cycles_done,
       interval_minutes, captions, effect_mirror, effect_invert,
       last_posted_at, last_media_index,
       loop_accounts (
@@ -122,6 +164,21 @@ export async function GET(req: NextRequest) {
 
   const loops = (loopRows ?? []) as LoopRow[];
 
+  // Fetch human schedule settings for all distinct users that have active loops
+  const distinctUserIds = [...new Set(loops.map(l => l.user_id))];
+  let scheduleMap = new Map<string, HumanScheduleRow>();
+
+  if (distinctUserIds.length > 0) {
+    const { data: scheduleRows } = await admin
+      .from("human_schedule_settings")
+      .select("user_id, is_active, start_time, end_time, timezone")
+      .in("user_id", distinctUserIds);
+
+    scheduleMap = new Map(
+      ((scheduleRows ?? []) as HumanScheduleRow[]).map(r => [r.user_id, r])
+    );
+  }
+
   // Filter to loops whose interval has elapsed (JS-side — avoids typing issues)
   const eligible = loops.filter((loop) => {
     if (!loop.last_posted_at) return true;
@@ -134,6 +191,25 @@ export async function GET(req: NextRequest) {
   const summary = { total: eligible.length, processed: 0, skipped: 0, errors: 0 };
 
   for (const loop of eligible) {
+    // Human schedule check — skip if outside the user's allowed posting window
+    const schedule = scheduleMap.get(loop.user_id);
+    if (schedule?.is_active) {
+      const allowed = isWithinHumanSchedule(
+        now,
+        schedule.timezone,
+        schedule.start_time,
+        schedule.end_time
+      );
+      if (!allowed) {
+        console.log(
+          `[loop-cron] "${loop.name}" bloqueado pelo Horário Humano ` +
+          `(fora de ${schedule.start_time}–${schedule.end_time} em ${schedule.timezone}).`
+        );
+        summary.skipped++;
+        continue;
+      }
+    }
+
     // Collect valid (active + with Meta credentials) accounts
     const validAccounts = loop.loop_accounts
       .map((la) => la.instagram_accounts)
