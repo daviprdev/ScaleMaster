@@ -12,7 +12,6 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
-  Clapperboard,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -21,7 +20,6 @@ interface DashboardStats {
   videos: { total: number; this_week: number };
   scheduled: { pending: number; next_at: string | null };
   published: { total: number };
-  stories: { total: number; expiring_first_at: string | null };
   recent_activity: {
     type: "download" | "schedule";
     text: string;
@@ -72,22 +70,6 @@ function formatScheduled(dateStr: string): { label: string; time: string } {
     label: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
     time,
   };
-}
-
-/**
- * Stories expire exactly 24h after their timestamp.
- * Returns human-readable countdown to the earliest expiring story.
- */
-function storyExpiresIn(timestamp: string | null): string {
-  if (!timestamp) return "Nenhum story ativo";
-  const expiresAt = new Date(timestamp).getTime() + 24 * 60 * 60 * 1000;
-  const diff = expiresAt - Date.now();
-  if (diff <= 0) return "Expirando agora";
-  const totalMins = Math.floor(diff / 60_000);
-  const hrs = Math.floor(totalMins / 60);
-  const mins = totalMins % 60;
-  if (hrs > 0) return `Próximo a expirar em: ${hrs}h ${mins}m`;
-  return `Próximo a expirar em: ${mins}m`;
 }
 
 // ── Animation variants ───────────────────────────────────────────
@@ -227,57 +209,6 @@ export default function DashboardPage() {
                 </div>
               </motion.div>
             ))}
-      </motion.div>
-
-      {/* Stories Ativos card — full width strip */}
-      <motion.div variants={fadeUp}>
-        {loading || !stats ? (
-          <div className="glass-card p-5 animate-pulse flex items-center gap-5">
-            <div className="w-12 h-12 rounded-xl bg-white/10 flex-shrink-0" />
-            <div className="flex-1 space-y-2">
-              <div className="h-3.5 w-32 rounded bg-white/10" />
-              <div className="h-2.5 w-48 rounded bg-white/[0.06]" />
-            </div>
-            <div className="h-8 w-14 rounded-lg bg-white/10 flex-shrink-0" />
-          </div>
-        ) : (
-          <div
-            className="glass-card p-5 relative overflow-hidden group hover:border-white/20 transition-all duration-300"
-            style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.07)" }}
-          >
-            {/* Glow */}
-            <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full opacity-10 blur-2xl bg-amber-500 pointer-events-none" />
-
-            <div className="flex items-center gap-5">
-              {/* Icon */}
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform shadow-[0_0_20px_rgba(245,158,11,0.25)]">
-                <Clapperboard className="text-white" size={20} />
-              </div>
-
-              {/* Text */}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-white/40 font-medium mb-0.5">
-                  Stories Ativos
-                </p>
-                <p className="text-[11px] text-white/25 truncate">
-                  {stats.stories.total === 0
-                    ? "Nenhum story ativo no momento"
-                    : storyExpiresIn(stats.stories.expiring_first_at)}
-                </p>
-              </div>
-
-              {/* Count */}
-              <div className="flex-shrink-0 text-right">
-                <span className="text-3xl font-black text-white leading-none">
-                  {stats.stories.total}
-                </span>
-                <p className="text-[10px] text-white/25 mt-0.5">
-                  {stats.stories.total === 1 ? "story" : "stories"}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
       </motion.div>
 
       {/* Two-column grid */}

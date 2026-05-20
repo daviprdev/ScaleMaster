@@ -18,6 +18,7 @@ import {
   X,
   KeyRound,
   AlertTriangle,
+  Clapperboard,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,22 @@ interface Account {
   profile_refreshed_at: string | null;
   ig_business_account_id: string | null;
   token_expires_at: string | null;
+}
+
+interface AccountStoriesData {
+  count: number;
+  expiring_first_at: string | null;
+}
+
+function storyCountdown(timestamp: string | null): string {
+  if (!timestamp) return "";
+  const expiresAt = new Date(timestamp).getTime() + 24 * 60 * 60 * 1000;
+  const diff = expiresAt - Date.now();
+  if (diff <= 0) return "expirando";
+  const totalMins = Math.floor(diff / 60_000);
+  const hrs = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  return hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
 }
 
 function daysUntilExpiry(tokenExpiresAt: string | null): number | null {
@@ -102,18 +119,23 @@ function Metric({
   label,
   muted = false,
   blue = false,
+  amber = false,
 }: {
   icon: React.ReactNode;
   label: string;
   muted?: boolean;
   blue?: boolean;
+  amber?: boolean;
 }) {
   return (
     <div className={cn(
       "flex items-center gap-1 whitespace-nowrap text-[11px] flex-shrink-0",
-      blue ? "text-blue-400" : muted ? "text-white/20" : "text-white/45"
+      amber ? "text-amber-400" : blue ? "text-blue-400" : muted ? "text-white/20" : "text-white/45"
     )}>
-      <span className={cn("flex-shrink-0", blue ? "text-blue-400" : muted ? "text-white/15" : "text-white/30")}>
+      <span className={cn(
+        "flex-shrink-0",
+        amber ? "text-amber-400/70" : blue ? "text-blue-400" : muted ? "text-white/15" : "text-white/30"
+      )}>
         {icon}
       </span>
       {label}
@@ -124,6 +146,7 @@ function Metric({
 // ── Card de conta ─────────────────────────────────────────────
 function AccountCard({
   account,
+  storiesData,
   onRefresh,
   onToggle,
   onDelete,
@@ -134,6 +157,7 @@ function AccountCard({
   tokenRefreshing,
 }: {
   account: Account;
+  storiesData?: AccountStoriesData;
   onRefresh: (id: string) => void;
   onToggle: (acc: Account) => void;
   onDelete: (id: string) => void;
@@ -291,11 +315,16 @@ function AccountCard({
           label={account.profile_refreshed_at ? `online ${timeAgo(account.profile_refreshed_at)}` : "não atualizado"}
           muted={!account.profile_refreshed_at}
         />
-        {account.has_active_stories === true && (
+        {isMetaConnected && storiesData !== undefined && (
           <Metric
-            icon={<span className="w-1.5 h-1.5 rounded-full inline-block bg-blue-400 ring-1 ring-blue-400/40 flex-shrink-0" />}
-            label="story ativo"
-            blue
+            icon={<Clapperboard size={11} />}
+            label={
+              storiesData.count > 0
+                ? `${storiesData.count} ${storiesData.count === 1 ? "story" : "stories"} · expira em ${storyCountdown(storiesData.expiring_first_at)}`
+                : "0 stories ativos"
+            }
+            amber={storiesData.count > 0}
+            muted={storiesData.count === 0}
           />
         )}
       </div>
@@ -338,6 +367,7 @@ export default function AccountsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [tokenRefreshingId, setTokenRefreshingId] = useState<string | null>(null);
+  const [storiesMap, setStoriesMap] = useState<Record<string, AccountStoriesData>>({});
 
   const supabase = useMemo(() => createClient(), []);
   const _togglingRef = useRef<string | null>(null);
@@ -388,9 +418,23 @@ export default function AccountsPage() {
     }
   }, [supabase]);
 
-  // Auto-renova tokens expirando em < 7 dias na primeira carga da página
+  const fetchStories = useCallback(async () => {
+    try {
+      const res = await fetch("/api/accounts/stories");
+      if (!res.ok) return;
+      const data = await res.json() as { stories?: Record<string, AccountStoriesData> };
+      if (data.stories) setStoriesMap(data.stories);
+    } catch {
+      // non-critical — stories just won't show
+    }
+  }, []);
+
+  // Auto-renova tokens expirando em < 7 dias e busca stories na primeira carga
   useEffect(() => {
     fetchAccounts().then(async (fetched) => {
+      // Fetch per-account stories in parallel (non-blocking)
+      fetchStories();
+
       if (_autoRefreshDone.current) return;
       _autoRefreshDone.current = true;
 
@@ -421,7 +465,7 @@ export default function AccountsPage() {
         fetchAccounts();
       }
     });
-  }, [fetchAccounts]);
+  }, [fetchAccounts, fetchStories]);
 
   const handleRefresh = useCallback(async (id: string) => {
     if (_refreshingRef.current) return;
@@ -433,12 +477,15 @@ export default function AccountsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accountId: id }),
       });
-      if (res.ok) await fetchAccounts();
+      if (res.ok) {
+        await fetchAccounts();
+        fetchStories();
+      }
     } finally {
       _refreshingRef.current = null;
       setRefreshingId(null);
     }
-  }, [fetchAccounts]);
+  }, [fetchAccounts, fetchStories]);
 
   const handleRefreshToken = useCallback(async (id: string) => {
     if (_tokenRefreshingRef.current) return;
@@ -585,6 +632,7 @@ export default function AccountsPage() {
               <AccountCard
                 key={account.id}
                 account={account}
+                storiesData={storiesMap[account.id]}
                 onRefresh={handleRefresh}
                 onToggle={handleToggle}
                 onDelete={handleDelete}

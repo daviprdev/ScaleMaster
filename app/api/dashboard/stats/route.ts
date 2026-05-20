@@ -13,58 +13,6 @@ const GRADIENTS = [
   "from-indigo-500 to-violet-600",
 ];
 
-// ── Real Meta Graph API stories fetch ────────────────────────────
-interface AccountToken {
-  ig_business_account_id: string;
-  meta_access_token: string;
-}
-
-interface StoryItem {
-  id: string;
-  timestamp: string;
-}
-
-async function fetchStoriesForAccount(acc: AccountToken): Promise<StoryItem[]> {
-  try {
-    const url =
-      `https://graph.facebook.com/v19.0/${acc.ig_business_account_id}/stories` +
-      `?fields=id,timestamp` +
-      `&access_token=${encodeURIComponent(acc.meta_access_token)}`;
-
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return [];
-
-    const json = await res.json();
-    if (json.error || !Array.isArray(json.data)) return [];
-
-    return json.data as StoryItem[];
-  } catch {
-    return [];
-  }
-}
-
-async function fetchActiveStories(
-  accounts: AccountToken[]
-): Promise<{ total: number; expiring_first_at: string | null }> {
-  if (accounts.length === 0) return { total: 0, expiring_first_at: null };
-
-  const allStories = (
-    await Promise.all(accounts.map(fetchStoriesForAccount))
-  ).flat();
-
-  if (allStories.length === 0) return { total: 0, expiring_first_at: null };
-
-  // Oldest published story expires first (published at T → expires at T+24h)
-  const sorted = [...allStories].sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-  );
-
-  return {
-    total: allStories.length,
-    expiring_first_at: sorted[0].timestamp,
-  };
-}
-
 // ── Main handler ─────────────────────────────────────────────────
 export async function GET() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -91,7 +39,7 @@ export async function GET() {
     Date.now() - 7 * 24 * 60 * 60 * 1000
   ).toISOString();
 
-  // All DB queries + tokens query run in parallel
+  // All DB queries run in parallel
   const [
     accountsTotalRes,
     accountsMonthRes,
@@ -102,7 +50,6 @@ export async function GET() {
     recentVideosRes,
     recentPostsRes,
     upcomingRes,
-    accountsWithTokensRes,
   ] = await Promise.all([
     admin
       .from("instagram_accounts")
@@ -155,22 +102,7 @@ export async function GET() {
       .gt("scheduled_at", now)
       .order("scheduled_at", { ascending: true })
       .limit(4),
-    // Accounts that have a valid Meta token — used for stories fetch
-    admin
-      .from("instagram_accounts")
-      .select("ig_business_account_id, meta_access_token")
-      .eq("user_id", user.id)
-      .eq("is_active", true)
-      .not("ig_business_account_id", "is", null)
-      .not("meta_access_token", "is", null),
   ]);
-
-  // Fetch stories from Meta Graph API with the real tokens obtained above
-  const tokenedAccounts = (
-    (accountsWithTokensRes.data ?? []) as unknown as AccountToken[]
-  ).filter((a) => a.ig_business_account_id && a.meta_access_token);
-
-  const stories = await fetchActiveStories(tokenedAccounts);
 
   const activity = [
     ...(recentVideosRes.data ?? []).map((v) => ({
@@ -219,7 +151,6 @@ export async function GET() {
     published: {
       total: publishedRes.count ?? 0,
     },
-    stories,
     recent_activity: activity,
     upcoming_posts: (upcomingRes.data ?? []).map((p, i) => ({
       account_username:
@@ -233,10 +164,6 @@ export async function GET() {
 
 function getMockStats() {
   const now = Date.now();
-  // Mock: 3 stories posted 10h, 14h and 20h ago → all still active
-  const story1Posted = new Date(now - 10 * 60 * 60 * 1000).toISOString();
-  const story2Posted = new Date(now - 14 * 60 * 60 * 1000).toISOString();
-  const story3Posted = new Date(now - 20 * 60 * 60 * 1000).toISOString();
   return {
     accounts: { total: 4, this_month: 1 },
     videos: { total: 128, this_week: 23 },
@@ -245,11 +172,6 @@ function getMockStats() {
       next_at: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
     },
     published: { total: 42 },
-    stories: {
-      total: 3,
-      // Oldest story (posted 20h ago) expires in 4h — expiring_first_at is its timestamp
-      expiring_first_at: story3Posted,
-    },
     recent_activity: [
       {
         type: "download",
