@@ -314,7 +314,7 @@ function AccountCard({
       <div className="h-px bg-white/[0.05] mx-5" />
 
       {/* Métricas */}
-      <div className="flex items-center gap-3.5 px-5 py-3 overflow-x-auto">
+      <div className="flex items-center gap-3.5 px-5 py-3 overflow-x-auto no-scrollbar">
         <Metric icon={<Users size={11} />} label={`${formatNumber(account.followers_count)} seg.`} muted={account.followers_count == null} />
         <Metric icon={<FileText size={11} />} label={`${account.posts_count ?? "—"} posts`} muted={account.posts_count == null} />
         <Metric icon={<Clock size={11} />} label={account.last_post_at ? timeAgo(account.last_post_at) : "—"} muted={!account.last_post_at} />
