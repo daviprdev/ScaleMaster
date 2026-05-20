@@ -399,9 +399,11 @@ export default function AccountsPage() {
     }
   }, []);
 
-  const handleConnectClick = useCallback(() => {
+  const handleConnectClick = useCallback(async () => {
+    // Refetch fresh so apps added on /dashboard/apps appear immediately
+    await fetchUserApps();
     setAppPickerOpen(true);
-  }, []);
+  }, [fetchUserApps]);
 
   // Lê parâmetros de retorno do OAuth (?connected=1 ou ?error=xxx)
   useEffect(() => {

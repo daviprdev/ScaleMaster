@@ -634,7 +634,7 @@ export default function AppsPage() {
                 setFormError(null);
               }}
               whileTap={{ scale: 0.97 }}
-              className="btn-primary flex items-center gap-2 text-sm px-4 py-2.5"
+              className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl font-semibold text-white transition-all duration-200 bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] active:scale-95"
             >
               <Plus size={15} />
               Novo App
@@ -727,7 +727,7 @@ export default function AppsPage() {
                       setFormError(null);
                     }}
                     whileTap={{ scale: 0.97 }}
-                    className="btn-primary text-sm px-5 py-2.5 flex items-center gap-2"
+                    className="flex items-center gap-2 text-sm px-5 py-2.5 rounded-xl font-semibold text-white transition-all duration-200 bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] active:scale-95"
                   >
                     <Plus size={14} /> Cadastrar primeiro app
                   </motion.button>
