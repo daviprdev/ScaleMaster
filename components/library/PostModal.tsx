@@ -20,7 +20,6 @@ interface Account {
   display_name: string | null;
   avatar_url: string | null;
   is_active: boolean;
-  access_token: string | null;
   ig_business_account_id: string | null;
 }
 
@@ -43,8 +42,7 @@ export function PostModal({ video, onClose }: PostModalProps) {
       .then(data => {
         const accs: Account[] = (data.accounts ?? []).filter((a: Account) => a.is_active);
         setAccounts(accs);
-        // Pré-seleciona contas com qualquer credencial válida (Meta API ou instagrapi)
-        setSelectedIds(accs.filter(a => a.access_token || a.ig_business_account_id).map(a => a.id));
+        setSelectedIds(accs.filter(a => a.ig_business_account_id).map(a => a.id));
       })
       .finally(() => setLoadingAccounts(false));
   }, []);
@@ -194,7 +192,7 @@ export function PostModal({ video, onClose }: PostModalProps) {
                     {accounts.map(acc => {
                       const isSelected = selectedIds.includes(acc.id);
                       const isMeta = !!acc.ig_business_account_id;
-                      const hasSession = !!acc.access_token || isMeta;
+                      const hasSession = isMeta;
                       return (
                         <button
                           key={acc.id}

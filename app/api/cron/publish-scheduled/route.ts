@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
-import { hasPythonServer, callPythonServer } from "@/lib/python-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -14,7 +13,6 @@ interface AccountRow {
   meta_access_token: string | null;
   ig_business_account_id: string | null;
   token_expires_at: string | null;
-  access_token: string | null;
   fb_page_id: string | null;
 }
 
@@ -29,7 +27,6 @@ interface PostRow {
 }
 
 export async function POST(req: NextRequest) {
-  // Vercel envia Authorization: Bearer <CRON_SECRET> em todos os cron jobs
   const cronSecret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
   if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
@@ -43,12 +40,11 @@ export async function POST(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const now = new Date().toISOString();
 
-  // Busca posts pendentes cujo horário já chegou
   const { data: rows, error: fetchErr } = await admin
     .from("scheduled_posts")
     .select(
       "id, video_id, video_url, caption, account_id, " +
-      "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, access_token, fb_page_id), " +
+      "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id), " +
       "videos_library(public_url)"
     )
     .eq("status", "pending")
@@ -67,8 +63,7 @@ export async function POST(req: NextRequest) {
   const summary = { total: posts.length, published: 0, failed: 0, skipped: 0 };
 
   for (const post of posts) {
-    // Claim atômico: atualiza para 'publishing' apenas se ainda estiver 'pending'.
-    // Previne dupla publicação caso o cron seja invocado concorrentemente.
+    // Claim atômico: previne dupla publicação em execuções concorrentes
     const { data: claimed } = await admin
       .from("scheduled_posts")
       .update({ status: "publishing" })
@@ -102,78 +97,55 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    if (!account.meta_access_token || !account.ig_business_account_id) {
+      await admin
+        .from("scheduled_posts")
+        .update({ status: "failed", error_message: "Conta sem credenciais Meta. Reconecte a conta em Contas." })
+        .eq("id", post.id);
+      summary.failed++;
+      continue;
+    }
+
     const caption = post.caption ?? "";
 
     try {
-      // ── Meta Graph API ─────────────────────────────────────────────────────
-      if (account.meta_access_token && account.ig_business_account_id) {
-        let tokenToUse = account.meta_access_token;
+      let tokenToUse = account.meta_access_token;
 
-        if (isTokenExpiringSoon(account.token_expires_at, 7)) {
-          try {
-            const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id);
-            await admin
-              .from("instagram_accounts")
-              .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })
-              .eq("id", account.id);
-            tokenToUse = token;
-          } catch {
-            console.warn(`[cron] Falha ao renovar token de @${account.username}, usando atual.`);
-          }
+      if (isTokenExpiringSoon(account.token_expires_at, 7)) {
+        try {
+          const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id);
+          await admin
+            .from("instagram_accounts")
+            .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })
+            .eq("id", account.id);
+          tokenToUse = token;
+        } catch {
+          console.warn(`[cron] Falha ao renovar token de @${account.username}, usando atual.`);
         }
-
-        const result = await publishViaMetaAPI(
-          account.ig_business_account_id,
-          tokenToUse,
-          videoUrl,
-          caption
-        );
-
-        if (result.status !== "ok") throw new Error(result.error ?? "Erro na Meta API.");
-
-        await admin
-          .from("scheduled_posts")
-          .update({
-            status: "published",
-            published_at: new Date().toISOString(),
-            media_id: result.media_id ?? null,
-            error_message: null,
-          })
-          .eq("id", post.id);
-
-        summary.published++;
-        console.log(`[cron] ✓ @${account.username} → media_id: ${result.media_id}`);
-
-      // ── instagrapi via servidor FastAPI ────────────────────────────────────
-      } else if (account.access_token && hasPythonServer()) {
-        const pyResult = await callPythonServer<{ status: string; media_id?: string }>(
-          "/posts/publish",
-          {
-            username: account.username,
-            video_url: videoUrl,
-            caption,
-            session_json: account.access_token,
-          }
-        );
-
-        if (pyResult.status !== "ok") throw new Error("Servidor Python retornou erro.");
-
-        await admin
-          .from("scheduled_posts")
-          .update({
-            status: "published",
-            published_at: new Date().toISOString(),
-            media_id: pyResult.media_id ?? null,
-            error_message: null,
-          })
-          .eq("id", post.id);
-
-        summary.published++;
-        console.log(`[cron] ✓ @${account.username} (instagrapi) → media_id: ${pyResult.media_id}`);
-
-      } else {
-        throw new Error("Conta sem credenciais válidas. Reconecte a conta em Contas.");
       }
+
+      const result = await publishViaMetaAPI(
+        account.ig_business_account_id,
+        tokenToUse,
+        videoUrl,
+        caption
+      );
+
+      if (result.status !== "ok") throw new Error(result.error ?? "Erro na Meta API.");
+
+      await admin
+        .from("scheduled_posts")
+        .update({
+          status: "published",
+          published_at: new Date().toISOString(),
+          media_id: result.media_id ?? null,
+          error_message: null,
+        })
+        .eq("id", post.id);
+
+      summary.published++;
+      console.log(`[cron] ✓ @${account.username} → media_id: ${result.media_id}`);
+
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[cron] ✗ @${account.username}:`, msg);
