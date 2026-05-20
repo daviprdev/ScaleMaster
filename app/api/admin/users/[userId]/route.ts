@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { logAudit } from "@/lib/audit";
@@ -66,13 +67,26 @@ export async function PATCH(
     if (!["pending", "approved", "banned"].includes(account_status)) {
       return NextResponse.json({ error: "Status inválido" }, { status: 400 });
     }
-    // Use update (not upsert) — the row always exists (created by trigger on sign-up).
-    // upsert with a partial payload risks resetting other columns on INSERT.
-    const { error } = await admin
+
+    // .update().select() lets us detect 0 rows affected (row missing = silent failure).
+    // If the trigger that creates the user_roles row on sign-up hasn't run for this user,
+    // we fall back to an explicit insert to guarantee persistence.
+    const { data: updated, error: updateError } = await admin
       .from("user_roles")
-      .update({ account_status })
-      .eq("user_id", userId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      .update({ account_status } as never)
+      .eq("user_id", userId)
+      .select("user_id");
+
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+
+    if (!updated || updated.length === 0) {
+      // Row didn't exist — insert it preserving a safe default for role.
+      const { error: insertError } = await admin
+        .from("user_roles")
+        .insert({ user_id: userId, account_status, role: "user" } as never);
+      if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+
     if (account_status === "approved") {
       await logAudit({ action: "user_approved", actorId: user.id, actorEmail: user.email, targetId: userId, targetEmail });
     } else if (account_status === "banned") {
@@ -80,6 +94,8 @@ export async function PATCH(
     } else if (account_status === "pending") {
       await logAudit({ action: "access_revoked", actorId: user.id, actorEmail: user.email, targetId: userId, targetEmail });
     }
+
+    revalidatePath("/admin/users");
     return NextResponse.json({ ok: true, account_status });
   }
 

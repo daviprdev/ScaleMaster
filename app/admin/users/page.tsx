@@ -80,7 +80,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/admin/users").then((r) => r.json()),
+      fetch("/api/admin/users", { cache: "no-store" }).then((r) => r.json()),
       supabase.auth.getUser(),
     ])
       .then(([usersData, { data: { user } }]) => {
