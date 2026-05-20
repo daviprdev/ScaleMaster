@@ -19,9 +19,17 @@ import {
   KeyRound,
   AlertTriangle,
   Clapperboard,
+  ChevronRight,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+
+interface UserMetaApp {
+  id: string;
+  app_name: string;
+  ig_app_id: string;
+}
 
 interface Account {
   id: string;
@@ -355,12 +363,16 @@ function AccountSkeleton() {
 
 // ── Página principal ──────────────────────────────────────────
 export default function AccountsPage() {
+  const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
+
+  const [userApps, setUserApps] = useState<UserMetaApp[]>([]);
+  const [appPickerOpen, setAppPickerOpen] = useState(false);
 
 
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
@@ -376,9 +388,28 @@ export default function AccountsPage() {
   const _tokenRefreshingRef = useRef<string | null>(null);
   const _autoRefreshDone = useRef(false);
 
-  const handleConnectClick = useCallback(() => {
-    window.location.href = "/api/instagram/auth";
+  const fetchUserApps = useCallback(async () => {
+    try {
+      const res = await fetch("/api/apps");
+      if (!res.ok) return;
+      const data = await res.json() as { apps?: UserMetaApp[] };
+      setUserApps(data.apps ?? []);
+    } catch {
+      // non-critical
+    }
   }, []);
+
+  const handleConnectClick = useCallback(() => {
+    if (userApps.length === 0) {
+      router.push("/dashboard/apps");
+      return;
+    }
+    if (userApps.length === 1) {
+      window.location.href = `/api/instagram/auth?appId=${userApps[0].id}`;
+      return;
+    }
+    setAppPickerOpen(true);
+  }, [userApps, router]);
 
   // Lê parâmetros de retorno do OAuth (?connected=1 ou ?error=xxx)
   useEffect(() => {
@@ -431,6 +462,7 @@ export default function AccountsPage() {
 
   // Auto-renova tokens expirando em < 7 dias e busca stories na primeira carga
   useEffect(() => {
+    fetchUserApps();
     fetchAccounts().then(async (fetched) => {
       // Fetch per-account stories in parallel (non-blocking)
       fetchStories();
@@ -465,7 +497,7 @@ export default function AccountsPage() {
         fetchAccounts();
       }
     });
-  }, [fetchAccounts, fetchStories]);
+  }, [fetchAccounts, fetchStories, fetchUserApps]);
 
   const handleRefresh = useCallback(async (id: string) => {
     if (_refreshingRef.current) return;
@@ -542,6 +574,69 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-6">
+
+      {/* App picker modal */}
+      <AnimatePresence>
+        {appPickerOpen && (
+          <>
+            <motion.div
+              key="app-picker-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => setAppPickerOpen(false)}
+            />
+            <motion.div
+              key="app-picker-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
+            >
+              <div className="glass rounded-2xl neon-border w-full max-w-sm p-6 space-y-4 pointer-events-auto">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-bold text-white">Selecionar App</h3>
+                  <button onClick={() => setAppPickerOpen(false)} className="text-white/30 hover:text-white/60 transition-colors">
+                    <X size={16} />
+                  </button>
+                </div>
+                <p className="text-xs text-white/35">Escolha qual app Meta usar para este fluxo OAuth:</p>
+                <div className="space-y-2">
+                  {userApps.map(app => (
+                    <button
+                      key={app.id}
+                      onClick={() => {
+                        setAppPickerOpen(false);
+                        window.location.href = `/api/instagram/auth?appId=${app.id}`;
+                      }}
+                      className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07] hover:bg-violet-600/10 hover:border-violet-500/25 transition-all text-left group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+                          <KeyRound size={14} className="text-violet-400" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white/80 truncate group-hover:text-white transition-colors">{app.app_name}</p>
+                          <p className="text-[10px] text-white/25 font-mono truncate">{app.ig_app_id}</p>
+                        </div>
+                      </div>
+                      <ChevronRight size={14} className="text-white/20 flex-shrink-0 group-hover:text-violet-400 transition-colors" />
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => { setAppPickerOpen(false); router.push("/dashboard/apps"); }}
+                  className="w-full text-center text-xs text-white/25 hover:text-violet-400 transition-colors"
+                >
+                  + Cadastrar novo app
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Banner de notificação OAuth */}
       <AnimatePresence>

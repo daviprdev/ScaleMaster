@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { decrypt } from "@/lib/encrypt";
 
 export const dynamic = "force-dynamic";
-
-const IG_APP_ID = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? "";
-const IG_APP_SECRET = process.env.INSTAGRAM_APP_SECRET ?? "";
 
 const REDIRECT_URI = "https://autoscale-ia.vercel.app/api/instagram/callback";
 const GRAPH_IG = "https://graph.instagram.com";
@@ -13,19 +11,57 @@ const GRAPH_IG = "https://graph.instagram.com";
 const APP_URL =
   (process.env.NEXT_PUBLIC_APP_URL ?? "https://autoscale-ia.vercel.app").replace(/\/$/, "");
 
+function clearOAuthCookies(res: NextResponse) {
+  res.cookies.set("ig_oauth_state", "", { maxAge: 0, path: "/" });
+  res.cookies.set("ig_oauth_app_id", "", { maxAge: 0, path: "/" });
+}
+
 function redirectWithError(code: string, detail?: string): NextResponse {
   const params = new URLSearchParams({ error: code });
   if (detail) params.set("detail", detail.slice(0, 200));
   const res = NextResponse.redirect(`${APP_URL}/dashboard/accounts?${params}`);
-  res.cookies.set("ig_oauth_state", "", { maxAge: 0, path: "/" });
+  clearOAuthCookies(res);
   return res;
 }
 
-// Troca o authorization code por um short-lived token
-async function exchangeCode(code: string): Promise<string> {
+async function resolveCredentials(
+  req: NextRequest,
+  userId: string
+): Promise<{ appId: string; appSecret: string } | null> {
+  const appCookieId = req.cookies.get("ig_oauth_app_id")?.value ?? "";
+
+  if (appCookieId) {
+    // BYOC: look up from user_meta_apps
+    const admin = getSupabaseAdmin();
+    const { data: app } = await admin
+      .from("user_meta_apps")
+      .select("ig_app_id, ig_app_secret")
+      .eq("id", appCookieId)
+      .eq("user_id", userId)
+      .single();
+
+    if (!app) return null;
+
+    let secret: string;
+    try {
+      secret = decrypt(app.ig_app_secret);
+    } catch {
+      return null;
+    }
+    return { appId: app.ig_app_id, appSecret: secret };
+  }
+
+  // Fallback: global env vars
+  const appId = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? "";
+  const appSecret = process.env.INSTAGRAM_APP_SECRET ?? "";
+  if (!appId || !appSecret) return null;
+  return { appId, appSecret };
+}
+
+async function exchangeCode(code: string, appId: string, appSecret: string): Promise<string> {
   const body = new URLSearchParams({
-    client_id: IG_APP_ID,
-    client_secret: IG_APP_SECRET,
+    client_id: appId,
+    client_secret: appSecret,
     grant_type: "authorization_code",
     redirect_uri: REDIRECT_URI,
     code,
@@ -46,7 +82,6 @@ async function exchangeCode(code: string): Promise<string> {
 
   console.log("[ig/callback] exchangeCode →", res.status, JSON.stringify(data).slice(0, 300));
 
-  // Conta pessoal: Instagram retorna código de permissão negada
   if (
     data.error_type ||
     (data.code && data.code >= 10) ||
@@ -67,11 +102,13 @@ async function exchangeCode(code: string): Promise<string> {
   return data.access_token;
 }
 
-// Troca o short-lived token por um Long-Lived Token (~60 dias)
-async function getLongLivedToken(shortToken: string): Promise<{ token: string; expiresAt: Date }> {
+async function getLongLivedToken(
+  shortToken: string,
+  appSecret: string
+): Promise<{ token: string; expiresAt: Date }> {
   const params = new URLSearchParams({
     grant_type: "ig_exchange_token",
-    client_secret: IG_APP_SECRET,
+    client_secret: appSecret,
     access_token: shortToken,
   });
 
@@ -94,7 +131,6 @@ async function getLongLivedToken(shortToken: string): Promise<{ token: string; e
   };
 }
 
-// Busca perfil do Instagram autenticado
 async function getIGProfile(token: string) {
   const res = await fetch(
     `${GRAPH_IG}/me?fields=id,username,name,profile_picture_url&access_token=${token}`
@@ -109,7 +145,6 @@ async function getIGProfile(token: string) {
 
   console.log("[ig/callback] profile →", res.status, JSON.stringify(data).slice(0, 200));
 
-  // Conta pessoal detectada via tipo de erro
   if (data.error?.type === "OAuthException") {
     throw Object.assign(
       new Error("Sua conta precisa ser Comercial ou de Criador de Conteúdo no Instagram."),
@@ -132,14 +167,12 @@ async function getIGProfile(token: string) {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
-  // Cancelado pelo usuário
   if (searchParams.get("error")) {
     const reason = searchParams.get("error_reason") ?? searchParams.get("error") ?? "";
     console.warn("[ig/callback] Cancelado:", reason);
     return redirectWithError("cancelled");
   }
 
-  // Verificação CSRF
   const state = searchParams.get("state") ?? "";
   const cookieState = req.cookies.get("ig_oauth_state")?.value ?? "";
   if (!state || !cookieState || state !== cookieState) {
@@ -150,16 +183,21 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get("code");
   if (!code) return redirectWithError("no_code");
 
-  // Sessão Supabase
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.redirect(`${APP_URL}/auth/login`);
 
+  const credentials = await resolveCredentials(req, user.id);
+  if (!credentials) {
+    console.error("[ig/callback] Credenciais não encontradas para o fluxo OAuth.");
+    return redirectWithError("server_error", "Credenciais do app não encontradas. Tente novamente.");
+  }
+
   const admin = getSupabaseAdmin();
 
   try {
-    const shortToken = await exchangeCode(code);
-    const { token: longToken, expiresAt } = await getLongLivedToken(shortToken);
+    const shortToken = await exchangeCode(code, credentials.appId, credentials.appSecret);
+    const { token: longToken, expiresAt } = await getLongLivedToken(shortToken, credentials.appSecret);
     const profile = await getIGProfile(longToken);
 
     console.log(`[ig/callback] @${profile.username} (id:${profile.id}) → user ${user.id}`);
@@ -194,15 +232,13 @@ export async function GET(req: NextRequest) {
     }
 
     const response = NextResponse.redirect(`${APP_URL}/dashboard/accounts?connected=1`);
-    response.cookies.set("ig_oauth_state", "", { maxAge: 0, path: "/" });
+    clearOAuthCookies(response);
     return response;
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const isPersonal = (err as { isPersonalAccount?: boolean }).isPersonalAccount === true;
-
     console.error("[ig/callback] Erro:", msg);
-
     return isPersonal
       ? redirectWithError("personal_account", msg)
       : redirectWithError("server_error", msg);

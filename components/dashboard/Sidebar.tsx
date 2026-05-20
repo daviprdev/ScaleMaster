@@ -20,6 +20,7 @@ import {
   User,
   CreditCard,
   Shield,
+  KeyRound,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ import { createClient } from "@/lib/supabase/client";
 const navItems = [
   { label: "Visão Geral", href: "/dashboard", icon: LayoutDashboard, exact: true },
   { label: "Contas", href: "/dashboard/accounts", icon: Users },
+  { label: "Meus Apps", href: "/dashboard/apps", icon: KeyRound },
   { label: "Inspirações", href: "/dashboard/search", icon: Search },
   { label: "Biblioteca", href: "/dashboard/library", icon: FolderOpen },
   { label: "Postagens", href: "/dashboard/posts", icon: CalendarRange },

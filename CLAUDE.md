@@ -91,6 +91,9 @@ APIFY_API_TOKEN=
 # Fase 16 — Servidor FastAPI (opcional; sem ela, usa child_process local)
 PYTHON_SERVER_URL=http://localhost:8000
 PYTHON_SERVER_SECRET=
+
+# Fase BYOC — Criptografia de App Secret
+ENCRYPTION_SECRET=qualquer-string-secreta-aqui
 ```
 
 ---
@@ -187,6 +190,7 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fase 34d** | Admin Contas: refatoração para accordion agrupado por usuário com animação framer-motion; API retorna `{ users: [...] }` com contas aninhadas; revogar remove linha do usuário se ficar vazio | ✅ Concluída |
 | **Fase 35a** | Stories Ativos no Dashboard: `GET /api/instagram/stories` chama `graph.facebook.com/v19.0/{id}/stories?fields=id,timestamp`; integrado ao `/api/dashboard/stats`; card âmbar com countdown de expiração (24h rule) | ✅ Concluída |
 | **Fase 35b** | Fluxo de aprovação manual: coluna `account_status` (`pending`/`approved`/`banned`) em `user_roles` (default `pending`); dashboard layout bloqueia pending → `/pending`; admins isentos; página `/pending` com glassmorphism; Admin Usuários com highlight âmbar, badge de contagem e botão Aprovar | ✅ Concluída |
+| **Fase 36 (BYOC)** | Bring Your Own Credentials: tabela `user_meta_apps` com App ID + App Secret (AES-256-GCM via `ENCRYPTION_SECRET`); página `/dashboard/apps` para CRUD; OAuth `/api/instagram/auth` aceita `?appId=`, lê credenciais do DB; callback lê cookie `ig_oauth_app_id`, decripta; página Contas: 0 apps → redireciona para /apps, 1 app → auto, 2+ apps → modal seletor; fallback para env var global se sem cookie de app | ✅ Concluída |
 
 **SQL pendente (executar no Supabase):**
 ```sql
@@ -194,7 +198,25 @@ ALTER TABLE public.user_roles
   ADD COLUMN IF NOT EXISTS account_status text NOT NULL DEFAULT 'pending'
   CHECK (account_status IN ('pending', 'approved', 'banned'));
 UPDATE public.user_roles SET account_status = 'approved';
+
+-- Fase BYOC
+CREATE TABLE IF NOT EXISTS public.user_meta_apps (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  app_name text NOT NULL,
+  ig_app_id text NOT NULL,
+  ig_app_secret text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS user_meta_apps_user_id_idx ON public.user_meta_apps(user_id);
+ALTER TABLE public.user_meta_apps ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users_manage_own_meta_apps" ON public.user_meta_apps
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 ```
+
+**Env vars novas a adicionar na Vercel:**
+- `ENCRYPTION_SECRET` — qualquer string secreta (será hashed com SHA-256 para chave AES-256)
 
 ---
 
