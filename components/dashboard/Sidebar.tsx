@@ -7,12 +7,8 @@ import { createPortal } from "react-dom";
 import {
   Zap,
   LayoutDashboard,
-  Search,
   FolderOpen,
-  CalendarClock,
-  CalendarRange,
   Users,
-  BarChart2,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -21,20 +17,58 @@ import {
   CreditCard,
   Shield,
   KeyRound,
+  Send,
+  Bot,
+  Repeat2,
+  ShieldAlert,
+  Clock,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
-const navItems = [
-  { label: "Visão Geral", href: "/dashboard", icon: LayoutDashboard, exact: true },
-  { label: "Contas", href: "/dashboard/accounts", icon: Users },
-  { label: "Meus Apps", href: "/dashboard/apps", icon: KeyRound },
-  { label: "Inspirações", href: "/dashboard/search", icon: Search },
-  { label: "Biblioteca", href: "/dashboard/library", icon: FolderOpen },
-  { label: "Postagens", href: "/dashboard/posts", icon: CalendarRange },
-  { label: "Agendamentos", href: "/dashboard/schedule", icon: CalendarClock },
-  { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
+type NavItem = {
+  label: string;
+  href: string;
+  icon: React.ElementType;
+  exact?: boolean;
+};
+
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+const navGroups: NavGroup[] = [
+  {
+    label: "MENU",
+    items: [
+      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, exact: true },
+    ],
+  },
+  {
+    label: "POSTAGENS",
+    items: [
+      { label: "Contas", href: "/dashboard/accounts", icon: Users },
+      { label: "Postar", href: "/dashboard/postar", icon: Send },
+      { label: "Automatizar contas", href: "/dashboard/automation", icon: Bot },
+      { label: "Loop", href: "/dashboard/loop", icon: Repeat2 },
+    ],
+  },
+  {
+    label: "CONTEÚDOS",
+    items: [
+      { label: "Biblioteca", href: "/dashboard/library", icon: FolderOpen },
+    ],
+  },
+  {
+    label: "CONFIGURAÇÃO",
+    items: [
+      { label: "Meus Apps", href: "/dashboard/apps", icon: KeyRound },
+      { label: "Failover", href: "/dashboard/failover", icon: ShieldAlert },
+      { label: "Horário Humano", href: "/dashboard/human-schedule", icon: Clock },
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -54,7 +88,6 @@ export function Sidebar() {
 
   const triggerRef = useRef<HTMLDivElement>(null);
   const loggingOutRef = useRef(false);
-  // Track collapsed inside handler without stale closure
   const collapsedRef = useRef(collapsed);
   useEffect(() => { collapsedRef.current = collapsed; }, [collapsed]);
 
@@ -91,9 +124,7 @@ export function Sidebar() {
     setMenuOpen(true);
   }, []);
 
-  const closeMenu = useCallback(() => {
-    setMenuOpen(false);
-  }, []);
+  const closeMenu = useCallback(() => { setMenuOpen(false); }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -146,79 +177,91 @@ export function Sidebar() {
         </div>
 
         {/* Nav */}
-        <nav className="relative flex-1 p-3 space-y-1 overflow-y-auto overflow-x-hidden">
-          <AnimatePresence>
-            {!collapsed && (
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-white/25"
-              >
-                Menu
-              </motion.p>
-            )}
-          </AnimatePresence>
-
-          {navItems.map((item) => {
-            const active = isActive(item.href, item.exact);
-            return (
-              <Link key={item.href} href={item.href}>
-                <motion.div
-                  whileHover={{ x: 2 }}
-                  whileTap={{ scale: 0.97 }}
-                  className={cn(
-                    "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200",
-                    active
-                      ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
-                      : "text-white/40 hover:text-white/80 hover:bg-white/5"
-                  )}
-                >
-                  {active && (
-                    <motion.div
-                      layoutId="activeNav"
-                      className="absolute inset-0 rounded-xl bg-violet-600/10"
-                      transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
-                    />
-                  )}
-                  <item.icon
-                    className={cn("flex-shrink-0 relative z-10", active ? "text-violet-400" : "")}
-                    size={18}
-                  />
-                  <AnimatePresence>
-                    {!collapsed && (
-                      <motion.span
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -8 }}
-                        transition={{ duration: 0.2 }}
-                        className="text-sm font-medium whitespace-nowrap relative z-10"
-                      >
-                        {item.label}
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                  {collapsed && active && (
-                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2 w-1 h-4 rounded-full bg-violet-400" />
-                  )}
-                </motion.div>
-              </Link>
-            );
-          })}
-
-          {/* Admin shortcut — only rendered for admins */}
-          {isAdmin && (
-            <>
-              <div className="my-2 border-t border-white/[0.06]" />
+        <nav className="relative flex-1 px-3 py-3 overflow-y-auto overflow-x-hidden space-y-0.5">
+          {navGroups.map((group, gi) => (
+            <div key={group.label} className={cn(gi > 0 ? "pt-2" : "")}>
+              {/* Group label */}
               <AnimatePresence>
                 {!collapsed && (
                   <motion.p
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-amber-500/40"
+                    transition={{ duration: 0.15 }}
+                    className="px-3 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/25"
                   >
-                    Sistema
+                    {group.label}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+              {collapsed && gi > 0 && (
+                <div className="my-2 mx-auto w-6 h-px bg-white/[0.07]" />
+              )}
+
+              {/* Items */}
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const active = isActive(item.href, item.exact);
+                  return (
+                    <Link key={item.href} href={item.href}>
+                      <motion.div
+                        whileHover={{ x: 2 }}
+                        whileTap={{ scale: 0.97 }}
+                        className={cn(
+                          "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200",
+                          active
+                            ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
+                            : "text-white/40 hover:text-white/80 hover:bg-white/5"
+                        )}
+                      >
+                        {active && (
+                          <motion.div
+                            layoutId="activeNav"
+                            className="absolute inset-0 rounded-xl bg-violet-600/10"
+                            transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+                          />
+                        )}
+                        <item.icon
+                          className={cn("flex-shrink-0 relative z-10", active ? "text-violet-400" : "")}
+                          size={18}
+                        />
+                        <AnimatePresence>
+                          {!collapsed && (
+                            <motion.span
+                              initial={{ opacity: 0, x: -8 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: -8 }}
+                              transition={{ duration: 0.2 }}
+                              className="text-sm font-medium whitespace-nowrap relative z-10"
+                            >
+                              {item.label}
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                        {collapsed && active && (
+                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 w-1 h-4 rounded-full bg-violet-400" />
+                        )}
+                      </motion.div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          {/* Admin shortcut */}
+          {isAdmin && (
+            <div className="pt-2">
+              <div className="my-1 border-t border-white/[0.06]" />
+              <AnimatePresence>
+                {!collapsed && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="px-3 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-500/40"
+                  >
+                    SISTEMA
                   </motion.p>
                 )}
               </AnimatePresence>
@@ -252,7 +295,7 @@ export function Sidebar() {
                   )}
                 </motion.div>
               </Link>
-            </>
+            </div>
           )}
         </nav>
 
@@ -283,7 +326,6 @@ export function Sidebar() {
                 {userInitial}
               </div>
             )}
-
             <AnimatePresence>
               {!collapsed && (
                 <motion.div
@@ -292,14 +334,11 @@ export function Sidebar() {
                   exit={{ opacity: 0 }}
                   className="flex-1 min-w-0"
                 >
-                  <p className="text-sm font-semibold text-white/85 truncate leading-tight">
-                    {userName}
-                  </p>
+                  <p className="text-sm font-semibold text-white/85 truncate leading-tight">{userName}</p>
                   <p className="text-[11px] text-white/35 leading-tight">Minha Conta</p>
                 </motion.div>
               )}
             </AnimatePresence>
-
             <AnimatePresence>
               {!collapsed && (
                 <motion.span
@@ -310,10 +349,7 @@ export function Sidebar() {
                 >
                   <ChevronUp
                     size={14}
-                    className={cn(
-                      "transition-transform duration-200",
-                      menuOpen ? "rotate-180" : ""
-                    )}
+                    className={cn("transition-transform duration-200", menuOpen ? "rotate-180" : "")}
                   />
                 </motion.span>
               )}
@@ -330,18 +366,12 @@ export function Sidebar() {
         </button>
       </motion.aside>
 
-      {/* ── Portal dropdown — outside the aside, renders in document.body ── */}
+      {/* ── Portal dropdown ── */}
       {mounted && createPortal(
         <>
-          {/* Backdrop — closes menu on outside click */}
           {menuOpen && (
-            <div
-              style={{ position: "fixed", inset: 0, zIndex: 190 }}
-              onClick={closeMenu}
-            />
+            <div style={{ position: "fixed", inset: 0, zIndex: 190 }} onClick={closeMenu} />
           )}
-
-          {/* Dropdown menu */}
           <AnimatePresence>
             {menuOpen && menuPos && (
               <motion.div
@@ -359,30 +389,20 @@ export function Sidebar() {
                 }}
                 className="bg-gray-900 border border-gray-800 rounded-xl shadow-2xl overflow-hidden"
               >
-                {/* Header */}
                 <div className="flex items-center gap-3 px-4 py-3.5">
                   {userAvatar ? (
-                    <img
-                      src={userAvatar}
-                      alt="Avatar"
-                      className="w-9 h-9 rounded-full object-cover flex-shrink-0 shadow-[0_0_10px_rgba(139,92,246,0.35)]"
-                    />
+                    <img src={userAvatar} alt="Avatar" className="w-9 h-9 rounded-full object-cover flex-shrink-0 shadow-[0_0_10px_rgba(139,92,246,0.35)]" />
                   ) : (
                     <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-sm font-bold text-white flex-shrink-0 shadow-[0_0_10px_rgba(139,92,246,0.35)]">
                       {userInitial}
                     </div>
                   )}
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-white truncate leading-tight">
-                      {userName}
-                    </p>
+                    <p className="text-sm font-semibold text-white truncate leading-tight">{userName}</p>
                     <p className="text-xs text-gray-500 leading-tight">{userEmail}</p>
                   </div>
                 </div>
-
                 <div className="border-t border-gray-800" />
-
-                {/* Links */}
                 <div className="p-1.5 space-y-0.5">
                   <button
                     onClick={() => { closeMenu(); router.push("/dashboard/settings"); }}
@@ -397,15 +417,10 @@ export function Sidebar() {
                   >
                     <CreditCard size={15} className="flex-shrink-0 text-gray-700" />
                     <span className="flex-1 text-left">Pagamentos</span>
-                    <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded-md bg-violet-500/15 text-violet-500/60">
-                      Em breve
-                    </span>
+                    <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded-md bg-violet-500/15 text-violet-500/60">Em breve</span>
                   </button>
                 </div>
-
                 <div className="border-t border-gray-800" />
-
-                {/* Logout */}
                 <div className="p-1.5">
                   <button
                     onClick={handleLogout}
