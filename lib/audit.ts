@@ -5,6 +5,7 @@ export type AuditAction =
   | "user_approved"
   | "user_rejected"
   | "user_banned"
+  | "access_revoked"
   | "account_connected"
   | "account_revoked"
   | "impersonation_started";

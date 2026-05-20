@@ -74,6 +74,8 @@ export async function PATCH(
       await logAudit({ action: "user_approved", actorId: user.id, actorEmail: user.email, targetId: userId, targetEmail });
     } else if (account_status === "banned") {
       await logAudit({ action: "user_rejected", actorId: user.id, actorEmail: user.email, targetId: userId, targetEmail });
+    } else if (account_status === "pending") {
+      await logAudit({ action: "access_revoked", actorId: user.id, actorEmail: user.email, targetId: userId, targetEmail });
     }
     return NextResponse.json({ ok: true, account_status });
   }

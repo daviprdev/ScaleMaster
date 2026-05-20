@@ -14,6 +14,7 @@ import {
   Clock,
   XCircle,
   Eye,
+  PauseCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -70,6 +71,7 @@ export default function AdminUsersPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [pendingReject, setPendingReject] = useState<PendingReject | null>(null);
+  const [pendingRevokeAccess, setPendingRevokeAccess] = useState<{ userId: string } | null>(null);
   const [actioning, setActioning] = useState<string | null>(null);
 
   useEffect(() => {
@@ -147,6 +149,29 @@ export default function AdminUsersPage() {
       );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao reprovar usuário");
+    } finally {
+      setActioning(null);
+    }
+  }
+
+  async function revokeAccess(userId: string) {
+    setActioning(userId);
+    setPendingRevokeAccess(null);
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ account_status: "pending" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userId ? { ...u, account_status: "pending" } : u
+        )
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao pausar acesso");
     } finally {
       setActioning(null);
     }
@@ -237,6 +262,7 @@ export default function AdminUsersPage() {
                 const isActioning = actioning === u.id;
                 const isPending = pending?.userId === u.id;
                 const isRejectPending = pendingReject?.userId === u.id;
+                const isRevokeAccessPending = pendingRevokeAccess?.userId === u.id;
                 const isPendingApproval = u.account_status === "pending";
 
                 return (
@@ -321,7 +347,7 @@ export default function AdminUsersPage() {
                         <span className="text-white/20 text-xs text-right block">—</span>
                       ) : (
                         <div className="flex items-center justify-end gap-2 flex-wrap">
-                          {(isPending || isRejectPending) && (
+                          {(isPending || isRejectPending || isRevokeAccessPending) && (
                             <span className="text-xs text-amber-400/80 mr-1">
                               Confirmar?
                             </span>
@@ -427,6 +453,30 @@ export default function AdminUsersPage() {
                                     >
                                       <ShieldBan className="w-3.5 h-3.5" />
                                       {isPending && pending?.role === "banned" ? "Confirmar?" : "Banir"}
+                                    </button>
+                                  )}
+
+                                  {/* Pause access — revert approved user to pending */}
+                                  {u.account_status === "approved" && (
+                                    <button
+                                      onClick={() => {
+                                        if (isRevokeAccessPending) {
+                                          revokeAccess(u.id);
+                                        } else {
+                                          setPendingRevokeAccess({ userId: u.id });
+                                          setPending(null);
+                                          setPendingReject(null);
+                                        }
+                                      }}
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all font-medium",
+                                        isRevokeAccessPending
+                                          ? "border-amber-400/40 bg-amber-400/20 text-amber-300"
+                                          : "border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                                      )}
+                                    >
+                                      <PauseCircle className="w-3.5 h-3.5" />
+                                      {isRevokeAccessPending ? "Confirmar?" : "Pausar Acesso"}
                                     </button>
                                   )}
 
