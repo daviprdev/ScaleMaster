@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/dashboard/Sidebar";
 import { Header } from "@/components/dashboard/Header";
 import { ImpersonationBanner } from "@/components/dashboard/ImpersonationBanner";
 import { AnnouncementBanner } from "@/components/dashboard/AnnouncementBanner";
+import { ParticleBackground } from "@/components/dashboard/ParticleBackground";
 
 export default async function DashboardLayout({
   children,
@@ -57,18 +58,21 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#080b14]">
+    <div className="flex flex-col h-screen bg-slate-950">
       {/* ── Ambient background ─────────────────────────────────── */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        {/* Grid */}
-        <div className="absolute inset-0 grid-bg opacity-[0.12]" />
+      <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
+        {/* Grid overlay */}
+        <div className="absolute inset-0 grid-bg opacity-[0.10]" />
         {/* Violet top-center glow */}
-        <div className="absolute -top-48 left-1/2 -translate-x-1/2 w-[900px] h-[700px] bg-violet-600/[0.07] rounded-full blur-[140px]" />
+        <div className="absolute -top-48 left-1/2 -translate-x-1/2 w-[900px] h-[700px] bg-violet-600/[0.09] rounded-full blur-[140px]" />
         {/* Cyan right-side glow */}
-        <div className="absolute top-1/3 -right-48 w-[600px] h-[600px] bg-cyan-500/[0.04] rounded-full blur-[120px]" />
+        <div className="absolute top-1/3 -right-48 w-[600px] h-[600px] bg-cyan-500/[0.05] rounded-full blur-[120px]" />
         {/* Indigo bottom-left glow */}
-        <div className="absolute -bottom-32 left-1/4 w-[500px] h-[500px] bg-indigo-700/[0.05] rounded-full blur-[100px]" />
+        <div className="absolute -bottom-32 left-1/4 w-[500px] h-[500px] bg-indigo-700/[0.06] rounded-full blur-[100px]" />
       </div>
+
+      {/* ── Floating particles ────────────────────────────────── */}
+      <ParticleBackground />
 
       {/* ── System banners ─────────────────────────────────────── */}
       {impData && (

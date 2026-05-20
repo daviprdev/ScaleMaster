@@ -104,6 +104,15 @@ body {
   }
 }
 
+/* Particle float animation */
+@keyframes particle-float {
+  0%   { transform: translateY(0)       translateX(0px);  opacity: 0; }
+  5%   { opacity: 1; }
+  50%  { transform: translateY(-50vh)   translateX(12px); }
+  95%  { opacity: 1; }
+  100% { transform: translateY(-108vh)  translateX(-8px); opacity: 0; }
+}
+
 /* Grid glow background */
 .grid-bg {
   background-image: linear-gradient(rgba(139, 92, 246, 0.05) 1px, transparent 1px),
