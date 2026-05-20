@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Zap, Mail, Lock, Eye, EyeOff, User, ArrowRight, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -13,64 +14,45 @@ const passwordRequirements = [
 ];
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: name },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
+    // Cria o usuário server-side com e-mail já confirmado (sem link de verificação)
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, full_name: name }),
     });
 
-    if (error) {
-      setError(error.message);
+    if (!res.ok) {
+      const data = await res.json() as { error?: string };
+      setError(data.error ?? "Erro ao criar conta.");
       setIsLoading(false);
       return;
     }
 
-    setSuccess(true);
-    setIsLoading(false);
-  };
+    // Faz login imediatamente e redireciona para a tela de aprovação pendente
+    const supabase = createClient();
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
-  if (success) {
-    return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6 relative overflow-hidden">
-        <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none" />
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="relative z-10 w-full max-w-md glass neon-border rounded-2xl p-8 text-center"
-        >
-          <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mx-auto mb-4">
-            <Check className="w-7 h-7 text-emerald-400" />
-          </div>
-          <h2 className="text-xl font-bold mb-2">Verifique seu e-mail</h2>
-          <p className="text-white/40 text-sm leading-relaxed mb-6">
-            Enviamos um link de confirmação para{" "}
-            <span className="text-violet-300">{email}</span>. Clique nele para
-            ativar sua conta.
-          </p>
-          <Link href="/auth/login" className="btn-primary inline-flex items-center gap-2 text-sm px-6 py-2.5">
-            Ir para o Login
-          </Link>
-        </motion.div>
-      </div>
-    );
-  }
+    if (signInError) {
+      setError(signInError.message);
+      setIsLoading(false);
+      return;
+    }
+
+    router.push("/pending");
+  };
 
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6 relative overflow-hidden">
