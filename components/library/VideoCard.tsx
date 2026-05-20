@@ -12,6 +12,7 @@ import {
   HardDrive,
   Loader2,
   Send,
+  FolderInput,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +28,7 @@ export interface LibraryVideo {
   duration: number;
   file_size: number;
   created_at: string;
+  folder_id?: string | null;
   gradient?: string;
 }
 
@@ -35,6 +37,7 @@ interface VideoCardProps {
   onSchedule: (video: LibraryVideo) => void;
   onPost: (video: LibraryVideo) => void;
   onDelete: (video: LibraryVideo) => Promise<void>;
+  onMove?: (video: LibraryVideo) => void;
 }
 
 function formatBytes(bytes: number) {
@@ -62,7 +65,7 @@ function timeAgo(iso: string) {
   return `há ${d} dia${d > 1 ? "s" : ""}`;
 }
 
-export function VideoCard({ video, onSchedule, onPost, onDelete }: VideoCardProps) {
+export function VideoCard({ video, onSchedule, onPost, onDelete, onMove }: VideoCardProps) {
   const [hovered, setHovered] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -143,17 +146,31 @@ export function VideoCard({ video, onSchedule, onPost, onDelete }: VideoCardProp
                 Postar agora
               </motion.button>
 
-              <motion.button
-                onClick={() => onSchedule(video)}
-                whileTap={{ scale: 0.95 }}
-                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl
-                  border border-white/15 bg-white/[0.05]
-                  text-white/60 hover:bg-white/[0.10] hover:text-white/80
-                  text-sm font-medium transition-all duration-200"
-              >
-                <CalendarClock size={14} />
-                Agendar
-              </motion.button>
+              <div className="w-full grid grid-cols-2 gap-2">
+                <motion.button
+                  onClick={() => onSchedule(video)}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex items-center justify-center gap-1.5 py-2 rounded-xl
+                    border border-white/15 bg-white/[0.05]
+                    text-white/60 hover:bg-white/[0.10] hover:text-white/80
+                    text-xs font-medium transition-all duration-200"
+                >
+                  <CalendarClock size={12} />
+                  Agendar
+                </motion.button>
+
+                <motion.button
+                  onClick={() => onMove?.(video)}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex items-center justify-center gap-1.5 py-2 rounded-xl
+                    border border-cyan-500/25 bg-cyan-500/10
+                    text-cyan-400 hover:bg-cyan-500/20 hover:border-cyan-500/40
+                    text-xs font-medium transition-all duration-200"
+                >
+                  <FolderInput size={12} />
+                  Mover
+                </motion.button>
+              </div>
 
               <motion.button
                 onClick={handleDelete}

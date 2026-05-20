@@ -5,10 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  const { storagePath, filename, fileSize } = await req.json() as {
+  const { storagePath, filename, fileSize, folderId } = await req.json() as {
     storagePath: string;
     filename: string;
     fileSize: number;
+    folderId?: string | null;
   };
 
   if (!storagePath || !filename) {
@@ -46,22 +47,25 @@ export async function POST(req: NextRequest) {
     .from("videos-library")
     .getPublicUrl(storagePath);
 
+  const insertPayload: Record<string, unknown> = {
+    user_id: userId,
+    filename,
+    original_url: null,
+    storage_path: storagePath,
+    public_url: urlData.publicUrl,
+    file_size: fileSize ?? 0,
+    owner_username: null,
+    caption: null,
+    views: 0,
+    likes: 0,
+    comments: 0,
+    duration: 0,
+  };
+  if (folderId) insertPayload.folder_id = folderId;
+
   const { data: record, error } = await getSupabaseAdmin()
     .from("videos_library")
-    .insert({
-      user_id: userId,
-      filename,
-      original_url: null,
-      storage_path: storagePath,
-      public_url: urlData.publicUrl,
-      file_size: fileSize ?? 0,
-      owner_username: null,
-      caption: null,
-      views: 0,
-      likes: 0,
-      comments: 0,
-      duration: 0,
-    })
+    .insert(insertPayload as never)
     .select()
     .single();
 

@@ -4,10 +4,15 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 export const runtime = "nodejs";
 
 // GET /api/library — lista vídeos da biblioteca
-export async function GET() {
+// ?folderId=root   → apenas vídeos sem pasta (folder_id IS NULL)
+// ?folderId=<uuid> → vídeos na pasta especificada
+// sem parâmetro    → todos os vídeos
+export async function GET(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ videos: getMockVideos() });
   }
+
+  const folderId = req.nextUrl.searchParams.get("folderId");
 
   const { data, error } = await getSupabaseAdmin()
     .from("videos_library")
@@ -18,7 +23,38 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ videos: data });
+  let videos = (data ?? []) as Array<Record<string, unknown>>;
+  if (folderId === "root") {
+    videos = videos.filter(v => v.folder_id == null);
+  } else if (folderId) {
+    videos = videos.filter(v => v.folder_id === folderId);
+  }
+
+  return NextResponse.json({ videos });
+}
+
+// PATCH /api/library — move vídeo para pasta (ou para raiz)
+export async function PATCH(req: NextRequest) {
+  const { id, folder_id } = await req.json() as { id: string; folder_id: string | null };
+
+  if (!id) {
+    return NextResponse.json({ error: "'id' obrigatório." }, { status: 400 });
+  }
+
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    return NextResponse.json({ success: true, mock: true });
+  }
+
+  const { error } = await getSupabaseAdmin()
+    .from("videos_library")
+    .update({ folder_id: folder_id ?? null } as unknown as Record<string, unknown>)
+    .eq("id", id);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
 }
 
 // DELETE /api/library — remove vídeo do Storage e do banco
