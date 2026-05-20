@@ -46,7 +46,15 @@ async function scrapeWithToken(token: string, username: string, limit: number) {
 
   const first = items[0] as Record<string, unknown>;
   const fullName = String(first.ownerFullName ?? first.ownerUsername ?? username);
-  const profilePicUrl = (first.ownerProfilePicUrl as string | undefined) ?? null;
+
+  // Try multiple field paths — different Apify actor versions use different names
+  const ownerObj = (first.owner ?? {}) as Record<string, unknown>;
+  const profilePicUrl: string | null =
+    (first.ownerProfilePicUrl as string | null | undefined) ||
+    (first.profilePicUrl as string | null | undefined) ||
+    (ownerObj.profilePicUrl as string | null | undefined) ||
+    (ownerObj.profile_pic_url as string | null | undefined) ||
+    null;
 
   const reels = items
     .filter((item) => item.type === "Video" || item.videoUrl)
@@ -65,6 +73,47 @@ async function scrapeWithToken(token: string, username: string, limit: number) {
     }));
 
   return { reels, fullName, profilePicUrl };
+}
+
+// ── Persistir foto de perfil no Storage (evita expiração do CDN) ──
+async function uploadProfilePicToStorage(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  userId: string,
+  username: string,
+  cdnUrl: string
+): Promise<string | null> {
+  // Ensure bucket exists (no-op if already there)
+  await admin.storage
+    .createBucket("avatars", { public: true, fileSizeLimit: 1_048_576 })
+    .catch(() => {/* already exists */});
+
+  try {
+    const imgRes = await fetch(cdnUrl, {
+      headers: {
+        Referer: "https://www.instagram.com/",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+      },
+    });
+    if (!imgRes.ok) return null;
+
+    const buffer = await imgRes.arrayBuffer();
+    const contentType = imgRes.headers.get("content-type") ?? "image/jpeg";
+    const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
+    const path = `profile-pics/${userId}/${username}.${ext}`;
+
+    const { error } = await admin.storage
+      .from("avatars")
+      .upload(path, buffer, { contentType, upsert: true });
+
+    if (error) return null;
+
+    const { data: { publicUrl } } = admin.storage.from("avatars").getPublicUrl(path);
+    return publicUrl;
+  } catch {
+    return null;
+  }
 }
 
 // ── Salvar no histórico ───────────────────────────────────────────
@@ -99,6 +148,17 @@ async function saveToHistory(
     console.log(`[scraped_profiles] Salvando @${username} para user ${user.id} (${reels.length} reels)`);
 
     const admin = getSupabaseAdmin();
+
+    // Persist profile pic to Supabase Storage so the URL never expires
+    let finalProfilePicUrl = profilePicUrl;
+    if (profilePicUrl) {
+      const stored = await uploadProfilePicToStorage(admin, user.id, username, profilePicUrl);
+      if (stored) {
+        finalProfilePicUrl = stored;
+        console.log(`[scraped_profiles] Foto de perfil salva no Storage: ${stored}`);
+      }
+    }
+
     const { data, error } = await admin
       .from("scraped_profiles")
       .upsert(
@@ -106,7 +166,7 @@ async function saveToHistory(
           user_id: user.id,
           username,
           full_name: fullName,
-          profile_pic_url: profilePicUrl,
+          profile_pic_url: finalProfilePicUrl,
           videos_data: reels,
           video_count: reels.length,
           scraped_at: new Date().toISOString(),

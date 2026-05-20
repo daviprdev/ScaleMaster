@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-// Apenas domínios CDN do Instagram/Meta — evita uso como proxy genérico (SSRF)
+// Domínios CDN permitidos — evita uso como proxy genérico (SSRF)
 const ALLOWED_HOSTS = [
   "cdninstagram.com",
   "fbcdn.net",
   "instagram.com",
   "lookaside.fbsbx.com",
+  "supabase.co", // Supabase Storage (avatars bucket)
 ];
 
 function isAllowed(raw: string): boolean {
