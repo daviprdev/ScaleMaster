@@ -1251,3 +1251,48 @@ const oauthUrl =
 ```
 
 Regra: para OAuth do Instagram Login API, **nunca usar `URLSearchParams` para montar a URL inteira** — usar concatenação manual com `encodeURIComponent` apenas em `redirect_uri` e `state`.
+
+---
+
+### ✅ Fase 37 — Estrutura de Pastas na Biblioteca de Mídia
+**Data:** 20/05/2026
+**Commit:** `feat: add folders structure to media library for future looping integration`
+
+#### Objetivo
+Adicionar suporte a pastas na biblioteca de vídeos, preparando a infraestrutura para o módulo de Looping (que usará pastas como fontes de conteúdo).
+
+#### O que foi feito
+
+**Banco de dados (`supabase/library_folders.sql`)**
+- Nova tabela `library_folders` (id, user_id, name, created_at) com RLS `users_manage_own_folders`
+- Coluna `folder_id uuid` adicionada em `videos_library` com FK para `library_folders.id ON DELETE SET NULL`
+  - `ON DELETE SET NULL` garante que deletar uma pasta move os vídeos de volta à raiz automaticamente
+
+**APIs novas**
+- `GET /api/library/folders` — lista pastas do usuário autenticado
+- `POST /api/library/folders` — cria pasta
+- `PATCH /api/library/folders/[id]` — renomeia pasta
+- `DELETE /api/library/folders/[id]` — deleta pasta (vídeos → raiz via SET NULL)
+
+**APIs atualizadas**
+- `GET /api/library`: aceita `?folderId=root` (IS NULL) ou `?folderId=<uuid>`. Filtra em JS após fetch para evitar problemas com colunas fora dos tipos TypeScript gerados
+- `PATCH /api/library`: move vídeo entre pastas (`{ id, folder_id }`)
+- `POST /api/library/record`: aceita `folderId` opcional no body do upload
+
+**UI (`app/dashboard/library/page.tsx`)**
+- Cabeçalho com breadcrumbs (Biblioteca > [Nome da pasta]) e botão "+ Nova Pasta"
+- Grid de cards de pastas com gradientes coloridos rotativos, ícone de pasta grande, botão de excluir no hover
+- Navegação ao clicar em pasta: mostra apenas vídeos com aquele `folder_id`
+- Separador "Vídeos na raiz" entre pastas e vídeos
+- Upload ciente do contexto: se estiver dentro de uma pasta, o `folderId` é passado automaticamente para `/api/library/record`
+- Modal "Nova Pasta" com input + tecla Enter
+- Modal "Mover vídeo" com lista de pastas + opção "Raiz (sem pasta)"
+- Modal de confirmação antes de deletar pasta
+
+**`components/library/VideoCard.tsx`**
+- Interface `LibraryVideo` recebe `folder_id?: string | null`
+- Nova prop `onMove?: (video: LibraryVideo) => void`
+- Botões "Agendar" e "Mover" ficam em grid 2 colunas no hover overlay
+
+#### Decisão de design
+`folder_id` não existe nos tipos TypeScript gerados do Supabase. Para o GET foi escolhido filtrar em JavaScript (em vez de monkey-patching do query builder) — mais legível e seguro para uma biblioteca de tamanho razoável. Para o PATCH/INSERT, é usado `as unknown as Record<string, unknown>` conforme padrão já documentado no projeto.

@@ -191,6 +191,7 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fase 35a** | Stories Ativos no Dashboard: `GET /api/instagram/stories` chama `graph.facebook.com/v19.0/{id}/stories?fields=id,timestamp`; integrado ao `/api/dashboard/stats`; card âmbar com countdown de expiração (24h rule) | ✅ Concluída |
 | **Fase 35b** | Fluxo de aprovação manual: coluna `account_status` (`pending`/`approved`/`banned`) em `user_roles` (default `pending`); dashboard layout bloqueia pending → `/pending`; admins isentos; página `/pending` com glassmorphism; Admin Usuários com highlight âmbar, badge de contagem e botão Aprovar | ✅ Concluída |
 | **Fase 36 (BYOC)** | Bring Your Own Credentials: tabela `user_meta_apps` com App ID + App Secret (AES-256-GCM via `ENCRYPTION_SECRET`); página `/dashboard/apps` para CRUD; OAuth `/api/instagram/auth` aceita `?appId=`, lê credenciais do DB; callback lê cookie `ig_oauth_app_id`, decripta; página Contas: 0 apps → redireciona para /apps, 1 app → auto, 2+ apps → modal seletor; fallback para env var global se sem cookie de app | ✅ Concluída |
+| **Fase 37** | Estrutura de Pastas na Biblioteca: tabela `library_folders` com RLS, coluna `folder_id` em `videos_library` (ON DELETE SET NULL), CRUD de pastas via API, navegação breadcrumb, cards de pasta com gradientes, modal Nova Pasta, modal Mover Vídeo, upload ciente da pasta ativa, botão Mover no VideoCard | ✅ Concluída |
 
 **SQL pendente (executar no Supabase):**
 ```sql
