@@ -1329,3 +1329,38 @@ Adicionar suporte a pastas na biblioteca de vídeos, preparando a infraestrutura
 **Decisão técnica:** Novas tabelas não presentes nos tipos gerados do Supabase são acessadas via `getSupabaseAdmin() as any`. Padrão já estabelecido na Fase 37.
 
 **Sidebar** reorganizada em grupos: MENU, POSTAGENS (Contas, Postar, Automatizar, Loop), CONTEÚDOS (Biblioteca), CONFIGURAÇÃO (Meus Apps, Failover, Horário Humano).
+
+---
+
+## Fase 39 — Motor de Execução de Loops (Cron Job)
+
+**Commit:** `feat: implement background cron job to process active loops`
+
+**Problema resolvido:** A UI de loops existia mas sem executor — os loops precisam de um motor que rode periodicamente e publique os vídeos automaticamente.
+
+**Arquivos criados/modificados**
+- `app/api/cron/process-loops/route.ts` — rota de cron (GET, requerido pelo Vercel)
+- `supabase/loops_cron_migration.sql` — migration para as 3 novas colunas + constraint expandida
+- `vercel.json` — crons configurados: `/api/cron/publish-scheduled` (horário) + `/api/cron/process-loops` (a cada 10 min)
+
+**Colunas adicionadas à tabela `loops`** (executar `loops_cron_migration.sql` no Supabase)
+- `last_posted_at timestamptz` — quando o loop foi executado pela última vez
+- `last_media_index int DEFAULT 0` — índice round-robin do próximo vídeo a postar
+- `cycles_done int DEFAULT 0` — quantos ciclos de publicação já foram completados
+
+**Status `completed` adicionado** à constraint de `status` (antes era apenas `active`/`paused`).
+
+**Fluxo do Motor**
+1. Busca todos os loops com `status = 'active'`
+2. Filtra em JS os elegíveis: `last_posted_at IS NULL` ou `now >= last_posted_at + interval_minutes`
+3. Para cada loop elegível:
+   - Busca vídeos da pasta vinculada ordenados por `created_at`
+   - Seleciona vídeo no índice `last_media_index % total`
+   - Sorteia legenda aleatória do array `captions`
+   - Chama `processVideoEffects` (stub — retorna URL original, documentado para Worker futuro)
+   - Publica via `publishViaMetaAPI` para cada conta, com auto-refresh de token
+   - Incrementa `cycles_done`, avança `last_media_index`, atualiza `last_posted_at`
+   - Se `!is_infinite && cycles_done >= cycles` → `status = 'completed'`
+
+**Decisão técnica — `processVideoEffects` como stub**
+Efeitos de vídeo (espelhar/inverter) requerem FFmpeg com operações longas que excedem o limite de 300s do Vercel. A função tem assinatura final (recebe `videoUrl, effectMirror, effectInvert`, retorna `string`) mas retorna a URL original até que um Worker dedicado seja configurado. Comentários no código documentam o fluxo esperado (enqueue → Worker processa → upload Storage → retorna nova URL).
