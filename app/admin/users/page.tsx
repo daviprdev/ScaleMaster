@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
+  Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -147,6 +148,19 @@ export default function AdminUsersPage() {
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao reprovar usuário");
     } finally {
+      setActioning(null);
+    }
+  }
+
+  async function impersonateUser(userId: string) {
+    setActioning(userId);
+    try {
+      const res = await fetch(`/api/admin/impersonate/${userId}`, { method: "POST" });
+      const data = await res.json() as { actionLink?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Erro ao gerar acesso");
+      window.location.href = data.actionLink!;
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao impersonar usuário");
       setActioning(null);
     }
   }
@@ -306,7 +320,7 @@ export default function AdminUsersPage() {
                       {isSelf ? (
                         <span className="text-white/20 text-xs text-right block">—</span>
                       ) : (
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
                           {(isPending || isRejectPending) && (
                             <span className="text-xs text-amber-400/80 mr-1">
                               Confirmar?
@@ -415,6 +429,16 @@ export default function AdminUsersPage() {
                                       {isPending && pending?.role === "banned" ? "Confirmar?" : "Banir"}
                                     </button>
                                   )}
+
+                                  {/* Impersonate */}
+                                  <button
+                                    onClick={() => impersonateUser(u.id)}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/50 hover:bg-white/[0.08] hover:text-white/80 transition-all"
+                                    title="Acessar como este usuário"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    Acessar como
+                                  </button>
                                 </>
                               )}
                             </>

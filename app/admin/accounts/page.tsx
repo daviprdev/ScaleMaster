@@ -11,6 +11,7 @@ import {
   Trash2,
   ChevronDown,
   Users,
+  TriangleAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -72,6 +73,14 @@ export default function AdminAccountsPage() {
   }
 
   const totalAccounts = users.reduce((sum, u) => sum + u.accounts.length, 0);
+  const expiredCount = users.flatMap(u => u.accounts).filter(a => {
+    const d = daysUntil(a.token_expires_at);
+    return d !== null && d < 0;
+  }).length;
+  const expiringCount = users.flatMap(u => u.accounts).filter(a => {
+    const d = daysUntil(a.token_expires_at);
+    return d !== null && d >= 0 && d <= 7;
+  }).length;
 
   async function revokeAccount(accountId: string, userId: string) {
     if (pendingRevoke !== accountId) {
@@ -120,6 +129,28 @@ export default function AdminAccountsPage() {
           </div>
         )}
       </div>
+
+      {/* Token health alerts */}
+      {!loading && !error && (expiredCount > 0 || expiringCount > 0) && (
+        <div className="flex flex-wrap gap-3">
+          {expiredCount > 0 && (
+            <div className="flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-2.5">
+              <TriangleAlert className="w-4 h-4 text-red-400 shrink-0" />
+              <span className="text-sm text-red-300 font-medium">
+                {expiredCount} {expiredCount === 1 ? "conta com token expirado" : "contas com tokens expirados"}
+              </span>
+            </div>
+          )}
+          {expiringCount > 0 && (
+            <div className="flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-2.5">
+              <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="text-sm text-amber-300 font-medium">
+                {expiringCount} {expiringCount === 1 ? "conta expirando em ≤7 dias" : "contas expirando em ≤7 dias"}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Loading */}
       {loading && (

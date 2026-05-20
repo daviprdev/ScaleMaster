@@ -28,6 +28,7 @@ export async function GET() {
     { count: totalScheduled },
     { count: totalPublished },
     { data: growthRaw },
+    { data: rolesRaw },
   ] = await Promise.all([
     admin.auth.admin.listUsers({ perPage: 1000 }),
     admin.from("instagram_accounts").select("*", { count: "exact", head: true }),
@@ -39,9 +40,15 @@ export async function GET() {
       .from("scheduled_posts")
       .select("*", { count: "exact", head: true })
       .eq("status", "published"),
-    // Crescimento diário de usuários nos últimos 30 dias via user_roles.created_at
     admin.rpc("admin_user_growth_30d"),
+    admin.from("user_roles").select("account_status"),
   ]);
+
+  const usersByStatus = { pending: 0, approved: 0, banned: 0 };
+  for (const r of (rolesRaw ?? []) as { account_status: string }[]) {
+    const s = r.account_status as keyof typeof usersByStatus;
+    if (s in usersByStatus) usersByStatus[s]++;
+  }
 
   // Fallback: se a RPC não existir, agrega no Node com os dados do auth
   let userGrowth: { date: string; users: number }[] = [];
@@ -74,6 +81,7 @@ export async function GET() {
 
   return NextResponse.json({
     totalUsers: authData?.users.length ?? 0,
+    usersByStatus,
     totalAccounts: totalAccounts ?? 0,
     totalScheduled: totalScheduled ?? 0,
     totalPublished: totalPublished ?? 0,
