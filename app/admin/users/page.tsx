@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Users,
   Loader2,
@@ -66,6 +67,7 @@ type PendingAction = { userId: string; role: AdminUser["role"] };
 type PendingReject = { userId: string };
 
 export default function AdminUsersPage() {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,6 +106,7 @@ export default function AdminUsersPage() {
       setUsers((prev) =>
         prev.map((u) => (u.id === userId ? { ...u, role } : u))
       );
+      router.refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao atualizar cargo");
     } finally {
@@ -126,6 +129,7 @@ export default function AdminUsersPage() {
           u.id === userId ? { ...u, account_status: "approved" } : u
         )
       );
+      router.refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao aprovar usuário");
     } finally {
@@ -149,6 +153,7 @@ export default function AdminUsersPage() {
           u.id === userId ? { ...u, account_status: "banned" } : u
         )
       );
+      router.refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao reprovar usuário");
     } finally {
@@ -172,6 +177,7 @@ export default function AdminUsersPage() {
           u.id === userId ? { ...u, account_status: "pending" } : u
         )
       );
+      router.refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao pausar acesso");
     } finally {

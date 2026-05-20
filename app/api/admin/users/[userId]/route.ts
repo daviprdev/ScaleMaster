@@ -66,9 +66,12 @@ export async function PATCH(
     if (!["pending", "approved", "banned"].includes(account_status)) {
       return NextResponse.json({ error: "Status inválido" }, { status: 400 });
     }
+    // Use update (not upsert) — the row always exists (created by trigger on sign-up).
+    // upsert with a partial payload risks resetting other columns on INSERT.
     const { error } = await admin
       .from("user_roles")
-      .upsert({ user_id: userId, account_status }, { onConflict: "user_id" });
+      .update({ account_status })
+      .eq("user_id", userId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (account_status === "approved") {
       await logAudit({ action: "user_approved", actorId: user.id, actorEmail: user.email, targetId: userId, targetEmail });

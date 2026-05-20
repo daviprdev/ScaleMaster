@@ -28,14 +28,17 @@ export async function POST(
     return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
 
   const targetEmail = targetData.user.email;
-  // Derive origin from the incoming request so it always matches the actual deployment domain
-  const origin = new URL(req.url).origin;
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? origin).replace(/\/$/, "");
+  // Always derive origin from request headers so it matches the actual deployment domain.
+  // NEXT_PUBLIC_APP_URL is intentionally NOT used here — it may point to localhost in dev
+  // environments and would break the redirectTo in production magic links.
+  const host = req.headers.get("host") ?? "localhost:3000";
+  const protocol = host.includes("localhost") ? "http:" : "https:";
+  const origin = `${protocol}//${host}`;
 
   const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
     type: "magiclink",
     email: targetEmail,
-    options: { redirectTo: `${appUrl}/auth/callback?next=/dashboard` },
+    options: { redirectTo: `${origin}/auth/callback?next=/dashboard` },
   });
 
   if (linkErr || !linkData?.properties?.action_link)
