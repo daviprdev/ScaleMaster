@@ -400,16 +400,8 @@ export default function AccountsPage() {
   }, []);
 
   const handleConnectClick = useCallback(() => {
-    if (userApps.length === 0) {
-      router.push("/dashboard/apps");
-      return;
-    }
-    if (userApps.length === 1) {
-      window.location.href = `/api/instagram/auth?appId=${userApps[0].id}`;
-      return;
-    }
     setAppPickerOpen(true);
-  }, [userApps, router]);
+  }, []);
 
   // Lê parâmetros de retorno do OAuth (?connected=1 ou ?error=xxx)
   useEffect(() => {
@@ -592,46 +584,92 @@ export default function AccountsPage() {
               initial={{ opacity: 0, scale: 0.95, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 16 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
               <div className="glass rounded-2xl neon-border w-full max-w-sm p-6 space-y-4 pointer-events-auto">
+                {/* Header */}
                 <div className="flex items-center justify-between">
-                  <h3 className="text-base font-bold text-white">Selecionar App</h3>
-                  <button onClick={() => setAppPickerOpen(false)} className="text-white/30 hover:text-white/60 transition-colors">
-                    <X size={16} />
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
+                      <KeyRound size={13} className="text-violet-400" />
+                    </div>
+                    <h3 className="text-base font-bold text-white">Conectar Conta</h3>
+                  </div>
+                  <button
+                    onClick={() => setAppPickerOpen(false)}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                  >
+                    <X size={15} />
                   </button>
                 </div>
-                <p className="text-xs text-white/35">Escolha qual app Meta usar para este fluxo OAuth:</p>
-                <div className="space-y-2">
-                  {userApps.map(app => (
+
+                {userApps.length === 0 ? (
+                  /* ── Estado vazio ── */
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="space-y-4"
+                  >
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-4 space-y-1.5 text-center">
+                      <p className="text-sm font-semibold text-amber-300">Nenhum App cadastrado</p>
+                      <p className="text-xs text-white/35 leading-relaxed">
+                        Você precisa cadastrar um App da Meta antes de adicionar uma conta.
+                      </p>
+                    </div>
                     <button
-                      key={app.id}
-                      onClick={() => {
-                        setAppPickerOpen(false);
-                        window.location.href = `/api/instagram/auth?appId=${app.id}`;
-                      }}
-                      className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07] hover:bg-violet-600/10 hover:border-violet-500/25 transition-all text-left group"
+                      onClick={() => { setAppPickerOpen(false); router.push("/dashboard/apps"); }}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-300 text-sm font-semibold px-4 py-3 hover:bg-blue-600/30 hover:border-blue-500/50 transition-all"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
-                          <KeyRound size={14} className="text-violet-400" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white/80 truncate group-hover:text-white transition-colors">{app.app_name}</p>
-                          <p className="text-[10px] text-white/25 font-mono truncate">{app.ig_app_id}</p>
-                        </div>
-                      </div>
-                      <ChevronRight size={14} className="text-white/20 flex-shrink-0 group-hover:text-violet-400 transition-colors" />
+                      <KeyRound size={14} />
+                      Configurar Meu Primeiro App
                     </button>
-                  ))}
-                </div>
-                <button
-                  onClick={() => { setAppPickerOpen(false); router.push("/dashboard/apps"); }}
-                  className="w-full text-center text-xs text-white/25 hover:text-violet-400 transition-colors"
-                >
-                  + Cadastrar novo app
-                </button>
+                  </motion.div>
+                ) : (
+                  /* ── Lista de apps ── */
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="space-y-3"
+                  >
+                    <p className="text-xs text-white/35">
+                      Escolha qual App Meta usar para autorizar a conta no Instagram:
+                    </p>
+                    <div className="space-y-2">
+                      {userApps.map(app => (
+                        <button
+                          key={app.id}
+                          onClick={() => {
+                            setAppPickerOpen(false);
+                            window.location.href = `/api/instagram/auth?appId=${app.id}`;
+                          }}
+                          className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07] hover:bg-violet-600/10 hover:border-violet-500/25 transition-all text-left group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+                              <KeyRound size={13} className="text-violet-400" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-white/80 truncate group-hover:text-white transition-colors">
+                                {app.app_name}
+                              </p>
+                              <p className="text-[10px] text-white/25 font-mono truncate">
+                                ID: {app.ig_app_id}
+                              </p>
+                            </div>
+                          </div>
+                          <ChevronRight size={14} className="text-white/20 flex-shrink-0 group-hover:text-violet-400 transition-colors" />
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => { setAppPickerOpen(false); router.push("/dashboard/apps"); }}
+                      className="w-full text-center text-xs text-white/25 hover:text-violet-400 transition-colors py-1"
+                    >
+                      + Cadastrar novo app
+                    </button>
+                  </motion.div>
+                )}
               </div>
             </motion.div>
           </>
