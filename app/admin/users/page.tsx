@@ -15,6 +15,7 @@ import {
   XCircle,
   Eye,
   PauseCircle,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -31,6 +32,7 @@ interface AdminUser {
   created_at: string;
   role: "user" | "admin" | "banned";
   account_status: "pending" | "approved" | "banned";
+  pending_message: string | null;
   accounts: Account[];
 }
 
@@ -277,7 +279,7 @@ export default function AdminUsersPage() {
                   >
                     {/* Email */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-white font-medium">{u.email}</span>
                         {isPendingApproval && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300 font-medium">
@@ -285,7 +287,21 @@ export default function AdminUsersPage() {
                             Novo
                           </span>
                         )}
+                        {isPendingApproval && u.pending_message && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-500/20 px-1.5 py-0.5 text-[10px] text-blue-300 font-medium">
+                            <MessageSquare className="w-2.5 h-2.5" />
+                            mensagem
+                          </span>
+                        )}
                       </div>
+                      {isPendingApproval && u.pending_message && (
+                        <div className="mt-1.5 flex items-start gap-1.5 max-w-xs">
+                          <MessageSquare className="w-3 h-3 text-blue-400/60 shrink-0 mt-0.5" />
+                          <p className="text-[11px] text-white/45 leading-relaxed italic">
+                            &ldquo;{u.pending_message}&rdquo;
+                          </p>
+                        </div>
+                      )}
                     </td>
 
                     {/* Created at */}

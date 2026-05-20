@@ -30,8 +30,7 @@ export async function GET() {
     { data: accounts },
   ] = await Promise.all([
     admin.auth.admin.listUsers({ perPage: 1000 }),
-    // Include account_status alongside role
-    admin.from("user_roles").select("user_id, role, account_status"),
+    admin.from("user_roles").select("user_id, role, account_status, pending_message"),
     admin
       .from("instagram_accounts")
       .select("user_id, username, is_active, token_expires_at"),
@@ -41,11 +40,11 @@ export async function GET() {
     return NextResponse.json({ error: authError.message }, { status: 500 });
   }
 
-  type RoleRow = { user_id: string; role: string; account_status: string };
+  type RoleRow = { user_id: string; role: string; account_status: string; pending_message: string | null };
   const rolesMap = new Map(
     (roles as unknown as RoleRow[] ?? []).map((r) => [
       r.user_id,
-      { role: r.role, account_status: r.account_status ?? "pending" },
+      { role: r.role, account_status: r.account_status ?? "pending", pending_message: r.pending_message ?? null },
     ])
   );
 
@@ -63,6 +62,7 @@ export async function GET() {
       created_at: u.created_at,
       role: rd?.role ?? "user",
       account_status: rd?.account_status ?? "pending",
+      pending_message: rd?.pending_message ?? null,
       accounts: accountsMap.get(u.id) ?? [],
     };
   });
