@@ -1296,3 +1296,36 @@ Adicionar suporte a pastas na biblioteca de vídeos, preparando a infraestrutura
 
 #### Decisão de design
 `folder_id` não existe nos tipos TypeScript gerados do Supabase. Para o GET foi escolhido filtrar em JavaScript (em vez de monkey-patching do query builder) — mais legível e seguro para uma biblioteca de tamanho razoável. Para o PATCH/INSERT, é usado `as unknown as Record<string, unknown>` conforme padrão já documentado no projeto.
+
+---
+
+## Fase 38 — Módulo de Looping (`/dashboard/loop`)
+
+**Commit:** `feat: build looping configuration UI and database schema`
+
+**Problema resolvido:** Necessidade de um módulo central de looping para publicação automatizada e recorrente de conteúdo para múltiplas contas do Instagram.
+
+**Schema SQL** (`supabase/loops.sql`)
+- Tabela `loops`: `id`, `user_id`, `folder_id` (FK → `library_folders`, ON DELETE SET NULL), `name`, `is_infinite`, `cycles`, `interval_minutes`, `captions` (text[]), `cover_image_url`, `effect_mirror`, `effect_invert`, `status` (active/paused), `created_at`, `updated_at`
+- Tabela `loop_accounts`: junction N:N entre `loops` e `instagram_accounts` (ON DELETE CASCADE em ambas as FKs)
+- RLS habilitado em ambas, policies via `auth.uid() = user_id` (loops) e EXISTS subquery (loop_accounts)
+- Trigger `loops_updated_at` para atualizar `updated_at` automaticamente
+
+**APIs novas**
+- `GET /api/loops` — lista loops do usuário com join `loop_accounts(instagram_accounts)` e `library_folders`
+- `POST /api/loops` — cria loop + insere loop_accounts em bulk
+- `PATCH /api/loops/[id]` — atualiza campos escalares e substitui lista de contas
+- `DELETE /api/loops/[id]` — remove loop (cascade para loop_accounts)
+
+**UI (`app/dashboard/loop/page.tsx`)**
+- Layout split: lista de cards à esquerda + botão "+ Novo Loop"
+- `LoopCard` com badge de status (ativo/pausado), contagem de contas, intervalo humanizado, pasta vinculada
+- `LoopFormModal`: modal completo com todos os campos do schema
+- `AccountsMultiSelect`: dropdown custom com checkboxes para selecionar múltiplas contas Instagram
+- Slider de intervalo com preenchimento visual via `linear-gradient` no `style` inline
+- Upload de capa para bucket `videos-library` sob path `covers/`
+- `.range-slider` adicionado ao `globals.css` com thumb violet customizado
+
+**Decisão técnica:** Novas tabelas não presentes nos tipos gerados do Supabase são acessadas via `getSupabaseAdmin() as any`. Padrão já estabelecido na Fase 37.
+
+**Sidebar** reorganizada em grupos: MENU, POSTAGENS (Contas, Postar, Automatizar, Loop), CONTEÚDOS (Biblioteca), CONFIGURAÇÃO (Meus Apps, Failover, Horário Humano).
