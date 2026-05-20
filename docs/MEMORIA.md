@@ -1364,3 +1364,128 @@ Adicionar suporte a pastas na biblioteca de vídeos, preparando a infraestrutura
 
 **Decisão técnica — `processVideoEffects` como stub**
 Efeitos de vídeo (espelhar/inverter) requerem FFmpeg com operações longas que excedem o limite de 300s do Vercel. A função tem assinatura final (recebe `videoUrl, effectMirror, effectInvert`, retorna `string`) mas retorna a URL original até que um Worker dedicado seja configurado. Comentários no código documentam o fluxo esperado (enqueue → Worker processa → upload Storage → retorna nova URL).
+
+---
+
+### ✅ Fix Admin — Aprovação + Impersonação (2026-05-20)
+**Commits:** `fix: persist user approval status...` + `fix: server-side session exchange for impersonation`
+
+#### Bug 1 — Aprovação não persistia após F5
+
+**Sintoma:** Clicar em "Aprovar" na tabela de usuários admin mostrava sucesso, mas ao recarregar a página o status voltava para "pendente".
+
+**Causa raiz:** `.update().eq()` do Supabase retorna `{ error: null }` mesmo quando 0 linhas são afetadas (usuário sem linha em `user_roles`). O campo `account_status` era atualizado na memória da UI mas não no banco.
+
+**Solução:** Adicionar `.select("user_id")` ao `.update()` para detectar 0 rows, depois fallback para `.insert()` se necessário. Adicionado `revalidatePath('/admin/users')` + `export const dynamic = 'force-dynamic'` na rota de listagem.
+
+#### Bug 2 — Impersonação redirecionava para `http://localhost:3000/#access_token=...`
+
+**Sintoma:** Clicar em "Impersonar" abria uma URL do tipo `http://localhost:3000/#access_token=eyJhbG...` — sessão não criada corretamente.
+
+**Causa raiz:** A implementação anterior usava `admin.auth.admin.generateLink({ redirectTo: prodUrl })`. O Supabase ignora `redirectTo` se a URL não estiver cadastrada em "Allowed Redirect URLs" do projeto, e cai de volta para o Site URL (configurado como `http://localhost:3000`) com o fluxo de token implícito via hash.
+
+**Solução (server-side token exchange):**
+1. `generateLink({ type: "magiclink", email })` → obtém `hashed_token`
+2. `createServerClient` com `setAll` escrevendo nos cookies da `NextResponse`
+3. `targetClient.auth.verifyOtp({ token_hash, type: "email" })` → cria sessão real no servidor
+4. Retorna `{ redirectTo: "/dashboard" }` — cliente faz `window.location.href`
+
+Nenhuma requisição passa pelo Supabase no browser; a sessão já chega nos cookies da resposta HTTP.
+
+---
+
+### ✅ Perf — Otimização de Performance (2026-05-20)
+**Commit:** `perf: optimize database queries, add indexes and reduce re-renders`
+
+#### Indexes SQL
+15 indexes criados em `supabase/performance_indexes.sql` cobrindo todas as FK columns e colunas frequentemente filtradas: `instagram_accounts`, `scheduled_posts`, `loops`, `loop_accounts`, `single_posts`, `single_post_accounts`, `videos_library`.
+
+#### Filtro server-side na Biblioteca
+`/api/library` antes carregava todos os vídeos do usuário e filtrava em JS. Agora:
+- `folder_id = null` → `.is("folder_id", null)` (vídeos sem pasta)
+- `folder_id = <uuid>` → `.eq("folder_id", id)` (pasta específica)
+- DELETE de vídeo passa a ser paralelo via `Promise.all([storage.remove, db.delete])`
+
+#### Fetches paralelos no Loop
+Loop page antes fazia 3 fetches sequenciais no `useEffect`. Substituídos por `Promise.all([fetchLoops(), fetchFolders, fetchAccounts])`.
+
+---
+
+### ✅ Fase 41 — Horário Humano / Anti-Shadowban (2026-05-20)
+**Commit:** `feat: implement human schedule settings and integrate with loop cron job`
+
+#### Objetivo
+Evitar shadowban publicando apenas dentro de uma janela de horário que imita comportamento humano natural.
+
+#### Banco de dados
+```sql
+create table public.human_schedule_settings (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  is_active boolean not null default false,
+  start_time time not null default '07:00',
+  end_time time not null default '23:00',
+  timezone text not null default 'America/Sao_Paulo',
+  updated_at timestamptz not null default now()
+);
+```
+Arquivo: `supabase/human_schedule.sql`
+
+#### API
+- `GET /api/human-schedule` — retorna configurações do usuário (ou defaults se sem linha)
+- `PUT /api/human-schedule` — upsert via admin client
+
+#### UI (`/dashboard/human-schedule`)
+- Relógio ao vivo na timezone selecionada (Intl.DateTimeFormat, atualiza a cada 1s)
+- Badge "Dentro da janela" / "Fora da janela" em tempo real
+- Toggle para ativar/desativar
+- Inputs de horário início/fim
+- Barra visual de progresso da janela ativa
+- 3 presets rápidos: Comercial (08–22), Noturno (18–02), Pleno dia (06–24)
+- Seletor de timezone agrupado por continente (América, Europa, Ásia, África, Oceania)
+- Auto-save com debounce de 1.2s — sem botão "Salvar"
+
+#### Integração com Loop Cron
+`/api/cron/process-loops` busca configurações de todos os users com loops ativos em um único `.in()`, cria um `Map<userId, settings>`. Para cada loop, antes de publicar:
+```typescript
+if (schedule?.is_active) {
+  const allowed = isWithinHumanSchedule(now, schedule.timezone, schedule.start_time, schedule.end_time);
+  if (!allowed) { summary.skipped++; continue; }
+}
+```
+`isWithinHumanSchedule` usa `Intl.DateTimeFormat` puro (sem deps externas) — failsafe: retorna `true` em caso de erro de timezone para não bloquear publicação.
+
+---
+
+### ✅ Fase 42 — Mobile Responsivo (2026-05-20)
+**Commit:** `style: make dashboard and core features fully responsive for mobile devices`
+
+#### Problema
+O dashboard não tinha suporte mobile — sidebar ocupava 240px da tela, sem hamburger, sem drawer.
+
+#### Arquitetura
+
+**`DashboardShell` (novo — `components/dashboard/DashboardShell.tsx`)**
+Client component que centraliza o estado `mobileOpen`. Substitui o Sidebar+Header direto no layout server component.
+```tsx
+const [mobileOpen, setMobileOpen] = useState(false);
+<Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
+<Header onMobileMenuToggle={() => setMobileOpen(v => !v)} />
+```
+
+**`Header` (`components/dashboard/Header.tsx`)**
+- Hamburger `Menu` icon + logo strip — visíveis apenas no mobile (`md:hidden`)
+- Título da página — visível apenas no desktop (`hidden md:block`)
+- Altura responsiva: `h-14 md:h-16`
+
+**`Sidebar` (`components/dashboard/Sidebar.tsx`)**
+- Desktop aside: `hidden md:flex` — não renderiza no mobile
+- Props novas: `mobileOpen?: boolean`, `onMobileClose?: () => void`
+- Drawer mobile via portal (`createPortal`):
+  - `AnimatePresence` com backdrop (`opacity: 0 → 1`) e painel (`x: -100% → 0`)
+  - Largura 280px, `z-index: 260`
+  - Fecha ao clicar no backdrop ou em qualquer link de navegação
+  - Conteúdo sempre "expandido" (sem collapsed state no mobile)
+  - Botão de logout simplificado no rodapé
+
+**Tabela de Apps**
+`AppsTable` envolto em `overflow-x-auto` para evitar overflow horizontal em telas pequenas.
