@@ -711,7 +711,7 @@ export default function AccountsPage() {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-xl font-bold text-white">Contas do Instagram</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Contas do Instagram</h1>
           <p className="text-sm text-white/35 mt-0.5">
             {accounts.length} conectada{accounts.length !== 1 ? "s" : ""} · {active} ativa{active !== 1 ? "s" : ""}
           </p>

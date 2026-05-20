@@ -40,7 +40,7 @@ export default async function DashboardLayout({
     ? (JSON.parse(impCookie.value) as { adminEmail: string })
     : null;
 
-  // Active system announcement (graceful: returns null if table doesn't exist yet)
+  // Active system announcement
   let announcementMessage: string | null = null;
   try {
     const adminClient = getSupabaseAdmin();
@@ -57,8 +57,20 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-950">
-      {/* System banners (stacked above the main layout) */}
+    <div className="flex flex-col h-screen bg-[#080b14]">
+      {/* ── Ambient background ─────────────────────────────────── */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        {/* Grid */}
+        <div className="absolute inset-0 grid-bg opacity-[0.12]" />
+        {/* Violet top-center glow */}
+        <div className="absolute -top-48 left-1/2 -translate-x-1/2 w-[900px] h-[700px] bg-violet-600/[0.07] rounded-full blur-[140px]" />
+        {/* Cyan right-side glow */}
+        <div className="absolute top-1/3 -right-48 w-[600px] h-[600px] bg-cyan-500/[0.04] rounded-full blur-[120px]" />
+        {/* Indigo bottom-left glow */}
+        <div className="absolute -bottom-32 left-1/4 w-[500px] h-[500px] bg-indigo-700/[0.05] rounded-full blur-[100px]" />
+      </div>
+
+      {/* ── System banners ─────────────────────────────────────── */}
       {impData && (
         <ImpersonationBanner
           adminEmail={impData.adminEmail}
@@ -69,17 +81,18 @@ export default async function DashboardLayout({
         <AnnouncementBanner message={announcementMessage} />
       )}
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Subtle grid background */}
-        <div className="fixed inset-0 grid-bg opacity-20 pointer-events-none" />
-
-        {/* Sidebar */}
+      {/* ── App shell ──────────────────────────────────────────── */}
+      <div className="relative flex flex-1 min-h-0 overflow-hidden">
         <Sidebar />
 
-        {/* Main content */}
         <div className="relative flex-1 flex flex-col min-w-0 overflow-hidden">
           <Header />
-          <main className="flex-1 overflow-y-auto p-6">{children}</main>
+
+          <main className="flex-1 overflow-y-auto">
+            <div className="max-w-6xl mx-auto w-full px-6 py-8 sm:px-8 sm:py-10">
+              {children}
+            </div>
+          </main>
         </div>
       </div>
     </div>

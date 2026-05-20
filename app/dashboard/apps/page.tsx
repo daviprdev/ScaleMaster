@@ -413,7 +413,7 @@ export default function AppsPage() {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-xl font-bold text-white">Meus Apps Meta</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Meus Apps Meta</h1>
           <p className="text-sm text-white/35 mt-0.5">
             Cadastre suas credenciais do Meta Developers para conectar contas do Instagram.
           </p>

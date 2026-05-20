@@ -378,7 +378,7 @@ export default function PostsPage() {
 
       {/* Cabeçalho */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-xl font-bold text-white">Agendamento em Massa</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-white">Agendamento em Massa</h1>
         <p className="text-sm text-white/35 mt-0.5">
           Distribua vídeos para múltiplas contas em lotes automáticos e embaralhados
         </p>

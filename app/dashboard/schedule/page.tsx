@@ -354,7 +354,7 @@ export default function SchedulePage() {
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Agendamentos</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Agendamentos</h1>
           <p className="text-sm text-white/35 mt-0.5">
             {counts.all} total · {counts.pending} pendente{counts.pending !== 1 ? "s" : ""} · {counts.published} publicado{counts.published !== 1 ? "s" : ""}
             {counts.failed > 0 && <span className="text-red-400/70"> · {counts.failed} com falha</span>}
