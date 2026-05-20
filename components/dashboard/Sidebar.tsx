@@ -177,7 +177,7 @@ export function Sidebar() {
         </div>
 
         {/* Nav */}
-        <nav className="relative flex-1 px-3 py-3 overflow-y-auto overflow-x-hidden space-y-0.5">
+        <nav className="relative flex-1 px-3 py-3 overflow-y-auto overflow-x-hidden space-y-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           {navGroups.map((group, gi) => (
             <div key={group.label} className={cn(gi > 0 ? "pt-2" : "")}>
               {/* Group label */}
