@@ -14,23 +14,25 @@ export async function GET(req: NextRequest) {
 
   const folderId = req.nextUrl.searchParams.get("folderId");
 
-  const { data, error } = await getSupabaseAdmin()
+  let query = getSupabaseAdmin()
     .from("videos_library")
     .select("*")
     .order("created_at", { ascending: false });
+
+  // Push filter to DB — avoids fetching all rows just to slice in JS
+  if (folderId === "root") {
+    query = query.is("folder_id", null);
+  } else if (folderId) {
+    query = query.eq("folder_id", folderId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  let videos = (data ?? []) as Array<Record<string, unknown>>;
-  if (folderId === "root") {
-    videos = videos.filter(v => v.folder_id == null);
-  } else if (folderId) {
-    videos = videos.filter(v => v.folder_id === folderId);
-  }
-
-  return NextResponse.json({ videos });
+  return NextResponse.json({ videos: (data ?? []) as Array<Record<string, unknown>> });
 }
 
 // PATCH /api/library — move vídeo para pasta (ou para raiz)
@@ -77,19 +79,15 @@ export async function DELETE(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
 
-  const { error: storageError } = await admin.storage
-    .from("videos-library")
-    .remove([storage_path]);
+  // Run storage and database deletes in parallel
+  const [{ error: storageError }, { error: dbError }] = await Promise.all([
+    admin.storage.from("videos-library").remove([storage_path]),
+    admin.from("videos_library").delete().eq("id", id),
+  ]);
 
   if (storageError) {
     return NextResponse.json({ error: storageError.message }, { status: 500 });
   }
-
-  const { error: dbError } = await admin
-    .from("videos_library")
-    .delete()
-    .eq("id", id);
-
   if (dbError) {
     return NextResponse.json({ error: dbError.message }, { status: 500 });
   }

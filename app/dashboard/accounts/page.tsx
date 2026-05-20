@@ -504,8 +504,7 @@ export default function AccountsPage() {
         body: JSON.stringify({ accountId: id }),
       });
       if (res.ok) {
-        await fetchAccounts();
-        fetchStories();
+        await Promise.all([fetchAccounts(), fetchStories()]);
       }
     } finally {
       _refreshingRef.current = null;

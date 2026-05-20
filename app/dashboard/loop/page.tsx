@@ -757,13 +757,14 @@ export default function LoopPage() {
   }, []);
 
   useEffect(() => {
-    fetchLoops();
-    fetch("/api/library/folders")
-      .then(r => r.json())
-      .then((d: { folders: Folder[] }) => setFolders(d.folders ?? []));
-    fetch("/api/accounts/list")
-      .then(r => r.json())
-      .then((d: { accounts: Account[] }) => setAccounts(d.accounts ?? []));
+    Promise.all([
+      fetchLoops(),
+      fetch("/api/library/folders").then(r => r.json() as Promise<{ folders: Folder[] }>),
+      fetch("/api/accounts/list").then(r => r.json() as Promise<{ accounts: Account[] }>),
+    ]).then(([, foldersData, accountsData]) => {
+      setFolders(foldersData.folders ?? []);
+      setAccounts(accountsData.accounts ?? []);
+    });
   }, [fetchLoops]);
 
   const openNewForm = () => { setEditingLoop(null); setShowForm(true); };
