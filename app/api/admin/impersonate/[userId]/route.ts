@@ -28,7 +28,9 @@ export async function POST(
     return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
 
   const targetEmail = targetData.user.email;
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  // Derive origin from the incoming request so it always matches the actual deployment domain
+  const origin = new URL(req.url).origin;
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? origin).replace(/\/$/, "");
 
   const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
     type: "magiclink",
