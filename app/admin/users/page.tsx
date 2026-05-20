@@ -12,6 +12,7 @@ import {
   UserMinus,
   CheckCircle2,
   Clock,
+  XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -58,6 +59,7 @@ function formatDate(iso: string) {
 }
 
 type PendingAction = { userId: string; role: AdminUser["role"] };
+type PendingReject = { userId: string };
 
 export default function AdminUsersPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -66,6 +68,7 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [pendingReject, setPendingReject] = useState<PendingReject | null>(null);
   const [actioning, setActioning] = useState<string | null>(null);
 
   useEffect(() => {
@@ -120,6 +123,29 @@ export default function AdminUsersPage() {
       );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao aprovar usuário");
+    } finally {
+      setActioning(null);
+    }
+  }
+
+  async function rejectUser(userId: string) {
+    setActioning(userId);
+    setPendingReject(null);
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ account_status: "banned" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userId ? { ...u, account_status: "banned" } : u
+        )
+      );
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao reprovar usuário");
     } finally {
       setActioning(null);
     }
@@ -196,6 +222,7 @@ export default function AdminUsersPage() {
                 const isSelf = u.id === currentUserId;
                 const isActioning = actioning === u.id;
                 const isPending = pending?.userId === u.id;
+                const isRejectPending = pendingReject?.userId === u.id;
                 const isPendingApproval = u.account_status === "pending";
 
                 return (
@@ -280,7 +307,7 @@ export default function AdminUsersPage() {
                         <span className="text-white/20 text-xs text-right block">—</span>
                       ) : (
                         <div className="flex items-center justify-end gap-2">
-                          {isPending && (
+                          {(isPending || isRejectPending) && (
                             <span className="text-xs text-amber-400/80 mr-1">
                               Confirmar?
                             </span>
@@ -290,15 +317,36 @@ export default function AdminUsersPage() {
                             <Loader2 className="w-4 h-4 animate-spin text-white/40" />
                           ) : (
                             <>
-                              {/* Approve button — only for pending users */}
+                              {/* Approve / Reject buttons — only for pending users */}
                               {isPendingApproval && (
-                                <button
-                                  onClick={() => approveUser(u.id)}
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/25 transition-all font-medium"
-                                >
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  Aprovar
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => approveUser(u.id)}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/25 transition-all font-medium"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    Aprovar
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      if (isRejectPending) {
+                                        rejectUser(u.id);
+                                      } else {
+                                        setPendingReject({ userId: u.id });
+                                        setPending(null);
+                                      }
+                                    }}
+                                    className={cn(
+                                      "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all font-medium",
+                                      isRejectPending
+                                        ? "border-red-400/40 bg-red-400/20 text-red-300"
+                                        : "border-red-500/30 bg-red-500/15 text-red-300 hover:bg-red-500/25"
+                                    )}
+                                  >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    {isRejectPending ? "Confirmar?" : "Reprovar"}
+                                  </button>
+                                </>
                               )}
 
                               {/* Role actions — only for approved users */}

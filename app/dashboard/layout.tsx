@@ -30,9 +30,9 @@ export default async function DashboardLayout({
     if (!roleData || accountStatus === "pending") {
       redirect("/pending");
     }
-    // Banned users lose access entirely
+    // Banned/rejected users — sign out and return to landing page
     if (accountStatus === "banned") {
-      redirect("/auth/login");
+      redirect("/auth/banned");
     }
   }
 

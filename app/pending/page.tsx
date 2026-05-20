@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Zap, Clock, LogOut, RefreshCw } from "lucide-react";
+import { Zap, Clock, LogOut, RefreshCw, Coffee } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function PendingPage() {
@@ -13,9 +13,19 @@ export default function PendingPage() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { router.replace("/auth/login"); return; }
       setEmail(user.email ?? null);
+
+      // Se o usuário foi reprovado enquanto estava nessa tela, derruba a sessão
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("account_status")
+        .eq("user_id", user.id)
+        .single();
+      if (roleData?.account_status === "banned") {
+        router.replace("/auth/banned");
+      }
     });
   }, [router]);
 
@@ -95,7 +105,7 @@ export default function PendingPage() {
           )}
 
           {/* Status badge */}
-          <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/10 px-4 py-2 mb-8">
+          <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/10 px-4 py-2 mb-6">
             <motion.div
               animate={{ opacity: [1, 0.3, 1] }}
               transition={{ duration: 1.5, repeat: Infinity }}
@@ -105,6 +115,24 @@ export default function PendingPage() {
               Aguardando aprovação
             </span>
           </div>
+
+          {/* Funny message */}
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="mb-8 rounded-xl border border-violet-500/20 bg-violet-500/[0.07] px-4 py-3.5 text-left"
+          >
+            <div className="flex items-center gap-2 mb-1.5">
+              <Coffee className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+              <span className="text-xs font-semibold text-violet-300 uppercase tracking-wide">Enquanto você espera…</span>
+            </div>
+            <p className="text-xs text-white/50 leading-relaxed">
+              Nosso RH — o Admin de cueca, tomando café às 2 da manhã — está analisando seu perfil com toda a seriedade que essa função exige (nenhuma). Por que ele deveria te aceitar?{" "}
+              <span className="text-violet-300 font-medium">Você já mandou um PIX de café para ele hoje?</span>
+              {" "}☕ Spoiler: não vai adiantar, mas pelo menos vai animar o dia dele.
+            </p>
+          </motion.div>
 
           {/* Actions */}
           <div className="space-y-3">
