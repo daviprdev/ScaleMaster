@@ -71,7 +71,7 @@ const navGroups: NavGroup[] = [
   },
 ];
 
-export function Sidebar() {
+export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobileOpen?: boolean; onMobileClose?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -150,7 +150,7 @@ export function Sidebar() {
       <motion.aside
         animate={{ width: collapsed ? 72 : 240 }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
-        className="relative flex-shrink-0 h-screen flex flex-col
+        className="relative flex-shrink-0 h-screen hidden md:flex flex-col
           bg-[#0c0e15] border-r border-white/[0.08] overflow-hidden z-20"
       >
         {/* Glow accent */}
@@ -369,6 +369,113 @@ export function Sidebar() {
       {/* ── Portal dropdown ── */}
       {mounted && createPortal(
         <>
+          {/* Mobile drawer */}
+          <AnimatePresence>
+            {mobileOpen && (
+              <>
+                <motion.div
+                  key="mobile-backdrop"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  style={{ position: "fixed", inset: 0, zIndex: 250, background: "rgba(0,0,0,0.65)" }}
+                  onClick={onMobileClose}
+                />
+                <motion.div
+                  key="mobile-drawer"
+                  initial={{ x: "-100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "-100%" }}
+                  transition={{ duration: 0.28, ease: "easeOut" }}
+                  style={{ position: "fixed", left: 0, top: 0, height: "100%", width: 280, zIndex: 260 }}
+                  className="flex flex-col bg-[#0c0e15] border-r border-white/[0.08] overflow-hidden"
+                >
+                  {/* Glow accent */}
+                  <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-violet-600/10 to-transparent pointer-events-none" />
+
+                  {/* Logo row */}
+                  <div className="relative flex items-center h-16 px-4 border-b border-white/[0.07]">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 shadow-[0_0_15px_rgba(139,92,246,0.4)]">
+                      <Zap className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="ml-3 font-bold text-lg gradient-text whitespace-nowrap">AutoScale</span>
+                  </div>
+
+                  {/* Nav */}
+                  <nav className="relative flex-1 px-3 py-3 overflow-y-auto overflow-x-hidden space-y-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    {navGroups.map((group, gi) => (
+                      <div key={group.label} className={cn(gi > 0 ? "pt-2" : "")}>
+                        <p className="px-3 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/25">
+                          {group.label}
+                        </p>
+                        <div className="space-y-0.5">
+                          {group.items.map((item) => {
+                            const active = isActive(item.href, item.exact);
+                            return (
+                              <Link key={item.href} href={item.href} onClick={onMobileClose}>
+                                <div
+                                  className={cn(
+                                    "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200",
+                                    active
+                                      ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
+                                      : "text-white/40 hover:text-white/80 hover:bg-white/5"
+                                  )}
+                                >
+                                  <item.icon
+                                    className={cn("flex-shrink-0 relative z-10", active ? "text-violet-400" : "")}
+                                    size={18}
+                                  />
+                                  <span className="text-sm font-medium whitespace-nowrap relative z-10">{item.label}</span>
+                                </div>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    {isAdmin && (
+                      <div className="pt-2">
+                        <div className="my-1 border-t border-white/[0.06]" />
+                        <p className="px-3 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-500/40">SISTEMA</p>
+                        <Link href="/admin" onClick={onMobileClose}>
+                          <div
+                            className={cn(
+                              "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200",
+                              pathname.startsWith("/admin")
+                                ? "bg-amber-500/15 text-amber-300 border border-amber-500/25"
+                                : "text-amber-500/50 hover:text-amber-400 hover:bg-amber-500/10"
+                            )}
+                          >
+                            <Shield className="flex-shrink-0 relative z-10" size={18} />
+                            <span className="text-sm font-medium whitespace-nowrap relative z-10">Painel Admin</span>
+                          </div>
+                        </Link>
+                      </div>
+                    )}
+                  </nav>
+
+                  {/* User trigger (simplified in mobile) */}
+                  <div className="p-3 border-t border-white/[0.07]">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/40 hover:text-red-400 hover:bg-red-500/[0.07] transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 text-sm font-bold text-white">
+                        {userInitial}
+                      </div>
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="text-sm font-semibold text-white/85 truncate leading-tight">{userName}</p>
+                        <p className="text-[11px] text-white/35 leading-tight">Sair</p>
+                      </div>
+                      <LogOut size={15} className="flex-shrink-0 text-red-500/60" />
+                    </button>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+
           {menuOpen && (
             <div style={{ position: "fixed", inset: 0, zIndex: 190 }} onClick={closeMenu} />
           )}

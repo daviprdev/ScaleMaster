@@ -2,8 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { Sidebar } from "@/components/dashboard/Sidebar";
-import { Header } from "@/components/dashboard/Header";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { ImpersonationBanner } from "@/components/dashboard/ImpersonationBanner";
 import { AnnouncementBanner } from "@/components/dashboard/AnnouncementBanner";
 import { ParticleBackground } from "@/components/dashboard/ParticleBackground";
@@ -86,19 +85,7 @@ export default async function DashboardLayout({
       )}
 
       {/* ── App shell ──────────────────────────────────────────── */}
-      <div className="relative flex flex-1 min-h-0 overflow-hidden">
-        <Sidebar />
-
-        <div className="relative flex-1 flex flex-col min-w-0 overflow-hidden">
-          <Header />
-
-          <main className="flex-1 overflow-y-auto">
-            <div className="max-w-6xl mx-auto w-full px-6 py-8 sm:px-8 sm:py-10">
-              {children}
-            </div>
-          </main>
-        </div>
-      </div>
+      <DashboardShell>{children}</DashboardShell>
     </div>
   );
 }

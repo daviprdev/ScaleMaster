@@ -740,16 +740,18 @@ export default function AppsPage() {
                 </div>
               </motion.div>
             ) : (
-              <AppsTable
-                apps={apps}
-                onEdit={(a) => {
-                  setEditingApp(a);
-                  setFormError(null);
-                  setShowForm(false);
-                }}
-                onDelete={handleDelete}
-                deletingId={deletingId}
-              />
+              <div className="overflow-x-auto">
+                <AppsTable
+                  apps={apps}
+                  onEdit={(a) => {
+                    setEditingApp(a);
+                    setFormError(null);
+                    setShowForm(false);
+                  }}
+                  onDelete={handleDelete}
+                  deletingId={deletingId}
+                />
+              </div>
             )}
           </motion.div>
         ) : (
