@@ -189,9 +189,9 @@ export default function AdminUsersPage() {
     setActioning(userId);
     try {
       const res = await fetch(`/api/admin/impersonate/${userId}`, { method: "POST" });
-      const data = await res.json() as { actionLink?: string; error?: string };
+      const data = await res.json() as { redirectTo?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Erro ao gerar acesso");
-      window.location.href = data.actionLink!;
+      window.location.href = data.redirectTo ?? "/dashboard";
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao impersonar usuário");
       setActioning(null);

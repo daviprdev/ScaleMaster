@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { logAudit } from "@/lib/audit";
@@ -11,6 +12,7 @@ export async function POST(
 ) {
   const { userId } = await params;
 
+  // Verify admin session
   const supabase = await createClient();
   const { data: { user: adminUser } } = await supabase.auth.getUser();
   if (!adminUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -28,21 +30,55 @@ export async function POST(
     return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
 
   const targetEmail = targetData.user.email;
-  // Always derive origin from request headers so it matches the actual deployment domain.
-  // NEXT_PUBLIC_APP_URL is intentionally NOT used here — it may point to localhost in dev
-  // environments and would break the redirectTo in production magic links.
-  const host = req.headers.get("host") ?? "localhost:3000";
-  const protocol = host.includes("localhost") ? "http:" : "https:";
-  const origin = `${protocol}//${host}`;
 
+  // Generate a magic link to obtain a hashed_token for the target user
   const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
     type: "magiclink",
     email: targetEmail,
-    options: { redirectTo: `${origin}/auth/callback?next=/dashboard` },
   });
 
-  if (linkErr || !linkData?.properties?.action_link)
-    return NextResponse.json({ error: "Erro ao gerar link de acesso" }, { status: 500 });
+  if (linkErr || !linkData?.properties?.hashed_token)
+    return NextResponse.json({ error: "Erro ao gerar token de acesso" }, { status: 500 });
+
+  // Build the response now so we can write session cookies onto it
+  const response = NextResponse.json({ redirectTo: "/dashboard" });
+
+  // Create a Supabase client backed by the response cookies and exchange
+  // the hashed_token for a real session — no browser redirect required.
+  const targetClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => req.cookies.getAll(),
+        setAll: (cookiesToSet) =>
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          ),
+      },
+    }
+  );
+
+  const { data: sessionData, error: verifyErr } = await targetClient.auth.verifyOtp({
+    token_hash: linkData.properties.hashed_token,
+    type: "email",
+  });
+
+  if (verifyErr || !sessionData?.session)
+    return NextResponse.json({ error: "Erro ao criar sessão de acesso" }, { status: 500 });
+
+  // Mark this as an impersonation session so the banner can be shown
+  response.cookies.set(
+    "admin-impersonating",
+    JSON.stringify({ adminEmail: adminUser.email ?? "" }),
+    {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 2,
+      path: "/",
+    }
+  );
 
   await logAudit({
     action: "impersonation_started",
@@ -52,13 +88,5 @@ export async function POST(
     targetEmail,
   });
 
-  const response = NextResponse.json({ actionLink: linkData.properties.action_link });
-  response.cookies.set("admin-impersonating", JSON.stringify({ adminEmail: adminUser.email ?? "" }), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 2,
-    path: "/",
-  });
   return response;
 }
