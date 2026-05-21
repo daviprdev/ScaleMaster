@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Lock, Plus, Eye, EyeOff, Copy, Check,
   Pencil, Trash2, X, KeyRound, Mail, User,
-  Shield, AlertTriangle, RefreshCw, ChevronRight,
+  Shield, AlertTriangle, RefreshCw,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -21,18 +21,14 @@ type Login = {
 };
 
 type FormData = {
-  profile_name: string;
   username: string;
   password_hash: string;
-  recovery_email: string;
   two_factor_key: string;
 };
 
 const EMPTY_FORM: FormData = {
-  profile_name: "",
   username: "",
   password_hash: "",
-  recovery_email: "",
   two_factor_key: "",
 };
 
@@ -324,10 +320,8 @@ function LoginModal({
   const [form, setForm] = useState<FormData>(
     editing
       ? {
-          profile_name: editing.profile_name,
           username: editing.username,
           password_hash: editing.password_hash,
-          recovery_email: editing.recovery_email ?? "",
           two_factor_key: editing.two_factor_key ?? "",
         }
       : EMPTY_FORM,
@@ -401,14 +395,8 @@ function LoginModal({
 
           <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
             <FormField
-              id="profile_name" label="Nome do Perfil" required
-              placeholder="Ex: @minhaconta ou 'Conta Pessoal'"
-              value={form.profile_name} onChange={set("profile_name")}
-              icon={User}
-            />
-            <FormField
-              id="username" label="Usuário / Email de Login" required
-              placeholder="username ou email"
+              id="username" label="Usuário" required
+              placeholder="@username"
               value={form.username} onChange={set("username")}
               icon={User}
             />
@@ -418,20 +406,12 @@ function LoginModal({
               value={form.password_hash} onChange={set("password_hash")}
               icon={KeyRound}
             />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField
-                id="recovery_email" label="Email de Recuperação"
-                placeholder="backup@exemplo.com"
-                value={form.recovery_email} onChange={set("recovery_email")}
-                icon={Mail}
-              />
-              <FormField
-                id="two_factor_key" label="Chave 2FA / TOTP"
-                placeholder="JBSWY3DPEHPK3PXP"
-                value={form.two_factor_key} onChange={set("two_factor_key")}
-                icon={Shield}
-              />
-            </div>
+            <FormField
+              id="two_factor_key" label="Código 2FA (opcional)"
+              placeholder="JBSWY3DPEHPK3PXP"
+              value={form.two_factor_key} onChange={set("two_factor_key")}
+              icon={Shield}
+            />
 
             {formError && (
               <div
@@ -545,7 +525,11 @@ export default function LoginsPage() {
       const res = await fetch("/api/logins", {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editing ? { id: editing.id, ...form } : form),
+        body: JSON.stringify(
+          editing
+            ? { id: editing.id, ...form, profile_name: form.username }
+            : { ...form, profile_name: form.username },
+        ),
       });
       if (!res.ok) {
         const { error: msg } = await res.json();

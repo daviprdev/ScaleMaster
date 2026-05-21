@@ -44,18 +44,21 @@ export async function POST(req: NextRequest) {
 
   const { profile_name, username, password_hash, recovery_email, two_factor_key } = body;
 
-  if (!profile_name?.trim() || !username?.trim() || !password_hash?.trim()) {
+  if (!username?.trim() || !password_hash?.trim()) {
     return NextResponse.json(
-      { error: "profile_name, username e password_hash são obrigatórios" },
+      { error: "username e password_hash são obrigatórios" },
       { status: 400 },
     );
   }
+
+  // profile_name falls back to username if not provided (simplified form)
+  const resolvedProfileName = profile_name?.trim() || username.trim();
 
   const { data, error } = await supabase
     .from("account_logins")
     .insert({
       user_id: user.id,
-      profile_name: profile_name.trim(),
+      profile_name: resolvedProfileName,
       username: username.trim(),
       password_hash,
       recovery_email: recovery_email?.trim() || null,
@@ -87,16 +90,29 @@ export async function PATCH(req: NextRequest) {
     two_factor_key?: string;
   };
 
-  const { id, ...updates } = body;
+  const { id, ...raw } = body;
   if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
+
+  // Build update payload with only the fields explicitly provided.
+  // This prevents accidentally nulling out recovery_email or other fields
+  // that are no longer in the simplified form.
+  type Payload = Record<string, string | null>;
+  const updates: Payload = {};
+  if (raw.profile_name !== undefined) updates.profile_name = raw.profile_name?.trim() || null;
+  if (raw.username !== undefined) {
+    updates.username = raw.username.trim();
+    // Keep profile_name in sync with username if both are present
+    if (updates.profile_name === undefined) {
+      updates.profile_name = raw.username.trim();
+    }
+  }
+  if (raw.password_hash !== undefined) updates.password_hash = raw.password_hash;
+  if (raw.recovery_email !== undefined) updates.recovery_email = raw.recovery_email?.trim() || null;
+  if (raw.two_factor_key !== undefined) updates.two_factor_key = raw.two_factor_key?.trim() || null;
 
   const { data, error } = await supabase
     .from("account_logins")
-    .update({
-      ...updates,
-      recovery_email: updates.recovery_email?.trim() || null,
-      two_factor_key: updates.two_factor_key?.trim() || null,
-    })
+    .update(updates)
     .eq("id", id)
     .eq("user_id", user.id)
     .select()
