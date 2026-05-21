@@ -412,53 +412,62 @@ export default function InspiracoesPage() {
 
   const sortedReels = [...reels].sort((a, b) => b[sortBy] - a[sortBy]);
 
-  // Individual download — routes the video URL through our server-side proxy to
-  // bypass browser CORS restrictions and CDN Referer checks, then converts the
-  // response into a Blob and triggers a native browser save-as dialog.
+  // Individual download.
+  //
+  // WHY we don't use fetch → blob → createObjectURL:
+  //   `await res.blob()` on a 30-80 MB video can take 15-60 s on typical connections.
+  //   Chrome and Safari expire the "user-gesture context" after ~5 s of async work,
+  //   so `a.click()` called after the blob resolves is silently blocked — nothing saves
+  //   to disk even though the blob is in memory.
+  //
+  // FIX:
+  //   1. Run a fast HEAD request to validate the URL (resolves in <500 ms — well inside
+  //      the gesture window and cheap since no body is transferred).
+  //   2. Trigger `a.click()` SYNCHRONOUSLY right after the HEAD resolves — no large
+  //      await between the gesture and the click.
+  //   3. The proxy already sends `Content-Disposition: attachment`, so the browser's
+  //      native download manager takes over and shows real progress in the download bar.
   const handleProcess = async (reel: InspirationReel) => {
-    const url = reel.videoUrl?.trim();
-    if (!url || url === "undefined") {
+    const videoUrl = reel.videoUrl?.trim();
+    if (!videoUrl || videoUrl === "undefined") {
       throw new Error("URL do vídeo indisponível para este reel.");
     }
 
-    const filename = `autoscale_reel_${reel.owner}_${reel.shortCode || reel.id}.mp4`;
+    const filename = `autoscale_reel_${reel.id || Date.now()}.mp4`;
     const proxyUrl =
-      `/api/proxy-download?url=${encodeURIComponent(url)}` +
+      `/api/proxy-download?url=${encodeURIComponent(videoUrl)}` +
       `&filename=${encodeURIComponent(filename)}`;
 
-    // Log to browser console so devs can inspect the exact CDN domain being hit
-    console.log(`[download] reel ${reel.shortCode || reel.id}: ${url.slice(0, 80)}…`);
+    console.log(`[download] ${filename} ← ${videoUrl.slice(0, 80)}…`);
 
-    let res: Response;
+    // Step 1 — Fast HEAD: validate the URL is accessible (no body downloaded).
+    let check: Response;
     try {
-      res = await fetch(proxyUrl);
+      check = await fetch(proxyUrl, { method: "HEAD" });
     } catch (networkErr) {
-      throw new Error(`Erro de rede ao chamar o proxy: ${String(networkErr)}`);
+      throw new Error(`Erro de rede: ${String(networkErr)}`);
     }
 
-    if (!res.ok) {
-      // Proxy returns JSON error details — surface them to the user
-      let detail = `HTTP ${res.status}`;
-      try {
-        const body = await res.json() as { error?: string };
-        if (body.error) detail = body.error;
-      } catch { /* body not JSON */ }
-      console.error(`[download] proxy error for ${reel.shortCode || reel.id}: ${detail}`);
-      throw new Error(detail);
+    if (!check.ok) {
+      console.error(`[download] HEAD ${check.status} for ${videoUrl.slice(0, 60)}`);
+      throw new Error(
+        check.status === 403 || check.status === 502
+          ? "URL do vídeo expirada ou bloqueada pelo CDN. Refaça a busca para obter URLs novas."
+          : `Vídeo indisponível (HTTP ${check.status}).`
+      );
     }
 
-    const blob = await res.blob();
-    if (blob.size === 0) throw new Error("O proxy retornou um arquivo vazio.");
-
-    const objectUrl = window.URL.createObjectURL(blob);
+    // Step 2 — Trigger native browser Save-As.
+    // `Content-Disposition: attachment` on the proxy forces the browser to save the
+    // file without navigating away. Download progress appears in the browser's own
+    // download bar — no blob loaded into JS memory, no user-gesture timeout.
     const a = document.createElement("a");
-    a.href = objectUrl;
-    a.download = filename;
     a.style.display = "none";
+    a.href = proxyUrl;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    window.URL.revokeObjectURL(objectUrl);
   };
 
   // Bulk download — processes each visible reel one at a time.

@@ -195,6 +195,46 @@ export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
                 {reel.caption || `Reel de @${reel.owner}`}
               </p>
 
+              {/* Inline toast — shown immediately on click, before any async work */}
+              <AnimatePresence>
+                {busy && (
+                  <motion.div
+                    key="toast-downloading"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px]"
+                    style={{
+                      background: "rgba(0,229,255,0.07)",
+                      border: "0.5px solid rgba(0,229,255,0.2)",
+                      color: "rgba(0,229,255,0.8)",
+                    }}
+                  >
+                    <Loader2 size={10} className="animate-spin flex-shrink-0" />
+                    Iniciando download…
+                  </motion.div>
+                )}
+                {processState === "done" && (
+                  <motion.div
+                    key="toast-done"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px]"
+                    style={{
+                      background: "rgba(0,255,65,0.07)",
+                      border: "0.5px solid rgba(0,255,65,0.2)",
+                      color: "rgba(0,255,65,0.85)",
+                    }}
+                  >
+                    <CheckCircle2 size={10} className="flex-shrink-0" />
+                    Download iniciado!
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {processState === "error" && (
                 <p className="text-[10px] flex items-center gap-1" style={{ color: "rgba(255,100,90,0.9)" }}>
                   <AlertCircle size={10} />{errorMsg || "Erro ao processar"}
