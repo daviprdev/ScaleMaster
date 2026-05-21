@@ -619,15 +619,12 @@ export default function LibraryPage() {
 
       {/* Loading skeleton */}
       {loading && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <motion.div key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.04 }} className="glass-card animate-pulse">
-              <div className="aspect-video bg-white/[0.04] rounded-t-xl" />
-              <div className="p-3 space-y-2">
-                <div className="h-3 bg-white/[0.06] rounded-full w-3/4" />
-                <div className="h-2 bg-white/[0.04] rounded-full w-1/2" />
-              </div>
-            </motion.div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <motion.div key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.04 }}
+              className="rounded-2xl animate-pulse"
+              style={{ aspectRatio: "9/16", background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.06)" }}
+            />
           ))}
         </div>
       )}
@@ -635,7 +632,7 @@ export default function LibraryPage() {
       {/* Video grid */}
       {!loading && videos.length > 0 && (
         <AnimatePresence mode="popLayout">
-          <motion.div layout className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <motion.div layout className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {videos.map(video => (
               <VideoCard
                 key={video.id}
