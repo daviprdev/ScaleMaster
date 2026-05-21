@@ -153,13 +153,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
         animate={{ width: collapsed ? 72 : 240 }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
         className="relative flex-shrink-0 h-screen hidden md:flex flex-col
-          bg-[#020617]/80 backdrop-blur-xl border-r border-white/[0.07] overflow-hidden z-20"
+          bg-[#080808] border-r border-[#161616] overflow-hidden z-20"
       >
-        {/* Glow accent */}
-        <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-violet-600/10 to-transparent pointer-events-none" />
+        {/* Spotlight accent */}
+        <div className="absolute top-0 left-0 w-full h-48 pointer-events-none"
+          style={{ background: "radial-gradient(ellipse 120% 60% at 50% -10%, rgba(124,58,237,0.08) 0%, transparent 100%)" }} />
 
         {/* Logo */}
-        <div className="relative flex items-center h-16 px-4 border-b border-white/[0.07]">
+        <div className="relative flex items-center h-16 px-4 border-b border-[#161616]">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 shadow-[0_0_15px_rgba(139,92,246,0.4)]">
             <Zap className="w-4 h-4 text-white" />
           </div>
@@ -190,14 +191,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
-                    className="px-3 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/25"
+                    className="px-3 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-neutral-700"
                   >
                     {group.label}
                   </motion.p>
                 )}
               </AnimatePresence>
               {collapsed && gi > 0 && (
-                <div className="my-2 mx-auto w-6 h-px bg-white/[0.07]" />
+                <div className="my-2 mx-auto w-6 h-px bg-[#1E1E1E]" />
               )}
 
               {/* Items */}
@@ -212,20 +213,24 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                         className={cn(
                           "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200",
                           active
-                            ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
-                            : "text-white/40 hover:text-white/80 hover:bg-white/5"
+                            ? "text-white"
+                            : "text-neutral-500 hover:text-neutral-200 hover:bg-white/[0.04]"
                         )}
                       >
                         {active && (
-                          <motion.div
-                            layoutId="activeNav"
-                            className="absolute inset-0 rounded-xl bg-violet-600/10"
-                            transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
-                          />
+                          <>
+                            <motion.div
+                              layoutId="activeNav"
+                              className="absolute inset-0 rounded-xl bg-violet-500/[0.08]"
+                              transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+                            />
+                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[55%] bg-violet-500 rounded-r-full" />
+                          </>
                         )}
                         <item.icon
                           className={cn("flex-shrink-0 relative z-10", active ? "text-violet-400" : "")}
-                          size={18}
+                          size={17}
+                          strokeWidth={1.5}
                         />
                         <AnimatePresence>
                           {!collapsed && (
@@ -241,7 +246,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                           )}
                         </AnimatePresence>
                         {collapsed && active && (
-                          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 w-1 h-4 rounded-full bg-violet-400" />
+                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[55%] bg-violet-500 rounded-r-full" />
                         )}
                       </motion.div>
                     </Link>
@@ -254,14 +259,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
           {/* Admin shortcut */}
           {isAdmin && (
             <div className="pt-2">
-              <div className="my-1 border-t border-white/[0.06]" />
+              <div className="my-1 border-t border-[#1A1A1A]" />
               <AnimatePresence>
                 {!collapsed && (
                   <motion.p
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="px-3 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-500/40"
+                    className="px-3 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-neutral-700"
                   >
                     SISTEMA
                   </motion.p>
@@ -274,11 +279,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   className={cn(
                     "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200",
                     pathname.startsWith("/admin")
-                      ? "bg-amber-500/15 text-amber-300 border border-amber-500/25"
-                      : "text-amber-500/50 hover:text-amber-400 hover:bg-amber-500/10"
+                      ? "bg-amber-500/[0.08] text-amber-300"
+                      : "text-amber-600/60 hover:text-amber-400 hover:bg-amber-500/[0.07]"
                   )}
                 >
-                  <Shield className="flex-shrink-0 relative z-10" size={18} />
+                  <Shield className="flex-shrink-0 relative z-10" size={17} strokeWidth={1.5} />
                   <AnimatePresence>
                     {!collapsed && (
                       <motion.span
@@ -293,7 +298,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                     )}
                   </AnimatePresence>
                   {collapsed && pathname.startsWith("/admin") && (
-                    <div className="absolute right-1.5 top-1/2 -translate-y-1/2 w-1 h-4 rounded-full bg-amber-400" />
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[55%] bg-amber-400 rounded-r-full" />
                   )}
                 </motion.div>
               </Link>
@@ -302,7 +307,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
         </nav>
 
         {/* User trigger */}
-        <div className="p-3 border-t border-white/[0.07]">
+        <div className="p-3 border-t border-[#161616]">
           <div
             ref={triggerRef}
             onClick={menuOpen ? closeMenu : openMenu}
@@ -313,8 +318,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
               "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-150 select-none",
               collapsed ? "justify-center" : "",
               menuOpen
-                ? "bg-white/[0.08] border border-white/[0.12]"
-                : "hover:bg-white/[0.05] border border-transparent"
+                ? "bg-white/[0.06] border border-[#222]"
+                : "hover:bg-white/[0.04] border border-transparent"
             )}
           >
             {userAvatar ? (
@@ -362,7 +367,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
         {/* Collapse toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute -right-3 top-[72px] w-6 h-6 rounded-full bg-gray-800 border border-white/10 flex items-center justify-center text-white/40 hover:text-white hover:border-violet-500/50 transition-all z-30"
+          className="absolute -right-3 top-[72px] w-6 h-6 rounded-full bg-[#0E0E0E] border border-[#222] flex items-center justify-center text-neutral-600 hover:text-white hover:border-violet-500/40 transition-all z-30"
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
         </button>
@@ -391,13 +396,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   exit={{ x: "-100%" }}
                   transition={{ duration: 0.28, ease: "easeOut" }}
                   style={{ position: "fixed", left: 0, top: 0, height: "100%", width: 280, zIndex: 260 }}
-                  className="flex flex-col bg-[#020617]/85 backdrop-blur-xl border-r border-white/[0.07] overflow-hidden"
+                  className="flex flex-col bg-[#080808] border-r border-[#161616] overflow-hidden"
                 >
-                  {/* Glow accent */}
-                  <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-violet-600/10 to-transparent pointer-events-none" />
+                  {/* Spotlight */}
+                  <div className="absolute top-0 left-0 w-full h-48 pointer-events-none"
+                    style={{ background: "radial-gradient(ellipse 120% 60% at 50% -10%, rgba(124,58,237,0.08) 0%, transparent 100%)" }} />
 
                   {/* Logo row */}
-                  <div className="relative flex items-center h-16 px-4 border-b border-white/[0.07]">
+                  <div className="relative flex items-center h-16 px-4 border-b border-[#161616]">
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 shadow-[0_0_15px_rgba(139,92,246,0.4)]">
                       <Zap className="w-4 h-4 text-white" />
                     </div>
@@ -408,7 +414,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   <nav className="relative flex-1 px-3 py-3 overflow-y-auto overflow-x-hidden space-y-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                     {navGroups.map((group, gi) => (
                       <div key={group.label} className={cn(gi > 0 ? "pt-2" : "")}>
-                        <p className="px-3 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/25">
+                        <p className="px-3 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-neutral-700">
                           {group.label}
                         </p>
                         <div className="space-y-0.5">
@@ -420,13 +426,17 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                                   className={cn(
                                     "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200",
                                     active
-                                      ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
-                                      : "text-white/40 hover:text-white/80 hover:bg-white/5"
+                                      ? "bg-violet-500/[0.08] text-white"
+                                      : "text-neutral-500 hover:text-neutral-200 hover:bg-white/[0.04]"
                                   )}
                                 >
+                                  {active && (
+                                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[55%] bg-violet-500 rounded-r-full" />
+                                  )}
                                   <item.icon
                                     className={cn("flex-shrink-0 relative z-10", active ? "text-violet-400" : "")}
-                                    size={18}
+                                    size={17}
+                                    strokeWidth={1.5}
                                   />
                                   <span className="text-sm font-medium whitespace-nowrap relative z-10">{item.label}</span>
                                 </div>
@@ -438,18 +448,18 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                     ))}
                     {isAdmin && (
                       <div className="pt-2">
-                        <div className="my-1 border-t border-white/[0.06]" />
-                        <p className="px-3 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-500/40">SISTEMA</p>
+                        <div className="my-1 border-t border-[#1A1A1A]" />
+                        <p className="px-3 pt-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-neutral-700">SISTEMA</p>
                         <Link href="/admin" onClick={onMobileClose}>
                           <div
                             className={cn(
                               "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200",
                               pathname.startsWith("/admin")
-                                ? "bg-amber-500/15 text-amber-300 border border-amber-500/25"
-                                : "text-amber-500/50 hover:text-amber-400 hover:bg-amber-500/10"
+                                ? "bg-amber-500/10 text-amber-300"
+                                : "text-amber-500/50 hover:text-amber-400 hover:bg-amber-500/[0.07]"
                             )}
                           >
-                            <Shield className="flex-shrink-0 relative z-10" size={18} />
+                            <Shield className="flex-shrink-0 relative z-10" size={17} strokeWidth={1.5} />
                             <span className="text-sm font-medium whitespace-nowrap relative z-10">Painel Admin</span>
                           </div>
                         </Link>
@@ -458,7 +468,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   </nav>
 
                   {/* User trigger (simplified in mobile) */}
-                  <div className="p-3 border-t border-white/[0.07]">
+                  <div className="p-3 border-t border-[#161616]">
                     <button
                       onClick={handleLogout}
                       className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/40 hover:text-red-400 hover:bg-red-500/[0.07] transition-colors"
@@ -496,7 +506,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   left: menuPos.left,
                   ...(menuPos.top !== undefined ? { top: menuPos.top } : { bottom: menuPos.bottom }),
                 }}
-                className="bg-[#030b18]/95 backdrop-blur-xl border border-white/[0.09] rounded-xl shadow-2xl overflow-hidden"
+                className="bg-[#0D0D0D] border border-[#1E1E1E] rounded-xl shadow-2xl overflow-hidden"
               >
                 <div className="flex items-center gap-3 px-4 py-3.5">
                   {userAvatar ? (
@@ -511,7 +521,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                     <p className="text-xs text-white/30 leading-tight">{userEmail}</p>
                   </div>
                 </div>
-                <div className="border-t border-white/[0.06]" />
+                <div className="border-t border-[#1A1A1A]" />
                 <div className="p-1.5 space-y-0.5">
                   <button
                     onClick={() => { closeMenu(); router.push("/dashboard/settings"); }}
@@ -529,7 +539,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                     <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded-md bg-violet-500/15 text-violet-500/60">Em breve</span>
                   </button>
                 </div>
-                <div className="border-t border-white/[0.06]" />
+                <div className="border-t border-[#1A1A1A]" />
                 <div className="p-1.5">
                   <button
                     onClick={handleLogout}

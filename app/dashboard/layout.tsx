@@ -5,7 +5,6 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { ImpersonationBanner } from "@/components/dashboard/ImpersonationBanner";
 import { AnnouncementBanner } from "@/components/dashboard/AnnouncementBanner";
-import { ParticleBackground } from "@/components/dashboard/ParticleBackground";
 
 export default async function DashboardLayout({
   children,
@@ -57,25 +56,18 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#020617]">
-      {/* ── Ambient background ─────────────────────────────────── */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
-        {/* Subtle grid overlay */}
-        <div className="absolute inset-0 grid-bg opacity-[0.12]" />
-        {/* Violet top-center aurora — primary */}
-        <div className="absolute -top-64 left-1/2 -translate-x-1/2 w-[1100px] h-[800px] bg-violet-600/[0.11] rounded-full blur-[160px] animate-[aurora-shift_14s_ease-in-out_infinite_alternate]" />
-        {/* Cyan right aurora */}
-        <div className="absolute top-1/4 -right-64 w-[700px] h-[700px] bg-cyan-500/[0.07] rounded-full blur-[140px] animate-[aurora-shift_18s_ease-in-out_infinite_alternate-reverse]" />
-        {/* Indigo bottom-left aurora */}
-        <div className="absolute -bottom-48 left-1/4 w-[600px] h-[600px] bg-indigo-700/[0.08] rounded-full blur-[120px] animate-[aurora-shift_22s_ease-in-out_infinite_alternate]" />
-        {/* Fuchsia accent — subtle far-right */}
-        <div className="absolute top-2/3 -right-24 w-[400px] h-[400px] bg-fuchsia-700/[0.05] rounded-full blur-[100px]" />
-        {/* Teal accent — bottom-center */}
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-teal-600/[0.04] rounded-full blur-[100px]" />
+    <div className="flex flex-col h-screen bg-[#050505]">
+      {/* ── Ambient — single violet spotlight + hairline grid ── */}
+      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
+        <div
+          className="absolute inset-x-0 top-0 h-[560px]"
+          style={{
+            background:
+              "radial-gradient(ellipse 85% 55% at 50% -5%, rgba(124,58,237,0.1) 0%, transparent 100%)",
+          }}
+        />
+        <div className="absolute inset-0 grid-bg" />
       </div>
-
-      {/* ── Floating particles ────────────────────────────────── */}
-      <ParticleBackground />
 
       {/* ── System banners ─────────────────────────────────────── */}
       {impData && (
