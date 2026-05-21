@@ -120,18 +120,33 @@ export function WireframeTerrain() {
         }
       }
 
-      // Horizon glow band
-      ctx.globalAlpha = 1;
+      // Radial atmospheric glow at horizon centre — no horizontal banding
       const gr = Math.round(229 + (255 - 229) * pulse);
       const gb = Math.round(255 + (65  - 255) * pulse);
-      const band = ctx.createLinearGradient(0, horizonY - 55, 0, horizonY + 35);
-      band.addColorStop(0,   `rgba(0,${gr},${gb},0)`);
-      band.addColorStop(0.4, `rgba(0,${gr},${gb},0.05)`);
-      band.addColorStop(0.5, `rgba(0,${gr},${gb},0.10)`);
-      band.addColorStop(0.65,`rgba(0,255,65,0.04)`);
-      band.addColorStop(1,   `rgba(0,255,65,0)`);
-      ctx.fillStyle = band;
-      ctx.fillRect(0, horizonY - 55, W, 90);
+      const radGlow = ctx.createRadialGradient(
+        W * 0.5, horizonY, 0,
+        W * 0.5, horizonY, W * 0.55,
+      );
+      radGlow.addColorStop(0,   `rgba(0,${gr},${gb},0.038)`);
+      radGlow.addColorStop(0.45,`rgba(0,${gr},${gb},0.010)`);
+      radGlow.addColorStop(1,   `rgba(0,${gr},${gb},0)`);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = radGlow;
+      ctx.fillRect(0, 0, W, horizonY + H * 0.22);
+
+      // Top-fade overlay — drawn last, covers all artifacts above terrain.
+      // Fades from solid #000 at top to transparent well below the horizon.
+      // This is the only way to guarantee a smooth, stripe-free blend.
+      const fadeEnd = horizonY + H * 0.28;
+      const topFade = ctx.createLinearGradient(0, 0, 0, fadeEnd);
+      topFade.addColorStop(0,    'rgba(0,0,0,1)');
+      topFade.addColorStop(0.45, 'rgba(0,0,0,0.92)');
+      topFade.addColorStop(0.68, 'rgba(0,0,0,0.55)');
+      topFade.addColorStop(0.84, 'rgba(0,0,0,0.15)');
+      topFade.addColorStop(1,    'rgba(0,0,0,0)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = topFade;
+      ctx.fillRect(0, 0, W, fadeEnd);
     };
 
     raf = requestAnimationFrame(render);
