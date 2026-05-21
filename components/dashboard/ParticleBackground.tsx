@@ -2,63 +2,116 @@
 
 import { useEffect, useState } from "react";
 
-interface Particle {
+interface FloatParticle {
   id: number;
   left: number;
   size: number;
   duration: number;
   delay: number;
-  opacity: number;
+  opacity: number;    // --p-o  : peak opacity
+  driftX: number;     // --p-dx : X offset at 50%
+  returnX: number;    // --p-rx : X offset at 100%
   color: string;
 }
 
-const COLORS = ["bg-violet-400", "bg-cyan-400", "bg-indigo-400", "bg-white"];
-const WEIGHTS = [0.25, 0.25, 0.2, 0.3]; // probability per color
-
-function pickColor(rand: number): string {
-  let acc = 0;
-  for (let i = 0; i < WEIGHTS.length; i++) {
-    acc += WEIGHTS[i];
-    if (rand < acc) return COLORS[i];
-  }
-  return COLORS[COLORS.length - 1];
+interface TwinkleParticle {
+  id: number;
+  left: number;
+  top: number;
+  size: number;
+  duration: number;
+  delay: number;
 }
 
+// Color palette weighted toward violet/cyan for the cyber-aurora theme
+const FLOAT_COLORS = [
+  "rgba(167,139,250,1)",  // violet-400
+  "rgba(167,139,250,1)",  // violet-400 (doubled weight)
+  "rgba(34,211,238,1)",   // cyan-400
+  "rgba(34,211,238,1)",   // cyan-400 (doubled weight)
+  "rgba(129,140,248,1)",  // indigo-400
+  "rgba(255,255,255,1)",  // white
+  "rgba(216,180,254,1)",  // violet-300
+  "rgba(103,232,249,1)",  // cyan-300
+];
+
 export function ParticleBackground() {
-  const [particles, setParticles] = useState<Particle[]>([]);
+  const [floaters, setFloaters] = useState<FloatParticle[]>([]);
+  const [twinklers, setTwinklers] = useState<TwinkleParticle[]>([]);
 
   useEffect(() => {
-    const count = 55;
-    const p: Particle[] = Array.from({ length: count }, (_, i) => {
-      const rand = () => Math.random();
+    const rng = Math.random;
+
+    // 80 upward-floating dust particles
+    const f: FloatParticle[] = Array.from({ length: 80 }, (_, i) => {
+      const r = rng();
+      const drift = (rng() - 0.5) * 30;       // –15 to +15 px
       return {
         id: i,
-        left: rand() * 100,
-        size: rand() > 0.8 ? 2 : 1,
-        duration: 20 + rand() * 30,
-        delay: rand() * 35,
-        opacity: 0.06 + rand() * 0.22,
-        color: pickColor(rand()),
+        left: rng() * 100,
+        size: r > 0.85 ? 2.5 : r > 0.6 ? 1.5 : 1,
+        duration: 18 + rng() * 32,             // 18–50 s
+        delay: rng() * 40,                     // spread start times
+        opacity: 0.08 + rng() * 0.28,          // 0.08–0.36 peak opacity
+        driftX: drift,
+        returnX: -(drift * 0.6),
+        color: FLOAT_COLORS[Math.floor(rng() * FLOAT_COLORS.length)],
       };
     });
-    setParticles(p);
+
+    // 25 static "star" particles that twinkle
+    const t: TwinkleParticle[] = Array.from({ length: 25 }, (_, i) => ({
+      id: i,
+      left: rng() * 100,
+      top: rng() * 100,
+      size: rng() > 0.7 ? 2 : 1,
+      duration: 3 + rng() * 5,                // 3–8 s twinkle cycle
+      delay: rng() * 6,
+    }));
+
+    setFloaters(f);
+    setTwinklers(t);
   }, []);
 
-  if (particles.length === 0) return null;
+  if (floaters.length === 0) return null;
 
   return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 1 }}>
-      {particles.map((p) => (
+    <div
+      className="fixed inset-0 pointer-events-none overflow-hidden"
+      style={{ zIndex: 1 }}
+      aria-hidden="true"
+    >
+      {/* ── Floating dust ─────────────────────────────────── */}
+      {floaters.map((p) => (
         <div
-          key={p.id}
-          className={`absolute rounded-full ${p.color}`}
+          key={`f${p.id}`}
+          className="absolute rounded-full"
           style={{
             left: `${p.left}%`,
             bottom: "-4px",
             width: `${p.size}px`,
             height: `${p.size}px`,
-            opacity: p.opacity,
+            background: p.color,
+            // Custom properties read by the @keyframes rule in globals.css
+            ["--p-o" as string]: String(p.opacity),
+            ["--p-dx" as string]: `${p.driftX}px`,
+            ["--p-rx" as string]: `${p.returnX}px`,
             animation: `particle-float ${p.duration}s linear ${p.delay}s infinite`,
+          }}
+        />
+      ))}
+
+      {/* ── Static twinkling stars ────────────────────────── */}
+      {twinklers.map((p) => (
+        <div
+          key={`t${p.id}`}
+          className="absolute rounded-full bg-white"
+          style={{
+            left: `${p.left}%`,
+            top: `${p.top}%`,
+            width: `${p.size}px`,
+            height: `${p.size}px`,
+            animation: `particle-twinkle ${p.duration}s ease-in-out ${p.delay}s infinite`,
           }}
         />
       ))}

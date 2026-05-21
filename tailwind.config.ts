@@ -27,6 +27,8 @@ const config: Config = {
         "float": "float 6s ease-in-out infinite",
         "pulse-slow": "pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         "glow": "glow 2s ease-in-out infinite alternate",
+        "particle-twinkle": "particle-twinkle 4s ease-in-out infinite",
+        "aurora-shift": "aurora-shift 12s ease-in-out infinite alternate",
       },
       keyframes: {
         float: {
@@ -36,6 +38,15 @@ const config: Config = {
         glow: {
           "0%": { boxShadow: "0 0 5px rgba(139, 92, 246, 0.5)" },
           "100%": { boxShadow: "0 0 20px rgba(139, 92, 246, 0.8), 0 0 40px rgba(6, 182, 212, 0.3)" },
+        },
+        "particle-twinkle": {
+          "0%, 100%": { opacity: "0.03" },
+          "50%": { opacity: "0.18" },
+        },
+        "aurora-shift": {
+          "0%":   { opacity: "0.07", transform: "scale(1) translate(0, 0)" },
+          "50%":  { opacity: "0.11", transform: "scale(1.08) translate(-2%, 1%)" },
+          "100%": { opacity: "0.07", transform: "scale(1) translate(0, 0)" },
         },
       },
       backdropBlur: {

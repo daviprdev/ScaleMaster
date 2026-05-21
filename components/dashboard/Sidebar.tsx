@@ -153,7 +153,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
         animate={{ width: collapsed ? 72 : 240 }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
         className="relative flex-shrink-0 h-screen hidden md:flex flex-col
-          bg-[#0c0e15] border-r border-white/[0.08] overflow-hidden z-20"
+          bg-[#020617]/80 backdrop-blur-xl border-r border-white/[0.07] overflow-hidden z-20"
       >
         {/* Glow accent */}
         <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-violet-600/10 to-transparent pointer-events-none" />
@@ -391,7 +391,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   exit={{ x: "-100%" }}
                   transition={{ duration: 0.28, ease: "easeOut" }}
                   style={{ position: "fixed", left: 0, top: 0, height: "100%", width: 280, zIndex: 260 }}
-                  className="flex flex-col bg-[#0c0e15] border-r border-white/[0.08] overflow-hidden"
+                  className="flex flex-col bg-[#020617]/85 backdrop-blur-xl border-r border-white/[0.07] overflow-hidden"
                 >
                   {/* Glow accent */}
                   <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-violet-600/10 to-transparent pointer-events-none" />
@@ -496,7 +496,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   left: menuPos.left,
                   ...(menuPos.top !== undefined ? { top: menuPos.top } : { bottom: menuPos.bottom }),
                 }}
-                className="bg-gray-900 border border-gray-800 rounded-xl shadow-2xl overflow-hidden"
+                className="bg-[#030b18]/95 backdrop-blur-xl border border-white/[0.09] rounded-xl shadow-2xl overflow-hidden"
               >
                 <div className="flex items-center gap-3 px-4 py-3.5">
                   {userAvatar ? (
@@ -508,28 +508,28 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   )}
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-white truncate leading-tight">{userName}</p>
-                    <p className="text-xs text-gray-500 leading-tight">{userEmail}</p>
+                    <p className="text-xs text-white/30 leading-tight">{userEmail}</p>
                   </div>
                 </div>
-                <div className="border-t border-gray-800" />
+                <div className="border-t border-white/[0.06]" />
                 <div className="p-1.5 space-y-0.5">
                   <button
                     onClick={() => { closeMenu(); router.push("/dashboard/settings"); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-white/[0.05] transition-colors"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/[0.05] transition-colors"
                   >
-                    <User size={15} className="flex-shrink-0 text-gray-500" />
+                    <User size={15} className="flex-shrink-0 text-white/30" />
                     Perfil
                   </button>
                   <button
                     disabled
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-600 cursor-not-allowed"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/20 cursor-not-allowed"
                   >
-                    <CreditCard size={15} className="flex-shrink-0 text-gray-700" />
+                    <CreditCard size={15} className="flex-shrink-0 text-white/15" />
                     <span className="flex-1 text-left">Pagamentos</span>
                     <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded-md bg-violet-500/15 text-violet-500/60">Em breve</span>
                   </button>
                 </div>
-                <div className="border-t border-gray-800" />
+                <div className="border-t border-white/[0.06]" />
                 <div className="p-1.5">
                   <button
                     onClick={handleLogout}
