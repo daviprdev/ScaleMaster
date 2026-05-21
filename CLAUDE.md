@@ -199,9 +199,28 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Perf** | 15 indexes SQL em FKs e colunas filtradas (`supabase/performance_indexes.sql`); filtro de pasta server-side em `/api/library`; DELETE paralelo via `Promise.all`; fetches paralelos no loop page; `export const dynamic = 'force-dynamic'` em rotas com cookies | ✅ Aplicado |
 | **Fase 41 (Horário Humano)** | Anti-shadowban: tabela `human_schedule_settings` (upsert por user_id), página `/dashboard/human-schedule` com relógio ao vivo (Intl.DateTimeFormat, atualização 1s), toggle, janela de tempo customizável, 3 presets (Comercial/Noturno/Pleno dia), seletor de timezone agrupado, auto-save com debounce 1.2s; integrado ao `/api/cron/process-loops` — loops fora da janela são pulados | ✅ Concluída |
 | **Fase 42 (Mobile)** | Dashboard totalmente responsivo: `DashboardShell` (client component) gerencia estado `mobileOpen`; `Header` com hamburger + logo strip (`md:hidden`); `Sidebar` com `hidden md:flex` + drawer slide-in 280px via portal (AnimatePresence, backdrop semi-transparente, fecha ao clicar em link); `overflow-x-auto` na tabela de apps | ✅ Concluída |
+| **Fase 43 (Failover)** | Sistema de redundância automática: colunas `health_status` + `failover_priority` em `instagram_accounts`; tabela `failover_logs` com RLS; APIs `/api/failover/accounts` (GET/PATCH/PUT) e `/api/failover/logs` (GET); lógica no cron `process-loops` — erro crítico Meta → marca conta como `error` → busca próxima conta `online` por prioridade → tenta publicar → registra em `failover_logs`; UI `/dashboard/failover` com lista reordenável (setas ↑↓), badges de saúde (Online/Erro/Bloqueada), botão Restaurar, histórico de eventos com timeline | ✅ Concluída |
 
 **SQL pendente (executar no Supabase):**
 ```sql
+-- Fase 43 — Failover (executar supabase/failover.sql)
+ALTER TABLE public.instagram_accounts
+  ADD COLUMN IF NOT EXISTS health_status text NOT NULL DEFAULT 'online'
+    CHECK (health_status IN ('online', 'error', 'blocked')),
+  ADD COLUMN IF NOT EXISTS failover_priority integer NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS public.failover_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  failed_account_id uuid NOT NULL REFERENCES public.instagram_accounts(id) ON DELETE CASCADE,
+  backup_account_id uuid REFERENCES public.instagram_accounts(id) ON DELETE SET NULL,
+  error_reason text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.failover_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users_manage_own_failover_logs" ON public.failover_logs FOR ALL
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
 ALTER TABLE public.user_roles
   ADD COLUMN IF NOT EXISTS account_status text NOT NULL DEFAULT 'pending'
   CHECK (account_status IN ('pending', 'approved', 'banned'));

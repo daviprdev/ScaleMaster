@@ -18,6 +18,8 @@ interface AccountRow {
   ig_business_account_id: string | null;
   token_expires_at: string | null;
   fb_page_id: string | null;
+  health_status?: string;
+  failover_priority?: number;
 }
 
 interface LoopAccountRow {
@@ -55,6 +57,27 @@ interface VideoRow {
   id: string;
   public_url: string;
   filename: string;
+}
+
+// ---------------------------------------------------------------------------
+// Failover helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true for Meta API errors that indicate the account itself is
+ * compromised (bad token, restricted, blocked) — as opposed to transient
+ * network or rate-limit issues that don't warrant marking the account unhealthy.
+ */
+function isCriticalMetaError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  const patterns = [
+    "oauthexception", "invalid_token", "token has expired",
+    "access token", "session has been invalidated",
+    "account has been restricted", "blocked", "checkpoint",
+    "error_code\":190", "error_code\":200",
+    "error code 190", "error code 200",
+  ];
+  return patterns.some(p => lower.includes(p));
 }
 
 // ---------------------------------------------------------------------------
@@ -309,6 +332,55 @@ export async function GET(req: NextRequest) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[loop-cron] ✗ @${account.username}:`, msg);
+
+        if (isCriticalMetaError(msg)) {
+          // Mark the failed account as errored in DB
+          await admin
+            .from("instagram_accounts")
+            .update({ health_status: "error" })
+            .eq("id", account.id);
+
+          // Find the next healthy backup account for this user (any account, ordered by priority)
+          const { data: backups } = await admin
+            .from("instagram_accounts")
+            .select("id, username, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id")
+            .eq("user_id", loop.user_id)
+            .eq("is_active", true)
+            .eq("health_status", "online")
+            .neq("id", account.id)
+            .order("failover_priority", { ascending: true })
+            .limit(1);
+
+          const backup = backups?.[0] ?? null;
+
+          // Log the failover event regardless of whether a backup was found
+          await admin.from("failover_logs").insert({
+            user_id: loop.user_id,
+            failed_account_id: account.id,
+            backup_account_id: backup?.id ?? null,
+            error_reason: msg,
+          });
+
+          if (backup?.meta_access_token && backup?.ig_business_account_id) {
+            console.log(`[loop-cron] Failover: tentando @${backup.username} como reserva.`);
+            try {
+              const backupResult = await publishViaMetaAPI(
+                backup.ig_business_account_id,
+                backup.meta_access_token,
+                videoUrl,
+                caption
+              );
+              if (backupResult.status !== "ok") throw new Error(backupResult.error ?? "Erro na Meta API.");
+              console.log(`[loop-cron] ✓ @${backup.username} (failover) → media_id: ${backupResult.media_id}`);
+              loopPublished++;
+            } catch (backupErr) {
+              const backupMsg = backupErr instanceof Error ? backupErr.message : String(backupErr);
+              console.error(`[loop-cron] ✗ @${backup.username} (failover):`, backupMsg);
+            }
+          } else {
+            console.warn(`[loop-cron] Sem conta de backup disponível para o loop "${loop.name}".`);
+          }
+        }
       }
     }
 
