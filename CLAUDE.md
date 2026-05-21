@@ -169,6 +169,8 @@ ENCRYPTION_SECRET=qualquer-string-secreta-aqui
 | `/api/queue/stats` | GET | Estatísticas da fila de publicação em tempo real |
 | `/api/failover/accounts` | GET/PATCH/PUT | Gerenciar health e prioridade de contas para failover |
 | `/api/failover/logs` | GET | Histórico de eventos de failover |
+| `/api/proxy-download` | GET/HEAD | Proxy de vídeo seguro (streaming puro, allowlist SSRF, iPhone UA) |
+| `/api/proxy-sanitize-download` | GET | Proxy com duplo passe FFmpeg: strip total + UUID + bitexact antes de entregar ao browser |
 
 **Modo mock:** Sem as variáveis de ambiente configuradas, ambas as rotas retornam dados simulados para desenvolvimento local.
 
@@ -247,6 +249,7 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Logins Vault** | Página `/dashboard/logins` com cofre seguro de credenciais de login: lista de contas salvas, formulário de adição, ações de cópia e remoção; rota API `GET/POST/DELETE /api/logins`; UI com glassmorphism e design Cyber-Military | ✅ Concluída |
 | **Login Simplificado** | Formulário de login `/auth/login` refatorado para solicitar apenas `username` (sem email); lógica de autenticação adaptada | ✅ Concluída |
 | **Inspirações (Fase Nova)** | Página `/dashboard/inspirations` reconstruída do zero com design Cyber-Military Elite: header com ícone `Sparkles`, barra de busca com `backdrop-blur-xl` e foco neon verde, cards mockup com `.ticks` e botão "Adicionar à Biblioteca" com glow, cards de histórico redesenhados, modal de importação com progress bar matrix/electric; toda lógica de scraping real mantida via `/api/inspirations/scrape` e `/api/inspirations/history`; link "Inspirações" adicionado na Sidebar (seção CONTEÚDOS) | ✅ Concluída |
+| **Download local de Reels** | Downloads de Inspirações salvam MP4 localmente no dispositivo via `/api/proxy-sanitize-download`: duplo passe FFmpeg (Pass 1: strip total `-map_metadata -1`, Pass 2: UUID + `-fflags +bitexact`) antes de enviar ao browser; HEAD validation rápida via `/api/proxy-download`; User-Agent iPhone para bypassar 403 do CDN Instagram; streaming proxy com allowlist SSRF; `InspirationCard` com toasts inline AnimatePresence (Iniciando/Concluído) | ✅ Concluída |
 
 **SQL pendente (executar no Supabase):**
 ```sql
