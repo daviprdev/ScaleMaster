@@ -412,22 +412,45 @@ export default function InspiracoesPage() {
 
   const sortedReels = [...reels].sort((a, b) => b[sortBy] - a[sortBy]);
 
-  // Individual download — fetches via our server-side proxy (bypasses CDN CORS/Referer
-  // restrictions), converts the response to a Blob, and triggers a browser save-as dialog.
+  // Individual download — routes the video URL through our server-side proxy to
+  // bypass browser CORS restrictions and CDN Referer checks, then converts the
+  // response into a Blob and triggers a native browser save-as dialog.
   const handleProcess = async (reel: InspirationReel) => {
-    if (!reel.videoUrl || reel.videoUrl === "undefined") {
-      throw new Error("URL do vídeo indisponível.");
+    const url = reel.videoUrl?.trim();
+    if (!url || url === "undefined") {
+      throw new Error("URL do vídeo indisponível para este reel.");
     }
 
     const filename = `autoscale_reel_${reel.owner}_${reel.shortCode || reel.id}.mp4`;
-    const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(reel.videoUrl)}&filename=${encodeURIComponent(filename)}`;
+    const proxyUrl =
+      `/api/proxy-download?url=${encodeURIComponent(url)}` +
+      `&filename=${encodeURIComponent(filename)}`;
 
-    const res = await fetch(proxyUrl);
-    if (!res.ok) throw new Error(`Falha no download: HTTP ${res.status}`);
+    // Log to browser console so devs can inspect the exact CDN domain being hit
+    console.log(`[download] reel ${reel.shortCode || reel.id}: ${url.slice(0, 80)}…`);
+
+    let res: Response;
+    try {
+      res = await fetch(proxyUrl);
+    } catch (networkErr) {
+      throw new Error(`Erro de rede ao chamar o proxy: ${String(networkErr)}`);
+    }
+
+    if (!res.ok) {
+      // Proxy returns JSON error details — surface them to the user
+      let detail = `HTTP ${res.status}`;
+      try {
+        const body = await res.json() as { error?: string };
+        if (body.error) detail = body.error;
+      } catch { /* body not JSON */ }
+      console.error(`[download] proxy error for ${reel.shortCode || reel.id}: ${detail}`);
+      throw new Error(detail);
+    }
 
     const blob = await res.blob();
-    const objectUrl = window.URL.createObjectURL(blob);
+    if (blob.size === 0) throw new Error("O proxy retornou um arquivo vazio.");
 
+    const objectUrl = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = objectUrl;
     a.download = filename;
@@ -438,33 +461,42 @@ export default function InspiracoesPage() {
     window.URL.revokeObjectURL(objectUrl);
   };
 
-  // Bulk download — iterates over visible reels one at a time with a 700 ms gap between
-  // each to prevent the browser from blocking multiple simultaneous file downloads.
+  // Bulk download — processes each visible reel one at a time.
+  // A 700 ms gap between triggers prevents Chrome/Safari from blocking
+  // rapid consecutive file downloads.
+  // Every reel has its own try/catch so a single broken URL never aborts the batch.
   const handleBulkDownload = async () => {
     if (_bulkRef.current || sortedReels.length === 0) return;
     _bulkRef.current = true;
     setBulkResult(null);
-    setBulkProgress({ done: 0, errors: 0, total: sortedReels.length });
 
+    const total = sortedReels.length;
+    let downloaded = 0;
     let errors = 0;
 
-    for (let i = 0; i < sortedReels.length; i++) {
+    for (let i = 0; i < total; i++) {
+      // Show "Baixando X de Y" BEFORE starting this item
+      setBulkProgress({ done: i, errors, total });
+
       try {
         await handleProcess(sortedReels[i]);
-      } catch {
+        downloaded++;
+      } catch (err) {
         errors++;
+        console.warn(
+          `[bulk] reel ${i + 1}/${total} falhou:`,
+          err instanceof Error ? err.message : err
+        );
       }
 
-      setBulkProgress({ done: i + 1, errors, total: sortedReels.length });
-
-      // Delay prevents Chrome/Safari from blocking rapid consecutive downloads
-      if (i < sortedReels.length - 1) {
+      // Delay between triggers — browser blocks if you fire downloads too fast
+      if (i < total - 1) {
         await new Promise<void>(r => setTimeout(r, 700));
       }
     }
 
     setBulkProgress(null);
-    setBulkResult({ saved: sortedReels.length - errors, errors });
+    setBulkResult({ saved: downloaded, errors });
     _bulkRef.current = false;
   };
 
@@ -612,7 +644,7 @@ export default function InspiracoesPage() {
                   }
                 >
                   {bulkProgress !== null ? (
-                    <><Loader2 size={11} className="animate-spin" />Baixando {bulkProgress.done + 1} de {bulkProgress.total}...</>
+                    <><Loader2 size={11} className="animate-spin" />Baixando {Math.min(bulkProgress.done + 1, bulkProgress.total)} de {bulkProgress.total}...</>
                   ) : (
                     <><Download size={11} />Baixar todos</>
                   )}

@@ -56,21 +56,43 @@ async function scrapeWithToken(token: string, username: string, limit: number) {
     (ownerObj.profile_pic_url as string | null | undefined) ||
     null;
 
+  // Resolve the direct video URL — try every field name the Apify actor has used
+  // across different versions so we never silently fall through to an empty string.
+  const resolveVideoUrl = (item: Record<string, unknown>): string => {
+    const raw =
+      (item.videoUrl as string | undefined) ||
+      (item.video_url as string | undefined) ||
+      (item.videoPlayUrl as string | undefined) ||
+      (item.playVideoUrl as string | undefined) ||
+      "";
+    return raw;
+  };
+
   const reels = items
-    .filter((item) => item.type === "Video" || item.videoUrl)
-    .map((item, i) => ({
-      id: String(item.id ?? item.shortCode ?? i),
-      shortCode: String(item.shortCode ?? ""),
-      thumbnailUrl: ((item.displayUrl ?? item.thumbnailUrl) as string) ?? null,
-      videoUrl: String(item.videoUrl ?? ""),
-      caption: String(item.caption ?? "").slice(0, 120),
-      views: Number(item.videoViewCount ?? 0),
-      likes: Number(item.likesCount ?? 0),
-      comments: Number(item.commentsCount ?? 0),
-      duration: Number(item.videoDuration ?? 0),
-      owner: String(item.ownerUsername ?? username),
-      gradient: GRADIENTS[i % GRADIENTS.length],
-    }));
+    .filter((item) => item.type === "Video" || resolveVideoUrl(item as Record<string, unknown>))
+    .map((item, i) => {
+      const videoUrl = resolveVideoUrl(item as Record<string, unknown>);
+      // Log the first reel's URL shape so devs can verify the CDN domain in server logs
+      if (i === 0) {
+        const preview = videoUrl
+          ? `${videoUrl.slice(0, 70)}…`
+          : "(empty — reel may be expired or private)";
+        console.log(`[scrape] @${username} first reel videoUrl: ${preview}`);
+      }
+      return {
+        id: String(item.id ?? item.shortCode ?? i),
+        shortCode: String(item.shortCode ?? ""),
+        thumbnailUrl: ((item.displayUrl ?? item.thumbnailUrl) as string) ?? null,
+        videoUrl,
+        caption: String(item.caption ?? "").slice(0, 120),
+        views: Number(item.videoViewCount ?? 0),
+        likes: Number(item.likesCount ?? 0),
+        comments: Number(item.commentsCount ?? 0),
+        duration: Number(item.videoDuration ?? 0),
+        owner: String(item.ownerUsername ?? username),
+        gradient: GRADIENTS[i % GRADIENTS.length],
+      };
+    });
 
   return { reels, fullName, profilePicUrl };
 }
