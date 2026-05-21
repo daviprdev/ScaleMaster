@@ -412,58 +412,59 @@ export default function InspiracoesPage() {
 
   const sortedReels = [...reels].sort((a, b) => b[sortBy] - a[sortBy]);
 
-  // Single-reel save: uses the lightweight save endpoint (no FFmpeg)
+  // Individual download — fetches via our server-side proxy (bypasses CDN CORS/Referer
+  // restrictions), converts the response to a Blob, and triggers a browser save-as dialog.
   const handleProcess = async (reel: InspirationReel) => {
-    const res = await fetch("/api/inspirations/save-to-library", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reels: [reel] }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "Erro ao salvar vídeo.");
-    if (data.errors > 0 && data.saved === 0) throw new Error("URL do vídeo inválida ou vazia.");
+    if (!reel.videoUrl || reel.videoUrl === "undefined") {
+      throw new Error("URL do vídeo indisponível.");
+    }
+
+    const filename = `autoscale_reel_${reel.owner}_${reel.shortCode || reel.id}.mp4`;
+    const proxyUrl = `/api/proxy-download?url=${encodeURIComponent(reel.videoUrl)}&filename=${encodeURIComponent(filename)}`;
+
+    const res = await fetch(proxyUrl);
+    if (!res.ok) throw new Error(`Falha no download: HTTP ${res.status}`);
+
+    const blob = await res.blob();
+    const objectUrl = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(objectUrl);
   };
 
-  // Bulk save: sends all reels to the batch endpoint at once, shows per-batch progress
+  // Bulk download — iterates over visible reels one at a time with a 700 ms gap between
+  // each to prevent the browser from blocking multiple simultaneous file downloads.
   const handleBulkDownload = async () => {
     if (_bulkRef.current || sortedReels.length === 0) return;
     _bulkRef.current = true;
     setBulkResult(null);
     setBulkProgress({ done: 0, errors: 0, total: sortedReels.length });
 
-    // 3 per batch: each reel now goes through download + FFmpeg + Storage upload (~5–15 s each)
-    const BATCH = 3;
-    let totalSaved = 0;
-    let totalErrors = 0;
+    let errors = 0;
 
-    for (let i = 0; i < sortedReels.length; i += BATCH) {
-      const batch = sortedReels.slice(i, i + BATCH);
+    for (let i = 0; i < sortedReels.length; i++) {
       try {
-        const res = await fetch("/api/inspirations/save-to-library", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reels: batch }),
-        });
-        const data = await res.json() as { saved: number; errors: number };
-        if (!res.ok) {
-          totalErrors += batch.length;
-        } else {
-          totalSaved += data.saved ?? 0;
-          totalErrors += data.errors ?? 0;
-        }
+        await handleProcess(sortedReels[i]);
       } catch {
-        totalErrors += batch.length;
+        errors++;
       }
-      setBulkProgress({
-        done: Math.min(i + BATCH, sortedReels.length),
-        errors: totalErrors,
-        total: sortedReels.length,
-      });
+
+      setBulkProgress({ done: i + 1, errors, total: sortedReels.length });
+
+      // Delay prevents Chrome/Safari from blocking rapid consecutive downloads
+      if (i < sortedReels.length - 1) {
+        await new Promise<void>(r => setTimeout(r, 700));
+      }
     }
 
     setBulkProgress(null);
-    // Only set success if at least 1 reel was actually saved
-    setBulkResult({ saved: totalSaved, errors: totalErrors });
+    setBulkResult({ saved: sortedReels.length - errors, errors });
     _bulkRef.current = false;
   };
 
@@ -611,7 +612,7 @@ export default function InspiracoesPage() {
                   }
                 >
                   {bulkProgress !== null ? (
-                    <><Loader2 size={11} className="animate-spin" />{bulkProgress.done}/{bulkProgress.total} baixados</>
+                    <><Loader2 size={11} className="animate-spin" />Baixando {bulkProgress.done + 1} de {bulkProgress.total}...</>
                   ) : (
                     <><Download size={11} />Baixar todos</>
                   )}
@@ -647,10 +648,10 @@ export default function InspiracoesPage() {
                 >
                   {bulkResult.saved === 0 ? <AlertCircle size={15} /> : <CheckCircle2 size={15} />}
                   {bulkResult.saved === 0
-                    ? "Nenhum vídeo foi salvo. Verifique as URLs dos reels."
+                    ? "Nenhum vídeo foi baixado. Verifique as URLs dos reels."
                     : bulkResult.errors > 0
-                    ? `${bulkResult.saved} vídeos salvos na biblioteca (${bulkResult.errors} erros).`
-                    : `${bulkResult.saved} vídeos salvos na biblioteca com sucesso!`}
+                    ? `${bulkResult.saved} vídeos salvos no dispositivo (${bulkResult.errors} erros).`
+                    : `${bulkResult.saved} vídeos salvos no seu dispositivo!`}
                 </motion.div>
               )}
             </AnimatePresence>

@@ -29,7 +29,7 @@ export interface InspirationReel {
   gradient?: string;
 }
 
-type ProcessState = "idle" | "downloading" | "processing" | "done" | "error";
+type ProcessState = "idle" | "downloading" | "done" | "error";
 
 interface InspirationCardProps {
   reel: InspirationReel;
@@ -60,21 +60,17 @@ export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
     setProcessState("downloading");
     setErrorMsg("");
 
-    const downloadTimer = setTimeout(() => setProcessState("processing"), 1500);
-
     try {
       await onProcess(reel);
-      clearTimeout(downloadTimer);
       setProcessState("done");
       setTimeout(() => setProcessState("idle"), 4000);
     } catch (err) {
-      clearTimeout(downloadTimer);
-      setErrorMsg(err instanceof Error ? err.message : "Erro ao processar");
+      setErrorMsg(err instanceof Error ? err.message : "Erro no download");
       setProcessState("error");
     }
   };
 
-  const busy = processState === "downloading" || processState === "processing";
+  const busy = processState === "downloading";
   const hasThumbnail = !!reel.thumbnailUrl && !imgError;
 
   return (
@@ -245,10 +241,9 @@ export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
                 }}
               >
                 {processState === "downloading" && <><Loader2 size={13} className="animate-spin" />Baixando...</>}
-                {processState === "processing" && <><Loader2 size={13} className="animate-spin" />Processando...</>}
-                {processState === "done" && <><CheckCircle2 size={13} />Salvo na biblioteca</>}
+                {processState === "done" && <><CheckCircle2 size={13} />Download concluído!</>}
                 {processState === "error" && <><Download size={13} />Tentar novamente</>}
-                {processState === "idle" && <><Download size={13} />Adicionar à Biblioteca</>}
+                {processState === "idle" && <><Download size={13} />Baixar vídeo</>}
               </motion.button>
             </div>
           </motion.div>
