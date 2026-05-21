@@ -297,7 +297,7 @@ function AccountsMultiSelect({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 right-0 mt-1.5 z-20 glass border border-white/10 rounded-xl overflow-hidden shadow-2xl max-h-52 overflow-y-auto"
+            className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-xl max-h-52 overflow-y-auto"
           >
             {accounts.length === 0 ? (
               <div className="px-4 py-6 text-center text-xs text-white/30">
@@ -312,18 +312,20 @@ function AccountsMultiSelect({
                     type="button"
                     onClick={() => toggle(acc.id)}
                     className={cn(
-                      "w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors text-left",
-                      isSelected ? "bg-violet-600/10" : "hover:bg-white/[0.04]"
+                      "w-full flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors cursor-pointer text-left",
+                      isSelected ? "bg-violet-600/10" : "hover:bg-slate-800"
                     )}
                   >
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">
-                      {acc.username.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white/80 font-medium truncate">@{acc.username}</p>
-                      {acc.display_name && (
-                        <p className="text-white/35 text-xs truncate">{acc.display_name}</p>
-                      )}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">
+                        {acc.username.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-white/80 text-xs font-medium truncate">@{acc.username}</p>
+                        {acc.display_name && (
+                          <p className="text-white/35 text-[11px] truncate">{acc.display_name}</p>
+                        )}
+                      </div>
                     </div>
                     <div className={cn(
                       "w-4 h-4 rounded-md border flex items-center justify-center flex-shrink-0 transition-all duration-150",
@@ -341,7 +343,7 @@ function AccountsMultiSelect({
 
       {/* Selected pills */}
       {selectedAccounts.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
+        <div className="flex flex-wrap gap-2 mt-2">
           {selectedAccounts.map(acc => (
             <span
               key={acc.id}
