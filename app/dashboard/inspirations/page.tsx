@@ -434,16 +434,18 @@ export default function InspiracoesPage() {
     }
 
     const filename = `autoscale_reel_${reel.id || Date.now()}.mp4`;
-    const proxyUrl =
-      `/api/proxy-download?url=${encodeURIComponent(videoUrl)}` +
-      `&filename=${encodeURIComponent(filename)}`;
+    const encoded  = `url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(filename)}`;
+    // HEAD uses the lightweight proxy (no FFmpeg) — resolves in <500 ms
+    const headUrl  = `/api/proxy-download?${encoded}`;
+    // GET uses the sanitizing route — double-pass FFmpeg before delivery
+    const proxyUrl = `/api/proxy-sanitize-download?${encoded}`;
 
     console.log(`[download] ${filename} ← ${videoUrl.slice(0, 80)}…`);
 
     // Step 1 — Fast HEAD: validate the URL is accessible (no body downloaded).
     let check: Response;
     try {
-      check = await fetch(proxyUrl, { method: "HEAD" });
+      check = await fetch(headUrl, { method: "HEAD" });
     } catch (networkErr) {
       throw new Error(`Erro de rede: ${String(networkErr)}`);
     }
@@ -457,10 +459,9 @@ export default function InspiracoesPage() {
       );
     }
 
-    // Step 2 — Trigger native browser Save-As.
-    // `Content-Disposition: attachment` on the proxy forces the browser to save the
-    // file without navigating away. Download progress appears in the browser's own
-    // download bar — no blob loaded into JS memory, no user-gesture timeout.
+    // Step 2 — Trigger native browser Save-As via the sanitized endpoint.
+    // The server runs double-pass FFmpeg before sending; the browser's native
+    // download bar shows progress without any blob in JS memory.
     const a = document.createElement("a");
     a.style.display = "none";
     a.href = proxyUrl;

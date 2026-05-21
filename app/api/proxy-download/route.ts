@@ -31,18 +31,20 @@ function isAllowed(raw: string): boolean {
   }
 }
 
-// Headers that best mimic a real browser loading a video element
+// Headers that mimic an iPhone Safari client — Instagram CDN is less likely to
+// 403 mobile requests than datacenter desktop UAs on Vercel egress IPs.
 const VIDEO_FETCH_HEADERS = {
   "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
   Referer: "https://www.instagram.com/",
   Origin: "https://www.instagram.com",
   Accept: "video/mp4,video/webm,video/ogg,*/*;q=0.8",
-  "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+  "Accept-Language": "en-US,en;q=0.9",
   "sec-fetch-dest": "video",
-  "sec-fetch-mode": "cors",
+  "sec-fetch-mode": "no-cors",
   "sec-fetch-site": "cross-site",
   "Cache-Control": "no-cache",
+  Connection: "keep-alive",
 };
 
 // GET /api/proxy-download?url=<encoded-video-url>&filename=<filename>
