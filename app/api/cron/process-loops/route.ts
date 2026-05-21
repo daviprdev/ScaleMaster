@@ -34,6 +34,7 @@ interface LoopRow {
   cycles: number;
   cycles_done: number;
   interval_minutes: number;
+  media_limit: number | null;
   captions: string[];
   effect_mirror: boolean;
   effect_invert: boolean;
@@ -145,7 +146,7 @@ export async function GET(req: NextRequest) {
     .from("loops")
     .select(`
       id, user_id, name, folder_id, is_infinite, cycles, cycles_done,
-      interval_minutes, captions, effect_mirror, effect_invert,
+      interval_minutes, media_limit, captions, effect_mirror, effect_invert,
       last_posted_at, last_media_index,
       loop_accounts (
         account_id,
@@ -227,12 +228,15 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
-    // Fetch videos from the library folder, ordered for deterministic round-robin
-    const { data: videoRows, error: videoErr } = await admin
+    // Fetch videos from the library folder, ordered for deterministic round-robin.
+    // If media_limit is set, restrict the working set to that many videos (oldest first).
+    let videoQuery = admin
       .from("videos_library")
       .select("id, public_url, filename")
       .eq("folder_id", loop.folder_id)
       .order("created_at", { ascending: true });
+    if (loop.media_limit) videoQuery = videoQuery.limit(loop.media_limit);
+    const { data: videoRows, error: videoErr } = await videoQuery;
 
     if (videoErr || !videoRows?.length) {
       console.warn(`[loop-cron] "${loop.name}" sem vídeos na pasta — pulando.`);

@@ -6,7 +6,7 @@ import {
   Repeat2, Plus, Play, Pause, Trash2, Edit3, X,
   Folder, Users, Clock, Infinity, Hash, Type,
   ImageIcon, FlipHorizontal, Contrast, Check,
-  Loader2, AlertCircle, ChevronDown, Info,
+  Loader2, AlertCircle, ChevronDown, Info, Film,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -38,6 +38,7 @@ interface Loop {
   is_infinite: boolean;
   cycles: number;
   interval_minutes: number;
+  media_limit: number | null;
   captions: string[];
   cover_image_url: string | null;
   effect_mirror: boolean;
@@ -55,6 +56,7 @@ interface FormData {
   isInfinite: boolean;
   cycles: number;
   intervalMinutes: number;
+  mediaLimit: number | null;
   captions: string[];
   coverFile: File | null;
   coverPreviewUrl: string | null;
@@ -69,6 +71,7 @@ const DEFAULT_FORM: FormData = {
   isInfinite: true,
   cycles: 1,
   intervalMinutes: 30,
+  mediaLimit: null,
   captions: [""],
   coverFile: null,
   coverPreviewUrl: null,
@@ -243,6 +246,93 @@ function LoopCard({
   );
 }
 
+// ── MediaLimitSelector ────────────────────────────────────────
+
+const LIMIT_PRESETS = [null, 5, 10, 20] as const;
+
+function MediaLimitSelector({
+  value,
+  onChange,
+}: {
+  value: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  const isCustom = value !== null && !(LIMIT_PRESETS as readonly (number | null)[]).includes(value);
+  const [customStr, setCustomStr] = useState(() => (isCustom ? String(value) : ""));
+
+  const activateCustom = () => {
+    const n = Math.max(1, Number(customStr) || 1);
+    setCustomStr(String(n));
+    onChange(n);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            { label: "Toda a pasta", v: null as number | null | "custom" },
+            { label: "5 vídeos", v: 5 as number | null | "custom" },
+            { label: "10 vídeos", v: 10 as number | null | "custom" },
+            { label: "20 vídeos", v: 20 as number | null | "custom" },
+            { label: "Personalizado", v: "custom" as number | null | "custom" },
+          ] as { label: string; v: number | null | "custom" }[]
+        ).map(({ label, v }) => {
+          const active = v === "custom" ? isCustom : value === v;
+          return (
+            <button
+              key={String(v)}
+              type="button"
+              onClick={() => (v === "custom" ? activateCustom() : onChange(v as number | null))}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-150",
+                active
+                  ? "bg-violet-600/20 border-violet-500/50 text-violet-300"
+                  : "bg-white/[0.03] border-white/[0.08] text-white/50 hover:text-white/80 hover:border-white/20"
+              )}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      <AnimatePresence>
+        {isCustom && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-center gap-3 p-3 rounded-xl border border-white/[0.07] bg-white/[0.03]">
+              <label className="text-xs text-white/50 flex-shrink-0">Quantidade exata:</label>
+              <input
+                type="number"
+                min={1}
+                max={999}
+                value={customStr}
+                onChange={e => {
+                  setCustomStr(e.target.value);
+                  const n = Math.max(1, Number(e.target.value) || 1);
+                  onChange(n);
+                }}
+                className="input-glass text-sm w-24 text-center py-1.5"
+              />
+              <span className="text-xs text-white/30">vídeos</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <p className="text-[11px] text-white/25 flex items-start gap-1.5">
+        <Info size={10} className="flex-shrink-0 mt-0.5" />
+        O loop rotacionará apenas dentro dos vídeos selecionados, ignorando o restante da pasta.
+      </p>
+    </div>
+  );
+}
+
 // ── AccountsMultiSelect ───────────────────────────────────────
 
 function AccountsMultiSelect({
@@ -385,6 +475,7 @@ function LoopFormModal({
         isInfinite: editingLoop.is_infinite,
         cycles: editingLoop.cycles,
         intervalMinutes: editingLoop.interval_minutes,
+        mediaLimit: editingLoop.media_limit ?? null,
         captions: editingLoop.captions.length > 0 ? editingLoop.captions : [""],
         coverFile: null,
         coverPreviewUrl: editingLoop.cover_image_url,
@@ -513,6 +604,15 @@ function LoopFormModal({
                 Nenhuma pasta encontrada. Crie pastas na Biblioteca primeiro.
               </p>
             )}
+          </div>
+
+          {/* Limite de mídias */}
+          <div>
+            <SectionLabel icon={Film} label="Quantidade de mídias por ciclo" />
+            <MediaLimitSelector
+              value={form.mediaLimit}
+              onChange={v => update("mediaLimit", v)}
+            />
           </div>
 
           {/* Ciclos */}
@@ -801,6 +901,7 @@ export default function LoopPage() {
       is_infinite: form.isInfinite,
       cycles: form.cycles,
       interval_minutes: form.intervalMinutes,
+      media_limit: form.mediaLimit,
       captions: form.captions.filter(c => c.trim()),
       cover_image_url: coverImageUrl,
       effect_mirror: form.effectMirror,

@@ -25,7 +25,7 @@ export async function GET() {
   })("loops")
     .select(`
       id, user_id, folder_id, name, is_infinite, cycles, interval_minutes,
-      captions, cover_image_url, effect_mirror, effect_invert, status, created_at,
+      media_limit, captions, cover_image_url, effect_mirror, effect_invert, status, created_at,
       loop_accounts ( account_id, instagram_accounts ( id, username, display_name, avatar_url ) ),
       library_folders ( id, name )
     `)
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
     is_infinite: boolean;
     cycles: number;
     interval_minutes: number;
+    media_limit: number | null;
     captions: string[];
     cover_image_url: string | null;
     effect_mirror: boolean;
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
       is_infinite: body.is_infinite,
       cycles: body.cycles,
       interval_minutes: Math.max(10, body.interval_minutes),
+      media_limit: body.media_limit ?? null,
       captions: body.captions.filter((c: string) => c.trim()),
       cover_image_url: body.cover_image_url || null,
       effect_mirror: body.effect_mirror,
