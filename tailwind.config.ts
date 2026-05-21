@@ -14,6 +14,10 @@ const config: Config = {
         mono: ["var(--font-mono)", "JetBrains Mono", "Fira Code", "monospace"],
       },
       colors: {
+        // Cyber-Military palette
+        matrix: "#00FF41",
+        electric: "#00E5FF",
+        obsidian: "#000000",
         brand: {
           purple: "#7C3AED",
           cyan: "#06B6D4",

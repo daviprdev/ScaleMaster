@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { TopographyBackground } from "@/components/TopographyBackground";
 import "./globals.css";
 
 const inter = Inter({
@@ -35,9 +36,30 @@ export default function RootLayout({
     <html
       lang="pt-BR"
       className={`dark ${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
+      style={{ background: "#000000" }}
     >
-      <body className={`antialiased bg-[#050505] text-white ${inter.className}`}>
-        {children}
+      <body
+        className={`antialiased text-white ${inter.className}`}
+        style={{ background: "transparent", position: "relative" }}
+      >
+        {/* Topography wireframe canvas — covers every page */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 0,
+            pointerEvents: "none",
+            overflow: "hidden",
+          }}
+        >
+          <TopographyBackground />
+        </div>
+
+        {/* Page content — renders above the canvas */}
+        <div style={{ position: "relative", zIndex: 1 }}>
+          {children}
+        </div>
       </body>
     </html>
   );

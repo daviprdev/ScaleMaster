@@ -62,7 +62,8 @@ export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void
   return (
     <header
       className="h-14 md:h-16 flex items-center justify-between px-4 md:px-6
-        bg-[#0a0c13] border-b border-white/[0.08] sticky top-0 z-10 flex-shrink-0"
+        border-b border-white/[0.07] sticky top-0 z-10 flex-shrink-0"
+      style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)" }}
     >
       {/* Mobile: hamburger + logo | Desktop: page title */}
       <div className="flex items-center gap-3 min-w-0">
@@ -78,9 +79,9 @@ export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void
 
         {/* Logo — mobile only */}
         <div className="md:hidden flex items-center gap-2 flex-shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500
-            flex items-center justify-center shadow-[0_0_10px_rgba(139,92,246,0.35)]">
-            <Zap size={14} className="text-white" />
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", boxShadow: "0 0 10px rgba(0,255,65,0.4)" }}>
+            <Zap size={14} className="text-black" strokeWidth={2.5} />
           </div>
           <span className="font-bold text-sm gradient-text">AutoScale</span>
         </div>
@@ -96,22 +97,22 @@ export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void
 
       {/* Actions */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        <button className="relative w-9 h-9 rounded-xl bg-white/5 border border-white/10
-          flex items-center justify-center text-white/40 hover:text-white/80
-          hover:border-white/20 transition-all">
-          <Bell size={15} />
-          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-violet-500" />
+        <button className="relative w-9 h-9 rounded-xl bg-black/30 border border-white/[0.08]
+          flex items-center justify-center text-white/40 hover:text-white
+          hover:border-matrix/40 hover:shadow-[0_0_12px_rgba(0,255,65,0.18)]
+          transition-all duration-300">
+          <Bell size={15} strokeWidth={1.5} />
+          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full"
+            style={{ background: "var(--matrix)", boxShadow: "0 0 6px rgba(0,255,65,0.8)" }} />
         </button>
 
         {pathname === "/dashboard/schedule" && (
           <motion.button
             whileTap={{ scale: 0.96 }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl
-              bg-gradient-to-r from-violet-600 to-cyan-600
-              hover:from-violet-500 hover:to-cyan-500
-              text-white text-xs font-semibold
-              hover:shadow-[0_0_15px_rgba(139,92,246,0.4)]
+              text-white text-xs font-semibold btn-primary
               transition-all duration-200"
+          style={{ padding: "0.375rem 0.75rem" }}
           >
             <Plus size={14} />
             <span className="hidden sm:inline">Nova postagem</span>

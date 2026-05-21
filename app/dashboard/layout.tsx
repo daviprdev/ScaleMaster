@@ -56,19 +56,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#050505]">
-      {/* ── Ambient — single violet spotlight + hairline grid ── */}
-      <div className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }}>
-        <div
-          className="absolute inset-x-0 top-0 h-[560px]"
-          style={{
-            background:
-              "radial-gradient(ellipse 85% 55% at 50% -5%, rgba(124,58,237,0.1) 0%, transparent 100%)",
-          }}
-        />
-        <div className="absolute inset-0 grid-bg" />
-      </div>
-
+    <div className="flex flex-col h-screen">
       {/* ── System banners ─────────────────────────────────────── */}
       {impData && (
         <ImpersonationBanner
