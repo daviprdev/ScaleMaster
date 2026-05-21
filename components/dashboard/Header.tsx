@@ -63,7 +63,7 @@ export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void
     <header
       className="h-14 md:h-16 flex items-center justify-between px-4 md:px-6
         border-b border-white/[0.07] sticky top-0 z-10 flex-shrink-0"
-      style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)" }}
+      style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(22px) saturate(160%)", WebkitBackdropFilter: "blur(22px) saturate(160%)" }}
     >
       {/* Mobile: hamburger + logo | Desktop: page title */}
       <div className="flex items-center gap-3 min-w-0">

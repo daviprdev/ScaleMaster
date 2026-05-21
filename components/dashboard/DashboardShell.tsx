@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
+import { BackgroundController } from "@/components/BackgroundController";
 
 /**
  * Client shell that owns the mobile-sidebar open/close state and wires
@@ -10,8 +11,8 @@ import { Header } from "./Header";
  */
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const openMenu   = useCallback(() => setMobileOpen(true), []);
-  const closeMenu  = useCallback(() => setMobileOpen(false), []);
+  const openMenu  = useCallback(() => setMobileOpen(true),  []);
+  const closeMenu = useCallback(() => setMobileOpen(false), []);
 
   return (
     <div className="relative flex flex-1 min-h-0 overflow-hidden">
@@ -26,6 +27,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </div>
         </main>
       </div>
+
+      {/* Floating background-mode selector */}
+      <BackgroundController />
     </div>
   );
 }

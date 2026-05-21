@@ -154,11 +154,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
         transition={{ duration: 0.3, ease: "easeInOut" }}
         className="relative flex-shrink-0 h-screen hidden md:flex flex-col
           border-r border-white/[0.07] overflow-hidden z-20"
-        style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)" }}
+        style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(22px) saturate(160%)", WebkitBackdropFilter: "blur(22px) saturate(160%)" }}
       >
-        {/* Spotlight accent */}
+        {/* Horizon glow accent */}
         <div className="absolute top-0 left-0 w-full h-48 pointer-events-none"
-          style={{ background: "radial-gradient(ellipse 120% 60% at 50% -10%, rgba(124,58,237,0.08) 0%, transparent 100%)" }} />
+          style={{ background: "radial-gradient(ellipse 120% 60% at 50% -10%, rgba(0,255,65,0.05) 0%, transparent 100%)" }} />
 
         {/* Logo */}
         <div className="relative flex items-center h-16 px-4 border-b border-white/[0.06]">
@@ -332,10 +332,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
               <img
                 src={userAvatar}
                 alt="Avatar"
-                className="w-8 h-8 rounded-full object-cover flex-shrink-0 shadow-[0_0_8px_rgba(139,92,246,0.3)]"
+                className="w-8 h-8 rounded-full object-cover flex-shrink-0 shadow-[0_0_8px_rgba(0,255,65,0.22)]"
               />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 text-sm font-bold text-white shadow-[0_0_8px_rgba(139,92,246,0.3)]">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00FF41] to-[#00E5FF] flex items-center justify-center flex-shrink-0 text-sm font-bold text-white shadow-[0_0_8px_rgba(0,255,65,0.22)]">
                 {userInitial}
               </div>
             )}
@@ -373,7 +373,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
         {/* Collapse toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute -right-3 top-[72px] w-6 h-6 rounded-full bg-[#0E0E0E] border border-[#222] flex items-center justify-center text-neutral-600 hover:text-white hover:border-violet-500/40 transition-all z-30"
+          className="absolute -right-3 top-[72px] w-6 h-6 rounded-full bg-[#0A0A0A] border border-[#1E1E1E] flex items-center justify-center text-neutral-600 hover:text-white hover:border-matrix/40 transition-all z-30"
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
         </button>
@@ -401,7 +401,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   animate={{ x: 0 }}
                   exit={{ x: "-100%" }}
                   transition={{ duration: 0.28, ease: "easeOut" }}
-                  style={{ position: "fixed", left: 0, top: 0, height: "100%", width: 280, zIndex: 260, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)" }}
+                  style={{ position: "fixed", left: 0, top: 0, height: "100%", width: 280, zIndex: 260, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(22px) saturate(160%)", WebkitBackdropFilter: "blur(22px) saturate(160%)" }}
                   className="flex flex-col border-r border-white/[0.07] overflow-hidden"
                 >
 
@@ -478,7 +478,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                       onClick={handleLogout}
                       className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/40 hover:text-red-400 hover:bg-red-500/[0.07] transition-colors"
                     >
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center flex-shrink-0 text-sm font-bold text-white">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00FF41] to-[#00E5FF] flex items-center justify-center flex-shrink-0 text-sm font-bold text-black">
                         {userInitial}
                       </div>
                       <div className="flex-1 min-w-0 text-left">
@@ -509,18 +509,18 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   zIndex: 200,
                   width: menuPos.width,
                   left: menuPos.left,
-                  background: "rgba(0,0,0,0.82)",
-                  backdropFilter: "blur(32px)",
-                  WebkitBackdropFilter: "blur(32px)",
+                  background: "rgba(0,0,0,0.88)",
+                  backdropFilter: "blur(28px) saturate(180%)",
+                  WebkitBackdropFilter: "blur(28px) saturate(180%)",
                   ...(menuPos.top !== undefined ? { top: menuPos.top } : { bottom: menuPos.bottom }),
                 }}
                 className="border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden"
               >
                 <div className="flex items-center gap-3 px-4 py-3.5">
                   {userAvatar ? (
-                    <img src={userAvatar} alt="Avatar" className="w-9 h-9 rounded-full object-cover flex-shrink-0 shadow-[0_0_10px_rgba(139,92,246,0.35)]" />
+                    <img src={userAvatar} alt="Avatar" className="w-9 h-9 rounded-full object-cover flex-shrink-0 shadow-[0_0_10px_rgba(0,255,65,0.25)]" />
                   ) : (
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-sm font-bold text-white flex-shrink-0 shadow-[0_0_10px_rgba(139,92,246,0.35)]">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00FF41] to-[#00E5FF] flex items-center justify-center text-sm font-bold text-white flex-shrink-0 shadow-[0_0_10px_rgba(0,255,65,0.25)]">
                       {userInitial}
                     </div>
                   )}
@@ -544,7 +544,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   >
                     <CreditCard size={15} className="flex-shrink-0 text-white/15" />
                     <span className="flex-1 text-left">Pagamentos</span>
-                    <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded-md bg-violet-500/15 text-violet-500/60">Em breve</span>
+                    <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded-md bg-matrix/10 text-matrix/50">Em breve</span>
                   </button>
                 </div>
                 <div className="border-t border-white/[0.06]" />
