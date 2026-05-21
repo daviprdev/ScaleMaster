@@ -79,15 +79,26 @@ export async function DELETE(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
 
-  // Run storage and database deletes in parallel
-  const [{ error: storageError }, { error: dbError }] = await Promise.all([
-    admin.storage.from("videos-library").remove([storage_path]),
-    admin.from("videos_library").delete().eq("id", id),
-  ]);
+  // Storage delete is best-effort:
+  // - "direct/" prefix = saved from Inspirations without Storage upload → skip
+  // - Other paths: attempt deletion, log failures but don't block DB delete
+  const isDirectUrl = storage_path.startsWith("direct/");
+  if (!isDirectUrl) {
+    const { error: storageError } = await admin.storage
+      .from("videos-library")
+      .remove([storage_path]);
 
-  if (storageError) {
-    return NextResponse.json({ error: storageError.message }, { status: 500 });
+    if (storageError && !storageError.message.toLowerCase().includes("not found")) {
+      console.error("[library DELETE] storage error:", storageError.message);
+    }
   }
+
+  // DB delete is always authoritative
+  const { error: dbError } = await admin
+    .from("videos_library")
+    .delete()
+    .eq("id", id);
+
   if (dbError) {
     return NextResponse.json({ error: dbError.message }, { status: 500 });
   }

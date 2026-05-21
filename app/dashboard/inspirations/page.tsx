@@ -328,7 +328,7 @@ export default function InspiracoesPage() {
   const [modalDone, setModalDone] = useState(false);
 
   const [bulkProgress, setBulkProgress] = useState<{ done: number; errors: number; total: number } | null>(null);
-  const [bulkDone, setBulkDone] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ saved: number; errors: number } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const _searchingRef = useRef(false);
@@ -359,7 +359,7 @@ export default function InspiracoesPage() {
     setUsername(target);
     setError("");
     setBulkProgress(null);
-    setBulkDone(false);
+    setBulkResult(null);
     setModalDone(false);
     setShowModal(true);
     try {
@@ -389,7 +389,7 @@ export default function InspiracoesPage() {
   const handleViewProfile = (profile: ScrapedProfile) => {
     setActiveUsername(profile.username);
     setReels(profile.videos_data);
-    setBulkDone(false);
+    setBulkResult(null);
     setBulkProgress(null);
     setError("");
     setView("grid");
@@ -405,39 +405,64 @@ export default function InspiracoesPage() {
     setView("history");
     setActiveUsername("");
     setReels([]);
-    setBulkDone(false);
+    setBulkResult(null);
     setBulkProgress(null);
     setShowFilters(false);
   };
 
   const sortedReels = [...reels].sort((a, b) => b[sortBy] - a[sortBy]);
 
+  // Single-reel save: uses the lightweight save endpoint (no FFmpeg)
   const handleProcess = async (reel: InspirationReel) => {
-    const res = await fetch("/api/video/process", {
+    const res = await fetch("/api/inspirations/save-to-library", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        videoUrl: reel.videoUrl,
-        filename: `reel_${reel.owner}_${reel.shortCode}`,
-        reelData: { caption: reel.caption, views: reel.views, likes: reel.likes, comments: reel.comments, duration: reel.duration, owner: reel.owner },
-      }),
+      body: JSON.stringify({ reels: [reel] }),
     });
-    if (!res.ok) { const data = await res.json(); throw new Error(data.error ?? "Erro ao processar vídeo."); }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Erro ao salvar vídeo.");
+    if (data.errors > 0 && data.saved === 0) throw new Error("URL do vídeo inválida ou vazia.");
   };
 
+  // Bulk save: sends all reels to the batch endpoint at once, shows per-batch progress
   const handleBulkDownload = async () => {
     if (_bulkRef.current || sortedReels.length === 0) return;
     _bulkRef.current = true;
-    setBulkDone(false);
+    setBulkResult(null);
     setBulkProgress({ done: 0, errors: 0, total: sortedReels.length });
-    let done = 0, errors = 0;
-    for (const reel of sortedReels) {
-      try { await handleProcess(reel); } catch { errors++; }
-      done++;
-      setBulkProgress({ done, errors, total: sortedReels.length });
+
+    const BATCH = 10;
+    let totalSaved = 0;
+    let totalErrors = 0;
+
+    for (let i = 0; i < sortedReels.length; i += BATCH) {
+      const batch = sortedReels.slice(i, i + BATCH);
+      try {
+        const res = await fetch("/api/inspirations/save-to-library", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reels: batch }),
+        });
+        const data = await res.json() as { saved: number; errors: number };
+        if (!res.ok) {
+          totalErrors += batch.length;
+        } else {
+          totalSaved += data.saved ?? 0;
+          totalErrors += data.errors ?? 0;
+        }
+      } catch {
+        totalErrors += batch.length;
+      }
+      setBulkProgress({
+        done: Math.min(i + BATCH, sortedReels.length),
+        errors: totalErrors,
+        total: sortedReels.length,
+      });
     }
+
     setBulkProgress(null);
-    setBulkDone(true);
+    // Only set success if at least 1 reel was actually saved
+    setBulkResult({ saved: totalSaved, errors: totalErrors });
     _bulkRef.current = false;
   };
 
@@ -605,18 +630,26 @@ export default function InspiracoesPage() {
               </div>
             </motion.div>
 
-            {/* Bulk done banner */}
+            {/* Bulk result banner */}
             <AnimatePresence>
-              {bulkDone && (
+              {bulkResult && (
                 <motion.div
                   initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
                   className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm"
-                  style={{ background: "rgba(0,255,65,0.07)", border: "0.5px solid rgba(0,255,65,0.2)", color: "rgba(0,255,65,0.9)" }}
+                  style={
+                    bulkResult.saved === 0
+                      ? { background: "rgba(255,59,48,0.08)", border: "0.5px solid rgba(255,59,48,0.2)", color: "rgba(255,100,90,0.9)" }
+                      : { background: "rgba(0,255,65,0.07)", border: "0.5px solid rgba(0,255,65,0.2)", color: "rgba(0,255,65,0.9)" }
+                  }
                 >
-                  <CheckCircle2 size={15} />
-                  Todos os vídeos foram salvos na biblioteca!
+                  {bulkResult.saved === 0 ? <AlertCircle size={15} /> : <CheckCircle2 size={15} />}
+                  {bulkResult.saved === 0
+                    ? "Nenhum vídeo foi salvo. Verifique as URLs dos reels."
+                    : bulkResult.errors > 0
+                    ? `${bulkResult.saved} vídeos salvos na biblioteca (${bulkResult.errors} erros).`
+                    : `${bulkResult.saved} vídeos salvos na biblioteca com sucesso!`}
                 </motion.div>
               )}
             </AnimatePresence>
