@@ -431,7 +431,8 @@ export default function InspiracoesPage() {
     setBulkResult(null);
     setBulkProgress({ done: 0, errors: 0, total: sortedReels.length });
 
-    const BATCH = 10;
+    // 3 per batch: each reel now goes through download + FFmpeg + Storage upload (~5–15 s each)
+    const BATCH = 3;
     let totalSaved = 0;
     let totalErrors = 0;
 
