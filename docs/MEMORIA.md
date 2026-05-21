@@ -1489,3 +1489,128 @@ const [mobileOpen, setMobileOpen] = useState(false);
 
 **Tabela de Apps**
 `AppsTable` envolto em `overflow-x-auto` para evitar overflow horizontal em telas pequenas.
+
+---
+
+### ✅ Fase 43 — Sistema de Failover Automático (2026-05-20)
+**Commit:** `feat: implement account failover system with automatic redundancy`
+
+#### O que foi feito
+
+**Schema (novas colunas + tabela)**
+```sql
+ALTER TABLE instagram_accounts
+  ADD COLUMN health_status text DEFAULT 'online' CHECK (health_status IN ('online','error','blocked')),
+  ADD COLUMN failover_priority integer DEFAULT 0;
+
+CREATE TABLE failover_logs (
+  id uuid PRIMARY KEY, user_id uuid, failed_account_id uuid,
+  backup_account_id uuid, error_reason text, created_at timestamptz
+);
+```
+
+**APIs**
+- `GET/PATCH/PUT /api/failover/accounts` — lista, atualiza health, reordena prioridade
+- `GET /api/failover/logs` — histórico de eventos de failover
+
+**Motor de loops (`/api/cron/process-loops`)**
+Quando publicação falha com erro crítico da Meta API → marca conta como `error` → busca próxima conta `online` ordenada por `failover_priority` → tenta publicar → registra em `failover_logs`.
+
+**UI `/dashboard/failover`**
+- Lista reordenável com setas ↑↓ e `failover_priority`
+- Badges de saúde: Online (verde) / Erro (vermelho) / Bloqueada (âmbar)
+- Botão "Restaurar" reseta `health_status = 'online'`
+- Timeline de eventos de failover com timestamps
+
+---
+
+### ✅ Queue Status Dashboard (2026-05-20)
+**Commit:** `feat: build queue status dashboard with real-time auto-refresh`
+
+**UI `/dashboard/queue`**
+- Auto-refresh a cada 10 segundos
+- Métricas de posts: pendentes / publicando / publicados / com falha
+- Tabela de jobs recentes com status animado e timestamps
+
+**API `/api/queue/stats`**
+- `GET` — conta posts por status via Supabase, retorna `{ pending, publishing, published, failed, recent }`
+
+---
+
+### ✅ Loop Media Limit (2026-05-21)
+**Commit:** `feat: add media limit option to loops and update processing engine`
+
+**Mudanças**
+- Coluna `media_limit integer` na tabela `loops` (nullable — null = sem limite)
+- Slider na UI de criação/edição de loops
+- Motor do cron verifica `cycles_done >= media_limit` antes de executar; se atingido, marca loop como `completed`
+
+---
+
+### ✅ Redesign — Cyber-Military Elite (2026-05-21)
+**Commits:** `style: redesign UI`, `style: complete redesign to elite high-tech futuristic aesthetics`, `feat: implement Cyber-Military Elite design system with multi-mode animated backgrounds`, `fix: remove harsh horizontal gradient line from terrain background`
+
+#### Decisão de design
+Paleta anterior (violet `#8B5CF6` + cyan `#06B6D4`) substituída por:
+- **Matrix Green** `#00FF41` — cor primária de destaque
+- **Electric Cyan** `#00E5FF` — cor secundária
+- **Background** `#000000` puro
+
+#### Novos componentes
+| Componente | Descrição |
+|-----------|-----------|
+| `WireframeTerrain.tsx` | Canvas 3D: grid 56×28 com perspectiva, múltiplas camadas de ondas seno, glow radial no horizonte, fade top; 30 FPS via `requestAnimationFrame` |
+| `BackgroundController.tsx` | Seletor flutuante com 4 modos: Terrain (padrão) / Topography / Particles / Beams |
+| `BackgroundContext.tsx` | Context + Provider para estado global de modo de fundo |
+| `TopographyBackground.tsx` | SVG animado com curvas de nível em verde neon |
+| `ParticlesBackground.tsx` | 80 partículas flutuantes + 25 estrelas piscando |
+| `BeamsBackground.tsx` | Feixes de luz lineares animados |
+
+#### Classes CSS novas em `globals.css`
+- `.ticks` — miras táticas com `::before` usando 8 gradientes lineares nos 4 cantos
+- `.metric-value` — número com glow 3-camadas: `0 0 4px`, `0 0 14px`, `0 0 38px`
+- `.neon-matrix` / `.neon-electric` — text-shadow trifásico
+- `.page-title` / `.page-subtitle` — tipografia de página padronizada
+- `.btn-primary` agora usa `conic-gradient` animado com `@property --angle`
+
+---
+
+### ✅ Logins Vault (2026-05-21)
+**Commit:** `feat: implement secure logins vault with cyber-military UI`
+
+**Página `/dashboard/logins`**
+- Cofre de credenciais de login de contas Instagram
+- Lista de credenciais salvas com máscara de senha
+- Formulário de adição de nova credencial
+- Ações: copiar username/senha, remover credencial
+- Design Cyber-Military com glassmorphism + ticks
+
+**API `/api/logins`**
+- `GET` — lista credenciais do usuário autenticado
+- `POST` — salva nova credencial
+- `DELETE` — remove credencial por ID
+
+---
+
+### ✅ Login Simplificado (2026-05-21)
+**Commit:** `refactor: simplify login form to require only username`
+
+Formulário `/auth/login` refatorado para solicitar apenas `username`. Fluxo de autenticação Supabase adaptado.
+
+---
+
+### ✅ Inspirações — Redesign Cyber-Military (2026-05-21)
+**Commit:** `feat: build inspirations page with cyber-military design and add to sidebar`
+
+#### Problema
+A aba "Inspirações" não aparecia na Sidebar — a funcionalidade existia em `/dashboard/search` mas nunca tinha link ou rota própria.
+
+#### Solução
+Nova página `/dashboard/inspirations/page.tsx` criada do zero:
+- Header com ícone `Sparkles` e título "Inspirações e Scraper"
+- Barra de busca `bg-black/45 backdrop-blur-xl border border-white/10` com ícone `@` em matrix green
+- `MockCard` — cards placeholder com `.glass-card .ticks`, shimmer animado e botão "Adicionar à Biblioteca" (desabilitado no estado vazio)
+- `HistoryCard` — cards do histórico redesenhados com `.ticks`, glow verde e hover effects inline
+- Modal de importação com progress bar matrix/electric e 3 steps animados
+- Toda lógica de scraping real mantida: `/api/inspirations/scrape` + `/api/inspirations/history`
+- Sidebar: link "Inspirações" adicionado na seção CONTEÚDOS com ícone `Sparkles`, antes de "Biblioteca"

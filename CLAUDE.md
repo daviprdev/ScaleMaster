@@ -52,10 +52,23 @@ AutoScale AI/
 ├── components/
 │   ├── dashboard/
 │   │   ├── Sidebar.tsx
-│   │   └── Header.tsx
-│   └── search/
-│       ├── ReelCard.tsx
-│       └── ReelGrid.tsx
+│   │   ├── Header.tsx
+│   │   ├── DashboardShell.tsx        ← Client component — estado mobile sidebar
+│   │   ├── ParticleBackground.tsx
+│   │   ├── ImpersonationBanner.tsx
+│   │   └── AnnouncementBanner.tsx
+│   ├── inspirations/
+│   │   ├── InspirationCard.tsx
+│   │   └── InspirationGrid.tsx
+│   ├── search/
+│   │   ├── ReelCard.tsx
+│   │   └── ReelGrid.tsx
+│   ├── WireframeTerrain.tsx          ← Canvas 3D: terrain padrão (matrix green/cyan)
+│   ├── TopographyBackground.tsx      ← Fundo topografia alternativo
+│   ├── ParticlesBackground.tsx       ← Fundo partículas alternativo
+│   ├── BeamsBackground.tsx           ← Fundo feixes de luz alternativo
+│   ├── BackgroundController.tsx      ← Seletor flutuante de modo de fundo
+│   └── BackgroundContext.tsx         ← Context global do modo de fundo
 ├── lib/
 │   ├── utils.ts                      ← cn() helper
 │   ├── supabase.ts                   ← Clientes Supabase (lazy init)
@@ -100,21 +113,45 @@ ENCRYPTION_SECRET=qualquer-string-secreta-aqui
 
 ## Design System
 
-**Tema:** Dark mode nativo — fundo `#030712` (gray-950)
-**Cores brand:** Violet (`#8B5CF6`) + Cyan (`#06B6D4`)
-**Estilo:** Glassmorphism — `backdrop-blur`, `bg-white/5`, `border border-white/10`
+**Tema:** Cyber-Military Elite — fundo `#000000` puro
+**Cores brand:** Matrix Green (`#00FF41`) + Electric Cyan (`#00E5FF`)
+**Estilo:** Glassmorphism agressivo — `backdrop-blur-[22px]`, `bg-black/45`, `border border-white/10`
+
+### Tokens CSS (`globals.css`)
+
+```css
+--matrix:    #00FF41   /* Verde neon — cor primária de destaque */
+--electric:  #00E5FF   /* Ciano elétrico — cor secundária */
+--background: #000000  /* Fundo puro */
+--surface:   rgba(0,0,0,0.45)
+```
 
 ### Classes utilitárias principais (`globals.css`)
 
 | Classe | Uso |
 |--------|-----|
-| `.glass` | Painel glassmorphism pesado (backdrop-blur-xl) |
-| `.glass-card` | Card glassmorphism médio |
-| `.neon-border` | Borda com brilho violet |
-| `.gradient-text` | Texto violet → cyan |
-| `.btn-primary` | Botão gradiente violet/cyan com hover glow |
-| `.btn-ghost` | Botão transparente com borda sutil |
-| `.input-glass` | Input glassmorphism com focus violet |
+| `.glass` | Painel glassmorphism pesado (backdrop-blur-[28px]) — modais |
+| `.glass-card` | Card glassmorphism médio (backdrop-blur-[22px]) — cards padrão |
+| `.ticks` | Miras táticas nos 4 cantos do card (::before pseudo-element) |
+| `.neon-border` | Borda matrix green com glow |
+| `.gradient-text` | Texto matrix → electric |
+| `.btn-primary` | Botão com borda animada conic-gradient (border-spin 5s) |
+| `.btn-ghost` | Botão transparente com hover matrix green |
+| `.input-glass` | Input com focus matrix green glow |
+| `.metric-value` | Número com 3 camadas de glow neon (electric) |
+| `.neon-matrix` | Texto matrix green com text-shadow trifásico |
+| `.neon-electric` | Texto electric cyan com text-shadow trifásico |
+| `.page-title` | Título de página (Space Grotesk, 1.5rem, tracking tight) |
+| `.page-subtitle` | Subtítulo de página (text-secondary, 0.875rem) |
+
+### Backgrounds disponíveis
+
+| Componente | Modo | Descrição |
+|-----------|------|-----------|
+| `WireframeTerrain` | `terrain` (padrão) | Canvas 3D com grid 56×28, ondas seno, glow radial no horizonte |
+| `TopographyBackground` | `topography` | Curvas de nível animadas |
+| `ParticlesBackground` | `particles` | Partículas flutuantes |
+| `BeamsBackground` | `beams` | Feixes de luz lineares |
 
 ---
 
@@ -128,6 +165,10 @@ ENCRYPTION_SECRET=qualquer-string-secreta-aqui
 | `/api/library` | DELETE | Remove vídeo do Storage e do banco. Body: `{ id, storage_path }` |
 | `/api/schedule` | POST | Cria postagens agendadas. Body: `{ video_id, account_ids, caption, scheduled_at }` |
 | `/api/schedule` | GET | Lista postagens agendadas com joins |
+| `/api/logins` | GET/POST/DELETE | Cofre de credenciais de login (Logins Vault) |
+| `/api/queue/stats` | GET | Estatísticas da fila de publicação em tempo real |
+| `/api/failover/accounts` | GET/PATCH/PUT | Gerenciar health e prioridade de contas para failover |
+| `/api/failover/logs` | GET | Histórico de eventos de failover |
 
 **Modo mock:** Sem as variáveis de ambiente configuradas, ambas as rotas retornam dados simulados para desenvolvimento local.
 
@@ -200,6 +241,12 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fase 41 (Horário Humano)** | Anti-shadowban: tabela `human_schedule_settings` (upsert por user_id), página `/dashboard/human-schedule` com relógio ao vivo (Intl.DateTimeFormat, atualização 1s), toggle, janela de tempo customizável, 3 presets (Comercial/Noturno/Pleno dia), seletor de timezone agrupado, auto-save com debounce 1.2s; integrado ao `/api/cron/process-loops` — loops fora da janela são pulados | ✅ Concluída |
 | **Fase 42 (Mobile)** | Dashboard totalmente responsivo: `DashboardShell` (client component) gerencia estado `mobileOpen`; `Header` com hamburger + logo strip (`md:hidden`); `Sidebar` com `hidden md:flex` + drawer slide-in 280px via portal (AnimatePresence, backdrop semi-transparente, fecha ao clicar em link); `overflow-x-auto` na tabela de apps | ✅ Concluída |
 | **Fase 43 (Failover)** | Sistema de redundância automática: colunas `health_status` + `failover_priority` em `instagram_accounts`; tabela `failover_logs` com RLS; APIs `/api/failover/accounts` (GET/PATCH/PUT) e `/api/failover/logs` (GET); lógica no cron `process-loops` — erro crítico Meta → marca conta como `error` → busca próxima conta `online` por prioridade → tenta publicar → registra em `failover_logs`; UI `/dashboard/failover` com lista reordenável (setas ↑↓), badges de saúde (Online/Erro/Bloqueada), botão Restaurar, histórico de eventos com timeline | ✅ Concluída |
+| **Queue Dashboard** | Página `/dashboard/queue` com status da fila em tempo real: auto-refresh a cada 10s, métricas de posts pendentes/publicando/falha, tabela de jobs recentes com timestamp e status animado | ✅ Concluída |
+| **Loop Media Limit** | Opção de limite máximo de vídeos por loop: campo `media_limit` na tabela `loops`, slider na UI de criação/edição, integrado ao motor do cron (para quando `cycles_done >= media_limit`) | ✅ Concluída |
+| **Design System Cyber-Military Elite** | Redesign completo de toda a UI: paleta matrix green (`#00FF41`) + electric cyan (`#00E5FF`) no lugar de violet/cyan anterior; fundo `#000000`; componente `WireframeTerrain` (canvas 3D 56×28 com perspectiva e ondas seno), `BackgroundController` (seletor flutuante de 4 modos: Terrain/Topography/Particles/Beams), `BackgroundContext` (estado global de modo de fundo), `ParticlesBackground` e `BeamsBackground`; `.ticks` com miras táticas nos cantos dos cards; `.metric-value` com glow neon trifásico; `globals.css` reescrito com novos tokens CSS | ✅ Concluída |
+| **Logins Vault** | Página `/dashboard/logins` com cofre seguro de credenciais de login: lista de contas salvas, formulário de adição, ações de cópia e remoção; rota API `GET/POST/DELETE /api/logins`; UI com glassmorphism e design Cyber-Military | ✅ Concluída |
+| **Login Simplificado** | Formulário de login `/auth/login` refatorado para solicitar apenas `username` (sem email); lógica de autenticação adaptada | ✅ Concluída |
+| **Inspirações (Fase Nova)** | Página `/dashboard/inspirations` reconstruída do zero com design Cyber-Military Elite: header com ícone `Sparkles`, barra de busca com `backdrop-blur-xl` e foco neon verde, cards mockup com `.ticks` e botão "Adicionar à Biblioteca" com glow, cards de histórico redesenhados, modal de importação com progress bar matrix/electric; toda lógica de scraping real mantida via `/api/inspirations/scrape` e `/api/inspirations/history`; link "Inspirações" adicionado na Sidebar (seção CONTEÚDOS) | ✅ Concluída |
 
 **SQL pendente (executar no Supabase):**
 ```sql
