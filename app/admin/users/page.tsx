@@ -38,7 +38,7 @@ interface AdminUser {
 }
 
 const ROLE_BADGE: Record<AdminUser["role"], string> = {
-  admin: "bg-violet-500/20 text-violet-300 border-violet-500/30",
+  admin: "bg-[#00FF41]/10 text-[#00FF41] border-[#00FF41]/25",
   user: "bg-white/5 text-white/50 border-white/10",
   banned: "bg-red-500/20 text-red-400 border-red-500/30",
 };
@@ -213,8 +213,8 @@ export default function AdminUsersPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Usuários</h1>
-          <p className="mt-1 text-sm text-white/40">
+          <h1 className="page-title">Usuários</h1>
+          <p className="page-subtitle mt-1">
             Todos os usuários cadastrados na plataforma
           </p>
         </div>
@@ -233,13 +233,13 @@ export default function AdminUsersPage() {
 
       {loading && (
         <div className="flex items-center justify-center py-20 text-white/40 gap-2">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span>Carregando usuários…</span>
+          <Loader2 className="w-5 h-5 animate-spin text-[#00FF41]" />
+          <span className="text-sm">Carregando usuários…</span>
         </div>
       )}
 
       {error && (
-        <div className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+        <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-400">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
           <button
@@ -252,19 +252,19 @@ export default function AdminUsersPage() {
       )}
 
       {!loading && !error && (
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
+        <div className="glass-card rounded-2xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/10 text-white/40 text-left">
-                <th className="px-4 py-3 font-medium">Email</th>
-                <th className="px-4 py-3 font-medium">Criado em</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Cargo</th>
-                <th className="px-4 py-3 font-medium">Contas Meta</th>
-                <th className="px-4 py-3 font-medium text-right">Ações</th>
+              <tr className="border-b border-white/[0.07] text-white/35 text-left">
+                <th className="px-4 py-3.5 font-medium text-xs uppercase tracking-wider">Email</th>
+                <th className="px-4 py-3.5 font-medium text-xs uppercase tracking-wider">Criado em</th>
+                <th className="px-4 py-3.5 font-medium text-xs uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3.5 font-medium text-xs uppercase tracking-wider">Cargo</th>
+                <th className="px-4 py-3.5 font-medium text-xs uppercase tracking-wider">Contas Meta</th>
+                <th className="px-4 py-3.5 font-medium text-xs uppercase tracking-wider text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody className="divide-y divide-white/[0.04]">
               {users.map((u) => {
                 const isSelf = u.id === currentUserId;
                 const isActioning = actioning === u.id;
@@ -286,7 +286,7 @@ export default function AdminUsersPage() {
                     {/* Email */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-white font-medium">{u.email}</span>
+                        <span className="text-white/90 font-medium">{u.email}</span>
                         {isPendingApproval && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300 font-medium">
                             <Clock className="w-2.5 h-2.5" />
@@ -311,7 +311,7 @@ export default function AdminUsersPage() {
                     </td>
 
                     {/* Created at */}
-                    <td className="px-4 py-3 text-white/40">
+                    <td className="px-4 py-3 text-white/40 text-xs">
                       {formatDate(u.created_at)}
                     </td>
 
@@ -351,7 +351,7 @@ export default function AdminUsersPage() {
                               className={cn(
                                 "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs",
                                 acc.is_active
-                                  ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+                                  ? "bg-[#00E5FF]/10 text-[#00E5FF] border-[#00E5FF]/20"
                                   : "bg-white/5 text-white/30 border-white/10"
                               )}
                             >
@@ -376,7 +376,7 @@ export default function AdminUsersPage() {
                           )}
 
                           {isActioning ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-white/40" />
+                            <Loader2 className="w-4 h-4 animate-spin text-[#00FF41]/60" />
                           ) : (
                             <>
                               {/* Approve / Reject buttons — only for pending users */}
@@ -384,7 +384,7 @@ export default function AdminUsersPage() {
                                 <>
                                   <button
                                     onClick={() => approveUser(u.id)}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/25 transition-all font-medium"
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/25 transition-all font-medium"
                                   >
                                     <CheckCircle2 className="w-3.5 h-3.5" />
                                     Aprovar
@@ -399,7 +399,7 @@ export default function AdminUsersPage() {
                                       }
                                     }}
                                     className={cn(
-                                      "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all font-medium",
+                                      "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all font-medium",
                                       isRejectPending
                                         ? "border-red-400/40 bg-red-400/20 text-red-300"
                                         : "border-red-500/30 bg-red-500/15 text-red-300 hover:bg-red-500/25"
@@ -419,7 +419,7 @@ export default function AdminUsersPage() {
                                     <button
                                       onClick={() => requestAction(u.id, "user")}
                                       className={cn(
-                                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
+                                        "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all",
                                         isPending && pending?.role === "user"
                                           ? "border-emerald-400/40 bg-emerald-400/20 text-emerald-300"
                                           : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
@@ -435,10 +435,10 @@ export default function AdminUsersPage() {
                                     <button
                                       onClick={() => requestAction(u.id, "admin")}
                                       className={cn(
-                                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
+                                        "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all",
                                         isPending && pending?.role === "admin"
-                                          ? "border-violet-400/40 bg-violet-400/20 text-violet-300"
-                                          : "border-violet-500/20 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20"
+                                          ? "border-[#00FF41]/30 bg-[#00FF41]/10 text-[#00FF41]"
+                                          : "border-[#00FF41]/15 bg-[#00FF41]/[0.06] text-[#00FF41]/80 hover:bg-[#00FF41]/10"
                                       )}
                                     >
                                       <Crown className="w-3.5 h-3.5" />
@@ -451,7 +451,7 @@ export default function AdminUsersPage() {
                                     <button
                                       onClick={() => requestAction(u.id, "user")}
                                       className={cn(
-                                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
+                                        "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all",
                                         isPending && pending?.role === "user"
                                           ? "border-amber-400/40 bg-amber-400/20 text-amber-300"
                                           : "border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
@@ -467,7 +467,7 @@ export default function AdminUsersPage() {
                                     <button
                                       onClick={() => requestAction(u.id, "banned")}
                                       className={cn(
-                                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all",
+                                        "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all",
                                         isPending && pending?.role === "banned"
                                           ? "border-red-400/40 bg-red-400/20 text-red-300"
                                           : "border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20"
@@ -491,7 +491,7 @@ export default function AdminUsersPage() {
                                         }
                                       }}
                                       className={cn(
-                                        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-all font-medium",
+                                        "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all font-medium",
                                         isRevokeAccessPending
                                           ? "border-amber-400/40 bg-amber-400/20 text-amber-300"
                                           : "border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
@@ -505,7 +505,7 @@ export default function AdminUsersPage() {
                                   {/* Impersonate */}
                                   <button
                                     onClick={() => impersonateUser(u.id)}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/50 hover:bg-white/[0.08] hover:text-white/80 transition-all"
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/50 hover:bg-white/[0.08] hover:text-white/80 transition-all"
                                     title="Acessar como este usuário"
                                   >
                                     <Eye className="w-3.5 h-3.5" />

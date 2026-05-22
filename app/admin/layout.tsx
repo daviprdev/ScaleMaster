@@ -42,20 +42,20 @@ export default async function AdminLayout({
   if (roleData?.role !== "admin") redirect("/dashboard");
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex">
-      {/* Fixed grid background */}
-      <div className="fixed inset-0 grid-bg opacity-20 pointer-events-none" />
+    <div className="min-h-screen bg-black text-white flex">
+      {/* Subtle grid overlay */}
+      <div className="fixed inset-0 grid-bg opacity-10 pointer-events-none" />
 
       {/* ── Sidebar ── */}
-      <aside className="relative z-10 w-60 shrink-0 flex flex-col border-r border-white/10 bg-gray-950/80 backdrop-blur-xl">
+      <aside className="relative z-10 w-60 shrink-0 flex flex-col border-r border-white/[0.07] bg-black/70 backdrop-blur-[22px]">
         {/* Logo */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-violet-500/20 border border-violet-500/30">
-            <Shield className="w-4 h-4 text-violet-400" />
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-white/[0.07]">
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#00FF41]/[0.08] border border-[#00FF41]/20">
+            <Shield className="w-4 h-4 text-[#00FF41]" />
           </div>
           <div className="leading-none">
             <p className="text-sm font-bold text-white">AutoScale</p>
-            <p className="text-[11px] text-violet-400 font-medium mt-0.5">Admin Panel</p>
+            <p className="text-[11px] text-[#00FF41] font-medium mt-0.5 tracking-wide">Admin Panel</p>
           </div>
         </div>
 
@@ -65,21 +65,21 @@ export default async function AdminLayout({
             <Link
               key={href}
               href={href}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors group"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-white/45 hover:text-white hover:bg-[#00FF41]/[0.06] transition-all duration-150 group"
             >
-              <Icon className="w-4 h-4 shrink-0 group-hover:text-violet-400 transition-colors" />
+              <Icon className="w-4 h-4 shrink-0 group-hover:text-[#00FF41] transition-colors" />
               {label}
             </Link>
           ))}
         </nav>
 
         {/* Footer */}
-        <div className="px-3 py-4 border-t border-white/10 space-y-0.5">
+        <div className="px-3 py-4 border-t border-white/[0.07] space-y-0.5">
           <Link
             href="/dashboard"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/40 hover:text-white hover:bg-white/[0.06] transition-colors"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-white/35 hover:text-white/80 hover:bg-white/[0.05] transition-all duration-150 group"
           >
-            <LogOut className="w-4 h-4 shrink-0" />
+            <LogOut className="w-4 h-4 shrink-0 group-hover:text-[#00E5FF] transition-colors" />
             Voltar ao Dashboard
           </Link>
           <p className="px-3 pt-2 text-[11px] text-white/20 truncate">{user.email}</p>

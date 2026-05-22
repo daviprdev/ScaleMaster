@@ -101,15 +101,15 @@ export default function AdminDashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24 text-white/40 gap-2">
-        <Loader2 className="w-5 h-5 animate-spin" />
-        <span>Carregando painel…</span>
+        <Loader2 className="w-5 h-5 animate-spin text-[#00FF41]" />
+        <span className="text-sm">Carregando painel…</span>
       </div>
     );
   }
 
   if (error || !stats) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+      <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-400">
         <AlertCircle className="w-4 h-4 shrink-0" />
         {error ?? "Erro ao carregar dados"}
       </div>
@@ -123,8 +123,8 @@ export default function AdminDashboardPage() {
       label: "Usuários cadastrados",
       value: stats.totalUsers,
       icon: Users,
-      color: "text-violet-400",
-      bg: "bg-violet-500/10 border-violet-500/20",
+      color: "text-[#00FF41]",
+      border: "border-[#00FF41]/20",
       breakdown: [
         { label: "Aprovados", value: stats.usersByStatus?.approved ?? 0, color: "text-emerald-400" },
         { label: "Pendentes", value: stats.usersByStatus?.pending  ?? 0, color: "text-amber-400" },
@@ -135,8 +135,8 @@ export default function AdminDashboardPage() {
       label: "Contas Meta conectadas",
       value: stats.totalAccounts,
       icon: Instagram,
-      color: "text-cyan-400",
-      bg: "bg-cyan-500/10 border-cyan-500/20",
+      color: "text-[#00E5FF]",
+      border: "border-[#00E5FF]/20",
       breakdown: null,
     },
     {
@@ -144,7 +144,7 @@ export default function AdminDashboardPage() {
       value: stats.totalScheduled,
       icon: Clock,
       color: "text-amber-400",
-      bg: "bg-amber-500/10 border-amber-500/20",
+      border: "border-amber-500/20",
       breakdown: null,
     },
     {
@@ -152,7 +152,7 @@ export default function AdminDashboardPage() {
       value: stats.totalPublished,
       icon: CheckCircle2,
       color: "text-emerald-400",
-      bg: "bg-emerald-500/10 border-emerald-500/20",
+      border: "border-emerald-500/20",
       breakdown: null,
     },
   ];
@@ -160,20 +160,26 @@ export default function AdminDashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-white">Visão Geral</h1>
-        <p className="mt-1 text-sm text-white/40">Resumo da plataforma em tempo real</p>
+        <h1 className="page-title">Visão Geral</h1>
+        <p className="page-subtitle mt-1">Resumo da plataforma em tempo real</p>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpiCards.map(({ label, value, icon: Icon, color, bg, breakdown }) => (
-          <div key={label} className={cn("rounded-xl border p-5", bg)}>
+        {kpiCards.map(({ label, value, icon: Icon, color, border, breakdown }) => (
+          <div
+            key={label}
+            className={cn(
+              "glass-card ticks rounded-2xl p-5",
+              border
+            )}
+          >
             <div className="flex items-start gap-4">
               <div className={cn("mt-0.5", color)}>
                 <Icon className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-2xl font-bold text-white">{value.toLocaleString("pt-BR")}</p>
+                <p className="text-2xl font-bold text-white metric-value">{value.toLocaleString("pt-BR")}</p>
                 <p className="text-xs text-white/40 mt-0.5">{label}</p>
               </div>
             </div>
@@ -191,11 +197,11 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Growth Chart */}
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-6">
+      <div className="glass-card rounded-2xl p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-violet-400" />
+              <TrendingUp className="w-4 h-4 text-[#00FF41]" />
               <h2 className="text-sm font-semibold text-white">Crescimento de usuários</h2>
             </div>
             <p className="text-xs text-white/40 mt-0.5">Últimos 30 dias</p>
@@ -206,38 +212,44 @@ export default function AdminDashboardPage() {
           <AreaChart data={stats.userGrowth} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="gradUsers" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#8B5CF6" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
+                <stop offset="5%"  stopColor="#00FF41" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#00FF41" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff06" vertical={false} />
             <XAxis
               dataKey="date" tickFormatter={formatDay}
-              tick={{ fontSize: 11, fill: "#ffffff30" }}
+              tick={{ fontSize: 11, fill: "#ffffff25" }}
               axisLine={false} tickLine={false} interval={4}
             />
             <YAxis
               allowDecimals={false}
-              tick={{ fontSize: 11, fill: "#ffffff30" }}
+              tick={{ fontSize: 11, fill: "#ffffff25" }}
               axisLine={false} tickLine={false}
             />
             <Tooltip
-              contentStyle={{ background: "#111827", border: "1px solid #ffffff15", borderRadius: 8, fontSize: 12, color: "#fff" }}
+              contentStyle={{
+                background: "rgba(0,0,0,0.88)",
+                border: "1px solid rgba(0,255,65,0.15)",
+                borderRadius: 12,
+                fontSize: 12,
+                color: "#fff",
+              }}
               labelFormatter={(l) => formatDay(String(l))}
               formatter={(v) => [v, "novos usuários"]}
             />
             <Area
               type="monotone" dataKey="users"
-              stroke="#8B5CF6" strokeWidth={2}
+              stroke="#00FF41" strokeWidth={2}
               fill="url(#gradUsers)" dot={false}
-              activeDot={{ r: 4, fill: "#8B5CF6" }}
+              activeDot={{ r: 4, fill: "#00FF41", stroke: "#000", strokeWidth: 2 }}
             />
           </AreaChart>
         </ResponsiveContainer>
       </div>
 
       {/* Announcement broadcaster */}
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-6">
+      <div className="glass-card rounded-2xl p-6">
         <div className="flex items-center gap-2 mb-1">
           <Megaphone className="w-4 h-4 text-amber-400" />
           <h2 className="text-sm font-semibold text-white">Central de Avisos</h2>

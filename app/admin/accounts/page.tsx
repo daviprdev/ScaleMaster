@@ -54,7 +54,6 @@ export default function AdminAccountsPage() {
       .then((data) => {
         if (data.error) throw new Error(data.error);
         setUsers(data.users);
-        // Expand first user by default if only one
         if (data.users?.length === 1) {
           setOpenUsers(new Set([data.users[0].id]));
         }
@@ -116,8 +115,8 @@ export default function AdminAccountsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Contas Conectadas</h1>
-          <p className="mt-1 text-sm text-white/40">
+          <h1 className="page-title">Contas Conectadas</h1>
+          <p className="page-subtitle mt-1">
             Perfis Instagram agrupados por usuário
           </p>
         </div>
@@ -134,7 +133,7 @@ export default function AdminAccountsPage() {
       {!loading && !error && (expiredCount > 0 || expiringCount > 0) && (
         <div className="flex flex-wrap gap-3">
           {expiredCount > 0 && (
-            <div className="flex items-center gap-2 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-2.5">
+            <div className="flex items-center gap-2 rounded-2xl border border-red-500/25 bg-red-500/[0.06] px-4 py-2.5">
               <TriangleAlert className="w-4 h-4 text-red-400 shrink-0" />
               <span className="text-sm text-red-300 font-medium">
                 {expiredCount} {expiredCount === 1 ? "conta com token expirado" : "contas com tokens expirados"}
@@ -142,7 +141,7 @@ export default function AdminAccountsPage() {
             </div>
           )}
           {expiringCount > 0 && (
-            <div className="flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-2.5">
+            <div className="flex items-center gap-2 rounded-2xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-2.5">
               <Clock className="w-4 h-4 text-amber-400 shrink-0" />
               <span className="text-sm text-amber-300 font-medium">
                 {expiringCount} {expiringCount === 1 ? "conta expirando em ≤7 dias" : "contas expirando em ≤7 dias"}
@@ -155,14 +154,14 @@ export default function AdminAccountsPage() {
       {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-white/40 gap-2">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span>Carregando contas…</span>
+          <Loader2 className="w-5 h-5 animate-spin text-[#00FF41]" />
+          <span className="text-sm">Carregando contas…</span>
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+        <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-400">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
           <button
@@ -178,7 +177,7 @@ export default function AdminAccountsPage() {
       {!loading && !error && (
         <>
           {users.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-16 text-white/30 rounded-xl border border-white/10 bg-white/[0.03]">
+            <div className="glass-card rounded-2xl flex flex-col items-center justify-center gap-3 py-16 text-white/30">
               <Users className="w-8 h-8" />
               <p className="text-sm">Nenhuma conta conectada na plataforma</p>
             </div>
@@ -193,7 +192,7 @@ export default function AdminAccountsPage() {
                 return (
                   <div
                     key={user.id}
-                    className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden"
+                    className="glass-card rounded-2xl overflow-hidden"
                   >
                     {/* User row — clickable header */}
                     <button
@@ -201,13 +200,13 @@ export default function AdminAccountsPage() {
                       className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-white/[0.03] transition-colors text-left"
                     >
                       {/* Avatar initial */}
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-violet-500/60 to-cyan-500/60 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00FF41]/25 to-[#00E5FF]/25 border border-white/10 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
                         {userInitial(user.email)}
                       </div>
 
                       {/* Email */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white truncate">
+                        <p className="text-sm font-medium text-white/90 truncate">
                           {user.email}
                         </p>
                       </div>
@@ -218,7 +217,7 @@ export default function AdminAccountsPage() {
                           className={cn(
                             "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
                             activeCount > 0
-                              ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20"
+                              ? "bg-[#00E5FF]/10 text-[#00E5FF] border-[#00E5FF]/20"
                               : "bg-white/5 text-white/30 border-white/10"
                           )}
                         >
@@ -330,7 +329,7 @@ export default function AdminAccountsPage() {
                                           revokeAccount(acc.id, user.id);
                                         }}
                                         className={cn(
-                                          "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-all flex-shrink-0",
+                                          "inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs transition-all flex-shrink-0",
                                           isPending
                                             ? "border-red-400/40 bg-red-400/20 text-red-300"
                                             : "border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20"

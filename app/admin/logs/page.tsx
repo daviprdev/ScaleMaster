@@ -26,11 +26,11 @@ interface LogEntry {
 }
 
 const ACTION_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  user_registered:      { label: "Usuário cadastrado",       icon: UserPlus,   color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/20" },
+  user_registered:      { label: "Usuário cadastrado",       icon: UserPlus,   color: "text-[#00E5FF] bg-[#00E5FF]/10 border-[#00E5FF]/20" },
   user_approved:        { label: "Usuário aprovado",         icon: UserCheck,  color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
   user_rejected:        { label: "Usuário reprovado",        icon: UserX,      color: "text-red-400 bg-red-500/10 border-red-500/20" },
   user_banned:          { label: "Usuário banido",           icon: ShieldBan,  color: "text-red-400 bg-red-500/10 border-red-500/20" },
-  account_connected:    { label: "Conta conectada",          icon: Instagram,  color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
+  account_connected:    { label: "Conta conectada",          icon: Instagram,  color: "text-[#00FF41] bg-[#00FF41]/10 border-[#00FF41]/20" },
   account_revoked:      { label: "Conta revogada",           icon: Trash2,     color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
   impersonation_started:{ label: "Impersonação iniciada",    icon: Eye,        color: "text-purple-400 bg-purple-500/10 border-purple-500/20" },
 };
@@ -70,28 +70,28 @@ export default function AdminLogsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Logs de Auditoria</h1>
-        <p className="mt-1 text-sm text-white/40">
+        <h1 className="page-title">Logs de Auditoria</h1>
+        <p className="page-subtitle mt-1">
           Histórico de ações do sistema em tempo real
         </p>
       </div>
 
       {loading && (
         <div className="flex items-center justify-center py-20 text-white/40 gap-2">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span>Carregando logs…</span>
+          <Loader2 className="w-5 h-5 animate-spin text-[#00FF41]" />
+          <span className="text-sm">Carregando logs…</span>
         </div>
       )}
 
       {error && (
-        <div className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+        <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-400">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
         </div>
       )}
 
       {!loading && !error && logs.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-3 py-16 text-white/30 rounded-xl border border-white/10 bg-white/[0.03]">
+        <div className="glass-card rounded-2xl flex flex-col items-center justify-center gap-3 py-16 text-white/30">
           <Activity className="w-8 h-8" />
           <p className="text-sm">Nenhuma ação registrada ainda</p>
           <p className="text-xs text-white/20">As ações aparecerão aqui conforme ocorrerem</p>
@@ -99,11 +99,11 @@ export default function AdminLogsPage() {
       )}
 
       {!loading && !error && logs.length > 0 && (
-        <div className="relative">
+        <div className="glass-card rounded-2xl p-4 relative">
           {/* Timeline line */}
-          <div className="absolute left-5 top-0 bottom-0 w-px bg-white/[0.06]" />
+          <div className="absolute left-9 top-4 bottom-4 w-px bg-white/[0.07]" />
 
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {logs.map((log, i) => {
               const meta = getActionMeta(log.action);
               const Icon = meta.icon;
@@ -113,7 +113,7 @@ export default function AdminLogsPage() {
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: Math.min(i * 0.03, 0.5) }}
-                  className="relative flex items-start gap-4 pl-12 pr-4 py-3 rounded-xl hover:bg-white/[0.02] transition-colors group"
+                  className="relative flex items-start gap-4 pl-12 pr-4 py-3 rounded-xl hover:bg-white/[0.03] transition-colors group"
                 >
                   {/* Dot on timeline */}
                   <div className={cn(
@@ -126,9 +126,9 @@ export default function AdminLogsPage() {
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-white">{meta.label}</span>
+                      <span className="text-sm font-medium text-white/90">{meta.label}</span>
                       {log.target_email && (
-                        <span className="text-xs text-white/50 truncate">
+                        <span className="text-xs text-white/45 truncate">
                           → {log.target_email}
                         </span>
                       )}
@@ -141,7 +141,7 @@ export default function AdminLogsPage() {
                   </div>
 
                   {/* Timestamp */}
-                  <span className="text-xs text-white/25 shrink-0 mt-0.5">
+                  <span className="text-xs text-white/25 shrink-0 mt-0.5 tabular-nums">
                     {formatDate(log.created_at)}
                   </span>
                 </motion.div>
