@@ -45,6 +45,7 @@ interface Account {
   profile_refreshed_at: string | null;
   ig_business_account_id: string | null;
   token_expires_at: string | null;
+  health_status: "online" | "error" | "blocked";
 }
 
 interface AccountStoriesData {
@@ -129,21 +130,23 @@ function Metric({
   muted = false,
   blue = false,
   amber = false,
+  red = false,
 }: {
   icon: React.ReactNode;
   label: string;
   muted?: boolean;
   blue?: boolean;
   amber?: boolean;
+  red?: boolean;
 }) {
   return (
     <div className={cn(
       "flex items-center gap-1 whitespace-nowrap text-[11px] flex-shrink-0",
-      amber ? "text-amber-400" : blue ? "text-blue-400" : muted ? "text-white/20" : "text-white/45"
+      red ? "text-red-400" : amber ? "text-amber-400" : blue ? "text-blue-400" : muted ? "text-white/20" : "text-white/45"
     )}>
       <span className={cn(
         "flex-shrink-0",
-        amber ? "text-amber-400/70" : blue ? "text-blue-400" : muted ? "text-white/15" : "text-white/30"
+        red ? "text-red-400/70" : amber ? "text-amber-400/70" : blue ? "text-blue-400" : muted ? "text-white/15" : "text-white/30"
       )}>
         {icon}
       </span>
@@ -192,6 +195,7 @@ function AccountCard({
   const busy = refreshing || toggling || deleting || tokenRefreshing;
   const isMetaConnected = !!account.ig_business_account_id;
   const tokenChip = tokenStatusChip(account.token_expires_at, isMetaConnected);
+  const accountFell = account.health_status === "error" || account.health_status === "blocked";
 
   return (
     <motion.div
@@ -200,7 +204,7 @@ function AccountCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.2 }}
-      className="glass-card rounded-2xl"
+      className={cn("glass-card rounded-2xl", accountFell && "border border-red-500/25")}
     >
       {/* Cabeçalho */}
       <div className="flex items-start gap-3 p-5 pb-4">
@@ -252,6 +256,12 @@ function AccountCard({
               <span className={cn("w-1.5 h-1.5 rounded-full", account.is_active ? "bg-emerald-400" : "bg-white/20")} />
               {account.is_active ? "ATIVA" : "INATIVA"}
             </span>
+            {accountFell && (
+              <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide bg-red-500/15 text-red-400 border border-red-500/25 flex-shrink-0">
+                <AlertTriangle size={8} className="flex-shrink-0" />
+                {account.health_status === "blocked" ? "BLOQUEADA" : "CONTA CAIU"}
+              </span>
+            )}
           </div>
         </div>
 
@@ -320,9 +330,18 @@ function AccountCard({
         <Metric icon={<FileText size={11} />} label={`${account.posts_count ?? "—"} posts`} muted={account.posts_count == null} />
         <Metric icon={<Clock size={11} />} label={account.last_post_at ? timeAgo(account.last_post_at) : "—"} muted={!account.last_post_at} />
         <Metric
-          icon={<span className={cn("w-1.5 h-1.5 rounded-full inline-block flex-shrink-0", account.profile_refreshed_at ? "bg-emerald-400" : "bg-white/20")} />}
-          label={account.profile_refreshed_at ? `online ${timeAgo(account.profile_refreshed_at)}` : "não atualizado"}
-          muted={!account.profile_refreshed_at}
+          icon={<span className={cn(
+            "w-1.5 h-1.5 rounded-full inline-block flex-shrink-0",
+            accountFell ? "bg-red-500" :
+            account.profile_refreshed_at ? "bg-emerald-400" : "bg-white/20"
+          )} />}
+          label={
+            account.health_status === "error" ? "token inválido — reconectar" :
+            account.health_status === "blocked" ? "conta bloqueada pela Meta" :
+            account.profile_refreshed_at ? `online ${timeAgo(account.profile_refreshed_at)}` : "não atualizado"
+          }
+          red={accountFell}
+          muted={!accountFell && !account.profile_refreshed_at}
         />
         {isMetaConnected && storiesData !== undefined && (
           <Metric
@@ -435,7 +454,7 @@ export default function AccountsPage() {
       const { data } = await supabase
         .from("instagram_accounts")
         .select(
-          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at"
+          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status"
         )
         .order("connected_at", { ascending: false });
       const fetched = (data ?? []) as unknown as Account[];

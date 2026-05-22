@@ -6,7 +6,7 @@ import {
   Repeat2, Plus, Play, Pause, Trash2, Edit3, X,
   Folder, Users, Clock, Infinity, Hash, Type,
   ImageIcon, FlipHorizontal, Contrast, Check,
-  Loader2, AlertCircle, ChevronDown, Info, Film,
+  Loader2, AlertCircle, ChevronDown, Info, Film, AlertTriangle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ interface Account {
   display_name: string | null;
   avatar_url: string | null;
   is_active: boolean;
+  health_status?: "online" | "error" | "blocked";
 }
 
 interface Folder {
@@ -196,18 +197,34 @@ function LoopCard({
       {/* Accounts */}
       {accounts.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap">
-          {accounts.slice(0, 5).map(acc => (
-            <div
-              key={acc.id}
-              title={`@${acc.username}`}
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white/[0.04] border border-white/[0.07]"
-            >
-              <div className="w-4 h-4 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0">
-                {acc.username.charAt(0).toUpperCase()}
+          {accounts.slice(0, 5).map(acc => {
+            const fell = acc.health_status === "error" || acc.health_status === "blocked";
+            return (
+              <div
+                key={acc.id}
+                title={fell
+                  ? `@${acc.username} — ${acc.health_status === "blocked" ? "conta bloqueada" : "token inválido, reconectar"}`
+                  : `@${acc.username}`}
+                className={cn(
+                  "flex items-center gap-1.5 px-2 py-0.5 rounded-lg border",
+                  fell
+                    ? "bg-red-500/[0.07] border-red-500/20"
+                    : "bg-white/[0.04] border-white/[0.07]"
+                )}
+              >
+                <div className={cn(
+                  "w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0",
+                  fell ? "bg-red-500/40" : "bg-gradient-to-br from-violet-500 to-cyan-500"
+                )}>
+                  {acc.username.charAt(0).toUpperCase()}
+                </div>
+                <span className={cn("text-[10px]", fell ? "text-red-400/80" : "text-white/50")}>
+                  @{acc.username}
+                </span>
+                {fell && <AlertCircle size={9} className="text-red-400 flex-shrink-0" />}
               </div>
-              <span className="text-[10px] text-white/50">@{acc.username}</span>
-            </div>
-          ))}
+            );
+          })}
           {accounts.length > 5 && (
             <span className="text-[10px] text-white/25">+{accounts.length - 5}</span>
           )}
@@ -396,6 +413,7 @@ function AccountsMultiSelect({
             ) : (
               accounts.map(acc => {
                 const isSelected = selected.includes(acc.id);
+                const fell = acc.health_status === "error" || acc.health_status === "blocked";
                 return (
                   <button
                     key={acc.id}
@@ -407,11 +425,24 @@ function AccountsMultiSelect({
                     )}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">
+                      <div className={cn(
+                        "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0",
+                        fell ? "bg-red-500/30" : "bg-gradient-to-br from-violet-500 to-cyan-500"
+                      )}>
                         {acc.username.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-white/80 text-xs font-medium truncate">@{acc.username}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className={cn("text-xs font-medium truncate", fell ? "text-red-400/80" : "text-white/80")}>
+                            @{acc.username}
+                          </p>
+                          {fell && (
+                            <span className="flex items-center gap-1 text-[9px] px-1 py-0.5 rounded bg-red-500/15 text-red-400 font-semibold flex-shrink-0">
+                              <AlertTriangle size={7} />
+                              {acc.health_status === "blocked" ? "BLOQUEADA" : "CAIU"}
+                            </span>
+                          )}
+                        </div>
                         {acc.display_name && (
                           <p className="text-white/35 text-[11px] truncate">{acc.display_name}</p>
                         )}
@@ -434,17 +465,26 @@ function AccountsMultiSelect({
       {/* Selected pills */}
       {selectedAccounts.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
-          {selectedAccounts.map(acc => (
-            <span
-              key={acc.id}
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-violet-600/15 border border-violet-500/25 text-[11px] text-violet-300"
-            >
-              @{acc.username}
-              <button type="button" onClick={() => toggle(acc.id)} className="hover:text-white transition-colors">
-                <X size={10} />
-              </button>
-            </span>
-          ))}
+          {selectedAccounts.map(acc => {
+            const fell = acc.health_status === "error" || acc.health_status === "blocked";
+            return (
+              <span
+                key={acc.id}
+                className={cn(
+                  "flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] border",
+                  fell
+                    ? "bg-red-500/10 border-red-500/25 text-red-400"
+                    : "bg-violet-600/15 border-violet-500/25 text-violet-300"
+                )}
+              >
+                {fell && <AlertTriangle size={9} />}
+                @{acc.username}
+                <button type="button" onClick={() => toggle(acc.id)} className="hover:text-white transition-colors">
+                  <X size={10} />
+                </button>
+              </span>
+            );
+          })}
         </div>
       )}
     </div>
