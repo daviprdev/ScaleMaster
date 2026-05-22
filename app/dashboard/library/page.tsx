@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Trash2,
   FolderInput,
+  Pencil,
 } from "lucide-react";
 import { VideoCard, type LibraryVideo } from "@/components/library/VideoCard";
 import { PostModal } from "@/components/library/PostModal";
@@ -34,6 +35,7 @@ export interface LibraryFolder {
   id: string;
   name: string;
   created_at: string;
+  video_count?: number;
 }
 
 function formatBytes(bytes: number) {
@@ -67,6 +69,11 @@ export default function LibraryPage() {
 
   // Modal deletar pasta
   const [deletingFolder, setDeletingFolder] = useState<LibraryFolder | null>(null);
+
+  // Modal renomear pasta
+  const [renamingFolder, setRenamingFolder] = useState<LibraryFolder | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renamingLoading, setRenamingLoading] = useState(false);
 
   // ── Fetch ────────────────────────────────────────────────────
   const fetchFolders = useCallback(async () => {
@@ -243,6 +250,30 @@ export default function LibraryPage() {
       }
     } finally {
       setCreatingFolder(false);
+    }
+  };
+
+  // ── Pastas: renomear ──────────────────────────────────────────
+  const handleRenameFolder = async () => {
+    if (!renamingFolder || !renameValue.trim() || renamingLoading) return;
+    setRenamingLoading(true);
+    try {
+      const res = await fetch(`/api/library/folders/${renamingFolder.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameValue.trim() }),
+      });
+      if (res.ok) {
+        setFolders(prev =>
+          prev.map(f => f.id === renamingFolder.id ? { ...f, name: renameValue.trim() } : f)
+        );
+        if (currentFolder?.id === renamingFolder.id) {
+          setCurrentFolder(prev => prev ? { ...prev, name: renameValue.trim() } : null);
+        }
+        setRenamingFolder(null);
+      }
+    } finally {
+      setRenamingLoading(false);
     }
   };
 
@@ -458,6 +489,64 @@ export default function LibraryPage() {
         )}
       </AnimatePresence>
 
+      {/* Modal Renomear Pasta */}
+      <AnimatePresence>
+        {renamingFolder && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={() => setRenamingFolder(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              transition={{ type: "spring", duration: 0.35 }}
+              onClick={e => e.stopPropagation()}
+              className="glass w-full max-w-sm rounded-2xl p-6 space-y-5 border border-white/10"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-violet-600/20 flex items-center justify-center">
+                  <Pencil size={18} className="text-violet-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Renomear Pasta</h3>
+                  <p className="text-xs text-white/40">Escolha um novo nome para a pasta</p>
+                </div>
+              </div>
+
+              <input
+                autoFocus
+                type="text"
+                placeholder="Novo nome da pasta..."
+                value={renameValue}
+                onChange={e => setRenameValue(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleRenameFolder()}
+                className="input-glass w-full text-sm"
+              />
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setRenamingFolder(null)}
+                  className="btn-ghost flex-1 text-sm py-2.5"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleRenameFolder}
+                  disabled={!renameValue.trim() || renamingLoading}
+                  className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50"
+                >
+                  {renamingLoading ? <Loader2 size={14} className="animate-spin mx-auto" /> : "Salvar"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header: breadcrumbs + botão Nova Pasta */}
       <div className="flex items-center justify-between gap-4">
         {/* Breadcrumbs */}
@@ -601,6 +690,7 @@ export default function LibraryPage() {
                   index={i}
                   onClick={() => navigateToFolder(folder)}
                   onDelete={() => setDeletingFolder(folder)}
+                  onRename={() => { setRenamingFolder(folder); setRenameValue(folder.name); }}
                 />
               ))}
             </div>
@@ -697,11 +787,13 @@ interface FolderCardProps {
   index: number;
   onClick: () => void;
   onDelete: () => void;
+  onRename: () => void;
 }
 
-function FolderCard({ folder, index, onClick, onDelete }: FolderCardProps) {
+function FolderCard({ folder, index, onClick, onDelete, onRename }: FolderCardProps) {
   const [hovered, setHovered] = useState(false);
   const style = FOLDER_GRADIENTS[index % FOLDER_GRADIENTS.length];
+  const count = folder.video_count ?? 0;
 
   return (
     <motion.div
@@ -718,19 +810,29 @@ function FolderCard({ folder, index, onClick, onDelete }: FolderCardProps) {
       )}
       onClick={onClick}
     >
-      {/* Delete button */}
+      {/* Action buttons: rename + delete */}
       <AnimatePresence>
         {hovered && (
-          <motion.button
+          <motion.div
             initial={{ opacity: 0, scale: 0.7 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.7 }}
             transition={{ duration: 0.15 }}
-            onClick={e => { e.stopPropagation(); onDelete(); }}
-            className="absolute top-2 right-2 w-6 h-6 rounded-lg bg-black/40 border border-red-500/30 flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors"
+            className="absolute top-2 right-2 flex gap-1"
           >
-            <X size={10} />
-          </motion.button>
+            <button
+              onClick={e => { e.stopPropagation(); onRename(); }}
+              className="w-6 h-6 rounded-lg bg-black/40 border border-white/20 flex items-center justify-center text-white/50 hover:text-white/90 hover:bg-white/10 transition-colors"
+            >
+              <Pencil size={9} />
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); onDelete(); }}
+              className="w-6 h-6 rounded-lg bg-black/40 border border-red-500/30 flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors"
+            >
+              <X size={10} />
+            </button>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -739,9 +841,12 @@ function FolderCard({ folder, index, onClick, onDelete }: FolderCardProps) {
         <Folder size={36} strokeWidth={1.5} />
       </div>
 
-      {/* Name */}
+      {/* Name + count */}
       <p className="text-xs font-semibold text-white/80 truncate leading-tight">
         {folder.name}
+      </p>
+      <p className="text-[10px] text-white/35 mt-0.5">
+        {count === 0 ? "Vazia" : `${count} vídeo${count !== 1 ? "s" : ""}`}
       </p>
     </motion.div>
   );

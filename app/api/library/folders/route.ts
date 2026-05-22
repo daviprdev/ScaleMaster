@@ -21,7 +21,19 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ folders: data ?? [] });
+  const folders = data ?? [];
+
+  const foldersWithCount = await Promise.all(
+    folders.map(async (folder) => {
+      const { count } = await supabase
+        .from("videos_library")
+        .select("id", { count: "exact", head: true })
+        .eq("folder_id", folder.id);
+      return { ...folder, video_count: count ?? 0 };
+    })
+  );
+
+  return NextResponse.json({ folders: foldersWithCount });
 }
 
 export async function POST(req: NextRequest) {
