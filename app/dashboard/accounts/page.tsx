@@ -116,8 +116,9 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   cancelled: "Conexão cancelada. Nenhuma conta foi adicionada.",
   state_mismatch: "Erro de segurança (state inválido). Tente novamente.",
   no_code: "Código de autorização ausente. Tente novamente.",
-  server_error: "Erro interno ao processar a conexão. Verifique os logs e tente novamente.",
+  server_error: "Erro ao processar a conexão.",
   personal_account: "Sua conta precisa ser Comercial ou de Criador de Conteúdo no Instagram. Acesse as Configurações do Instagram → Conta → Mudar para conta profissional.",
+  rate_limit: "Limite de requisições da Meta API atingido. Aguarde alguns minutos antes de conectar a próxima conta.",
 };
 
 
@@ -418,9 +419,11 @@ export default function AccountsPage() {
       });
       window.history.replaceState({}, "", "/dashboard/accounts");
     } else if (error) {
+      const detail = params.get("detail");
+      const base = OAUTH_ERROR_MESSAGES[error] ?? "Ocorreu um erro ao conectar. Tente novamente.";
       setNotification({
         type: "error",
-        message: OAUTH_ERROR_MESSAGES[error] ?? "Ocorreu um erro ao conectar. Tente novamente.",
+        message: detail ? `${base} Detalhe: ${detail}` : base,
       });
       window.history.replaceState({}, "", "/dashboard/accounts");
     }
