@@ -144,18 +144,13 @@ async function getLongLivedToken(
   shortToken: string,
   appSecret: string
 ): Promise<{ token: string; expiresAt: Date }> {
-  const body = new URLSearchParams({
+  const params = new URLSearchParams({
     grant_type: "ig_exchange_token",
     client_secret: appSecret,
     access_token: shortToken,
   });
 
-  // Instagram Login API requer POST para troca de long-lived token
-  const res = await fetchWithTimeout(`${GRAPH_IG}/access_token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
+  const res = await fetchWithTimeout(`${GRAPH_IG}/access_token?${params.toString()}`);
 
   detectRateLimit(res);
 
