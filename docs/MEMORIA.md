@@ -1614,3 +1614,30 @@ Nova página `/dashboard/inspirations/page.tsx` criada do zero:
 - Modal de importação com progress bar matrix/electric e 3 steps animados
 - Toda lógica de scraping real mantida: `/api/inspirations/scrape` + `/api/inspirations/history`
 - Sidebar: link "Inspirações" adicionado na seção CONTEÚDOS com ícone `Sparkles`, antes de "Biblioteca"
+
+---
+
+### ✅ Hotfix — getLongLivedToken: POST → GET (2026-05-21)
+**Commit:** `fix: change getLongLivedToken fetch method to GET to comply with Meta Graph API`
+
+#### Problema
+Erro `[getLongLivedToken] Unsupported request - method type: post` ao conectar conta no Instagram.
+A função `getLongLivedToken` em `app/api/instagram/callback/route.ts` enviava um `POST` com body `URLSearchParams` para `https://graph.instagram.com/access_token`, mas a Meta Graph API exige estritamente `GET` com parâmetros na query string para esse endpoint.
+
+#### Causa raiz
+Confusão entre dois endpoints distintos:
+- `POST https://api.instagram.com/oauth/access_token` — troca do `code` por short-lived token (`exchangeCode`). **POST está correto.**
+- `GET https://graph.instagram.com/access_token` — upgrade de short-lived para long-lived token (`getLongLivedToken`). **Exige GET.**
+
+#### Solução aplicada
+Substituído `body: new URLSearchParams(...)` + `method: "POST"` por `URLSearchParams` embutido na URL com `GET` implícito (padrão do `fetch`):
+```ts
+// antes
+const body = new URLSearchParams({ grant_type, client_secret, access_token });
+fetchWithTimeout(url, { method: "POST", body: body.toString() });
+
+// depois
+const params = new URLSearchParams({ grant_type, client_secret, access_token });
+fetchWithTimeout(`${GRAPH_IG}/access_token?${params.toString()}`);
+```
+`exchangeCode` e `getIGProfile` não foram alterados (já estavam corretos).
