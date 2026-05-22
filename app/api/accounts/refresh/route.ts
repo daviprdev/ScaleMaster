@@ -1,95 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ApifyClient } from "apify-client";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 30;
 
-const ACTOR_ID = "apify/instagram-scraper";
+const GRAPH = "https://graph.instagram.com/v21.0";
 
-function isQuotaError(msg: string): boolean {
-  const m = msg.toLowerCase();
-  return (
-    m.includes("limit exceeded") ||
-    m.includes("usage") ||
-    m.includes("quota") ||
-    m.includes("rate limit") ||
-    m.includes("429") ||
-    m.includes("401") ||
-    m.includes("403") ||
-    m.includes("unauthorized") ||
-    m.includes("authentication") ||
-    m.includes("forbidden") ||
-    m.includes("not found or authentication")
-  );
+// OAuth / permission error codes → token is dead, mark account as error
+const TOKEN_ERROR_CODES = new Set([190, 102, 104, 200, 10, 4, 368]);
+
+interface GraphProfile {
+  id?: string;
+  name?: string;
+  username?: string;
+  followers_count?: number;
+  media_count?: number;
+  profile_picture_url?: string;
+  error?: { message: string; type: string; code: number };
 }
 
-interface ProfileStats {
-  followersCount: number;
-  postsCount: number;
-  fullName: string;
-  profilePicUrl: string | null;
-  lastPostAt: string | null;
+interface GraphMediaEdge {
+  data?: Array<{ id: string; timestamp: string }>;
+  error?: { message: string; code: number };
 }
 
-async function fetchProfileStats(token: string, username: string): Promise<ProfileStats> {
-  const apify = new ApifyClient({ token });
+async function fetchMetaProfile(
+  igId: string,
+  token: string
+): Promise<{ profile: GraphProfile; lastPostAt: string | null }> {
+  const profileUrl =
+    `${GRAPH}/${igId}` +
+    `?fields=followers_count,media_count,name,profile_picture_url,username` +
+    `&access_token=${encodeURIComponent(token)}`;
 
-  // resultsType "details" retorna campos do perfil: followersCount, postsCount, latestPosts, etc.
-  const run = await apify.actor(ACTOR_ID).call({
-    directUrls: [`https://www.instagram.com/${username}/`],
-    resultsType: "details",
-    maxRequestsPerCrawl: 5,
-  });
+  const profileRes = await fetch(profileUrl, { cache: "no-store" });
+  const profile = (await profileRes.json()) as GraphProfile;
 
-  if (run.status !== "SUCCEEDED") {
-    throw new Error(`Actor encerrou com status inesperado: ${run.status}`);
+  if (profile.error) return { profile, lastPostAt: null };
+
+  // Fetch most recent media timestamp (non-critical)
+  let lastPostAt: string | null = null;
+  try {
+    const mediaUrl =
+      `${GRAPH}/${igId}/media` +
+      `?fields=timestamp&limit=1` +
+      `&access_token=${encodeURIComponent(token)}`;
+    const mediaRes = await fetch(mediaUrl, { cache: "no-store" });
+    const mediaData = (await mediaRes.json()) as GraphMediaEdge;
+    lastPostAt = mediaData.data?.[0]?.timestamp ?? null;
+  } catch {
+    // non-critical
   }
 
-  const { items } = await apify.dataset(run.defaultDatasetId).listItems();
-
-  if (!Array.isArray(items) || items.length === 0) {
-    throw new Error("Perfil não encontrado ou é privado.");
-  }
-
-  const p = items[0] as Record<string, unknown>;
-
-  // Defensivo: checa múltiplos nomes de campo usados pelo actor em versões diferentes
-  const followersCount = Number(
-    p.followersCount ??
-    p.followers_count ??
-    (p.edgeFollowedBy as Record<string, unknown> | undefined)?.count ??
-    0
-  );
-  const postsCount = Number(
-    p.postsCount ??
-    p.mediaCount ??
-    p.media_count ??
-    (p.edgeOwnerToTimelineMedia as Record<string, unknown> | undefined)?.count ??
-    0
-  );
-  const fullName = String(p.fullName ?? p.full_name ?? username);
-  const profilePicUrl = (
-    p.profilePicUrl ??
-    p.profile_pic_url ??
-    p.profilePicUrlHD ??
-    null
-  ) as string | null;
-
-  // Extrai timestamp do post mais recente do array latestPosts
-  const latestPosts = Array.isArray(p.latestPosts) ? p.latestPosts : [];
-  const firstPost = latestPosts[0] as Record<string, unknown> | undefined;
-  const rawTs = firstPost
-    ? (firstPost.timestamp ?? firstPost.taken_at_timestamp ?? firstPost.takenAt)
-    : null;
-  const lastPostAt = rawTs ? String(rawTs) : null;
-
-  return { followersCount, postsCount, fullName, profilePicUrl, lastPostAt };
+  return { profile, lastPostAt };
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json() as { accountId?: string };
+  const body = (await req.json()) as { accountId?: string };
   const { accountId } = body;
 
   if (!accountId) {
@@ -97,13 +65,15 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const admin = getSupabaseAdmin();
   const { data: account } = await admin
     .from("instagram_accounts")
-    .select("id, username, user_id")
+    .select("id, username, user_id, ig_business_account_id, meta_access_token")
     .eq("id", accountId)
     .eq("user_id", user.id)
     .single();
@@ -112,57 +82,55 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Conta não encontrada." }, { status: 404 });
   }
 
-  const tokens = [
-    ...(process.env.APIFY_API_TOKENS?.split(",") ?? []),
-    ...(process.env.APIFY_API_TOKEN?.split(",") ?? []),
-  ].map((t) => t.trim()).filter(Boolean);
+  const igId = (account as Record<string, unknown>).ig_business_account_id as string | null;
+  const token = (account as Record<string, unknown>).meta_access_token as string | null;
 
-  const uniqueTokens = [...new Set(tokens)];
-
-  if (uniqueTokens.length === 0) {
+  if (!igId || !token) {
     return NextResponse.json(
-      { error: "APIFY_API_TOKEN não configurado. Adicione a variável de ambiente e faça um novo deploy." },
-      { status: 503 }
+      { error: "Conta sem credenciais Meta. Reconecte via OAuth." },
+      { status: 422 }
     );
   }
 
-  let lastError = "Erro desconhecido";
+  const { profile, lastPostAt } = await fetchMetaProfile(igId, token);
 
-  for (const token of uniqueTokens) {
-    try {
-      const stats = await fetchProfileStats(token, account.username);
-      const now = new Date().toISOString();
+  if (profile.error) {
+    const code = profile.error.code;
+    const isTokenBad = TOKEN_ERROR_CODES.has(code);
 
-      const update: Record<string, unknown> = {
-        followers_count: stats.followersCount,
-        posts_count: stats.postsCount,
-        last_post_at: stats.lastPostAt,
-        has_active_stories: null, // não suportado pelo actor atual
-        profile_refreshed_at: now,
-      };
-      // Só sobrescreve nome/avatar se o actor retornou dados
-      if (stats.fullName && stats.fullName !== account.username) {
-        update.display_name = stats.fullName;
-      }
-      if (stats.profilePicUrl) {
-        update.avatar_url = stats.profilePicUrl;
-      }
+    console.error(
+      `[accounts/refresh] Meta API error for @${(account as Record<string, unknown>).username}: ` +
+        `code=${code} — ${profile.error.message}`
+    );
 
-      await admin.from("instagram_accounts").update(update).eq("id", accountId);
-      return NextResponse.json({ success: true, stats: update });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (isQuotaError(msg)) {
-        console.warn(`[accounts/refresh] Token ...${token.slice(-6)} esgotado: ${msg}`);
-        lastError = msg;
-        continue;
-      }
-      return NextResponse.json({ error: msg }, { status: 500 });
+    if (isTokenBad) {
+      await admin
+        .from("instagram_accounts")
+        .update({ health_status: "error" })
+        .eq("id", accountId);
     }
+
+    return NextResponse.json(
+      {
+        error: profile.error.message,
+        meta_code: code,
+        health_status: isTokenBad ? "error" : "online",
+      },
+      { status: 400 }
+    );
   }
 
-  return NextResponse.json(
-    { error: `Todas as chaves Apify estão esgotadas. Último erro: ${lastError}` },
-    { status: 503 }
-  );
+  const update: Record<string, unknown> = {
+    followers_count: profile.followers_count ?? 0,
+    posts_count: profile.media_count ?? 0,
+    profile_refreshed_at: new Date().toISOString(),
+    health_status: "online",
+  };
+  if (lastPostAt) update.last_post_at = lastPostAt;
+  if (profile.name) update.display_name = profile.name;
+  if (profile.profile_picture_url) update.avatar_url = profile.profile_picture_url;
+
+  await admin.from("instagram_accounts").update(update).eq("id", accountId);
+
+  return NextResponse.json({ success: true, stats: update });
 }

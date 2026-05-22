@@ -418,10 +418,14 @@ function AccountsMultiSelect({
                   <button
                     key={acc.id}
                     type="button"
-                    onClick={() => toggle(acc.id)}
+                    onClick={() => !fell && toggle(acc.id)}
+                    disabled={fell}
+                    title={fell ? `@${acc.username} está desconectada — reconecte na aba Contas` : undefined}
                     className={cn(
-                      "w-full flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors cursor-pointer text-left",
-                      isSelected ? "bg-violet-600/10" : "hover:bg-slate-800"
+                      "w-full flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors text-left",
+                      fell
+                        ? "cursor-not-allowed opacity-60 bg-red-950/20"
+                        : isSelected ? "bg-violet-600/10 cursor-pointer" : "hover:bg-slate-800 cursor-pointer"
                     )}
                   >
                     <div className="flex items-center gap-3 min-w-0">

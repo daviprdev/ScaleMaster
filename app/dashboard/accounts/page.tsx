@@ -20,6 +20,8 @@ import {
   AlertTriangle,
   Clapperboard,
   ChevronRight,
+  WifiOff,
+  LinkIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -208,34 +210,48 @@ function AccountCard({
     >
       {/* Cabeçalho */}
       <div className="flex items-start gap-3 p-5 pb-4">
-        {account.avatar_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={proxyImg(account.avatar_url)}
-            alt={account.username}
-            className="w-12 h-12 rounded-full object-cover flex-shrink-0 ring-2 ring-white/10"
-          />
-        ) : (
-          <div className={cn(
-            "w-12 h-12 rounded-full bg-gradient-to-br flex items-center justify-center flex-shrink-0 ring-2 ring-white/10",
-            avatarColor(account.username)
-          )}>
-            <Instagram size={20} className="text-white" />
-          </div>
-        )}
+        <div className="relative flex-shrink-0">
+          {account.avatar_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={proxyImg(account.avatar_url)}
+              alt={account.username}
+              className={cn(
+                "w-12 h-12 rounded-full object-cover ring-2",
+                accountFell ? "ring-red-500/40 opacity-60 grayscale" : "ring-white/10"
+              )}
+            />
+          ) : (
+            <div className={cn(
+              "w-12 h-12 rounded-full bg-gradient-to-br flex items-center justify-center ring-2",
+              accountFell
+                ? "from-red-900 to-red-800 ring-red-500/30"
+                : cn("ring-white/10", avatarColor(account.username))
+            )}>
+              <Instagram size={20} className={accountFell ? "text-red-400/60" : "text-white"} />
+            </div>
+          )}
+          {accountFell && (
+            <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-red-500 flex items-center justify-center ring-2 ring-black">
+              <WifiOff size={8} className="text-white" />
+            </span>
+          )}
+        </div>
 
         <div className="flex-1 min-w-0 pt-0.5">
-          <p className="text-sm font-bold text-white/90 truncate">@{account.username}</p>
+          <p className={cn("text-sm font-bold truncate", accountFell ? "text-white/50" : "text-white/90")}>
+            @{account.username}
+          </p>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            <Instagram size={9} className="text-pink-400 flex-shrink-0" />
+            <Instagram size={9} className={accountFell ? "text-red-400/40 flex-shrink-0" : "text-pink-400 flex-shrink-0"} />
             <span className="text-[10px] text-white/30">Instagram</span>
-            {isMetaConnected && (
+            {isMetaConnected && !accountFell && (
               <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide bg-blue-500/15 text-blue-300 flex-shrink-0">
                 <span className="w-1 h-1 rounded-full bg-blue-400" />
                 META API
               </span>
             )}
-            {tokenChip && (
+            {tokenChip && !accountFell && (
               <span className={cn(
                 "inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide flex-shrink-0",
                 tokenChip.color
@@ -247,19 +263,21 @@ function AccountCard({
                 {tokenChip.label}
               </span>
             )}
-            <span className={cn(
-              "inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide flex-shrink-0",
-              account.is_active
-                ? "bg-emerald-500/15 text-emerald-400"
-                : "bg-white/[0.05] text-white/20"
-            )}>
-              <span className={cn("w-1.5 h-1.5 rounded-full", account.is_active ? "bg-emerald-400" : "bg-white/20")} />
-              {account.is_active ? "ATIVA" : "INATIVA"}
-            </span>
-            {accountFell && (
-              <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide bg-red-500/15 text-red-400 border border-red-500/25 flex-shrink-0">
-                <AlertTriangle size={8} className="flex-shrink-0" />
-                {account.health_status === "blocked" ? "BLOQUEADA" : "CONTA CAIU"}
+            {/* Badge de status: esconde "ATIVA" e mostra "DESCONECTADA" quando conta caiu */}
+            {accountFell ? (
+              <span className="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide bg-red-500/20 text-red-400 border border-red-500/30 flex-shrink-0 animate-pulse">
+                <WifiOff size={8} className="flex-shrink-0" />
+                {account.health_status === "blocked" ? "BLOQUEADA" : "DESCONECTADA"}
+              </span>
+            ) : (
+              <span className={cn(
+                "inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide flex-shrink-0",
+                account.is_active
+                  ? "bg-emerald-500/15 text-emerald-400"
+                  : "bg-white/[0.05] text-white/20"
+              )}>
+                <span className={cn("w-1.5 h-1.5 rounded-full", account.is_active ? "bg-emerald-400" : "bg-white/20")} />
+                {account.is_active ? "ATIVA" : "INATIVA"}
               </span>
             )}
           </div>
@@ -322,40 +340,65 @@ function AccountCard({
         </div>
       </div>
 
-      <div className="h-px bg-white/[0.05] mx-5" />
+      <div className={cn("h-px mx-5", accountFell ? "bg-red-500/15" : "bg-white/[0.05]")} />
 
-      {/* Métricas */}
-      <div className="flex items-center gap-3.5 px-5 py-3 overflow-x-auto no-scrollbar">
-        <Metric icon={<Users size={11} />} label={`${formatNumber(account.followers_count)} seg.`} muted={account.followers_count == null} />
-        <Metric icon={<FileText size={11} />} label={`${account.posts_count ?? "—"} posts`} muted={account.posts_count == null} />
-        <Metric icon={<Clock size={11} />} label={account.last_post_at ? timeAgo(account.last_post_at) : "—"} muted={!account.last_post_at} />
-        <Metric
-          icon={<span className={cn(
-            "w-1.5 h-1.5 rounded-full inline-block flex-shrink-0",
-            accountFell ? "bg-red-500" :
-            account.profile_refreshed_at ? "bg-emerald-400" : "bg-white/20"
-          )} />}
-          label={
-            account.health_status === "error" ? "token inválido — reconectar" :
-            account.health_status === "blocked" ? "conta bloqueada pela Meta" :
-            account.profile_refreshed_at ? `online ${timeAgo(account.profile_refreshed_at)}` : "não atualizado"
-          }
-          red={accountFell}
-          muted={!accountFell && !account.profile_refreshed_at}
-        />
-        {isMetaConnected && storiesData !== undefined && (
-          <Metric
-            icon={<Clapperboard size={11} />}
-            label={
-              storiesData.count > 0
-                ? `${storiesData.count} ${storiesData.count === 1 ? "story" : "stories"} · expira em ${storyCountdown(storiesData.expiring_first_at)}`
-                : "0 stories ativos"
+      {accountFell ? (
+        /* ── Banner de conta desconectada ── */
+        <div className="px-5 py-4 space-y-3">
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-red-500/[0.08] border border-red-500/20">
+            <WifiOff size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-red-400 uppercase tracking-wide">
+                {account.health_status === "blocked"
+                  ? "Conta bloqueada pela Meta"
+                  : "Token inválido — sessão encerrada"}
+              </p>
+              <p className="text-[11px] text-red-400/60 mt-0.5 leading-relaxed">
+                {account.health_status === "blocked"
+                  ? "Sua conta foi bloqueada pela Meta. Acesse o Instagram e siga as instruções de recuperação."
+                  : "A sessão desta conta expirou ou a senha foi alterada. Reconecte para voltar a publicar."}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => { onRefreshToken(account.id); }}
+            disabled={tokenRefreshing}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs font-bold uppercase tracking-wide hover:bg-red-500/25 hover:border-red-500/50 transition-all disabled:opacity-50"
+          >
+            {tokenRefreshing
+              ? <><Loader2 size={12} className="animate-spin" /> Reconectando...</>
+              : <><LinkIcon size={12} /> Reconectar Instagram</>
             }
-            amber={storiesData.count > 0}
-            muted={storiesData.count === 0}
+          </button>
+        </div>
+      ) : (
+        /* ── Métricas normais ── */
+        <div className="flex items-center gap-3.5 px-5 py-3 overflow-x-auto no-scrollbar">
+          <Metric icon={<Users size={11} />} label={`${formatNumber(account.followers_count)} seg.`} muted={account.followers_count == null} />
+          <Metric icon={<FileText size={11} />} label={`${account.posts_count ?? "—"} posts`} muted={account.posts_count == null} />
+          <Metric icon={<Clock size={11} />} label={account.last_post_at ? timeAgo(account.last_post_at) : "—"} muted={!account.last_post_at} />
+          <Metric
+            icon={<span className={cn(
+              "w-1.5 h-1.5 rounded-full inline-block flex-shrink-0",
+              account.profile_refreshed_at ? "bg-emerald-400" : "bg-white/20"
+            )} />}
+            label={account.profile_refreshed_at ? `sincronizado ${timeAgo(account.profile_refreshed_at)}` : "não sincronizado"}
+            muted={!account.profile_refreshed_at}
           />
-        )}
-      </div>
+          {isMetaConnected && storiesData !== undefined && (
+            <Metric
+              icon={<Clapperboard size={11} />}
+              label={
+                storiesData.count > 0
+                  ? `${storiesData.count} ${storiesData.count === 1 ? "story" : "stories"} · expira em ${storyCountdown(storiesData.expiring_first_at)}`
+                  : "0 stories ativos"
+              }
+              amber={storiesData.count > 0}
+              muted={storiesData.count === 0}
+            />
+          )}
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -407,6 +450,7 @@ export default function AccountsPage() {
   const _refreshingRef = useRef<string | null>(null);
   const _tokenRefreshingRef = useRef<string | null>(null);
   const _autoRefreshDone = useRef(false);
+  const _autoSyncDone = useRef(false);
 
   const fetchUserApps = useCallback(async () => {
     try {
@@ -514,6 +558,21 @@ export default function AccountsPage() {
       }
     });
   }, [fetchAccounts, fetchStories, fetchUserApps]);
+
+  // Auto-sync Meta stats once on page load (background — shows fresh followers/posts)
+  useEffect(() => {
+    if (_autoSyncDone.current) return;
+    _autoSyncDone.current = true;
+    fetch("/api/accounts/sync-all", { method: "POST" })
+      .then((r) => r.json())
+      .then((data: { synced?: number; errors?: number; token_errors?: number }) => {
+        if ((data.synced ?? 0) > 0 || (data.token_errors ?? 0) > 0) {
+          fetchAccounts();
+          fetchStories();
+        }
+      })
+      .catch(() => {/* silent */});
+  }, [fetchAccounts, fetchStories]);
 
   const handleRefresh = useCallback(async (id: string) => {
     if (_refreshingRef.current) return;
