@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Users,
   Loader2,
@@ -17,6 +18,7 @@ import {
   Eye,
   PauseCircle,
   MessageSquare,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -207,9 +209,100 @@ export default function AdminUsersPage() {
   }
 
   const pendingCount = users.filter((u) => u.account_status === "pending").length;
+  const [accountsModal, setAccountsModal] = useState<AdminUser | null>(null);
 
   return (
     <div className="space-y-6">
+      {/* Modal: contas do usuário */}
+      <AnimatePresence>
+        {accountsModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm"
+            onClick={() => setAccountsModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              transition={{ type: "spring", duration: 0.3 }}
+              onClick={(e) => e.stopPropagation()}
+              className="glass w-full max-w-md rounded-2xl p-6 space-y-4 border border-white/10"
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-[#00E5FF]/10 border border-[#00E5FF]/20 flex items-center justify-center flex-shrink-0">
+                    <Instagram size={16} className="text-[#00E5FF]" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-white">Contas Conectadas</h3>
+                    <p className="text-xs text-white/40 truncate">{accountsModal.email}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setAccountsModal(null)}
+                  className="w-7 h-7 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors flex-shrink-0"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+
+              {/* Accounts list */}
+              {accountsModal.accounts.length === 0 ? (
+                <p className="text-sm text-white/30 text-center py-6">
+                  Nenhuma conta conectada
+                </p>
+              ) : (
+                <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
+                  {accountsModal.accounts.map((acc) => (
+                    <div
+                      key={acc.username}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2.5 rounded-xl border",
+                        acc.is_active
+                          ? "bg-[#00E5FF]/[0.05] border-[#00E5FF]/15"
+                          : "bg-white/[0.03] border-white/[0.07]"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-7 h-7 rounded-full border flex items-center justify-center flex-shrink-0",
+                        acc.is_active
+                          ? "bg-pink-500/10 border-pink-500/20"
+                          : "bg-white/5 border-white/10"
+                      )}>
+                        <Instagram size={13} className={acc.is_active ? "text-pink-400" : "text-white/30"} />
+                      </div>
+                      <span className={cn(
+                        "text-sm font-medium flex-1",
+                        acc.is_active ? "text-white/85" : "text-white/35"
+                      )}>
+                        @{acc.username}
+                      </span>
+                      <span className={cn(
+                        "text-[10px] font-medium rounded-full border px-2 py-0.5 flex-shrink-0",
+                        acc.is_active
+                          ? "text-[#00E5FF] border-[#00E5FF]/20 bg-[#00E5FF]/10"
+                          : "text-white/30 border-white/10 bg-white/5"
+                      )}>
+                        {acc.is_active ? "Ativa" : "Inativa"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Footer count */}
+              <p className="text-xs text-white/25 text-right pt-1 border-t border-white/[0.06]">
+                {accountsModal.accounts.length} {accountsModal.accounts.length === 1 ? "conta" : "contas"} no total
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
@@ -342,24 +435,15 @@ export default function AdminUsersPage() {
                     {/* Accounts */}
                     <td className="px-4 py-3">
                       {u.accounts.length === 0 ? (
-                        <span className="text-white/20 text-xs">—</span>
+                        <span className="text-white/20 text-xs">0 contas</span>
                       ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {u.accounts.map((acc) => (
-                            <span
-                              key={acc.username}
-                              className={cn(
-                                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs",
-                                acc.is_active
-                                  ? "bg-[#00E5FF]/10 text-[#00E5FF] border-[#00E5FF]/20"
-                                  : "bg-white/5 text-white/30 border-white/10"
-                              )}
-                            >
-                              <Instagram className="w-3 h-3" />
-                              {acc.username}
-                            </span>
-                          ))}
-                        </div>
+                        <button
+                          onClick={() => setAccountsModal(u)}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.07] px-3 py-1.5 text-xs font-medium text-[#00E5FF] hover:bg-[#00E5FF]/15 transition-all"
+                        >
+                          <Instagram className="w-3 h-3" />
+                          Ver {u.accounts.length} {u.accounts.length === 1 ? "conta" : "contas"}
+                        </button>
                       )}
                     </td>
 
