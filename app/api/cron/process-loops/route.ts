@@ -35,13 +35,13 @@ interface LoopRow {
   is_infinite: boolean;
   cycles: number;
   cycles_done: number;
+  current_cycle: number;
   interval_minutes: number;
   media_limit: number | null;
   captions: string[];
   effect_mirror: boolean;
   effect_invert: boolean;
   last_posted_at: string | null;
-  last_media_index: number;
   loop_accounts: LoopAccountRow[];
 }
 
@@ -140,7 +140,7 @@ async function containerAlreadyExists(
     .select("id")
     .eq("loop_id", loopId)
     .eq("account_id", accountId)
-    .neq("status", "error")          // erros não bloqueiam retry
+    .neq("status", "error")
     .gte("created_at", windowStartIso)
     .limit(1)
     .maybeSingle();
@@ -159,7 +159,9 @@ async function createContainerForAccount(
   loop: LoopRow,
   videoUrl: string,
   caption: string,
-  tokenToUse: string
+  tokenToUse: string,
+  videoId: string,
+  cycleNumber: number
 ): Promise<void> {
   const creationId = await createMediaContainerOnly(
     account.ig_business_account_id!,
@@ -167,7 +169,6 @@ async function createContainerForAccount(
     caption,
     tokenToUse
   );
-  // Persiste IMEDIATAMENTE — não aguarda outras contas
   const { error } = await (admin as any).from("pending_containers").insert({
     user_id: loop.user_id,
     loop_id: loop.id,
@@ -175,6 +176,8 @@ async function createContainerForAccount(
     ig_business_account_id: account.ig_business_account_id,
     creation_id: creationId,
     caption,
+    video_id: videoId,
+    cycle_number: cycleNumber,
   });
   if (error) throw new Error(`Falha ao salvar container no banco: ${error.message}`);
   console.log(`[loop-cron] ✓ @${account.username} → container ${creationId} persistido.`);
@@ -182,7 +185,6 @@ async function createContainerForAccount(
 
 // ---------------------------------------------------------------------------
 // Registra container de erro em pending_containers para rastreabilidade.
-// creation_id vazio é sentinel — o publish-pending ignora status=error.
 // ---------------------------------------------------------------------------
 
 async function recordContainerError(
@@ -190,23 +192,26 @@ async function recordContainerError(
   account: AccountRow,
   loop: LoopRow,
   caption: string,
-  errorMsg: string
+  errorMsg: string,
+  videoId: string,
+  cycleNumber: number
 ): Promise<void> {
   await (admin as any).from("pending_containers").insert({
     user_id: loop.user_id,
     loop_id: loop.id,
     account_id: account.id,
     ig_business_account_id: account.ig_business_account_id ?? "",
-    creation_id: "",     // sentinel — erro antes de chegar na Meta
+    creation_id: "",
     caption,
     status: "error",
     error_message: errorMsg.slice(0, 500),
+    video_id: videoId,
+    cycle_number: cycleNumber,
   }).catch(() => {/* best-effort */});
 }
 
 // ---------------------------------------------------------------------------
 // Tenta failover para conta de backup quando a principal tem token inválido.
-// Registra evento em failover_logs.
 // ---------------------------------------------------------------------------
 
 async function attemptFailover(
@@ -216,15 +221,15 @@ async function attemptFailover(
   videoUrl: string,
   caption: string,
   errorMsg: string,
-  windowStartIso: string
+  windowStartIso: string,
+  videoId: string,
+  cycleNumber: number
 ): Promise<boolean> {
-  // Marca conta principal como erro
   await (admin as any)
     .from("instagram_accounts")
     .update({ health_status: "error" })
     .eq("id", failedAccount.id);
 
-  // Busca melhor conta de backup (online, maior prioridade)
   const { data: backups } = await (admin as any)
     .from("instagram_accounts")
     .select("id, username, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, is_active")
@@ -249,7 +254,6 @@ async function attemptFailover(
     return false;
   }
 
-  // Checa idempotência também para o backup
   const backupExists = await containerAlreadyExists(
     admin, loop.id, backup.id, windowStartIso
   );
@@ -266,13 +270,15 @@ async function attemptFailover(
       loop,
       videoUrl,
       caption,
-      backup.meta_access_token
+      backup.meta_access_token,
+      videoId,
+      cycleNumber
     );
     return true;
   } catch (backupErr) {
     const msg = backupErr instanceof Error ? backupErr.message : String(backupErr);
     console.error(`[loop-cron] ✗ @${backup.username} (failover):`, msg);
-    await recordContainerError(admin, backup, loop, caption, msg);
+    await recordContainerError(admin, backup, loop, caption, msg, videoId, cycleNumber);
     return false;
   }
 }
@@ -298,9 +304,9 @@ export async function GET(req: NextRequest) {
   const { data: loopRows, error: fetchErr } = await (admin as any)
     .from("loops")
     .select(`
-      id, user_id, name, folder_id, is_infinite, cycles, cycles_done,
+      id, user_id, name, folder_id, is_infinite, cycles, cycles_done, current_cycle,
       interval_minutes, media_limit, captions, effect_mirror, effect_invert,
-      last_posted_at, last_media_index,
+      last_posted_at,
       loop_accounts (
         account_id,
         instagram_accounts (
@@ -319,7 +325,6 @@ export async function GET(req: NextRequest) {
 
   const loops = (loopRows ?? []) as LoopRow[];
 
-  // Fetch human schedule settings for all users
   const distinctUserIds = [...new Set(loops.map(l => l.user_id))];
   let scheduleMap = new Map<string, HumanScheduleRow>();
 
@@ -334,7 +339,6 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Filter loops whose interval has elapsed
   const eligible = loops.filter((loop) => {
     if (!loop.last_posted_at) return true;
     const nextRun = new Date(loop.last_posted_at).getTime() + loop.interval_minutes * 60_000;
@@ -379,24 +383,72 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
-    let videoQuery = (admin as any)
+    // ── Seleção de vídeo com filtro de histórico (anti-repetição) ────────────
+    //
+    // Busca TODOS os vídeos da pasta ordenados por data de criação.
+    // Não usa media_limit como LIMIT SQL — media_limit é um stop condition,
+    // não um tamanho de pool. Usar como LIMIT causava o bug de repetição:
+    // com media_limit=5 a query retornava sempre os mesmos 5 vídeos.
+    const { data: allVideoRows, error: videoErr } = await (admin as any)
       .from("videos_library")
       .select("id, public_url, filename")
       .eq("folder_id", loop.folder_id)
       .order("created_at", { ascending: true });
-    if (loop.media_limit) videoQuery = videoQuery.limit(loop.media_limit);
-    const { data: videoRows, error: videoErr } = await videoQuery;
 
-    if (videoErr || !videoRows?.length) {
+    if (videoErr || !allVideoRows?.length) {
       console.warn(`[loop-cron] "${loop.name}" sem vídeos na pasta — pulando.`);
       summary.skipped++;
       continue;
     }
 
-    const videos = videoRows as VideoRow[];
-    const mediaIndex = (loop.last_media_index ?? 0) % videos.length;
-    const selectedVideo = videos[mediaIndex];
-    const nextMediaIndex = (mediaIndex + 1) % videos.length;
+    const allVideos = allVideoRows as VideoRow[];
+
+    // Busca IDs de vídeos já postados neste ciclo (erros não contam)
+    const { data: postedRows } = await (admin as any)
+      .from("pending_containers")
+      .select("video_id")
+      .eq("loop_id", loop.id)
+      .eq("cycle_number", loop.current_cycle)
+      .neq("status", "error")
+      .not("video_id", "is", null);
+
+    const postedVideoIds = new Set<string>(
+      (postedRows ?? []).map((r: { video_id: string }) => r.video_id)
+    );
+
+    // Filtra para apenas os vídeos ainda não postados neste ciclo
+    let unpostedVideos = allVideos.filter(v => !postedVideoIds.has(v.id));
+    let cycleForInsert = loop.current_cycle;
+
+    if (unpostedVideos.length === 0) {
+      if (loop.is_infinite) {
+        // Todos os vídeos do folder foram postados → avança o ciclo e recomeça
+        cycleForInsert = loop.current_cycle + 1;
+        await (admin as any)
+          .from("loops")
+          .update({ current_cycle: cycleForInsert })
+          .eq("id", loop.id);
+        unpostedVideos = allVideos;
+        console.log(
+          `[loop-cron] "${loop.name}" — pasta completa (${allVideos.length} vídeos), ` +
+          `reiniciando ciclo infinito ${cycleForInsert}.`
+        );
+      } else {
+        // Loop finito: encerra após esgotar todo o conteúdo
+        await (admin as any)
+          .from("loops")
+          .update({ status: "completed" })
+          .eq("id", loop.id);
+        console.log(
+          `[loop-cron] "${loop.name}" — todos os ${allVideos.length} vídeos postados, loop finalizado.`
+        );
+        summary.skipped++;
+        continue;
+      }
+    }
+
+    // Próximo vídeo inédito (primeiro da lista filtrada, mantida em ordem de created_at)
+    const selectedVideo = unpostedVideos[0];
 
     const caption =
       loop.captions.length > 0
@@ -410,33 +462,38 @@ export async function GET(req: NextRequest) {
     );
 
     // ── CLAIM: avança estado do loop ANTES de processar contas ───────────────
-    // Isso garante que, mesmo em caso de timeout, o próximo cron não veja este
-    // loop como elegível e não reprocesse as contas desde o início.
     const newCyclesDone = loop.cycles_done + 1;
-    const isComplete = !loop.is_infinite && newCyclesDone >= loop.cycles;
+    // Stop condition: ciclos máximos atingidos (para loops finitos)
+    const cyclesExhausted = !loop.is_infinite && newCyclesDone >= loop.cycles;
+    // Stop condition: media_limit como máximo de execuções do cron
+    const mediaLimitReached =
+      !loop.is_infinite &&
+      loop.media_limit !== null &&
+      loop.media_limit !== undefined &&
+      newCyclesDone >= loop.media_limit;
+    const isComplete = cyclesExhausted || mediaLimitReached;
 
     await (admin as any).from("loops").update({
       last_posted_at: now.toISOString(),
-      last_media_index: nextMediaIndex,
       cycles_done: newCyclesDone,
       ...(isComplete ? { status: "completed" } : {}),
     }).eq("id", loop.id);
 
     if (isComplete) {
       console.log(
-        `[loop-cron] "${loop.name}" completou ${newCyclesDone}/${loop.cycles} ciclo(s) → completed.`
+        `[loop-cron] "${loop.name}" atingiu o limite de execuções ` +
+        `(${newCyclesDone}/${loop.cycles}) → completed.`
       );
     }
 
-    // Janela de idempotência: containers criados dentro do último intervalo
-    // (ex.: loop de 30 min → ignora containers > 30 min atrás)
     const windowStartIso = new Date(
       now.getTime() - loop.interval_minutes * 60_000
     ).toISOString();
 
     console.log(
-      `[loop-cron] "${loop.name}" → vídeo [${mediaIndex}] "${selectedVideo.filename}" ` +
-      `para ${validAccounts.length} conta(s). Janela: ${windowStartIso}`
+      `[loop-cron] "${loop.name}" → vídeo "${selectedVideo.filename}" ` +
+      `(${postedVideoIds.size + 1}/${allVideos.length} neste ciclo ${cycleForInsert}) ` +
+      `para ${validAccounts.length} conta(s).`
     );
 
     let containersCreated = 0;
@@ -448,8 +505,6 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // ── IDEMPOTÊNCIA: verifica se container já foi criado neste ciclo ──────
-      // Protege contra execuções paralelas ou re-tentativas após timeout parcial.
       const alreadyDone = await containerAlreadyExists(
         admin, loop.id, account.id, windowStartIso
       );
@@ -459,11 +514,9 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // ── Processa conta individualmente — erro NÃO aborta o loop ─────────────
       try {
         let tokenToUse = account.meta_access_token;
 
-        // Refresh preventivo se token expira em < 7 dias
         if (isTokenExpiringSoon(account.token_expires_at, 7)) {
           try {
             const { token, expiresAt } = await refreshMetaToken(
@@ -480,25 +533,28 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // COMMIT PARCIAL: persiste container antes de avançar para a próxima conta
-        await createContainerForAccount(admin, account, loop, videoUrl, caption, tokenToUse);
+        await createContainerForAccount(
+          admin, account, loop, videoUrl, caption, tokenToUse,
+          selectedVideo.id, cycleForInsert
+        );
         containersCreated++;
 
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[loop-cron] ✗ @${account.username}:`, msg);
 
-        // Registra erro para rastreabilidade (não bloqueia as próximas contas)
-        await recordContainerError(admin, account, loop, caption, msg);
+        await recordContainerError(
+          admin, account, loop, caption, msg,
+          selectedVideo.id, cycleForInsert
+        );
 
         if (isCriticalMetaError(msg)) {
-          // Token inválido → tenta failover; outras contas CONTINUAM normalmente
           const failoverOk = await attemptFailover(
-            admin, account, loop, videoUrl, caption, msg, windowStartIso
+            admin, account, loop, videoUrl, caption, msg, windowStartIso,
+            selectedVideo.id, cycleForInsert
           );
           if (failoverOk) containersCreated++;
         }
-        // Não faz break — próxima conta do array é processada independentemente
       }
     }
 
