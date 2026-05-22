@@ -26,6 +26,7 @@ interface ScheduleBody {
   captions: string[];
   start_datetime: string;
   interval_minutes: number;
+  batch_size?: number;
 }
 
 export async function POST(req: NextRequest) {
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const body = await req.json() as ScheduleBody;
-  const { account_ids, video_ids, folder_id, captions, start_datetime, interval_minutes } = body;
+  const { account_ids, video_ids, folder_id, captions, start_datetime, interval_minutes, batch_size } = body;
 
   // ── Validações ────────────────────────────────────────────────────────────
   if (!account_ids?.length)
@@ -89,31 +90,33 @@ export async function POST(req: NextRequest) {
 
   // ── Algoritmo de distribuição anti-spam ───────────────────────────────────
   //
-  // Regra crítica: no mesmo horário (mesmo slot), cada conta recebe
-  // um vídeo DIFERENTE. Nunca há repetição de vídeo no mesmo minuto.
+  // batch_size = quantos vídeos por disparo (slot).
+  // Regra crítica: no mesmo slot, cada vídeo vai para uma conta diferente
+  // — nunca duas contas recebem o mesmo vídeo no mesmo minuto.
   //
   // Implementação:
   //   1. Fisher-Yates no pool inteiro (um único shuffle)
-  //   2. Iterar slots; para cada slot, pop `accounts.length` vídeos
-  //   3. Cada conta recebe o próximo vídeo do pool → garantia de unicidade
+  //   2. Embaralha as contas uma vez (ordem rotativa por slot)
+  //   3. Para cada slot: pop `batchSlotSize` vídeos do pool
+  //      → distribui round-robin entre as contas (uma por uma)
   //   4. Legenda aleatória independente por post
-  //   5. Parar quando o pool esgota (não desperdiça vídeos)
+  //   5. Para quando o pool esgota
 
+  const effectiveBatch = Math.max(1, Math.floor(batch_size ?? account_ids.length));
   const shuffledVideos = shuffle(videos);
+  const shuffledAccounts = shuffle([...account_ids]);
   const posts: Record<string, unknown>[] = [];
   let ptr = 0;
   let slotIndex = 0;
+  let accountOffset = 0;
 
   while (ptr < shuffledVideos.length) {
     const slotTime = new Date(startMs + slotIndex * intervalMs).toISOString();
+    const batchSlotSize = Math.min(effectiveBatch, shuffledVideos.length - ptr);
 
-    // Embaralha a ordem das contas dentro do slot para variação extra
-    const slotAccounts = shuffle(account_ids);
-
-    for (const accountId of slotAccounts) {
-      if (ptr >= shuffledVideos.length) break;
-
+    for (let i = 0; i < batchSlotSize; i++) {
       const video = shuffledVideos[ptr++];
+      const accountId = shuffledAccounts[(accountOffset + i) % shuffledAccounts.length];
       const caption = validCaptions[Math.floor(Math.random() * validCaptions.length)];
 
       posts.push({
@@ -127,6 +130,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Avança o offset para o próximo slot (rotação justa entre contas)
+    accountOffset = (accountOffset + batchSlotSize) % shuffledAccounts.length;
     slotIndex++;
   }
 

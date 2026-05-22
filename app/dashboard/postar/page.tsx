@@ -43,6 +43,8 @@ const INTERVAL_PRESETS = [
   { label: "24h", minutes: 1440 },
 ];
 
+const BATCH_PRESETS = [1, 3, 5, 10, 20];
+
 const MAX_CAPTION_CHARS = 2200;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -264,42 +266,39 @@ function VideoPickerModal({
 function CampaignPreview({
   totalVideos,
   totalAccounts,
+  batchSize,
   intervalMinutes,
   startDatetime,
   captionCount,
 }: {
   totalVideos: number;
   totalAccounts: number;
+  batchSize: number;
   intervalMinutes: number;
   startDatetime: string;
   captionCount: number;
 }) {
-  const slots = totalAccounts > 0 && totalVideos > 0
-    ? Math.ceil(totalVideos / totalAccounts)
-    : 0;
+  const effectiveBatch = Math.max(1, batchSize);
+  const slots = totalVideos > 0 ? Math.ceil(totalVideos / effectiveBatch) : 0;
 
   const lastSlot = slots > 0 && startDatetime
     ? computeLastSlot(startDatetime, intervalMinutes, slots)
     : null;
 
-  const totalPosts = totalVideos;
-
-  // Generate preview of first 5 slots
   const previewSlots = useMemo(() => {
-    if (!startDatetime || slots === 0 || totalAccounts === 0) return [];
+    if (!startDatetime || slots === 0) return [];
     const preview = [];
     for (let i = 0; i < Math.min(4, slots); i++) {
       const t = new Date(new Date(startDatetime).getTime() + i * intervalMinutes * 60_000);
+      const remaining = totalVideos - i * effectiveBatch;
       preview.push({
         time: t.toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }),
-        count: i === slots - 1
-          ? totalVideos - i * totalAccounts
-          : totalAccounts,
+        count: Math.min(effectiveBatch, remaining),
       });
     }
     if (slots > 4) preview.push({ time: "...", count: 0 });
     return preview;
-  }, [startDatetime, slots, totalAccounts, intervalMinutes, totalVideos]);
+  }, [startDatetime, slots, effectiveBatch, intervalMinutes, totalVideos]);
 
   const isReady = totalVideos > 0 && totalAccounts > 0 && startDatetime;
 
@@ -321,8 +320,8 @@ function CampaignPreview({
             {[
               { label: "Vídeos", value: totalVideos, color: "text-[#00FF41]" },
               { label: "Contas", value: totalAccounts, color: "text-[#00E5FF]" },
-              { label: "Slots", value: slots, color: "text-white" },
-              { label: "Posts Total", value: totalPosts, color: "text-white" },
+              { label: "Por Lote", value: effectiveBatch, color: "text-white" },
+              { label: "Disparos", value: slots, color: "text-white" },
               { label: "Legendas", value: captionCount, color: "text-white/60" },
               { label: "Intervalo", value: `${intervalMinutes}min`, color: "text-white/60" },
             ].map(({ label, value, color }) => (
@@ -351,11 +350,11 @@ function CampaignPreview({
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#00FF41]/5 border border-[#00FF41]/20">
             <Shuffle size={12} className="text-[#00FF41] flex-shrink-0" />
             <p className="text-[10px] text-[#00FF41]/80">
-              Anti-spam ativo — vídeos diferentes por conta em cada slot
+              Anti-spam ativo — vídeos diferentes por conta em cada disparo
             </p>
           </div>
 
-          {/* Slot preview */}
+          {/* Slot preview timeline */}
           {previewSlots.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-[10px] text-white/25 uppercase tracking-wider">Timeline</p>
@@ -367,14 +366,14 @@ function CampaignPreview({
                       <div className="flex-1 h-[3px] rounded-full bg-white/[0.05] overflow-hidden">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-[#00FF41]/60 to-[#00E5FF]/60"
-                          style={{ width: `${Math.round((s.count / totalAccounts) * 100)}%` }}
+                          style={{ width: `${Math.round((s.count / effectiveBatch) * 100)}%` }}
                         />
                       </div>
-                      <span className="text-white/30 text-[10px] w-16 text-right">{s.count} post{s.count !== 1 ? "s" : ""}</span>
+                      <span className="text-white/30 text-[10px] w-16 text-right">{s.count} vídeo{s.count !== 1 ? "s" : ""}</span>
                     </>
                   ) : (
-                    <span className="text-white/15 text-[10px] pl-0">
-                      + {slots - 4} slots restantes...
+                    <span className="text-white/15 text-[10px]">
+                      + {slots - 4} disparos restantes...
                     </span>
                   )}
                 </div>
@@ -513,6 +512,7 @@ export default function PostarPage() {
   // ── Schedule ──────────────────────────────────────────────────
   const [startDatetime, setStartDatetime] = useState("");
   const [intervalMinutes, setIntervalMinutes] = useState(60);
+  const [batchSize, setBatchSize] = useState(1);
 
   // ── Captions ──────────────────────────────────────────────────
   const [captions, setCaptions] = useState<string[]>(["", ""]);
@@ -615,6 +615,7 @@ export default function PostarPage() {
         captions: validCaptions,
         start_datetime: new Date(startDatetime).toISOString(),
         interval_minutes: intervalMinutes,
+        batch_size: Math.max(1, batchSize),
       };
 
       if (mediaMode === "videos") {
@@ -661,6 +662,7 @@ export default function PostarPage() {
     setFolderVideoCount(0);
     setStartDatetime("");
     setIntervalMinutes(60);
+    setBatchSize(1);
     setCaptions(["", ""]);
     setMediaMode("videos");
   };
@@ -938,20 +940,65 @@ export default function PostarPage() {
           <SectionCard>
             <SectionLabel Icon={CalendarDays}>Distribuição de Tempo</SectionLabel>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
+
+              {/* ① Tamanho do Lote */}
               <div>
-                <label className="block text-xs text-white/35 mb-2">Data e Hora de Início</label>
-                <input
-                  type="datetime-local"
-                  value={startDatetime}
-                  min={minDatetime}
-                  onChange={e => setStartDatetime(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all [color-scheme:dark]"
-                />
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-5 h-5 rounded-full bg-[#00FF41]/15 text-[#00FF41] text-[10px] font-bold flex items-center justify-center flex-shrink-0">1</span>
+                  <label className="text-xs text-white/60 font-medium">Vídeos por disparo (tamanho do lote)</label>
+                </div>
+
+                {/* Stepper */}
+                <div className="flex items-center gap-4 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setBatchSize(v => Math.max(1, v - 1))}
+                    className="w-10 h-10 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:bg-white/[0.1] hover:text-white transition-all flex items-center justify-center text-lg font-light select-none"
+                  >
+                    −
+                  </button>
+                  <div className="flex-1 text-center">
+                    <span className="text-[#00FF41] font-mono text-3xl font-bold">{batchSize}</span>
+                    <p className="text-white/25 text-[10px] mt-0.5">vídeo{batchSize !== 1 ? "s" : ""} por disparo</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBatchSize(v => Math.min(100, v + 1))}
+                    className="w-10 h-10 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:bg-white/[0.1] hover:text-white transition-all flex items-center justify-center text-lg font-light select-none"
+                  >
+                    +
+                  </button>
+                </div>
+
+                {/* Presets */}
+                <div className="flex gap-2">
+                  {BATCH_PRESETS.map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setBatchSize(v)}
+                      className={cn(
+                        "flex-1 py-1.5 rounded-lg text-xs font-mono transition-all",
+                        batchSize === v
+                          ? "bg-[#00FF41]/15 text-[#00FF41] border border-[#00FF41]/30"
+                          : "bg-white/[0.04] text-white/35 border border-white/[0.07] hover:border-white/20 hover:text-white/60"
+                      )}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
               </div>
 
+              {/* Divider */}
+              <div className="border-t border-white/[0.06]" />
+
+              {/* ② Intervalo */}
               <div>
-                <label className="block text-xs text-white/35 mb-2">Intervalo entre Slots</label>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-5 h-5 rounded-full bg-[#00E5FF]/15 text-[#00E5FF] text-[10px] font-bold flex items-center justify-center flex-shrink-0">2</span>
+                  <label className="text-xs text-white/60 font-medium">A cada quanto tempo (intervalo entre disparos)</label>
+                </div>
                 <div className="flex flex-wrap gap-1.5 mb-3">
                   {INTERVAL_PRESETS.map(p => (
                     <button
@@ -960,7 +1007,7 @@ export default function PostarPage() {
                       className={cn(
                         "px-3 py-1 rounded-lg text-xs font-mono transition-all",
                         intervalMinutes === p.minutes
-                          ? "bg-[#00FF41]/15 text-[#00FF41] border border-[#00FF41]/30"
+                          ? "bg-[#00E5FF]/15 text-[#00E5FF] border border-[#00E5FF]/30"
                           : "bg-white/[0.04] text-white/40 border border-white/[0.07] hover:border-white/20 hover:text-white/60"
                       )}
                     >
@@ -975,7 +1022,7 @@ export default function PostarPage() {
                     min={1}
                     max={43200}
                     onChange={e => setIntervalMinutes(Math.max(1, Number(e.target.value)))}
-                    className="w-24 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm text-center focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="w-24 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm text-center focus:outline-none focus:border-[#00E5FF]/40 focus:ring-1 focus:ring-[#00E5FF]/20 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <span className="text-white/35 text-sm">minutos</span>
                   {intervalMinutes >= 60 && (
@@ -985,6 +1032,57 @@ export default function PostarPage() {
                   )}
                 </div>
               </div>
+
+              {/* Divider */}
+              <div className="border-t border-white/[0.06]" />
+
+              {/* ③ Data de início */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-5 h-5 rounded-full bg-white/10 text-white/50 text-[10px] font-bold flex items-center justify-center flex-shrink-0">3</span>
+                  <label className="text-xs text-white/60 font-medium">Começando quando (data e hora de início)</label>
+                </div>
+                <input
+                  type="datetime-local"
+                  value={startDatetime}
+                  min={minDatetime}
+                  onChange={e => setStartDatetime(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all [color-scheme:dark]"
+                />
+              </div>
+
+              {/* Dynamic summary */}
+              <AnimatePresence>
+                {totalVideos > 0 && startDatetime && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.2 }}
+                    className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.07]"
+                  >
+                    {(() => {
+                      const effectiveBatch = Math.max(1, batchSize);
+                      const slots = Math.ceil(totalVideos / effectiveBatch);
+                      const lastMs = new Date(startDatetime).getTime() + (slots - 1) * intervalMinutes * 60_000;
+                      const fmt = (iso: string) => new Date(iso).toLocaleString("pt-BR", {
+                        day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
+                      });
+                      const lastIso = new Date(lastMs).toISOString();
+                      return (
+                        <p className="text-xs text-white/55 leading-relaxed">
+                          <span className="text-[#00FF41] font-semibold">{totalVideos}</span> vídeo{totalVideos !== 1 ? "s" : ""} dividido{totalVideos !== 1 ? "s" : ""} em{" "}
+                          <span className="text-white font-semibold">{slots}</span> lote{slots !== 1 ? "s" : ""} de{" "}
+                          <span className="text-[#00E5FF] font-semibold">{effectiveBatch}</span> vídeo{effectiveBatch !== 1 ? "s" : ""}.{" "}
+                          Primeiro disparo: <span className="text-white/80">{fmt(startDatetime)}</span>
+                          {slots > 1 && <> · Último: <span className="text-white/80">{fmt(lastIso)}</span></>}.
+                        </p>
+                      );
+                    })()}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
             </div>
           </SectionCard>
 
@@ -1040,6 +1138,7 @@ export default function PostarPage() {
           <CampaignPreview
             totalVideos={totalVideos}
             totalAccounts={totalAccounts}
+            batchSize={batchSize}
             intervalMinutes={intervalMinutes}
             startDatetime={startDatetime}
             captionCount={validCaptions.length}
