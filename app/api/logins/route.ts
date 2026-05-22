@@ -5,6 +5,8 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 // GET — list all logins for the authenticated user (RLS ensures isolation)
+// Enriches each login with `is_connected: boolean` by cross-referencing
+// instagram_accounts (same user_id + username, active token, not expired).
 export async function GET() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ logins: [] });
@@ -14,14 +16,37 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const { data, error } = await supabase
-    .from("account_logins")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+  const [loginsResult, accountsResult] = await Promise.all([
+    supabase
+      .from("account_logins")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("instagram_accounts")
+      .select("username, meta_access_token, token_expires_at, is_active")
+      .eq("user_id", user.id),
+  ]);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ logins: data ?? [] });
+  if (loginsResult.error) return NextResponse.json({ error: loginsResult.error.message }, { status: 500 });
+
+  const now = Date.now();
+  const connectedSet = new Set<string>(
+    (accountsResult.data ?? [])
+      .filter((a) =>
+        a.is_active &&
+        a.meta_access_token &&
+        (a.token_expires_at == null || new Date(a.token_expires_at).getTime() > now),
+      )
+      .map((a) => (a.username as string).toLowerCase()),
+  );
+
+  const logins = (loginsResult.data ?? []).map((l) => ({
+    ...l,
+    is_connected: connectedSet.has((l.username as string).toLowerCase()),
+  }));
+
+  return NextResponse.json({ logins });
 }
 
 // POST — create a new login entry

@@ -18,6 +18,7 @@ type Login = {
   two_factor_key: string | null;
   created_at: string;
   updated_at: string;
+  is_connected: boolean;
 };
 
 type FormData = {
@@ -143,9 +144,37 @@ function LoginCard({
             <Lock size={14} style={{ color: "var(--matrix)" }} />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-white/90 leading-tight truncate">
-              {login.profile_name}
-            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-semibold text-white/90 leading-tight truncate">
+                {login.profile_name}
+              </p>
+              {login.is_connected ? (
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
+                  style={{
+                    background: "rgba(0,255,65,0.1)",
+                    border: "0.5px solid rgba(0,255,65,0.35)",
+                    color: "var(--matrix)",
+                    boxShadow: "0 0 8px rgba(0,255,65,0.12)",
+                  }}
+                >
+                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--matrix)", display: "inline-block", flexShrink: 0 }} />
+                  Conectada
+                </span>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    border: "0.5px solid rgba(255,255,255,0.12)",
+                    color: "rgba(255,255,255,0.35)",
+                  }}
+                >
+                  <span style={{ width: 5, height: 5, borderRadius: "50%", background: "rgba(255,255,255,0.25)", display: "inline-block", flexShrink: 0 }} />
+                  Pendente
+                </span>
+              )}
+            </div>
             <p className="text-[10px] text-white/28 leading-tight mt-0.5">
               {fmtDate(login.updated_at)}
             </p>
