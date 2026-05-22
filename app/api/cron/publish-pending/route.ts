@@ -144,7 +144,7 @@ export async function GET(req: NextRequest) {
 
       await (admin as any)
         .from("pending_containers")
-        .update({ status: "published" })
+        .update({ status: "published", media_id: mediaId })
         .eq("id", container.id);
 
       summary.published++;

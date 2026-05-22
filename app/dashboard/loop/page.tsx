@@ -7,6 +7,7 @@ import {
   Folder, Users, Clock, Infinity, Hash, Type,
   ImageIcon, FlipHorizontal, Contrast, Check,
   Loader2, AlertCircle, ChevronDown, Info, Film, AlertTriangle,
+  BarChart2, Heart, MessageCircle, Eye, Crown, TrendingUp, ChevronUp,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -80,7 +81,43 @@ const DEFAULT_FORM: FormData = {
   effectInvert: false,
 };
 
+// ── Analytics types ───────────────────────────────────────────
+
+interface LoopAnalytics {
+  loop: { id: string; name: string; cycles_done: number; created_at: string };
+  progress: {
+    total_videos: number;
+    published: number;
+    errors: number;
+    pending: number;
+    remaining: number;
+  };
+  engagement: {
+    total_likes: number;
+    total_comments: number;
+    total_plays: number;
+    total_reach: number;
+  };
+  account_ranking: Array<{
+    account_id: string;
+    username: string;
+    avatar_url: string | null;
+    followers_count: number | null;
+    posts_count: number;
+    total_likes: number;
+    total_comments: number;
+    total_plays: number;
+    engagement_score: number;
+  }>;
+}
+
 // ── Helpers ───────────────────────────────────────────────────
+
+function formatNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
 
 function formatInterval(m: number): string {
   if (m < 60) return `${m} min`;
@@ -122,6 +159,215 @@ function SectionLabel({ icon: Icon, label }: { icon: React.ElementType; label: s
   );
 }
 
+// ── LoopAnalyticsPanel ────────────────────────────────────────
+
+function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
+  const [data, setData] = useState<LoopAnalytics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/loops/${loopId}/analytics`)
+      .then(r => r.json())
+      .then((d: LoopAnalytics & { error?: string }) => {
+        if (d.error) { setError(d.error); return; }
+        setData(d);
+      })
+      .catch(() => setError("Falha ao carregar analytics."))
+      .finally(() => setLoading(false));
+  }, [loopId]);
+
+  if (loading) {
+    return (
+      <div className="pt-3 space-y-3 animate-pulse">
+        <div className="h-2 bg-white/[0.05] rounded-full w-full" />
+        <div className="h-2 bg-white/[0.04] rounded-full w-3/4" />
+        <div className="grid grid-cols-3 gap-2">
+          {[1,2,3].map(i => <div key={i} className="h-10 bg-white/[0.04] rounded-xl" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="pt-3 text-center py-4">
+        <p className="text-xs text-white/25">{error ?? "Nenhum dado ainda."}</p>
+        <p className="text-[11px] text-white/15 mt-1">Os dados aparecem após a primeira publicação.</p>
+      </div>
+    );
+  }
+
+  const { progress, engagement, account_ranking } = data;
+  const totalTracked = progress.total_videos || 1;
+  const publishedPct = Math.min(100, (progress.published / totalTracked) * 100);
+  const errorPct     = Math.min(100, (progress.errors    / totalTracked) * 100);
+
+  const proxyImg = (url: string) => `/api/proxy-image?url=${encodeURIComponent(url)}`;
+
+  return (
+    <div className="pt-3 space-y-4">
+
+      {/* ── Barra de progresso ── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-[10px]">
+          <span className="text-white/40 font-medium uppercase tracking-wide">Progresso da Fila</span>
+          <span className="text-white/35">{progress.published}/{progress.total_videos} vídeos</span>
+        </div>
+        {/* Barra segmentada */}
+        <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden flex">
+          {publishedPct > 0 && (
+            <div
+              className="h-full bg-emerald-500 transition-all duration-700"
+              style={{ width: `${publishedPct}%` }}
+            />
+          )}
+          {errorPct > 0 && (
+            <div
+              className="h-full bg-red-500/70 transition-all duration-700"
+              style={{ width: `${errorPct}%` }}
+            />
+          )}
+        </div>
+        {/* Badges */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            {progress.published} publicado{progress.published !== 1 ? "s" : ""}
+          </span>
+          {progress.errors > 0 && (
+            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+              {progress.errors} erro{progress.errors !== 1 ? "s" : ""}
+            </span>
+          )}
+          {progress.pending > 0 && (
+            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              {progress.pending} em fila
+            </span>
+          )}
+          {progress.remaining > 0 && (
+            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-white/[0.05] text-white/30">
+              <span className="w-1.5 h-1.5 rounded-full bg-white/20" />
+              {progress.remaining} restante{progress.remaining !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Engajamento total ── */}
+      {(engagement.total_plays > 0 || engagement.total_likes > 0 || engagement.total_comments > 0) ? (
+        <div className="grid grid-cols-3 gap-2">
+          <div className="flex flex-col items-center gap-0.5 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+            <Eye size={12} className="text-cyan-400/70" />
+            <span className="text-sm font-bold text-white/80">{formatNumber(engagement.total_plays)}</span>
+            <span className="text-[9px] text-white/25 uppercase tracking-wide">Views</span>
+          </div>
+          <div className="flex flex-col items-center gap-0.5 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+            <Heart size={12} className="text-pink-400/70" />
+            <span className="text-sm font-bold text-white/80">{formatNumber(engagement.total_likes)}</span>
+            <span className="text-[9px] text-white/25 uppercase tracking-wide">Curtidas</span>
+          </div>
+          <div className="flex flex-col items-center gap-0.5 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+            <MessageCircle size={12} className="text-violet-400/70" />
+            <span className="text-sm font-bold text-white/80">{formatNumber(engagement.total_comments)}</span>
+            <span className="text-[9px] text-white/25 uppercase tracking-wide">Comentários</span>
+          </div>
+        </div>
+      ) : (
+        progress.published > 0 && (
+          <p className="text-[11px] text-white/20 text-center py-1">
+            Insights ainda sendo coletados da Meta API…
+          </p>
+        )
+      )}
+
+      {/* ── Ranking de contas ── */}
+      {account_ranking.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 text-[10px] text-white/30 uppercase tracking-wide mb-2">
+            <TrendingUp size={10} />
+            Ranking de Engajamento
+          </div>
+          {account_ranking.slice(0, 3).map((acc, idx) => {
+            const isChampion = idx === 0 && acc.engagement_score > 0;
+            const engagementLabel =
+              acc.engagement_score > 0
+                ? `${formatNumber(acc.engagement_score)} pts`
+                : `${acc.posts_count} post${acc.posts_count !== 1 ? "s" : ""}`;
+
+            return (
+              <div
+                key={acc.account_id}
+                className={cn(
+                  "flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all",
+                  isChampion
+                    ? "bg-amber-500/[0.06] border-amber-500/20"
+                    : "bg-white/[0.02] border-white/[0.05]"
+                )}
+              >
+                {/* Rank number */}
+                <span className={cn(
+                  "text-[10px] font-bold w-4 flex-shrink-0 text-center",
+                  isChampion ? "text-amber-400" : "text-white/25"
+                )}>
+                  {isChampion ? <Crown size={12} className="text-amber-400" /> : `#${idx + 1}`}
+                </span>
+
+                {/* Avatar */}
+                {acc.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={proxyImg(acc.avatar_url)}
+                    alt={acc.username}
+                    className={cn(
+                      "w-6 h-6 rounded-full object-cover flex-shrink-0",
+                      isChampion ? "ring-1 ring-amber-400/50" : "ring-1 ring-white/10"
+                    )}
+                  />
+                ) : (
+                  <div className={cn(
+                    "w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0",
+                    isChampion
+                      ? "bg-gradient-to-br from-amber-400 to-orange-500"
+                      : "bg-gradient-to-br from-violet-500 to-cyan-500"
+                  )}>
+                    {acc.username.charAt(0).toUpperCase()}
+                  </div>
+                )}
+
+                {/* Username + followers */}
+                <div className="flex-1 min-w-0">
+                  <p className={cn(
+                    "text-xs font-semibold truncate",
+                    isChampion ? "text-amber-300" : "text-white/70"
+                  )}>
+                    @{acc.username}
+                  </p>
+                  {acc.followers_count != null && acc.followers_count > 0 && (
+                    <p className="text-[9px] text-white/20">
+                      {formatNumber(acc.followers_count)} seguidores
+                    </p>
+                  )}
+                </div>
+
+                {/* Score */}
+                <span className={cn(
+                  "text-[10px] font-bold flex-shrink-0",
+                  isChampion ? "text-amber-400" : "text-white/35"
+                )}>
+                  {engagementLabel}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── LoopCard ──────────────────────────────────────────────────
 
 function LoopCard({
@@ -135,6 +381,7 @@ function LoopCard({
   onEdit: (loop: Loop) => void;
   onDelete: (loop: Loop) => void;
 }) {
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const accounts = loop.loop_accounts?.map(la => la.instagram_accounts).filter(Boolean) as Account[] ?? [];
   const isActive = loop.status === "active";
 
@@ -231,6 +478,22 @@ function LoopCard({
         </div>
       )}
 
+      {/* Analytics expandable panel */}
+      <AnimatePresence initial={false}>
+        {analyticsOpen && (
+          <motion.div
+            key="analytics"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.22, ease: "easeInOut" }}
+            className="overflow-hidden border-t border-white/[0.05]"
+          >
+            <LoopAnalyticsPanel loopId={loop.id} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1 border-t border-white/[0.05]">
         <button
@@ -251,6 +514,20 @@ function LoopCard({
         >
           <Edit3 size={11} />
           Editar
+        </button>
+        {/* Analytics toggle */}
+        <button
+          onClick={() => setAnalyticsOpen(o => !o)}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150",
+            analyticsOpen
+              ? "bg-violet-600/15 text-violet-300 border border-violet-500/25"
+              : "text-white/35 hover:text-violet-400 hover:bg-violet-600/10"
+          )}
+        >
+          <BarChart2 size={11} />
+          Analytics
+          {analyticsOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
         </button>
         <button
           onClick={() => onDelete(loop)}
