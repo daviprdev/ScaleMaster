@@ -234,7 +234,7 @@ export async function GET(
   }
 
   const ranking = Array.from(accMap.values())
-    .sort((a, b) => b.engagement_score - a.engagement_score);
+    .sort((a, b) => b.total_plays - a.total_plays);
 
   return NextResponse.json({
     loop: {

@@ -288,14 +288,13 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
         <div className="space-y-1.5">
           <div className="flex items-center gap-1.5 text-[10px] text-white/30 uppercase tracking-wide mb-2">
             <TrendingUp size={10} />
-            Ranking de Engajamento
+            Ranking de Views
           </div>
           {account_ranking.slice(0, 3).map((acc, idx) => {
-            const isChampion = idx === 0 && acc.engagement_score > 0;
-            const engagementLabel =
-              acc.engagement_score > 0
-                ? `${formatNumber(acc.engagement_score)} pts`
-                : `${acc.posts_count} post${acc.posts_count !== 1 ? "s" : ""}`;
+            const isChampion = idx === 0 && acc.total_plays > 0;
+            const engagementLabel = acc.total_plays > 0
+              ? `${formatNumber(acc.total_plays)} views`
+              : `${acc.posts_count} post${acc.posts_count !== 1 ? "s" : ""}`;
 
             return (
               <div
