@@ -68,24 +68,11 @@ export async function PATCH(
       return NextResponse.json({ error: "Status inválido" }, { status: 400 });
     }
 
-    // .update().select() lets us detect 0 rows affected (row missing = silent failure).
-    // If the trigger that creates the user_roles row on sign-up hasn't run for this user,
-    // we fall back to an explicit insert to guarantee persistence.
-    const { data: updated, error: updateError } = await admin
+    const { error: upsertError } = await admin
       .from("user_roles")
-      .update({ account_status } as never)
-      .eq("user_id", userId)
-      .select("user_id");
+      .upsert({ user_id: userId, account_status } as never, { onConflict: "user_id" });
 
-    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
-
-    if (!updated || updated.length === 0) {
-      // Row didn't exist — insert it preserving a safe default for role.
-      const { error: insertError } = await admin
-        .from("user_roles")
-        .insert({ user_id: userId, account_status, role: "user" } as never);
-      if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
-    }
+    if (upsertError) return NextResponse.json({ error: upsertError.message }, { status: 500 });
 
     if (account_status === "approved") {
       await logAudit({ action: "user_approved", actorId: user.id, actorEmail: user.email, targetId: userId, targetEmail });
