@@ -48,7 +48,7 @@ interface LoopRow {
 interface HumanScheduleRow {
   user_id: string;
   is_active: boolean;
-  start_time: string; // "HH:MM:SS"
+  start_time: string;
   end_time: string;
   timezone: string;
 }
@@ -116,7 +116,6 @@ async function processVideoEffects(
   effectInvert: boolean
 ): Promise<string> {
   if (!effectMirror && !effectInvert) return videoUrl;
-  // TODO: enqueue to dedicated video-processing worker and await processed URL.
   console.warn(
     `[loop-cron] Efeitos solicitados (mirror=${effectMirror}, invert=${effectInvert}) — ` +
     `worker de vídeo não configurado, usando URL original como passthrough.`
@@ -125,8 +124,33 @@ async function processVideoEffects(
 }
 
 // ---------------------------------------------------------------------------
-// Cria container para uma conta e registra em pending_containers
-// Retorna true se o container foi criado com sucesso
+// Idempotency check — verifica se já existe container válido para esta
+// conta neste ciclo (janela = interval_minutes, ignora status=error).
+// Protege contra re-tentativas que resultariam em posts duplicados.
+// ---------------------------------------------------------------------------
+
+async function containerAlreadyExists(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  loopId: string,
+  accountId: string,
+  windowStartIso: string
+): Promise<boolean> {
+  const { data } = await (admin as any)
+    .from("pending_containers")
+    .select("id")
+    .eq("loop_id", loopId)
+    .eq("account_id", accountId)
+    .neq("status", "error")          // erros não bloqueiam retry
+    .gte("created_at", windowStartIso)
+    .limit(1)
+    .maybeSingle();
+  return data !== null;
+}
+
+// ---------------------------------------------------------------------------
+// Cria container para uma conta, persiste em pending_containers e retorna.
+// Commit parcial: INSERT acontece ANTES de avançar para a próxima conta —
+// garante que um timeout não apague o progresso já feito.
 // ---------------------------------------------------------------------------
 
 async function createContainerForAccount(
@@ -136,13 +160,14 @@ async function createContainerForAccount(
   videoUrl: string,
   caption: string,
   tokenToUse: string
-): Promise<boolean> {
+): Promise<void> {
   const creationId = await createMediaContainerOnly(
     account.ig_business_account_id!,
     videoUrl,
     caption,
     tokenToUse
   );
+  // Persiste IMEDIATAMENTE — não aguarda outras contas
   const { error } = await (admin as any).from("pending_containers").insert({
     user_id: loop.user_id,
     loop_id: loop.id,
@@ -152,8 +177,104 @@ async function createContainerForAccount(
     caption,
   });
   if (error) throw new Error(`Falha ao salvar container no banco: ${error.message}`);
-  console.log(`[loop-cron] ✓ @${account.username} → container ${creationId} criado (aguardando processamento Meta).`);
-  return true;
+  console.log(`[loop-cron] ✓ @${account.username} → container ${creationId} persistido.`);
+}
+
+// ---------------------------------------------------------------------------
+// Registra container de erro em pending_containers para rastreabilidade.
+// creation_id vazio é sentinel — o publish-pending ignora status=error.
+// ---------------------------------------------------------------------------
+
+async function recordContainerError(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  account: AccountRow,
+  loop: LoopRow,
+  caption: string,
+  errorMsg: string
+): Promise<void> {
+  await (admin as any).from("pending_containers").insert({
+    user_id: loop.user_id,
+    loop_id: loop.id,
+    account_id: account.id,
+    ig_business_account_id: account.ig_business_account_id ?? "",
+    creation_id: "",     // sentinel — erro antes de chegar na Meta
+    caption,
+    status: "error",
+    error_message: errorMsg.slice(0, 500),
+  }).catch(() => {/* best-effort */});
+}
+
+// ---------------------------------------------------------------------------
+// Tenta failover para conta de backup quando a principal tem token inválido.
+// Registra evento em failover_logs.
+// ---------------------------------------------------------------------------
+
+async function attemptFailover(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  failedAccount: AccountRow,
+  loop: LoopRow,
+  videoUrl: string,
+  caption: string,
+  errorMsg: string,
+  windowStartIso: string
+): Promise<boolean> {
+  // Marca conta principal como erro
+  await (admin as any)
+    .from("instagram_accounts")
+    .update({ health_status: "error" })
+    .eq("id", failedAccount.id);
+
+  // Busca melhor conta de backup (online, maior prioridade)
+  const { data: backups } = await (admin as any)
+    .from("instagram_accounts")
+    .select("id, username, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, is_active")
+    .eq("user_id", loop.user_id)
+    .eq("is_active", true)
+    .eq("health_status", "online")
+    .neq("id", failedAccount.id)
+    .order("failover_priority", { ascending: true })
+    .limit(1);
+
+  const backup = backups?.[0] ?? null;
+
+  await (admin as any).from("failover_logs").insert({
+    user_id: loop.user_id,
+    failed_account_id: failedAccount.id,
+    backup_account_id: backup?.id ?? null,
+    error_reason: errorMsg.slice(0, 500),
+  }).catch(() => {/* best-effort */});
+
+  if (!backup?.meta_access_token || !backup?.ig_business_account_id) {
+    console.warn(`[loop-cron] Sem conta de backup para "${loop.name}".`);
+    return false;
+  }
+
+  // Checa idempotência também para o backup
+  const backupExists = await containerAlreadyExists(
+    admin, loop.id, backup.id, windowStartIso
+  );
+  if (backupExists) {
+    console.log(`[loop-cron] ⚡ @${backup.username} (backup): container já existe — idempotente.`);
+    return true;
+  }
+
+  console.log(`[loop-cron] Failover → @${backup.username}.`);
+  try {
+    await createContainerForAccount(
+      admin,
+      { ...backup, is_active: true },
+      loop,
+      videoUrl,
+      caption,
+      backup.meta_access_token
+    );
+    return true;
+  } catch (backupErr) {
+    const msg = backupErr instanceof Error ? backupErr.message : String(backupErr);
+    console.error(`[loop-cron] ✗ @${backup.username} (failover):`, msg);
+    await recordContainerError(admin, backup, loop, caption, msg);
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -198,7 +319,7 @@ export async function GET(req: NextRequest) {
 
   const loops = (loopRows ?? []) as LoopRow[];
 
-  // Fetch human schedule settings
+  // Fetch human schedule settings for all users
   const distinctUserIds = [...new Set(loops.map(l => l.user_id))];
   let scheduleMap = new Map<string, HumanScheduleRow>();
 
@@ -213,7 +334,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Filter to loops whose interval has elapsed
+  // Filter loops whose interval has elapsed
   const eligible = loops.filter((loop) => {
     if (!loop.last_posted_at) return true;
     const nextRun = new Date(loop.last_posted_at).getTime() + loop.interval_minutes * 60_000;
@@ -225,25 +346,23 @@ export async function GET(req: NextRequest) {
   const summary = { total: eligible.length, processed: 0, skipped: 0, errors: 0 };
 
   for (const loop of eligible) {
-    // Human schedule check
+    // ── Human schedule check ─────────────────────────────────────────────────
     const schedule = scheduleMap.get(loop.user_id);
     if (schedule?.is_active) {
       const allowed = isWithinHumanSchedule(
-        now,
-        schedule.timezone,
-        schedule.start_time,
-        schedule.end_time
+        now, schedule.timezone, schedule.start_time, schedule.end_time
       );
       if (!allowed) {
         console.log(
           `[loop-cron] "${loop.name}" bloqueado pelo Horário Humano ` +
-          `(fora de ${schedule.start_time}–${schedule.end_time} em ${schedule.timezone}).`
+          `(fora de ${schedule.start_time}–${schedule.end_time}).`
         );
         summary.skipped++;
         continue;
       }
     }
 
+    // ── Validações básicas ───────────────────────────────────────────────────
     const validAccounts = loop.loop_accounts
       .map((la) => la.instagram_accounts)
       .filter((acc): acc is AccountRow => acc !== null && acc.is_active);
@@ -255,7 +374,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (!loop.folder_id) {
-      console.warn(`[loop-cron] "${loop.name}" sem pasta de biblioteca vinculada — pulando.`);
+      console.warn(`[loop-cron] "${loop.name}" sem pasta — pulando.`);
       summary.skipped++;
       continue;
     }
@@ -290,23 +409,61 @@ export async function GET(req: NextRequest) {
       loop.effect_invert
     );
 
+    // ── CLAIM: avança estado do loop ANTES de processar contas ───────────────
+    // Isso garante que, mesmo em caso de timeout, o próximo cron não veja este
+    // loop como elegível e não reprocesse as contas desde o início.
+    const newCyclesDone = loop.cycles_done + 1;
+    const isComplete = !loop.is_infinite && newCyclesDone >= loop.cycles;
+
+    await (admin as any).from("loops").update({
+      last_posted_at: now.toISOString(),
+      last_media_index: nextMediaIndex,
+      cycles_done: newCyclesDone,
+      ...(isComplete ? { status: "completed" } : {}),
+    }).eq("id", loop.id);
+
+    if (isComplete) {
+      console.log(
+        `[loop-cron] "${loop.name}" completou ${newCyclesDone}/${loop.cycles} ciclo(s) → completed.`
+      );
+    }
+
+    // Janela de idempotência: containers criados dentro do último intervalo
+    // (ex.: loop de 30 min → ignora containers > 30 min atrás)
+    const windowStartIso = new Date(
+      now.getTime() - loop.interval_minutes * 60_000
+    ).toISOString();
+
     console.log(
-      `[loop-cron] "${loop.name}" → vídeo [${mediaIndex}/${videos.length - 1}] ` +
-      `"${selectedVideo.filename}" para ${validAccounts.length} conta(s).`
+      `[loop-cron] "${loop.name}" → vídeo [${mediaIndex}] "${selectedVideo.filename}" ` +
+      `para ${validAccounts.length} conta(s). Janela: ${windowStartIso}`
     );
 
     let containersCreated = 0;
 
+    // ── Iteração por conta — cada conta é independente ───────────────────────
     for (const account of validAccounts) {
       if (!account.meta_access_token || !account.ig_business_account_id) {
-        console.warn(`[loop-cron] @${account.username} sem credenciais Meta — pulando conta.`);
+        console.warn(`[loop-cron] @${account.username} sem credenciais Meta — pulando.`);
         continue;
       }
 
+      // ── IDEMPOTÊNCIA: verifica se container já foi criado neste ciclo ──────
+      // Protege contra execuções paralelas ou re-tentativas após timeout parcial.
+      const alreadyDone = await containerAlreadyExists(
+        admin, loop.id, account.id, windowStartIso
+      );
+      if (alreadyDone) {
+        console.log(`[loop-cron] ⚡ @${account.username}: container já existe neste ciclo — pulando.`);
+        containersCreated++;
+        continue;
+      }
+
+      // ── Processa conta individualmente — erro NÃO aborta o loop ─────────────
       try {
         let tokenToUse = account.meta_access_token;
 
-        // Preventive token refresh if expiring within 7 days
+        // Refresh preventivo se token expira em < 7 dias
         if (isTokenExpiringSoon(account.token_expires_at, 7)) {
           try {
             const { token, expiresAt } = await refreshMetaToken(
@@ -323,6 +480,7 @@ export async function GET(req: NextRequest) {
           }
         }
 
+        // COMMIT PARCIAL: persiste container antes de avançar para a próxima conta
         await createContainerForAccount(admin, account, loop, videoUrl, caption, tokenToUse);
         containersCreated++;
 
@@ -330,72 +488,19 @@ export async function GET(req: NextRequest) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[loop-cron] ✗ @${account.username}:`, msg);
 
+        // Registra erro para rastreabilidade (não bloqueia as próximas contas)
+        await recordContainerError(admin, account, loop, caption, msg);
+
         if (isCriticalMetaError(msg)) {
-          await (admin as any)
-            .from("instagram_accounts")
-            .update({ health_status: "error" })
-            .eq("id", account.id);
-
-          const { data: backups } = await (admin as any)
-            .from("instagram_accounts")
-            .select("id, username, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id")
-            .eq("user_id", loop.user_id)
-            .eq("is_active", true)
-            .eq("health_status", "online")
-            .neq("id", account.id)
-            .order("failover_priority", { ascending: true })
-            .limit(1);
-
-          const backup = backups?.[0] ?? null;
-
-          await (admin as any).from("failover_logs").insert({
-            user_id: loop.user_id,
-            failed_account_id: account.id,
-            backup_account_id: backup?.id ?? null,
-            error_reason: msg,
-          });
-
-          if (backup?.meta_access_token && backup?.ig_business_account_id) {
-            console.log(`[loop-cron] Failover: tentando @${backup.username} como reserva.`);
-            try {
-              await createContainerForAccount(
-                admin,
-                { ...backup, is_active: true },
-                loop,
-                videoUrl,
-                caption,
-                backup.meta_access_token
-              );
-              containersCreated++;
-            } catch (backupErr) {
-              const backupMsg = backupErr instanceof Error ? backupErr.message : String(backupErr);
-              console.error(`[loop-cron] ✗ @${backup.username} (failover):`, backupMsg);
-            }
-          } else {
-            console.warn(`[loop-cron] Sem conta de backup disponível para o loop "${loop.name}".`);
-          }
+          // Token inválido → tenta failover; outras contas CONTINUAM normalmente
+          const failoverOk = await attemptFailover(
+            admin, account, loop, videoUrl, caption, msg, windowStartIso
+          );
+          if (failoverOk) containersCreated++;
         }
+        // Não faz break — próxima conta do array é processada independentemente
       }
     }
-
-    // Advance loop state regardless of publish outcome — prevents double-firing
-    const newCyclesDone = loop.cycles_done + 1;
-    const isComplete = !loop.is_infinite && newCyclesDone >= loop.cycles;
-
-    const updatePayload: Record<string, unknown> = {
-      last_posted_at: now.toISOString(),
-      last_media_index: nextMediaIndex,
-      cycles_done: newCyclesDone,
-    };
-
-    if (isComplete) {
-      updatePayload.status = "completed";
-      console.log(
-        `[loop-cron] "${loop.name}" completou ${newCyclesDone}/${loop.cycles} ciclo(s) — status → completed.`
-      );
-    }
-
-    await (admin as any).from("loops").update(updatePayload).eq("id", loop.id);
 
     if (containersCreated > 0) summary.processed++;
     else summary.errors++;
