@@ -1641,3 +1641,39 @@ const params = new URLSearchParams({ grant_type, client_secret, access_token });
 fetchWithTimeout(`${GRAPH_IG}/access_token?${params.toString()}`);
 ```
 `exchangeCode` e `getIGProfile` não foram alterados (já estavam corretos).
+
+---
+
+### ✅ Deep Error Logging — Meta Graph API (2026-05-21)
+**Commit:** `feat: surface detailed Meta Graph API error messages to frontend`
+
+#### Problema
+A 8ª conta falhou ao conectar com uma rejeição contextual da Meta (rate limit, Dev Mode limit ou outro). O sistema mascarava o erro real com mensagens genéricas como "Erro ao processar a conexão." ou classificava qualquer `error_type` como "conta pessoal", impedindo o diagnóstico.
+
+#### Mudanças no backend (`app/api/instagram/callback/route.ts`)
+
+**Helper `metaErrorDetail`** — formata `[fn] Type (#code): message` de forma consistente para todos os pontos de falha.
+
+**`exchangeCode`** — classificação refinada:
+- `code 4 ou 17` → `isRateLimit: true`
+- mensagem com "permission"/"business"/"professional"/"creator" → `isPersonalAccount: true`
+- qualquer outro erro → `server_error` com detalhe completo da Meta
+- Antes: qualquer `error_type` disparava "conta pessoal" (falso positivo para Dev Mode limit, invalid app, etc.)
+
+**`getLongLivedToken`** — tipo expandido para incluir `type` e `fbtrace_id`; detecção de rate limit via JSON body (Meta retorna HTTP 200 com `error.code 4/17/32`, não HTTP 429).
+
+**`getIGProfile`** — mesmo padrão: rate limit / account type / genérico; antes jogava "conta pessoal" para qualquer `OAuthException`.
+
+**`redirectWithError`** — slice de `detail` aumentado de 200 → 500 chars para comportar mensagens longas da Meta.
+
+#### Mudanças no frontend (`app/dashboard/accounts/page.tsx`)
+- `server_error` base: `"Erro ao processar a conexão."` → `"Erro retornado pela Meta API:"`
+- Detalhe passa de `"${base} Detalhe: ${detail}"` para `"${base}\n${detail}"` com `whitespace-pre-line` no span
+- Resultado visual:
+  ```
+  Erro retornado pela Meta API:
+  [getLongLivedToken] OAuthException (#17): User request limit reached
+  ```
+
+#### Lição aprendida
+A Meta retorna rate limit e outros erros contextuais como HTTP 200 com payload `{ error: { code, type, message } }`. Verificar apenas o status HTTP é insuficiente — sempre ler e logar o corpo JSON completo.
