@@ -119,21 +119,11 @@ export async function POST(req: NextRequest) {
 
   const uniqueTokens = [...new Set(tokens)];
 
-  // Modo mock — sem tokens Apify configirados
   if (uniqueTokens.length === 0) {
-    const now = new Date().toISOString();
-    const mockStats = {
-      followers_count: Math.floor(Math.random() * 80_000) + 500,
-      posts_count: Math.floor(Math.random() * 400) + 5,
-      last_post_at: new Date(
-        Date.now() - Math.floor(Math.random() * 5) * 24 * 60 * 60 * 1000
-      ).toISOString(),
-      // Stories não suportados pelo actor atual (requer autenticação + ator dedicado)
-      has_active_stories: null as boolean | null,
-      profile_refreshed_at: now,
-    };
-    await admin.from("instagram_accounts").update(mockStats).eq("id", accountId);
-    return NextResponse.json({ success: true, stats: mockStats, mock: true });
+    return NextResponse.json(
+      { error: "APIFY_API_TOKEN não configurado. Adicione a variável de ambiente e faça um novo deploy." },
+      { status: 503 }
+    );
   }
 
   let lastError = "Erro desconhecido";

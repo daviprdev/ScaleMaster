@@ -1,119 +1,119 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ApifyClient } from "apify-client";
 
-export const maxDuration = 60;
+export const runtime = "nodejs";
+export const maxDuration = 120;
 
-const APIFY_TOKEN = process.env.APIFY_API_TOKEN ?? "";
-const ACTOR_ID = "apify~instagram-reel-scraper";
+const ACTOR_ID = "apify/instagram-scraper";
+
+function isQuotaError(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return (
+    m.includes("limit exceeded") ||
+    m.includes("usage") ||
+    m.includes("quota") ||
+    m.includes("rate limit") ||
+    m.includes("429") ||
+    m.includes("401") ||
+    m.includes("403") ||
+    m.includes("unauthorized") ||
+    m.includes("authentication") ||
+    m.includes("forbidden") ||
+    m.includes("not found or authentication")
+  );
+}
+
+const resolveVideoUrl = (item: Record<string, unknown>): string =>
+  (item.videoUrl as string | undefined) ||
+  (item.video_url as string | undefined) ||
+  (item.videoPlayUrl as string | undefined) ||
+  (item.playVideoUrl as string | undefined) ||
+  "";
+
+async function scrapeReels(
+  token: string,
+  username: string,
+  limit: number
+): Promise<Array<Record<string, unknown>>> {
+  const client = new ApifyClient({ token });
+
+  const run = await client.actor(ACTOR_ID).call({
+    directUrls: [`https://www.instagram.com/${username}/reels/`],
+    resultsType: "posts",
+    maxRequestsPerCrawl: Math.min(limit, 30),
+  });
+
+  if (run.status !== "SUCCEEDED") {
+    throw new Error(`Actor encerrou com status inesperado: ${run.status}`);
+  }
+
+  const { items } = await client.dataset(run.defaultDatasetId).listItems();
+
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  return items
+    .filter((item) => item.type === "Video" || resolveVideoUrl(item as Record<string, unknown>))
+    .map((item, i) => {
+      const videoUrl = resolveVideoUrl(item as Record<string, unknown>);
+      if (i === 0) {
+        console.log(`[apify/scrape] @${username} first videoUrl: ${videoUrl.slice(0, 70) || "(empty)"}…`);
+      }
+      return {
+        id: String(item.id ?? item.shortCode ?? i),
+        shortCode: String(item.shortCode ?? ""),
+        thumbnailUrl: (item.displayUrl ?? item.thumbnailUrl ?? null) as string | null,
+        videoUrl,
+        caption: String(item.caption ?? "").slice(0, 120),
+        views: Number(item.videoViewCount ?? 0),
+        likes: Number(item.likesCount ?? 0),
+        comments: Number(item.commentsCount ?? 0),
+        duration: Number(item.videoDuration ?? 0),
+        owner: String(item.ownerUsername ?? username),
+      };
+    });
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { username, limit = 20 } = body as { username: string; limit?: number };
 
   if (!username) {
+    return NextResponse.json({ error: "O campo 'username' é obrigatório." }, { status: 400 });
+  }
+
+  const tokens = [
+    ...(process.env.APIFY_API_TOKENS?.split(",") ?? []),
+    ...(process.env.APIFY_API_TOKEN?.split(",") ?? []),
+  ].map((t) => t.trim()).filter(Boolean);
+
+  const uniqueTokens = [...new Set(tokens)];
+
+  if (uniqueTokens.length === 0) {
     return NextResponse.json(
-      { error: "O campo 'username' é obrigatório." },
-      { status: 400 }
+      { error: "APIFY_API_TOKEN não configurado. Adicione a variável de ambiente e faça um novo deploy." },
+      { status: 503 }
     );
   }
 
-  if (!APIFY_TOKEN) {
-    return NextResponse.json({ reels: getMockReels(username) });
-  }
+  let lastError = "Erro desconhecido";
 
-  try {
-    // Dispara o Actor com waitForFinish — elimina polling manual
-    const runRes = await fetch(
-      `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_TOKEN}&waitForFinish=55`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          directUrls: [`https://www.instagram.com/${username}/reels/`],
-          resultsLimit: Math.min(limit, 30),
-        }),
+  for (const token of uniqueTokens) {
+    try {
+      const reels = await scrapeReels(token, username, limit);
+      return NextResponse.json({ reels });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isQuotaError(msg)) {
+        console.warn(`[apify/scrape] Token ...${token.slice(-6)} esgotado: ${msg}`);
+        lastError = msg;
+        continue;
       }
-    );
-
-    if (!runRes.ok) {
-      const errBody = await runRes.json().catch(() => ({})) as { error?: { message?: string } };
-      throw new Error(
-        errBody?.error?.message ?? `Apify respondeu com status ${runRes.status}`
-      );
+      return NextResponse.json({ error: msg }, { status: 500 });
     }
-
-    const runData = await runRes.json() as {
-      data: { status: string; defaultDatasetId: string };
-    };
-    const { status, defaultDatasetId } = runData.data;
-
-    if (status !== "SUCCEEDED") {
-      throw new Error(`O Actor encerrou com status inesperado: ${status}`);
-    }
-
-    // Busca os itens do dataset pelo ID retornado no run
-    const datasetRes = await fetch(
-      `https://api.apify.com/v2/datasets/${defaultDatasetId}/items?token=${APIFY_TOKEN}&clean=true`
-    );
-
-    if (!datasetRes.ok) {
-      throw new Error("Erro ao buscar os resultados do dataset Apify.");
-    }
-
-    const items = await datasetRes.json() as Record<string, unknown>[];
-
-    if (!Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ reels: [] });
-    }
-
-    const reels = items
-      .filter((item) => item.videoUrl)
-      .map((item) => ({
-        id: (item.id ?? item.shortCode) as string,
-        shortCode: item.shortCode as string,
-        thumbnailUrl: (item.displayUrl ?? item.thumbnailUrl ?? null) as string | null,
-        videoUrl: item.videoUrl as string,
-        caption: ((item.caption as string) ?? "").slice(0, 120),
-        views: (item.videoViewCount as number) ?? 0,
-        likes: (item.likesCount as number) ?? 0,
-        comments: (item.commentsCount as number) ?? 0,
-        duration: (item.videoDuration as number) ?? 0,
-        owner: (item.ownerUsername as string) ?? username,
-      }));
-
-    return NextResponse.json({ reels });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Erro desconhecido";
-    return NextResponse.json({ error: message }, { status: 500 });
   }
-}
 
-function getMockReels(username: string) {
-  return Array.from({ length: 12 }, (_, i) => ({
-    id: `mock_${i}`,
-    shortCode: `ABC${i}XYZ`,
-    thumbnailUrl: null,
-    videoUrl: `https://example.com/video_${i}.mp4`,
-    caption: `Reel incrível número ${i + 1} do perfil @${username} — confira!`,
-    views: Math.floor(Math.random() * 900_000) + 10_000,
-    likes: Math.floor(Math.random() * 50_000) + 500,
-    comments: Math.floor(Math.random() * 2_000) + 20,
-    duration: Math.floor(Math.random() * 55) + 5,
-    owner: username,
-    gradient: GRADIENTS[i % GRADIENTS.length],
-  }));
+  return NextResponse.json(
+    { error: `Todas as ${uniqueTokens.length} chaves Apify estão esgotadas. Último erro: ${lastError}` },
+    { status: 503 }
+  );
 }
-
-const GRADIENTS = [
-  "from-violet-600 to-purple-800",
-  "from-cyan-500 to-blue-700",
-  "from-pink-500 to-rose-700",
-  "from-emerald-500 to-teal-700",
-  "from-amber-500 to-orange-700",
-  "from-indigo-500 to-violet-700",
-  "from-red-500 to-pink-700",
-  "from-teal-500 to-cyan-700",
-  "from-fuchsia-500 to-purple-700",
-  "from-lime-500 to-green-700",
-  "from-sky-500 to-indigo-700",
-  "from-orange-500 to-amber-700",
-];

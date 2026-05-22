@@ -97,6 +97,21 @@ async function scrapeWithToken(token: string, username: string, limit: number) {
   return { reels, fullName, profilePicUrl };
 }
 
+const GRADIENTS = [
+  "from-violet-600 to-purple-800",
+  "from-cyan-500 to-blue-700",
+  "from-pink-500 to-rose-700",
+  "from-emerald-500 to-teal-700",
+  "from-amber-500 to-orange-700",
+  "from-indigo-500 to-violet-700",
+  "from-red-500 to-pink-700",
+  "from-teal-500 to-cyan-700",
+  "from-fuchsia-500 to-purple-700",
+  "from-lime-500 to-green-700",
+  "from-sky-500 to-indigo-700",
+  "from-orange-500 to-amber-700",
+];
+
 // ── Persistir foto de perfil no Storage (evita expiração do CDN) ──
 async function uploadProfilePicToStorage(
   admin: ReturnType<typeof getSupabaseAdmin>,
@@ -237,8 +252,10 @@ export async function POST(req: NextRequest) {
   const uniqueTokens = [...new Set(tokens)];
 
   if (uniqueTokens.length === 0) {
-    console.log("[scrape] Sem tokens Apify — retornando mock.");
-    return NextResponse.json({ reels: getMockReels(username) });
+    return NextResponse.json(
+      { error: "APIFY_API_TOKEN não configurado. Adicione a variável de ambiente e faça um novo deploy." },
+      { status: 503 }
+    );
   }
 
   let lastError = "Erro desconhecido";
@@ -272,34 +289,3 @@ export async function POST(req: NextRequest) {
   );
 }
 
-// ── Mock ──────────────────────────────────────────────────────────
-function getMockReels(username: string) {
-  return Array.from({ length: 12 }, (_, i) => ({
-    id: `mock_${i}`,
-    shortCode: `INS${i}PIR`,
-    thumbnailUrl: null,
-    videoUrl: `https://example.com/reel_${i}.mp4`,
-    caption: `Reel incrível #${i + 1} de @${username} — confira esse conteúdo!`,
-    views: Math.floor(Math.random() * 900_000) + 10_000,
-    likes: Math.floor(Math.random() * 50_000) + 500,
-    comments: Math.floor(Math.random() * 2_000) + 20,
-    duration: Math.floor(Math.random() * 55) + 5,
-    owner: username,
-    gradient: GRADIENTS[i % GRADIENTS.length],
-  }));
-}
-
-const GRADIENTS = [
-  "from-violet-600 to-purple-800",
-  "from-cyan-500 to-blue-700",
-  "from-pink-500 to-rose-700",
-  "from-emerald-500 to-teal-700",
-  "from-amber-500 to-orange-700",
-  "from-indigo-500 to-violet-700",
-  "from-red-500 to-pink-700",
-  "from-teal-500 to-cyan-700",
-  "from-fuchsia-500 to-purple-700",
-  "from-lime-500 to-green-700",
-  "from-sky-500 to-indigo-700",
-  "from-orange-500 to-amber-700",
-];

@@ -16,7 +16,7 @@ const GRADIENTS = [
 // ── Main handler ─────────────────────────────────────────────────
 export async function GET() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    return NextResponse.json(getMockStats());
+    return NextResponse.json({ error: "Supabase não configurado." }, { status: 503 });
   }
 
   const supabase = await createClient();
@@ -162,69 +162,3 @@ export async function GET() {
   });
 }
 
-function getMockStats() {
-  const now = Date.now();
-  return {
-    accounts: { total: 4, this_month: 1 },
-    videos: { total: 128, this_week: 23 },
-    scheduled: {
-      pending: 17,
-      next_at: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
-    },
-    published: { total: 42 },
-    recent_activity: [
-      {
-        type: "download",
-        text: "Reel baixado de @fitness_brasil",
-        status: "success",
-        created_at: new Date(now - 12 * 60 * 1000).toISOString(),
-      },
-      {
-        type: "schedule",
-        text: "Postagem agendada para @minha_marca",
-        status: "success",
-        created_at: new Date(now - 35 * 60 * 1000).toISOString(),
-      },
-      {
-        type: "download",
-        text: "Reel baixado de @travel_vibes",
-        status: "success",
-        created_at: new Date(now - 60 * 60 * 1000).toISOString(),
-      },
-      {
-        type: "schedule",
-        text: "Falha ao publicar em @loja_teste",
-        status: "error",
-        created_at: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        type: "download",
-        text: "Reel baixado de @travel_vibes",
-        status: "success",
-        created_at: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
-      },
-    ],
-    upcoming_posts: [
-      {
-        account_username: "minha_marca",
-        scheduled_at: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
-        gradient: "from-violet-500 to-cyan-500",
-      },
-      {
-        account_username: "loja_oficial",
-        scheduled_at: new Date(now + 6 * 60 * 60 * 1000).toISOString(),
-        gradient: "from-pink-500 to-orange-500",
-      },
-      {
-        account_username: "minha_marca",
-        scheduled_at: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
-        gradient: "from-emerald-500 to-teal-500",
-      },
-      {
-        account_username: "loja_oficial",
-        scheduled_at: new Date(now + 30 * 60 * 60 * 1000).toISOString(),
-        gradient: "from-amber-500 to-orange-500",
-      },
-    ],
-  };
-}
