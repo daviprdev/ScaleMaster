@@ -23,12 +23,14 @@ type Login = {
 type FormData = {
   username: string;
   password_hash: string;
+  recovery_email: string;
   two_factor_key: string;
 };
 
 const EMPTY_FORM: FormData = {
   username: "",
   password_hash: "",
+  recovery_email: "",
   two_factor_key: "",
 };
 
@@ -322,6 +324,7 @@ function LoginModal({
       ? {
           username: editing.username,
           password_hash: editing.password_hash,
+          recovery_email: editing.recovery_email ?? "",
           two_factor_key: editing.two_factor_key ?? "",
         }
       : EMPTY_FORM,
@@ -406,8 +409,22 @@ function LoginModal({
               value={form.password_hash} onChange={set("password_hash")}
               icon={KeyRound}
             />
+
+            {/* Security section divider */}
+            <div className="flex items-center gap-3 pt-1">
+              <div style={{ height: "0.5px", flex: 1, background: "rgba(255,255,255,0.07)" }} />
+              <span className="text-[10px] font-semibold tracking-widest uppercase text-white/25">Segurança (opcional)</span>
+              <div style={{ height: "0.5px", flex: 1, background: "rgba(255,255,255,0.07)" }} />
+            </div>
+
             <FormField
-              id="two_factor_key" label="Código 2FA (opcional)"
+              id="recovery_email" label="E-mail da Conta (Opcional)" type="email"
+              placeholder="email@exemplo.com"
+              value={form.recovery_email} onChange={set("recovery_email")}
+              icon={Mail}
+            />
+            <FormField
+              id="two_factor_key" label="Chave 2FA (Opcional)"
               placeholder="JBSWY3DPEHPK3PXP"
               value={form.two_factor_key} onChange={set("two_factor_key")}
               icon={Shield}
@@ -527,8 +544,8 @@ export default function LoginsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
           editing
-            ? { id: editing.id, ...form, profile_name: form.username }
-            : { ...form, profile_name: form.username },
+            ? { id: editing.id, ...form, profile_name: form.username, recovery_email: form.recovery_email || null }
+            : { ...form, profile_name: form.username, recovery_email: form.recovery_email || null },
         ),
       });
       if (!res.ok) {
