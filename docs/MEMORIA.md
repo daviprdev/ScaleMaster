@@ -1677,3 +1677,62 @@ A 8ª conta falhou ao conectar com uma rejeição contextual da Meta (rate limit
 
 #### Lição aprendida
 A Meta retorna rate limit e outros erros contextuais como HTTP 200 com payload `{ error: { code, type, message } }`. Verificar apenas o status HTTP é insuficiente — sempre ler e logar o corpo JSON completo.
+
+---
+
+### ✅ Motor Cron + Pipeline de Publicação em Duas Fases (2026-05-22)
+**Commit:** `feat: implement serverless cron engine and Meta Graph API video publishing pipeline`
+
+#### Problema
+O `vercel.json` estava vazio — nenhum cron estava agendado no Vercel. Além disso, a lógica existente em `process-loops` fazia polling inline (até 120s por conta), o que causaria timeout da função Vercel (300s) com múltiplos loops e contas simultâneas.
+
+#### Solução: Arquitetura de Duas Fases
+
+**Fase 1 — `GET /api/cron/process-loops` (a cada 15 min)**
+- Seleciona loops `status=active` cujo `interval_minutes` já expirou desde `last_posted_at`
+- Para cada conta válida: chama `createMediaContainerOnly()` — apenas cria o container na Meta Graph API, **sem polling**
+- Insere o `creation_id` na nova tabela `pending_containers` com status `pending`
+- Atualiza o estado do loop (`last_posted_at`, `last_media_index`, `cycles_done`) imediatamente — previne double-firing entre invocações concorrentes
+- Toda a lógica de failover, renovação preventiva de token e Horário Humano permanece intacta
+
+**Fase 2 — `GET /api/cron/publish-pending` (a cada 5 min)**
+- Busca todos os `pending_containers` com status `pending`
+- Para cada container: chama `pollContainerStatusOnce()` — **uma verificação por invocação, sem loop de polling**
+  - `in_progress` → ignora (próxima execução do cron verifica de novo)
+  - `finished` → chama `publishReadyContainer()` → marca como `published`
+  - `error`/`expired` → marca como `error` com mensagem
+- Containers com mais de 30 min são expirados automaticamente (Meta processa em no máximo ~15 min)
+
+#### Arquivos novos/modificados
+
+| Arquivo | Mudança |
+|---------|---------|
+| `vercel.json` | Adicionados 2 crons: `*/15` e `*/5 * * * *` |
+| `lib/meta-publish.ts` | 3 novos exports: `createMediaContainerOnly`, `pollContainerStatusOnce`, `publishReadyContainer` |
+| `app/api/cron/process-loops/route.ts` | Substituído `publishViaMetaAPI` por `createMediaContainerOnly` + insert em `pending_containers` |
+| `app/api/cron/publish-pending/route.ts` | Novo — publica containers prontos sem bloquear |
+| `supabase/pending_containers.sql` | Nova tabela com RLS (sem policy: só service_role acessa) |
+
+#### Tabela `pending_containers`
+```sql
+CREATE TABLE public.pending_containers (
+  id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id                uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  loop_id                uuid REFERENCES public.loops(id) ON DELETE SET NULL,
+  account_id             uuid NOT NULL REFERENCES public.instagram_accounts(id) ON DELETE CASCADE,
+  ig_business_account_id text NOT NULL,
+  creation_id            text NOT NULL,
+  caption                text NOT NULL DEFAULT '',
+  status                 text NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'published', 'error')),
+  error_message          text,
+  created_at             timestamptz NOT NULL DEFAULT now()
+);
+```
+
+#### Variáveis de ambiente necessárias na Vercel
+- `CRON_SECRET` — secret compartilhado; o Vercel envia `Authorization: Bearer <CRON_SECRET>` automaticamente ao invocar cron routes
+- Sem essa variável, todas as invocações retornam 401 e nada é publicado
+
+#### Por que separar em duas fases?
+A Meta processa vídeos de forma assíncrona (Upload → Processamento → Pronto). O polling inline bloqueava a thread por até 120s por conta. Com 5 loops × 3 contas = potencial de 1800s — muito acima do `maxDuration=300`. A Fase 1 retorna em ~2s por conta (só cria o container), e a Fase 2 verifica o status sem esperar, tornando o sistema escalável.

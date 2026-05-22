@@ -74,6 +74,60 @@ async function publishContainer(
   return data.id;
 }
 
+// ─────────────────────────────────────────────────────────────
+// Exports para o motor de duas fases (process-loops + publish-pending)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Cria o container de mídia e retorna o creation_id.
+ * Não faz polling — use pollContainerStatusOnce + publishReadyContainer depois.
+ */
+export async function createMediaContainerOnly(
+  igAccountId: string,
+  videoUrl: string,
+  caption: string,
+  token: string
+): Promise<string> {
+  return createMediaContainer(igAccountId, videoUrl, caption, token);
+}
+
+export type ContainerPollStatus = "finished" | "in_progress" | "error";
+
+/**
+ * Verifica o status do container UMA vez (sem loop).
+ * Retorna "finished", "in_progress" ou "error".
+ */
+export async function pollContainerStatusOnce(
+  creationId: string,
+  token: string
+): Promise<ContainerPollStatus> {
+  const res = await fetch(
+    `${GRAPH_API}/${creationId}?fields=status_code&access_token=${token}`
+  );
+  const data = (await res.json()) as {
+    status_code?: string;
+    error?: { message: string };
+  };
+  if (!res.ok) throw new Error(data.error?.message ?? "Erro ao verificar status do container.");
+  if (data.status_code === "FINISHED") return "finished";
+  if (data.status_code === "ERROR" || data.status_code === "EXPIRED") return "error";
+  return "in_progress";
+}
+
+/**
+ * Publica um container que já está com status FINISHED.
+ * Retorna o media_id do post publicado.
+ */
+export async function publishReadyContainer(
+  igAccountId: string,
+  creationId: string,
+  token: string
+): Promise<string> {
+  return publishContainer(igAccountId, creationId, token);
+}
+
+// ─────────────────────────────────────────────────────────────
+
 /**
  * Publica um vídeo como Reel via Meta Graph API.
  * Fluxo: criar container → aguardar processamento → publicar.

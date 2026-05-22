@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { publishViaMetaAPI } from "@/lib/meta-publish";
+import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 
 export const runtime = "nodejs";
@@ -63,11 +63,6 @@ interface VideoRow {
 // Failover helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Returns true for Meta API errors that indicate the account itself is
- * compromised (bad token, restricted, blocked) — as opposed to transient
- * network or rate-limit issues that don't warrant marking the account unhealthy.
- */
 function isCriticalMetaError(msg: string): boolean {
   const lower = msg.toLowerCase();
   const patterns = [
@@ -81,17 +76,13 @@ function isCriticalMetaError(msg: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Video effects stub
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Human schedule helper — no external deps, pure Intl
+// Human schedule helper
 // ---------------------------------------------------------------------------
 
 function isWithinHumanSchedule(
   now: Date,
   timezone: string,
-  startTime: string, // "HH:MM" or "HH:MM:SS"
+  startTime: string,
   endTime: string
 ): boolean {
   try {
@@ -111,27 +102,14 @@ function isWithinHumanSchedule(
     };
     return cur >= toMin(startTime) && cur < toMin(endTime);
   } catch {
-    return true; // fail open — don't block on tz parse error
+    return true;
   }
 }
 
 // ---------------------------------------------------------------------------
+// Video effects stub
+// ---------------------------------------------------------------------------
 
-/**
- * processVideoEffects — Applies mirror/invert effects to a video.
- *
- * Currently returns the original URL as a passthrough.
- *
- * FUTURE: Heavy FFmpeg processing must be offloaded to a dedicated Worker
- * (e.g., AWS SQS + EC2, Render background job, or Railway worker) to avoid
- * Vercel's 300s execution limit and per-invocation memory cap. The correct
- * implementation should:
- *   1. Enqueue a job: POST /worker/process-video { videoUrl, effectMirror, effectInvert }
- *   2. Worker downloads video → applies FFmpeg filters → uploads to Supabase Storage
- *   3. Return the new public_url from Storage
- * This function signature stays the same; only the body changes when the
- * worker is wired up.
- */
 async function processVideoEffects(
   videoUrl: string,
   effectMirror: boolean,
@@ -147,7 +125,39 @@ async function processVideoEffects(
 }
 
 // ---------------------------------------------------------------------------
-// Cron handler — Vercel Cron Jobs send GET requests
+// Cria container para uma conta e registra em pending_containers
+// Retorna true se o container foi criado com sucesso
+// ---------------------------------------------------------------------------
+
+async function createContainerForAccount(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  account: AccountRow,
+  loop: LoopRow,
+  videoUrl: string,
+  caption: string,
+  tokenToUse: string
+): Promise<boolean> {
+  const creationId = await createMediaContainerOnly(
+    account.ig_business_account_id!,
+    videoUrl,
+    caption,
+    tokenToUse
+  );
+  const { error } = await (admin as any).from("pending_containers").insert({
+    user_id: loop.user_id,
+    loop_id: loop.id,
+    account_id: account.id,
+    ig_business_account_id: account.ig_business_account_id,
+    creation_id: creationId,
+    caption,
+  });
+  if (error) throw new Error(`Falha ao salvar container no banco: ${error.message}`);
+  console.log(`[loop-cron] ✓ @${account.username} → container ${creationId} criado (aguardando processamento Meta).`);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Cron handler
 // ---------------------------------------------------------------------------
 
 export async function GET(req: NextRequest) {
@@ -161,11 +171,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ skipped: true, reason: "Supabase não configurado." });
   }
 
-  const admin = getSupabaseAdmin() as any;
+  const admin = getSupabaseAdmin();
   const now = new Date();
 
-  // Fetch all active loops with their linked accounts
-  const { data: loopRows, error: fetchErr } = await admin
+  const { data: loopRows, error: fetchErr } = await (admin as any)
     .from("loops")
     .select(`
       id, user_id, name, folder_id, is_infinite, cycles, cycles_done,
@@ -175,7 +184,8 @@ export async function GET(req: NextRequest) {
         account_id,
         instagram_accounts (
           id, username, is_active, meta_access_token,
-          ig_business_account_id, token_expires_at, fb_page_id
+          ig_business_account_id, token_expires_at, fb_page_id,
+          health_status, failover_priority
         )
       )
     `)
@@ -188,12 +198,12 @@ export async function GET(req: NextRequest) {
 
   const loops = (loopRows ?? []) as LoopRow[];
 
-  // Fetch human schedule settings for all distinct users that have active loops
+  // Fetch human schedule settings
   const distinctUserIds = [...new Set(loops.map(l => l.user_id))];
   let scheduleMap = new Map<string, HumanScheduleRow>();
 
   if (distinctUserIds.length > 0) {
-    const { data: scheduleRows } = await admin
+    const { data: scheduleRows } = await (admin as any)
       .from("human_schedule_settings")
       .select("user_id, is_active, start_time, end_time, timezone")
       .in("user_id", distinctUserIds);
@@ -203,7 +213,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Filter to loops whose interval has elapsed (JS-side — avoids typing issues)
+  // Filter to loops whose interval has elapsed
   const eligible = loops.filter((loop) => {
     if (!loop.last_posted_at) return true;
     const nextRun = new Date(loop.last_posted_at).getTime() + loop.interval_minutes * 60_000;
@@ -215,7 +225,7 @@ export async function GET(req: NextRequest) {
   const summary = { total: eligible.length, processed: 0, skipped: 0, errors: 0 };
 
   for (const loop of eligible) {
-    // Human schedule check — skip if outside the user's allowed posting window
+    // Human schedule check
     const schedule = scheduleMap.get(loop.user_id);
     if (schedule?.is_active) {
       const allowed = isWithinHumanSchedule(
@@ -234,7 +244,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Collect valid (active + with Meta credentials) accounts
     const validAccounts = loop.loop_accounts
       .map((la) => la.instagram_accounts)
       .filter((acc): acc is AccountRow => acc !== null && acc.is_active);
@@ -251,9 +260,7 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
-    // Fetch videos from the library folder, ordered for deterministic round-robin.
-    // If media_limit is set, restrict the working set to that many videos (oldest first).
-    let videoQuery = admin
+    let videoQuery = (admin as any)
       .from("videos_library")
       .select("id, public_url, filename")
       .eq("folder_id", loop.folder_id)
@@ -272,13 +279,11 @@ export async function GET(req: NextRequest) {
     const selectedVideo = videos[mediaIndex];
     const nextMediaIndex = (mediaIndex + 1) % videos.length;
 
-    // Random caption from the captions array (or empty)
     const caption =
       loop.captions.length > 0
         ? loop.captions[Math.floor(Math.random() * loop.captions.length)]
         : "";
 
-    // Apply video effects (stub — returns original URL until worker is wired)
     const videoUrl = await processVideoEffects(
       selectedVideo.public_url,
       loop.effect_mirror,
@@ -290,9 +295,8 @@ export async function GET(req: NextRequest) {
       `"${selectedVideo.filename}" para ${validAccounts.length} conta(s).`
     );
 
-    let loopPublished = 0;
+    let containersCreated = 0;
 
-    // Publish to every connected account
     for (const account of validAccounts) {
       if (!account.meta_access_token || !account.ig_business_account_id) {
         console.warn(`[loop-cron] @${account.username} sem credenciais Meta — pulando conta.`);
@@ -309,7 +313,7 @@ export async function GET(req: NextRequest) {
               account.meta_access_token,
               account.fb_page_id
             );
-            await admin
+            await (admin as any)
               .from("instagram_accounts")
               .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })
               .eq("id", account.id);
@@ -319,29 +323,20 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        const result = await publishViaMetaAPI(
-          account.ig_business_account_id,
-          tokenToUse,
-          videoUrl,
-          caption
-        );
+        await createContainerForAccount(admin, account, loop, videoUrl, caption, tokenToUse);
+        containersCreated++;
 
-        if (result.status !== "ok") throw new Error(result.error ?? "Erro na Meta API.");
-        console.log(`[loop-cron] ✓ @${account.username} → media_id: ${result.media_id}`);
-        loopPublished++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[loop-cron] ✗ @${account.username}:`, msg);
 
         if (isCriticalMetaError(msg)) {
-          // Mark the failed account as errored in DB
-          await admin
+          await (admin as any)
             .from("instagram_accounts")
             .update({ health_status: "error" })
             .eq("id", account.id);
 
-          // Find the next healthy backup account for this user (any account, ordered by priority)
-          const { data: backups } = await admin
+          const { data: backups } = await (admin as any)
             .from("instagram_accounts")
             .select("id, username, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id")
             .eq("user_id", loop.user_id)
@@ -353,8 +348,7 @@ export async function GET(req: NextRequest) {
 
           const backup = backups?.[0] ?? null;
 
-          // Log the failover event regardless of whether a backup was found
-          await admin.from("failover_logs").insert({
+          await (admin as any).from("failover_logs").insert({
             user_id: loop.user_id,
             failed_account_id: account.id,
             backup_account_id: backup?.id ?? null,
@@ -364,15 +358,15 @@ export async function GET(req: NextRequest) {
           if (backup?.meta_access_token && backup?.ig_business_account_id) {
             console.log(`[loop-cron] Failover: tentando @${backup.username} como reserva.`);
             try {
-              const backupResult = await publishViaMetaAPI(
-                backup.ig_business_account_id,
-                backup.meta_access_token,
+              await createContainerForAccount(
+                admin,
+                { ...backup, is_active: true },
+                loop,
                 videoUrl,
-                caption
+                caption,
+                backup.meta_access_token
               );
-              if (backupResult.status !== "ok") throw new Error(backupResult.error ?? "Erro na Meta API.");
-              console.log(`[loop-cron] ✓ @${backup.username} (failover) → media_id: ${backupResult.media_id}`);
-              loopPublished++;
+              containersCreated++;
             } catch (backupErr) {
               const backupMsg = backupErr instanceof Error ? backupErr.message : String(backupErr);
               console.error(`[loop-cron] ✗ @${backup.username} (failover):`, backupMsg);
@@ -384,7 +378,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Update loop state — always advance index and increment cycles_done
+    // Advance loop state regardless of publish outcome — prevents double-firing
     const newCyclesDone = loop.cycles_done + 1;
     const isComplete = !loop.is_infinite && newCyclesDone >= loop.cycles;
 
@@ -401,9 +395,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    await admin.from("loops").update(updatePayload).eq("id", loop.id);
+    await (admin as any).from("loops").update(updatePayload).eq("id", loop.id);
 
-    if (loopPublished > 0) summary.processed++;
+    if (containersCreated > 0) summary.processed++;
     else summary.errors++;
   }
 
