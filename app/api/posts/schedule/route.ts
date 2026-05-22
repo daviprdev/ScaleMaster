@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
-// Fisher-Yates in-place shuffle — cada conta recebe uma ordem aleatória diferente
+// Fisher-Yates in-place shuffle
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -14,31 +14,38 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
+interface VideoRecord {
+  id: string;
+  public_url: string;
+}
+
 interface ScheduleBody {
-  video_ids: string[];
   account_ids: string[];
+  video_ids?: string[];
+  folder_id?: string;
   captions: string[];
-  start_datetime: string;   // ISO 8601
-  videos_per_batch: number; // posts por janela de tempo
-  interval_hours: number;   // horas entre lotes (pode ser decimal, ex: 0.5)
+  start_datetime: string;
+  interval_minutes: number;
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json() as ScheduleBody;
-  const {
-    video_ids,
-    account_ids,
-    captions,
-    start_datetime,
-    videos_per_batch,
-    interval_hours,
-  } = body;
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    return NextResponse.json({ success: true, count: 0, mock: true });
+  }
 
-  // ── Validações ──────────────────────────────────────────────
-  if (!video_ids?.length)
-    return NextResponse.json({ error: "Selecione ao menos 1 vídeo." }, { status: 400 });
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+
+  const body = await req.json() as ScheduleBody;
+  const { account_ids, video_ids, folder_id, captions, start_datetime, interval_minutes } = body;
+
+  // ── Validações ────────────────────────────────────────────────────────────
   if (!account_ids?.length)
     return NextResponse.json({ error: "Selecione ao menos 1 conta." }, { status: 400 });
+
+  if (!video_ids?.length && !folder_id)
+    return NextResponse.json({ error: "Selecione vídeos ou uma pasta." }, { status: 400 });
 
   const validCaptions = (captions ?? []).map(c => c.trim()).filter(Boolean);
   if (!validCaptions.length)
@@ -47,66 +54,83 @@ export async function POST(req: NextRequest) {
   if (!start_datetime)
     return NextResponse.json({ error: "Defina a data e hora de início." }, { status: 400 });
 
-  const batchSize = Math.max(1, Math.floor(videos_per_batch ?? 1));
-  const intervalMs = Math.max(0, (interval_hours ?? 0)) * 3_600_000;
   const startMs = new Date(start_datetime).getTime();
-
   if (isNaN(startMs))
     return NextResponse.json({ error: "Data de início inválida." }, { status: 400 });
 
-  // ── Auth ────────────────────────────────────────────────────
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  const intervalMs = Math.max(0, Number(interval_minutes) || 0) * 60_000;
 
-  // ── Busca URLs dos vídeos selecionados ──────────────────────
-  const admin = getSupabaseAdmin();
-  const { data: videos, error: videosErr } = await admin
-    .from("videos_library")
-    .select("id, public_url")
-    .eq("user_id", user.id)
-    .in("id", video_ids);
+  // ── Busca vídeos ──────────────────────────────────────────────────────────
+  const admin = getSupabaseAdmin() as any;
+  let videos: VideoRecord[] = [];
 
-  if (videosErr || !videos?.length)
-    return NextResponse.json({ error: "Vídeos não encontrados ou sem permissão." }, { status: 404 });
+  if (folder_id) {
+    const { data, error } = await admin
+      .from("videos_library")
+      .select("id, public_url")
+      .eq("folder_id", folder_id)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
 
-  const videoMap = new Map(videos.map(v => [v.id as string, v.public_url as string]));
+    if (error || !data?.length)
+      return NextResponse.json({ error: "Pasta vazia ou sem permissão." }, { status: 404 });
+    videos = data as VideoRecord[];
+  } else {
+    const { data, error } = await admin
+      .from("videos_library")
+      .select("id, public_url")
+      .eq("user_id", user.id)
+      .in("id", video_ids!);
 
-  // ── Algoritmo de distribuição inteligente ───────────────────
+    if (error || !data?.length)
+      return NextResponse.json({ error: "Vídeos não encontrados ou sem permissão." }, { status: 404 });
+    videos = data as VideoRecord[];
+  }
+
+  // ── Algoritmo de distribuição anti-spam ───────────────────────────────────
   //
-  // Para cada conta:
-  //   1. Embaralha os video_ids (shuffle independente por conta)
-  //   2. Embaralha as captions (shuffle independente por conta)
-  //   3. Divide em lotes de `batchSize`
-  //   4. Lote 0 → scheduled_at = start
-  //      Lote 1 → scheduled_at = start + 1×interval
-  //      Lote N → scheduled_at = start + N×interval
-  //   5. Legenda: round-robin sobre captions embaralhadas
+  // Regra crítica: no mesmo horário (mesmo slot), cada conta recebe
+  // um vídeo DIFERENTE. Nunca há repetição de vídeo no mesmo minuto.
   //
+  // Implementação:
+  //   1. Fisher-Yates no pool inteiro (um único shuffle)
+  //   2. Iterar slots; para cada slot, pop `accounts.length` vídeos
+  //   3. Cada conta recebe o próximo vídeo do pool → garantia de unicidade
+  //   4. Legenda aleatória independente por post
+  //   5. Parar quando o pool esgota (não desperdiça vídeos)
+
+  const shuffledVideos = shuffle(videos);
   const posts: Record<string, unknown>[] = [];
+  let ptr = 0;
+  let slotIndex = 0;
 
-  for (const accountId of account_ids) {
-    const shuffledIds = shuffle(video_ids);
-    const shuffledCaptions = shuffle(validCaptions);
+  while (ptr < shuffledVideos.length) {
+    const slotTime = new Date(startMs + slotIndex * intervalMs).toISOString();
 
-    for (let i = 0; i < shuffledIds.length; i++) {
-      const batchIndex = Math.floor(i / batchSize);
-      const scheduledAt = new Date(startMs + batchIndex * intervalMs).toISOString();
-      const videoId = shuffledIds[i];
+    // Embaralha a ordem das contas dentro do slot para variação extra
+    const slotAccounts = shuffle(account_ids);
+
+    for (const accountId of slotAccounts) {
+      if (ptr >= shuffledVideos.length) break;
+
+      const video = shuffledVideos[ptr++];
+      const caption = validCaptions[Math.floor(Math.random() * validCaptions.length)];
 
       posts.push({
         user_id: user.id,
         account_id: accountId,
-        video_id: videoId,
-        video_url: videoMap.get(videoId) ?? null,
-        caption: shuffledCaptions[i % shuffledCaptions.length],
-        scheduled_at: scheduledAt,
+        video_id: video.id,
+        video_url: video.public_url,
+        caption,
+        scheduled_at: slotTime,
         status: "pending",
       });
     }
+
+    slotIndex++;
   }
 
-  // ── Inserção em massa (único INSERT) ────────────────────────
+  // ── Inserção em massa ─────────────────────────────────────────────────────
   const { error: insertErr } = await admin.from("scheduled_posts").insert(posts);
 
   if (insertErr) {
@@ -114,5 +138,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true, count: posts.length });
+  const firstSlotTime = new Date(startMs).toISOString();
+  const lastSlotTime = slotIndex > 0
+    ? new Date(startMs + (slotIndex - 1) * intervalMs).toISOString()
+    : firstSlotTime;
+
+  return NextResponse.json({
+    success: true,
+    count: posts.length,
+    slots: slotIndex,
+    first_slot: firstSlotTime,
+    last_slot: lastSlotTime,
+  });
 }

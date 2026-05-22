@@ -1,15 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, DragEvent, ChangeEvent } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Users, Film, Type, CalendarDays, Send, Upload,
-  FolderOpen, X, Check, ChevronDown, Loader2,
-  AlertCircle, CheckCircle2, Heart, MessageCircle,
-  Share2, MoreHorizontal, Smartphone, Zap, Clock,
-  Clapperboard, Image as ImageIcon, Hash,
+  Users, Film, CalendarDays, Send, FolderOpen, X, Check,
+  Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
+  Layers, ChevronDown, Shuffle, Zap, LayoutGrid, List,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -22,365 +19,453 @@ interface Account {
   is_active: boolean;
 }
 
-interface LibraryItem {
+interface VideoItem {
   id: string;
   filename: string;
   public_url: string;
+  folder_id: string | null;
   created_at: string;
 }
 
-interface PublishResult {
-  account_id: string;
-  username: string;
-  status: "published" | "failed";
-  media_id?: string;
-  error?: string;
+interface FolderItem {
+  id: string;
+  name: string;
+  video_count: number;
 }
 
-const MAX_CHARS = 2200;
-
-const POST_TYPES = [
-  { value: "reel" as const, label: "Reel", Icon: Film, desc: "Vídeo vertical" },
-  { value: "feed" as const, label: "Feed", Icon: ImageIcon, desc: "Post no perfil" },
-  { value: "story" as const, label: "Story", Icon: Clock, desc: "24 horas" },
+const INTERVAL_PRESETS = [
+  { label: "15m", minutes: 15 },
+  { label: "30m", minutes: 30 },
+  { label: "1h", minutes: 60 },
+  { label: "2h", minutes: 120 },
+  { label: "4h", minutes: 240 },
+  { label: "12h", minutes: 720 },
+  { label: "24h", minutes: 1440 },
 ];
 
-// ── AccountsSelect ─────────────────────────────────────────────────────────
+const MAX_CAPTION_CHARS = 2200;
 
-function AccountsSelect({
-  accounts,
-  selected,
-  onChange,
-}: {
-  accounts: Account[];
-  selected: string[];
-  onChange: (ids: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+// ── Helpers ────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const toggle = (id: string) =>
-    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
-
-  const selectedAccounts = accounts.filter(a => selected.includes(a.id));
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/[0.06] border border-white/10 hover:border-white/20 transition-colors text-left"
-      >
-        <div className="flex flex-wrap items-center gap-2 min-h-6 flex-1">
-          {selectedAccounts.length === 0 ? (
-            <span className="text-white/30 text-sm">Selecionar contas...</span>
-          ) : selectedAccounts.map(a => (
-            <span
-              key={a.id}
-              className="flex items-center gap-1.5 bg-violet-500/15 border border-violet-500/25 rounded-lg px-2.5 py-0.5 text-xs text-violet-300"
-            >
-              {a.avatar_url && (
-                <img src={a.avatar_url} alt="" className="w-4 h-4 rounded-full object-cover" />
-              )}
-              @{a.username}
-              <button
-                onClick={e => { e.stopPropagation(); toggle(a.id); }}
-                className="text-violet-400/50 hover:text-violet-300 transition-colors"
-              >
-                <X size={10} />
-              </button>
-            </span>
-          ))}
-        </div>
-        <ChevronDown size={16} className={cn("text-white/40 flex-shrink-0 ml-2 transition-transform", open && "rotate-180")} />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.15 }}
-            className="absolute z-30 top-full left-0 right-0 mt-1.5 bg-[#111827] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
-          >
-            {accounts.length === 0 ? (
-              <div className="px-4 py-8 text-center text-white/30 text-sm">
-                Nenhuma conta conectada
-              </div>
-            ) : (
-              <div className="max-h-56 overflow-y-auto">
-                {accounts.map(acc => (
-                  <button
-                    key={acc.id}
-                    type="button"
-                    onClick={() => toggle(acc.id)}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/[0.06] transition-colors text-left"
-                  >
-                    {acc.avatar_url ? (
-                      <img src={acc.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex-shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-white truncate">@{acc.username}</div>
-                      {acc.display_name && (
-                        <div className="text-xs text-white/40 truncate">{acc.display_name}</div>
-                      )}
-                    </div>
-                    {selected.includes(acc.id) && (
-                      <Check size={16} className="text-violet-400 flex-shrink-0" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+function formatDatetime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("pt-BR", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    });
+  } catch { return iso; }
 }
 
-// ── LibraryModal ──────────────────────────────────────────────────────────
+function computeLastSlot(startIso: string, intervalMinutes: number, slots: number): string {
+  if (!startIso || slots <= 1) return startIso;
+  try {
+    const ms = new Date(startIso).getTime() + (slots - 1) * intervalMinutes * 60_000;
+    return new Date(ms).toISOString();
+  } catch { return startIso; }
+}
 
-function LibraryModal({
-  onSelect,
+// ── VideoPickerModal ───────────────────────────────────────────────────────
+
+function VideoPickerModal({
+  selected,
+  onConfirm,
   onClose,
 }: {
-  onSelect: (url: string, filename: string) => void;
+  selected: string[];
+  onConfirm: (ids: string[], items: VideoItem[]) => void;
   onClose: () => void;
 }) {
-  const [items, setItems] = useState<LibraryItem[]>([]);
+  const [videos, setVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [checked, setChecked] = useState<Set<string>>(new Set(selected));
+  const [gridView, setGridView] = useState(true);
 
   useEffect(() => {
     fetch("/api/library")
-      .then(r => r.json() as Promise<{ videos: LibraryItem[] }>)
-      .then(d => setItems(d.videos ?? []))
+      .then(r => r.json() as Promise<{ videos: VideoItem[] }>)
+      .then(d => setVideos(d.videos ?? []))
       .finally(() => setLoading(false));
   }, []);
+
+  const toggle = (id: string) =>
+    setChecked(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleAll = () =>
+    setChecked(prev =>
+      prev.size === videos.length ? new Set() : new Set(videos.map(v => v.id))
+    );
+
+  const handleConfirm = () => {
+    const selectedItems = videos.filter(v => checked.has(v.id));
+    onConfirm([...checked], selectedItems);
+  };
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <motion.div
         initial={{ scale: 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.96, opacity: 0 }}
-        transition={{ duration: 0.2 }}
+        transition={{ duration: 0.18 }}
         onClick={e => e.stopPropagation()}
-        className="bg-[#0d111b] border border-white/10 rounded-2xl w-full max-w-2xl flex flex-col"
-        style={{ maxHeight: "80vh" }}
+        className="bg-black border border-white/10 rounded-2xl w-full max-w-3xl flex flex-col"
+        style={{ maxHeight: "85vh" }}
       >
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.07] flex-shrink-0">
-          <h2 className="text-white font-semibold">Escolher da Biblioteca</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center text-white/50 hover:text-white transition-colors"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-3">
+            <Film size={16} className="text-[#00FF41]" />
+            <h2 className="text-white font-semibold text-sm">Selecionar Vídeos</h2>
+            {checked.size > 0 && (
+              <span className="px-2 py-0.5 rounded-md bg-[#00FF41]/15 text-[#00FF41] text-xs font-mono">
+                {checked.size} selecionados
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setGridView(v => !v)}
+              className="w-8 h-8 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors"
+            >
+              {gridView ? <List size={14} /> : <LayoutGrid size={14} />}
+            </button>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
 
+        {/* Toolbar */}
+        <div className="flex items-center gap-3 px-6 py-3 border-b border-white/[0.05] flex-shrink-0">
+          <button
+            onClick={toggleAll}
+            className="text-xs text-[#00E5FF] hover:text-white transition-colors"
+          >
+            {checked.size === videos.length ? "Desmarcar todos" : "Selecionar todos"}
+          </button>
+          <span className="text-white/15 text-xs">·</span>
+          <span className="text-white/30 text-xs">{videos.length} vídeos na biblioteca</span>
+        </div>
+
+        {/* Grid / List */}
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="flex items-center justify-center h-48">
-              <Loader2 size={28} className="animate-spin text-violet-400" />
+              <Loader2 size={24} className="animate-spin text-[#00FF41]" />
             </div>
-          ) : items.length === 0 ? (
-            <div className="text-center py-16 text-white/30 text-sm">
+          ) : videos.length === 0 ? (
+            <div className="text-center py-16 text-white/25 text-sm">
               Nenhum vídeo na biblioteca
             </div>
-          ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-              {items.map(item => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => onSelect(item.public_url, item.filename)}
-                  className="group relative aspect-[9/16] rounded-xl overflow-hidden bg-black/50 border border-white/10 hover:border-violet-500/60 transition-all"
-                >
-                  <video
-                    src={item.public_url}
-                    className="w-full h-full object-cover"
-                    muted
-                    preload="metadata"
-                  />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Check size={28} className="text-white drop-shadow" />
+          ) : gridView ? (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+              {videos.map(v => {
+                const isChecked = checked.has(v.id);
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => toggle(v.id)}
+                    className={cn(
+                      "group relative aspect-[9/16] rounded-xl overflow-hidden border transition-all",
+                      isChecked
+                        ? "border-[#00FF41]/60 ring-1 ring-[#00FF41]/30"
+                        : "border-white/10 hover:border-white/25"
+                    )}
+                  >
+                    <video
+                      src={v.public_url}
+                      className="w-full h-full object-cover"
+                      muted preload="metadata"
+                    />
+                    <div className={cn(
+                      "absolute inset-0 transition-colors",
+                      isChecked ? "bg-[#00FF41]/10" : "bg-black/0 group-hover:bg-black/20"
+                    )} />
+                    {isChecked && (
+                      <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-[#00FF41] flex items-center justify-center">
+                        <Check size={11} className="text-black" strokeWidth={3} />
+                      </div>
+                    )}
+                    <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
+                      <p className="text-white text-[9px] truncate">{v.filename}</p>
                     </div>
-                  </div>
-                  <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 to-transparent p-2">
-                    <p className="text-white text-[10px] truncate">{item.filename}</p>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {videos.map(v => {
+                const isChecked = checked.has(v.id);
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => toggle(v.id)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left",
+                      isChecked
+                        ? "border-[#00FF41]/30 bg-[#00FF41]/5"
+                        : "border-transparent hover:border-white/10 hover:bg-white/[0.03]"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 rounded-[4px] border flex items-center justify-center flex-shrink-0 transition-all",
+                      isChecked ? "bg-[#00FF41] border-[#00FF41]" : "border-white/20"
+                    )}>
+                      {isChecked && <Check size={9} className="text-black" strokeWidth={3} />}
+                    </div>
+                    <div className="w-8 h-8 rounded-lg overflow-hidden bg-black/50 flex-shrink-0 border border-white/10">
+                      <video src={v.public_url} className="w-full h-full object-cover" muted preload="metadata" />
+                    </div>
+                    <span className="text-white/70 text-xs truncate flex-1">{v.filename}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-white/[0.07] flex-shrink-0">
+          <span className="text-white/30 text-xs">{checked.size} de {videos.length} selecionados</span>
+          <button
+            onClick={handleConfirm}
+            disabled={checked.size === 0}
+            className={cn(
+              "px-6 py-2 rounded-xl text-sm font-semibold transition-all",
+              checked.size > 0
+                ? "bg-[#00FF41] text-black hover:bg-[#00FF41]/90"
+                : "bg-white/[0.05] text-white/25 cursor-not-allowed"
+            )}
+          >
+            Confirmar ({checked.size})
+          </button>
         </div>
       </motion.div>
     </motion.div>
   );
 }
 
-// ── PhoneMockup ────────────────────────────────────────────────────────────
+// ── CampaignPreview ────────────────────────────────────────────────────────
 
-function PhoneMockup({
-  mediaUrl,
-  caption,
-  firstComment,
-  accountName,
-  postType,
+function CampaignPreview({
+  totalVideos,
+  totalAccounts,
+  intervalMinutes,
+  startDatetime,
+  captionCount,
 }: {
-  mediaUrl: string | null;
-  caption: string;
-  firstComment: string;
-  accountName: string | null;
-  postType: "reel" | "feed" | "story";
+  totalVideos: number;
+  totalAccounts: number;
+  intervalMinutes: number;
+  startDatetime: string;
+  captionCount: number;
 }) {
+  const slots = totalAccounts > 0 && totalVideos > 0
+    ? Math.ceil(totalVideos / totalAccounts)
+    : 0;
+
+  const lastSlot = slots > 0 && startDatetime
+    ? computeLastSlot(startDatetime, intervalMinutes, slots)
+    : null;
+
+  const totalPosts = totalVideos;
+
+  // Generate preview of first 5 slots
+  const previewSlots = useMemo(() => {
+    if (!startDatetime || slots === 0 || totalAccounts === 0) return [];
+    const preview = [];
+    for (let i = 0; i < Math.min(4, slots); i++) {
+      const t = new Date(new Date(startDatetime).getTime() + i * intervalMinutes * 60_000);
+      preview.push({
+        time: t.toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }),
+        count: i === slots - 1
+          ? totalVideos - i * totalAccounts
+          : totalAccounts,
+      });
+    }
+    if (slots > 4) preview.push({ time: "...", count: 0 });
+    return preview;
+  }, [startDatetime, slots, totalAccounts, intervalMinutes, totalVideos]);
+
+  const isReady = totalVideos > 0 && totalAccounts > 0 && startDatetime;
+
   return (
-    <div className="flex flex-col items-center gap-4">
-      <div className="flex items-center gap-2 text-white/30 text-xs">
-        <Smartphone size={13} />
-        <span>Preview · Instagram</span>
+    <div className="glass-card rounded-2xl p-5 space-y-5">
+      <div className="flex items-center gap-2">
+        <Layers size={14} className="text-[#00E5FF]" />
+        <span className="text-xs font-semibold uppercase tracking-widest text-white/40">Resumo da Campanha</span>
       </div>
 
-      {/* Phone shell */}
-      <div className="relative" style={{ width: 248, height: 508 }}>
-        {/* Side buttons */}
-        <div className="absolute right-[-5px] top-[90px] w-[5px] h-8 bg-gray-700 rounded-r-sm" />
-        <div className="absolute left-[-5px] top-[78px] w-[5px] h-6 bg-gray-700 rounded-l-sm" />
-        <div className="absolute left-[-5px] top-[110px] w-[5px] h-10 bg-gray-700 rounded-l-sm" />
-        <div className="absolute left-[-5px] top-[128px] w-[5px] h-10 bg-gray-700 rounded-l-sm" />
-
-        {/* Phone frame */}
-        <div className="absolute inset-0 rounded-[44px] border-[7px] border-gray-700 bg-black overflow-hidden shadow-[0_0_60px_rgba(0,0,0,0.8)]">
-          {/* Dynamic island */}
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 w-[88px] h-[26px] rounded-full bg-black z-20" />
-
-          {/* Screen area */}
-          <div className="absolute inset-0 rounded-[37px] overflow-hidden">
-            {/* Media background */}
-            {mediaUrl ? (
-              <video
-                src={mediaUrl}
-                className="absolute inset-0 w-full h-full object-cover"
-                muted
-                loop
-                autoPlay
-                playsInline
-              />
-            ) : (
-              <div className="absolute inset-0 bg-gradient-to-b from-gray-900 to-gray-950 flex items-center justify-center">
-                <div className="flex flex-col items-center gap-3">
-                  <Film size={36} className="text-white/10" />
-                  <p className="text-white/15 text-[10px] text-center leading-relaxed px-6">
-                    Selecione um vídeo para ver o preview
-                  </p>
-                </div>
+      {!isReady ? (
+        <p className="text-white/20 text-xs text-center py-4">
+          Preencha os campos para ver o resumo
+        </p>
+      ) : (
+        <>
+          {/* Metrics grid */}
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: "Vídeos", value: totalVideos, color: "text-[#00FF41]" },
+              { label: "Contas", value: totalAccounts, color: "text-[#00E5FF]" },
+              { label: "Slots", value: slots, color: "text-white" },
+              { label: "Posts Total", value: totalPosts, color: "text-white" },
+              { label: "Legendas", value: captionCount, color: "text-white/60" },
+              { label: "Intervalo", value: `${intervalMinutes}min`, color: "text-white/60" },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/[0.06]">
+                <p className="text-white/35 text-[10px] uppercase tracking-wider">{label}</p>
+                <p className={cn("font-mono font-semibold text-base mt-0.5", color)}>{value}</p>
               </div>
-            )}
+            ))}
+          </div>
 
-            {/* Gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/80 pointer-events-none" />
-
-            {/* Story bar (only for story type) */}
-            {postType === "story" && (
-              <div className="absolute top-10 inset-x-3 flex gap-1">
-                <div className="flex-1 h-0.5 rounded-full bg-white/80" />
-                <div className="flex-1 h-0.5 rounded-full bg-white/30" />
-                <div className="flex-1 h-0.5 rounded-full bg-white/30" />
-              </div>
-            )}
-
-            {/* Top bar label (for reels) */}
-            {postType === "reel" && (
-              <div className="absolute top-10 inset-x-0 flex items-center justify-between px-4">
-                <span className="text-white text-[11px] font-bold tracking-widest opacity-80">REELS</span>
-                <div className="flex gap-2">
-                  <div className="w-5 h-5 rounded-full bg-white/20" />
-                  <div className="w-5 h-5 rounded-full bg-white/20" />
-                </div>
-              </div>
-            )}
-
-            {/* Right action buttons */}
-            <div className="absolute right-2 bottom-[72px] flex flex-col items-center gap-4">
-              <div className="flex flex-col items-center gap-0.5">
-                <Heart size={22} className="text-white" fill="white" />
-                <span className="text-white text-[9px]">1.2K</span>
-              </div>
-              <div className="flex flex-col items-center gap-0.5">
-                <MessageCircle size={22} className="text-white" />
-                <span className="text-white text-[9px]">48</span>
-              </div>
-              <Share2 size={22} className="text-white" />
-              <MoreHorizontal size={22} className="text-white" />
+          {/* Time range */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-[10px]">
+              <span className="text-white/30 uppercase tracking-wider">Início</span>
+              <span className="text-[#00FF41] font-mono">{formatDatetime(startDatetime)}</span>
             </div>
-
-            {/* Bottom info */}
-            <div className="absolute bottom-[52px] left-3 right-12">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex-shrink-0 border border-white/30" />
-                <span className="text-white text-[11px] font-semibold drop-shadow">
-                  {accountName ? `@${accountName}` : "@sua_conta"}
-                </span>
-                <span className="text-[9px] text-white/70 border border-white/40 rounded px-1.5 py-px">
-                  Seguir
-                </span>
+            {lastSlot && (
+              <div className="flex justify-between text-[10px]">
+                <span className="text-white/30 uppercase tracking-wider">Fim</span>
+                <span className="text-[#00E5FF] font-mono">{formatDatetime(lastSlot)}</span>
               </div>
+            )}
+          </div>
 
-              {caption ? (
-                <p className="text-white text-[10px] leading-relaxed line-clamp-2 drop-shadow">
-                  {caption}
-                </p>
-              ) : (
-                <p className="text-white/25 text-[10px] italic">Sua legenda aparece aqui...</p>
-              )}
+          {/* Anti-spam badge */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#00FF41]/5 border border-[#00FF41]/20">
+            <Shuffle size={12} className="text-[#00FF41] flex-shrink-0" />
+            <p className="text-[10px] text-[#00FF41]/80">
+              Anti-spam ativo — vídeos diferentes por conta em cada slot
+            </p>
+          </div>
 
-              {firstComment && (
-                <p className="text-white/50 text-[9px] mt-1 flex items-center gap-1">
-                  <Hash size={8} />
-                  <span className="truncate">{firstComment.slice(0, 40)}{firstComment.length > 40 && "…"}</span>
-                </p>
-              )}
-            </div>
-
-            {/* Bottom nav bar */}
-            <div className="absolute bottom-0 inset-x-0 h-[48px] bg-black/90 border-t border-white/[0.07] flex items-center justify-around px-3">
-              {[0, 1, 2, 3, 4].map(i => (
-                <div
-                  key={i}
-                  className={cn(
-                    "w-5 h-5 rounded-sm",
-                    i === 4 ? "rounded-full bg-gradient-to-br from-violet-500 to-cyan-500" : "bg-white/20"
+          {/* Slot preview */}
+          {previewSlots.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] text-white/25 uppercase tracking-wider">Timeline</p>
+              {previewSlots.map((s, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  {s.time !== "..." ? (
+                    <>
+                      <span className="text-[#00E5FF]/60 font-mono text-[10px] w-28 flex-shrink-0">{s.time}</span>
+                      <div className="flex-1 h-[3px] rounded-full bg-white/[0.05] overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-[#00FF41]/60 to-[#00E5FF]/60"
+                          style={{ width: `${Math.round((s.count / totalAccounts) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-white/30 text-[10px] w-16 text-right">{s.count} post{s.count !== 1 ? "s" : ""}</span>
+                    </>
+                  ) : (
+                    <span className="text-white/15 text-[10px] pl-0">
+                      + {slots - 4} slots restantes...
+                    </span>
                   )}
-                />
+                </div>
               ))}
             </div>
-          </div>
-        </div>
-      </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
-      {/* Post type label */}
-      <span className="text-white/25 text-xs">
-        {POST_TYPES.find(t => t.value === postType)?.label} · {POST_TYPES.find(t => t.value === postType)?.desc}
-      </span>
+// ── CaptionEditor ─────────────────────────────────────────────────────────
+
+function CaptionEditor({
+  captions,
+  onChange,
+}: {
+  captions: string[];
+  onChange: (captions: string[]) => void;
+}) {
+  const update = (i: number, val: string) => {
+    const next = [...captions];
+    next[i] = val.slice(0, MAX_CAPTION_CHARS);
+    onChange(next);
+  };
+
+  const remove = (i: number) => onChange(captions.filter((_, idx) => idx !== i));
+
+  const add = () => onChange([...captions, ""]);
+
+  return (
+    <div className="space-y-3">
+      <AnimatePresence initial={false}>
+        {captions.map((cap, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <div className="relative">
+              <div className="absolute top-3 left-3 flex items-center gap-1.5 pointer-events-none z-10">
+                <span className="text-[10px] font-mono text-[#00FF41]/50 bg-[#00FF41]/10 rounded-md px-1.5 py-0.5">
+                  #{i + 1}
+                </span>
+              </div>
+              <textarea
+                value={cap}
+                onChange={e => update(i, e.target.value)}
+                rows={3}
+                placeholder={`Legenda ${i + 1}...`}
+                className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm placeholder-white/20 resize-none focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all leading-relaxed"
+              />
+              <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
+                <span className={cn(
+                  "text-[10px] transition-colors",
+                  cap.length > MAX_CAPTION_CHARS * 0.9 ? "text-yellow-400" : "text-white/20"
+                )}>
+                  {cap.length}/{MAX_CAPTION_CHARS}
+                </span>
+                {captions.length > 1 && (
+                  <button
+                    onClick={() => remove(i)}
+                    className="w-6 h-6 rounded-lg flex items-center justify-center text-white/25 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+
+      <button
+        type="button"
+        onClick={add}
+        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/15 text-white/40 text-sm hover:border-[#00FF41]/40 hover:text-[#00FF41]/60 transition-all"
+      >
+        <Plus size={14} />
+        Adicionar Legenda
+      </button>
+
+      {captions.length > 1 && (
+        <p className="text-[10px] text-white/25 flex items-center gap-1.5">
+          <Shuffle size={9} />
+          Legendas sorteadas aleatoriamente em cada post
+        </p>
+      )}
     </div>
   );
 }
@@ -398,8 +483,8 @@ function SectionCard({ children, className }: { children: React.ReactNode; class
 function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 mb-4">
-      <Icon size={15} className="text-white/40" />
-      <span className="text-xs font-semibold uppercase tracking-widest text-white/40">{children}</span>
+      <Icon size={14} className="text-white/35" />
+      <span className="text-xs font-semibold uppercase tracking-widest text-white/35">{children}</span>
     </div>
   );
 }
@@ -407,46 +492,47 @@ function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: R
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function PostarPage() {
+  // ── Accounts ──────────────────────────────────────────────────
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
 
-  // Form state
-  const [accountIds, setAccountIds] = useState<string[]>([]);
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-  const [mediaFilename, setMediaFilename] = useState("");
-  const [caption, setCaption] = useState("");
-  const [firstComment, setFirstComment] = useState("");
-  const [postType, setPostType] = useState<"reel" | "feed" | "story">("reel");
-  const [publishNow, setPublishNow] = useState(true);
-  const [scheduledFor, setScheduledFor] = useState("");
+  // ── Media ─────────────────────────────────────────────────────
+  const [mediaMode, setMediaMode] = useState<"videos" | "folder">("videos");
+  const [showVideoPicker, setShowVideoPicker] = useState(false);
+  const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
+  const [selectedVideoItems, setSelectedVideoItems] = useState<VideoItem[]>([]);
 
-  // Upload state
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [folders, setFolders] = useState<FolderItem[]>([]);
+  const [loadingFolders, setLoadingFolders] = useState(false);
+  const [selectedFolderId, setSelectedFolderId] = useState<string>("");
+  const [folderVideoCount, setFolderVideoCount] = useState<number>(0);
+  const [loadingFolderCount, setLoadingFolderCount] = useState(false);
+  const [folderOpen, setFolderOpen] = useState(false);
 
-  // Library modal
-  const [showLibrary, setShowLibrary] = useState(false);
+  // ── Schedule ──────────────────────────────────────────────────
+  const [startDatetime, setStartDatetime] = useState("");
+  const [intervalMinutes, setIntervalMinutes] = useState(60);
 
-  // Submit state
+  // ── Captions ──────────────────────────────────────────────────
+  const [captions, setCaptions] = useState<string[]>(["", ""]);
+
+  // ── Submit ────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
-  const [results, setResults] = useState<PublishResult[] | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [scheduled, setScheduled] = useState(false);
+  const [success, setSuccess] = useState<{
+    count: number; slots: number; first_slot: string; last_slot: string;
+  } | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Minimum datetime for scheduling (now + 5 min)
   const minDatetime = new Date(Date.now() + 5 * 60_000).toISOString().slice(0, 16);
 
-  // ── Fetch accounts ──────────────────────────────────────────────
+  // ── Fetch accounts ──────────────────────────────────────────
   const fetchAccounts = useCallback(async () => {
     setLoadingAccounts(true);
     try {
       const res = await fetch("/api/accounts/list");
-      const data = await res.json() as { accounts: Account[] };
-      setAccounts((data.accounts ?? []).filter(a => a.is_active));
+      const d = await res.json() as { accounts: Account[] };
+      setAccounts((d.accounts ?? []).filter(a => a.is_active));
     } finally {
       setLoadingAccounts(false);
     }
@@ -454,115 +540,110 @@ export default function PostarPage() {
 
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
-  // ── File upload ─────────────────────────────────────────────────
-  const uploadFile = useCallback(async (file: File) => {
-    if (!file.type.startsWith("video/")) {
-      setUploadError("Apenas arquivos de vídeo são aceitos.");
-      return;
-    }
-    if (file.size > 500 * 1024 * 1024) {
-      setUploadError("Arquivo muito grande. Limite: 500 MB.");
-      return;
-    }
+  // ── Fetch folders ────────────────────────────────────────────
+  useEffect(() => {
+    if (mediaMode !== "folder") return;
+    setLoadingFolders(true);
+    fetch("/api/library/folders")
+      .then(r => r.json() as Promise<{ folders: FolderItem[] }>)
+      .then(d => setFolders(d.folders ?? []))
+      .finally(() => setLoadingFolders(false));
+  }, [mediaMode]);
 
-    setUploadError(null);
-    setIsUploading(true);
-    setUploadProgress(0);
+  // ── Fetch folder video count when folder changes ──────────────
+  useEffect(() => {
+    if (!selectedFolderId) { setFolderVideoCount(0); return; }
+    setLoadingFolderCount(true);
+    fetch(`/api/library?folderId=${selectedFolderId}`)
+      .then(r => r.json() as Promise<{ videos: VideoItem[] }>)
+      .then(d => setFolderVideoCount(d.videos?.length ?? 0))
+      .finally(() => setLoadingFolderCount(false));
+  }, [selectedFolderId]);
 
-    const supabase = createClient();
-    const ext = file.name.split(".").pop() ?? "mp4";
-    const path = `posts/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+  // ── Computed values ──────────────────────────────────────────
+  const totalVideos = mediaMode === "videos"
+    ? selectedVideoIds.length
+    : folderVideoCount;
 
-    // Simulate progress since Supabase SDK doesn't provide upload progress
-    const progressInterval = setInterval(() => {
-      setUploadProgress(prev => Math.min(prev + 8, 88));
-    }, 300);
+  const totalAccounts = selectedAccountIds.length;
 
-    try {
-      const { error: uploadErr } = await supabase.storage
-        .from("videos-library")
-        .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type });
+  const validCaptions = captions.filter(c => c.trim().length > 0);
 
-      clearInterval(progressInterval);
+  // ── Handlers ─────────────────────────────────────────────────
 
-      if (uploadErr) throw new Error(uploadErr.message);
+  const toggleAccount = (id: string) =>
+    setSelectedAccountIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
 
-      const { data: { publicUrl } } = supabase.storage
-        .from("videos-library")
-        .getPublicUrl(path);
+  const selectAllAccounts = () =>
+    setSelectedAccountIds(accounts.map(a => a.id));
 
-      setUploadProgress(100);
-      setMediaUrl(publicUrl);
-      setMediaFilename(file.name);
-    } catch (err) {
-      clearInterval(progressInterval);
-      setUploadError(err instanceof Error ? err.message : "Falha no upload.");
-    } finally {
-      setIsUploading(false);
-    }
-  }, []);
+  const deselectAllAccounts = () =>
+    setSelectedAccountIds([]);
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) uploadFile(file);
-    e.target.value = "";
+  const handleVideoConfirm = (ids: string[], items: VideoItem[]) => {
+    setSelectedVideoIds(ids);
+    setSelectedVideoItems(items);
+    setShowVideoPicker(false);
   };
 
-  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) uploadFile(file);
-  };
-
-  const clearMedia = () => {
-    setMediaUrl(null);
-    setMediaFilename("");
-    setUploadProgress(0);
-    setUploadError(null);
-  };
-
-  // ── Submit ──────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (!mediaUrl) { setSubmitError("Selecione ou faça upload de um vídeo."); return; }
-    if (accountIds.length === 0) { setSubmitError("Selecione ao menos uma conta."); return; }
-    if (!publishNow && !scheduledFor) { setSubmitError("Defina a data e hora para agendamento."); return; }
+    if (totalAccounts === 0) { setSubmitError("Selecione ao menos 1 conta."); return; }
+    if (mediaMode === "videos" && selectedVideoIds.length === 0) {
+      setSubmitError("Selecione ao menos 1 vídeo.");
+      return;
+    }
+    if (mediaMode === "folder" && !selectedFolderId) {
+      setSubmitError("Selecione uma pasta.");
+      return;
+    }
+    if (mediaMode === "folder" && folderVideoCount === 0) {
+      setSubmitError("A pasta selecionada está vazia.");
+      return;
+    }
+    if (validCaptions.length === 0) { setSubmitError("Adicione ao menos 1 legenda."); return; }
+    if (!startDatetime) { setSubmitError("Defina a data e hora de início."); return; }
+    if (intervalMinutes < 1) { setSubmitError("Intervalo mínimo de 1 minuto."); return; }
 
     setSubmitError(null);
-    setResults(null);
     setSubmitting(true);
 
     try {
-      const res = await fetch("/api/posts/create", {
+      const body: Record<string, unknown> = {
+        account_ids: selectedAccountIds,
+        captions: validCaptions,
+        start_datetime: new Date(startDatetime).toISOString(),
+        interval_minutes: intervalMinutes,
+      };
+
+      if (mediaMode === "videos") {
+        body.video_ids = selectedVideoIds;
+      } else {
+        body.folder_id = selectedFolderId;
+      }
+
+      const res = await fetch("/api/posts/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          media_url: mediaUrl,
-          caption,
-          first_comment: firstComment,
-          post_type: postType,
-          scheduled_for: publishNow ? null : new Date(scheduledFor).toISOString(),
-          account_ids: accountIds,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json() as {
         success: boolean;
-        scheduled?: boolean;
-        results?: PublishResult[];
+        count: number;
+        slots: number;
+        first_slot: string;
+        last_slot: string;
         error?: string;
       };
 
       if (!res.ok || data.error) {
-        setSubmitError(data.error ?? "Erro ao processar post.");
+        setSubmitError(data.error ?? "Erro ao criar campanha.");
         return;
       }
 
-      if (data.scheduled) {
-        setScheduled(true);
-      } else if (data.results) {
-        setResults(data.results);
-      }
+      setSuccess({ count: data.count, slots: data.slots, first_slot: data.first_slot, last_slot: data.last_slot });
     } catch {
       setSubmitError("Erro de conexão. Tente novamente.");
     } finally {
@@ -571,100 +652,152 @@ export default function PostarPage() {
   };
 
   const handleReset = () => {
-    setResults(null);
-    setScheduled(false);
+    setSuccess(null);
     setSubmitError(null);
-    setMediaUrl(null);
-    setMediaFilename("");
-    setCaption("");
-    setFirstComment("");
-    setAccountIds([]);
-    setPublishNow(true);
-    setScheduledFor("");
+    setSelectedAccountIds([]);
+    setSelectedVideoIds([]);
+    setSelectedVideoItems([]);
+    setSelectedFolderId("");
+    setFolderVideoCount(0);
+    setStartDatetime("");
+    setIntervalMinutes(60);
+    setCaptions(["", ""]);
+    setMediaMode("videos");
   };
 
-  const firstSelectedAccount = accounts.find(a => a.id === accountIds[0]);
+  const selectedFolder = folders.find(f => f.id === selectedFolderId);
 
-  // ── Render ──────────────────────────────────────────────────────
+  // ── Success screen ───────────────────────────────────────────
+  if (success) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-16 flex flex-col items-center text-center">
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="w-20 h-20 rounded-3xl bg-[#00FF41]/10 border border-[#00FF41]/30 flex items-center justify-center mb-6"
+        >
+          <CheckCircle2 size={36} className="text-[#00FF41]" />
+        </motion.div>
+        <h2 className="text-white text-2xl font-bold mb-2">Campanha Criada!</h2>
+        <p className="text-white/40 text-sm mb-8">
+          {success.count} posts foram agendados em {success.slots} slot{success.slots !== 1 ? "s" : ""} de tempo.
+        </p>
+        <div className="w-full glass-card rounded-2xl p-5 text-left space-y-3 mb-8">
+          <div className="flex justify-between text-sm">
+            <span className="text-white/40">Primeiro post</span>
+            <span className="text-[#00FF41] font-mono text-xs">{formatDatetime(success.first_slot)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-white/40">Último post</span>
+            <span className="text-[#00E5FF] font-mono text-xs">{formatDatetime(success.last_slot)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-white/40">Total agendado</span>
+            <span className="text-white font-mono text-xs">{success.count} posts</span>
+          </div>
+        </div>
+        <div className="flex gap-3 w-full">
+          <button onClick={handleReset} className="flex-1 btn-primary py-3 text-sm">
+            Nova Campanha
+          </button>
+          <a href="/dashboard/schedule" className="flex-1 flex items-center justify-center py-3 rounded-xl border border-white/15 text-white/60 text-sm hover:border-white/30 hover:text-white transition-all">
+            Ver Agendamentos
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main render ──────────────────────────────────────────────
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="page-title">Novo Post</h1>
-        <p className="page-subtitle">Publique agora ou agende para uma data específica</p>
+        <h1 className="page-title">Gerenciador de Campanhas</h1>
+        <p className="page-subtitle">Agendamento em lote com distribuição inteligente anti-spam</p>
       </div>
 
-      {/* Success state */}
-      <AnimatePresence>
-        {(results || scheduled) && (
-          <motion.div
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            className="mb-6"
-          >
-            {scheduled ? (
-              <div className="glass-card p-5 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-cyan-500/15 flex items-center justify-center flex-shrink-0">
-                  <CalendarDays size={20} className="text-cyan-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-white font-semibold text-sm">Post agendado com sucesso!</p>
-                  <p className="text-white/40 text-xs mt-0.5">
-                    Será publicado em {new Date(scheduledFor).toLocaleString("pt-BR")}
-                  </p>
-                </div>
-                <button onClick={handleReset} className="btn-ghost text-xs px-4 py-2">
-                  Novo post
-                </button>
-              </div>
-            ) : results && (
-              <div className="glass-card p-5 rounded-2xl">
-                <p className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
-                  {results.every(r => r.status === "published") ? (
-                    <><CheckCircle2 size={16} className="text-green-400" /> Publicado com sucesso!</>
-                  ) : results.some(r => r.status === "published") ? (
-                    <><AlertCircle size={16} className="text-yellow-400" /> Publicado parcialmente</>
-                  ) : (
-                    <><AlertCircle size={16} className="text-red-400" /> Falha na publicação</>
-                  )}
-                </p>
-                <div className="space-y-2">
-                  {results.map(r => (
-                    <div key={r.account_id} className="flex items-center gap-3 text-sm">
-                      {r.status === "published" ? (
-                        <CheckCircle2 size={14} className="text-green-400 flex-shrink-0" />
-                      ) : (
-                        <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
-                      )}
-                      <span className="text-white/70">@{r.username}</span>
-                      {r.error && <span className="text-red-400/60 text-xs truncate">{r.error}</span>}
-                    </div>
-                  ))}
-                </div>
-                <button onClick={handleReset} className="mt-4 btn-ghost text-xs px-4 py-2">
-                  Criar novo post
-                </button>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Main layout */}
-      <div className="flex flex-col lg:flex-row gap-8 items-start">
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
         {/* ── Left: Form ── */}
         <div className="flex-1 min-w-0 space-y-4">
 
           {/* 1. Contas */}
           <SectionCard>
-            <SectionLabel Icon={Users}>Para quais contas</SectionLabel>
-            {loadingAccounts ? (
-              <div className="flex items-center gap-2 text-white/30 text-sm">
-                <Loader2 size={16} className="animate-spin" /> Carregando contas...
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Users size={14} className="text-white/35" />
+                <span className="text-xs font-semibold uppercase tracking-widest text-white/35">Contas</span>
               </div>
+              {accounts.length > 0 && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={selectAllAccounts}
+                    className="text-xs text-[#00FF41]/70 hover:text-[#00FF41] transition-colors"
+                  >
+                    Selecionar Todas
+                  </button>
+                  <span className="text-white/15 text-xs">·</span>
+                  <button
+                    onClick={deselectAllAccounts}
+                    className="text-xs text-white/30 hover:text-white/60 transition-colors"
+                  >
+                    Desmarcar
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {loadingAccounts ? (
+              <div className="flex items-center gap-2 text-white/30 text-sm py-2">
+                <Loader2 size={14} className="animate-spin" /> Carregando contas...
+              </div>
+            ) : accounts.length === 0 ? (
+              <p className="text-white/25 text-sm py-4 text-center">
+                Nenhuma conta conectada.{" "}
+                <a href="/dashboard/accounts" className="text-[#00E5FF] hover:underline">Conectar conta</a>
+              </p>
             ) : (
-              <AccountsSelect accounts={accounts} selected={accountIds} onChange={setAccountIds} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {accounts.map(acc => {
+                  const isSelected = selectedAccountIds.includes(acc.id);
+                  return (
+                    <button
+                      key={acc.id}
+                      onClick={() => toggleAccount(acc.id)}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left",
+                        isSelected
+                          ? "border-[#00FF41]/40 bg-[#00FF41]/5"
+                          : "border-white/[0.07] bg-white/[0.02] hover:border-white/15"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-4 h-4 rounded-[4px] border flex items-center justify-center flex-shrink-0 transition-all",
+                        isSelected ? "bg-[#00FF41] border-[#00FF41]" : "border-white/20"
+                      )}>
+                        {isSelected && <Check size={9} className="text-black" strokeWidth={3} />}
+                      </div>
+                      {acc.avatar_url ? (
+                        <img src={acc.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#00FF41]/40 to-[#00E5FF]/40 flex-shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm text-white truncate">@{acc.username}</p>
+                        {acc.display_name && (
+                          <p className="text-xs text-white/35 truncate">{acc.display_name}</p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedAccountIds.length > 0 && (
+              <p className="mt-3 text-xs text-[#00FF41]/60 font-mono">
+                {selectedAccountIds.length} conta{selectedAccountIds.length !== 1 ? "s" : ""} selecionada{selectedAccountIds.length !== 1 ? "s" : ""}
+              </p>
             )}
           </SectionCard>
 
@@ -672,294 +805,270 @@ export default function PostarPage() {
           <SectionCard>
             <SectionLabel Icon={Film}>Mídia</SectionLabel>
 
-            {/* D&D zone */}
-            <div
-              onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-              onDragLeave={() => setIsDragOver(false)}
-              onDrop={handleDrop}
-              onClick={() => !mediaUrl && !isUploading && fileInputRef.current?.click()}
-              className={cn(
-                "relative rounded-xl border-2 border-dashed transition-all",
-                isDragOver ? "border-violet-500 bg-violet-500/10" : "border-white/10 bg-white/[0.02] hover:border-white/20",
-                (!mediaUrl && !isUploading) && "cursor-pointer",
-                isUploading && "pointer-events-none"
-              )}
-            >
-              <AnimatePresence mode="wait">
-                {!mediaUrl && !isUploading && (
-                  <motion.div
-                    key="idle"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="py-10 flex flex-col items-center gap-3"
-                  >
-                    <div className="w-12 h-12 rounded-2xl bg-white/[0.04] border border-white/[0.07] flex items-center justify-center">
-                      <Upload size={22} className="text-white/25" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-white/50">
-                        Arraste um vídeo ou <span className="text-violet-400 underline underline-offset-2">clique para selecionar</span>
-                      </p>
-                      <p className="text-xs text-white/20 mt-1">MP4, MOV, WebM · até 500 MB</p>
-                    </div>
-                  </motion.div>
-                )}
-
-                {isUploading && (
-                  <motion.div
-                    key="uploading"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="py-8 flex flex-col items-center gap-4 px-8"
-                  >
-                    <Loader2 size={28} className="text-violet-400 animate-spin" />
-                    <p className="text-sm text-white/60">Enviando... {uploadProgress}%</p>
-                    <div className="w-full h-1.5 rounded-full bg-white/10">
-                      <motion.div
-                        className="h-full rounded-full bg-gradient-to-r from-violet-600 to-cyan-500"
-                        animate={{ width: `${uploadProgress}%` }}
-                        transition={{ ease: "easeOut" }}
-                      />
-                    </div>
-                  </motion.div>
-                )}
-
-                {mediaUrl && !isUploading && (
-                  <motion.div
-                    key="done"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="p-4 flex items-center gap-4"
-                  >
-                    <div className="w-14 h-14 rounded-xl overflow-hidden bg-black/50 flex-shrink-0 border border-white/10">
-                      <video src={mediaUrl} className="w-full h-full object-cover" muted preload="metadata" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{mediaFilename || "Vídeo selecionado"}</p>
-                      <p className="text-xs text-green-400 mt-0.5 flex items-center gap-1">
-                        <CheckCircle2 size={11} /> Pronto para publicar
-                      </p>
-                    </div>
-                    <button
-                      onClick={e => { e.stopPropagation(); clearMedia(); }}
-                      className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center text-white/40 hover:text-white transition-colors flex-shrink-0"
-                    >
-                      <X size={14} />
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Upload error */}
-            {uploadError && (
-              <p className="mt-2 text-xs text-red-400 flex items-center gap-1.5">
-                <AlertCircle size={12} /> {uploadError}
-              </p>
-            )}
-
-            {/* Library button */}
-            <button
-              type="button"
-              onClick={() => setShowLibrary(true)}
-              className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-white/10 bg-white/[0.03] text-white/50 text-sm hover:border-white/20 hover:text-white/70 transition-all"
-            >
-              <FolderOpen size={15} />
-              Escolher da Biblioteca
-            </button>
-
-            <input ref={fileInputRef} type="file" accept="video/*" onChange={handleFileChange} className="sr-only" />
-          </SectionCard>
-
-          {/* 3. Conteúdo */}
-          <SectionCard>
-            <SectionLabel Icon={Type}>Conteúdo</SectionLabel>
-
-            {/* Caption */}
-            <div className="relative mb-4">
-              <label className="block text-xs text-white/40 mb-2">Legenda</label>
-              <textarea
-                value={caption}
-                onChange={e => setCaption(e.target.value.slice(0, MAX_CHARS))}
-                rows={4}
-                placeholder="Escreva uma legenda envolvente..."
-                className="w-full px-4 py-3 rounded-xl bg-white/[0.06] border border-white/10 text-white text-sm placeholder-white/25 resize-none focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all leading-relaxed"
-              />
-              <span className={cn(
-                "absolute bottom-3 right-3 text-[10px] transition-colors",
-                caption.length > MAX_CHARS * 0.9 ? "text-yellow-400" : "text-white/20"
-              )}>
-                {caption.length}/{MAX_CHARS}
-              </span>
-            </div>
-
-            {/* First comment */}
-            <div className="relative">
-              <label className="block text-xs text-white/40 mb-2 flex items-center gap-1.5">
-                <Hash size={11} /> Primeiro comentário
-                <span className="text-white/20 font-normal normal-case">(opcional · ideal para hashtags)</span>
-              </label>
-              <textarea
-                value={firstComment}
-                onChange={e => setFirstComment(e.target.value.slice(0, MAX_CHARS))}
-                rows={2}
-                placeholder="#hashtags #engajamento #conteudo"
-                className="w-full px-4 py-3 rounded-xl bg-white/[0.06] border border-white/10 text-white text-sm placeholder-white/25 resize-none focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all leading-relaxed"
-              />
-              <span className={cn(
-                "absolute bottom-3 right-3 text-[10px] transition-colors",
-                firstComment.length > MAX_CHARS * 0.9 ? "text-yellow-400" : "text-white/20"
-              )}>
-                {firstComment.length}/{MAX_CHARS}
-              </span>
-            </div>
-          </SectionCard>
-
-          {/* 4. Tipo de post */}
-          <SectionCard>
-            <SectionLabel Icon={Clapperboard}>Tipo de post</SectionLabel>
-            <div className="grid grid-cols-3 gap-3">
-              {POST_TYPES.map(({ value, label, Icon, desc }) => (
+            {/* Mode toggle */}
+            <div className="flex rounded-xl overflow-hidden border border-white/10 mb-4">
+              {(["videos", "folder"] as const).map(mode => (
                 <button
-                  key={value}
-                  type="button"
-                  onClick={() => setPostType(value)}
+                  key={mode}
+                  onClick={() => setMediaMode(mode)}
                   className={cn(
-                    "flex flex-col items-center gap-2 p-4 rounded-xl border transition-all",
-                    postType === value
-                      ? "border-violet-500/50 bg-violet-500/10 text-violet-300"
-                      : "border-white/10 bg-white/[0.02] text-white/40 hover:border-white/20 hover:text-white/60"
+                    "flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-all",
+                    mediaMode === mode
+                      ? "bg-[#00FF41]/15 text-[#00FF41] border-r border-[#00FF41]/20"
+                      : "bg-white/[0.02] text-white/35 hover:text-white/60"
                   )}
                 >
-                  <Icon size={20} />
-                  <div className="text-center">
-                    <p className="text-xs font-semibold">{label}</p>
-                    <p className="text-[10px] opacity-60 mt-0.5">{desc}</p>
-                  </div>
+                  {mode === "videos" ? <><Film size={14} /> Vídeos Avulsos</> : <><FolderOpen size={14} /> Pasta Completa</>}
                 </button>
               ))}
             </div>
-          </SectionCard>
 
-          {/* 5. Publicação */}
-          <SectionCard>
-            <SectionLabel Icon={CalendarDays}>Publicação</SectionLabel>
-
-            {/* Toggle now / schedule */}
-            <div className="flex rounded-xl overflow-hidden border border-white/10 mb-4">
-              <button
-                type="button"
-                onClick={() => setPublishNow(true)}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-all",
-                  publishNow
-                    ? "bg-violet-600/90 text-white"
-                    : "bg-white/[0.03] text-white/40 hover:text-white/60"
-                )}
-              >
-                <Zap size={15} /> Publicar agora
-              </button>
-              <button
-                type="button"
-                onClick={() => setPublishNow(false)}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-all",
-                  !publishNow
-                    ? "bg-cyan-600/90 text-white"
-                    : "bg-white/[0.03] text-white/40 hover:text-white/60"
-                )}
-              >
-                <Clock size={15} /> Agendar
-              </button>
-            </div>
-
-            <AnimatePresence>
-              {!publishNow && (
+            <AnimatePresence mode="wait">
+              {mediaMode === "videos" ? (
                 <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden"
+                  key="videos"
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.15 }}
                 >
-                  <label className="block text-xs text-white/40 mb-2">Data e hora</label>
-                  <input
-                    type="datetime-local"
-                    value={scheduledFor}
-                    min={minDatetime}
-                    onChange={e => setScheduledFor(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-white/[0.06] border border-white/10 text-white text-sm focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-all [color-scheme:dark]"
-                  />
-                  <p className="mt-1.5 text-xs text-white/25">
-                    Horário local · mínimo 5 minutos a partir de agora
-                  </p>
+                  <button
+                    onClick={() => setShowVideoPicker(true)}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-white/15 text-white/40 text-sm hover:border-[#00FF41]/40 hover:text-[#00FF41]/60 transition-all"
+                  >
+                    <Plus size={14} />
+                    {selectedVideoIds.length === 0 ? "Selecionar vídeos da biblioteca" : `${selectedVideoIds.length} vídeo${selectedVideoIds.length !== 1 ? "s" : ""} selecionado${selectedVideoIds.length !== 1 ? "s" : ""}`}
+                  </button>
+
+                  {selectedVideoItems.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedVideoItems.slice(0, 8).map(v => (
+                        <div
+                          key={v.id}
+                          className="relative w-10 h-[71px] rounded-lg overflow-hidden border border-[#00FF41]/30"
+                        >
+                          <video src={v.public_url} className="w-full h-full object-cover" muted preload="metadata" />
+                        </div>
+                      ))}
+                      {selectedVideoItems.length > 8 && (
+                        <div className="w-10 h-[71px] rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center">
+                          <span className="text-white/30 text-[10px]">+{selectedVideoItems.length - 8}</span>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => { setSelectedVideoIds([]); setSelectedVideoItems([]); }}
+                        className="ml-1 text-[10px] text-white/25 hover:text-red-400 transition-colors self-end pb-1"
+                      >
+                        Limpar
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="folder"
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  {loadingFolders ? (
+                    <div className="flex items-center gap-2 text-white/30 text-sm py-2">
+                      <Loader2 size={14} className="animate-spin" /> Carregando pastas...
+                    </div>
+                  ) : folders.length === 0 ? (
+                    <p className="text-white/25 text-sm py-4 text-center">
+                      Nenhuma pasta criada.{" "}
+                      <a href="/dashboard/library" className="text-[#00E5FF] hover:underline">Criar pasta</a>
+                    </p>
+                  ) : (
+                    <div className="relative">
+                      <button
+                        onClick={() => setFolderOpen(v => !v)}
+                        className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 hover:border-white/20 transition-colors"
+                      >
+                        <span className={cn("text-sm", selectedFolder ? "text-white" : "text-white/30")}>
+                          {selectedFolder
+                            ? `📁 ${selectedFolder.name} · ${folderVideoCount} vídeos`
+                            : "Selecionar pasta..."
+                          }
+                        </span>
+                        <ChevronDown size={14} className={cn("text-white/30 transition-transform", folderOpen && "rotate-180")} />
+                      </button>
+
+                      <AnimatePresence>
+                        {folderOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -6 }}
+                            transition={{ duration: 0.12 }}
+                            className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#0d111b] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                          >
+                            {folders.map(f => (
+                              <button
+                                key={f.id}
+                                onClick={() => { setSelectedFolderId(f.id); setFolderOpen(false); }}
+                                className={cn(
+                                  "w-full flex items-center justify-between px-4 py-3 text-sm text-left hover:bg-white/[0.05] transition-colors",
+                                  selectedFolderId === f.id && "bg-[#00FF41]/5 text-[#00FF41]"
+                                )}
+                              >
+                                <span className="text-white">📁 {f.name}</span>
+                                <span className="text-white/30 text-xs">{f.video_count} vídeos</span>
+                              </button>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+
+                  {loadingFolderCount && selectedFolderId && (
+                    <p className="mt-2 text-xs text-white/30 flex items-center gap-1.5">
+                      <Loader2 size={10} className="animate-spin" /> Contando vídeos...
+                    </p>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
           </SectionCard>
 
-          {/* Submit error */}
-          {submitError && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
-            >
-              <AlertCircle size={15} className="flex-shrink-0" />
-              {submitError}
-            </motion.div>
-          )}
+          {/* 3. Distribuição */}
+          <SectionCard>
+            <SectionLabel Icon={CalendarDays}>Distribuição de Tempo</SectionLabel>
 
-          {/* Submit button */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs text-white/35 mb-2">Data e Hora de Início</label>
+                <input
+                  type="datetime-local"
+                  value={startDatetime}
+                  min={minDatetime}
+                  onChange={e => setStartDatetime(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all [color-scheme:dark]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-white/35 mb-2">Intervalo entre Slots</label>
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {INTERVAL_PRESETS.map(p => (
+                    <button
+                      key={p.minutes}
+                      onClick={() => setIntervalMinutes(p.minutes)}
+                      className={cn(
+                        "px-3 py-1 rounded-lg text-xs font-mono transition-all",
+                        intervalMinutes === p.minutes
+                          ? "bg-[#00FF41]/15 text-[#00FF41] border border-[#00FF41]/30"
+                          : "bg-white/[0.04] text-white/40 border border-white/[0.07] hover:border-white/20 hover:text-white/60"
+                      )}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={intervalMinutes}
+                    min={1}
+                    max={43200}
+                    onChange={e => setIntervalMinutes(Math.max(1, Number(e.target.value)))}
+                    className="w-24 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm text-center focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span className="text-white/35 text-sm">minutos</span>
+                  {intervalMinutes >= 60 && (
+                    <span className="text-white/25 text-xs">
+                      ({(intervalMinutes / 60).toFixed(1).replace(".0", "")}h)
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+
+          {/* 4. Legendas */}
+          <SectionCard>
+            <SectionLabel Icon={List}>Legendas Dinâmicas</SectionLabel>
+            <CaptionEditor captions={captions} onChange={setCaptions} />
+          </SectionCard>
+
+          {/* Error */}
+          <AnimatePresence>
+            {submitError && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
+              >
+                <AlertCircle size={14} className="flex-shrink-0" />
+                {submitError}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Submit */}
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={submitting || isUploading}
+            disabled={submitting}
             className={cn(
-              "w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-white text-sm transition-all",
-              publishNow
-                ? "bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 hover:shadow-[0_0_24px_rgba(139,92,246,0.4)]"
-                : "bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 hover:shadow-[0_0_24px_rgba(6,182,212,0.4)]",
-              (submitting || isUploading) && "opacity-60 cursor-not-allowed"
+              "w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-black text-sm transition-all",
+              submitting
+                ? "bg-[#00FF41]/50 cursor-not-allowed"
+                : "bg-[#00FF41] hover:bg-[#00FF41]/90 hover:shadow-[0_0_28px_rgba(0,255,65,0.35)]"
             )}
           >
             {submitting ? (
-              <><Loader2 size={18} className="animate-spin" />
-                {publishNow ? "Publicando..." : "Agendando..."}</>
+              <><Loader2 size={16} className="animate-spin text-black/70" /> Criando campanha...</>
             ) : (
-              <><Send size={18} />
-                {publishNow
-                  ? `Publicar agora${accountIds.length > 1 ? ` (${accountIds.length} contas)` : ""}`
-                  : "Agendar post"
-                }</>
+              <><Send size={16} /> Criar Campanha
+                {totalVideos > 0 && totalAccounts > 0 && (
+                  <span className="ml-1 opacity-70">
+                    ({totalVideos} vídeo{totalVideos !== 1 ? "s" : ""} · {totalAccounts} conta{totalAccounts !== 1 ? "s" : ""})
+                  </span>
+                )}
+              </>
             )}
           </button>
         </div>
 
-        {/* ── Right: Phone Preview ── */}
-        <div className="lg:sticky lg:top-8 w-full lg:w-[300px] flex-shrink-0 flex justify-center">
-          <PhoneMockup
-            mediaUrl={mediaUrl}
-            caption={caption}
-            firstComment={firstComment}
-            accountName={firstSelectedAccount?.username ?? null}
-            postType={postType}
+        {/* ── Right: Campaign Preview ── */}
+        <div className="w-full lg:w-72 lg:sticky lg:top-8 flex-shrink-0">
+          <CampaignPreview
+            totalVideos={totalVideos}
+            totalAccounts={totalAccounts}
+            intervalMinutes={intervalMinutes}
+            startDatetime={startDatetime}
+            captionCount={validCaptions.length}
           />
+
+          {/* Quick tips */}
+          <div className="mt-4 glass-card rounded-2xl p-4 space-y-2.5">
+            <p className="text-[10px] text-white/25 uppercase tracking-wider">Como funciona</p>
+            {[
+              { icon: Shuffle, text: "Vídeos embaralhados (Fisher-Yates) uma vez para toda a campanha" },
+              { icon: Zap, text: "Mesmo slot → vídeos diferentes por conta (anti-spam)" },
+              { icon: Clock, text: "Slot 0 = início, Slot 1 = início + intervalo, ..." },
+            ].map(({ icon: Icon, text }) => (
+              <div key={text} className="flex items-start gap-2">
+                <Icon size={10} className="text-[#00FF41]/50 mt-0.5 flex-shrink-0" />
+                <p className="text-[10px] text-white/30 leading-relaxed">{text}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Library modal */}
+      {/* Video Picker Modal */}
       <AnimatePresence>
-        {showLibrary && (
-          <LibraryModal
-            onSelect={(url, name) => {
-              setMediaUrl(url);
-              setMediaFilename(name);
-              setShowLibrary(false);
-            }}
-            onClose={() => setShowLibrary(false)}
+        {showVideoPicker && (
+          <VideoPickerModal
+            selected={selectedVideoIds}
+            onConfirm={handleVideoConfirm}
+            onClose={() => setShowVideoPicker(false)}
           />
         )}
       </AnimatePresence>
