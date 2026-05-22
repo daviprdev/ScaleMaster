@@ -21,10 +21,24 @@ function clearOAuthCookies(res: NextResponse) {
 
 function redirectWithError(code: string, detail?: string): NextResponse {
   const params = new URLSearchParams({ error: code });
-  if (detail) params.set("detail", detail.slice(0, 200));
+  if (detail) params.set("detail", detail.slice(0, 500));
   const res = NextResponse.redirect(`${APP_URL}/dashboard/accounts?${params}`);
   clearOAuthCookies(res);
   return res;
+}
+
+function metaErrorDetail(
+  fn: string,
+  status: number,
+  msg?: string,
+  type?: string,
+  code?: number
+): string {
+  const parts: string[] = [`[${fn}]`];
+  if (type) parts.push(type);
+  if (code !== undefined) parts.push(`(#${code}):`);
+  parts.push(msg ? msg : `HTTP ${status}`);
+  return parts.join(" ");
 }
 
 async function resolveCredentials(
@@ -118,23 +132,26 @@ async function exchangeCode(code: string, appId: string, appSecret: string): Pro
     code?: number;
   };
 
-  console.log("[ig/callback] exchangeCode →", res.status, JSON.stringify(data).slice(0, 300));
+  console.log("[ig/callback] exchangeCode →", res.status, JSON.stringify(data).slice(0, 400));
 
+  const ecDetail = metaErrorDetail("exchangeCode", res.status, data.error_message, data.error_type, data.code);
+
+  if (data.code === 4 || data.code === 17) {
+    throw Object.assign(new Error(ecDetail), { isRateLimit: true });
+  }
+
+  const ecMsg = (data.error_message ?? "").toLowerCase();
   if (
-    data.error_type ||
-    (data.code && data.code >= 10) ||
-    String(data.error_message ?? "").toLowerCase().includes("permission") ||
-    String(data.error_message ?? "").toLowerCase().includes("business") ||
-    String(data.error_message ?? "").toLowerCase().includes("professional")
+    ecMsg.includes("permission") ||
+    ecMsg.includes("business") ||
+    ecMsg.includes("professional") ||
+    ecMsg.includes("creator")
   ) {
-    throw Object.assign(
-      new Error("Sua conta precisa ser Comercial ou de Criador de Conteúdo no Instagram."),
-      { isPersonalAccount: true }
-    );
+    throw Object.assign(new Error(ecDetail), { isPersonalAccount: true });
   }
 
   if (!res.ok || !data.access_token) {
-    throw new Error(`[exchangeCode] ${data.error_message ?? `HTTP ${res.status}`}`);
+    throw new Error(ecDetail);
   }
 
   return data.access_token;
@@ -157,13 +174,20 @@ async function getLongLivedToken(
   const data = (await res.json()) as {
     access_token?: string;
     expires_in?: number;
-    error?: { message: string; code?: number };
+    error?: { message: string; type?: string; code?: number; fbtrace_id?: string };
   };
 
-  console.log("[ig/callback] longLivedToken →", res.status, JSON.stringify(data).slice(0, 200));
+  console.log("[ig/callback] longLivedToken →", res.status, JSON.stringify(data).slice(0, 400));
+
+  const lltDetail = metaErrorDetail("getLongLivedToken", res.status, data.error?.message, data.error?.type, data.error?.code);
+
+  // Meta retorna rate limit como HTTP 200 com error.code 4 ou 17
+  if (data.error?.code === 4 || data.error?.code === 17 || data.error?.code === 32) {
+    throw Object.assign(new Error(lltDetail), { isRateLimit: true });
+  }
 
   if (!res.ok || !data.access_token) {
-    throw new Error(`[getLongLivedToken] ${data.error?.message ?? `HTTP ${res.status}`}`);
+    throw new Error(lltDetail);
   }
 
   return {
@@ -184,20 +208,31 @@ async function getIGProfile(token: string) {
     username?: string;
     name?: string;
     profile_picture_url?: string;
-    error?: { message: string; type?: string; code?: number };
+    error?: { message: string; type?: string; code?: number; fbtrace_id?: string };
   };
 
-  console.log("[ig/callback] profile →", res.status, JSON.stringify(data).slice(0, 200));
+  console.log("[ig/callback] profile →", res.status, JSON.stringify(data).slice(0, 400));
 
-  if (data.error?.type === "OAuthException") {
-    throw Object.assign(
-      new Error("Sua conta precisa ser Comercial ou de Criador de Conteúdo no Instagram."),
-      { isPersonalAccount: true }
-    );
+  const profDetail = metaErrorDetail("getIGProfile", res.status, data.error?.message, data.error?.type, data.error?.code);
+
+  if (data.error) {
+    if (data.error.code === 4 || data.error.code === 17 || data.error.code === 32) {
+      throw Object.assign(new Error(profDetail), { isRateLimit: true });
+    }
+    const profMsg = (data.error.message ?? "").toLowerCase();
+    if (
+      profMsg.includes("permission") ||
+      profMsg.includes("business") ||
+      profMsg.includes("professional") ||
+      profMsg.includes("creator")
+    ) {
+      throw Object.assign(new Error(profDetail), { isPersonalAccount: true });
+    }
+    throw new Error(profDetail);
   }
 
   if (!res.ok || !data.id || !data.username) {
-    throw new Error(`[getIGProfile] ${data.error?.message ?? `HTTP ${res.status}`}`);
+    throw new Error(profDetail);
   }
 
   return {

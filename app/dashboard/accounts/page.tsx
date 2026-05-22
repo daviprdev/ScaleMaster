@@ -116,8 +116,8 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   cancelled: "Conexão cancelada. Nenhuma conta foi adicionada.",
   state_mismatch: "Erro de segurança (state inválido). Tente novamente.",
   no_code: "Código de autorização ausente. Tente novamente.",
-  server_error: "Erro ao processar a conexão.",
-  personal_account: "Sua conta precisa ser Comercial ou de Criador de Conteúdo no Instagram. Acesse as Configurações do Instagram → Conta → Mudar para conta profissional.",
+  server_error: "Erro retornado pela Meta API:",
+  personal_account: "Conta pessoal detectada. Converta para Comercial ou Criador: Instagram → Configurações → Conta → Mudar para conta profissional.",
   rate_limit: "Limite de requisições da Meta API atingido. Aguarde alguns minutos antes de conectar a próxima conta.",
 };
 
@@ -423,7 +423,7 @@ export default function AccountsPage() {
       const base = OAUTH_ERROR_MESSAGES[error] ?? "Ocorreu um erro ao conectar. Tente novamente.";
       setNotification({
         type: "error",
-        message: detail ? `${base} Detalhe: ${detail}` : base,
+        message: detail ? `${base}\n${detail}` : base,
       });
       window.history.replaceState({}, "", "/dashboard/accounts");
     }
@@ -700,7 +700,7 @@ export default function AccountsPage() {
               ? <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0" />
               : <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
             }
-            <span className="flex-1">{notification.message}</span>
+            <span className="flex-1 whitespace-pre-line">{notification.message}</span>
             <button onClick={() => setNotification(null)} className="text-white/30 hover:text-white/60 transition-colors flex-shrink-0">
               <X size={14} />
             </button>
