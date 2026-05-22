@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, Film, CalendarDays, Send, FolderOpen, X, Check,
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
   Layers, ChevronDown, Shuffle, Zap, LayoutGrid, List,
+  Library, Save, BookMarked,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,13 @@ interface FolderItem {
   id: string;
   name: string;
   video_count: number;
+}
+
+interface SavedCaption {
+  id: string;
+  title: string | null;
+  content: string;
+  created_at: string;
 }
 
 const INTERVAL_PRESETS = [
@@ -395,15 +403,92 @@ function CaptionEditor({
   captions: string[];
   onChange: (captions: string[]) => void;
 }) {
+  const [savedCaptions, setSavedCaptions] = useState<SavedCaption[]>([]);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [savingFor, setSavingFor] = useState<number | null>(null);
+  const [saveTitle, setSaveTitle] = useState("");
+  const [savingApi, setSavingApi] = useState(false);
+  const [savedFeedback, setSavedFeedback] = useState<number | null>(null);
+  const libraryRef = useRef<HTMLDivElement>(null);
+
+  // Fetch saved captions on mount
+  useEffect(() => {
+    setLoadingSaved(true);
+    fetch("/api/saved-captions")
+      .then(r => r.json() as Promise<{ captions: SavedCaption[] }>)
+      .then(d => setSavedCaptions(d.captions ?? []))
+      .catch(() => {})
+      .finally(() => setLoadingSaved(false));
+  }, []);
+
+  // Click outside to close library dropdown
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (libraryRef.current && !libraryRef.current.contains(e.target as Node)) {
+        setShowLibrary(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const update = (i: number, val: string) => {
     const next = [...captions];
     next[i] = val.slice(0, MAX_CAPTION_CHARS);
     onChange(next);
   };
 
-  const remove = (i: number) => onChange(captions.filter((_, idx) => idx !== i));
+  const remove = (i: number) => {
+    setSavingFor(null);
+    onChange(captions.filter((_, idx) => idx !== i));
+  };
 
   const add = () => onChange([...captions, ""]);
+
+  // Inject a saved caption as a new entry in the list
+  const inject = (content: string) => {
+    onChange([...captions, content]);
+    setShowLibrary(false);
+  };
+
+  // Save a caption to the library
+  const handleSave = async (i: number) => {
+    const content = captions[i];
+    if (!content.trim()) return;
+    setSavingApi(true);
+    try {
+      const res = await fetch("/api/saved-captions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: saveTitle.trim() || null,
+          content: content.trim(),
+        }),
+      });
+      const d = await res.json() as { caption?: SavedCaption };
+      if (d.caption) {
+        setSavedCaptions(prev => [d.caption!, ...prev]);
+        setSavedFeedback(i);
+        setTimeout(() => setSavedFeedback(null), 2500);
+      }
+    } catch {/* best-effort */}
+    finally {
+      setSavingApi(false);
+      setSavingFor(null);
+      setSaveTitle("");
+    }
+  };
+
+  // Remove from library
+  const removeFromLibrary = async (id: string) => {
+    setSavedCaptions(prev => prev.filter(c => c.id !== id));
+    await fetch("/api/saved-captions", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    }).catch(() => {});
+  };
 
   return (
     <div className="space-y-3">
@@ -416,48 +501,205 @@ function CaptionEditor({
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.15 }}
           >
-            <div className="relative">
-              <div className="absolute top-3 left-3 flex items-center gap-1.5 pointer-events-none z-10">
-                <span className="text-[10px] font-mono text-[#00FF41]/50 bg-[#00FF41]/10 rounded-md px-1.5 py-0.5">
-                  #{i + 1}
-                </span>
+            <div>
+              {/* Textarea */}
+              <div className="relative">
+                <div className="absolute top-3 left-3 flex items-center gap-1.5 pointer-events-none z-10">
+                  <span className="text-[10px] font-mono text-[#00FF41]/50 bg-[#00FF41]/10 rounded-md px-1.5 py-0.5">
+                    #{i + 1}
+                  </span>
+                </div>
+                <textarea
+                  value={cap}
+                  onChange={e => update(i, e.target.value)}
+                  rows={3}
+                  placeholder={`Legenda ${i + 1}...`}
+                  className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm placeholder-white/20 resize-none focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all leading-relaxed"
+                />
+                <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
+                  <span className={cn(
+                    "text-[10px] transition-colors",
+                    cap.length > MAX_CAPTION_CHARS * 0.9 ? "text-yellow-400" : "text-white/20"
+                  )}>
+                    {cap.length}/{MAX_CAPTION_CHARS}
+                  </span>
+                  {captions.length > 1 && (
+                    <button
+                      onClick={() => remove(i)}
+                      className="w-6 h-6 rounded-lg flex items-center justify-center text-white/25 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  )}
+                </div>
               </div>
-              <textarea
-                value={cap}
-                onChange={e => update(i, e.target.value)}
-                rows={3}
-                placeholder={`Legenda ${i + 1}...`}
-                className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm placeholder-white/20 resize-none focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all leading-relaxed"
-              />
-              <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
-                <span className={cn(
-                  "text-[10px] transition-colors",
-                  cap.length > MAX_CAPTION_CHARS * 0.9 ? "text-yellow-400" : "text-white/20"
-                )}>
-                  {cap.length}/{MAX_CAPTION_CHARS}
-                </span>
-                {captions.length > 1 && (
-                  <button
-                    onClick={() => remove(i)}
-                    className="w-6 h-6 rounded-lg flex items-center justify-center text-white/25 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+
+              {/* Save-to-library inline panel */}
+              <AnimatePresence>
+                {cap.trim().length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.12 }}
+                    className="overflow-hidden"
                   >
-                    <Trash2 size={11} />
-                  </button>
+                    {savedFeedback === i ? (
+                      <div className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5">
+                        <CheckCircle2 size={11} className="text-[#00FF41]" />
+                        <span className="text-[10px] text-[#00FF41]">Salva na biblioteca!</span>
+                      </div>
+                    ) : savingFor === i ? (
+                      <div className="flex items-center gap-2 px-1 pt-1.5 pb-0.5">
+                        <input
+                          autoFocus
+                          value={saveTitle}
+                          onChange={e => setSaveTitle(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") handleSave(i); if (e.key === "Escape") { setSavingFor(null); setSaveTitle(""); } }}
+                          placeholder="Nome da legenda (opcional)..."
+                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/15 text-white text-xs placeholder-white/25 focus:outline-none focus:border-[#00FF41]/40 transition-all"
+                        />
+                        <button
+                          onClick={() => handleSave(i)}
+                          disabled={savingApi}
+                          className="px-3 py-1.5 rounded-lg bg-[#00FF41]/15 text-[#00FF41] text-xs font-medium hover:bg-[#00FF41]/25 transition-all disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {savingApi ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
+                          Salvar
+                        </button>
+                        <button
+                          onClick={() => { setSavingFor(null); setSaveTitle(""); }}
+                          className="w-6 h-6 flex items-center justify-center text-white/25 hover:text-white/60 transition-colors"
+                        >
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setSavingFor(i); setSaveTitle(""); }}
+                        className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5 text-[10px] text-white/25 hover:text-[#00FF41]/60 transition-colors group"
+                      >
+                        <Save size={9} className="group-hover:text-[#00FF41]/60 transition-colors" />
+                        Salvar esta legenda para usar depois
+                      </button>
+                    )}
+                  </motion.div>
                 )}
-              </div>
+              </AnimatePresence>
             </div>
           </motion.div>
         ))}
       </AnimatePresence>
 
-      <button
-        type="button"
-        onClick={add}
-        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/15 text-white/40 text-sm hover:border-[#00FF41]/40 hover:text-[#00FF41]/60 transition-all"
-      >
-        <Plus size={14} />
-        Adicionar Legenda
-      </button>
+      {/* Bottom action row */}
+      <div className="flex gap-2">
+        {/* Add new empty caption */}
+        <button
+          type="button"
+          onClick={add}
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/15 text-white/40 text-sm hover:border-[#00FF41]/40 hover:text-[#00FF41]/60 transition-all"
+        >
+          <Plus size={14} />
+          Adicionar Legenda
+        </button>
+
+        {/* Use saved caption */}
+        <div ref={libraryRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setShowLibrary(v => !v)}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-all",
+              showLibrary
+                ? "border-[#00E5FF]/40 bg-[#00E5FF]/8 text-[#00E5FF]"
+                : "border-white/15 text-white/40 hover:border-[#00E5FF]/40 hover:text-[#00E5FF]/70"
+            )}
+          >
+            <Library size={14} />
+            Usar Salva
+            {savedCaptions.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-[#00E5FF]/15 text-[#00E5FF] text-[9px] font-mono">
+                {savedCaptions.length}
+              </span>
+            )}
+          </button>
+
+          {/* Library dropdown */}
+          <AnimatePresence>
+            {showLibrary && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                transition={{ duration: 0.14 }}
+                className="absolute z-30 bottom-full mb-2 right-0 w-80 bg-[#0d111b] border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+              >
+                <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.07]">
+                  <div className="flex items-center gap-2">
+                    <BookMarked size={13} className="text-[#00E5FF]" />
+                    <span className="text-xs font-semibold text-white/70">Biblioteca de Legendas</span>
+                  </div>
+                  <button onClick={() => setShowLibrary(false)} className="text-white/25 hover:text-white/60 transition-colors">
+                    <X size={13} />
+                  </button>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto">
+                  {loadingSaved ? (
+                    <div className="flex items-center justify-center py-8 gap-2 text-white/30 text-xs">
+                      <Loader2 size={13} className="animate-spin" /> Carregando...
+                    </div>
+                  ) : savedCaptions.length === 0 ? (
+                    <div className="py-8 text-center">
+                      <BookMarked size={20} className="text-white/10 mx-auto mb-2" />
+                      <p className="text-white/25 text-xs">Nenhuma legenda salva ainda.</p>
+                      <p className="text-white/15 text-[10px] mt-1">Use o botão &ldquo;Salvar para depois&rdquo; abaixo de uma legenda.</p>
+                    </div>
+                  ) : (
+                    savedCaptions.map(sc => (
+                      <div
+                        key={sc.id}
+                        className="group flex items-start gap-2 px-4 py-3 hover:bg-white/[0.04] transition-colors border-b border-white/[0.04] last:border-0"
+                      >
+                        <button
+                          onClick={() => inject(sc.content)}
+                          className="flex-1 text-left min-w-0"
+                        >
+                          {sc.title && (
+                            <p className="text-xs font-medium text-[#00E5FF]/80 truncate mb-0.5">
+                              {sc.title}
+                            </p>
+                          )}
+                          <p className="text-xs text-white/55 line-clamp-2 leading-relaxed">
+                            {sc.content}
+                          </p>
+                          <p className="text-[9px] text-white/20 mt-1">
+                            Clique para usar
+                          </p>
+                        </button>
+                        <button
+                          onClick={() => removeFromLibrary(sc.id)}
+                          className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center text-white/20 hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {savedCaptions.length > 0 && (
+                  <div className="px-4 py-2.5 border-t border-white/[0.05]">
+                    <p className="text-[9px] text-white/20 text-center">
+                      Clique em uma legenda para adicioná-la à campanha
+                    </p>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
 
       {captions.length > 1 && (
         <p className="text-[10px] text-white/25 flex items-center gap-1.5">
