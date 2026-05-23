@@ -1736,3 +1736,82 @@ CREATE TABLE public.pending_containers (
 
 #### Por que separar em duas fases?
 A Meta processa vídeos de forma assíncrona (Upload → Processamento → Pronto). O polling inline bloqueava a thread por até 120s por conta. Com 5 loops × 3 contas = potencial de 1800s — muito acima do `maxDuration=300`. A Fase 1 retorna em ~2s por conta (só cria o container), e a Fase 2 verifica o status sem esperar, tornando o sistema escalável.
+
+---
+
+### ✅ Fix — Lógica de Intervalo por Lote no Agendamento em Massa (2026-05-23)
+**Commit:** `fix: apply time interval per batch instead of per account in campaign scheduling`
+
+#### Problema
+O `CampaignPreview` no frontend (`app/dashboard/postar/page.tsx`) calculava `slots = ceil(videos / batchSize)`, ignorando o número de contas. A lógica correta (já aplicada no backend em `app/api/posts/schedule/route.ts`) é: todas as contas recebem seus posts **no mesmo slot de tempo** — o intervalo avança uma vez por "lote completo de todas as contas".
+
+#### Solução
+Introduzida variável `postsPerSlot = max(1, totalAccounts) × effectiveBatch`:
+- `slots = ceil(totalVideos / postsPerSlot)`
+- `CampaignPreview` usa `postsPerSlot` como divisor em todas as previsões
+- Texto de resumo inline também recalcula com a mesma fórmula
+- Deps do `useMemo` simplificadas: `[startDatetime, slots, postsPerSlot, intervalMinutes, totalVideos]`
+
+---
+
+### ✅ Fix — Stories API: host errado na Graph API (2026-05-23)
+
+#### Problema
+`active_stories_count` ficava travado em 0 em todas as contas. Causa: `app/api/accounts/stories/route.ts` e `app/api/instagram/stories/route.ts` usavam `graph.facebook.com/v19.0` — host inválido para tokens do Instagram Login API.
+
+#### Solução
+Substituído por `graph.instagram.com/v21.0` em todas as rotas de stories. O endpoint `accounts/refresh` agora também busca stories em paralelo no mesmo ciclo de atualização.
+
+---
+
+### ✅ Style — Overflow nos Cards de Conta (2026-05-23)
+**Commit:** `style: fix metadata row overflow on account cards`
+
+#### Problema
+A linha inferior de metadados dos cards em `/dashboard/accounts` (seguidores, posts, sync, stories) estava sendo cortada à direita em telas menores (ex.: "1 sto..." em vez de "1 story"). `overflow-x-auto` sem scrollbar visível é inacessível no desktop com mouse padrão.
+
+#### Solução
+Substituído `flex + overflow-x-auto + no-scrollbar` por `flex-wrap + gap-x-3.5 + gap-y-2`. Os itens quebram para a linha seguinte se não couberem. Labels compactados: `"sincronizado"` → `"sync"`, `"expira em"` → `"exp."`.
+
+---
+
+### ✅ Feat — Badge de Erro de Token na Aba Logins (2026-05-23)
+**Commit:** `feat: mirror meta account error status to logins table with red alert badge`
+
+#### Problema
+A aba de Logins (`/dashboard/logins`) mostrava apenas "Conectada" ou "Não Conectada" — sem distinguir o caso em que a conta existe mas o token caiu ou a saúde está degradada (`health_status = 'error'`/`'blocked'`).
+
+#### Solução
+
+**API (`app/api/logins/route.ts`):**
+- Adicionado `health_status` ao select de `instagram_accounts`
+- `is_connected: boolean` → `meta_status: "connected" | "error" | "not_connected"`
+- `accountMap` (Map) armazena o estado tristate por username
+
+**UI (`app/dashboard/logins/page.tsx`):**
+- Badge vermelho pulsante com ícone `WifiOff` + texto "Token Inválido" quando `meta_status === "error"`
+- Alert strip vermelho abaixo do divisor: "Token caiu na Meta API — acesse Contas para reconectar ou exclua este login."
+- Borda vermelha sutil no card (`border-red-500/25`)
+- Badge cinza "Não Conectada" (antes "Pendente") quando `meta_status === "not_connected"`
+
+---
+
+### ✅ Chore — Limpeza de Posts Fantasmas + Cache do Dashboard (2026-05-23)
+**Commit:** `chore: clear orphaned scheduled posts and fix dashboard widgets cache`
+
+#### Problema
+Uma campanha criada antes de refatorações recentes gerou posts presos com status `pending`/`publishing` que nunca seriam publicados. Eles apareciam nos widgets "Atividade Recente" e "Próximas Postagens" do Dashboard sem opção de cancelamento na UI.
+
+#### Solução — Limpeza de DB
+Posts deletados diretamente via script Node.js usando a Supabase REST API com service role key. `DELETE FROM scheduled_posts WHERE status IN ('pending','publishing')` removeu todos os registros órfãos.
+
+#### Solução — Novo endpoint de limpeza
+`POST /api/posts/clear-pending` — remove em paralelo todos os `scheduled_posts` e `pending_containers` com status `pending`/`publishing`/`processing` do usuário autenticado. Retorna contagem de linhas deletadas.
+
+#### Solução — Freshness do Dashboard
+- `app/api/dashboard/stats/route.ts`: adicionado `export const dynamic = "force-dynamic"` para desabilitar cache do Next.js
+- `app/dashboard/page.tsx`:
+  - `loadStats` extraído como `useCallback` com `fetch(..., { cache: "no-store" })`
+  - `useEffect` registra `setInterval(loadStats(silent), 60_000)` — auto-refresh a cada 60s
+  - Botão "Atualizar" (ícone `RefreshCw`) visível no header do dashboard
+  - Botão "Limpar Fila" (2-click confirmation) no card de Próximas Postagens, visível apenas quando `pending > 0`
