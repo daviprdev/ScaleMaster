@@ -25,10 +25,15 @@ interface GraphMediaEdge {
   error?: { message: string; code: number };
 }
 
+interface GraphStoriesEdge {
+  data?: Array<{ id: string }>;
+  error?: { message: string; code: number };
+}
+
 async function fetchMetaProfile(
   igId: string,
   token: string
-): Promise<{ profile: GraphProfile; lastPostAt: string | null }> {
+): Promise<{ profile: GraphProfile; lastPostAt: string | null; activeStoriesCount: number }> {
   const profileUrl =
     `${GRAPH}/${igId}` +
     `?fields=followers_count,media_count,name,profile_picture_url,username` +
@@ -37,23 +42,40 @@ async function fetchMetaProfile(
   const profileRes = await fetch(profileUrl, { cache: "no-store" });
   const profile = (await profileRes.json()) as GraphProfile;
 
-  if (profile.error) return { profile, lastPostAt: null };
+  if (profile.error) return { profile, lastPostAt: null, activeStoriesCount: 0 };
 
-  // Fetch most recent media timestamp (non-critical)
+  // Fetch most recent media timestamp and active stories in parallel (both non-critical)
   let lastPostAt: string | null = null;
-  try {
-    const mediaUrl =
-      `${GRAPH}/${igId}/media` +
-      `?fields=timestamp&limit=1` +
-      `&access_token=${encodeURIComponent(token)}`;
-    const mediaRes = await fetch(mediaUrl, { cache: "no-store" });
-    const mediaData = (await mediaRes.json()) as GraphMediaEdge;
-    lastPostAt = mediaData.data?.[0]?.timestamp ?? null;
-  } catch {
-    // non-critical
-  }
+  let activeStoriesCount = 0;
 
-  return { profile, lastPostAt };
+  await Promise.allSettled([
+    // Last post timestamp
+    (async () => {
+      const mediaUrl =
+        `${GRAPH}/${igId}/media` +
+        `?fields=timestamp&limit=1` +
+        `&access_token=${encodeURIComponent(token)}`;
+      const mediaRes = await fetch(mediaUrl, { cache: "no-store" });
+      const mediaData = (await mediaRes.json()) as GraphMediaEdge;
+      lastPostAt = mediaData.data?.[0]?.timestamp ?? null;
+    })(),
+
+    // Active stories count — data.length is the only way to get this value
+    (async () => {
+      const storiesUrl =
+        `${GRAPH}/${igId}/stories` +
+        `?fields=id` +
+        `&access_token=${encodeURIComponent(token)}`;
+      const storiesRes = await fetch(storiesUrl, { cache: "no-store" });
+      if (!storiesRes.ok) return;
+      const storiesData = (await storiesRes.json()) as GraphStoriesEdge;
+      if (!storiesData.error && Array.isArray(storiesData.data)) {
+        activeStoriesCount = storiesData.data.length;
+      }
+    })(),
+  ]);
+
+  return { profile, lastPostAt, activeStoriesCount };
 }
 
 export async function POST(req: NextRequest) {
@@ -92,7 +114,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { profile, lastPostAt } = await fetchMetaProfile(igId, token);
+  const { profile, lastPostAt, activeStoriesCount } = await fetchMetaProfile(igId, token);
 
   if (profile.error) {
     const code = profile.error.code;
@@ -123,6 +145,10 @@ export async function POST(req: NextRequest) {
   const update: Record<string, unknown> = {
     followers_count: profile.followers_count ?? 0,
     posts_count: profile.media_count ?? 0,
+    // has_active_stories uses existing boolean column (Fase 25)
+    has_active_stories: activeStoriesCount > 0,
+    // active_stories_count requires the migration below to be applied first
+    active_stories_count: activeStoriesCount,
     profile_refreshed_at: new Date().toISOString(),
     health_status: "online",
   };
@@ -130,7 +156,21 @@ export async function POST(req: NextRequest) {
   if (profile.name) update.display_name = profile.name;
   if (profile.profile_picture_url) update.avatar_url = profile.profile_picture_url;
 
-  await admin.from("instagram_accounts").update(update).eq("id", accountId);
+  // Try full update; if active_stories_count column doesn't exist yet, retry without it
+  const { error: updateErr } = await admin
+    .from("instagram_accounts")
+    .update(update)
+    .eq("id", accountId);
 
-  return NextResponse.json({ success: true, stats: update });
+  if (updateErr) {
+    if (updateErr.code === "42703" || updateErr.message?.includes("active_stories_count")) {
+      // Column not yet migrated — persist everything else
+      const { active_stories_count: _, ...updateWithoutCount } = update;
+      await admin.from("instagram_accounts").update(updateWithoutCount).eq("id", accountId);
+    } else {
+      console.error("[accounts/refresh] Update error:", updateErr);
+    }
+  }
+
+  return NextResponse.json({ success: true, stats: update, active_stories_count: activeStoriesCount });
 }

@@ -23,7 +23,7 @@ async function fetchStoriesForAccount(
     const timer = setTimeout(() => controller.abort(), 8000);
 
     const url =
-      `https://graph.facebook.com/v19.0/${acc.ig_business_account_id}/stories` +
+      `https://graph.instagram.com/v21.0/${acc.ig_business_account_id}/stories` +
       `?fields=id,timestamp` +
       `&access_token=${encodeURIComponent(acc.meta_access_token)}`;
 

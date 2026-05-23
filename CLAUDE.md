@@ -297,6 +297,10 @@ CREATE POLICY "users_manage_own_meta_apps" ON public.user_meta_apps
 ALTER TABLE public.scheduled_posts
   ADD COLUMN IF NOT EXISTS campaign_id uuid;
 CREATE INDEX IF NOT EXISTS idx_scheduled_posts_campaign_id ON public.scheduled_posts(campaign_id);
+
+-- Fix Stories — contagem inteira de stories ativos por conta
+ALTER TABLE public.instagram_accounts
+  ADD COLUMN IF NOT EXISTS active_stories_count integer NOT NULL DEFAULT 0;
 ```
 
 **Env vars novas a adicionar na Vercel:**
