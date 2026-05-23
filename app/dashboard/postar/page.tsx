@@ -302,7 +302,8 @@ function CampaignPreview({
   captionCount: number;
 }) {
   const effectiveBatch = Math.max(1, batchSize);
-  const slots = totalVideos > 0 ? Math.ceil(totalVideos / effectiveBatch) : 0;
+  const postsPerSlot = Math.max(1, totalAccounts) * effectiveBatch;
+  const slots = totalVideos > 0 ? Math.ceil(totalVideos / postsPerSlot) : 0;
 
   const lastSlot = slots > 0 && startDatetime
     ? computeLastSlot(startDatetime, intervalMinutes, slots)
@@ -313,15 +314,15 @@ function CampaignPreview({
     const preview = [];
     for (let i = 0; i < Math.min(4, slots); i++) {
       const t = new Date(new Date(startDatetime).getTime() + i * intervalMinutes * 60_000);
-      const remaining = totalVideos - i * effectiveBatch;
+      const remaining = totalVideos - i * postsPerSlot;
       preview.push({
         time: t.toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }),
-        count: Math.min(effectiveBatch, remaining),
+        count: Math.min(postsPerSlot, remaining),
       });
     }
     if (slots > 4) preview.push({ time: "...", count: 0 });
     return preview;
-  }, [startDatetime, slots, effectiveBatch, intervalMinutes, totalVideos]);
+  }, [startDatetime, slots, postsPerSlot, intervalMinutes, totalVideos]);
 
   const isReady = totalVideos > 0 && totalAccounts > 0 && startDatetime;
 
@@ -389,7 +390,7 @@ function CampaignPreview({
                       <div className="flex-1 h-[3px] rounded-full bg-white/[0.05] overflow-hidden">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-[#00FF41]/60 to-[#00E5FF]/60"
-                          style={{ width: `${Math.round((s.count / effectiveBatch) * 100)}%` }}
+                          style={{ width: `${Math.round((s.count / postsPerSlot) * 100)}%` }}
                         />
                       </div>
                       <span className="text-white/30 text-[10px] w-16 text-right">{s.count} vídeo{s.count !== 1 ? "s" : ""}</span>
@@ -1634,7 +1635,9 @@ export default function PostarPage() {
                     >
                       {(() => {
                         const effectiveBatch = Math.max(1, batchSize);
-                        const slots = Math.ceil(totalVideos / effectiveBatch);
+                        const nAccounts = Math.max(1, selectedAccountIds.length);
+                        const postsPerSlot = nAccounts * effectiveBatch;
+                        const slots = Math.ceil(totalVideos / postsPerSlot);
                         const lastMs = new Date(startDatetime).getTime() + (slots - 1) * intervalMinutes * 60_000;
                         const fmt = (iso: string) => new Date(iso).toLocaleString("pt-BR", {
                           day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
@@ -1642,11 +1645,11 @@ export default function PostarPage() {
                         const lastIso = new Date(lastMs).toISOString();
                         return (
                           <p className="text-xs text-white/55 leading-relaxed">
-                            <span className="text-[#00FF41] font-semibold">{totalVideos}</span> vídeo{totalVideos !== 1 ? "s" : ""} dividido{totalVideos !== 1 ? "s" : ""} em{" "}
-                            <span className="text-white font-semibold">{slots}</span> lote{slots !== 1 ? "s" : ""} de{" "}
-                            <span className="text-[#00E5FF] font-semibold">{effectiveBatch}</span> vídeo{effectiveBatch !== 1 ? "s" : ""}.{" "}
-                            Primeiro disparo: <span className="text-white/80">{fmt(startDatetime)}</span>
-                            {slots > 1 && <> · Último: <span className="text-white/80">{fmt(lastIso)}</span></>}.
+                            <span className="text-[#00FF41] font-semibold">{totalVideos}</span> vídeo{totalVideos !== 1 ? "s" : ""} em{" "}
+                            <span className="text-white font-semibold">{slots}</span> disparo{slots !== 1 ? "s" : ""} —{" "}
+                            <span className="text-[#00E5FF] font-semibold">{nAccounts}</span> conta{nAccounts !== 1 ? "s" : ""} × <span className="text-[#00E5FF] font-semibold">{effectiveBatch}</span> vídeo{effectiveBatch !== 1 ? "s" : ""} por disparo.{" "}
+                            Início: <span className="text-white/80">{fmt(startDatetime)}</span>
+                            {slots > 1 && <> · Fim: <span className="text-white/80">{fmt(lastIso)}</span></>}.
                           </p>
                         );
                       })()}

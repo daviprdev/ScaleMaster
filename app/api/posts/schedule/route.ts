@@ -91,50 +91,52 @@ export async function POST(req: NextRequest) {
 
   // ── Algoritmo de distribuição anti-spam ───────────────────────────────────
   //
-  // batch_size = quantos vídeos por disparo (slot).
-  // Regra crítica: no mesmo slot, cada vídeo vai para uma conta diferente
-  // — nunca duas contas recebem o mesmo vídeo no mesmo minuto.
+  // batch_size = vídeos por CONTA por slot (disparo).
+  // Regra crítica: no mesmo slot, cada conta recebe um vídeo diferente do pool
+  // — nunca o mesmo vídeo vai para duas contas.
   //
   // Implementação:
-  //   1. Fisher-Yates no pool inteiro (um único shuffle)
-  //   2. Embaralha as contas uma vez (ordem rotativa por slot)
-  //   3. Para cada slot: pop `batchSlotSize` vídeos do pool
-  //      → distribui round-robin entre as contas (uma por uma)
+  //   1. Fisher-Yates shuffle no pool inteiro (uma vez)
+  //   2. Embaralha as contas (ordem aleatória fixa para a campanha)
+  //   3. Para cada slot: itera TODAS as contas em sequência
+  //      → cada conta recebe effectiveBatch vídeos únicos do pool
+  //      → o slot compartilha o mesmo scheduled_at para todas as contas
   //   4. Legenda aleatória independente por post
-  //   5. Para quando o pool esgota
+  //   5. O tempo só avança APÓS todas as contas serem servidas no slot
+  //   6. Para quando o pool esgota (slot pode ser parcial no final)
 
   const campaignId = randomUUID();
-  const effectiveBatch = Math.max(1, Math.floor(batch_size ?? account_ids.length));
+  const effectiveBatch = Math.max(1, Math.floor(batch_size ?? 1));
   const shuffledVideos = shuffle(videos);
   const shuffledAccounts = shuffle([...account_ids]);
   const posts: Record<string, unknown>[] = [];
   let ptr = 0;
   let slotIndex = 0;
-  let accountOffset = 0;
 
   while (ptr < shuffledVideos.length) {
     const slotTime = new Date(startMs + slotIndex * intervalMs).toISOString();
-    const batchSlotSize = Math.min(effectiveBatch, shuffledVideos.length - ptr);
 
-    for (let i = 0; i < batchSlotSize; i++) {
-      const video = shuffledVideos[ptr++];
-      const accountId = shuffledAccounts[(accountOffset + i) % shuffledAccounts.length];
-      const caption = validCaptions[Math.floor(Math.random() * validCaptions.length)];
+    // Serve todas as contas neste slot antes de avançar o tempo
+    outer: for (const accountId of shuffledAccounts) {
+      for (let b = 0; b < effectiveBatch; b++) {
+        if (ptr >= shuffledVideos.length) break outer;
+        const video = shuffledVideos[ptr++];
+        const caption = validCaptions[Math.floor(Math.random() * validCaptions.length)];
 
-      posts.push({
-        user_id: user.id,
-        account_id: accountId,
-        video_id: video.id,
-        video_url: video.public_url,
-        caption,
-        scheduled_at: slotTime,
-        status: "pending",
-        campaign_id: campaignId,
-      });
+        posts.push({
+          user_id: user.id,
+          account_id: accountId,
+          video_id: video.id,
+          video_url: video.public_url,
+          caption,
+          scheduled_at: slotTime,
+          status: "pending",
+          campaign_id: campaignId,
+        });
+      }
     }
 
-    // Avança o offset para o próximo slot (rotação justa entre contas)
-    accountOffset = (accountOffset + batchSlotSize) % shuffledAccounts.length;
+    // Tempo só avança depois que todas as contas do slot foram atendidas
     slotIndex++;
   }
 
