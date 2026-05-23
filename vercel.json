@@ -2,11 +2,15 @@
   "crons": [
     {
       "path": "/api/cron/process-loops",
-      "schedule": "0 9 * * *"
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/cron/publish-pending",
-      "schedule": "30 9 * * *"
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/publish-scheduled",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

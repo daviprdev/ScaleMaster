@@ -26,7 +26,7 @@ interface PostRow {
   videos_library: { public_url: string } | null;
 }
 
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
   if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
