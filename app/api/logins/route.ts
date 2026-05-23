@@ -24,27 +24,32 @@ export async function GET() {
       .order("created_at", { ascending: false }),
     supabase
       .from("instagram_accounts")
-      .select("username, meta_access_token, token_expires_at, is_active")
+      .select("username, meta_access_token, token_expires_at, is_active, health_status")
       .eq("user_id", user.id),
   ]);
 
   if (loginsResult.error) return NextResponse.json({ error: loginsResult.error.message }, { status: 500 });
 
   const now = Date.now();
-  const connectedSet = new Set<string>(
-    (accountsResult.data ?? [])
-      .filter((a) =>
-        a.is_active &&
-        a.meta_access_token &&
-        (a.token_expires_at == null || new Date(a.token_expires_at).getTime() > now),
-      )
-      .map((a) => (a.username as string).toLowerCase()),
-  );
+  // Maps username → "connected" | "error" for accounts that exist in instagram_accounts
+  const accountMap = new Map<string, "connected" | "error">();
+  for (const a of (accountsResult.data ?? [])) {
+    const key = (a.username as string).toLowerCase();
+    const tokenOk =
+      !!a.meta_access_token &&
+      (a.token_expires_at == null || new Date(a.token_expires_at).getTime() > now);
+    const healthOk = !a.health_status || a.health_status === "online";
+    const ok = a.is_active && tokenOk && healthOk;
+    accountMap.set(key, ok ? "connected" : "error");
+  }
 
-  const logins = (loginsResult.data ?? []).map((l) => ({
-    ...l,
-    is_connected: connectedSet.has((l.username as string).toLowerCase()),
-  }));
+  const logins = (loginsResult.data ?? []).map((l) => {
+    const key = (l.username as string).toLowerCase();
+    const meta_status: "connected" | "error" | "not_connected" = accountMap.has(key)
+      ? accountMap.get(key)!
+      : "not_connected";
+    return { ...l, meta_status };
+  });
 
   return NextResponse.json({ logins });
 }

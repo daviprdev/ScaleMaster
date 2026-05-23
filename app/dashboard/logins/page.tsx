@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Lock, Plus, Eye, EyeOff, Copy, Check,
   Pencil, Trash2, X, KeyRound, Mail, User,
-  Shield, AlertTriangle, RefreshCw,
+  Shield, AlertTriangle, RefreshCw, WifiOff,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -18,7 +18,7 @@ type Login = {
   two_factor_key: string | null;
   created_at: string;
   updated_at: string;
-  is_connected: boolean;
+  meta_status: "connected" | "error" | "not_connected";
 };
 
 type FormData = {
@@ -127,7 +127,7 @@ function LoginCard({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8, scale: 0.97 }}
       transition={{ duration: 0.22 }}
-      className="glass-card ticks flex flex-col gap-4 p-5"
+      className={`glass-card ticks flex flex-col gap-4 p-5${login.meta_status === "error" ? " border border-red-500/25" : ""}`}
       style={{ position: "relative" }}
     >
       {/* Card header */}
@@ -135,20 +135,20 @@ function LoginCard({
         <div className="flex items-center gap-3 min-w-0">
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{
-              background: "rgba(0,255,65,0.07)",
-              border: "0.5px solid rgba(0,255,65,0.28)",
-              boxShadow: "0 0 10px rgba(0,255,65,0.08)",
-            }}
+            style={
+              login.meta_status === "error"
+                ? { background: "rgba(239,68,68,0.08)", border: "0.5px solid rgba(239,68,68,0.3)" }
+                : { background: "rgba(0,255,65,0.07)", border: "0.5px solid rgba(0,255,65,0.28)", boxShadow: "0 0 10px rgba(0,255,65,0.08)" }
+            }
           >
-            <Lock size={14} style={{ color: "var(--matrix)" }} />
+            <Lock size={14} style={{ color: login.meta_status === "error" ? "rgb(248,113,113)" : "var(--matrix)" }} />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm font-semibold text-white/90 leading-tight truncate">
                 {login.profile_name}
               </p>
-              {login.is_connected ? (
+              {login.meta_status === "connected" ? (
                 <span
                   className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
                   style={{
@@ -161,6 +161,18 @@ function LoginCard({
                   <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--matrix)", display: "inline-block", flexShrink: 0 }} />
                   Conectada
                 </span>
+              ) : login.meta_status === "error" ? (
+                <span
+                  className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 uppercase tracking-wide animate-pulse"
+                  style={{
+                    background: "rgba(239,68,68,0.14)",
+                    border: "0.5px solid rgba(239,68,68,0.45)",
+                    color: "rgb(248,113,113)",
+                  }}
+                >
+                  <WifiOff size={9} />
+                  Token Inválido
+                </span>
               ) : (
                 <span
                   className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
@@ -171,7 +183,7 @@ function LoginCard({
                   }}
                 >
                   <span style={{ width: 5, height: 5, borderRadius: "50%", background: "rgba(255,255,255,0.25)", display: "inline-block", flexShrink: 0 }} />
-                  Pendente
+                  Não Conectada
                 </span>
               )}
             </div>
@@ -215,7 +227,20 @@ function LoginCard({
       </div>
 
       {/* Hairline divider */}
-      <div style={{ height: "0.5px", background: "rgba(255,255,255,0.06)" }} />
+      <div style={{ height: "0.5px", background: login.meta_status === "error" ? "rgba(239,68,68,0.15)" : "rgba(255,255,255,0.06)" }} />
+
+      {/* Error alert strip */}
+      {login.meta_status === "error" && (
+        <div
+          className="flex items-center gap-2 text-[11px] rounded-xl px-3 py-2.5 -mt-1"
+          style={{ background: "rgba(239,68,68,0.07)", border: "0.5px solid rgba(239,68,68,0.2)", color: "rgb(248,113,113)" }}
+        >
+          <AlertTriangle size={12} className="flex-shrink-0" />
+          <span>
+            Token caiu na Meta API — acesse <strong className="font-bold">Contas</strong> para reconectar ou exclua este login.
+          </span>
+        </div>
+      )}
 
       {/* Credential fields */}
       <div className="space-y-2.5 min-w-0">
