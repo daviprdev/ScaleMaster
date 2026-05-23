@@ -373,7 +373,7 @@ function AccountCard({
         </div>
       ) : (
         /* ── Métricas normais ── */
-        <div className="flex items-center gap-3.5 px-5 py-3 overflow-x-auto no-scrollbar">
+        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-5 py-3">
           <Metric icon={<Users size={11} />} label={`${formatNumber(account.followers_count)} seg.`} muted={account.followers_count == null} />
           <Metric icon={<FileText size={11} />} label={`${account.posts_count ?? "—"} posts`} muted={account.posts_count == null} />
           <Metric icon={<Clock size={11} />} label={account.last_post_at ? timeAgo(account.last_post_at) : "—"} muted={!account.last_post_at} />
@@ -382,7 +382,7 @@ function AccountCard({
               "w-1.5 h-1.5 rounded-full inline-block flex-shrink-0",
               account.profile_refreshed_at ? "bg-emerald-400" : "bg-white/20"
             )} />}
-            label={account.profile_refreshed_at ? `sincronizado ${timeAgo(account.profile_refreshed_at)}` : "não sincronizado"}
+            label={account.profile_refreshed_at ? `sync ${timeAgo(account.profile_refreshed_at)}` : "não sincronizado"}
             muted={!account.profile_refreshed_at}
           />
           {isMetaConnected && storiesData !== undefined && (
@@ -390,7 +390,7 @@ function AccountCard({
               icon={<Clapperboard size={11} />}
               label={
                 storiesData.count > 0
-                  ? `${storiesData.count} ${storiesData.count === 1 ? "story" : "stories"} · expira em ${storyCountdown(storiesData.expiring_first_at)}`
+                  ? `${storiesData.count} ${storiesData.count === 1 ? "story" : "stories"} · exp. ${storyCountdown(storiesData.expiring_first_at)}`
                   : "0 stories ativos"
               }
               amber={storiesData.count > 0}
