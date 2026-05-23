@@ -450,10 +450,10 @@ export async function GET(req: NextRequest) {
     // Próximo vídeo inédito (primeiro da lista filtrada, mantida em ordem de created_at)
     const selectedVideo = unpostedVideos[0];
 
-    const caption =
-      loop.captions.length > 0
-        ? loop.captions[Math.floor(Math.random() * loop.captions.length)]
-        : "";
+    // Pool defensivo: garante array real, filtra vazios — nunca muta o original
+    const captionPool = Array.isArray(loop.captions)
+      ? loop.captions.map(c => String(c ?? "").trim()).filter(Boolean)
+      : [];
 
     const videoUrl = await processVideoEffects(
       selectedVideo.public_url,
@@ -500,6 +500,11 @@ export async function GET(req: NextRequest) {
 
     // ── Iteração por conta — cada conta é independente ───────────────────────
     for (const account of validAccounts) {
+      // Legenda aleatória por post — pool nunca é mutado, sempre renasce da lista original
+      const caption = captionPool.length > 0
+        ? captionPool[Math.floor(Math.random() * captionPool.length)]
+        : "";
+
       if (!account.meta_access_token || !account.ig_business_account_id) {
         console.warn(`[loop-cron] @${account.username} sem credenciais Meta — pulando.`);
         continue;

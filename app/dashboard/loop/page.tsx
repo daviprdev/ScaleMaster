@@ -8,6 +8,7 @@ import {
   ImageIcon, FlipHorizontal, Contrast, Check,
   Loader2, AlertCircle, ChevronDown, Info, Film, AlertTriangle,
   BarChart2, Heart, MessageCircle, Eye, Crown, TrendingUp, ChevronUp,
+  Save, Library, BookMarked, Shuffle, CheckCircle2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,13 @@ interface FormData {
   coverPreviewUrl: string | null;
   effectMirror: boolean;
   effectInvert: boolean;
+}
+
+interface SavedCaption {
+  id: string;
+  title: string | null;
+  content: string;
+  created_at: string;
 }
 
 const DEFAULT_FORM: FormData = {
@@ -680,14 +688,36 @@ function AccountsMultiSelect({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-xl max-h-52 overflow-y-auto"
+            className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-xl max-h-60 overflow-y-auto"
           >
             {accounts.length === 0 ? (
               <div className="px-4 py-6 text-center text-xs text-white/30">
                 Nenhuma conta conectada
               </div>
             ) : (
-              accounts.map(acc => {
+              <>
+                {/* Selecionar / Desmarcar todas */}
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const healthy = accounts.filter(a => a.health_status !== "error" && a.health_status !== "blocked");
+                      onChange(healthy.map(a => a.id));
+                    }}
+                    className="flex-1 text-center text-[10px] font-semibold text-white/40 hover:text-[#00FF41] transition-colors py-1 rounded-lg hover:bg-[#00FF41]/[0.06]"
+                  >
+                    Selecionar todas
+                  </button>
+                  <div className="w-px h-4 bg-white/10" />
+                  <button
+                    type="button"
+                    onClick={() => onChange([])}
+                    className="flex-1 text-center text-[10px] font-semibold text-white/40 hover:text-red-400 transition-colors py-1 rounded-lg hover:bg-red-500/[0.06]"
+                  >
+                    Desmarcar todas
+                  </button>
+                </div>
+                {accounts.map(acc => {
                 const isSelected = selected.includes(acc.id);
                 const fell = acc.health_status === "error" || acc.health_status === "blocked";
                 return (
@@ -736,7 +766,8 @@ function AccountsMultiSelect({
                     </div>
                   </button>
                 );
-              })
+              })}
+              </>
             )}
           </motion.div>
         )}
@@ -766,6 +797,310 @@ function AccountsMultiSelect({
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── LoopCaptionEditor ─────────────────────────────────────────
+
+function LoopCaptionEditor({
+  captions,
+  onChange,
+}: {
+  captions: string[];
+  onChange: (captions: string[]) => void;
+}) {
+  const [savedCaptions, setSavedCaptions] = useState<SavedCaption[]>([]);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [savingFor, setSavingFor] = useState<number | null>(null);
+  const [saveTitle, setSaveTitle] = useState("");
+  const [savingApi, setSavingApi] = useState(false);
+  const [savedFeedback, setSavedFeedback] = useState<number | null>(null);
+  const libraryRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setLoadingSaved(true);
+    fetch("/api/saved-captions")
+      .then(r => r.json() as Promise<{ captions: SavedCaption[] }>)
+      .then(d => setSavedCaptions(d.captions ?? []))
+      .catch(() => {})
+      .finally(() => setLoadingSaved(false));
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (libraryRef.current && !libraryRef.current.contains(e.target as Node)) {
+        setShowLibrary(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const update = (i: number, val: string) => {
+    const next = [...captions];
+    next[i] = val.slice(0, 2200);
+    onChange(next);
+  };
+
+  const remove = (i: number) => {
+    setSavingFor(null);
+    onChange(captions.filter((_, idx) => idx !== i));
+  };
+
+  const add = () => onChange([...captions, ""]);
+
+  const inject = (content: string) => {
+    onChange([...captions, content]);
+    setShowLibrary(false);
+  };
+
+  const handleSave = async (i: number) => {
+    const content = captions[i];
+    if (!content.trim()) return;
+    setSavingApi(true);
+    try {
+      const res = await fetch("/api/saved-captions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: saveTitle.trim() || null, content: content.trim() }),
+      });
+      const d = await res.json() as { caption?: SavedCaption };
+      if (d.caption) {
+        setSavedCaptions(prev => [d.caption!, ...prev]);
+        setSavedFeedback(i);
+        setTimeout(() => setSavedFeedback(null), 2500);
+      }
+    } catch {/* best-effort */}
+    finally {
+      setSavingApi(false);
+      setSavingFor(null);
+      setSaveTitle("");
+    }
+  };
+
+  const removeFromLibrary = async (id: string) => {
+    setSavedCaptions(prev => prev.filter(c => c.id !== id));
+    await fetch("/api/saved-captions", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    }).catch(() => {});
+  };
+
+  return (
+    <div className="space-y-2.5">
+      <AnimatePresence initial={false}>
+        {captions.map((cap, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <div>
+              <div className="relative">
+                <div className="absolute top-3 left-3 flex items-center gap-1 pointer-events-none z-10">
+                  <span className="text-[10px] font-mono text-[#00FF41]/50 bg-[#00FF41]/10 rounded-md px-1.5 py-0.5">
+                    #{i + 1}
+                  </span>
+                </div>
+                <textarea
+                  rows={2}
+                  placeholder={`Variação ${i + 1}...`}
+                  value={cap}
+                  onChange={e => update(i, e.target.value)}
+                  className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm placeholder-white/20 resize-none focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all leading-relaxed"
+                  maxLength={2200}
+                />
+                <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
+                  <span className={cn(
+                    "text-[10px] transition-colors",
+                    cap.length > 1980 ? "text-yellow-400" : "text-white/20"
+                  )}>
+                    {cap.length}/2200
+                  </span>
+                  {captions.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => remove(i)}
+                      className="w-6 h-6 rounded-lg flex items-center justify-center text-white/25 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Save-to-library inline */}
+              <AnimatePresence>
+                {cap.trim().length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.12 }}
+                    className="overflow-hidden"
+                  >
+                    {savedFeedback === i ? (
+                      <div className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5">
+                        <CheckCircle2 size={11} className="text-[#00FF41]" />
+                        <span className="text-[10px] text-[#00FF41]">Salva na biblioteca!</span>
+                      </div>
+                    ) : savingFor === i ? (
+                      <div className="flex items-center gap-2 px-1 pt-1.5 pb-0.5">
+                        <input
+                          autoFocus
+                          value={saveTitle}
+                          onChange={e => setSaveTitle(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") handleSave(i); if (e.key === "Escape") { setSavingFor(null); setSaveTitle(""); } }}
+                          placeholder="Nome da legenda (opcional)..."
+                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/15 text-white text-xs placeholder-white/25 focus:outline-none focus:border-[#00FF41]/40 transition-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSave(i)}
+                          disabled={savingApi}
+                          className="px-3 py-1.5 rounded-lg bg-[#00FF41]/15 text-[#00FF41] text-xs font-medium hover:bg-[#00FF41]/25 transition-all disabled:opacity-50 flex items-center gap-1"
+                        >
+                          {savingApi ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
+                          Salvar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setSavingFor(null); setSaveTitle(""); }}
+                          className="w-6 h-6 flex items-center justify-center text-white/25 hover:text-white/60 transition-colors"
+                        >
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setSavingFor(i); setSaveTitle(""); }}
+                        className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5 text-[10px] text-white/25 hover:text-[#00FF41]/60 transition-colors group"
+                      >
+                        <Save size={9} className="group-hover:text-[#00FF41]/60 transition-colors" />
+                        Salvar esta legenda para usar depois
+                      </button>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+
+      {/* Bottom actions */}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={add}
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/15 text-white/40 text-sm hover:border-[#00FF41]/40 hover:text-[#00FF41]/60 transition-all"
+        >
+          <Plus size={14} />
+          Adicionar variação
+        </button>
+
+        <div ref={libraryRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setShowLibrary(v => !v)}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-all",
+              showLibrary
+                ? "border-[#00E5FF]/40 bg-[#00E5FF]/[0.08] text-[#00E5FF]"
+                : "border-white/15 text-white/40 hover:border-[#00E5FF]/40 hover:text-[#00E5FF]/70"
+            )}
+          >
+            <Library size={14} />
+            Usar Salva
+            {savedCaptions.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-[#00E5FF]/15 text-[#00E5FF] text-[9px] font-mono">
+                {savedCaptions.length}
+              </span>
+            )}
+          </button>
+
+          <AnimatePresence>
+            {showLibrary && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                transition={{ duration: 0.14 }}
+                className="absolute z-30 bottom-full mb-2 right-0 w-80 bg-[#0d111b] border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+              >
+                <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.07]">
+                  <div className="flex items-center gap-2">
+                    <BookMarked size={13} className="text-[#00E5FF]" />
+                    <span className="text-xs font-semibold text-white/70">Biblioteca de Legendas</span>
+                  </div>
+                  <button type="button" onClick={() => setShowLibrary(false)} className="text-white/25 hover:text-white/60 transition-colors">
+                    <X size={13} />
+                  </button>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto">
+                  {loadingSaved ? (
+                    <div className="flex items-center justify-center py-8 gap-2 text-white/30 text-xs">
+                      <Loader2 size={13} className="animate-spin" /> Carregando...
+                    </div>
+                  ) : savedCaptions.length === 0 ? (
+                    <div className="py-8 text-center">
+                      <BookMarked size={20} className="text-white/10 mx-auto mb-2" />
+                      <p className="text-white/25 text-xs">Nenhuma legenda salva ainda.</p>
+                      <p className="text-white/15 text-[10px] mt-1">Use &ldquo;Salvar esta legenda&rdquo; abaixo de qualquer variação.</p>
+                    </div>
+                  ) : (
+                    savedCaptions.map(sc => (
+                      <div
+                        key={sc.id}
+                        className="group flex items-start gap-2 px-4 py-3 hover:bg-white/[0.04] transition-colors border-b border-white/[0.04] last:border-0"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => inject(sc.content)}
+                          className="flex-1 text-left min-w-0"
+                        >
+                          {sc.title && (
+                            <p className="text-xs font-medium text-[#00E5FF]/80 truncate mb-0.5">{sc.title}</p>
+                          )}
+                          <p className="text-xs text-white/55 line-clamp-2 leading-relaxed">{sc.content}</p>
+                          <p className="text-[9px] text-white/20 mt-1">Clique para adicionar</p>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeFromLibrary(sc.id)}
+                          className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center text-white/20 hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {savedCaptions.length > 0 && (
+                  <div className="px-4 py-2.5 border-t border-white/[0.05]">
+                    <p className="text-[9px] text-white/20 text-center">Clique em uma legenda para adicioná-la ao loop</p>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {captions.length > 1 && (
+        <p className="text-[10px] text-white/25 flex items-center gap-1.5">
+          <Shuffle size={9} />
+          Legendas sorteadas aleatoriamente por post
+        </p>
       )}
     </div>
   );
@@ -811,12 +1146,6 @@ function LoopFormModal({
 
   const update = <K extends keyof FormData>(key: K, value: FormData[K]) =>
     setForm(prev => ({ ...prev, [key]: value }));
-
-  const addCaption = () => update("captions", [...form.captions, ""]);
-  const removeCaption = (i: number) =>
-    update("captions", form.captions.filter((_, idx) => idx !== i));
-  const updateCaption = (i: number, v: string) =>
-    update("captions", form.captions.map((c, idx) => idx === i ? v : c));
 
   const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1005,43 +1334,14 @@ function LoopFormModal({
           {/* Legendas */}
           <div>
             <SectionLabel icon={Type} label="Legendas Dinâmicas" />
-            <div className="space-y-2.5">
-              {form.captions.map((caption, i) => (
-                <div key={i} className="flex gap-2">
-                  <textarea
-                    rows={2}
-                    placeholder={`Variação ${i + 1}...`}
-                    value={caption}
-                    onChange={e => updateCaption(i, e.target.value)}
-                    className="input-glass flex-1 text-sm resize-none"
-                    maxLength={2200}
-                  />
-                  {form.captions.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeCaption(i)}
-                      className="p-2 rounded-xl text-white/25 hover:text-red-400 hover:bg-red-500/[0.07] transition-all self-start mt-0.5"
-                    >
-                      <X size={13} />
-                    </button>
-                  )}
-                </div>
-              ))}
-
-              <button
-                type="button"
-                onClick={addCaption}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-white/15 text-xs text-white/40 hover:text-violet-400 hover:border-violet-500/30 transition-all duration-150 w-full justify-center"
-              >
-                <Plus size={12} />
-                Adicionar variação de legenda
-              </button>
-
-              <p className="text-[11px] text-white/25 flex items-start gap-1.5">
-                <Info size={10} className="flex-shrink-0 mt-0.5" />
-                O sistema distribuirá estas legendas aleatoriamente entre os reels da pasta para evitar padrões de spam.
-              </p>
-            </div>
+            <LoopCaptionEditor
+              captions={form.captions}
+              onChange={caps => update("captions", caps)}
+            />
+            <p className="text-[11px] text-white/25 flex items-start gap-1.5 mt-2">
+              <Info size={10} className="flex-shrink-0 mt-0.5" />
+              O sistema sorteará uma legenda por post para evitar padrões de spam.
+            </p>
           </div>
 
           {/* Capa */}
