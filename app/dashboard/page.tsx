@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   Instagram,
@@ -12,6 +12,8 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  RefreshCw,
+  Trash2,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -98,15 +100,49 @@ function StatSkeleton() {
 
 // ── Page ─────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats]           = useState<DashboardStats | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [clearing, setClearing]     = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    fetch("/api/dashboard/stats")
-      .then((r) => r.json())
-      .then((data) => { if (!data.error) setStats(data); })
-      .finally(() => setLoading(false));
+  const loadStats = useCallback(async (silent = false) => {
+    if (silent) setRefreshing(true);
+    else setLoading(true);
+    try {
+      const r = await fetch("/api/dashboard/stats", { cache: "no-store" });
+      const data = await r.json();
+      if (!data.error) setStats(data);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  // Initial fetch + auto-refresh every 60 s
+  useEffect(() => {
+    loadStats();
+    const id = setInterval(() => loadStats(true), 60_000);
+    return () => clearInterval(id);
+  }, [loadStats]);
+
+  const handleClearQueue = useCallback(async () => {
+    if (!clearConfirm) {
+      setClearConfirm(true);
+      clearTimer.current = setTimeout(() => setClearConfirm(false), 3500);
+      return;
+    }
+    if (clearTimer.current) clearTimeout(clearTimer.current);
+    setClearConfirm(false);
+    setClearing(true);
+    try {
+      await fetch("/api/posts/clear-pending", { method: "POST" });
+      await loadStats(true);
+    } finally {
+      setClearing(false);
+    }
+  }, [clearConfirm, loadStats]);
 
   // Build stat cards from fetched data
   const statCards = stats
@@ -164,6 +200,18 @@ export default function DashboardPage() {
       animate="show"
       className="space-y-6 max-w-7xl"
     >
+      {/* Refresh bar */}
+      <motion.div variants={fadeUp} className="flex items-center justify-end">
+        <button
+          onClick={() => loadStats(true)}
+          disabled={loading || refreshing}
+          className="flex items-center gap-1.5 text-[11px] text-white/30 hover:text-white/60 transition-colors disabled:opacity-40"
+        >
+          <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
+          {refreshing ? "Atualizando…" : "Atualizar"}
+        </button>
+      </motion.div>
+
       {/* Stats grid — 4 main cards */}
       <motion.div
         variants={stagger}
@@ -280,14 +328,40 @@ export default function DashboardPage() {
         <motion.div variants={fadeUp} className="glass-card p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-white/90">Próximas Postagens</h2>
-            {!loading && stats && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/20">
-                {stats.scheduled.pending} agendadas
-              </span>
-            )}
-            {loading && (
-              <div className="w-16 h-4 rounded-full bg-white/10 animate-pulse" />
-            )}
+            <div className="flex items-center gap-2">
+              {!loading && stats && stats.scheduled.pending > 0 && (
+                <>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/20">
+                    {stats.scheduled.pending} agendadas
+                  </span>
+                  <button
+                    onClick={handleClearQueue}
+                    disabled={clearing}
+                    className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-all ${
+                      clearConfirm
+                        ? "bg-red-500/20 border-red-500/40 text-red-400"
+                        : "bg-white/[0.04] border-white/10 text-white/30 hover:border-red-500/30 hover:text-red-400"
+                    }`}
+                    title="Apaga todos os posts pendentes e reinicia a fila"
+                  >
+                    {clearing ? (
+                      <RefreshCw size={9} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={9} />
+                    )}
+                    {clearConfirm ? "Confirmar?" : "Limpar Fila"}
+                  </button>
+                </>
+              )}
+              {!loading && stats && stats.scheduled.pending === 0 && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/20">
+                  0 agendadas
+                </span>
+              )}
+              {loading && (
+                <div className="w-16 h-4 rounded-full bg-white/10 animate-pulse" />
+              )}
+            </div>
           </div>
 
           {loading ? (
