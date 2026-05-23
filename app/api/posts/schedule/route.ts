@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -102,6 +103,7 @@ export async function POST(req: NextRequest) {
   //   4. Legenda aleatória independente por post
   //   5. Para quando o pool esgota
 
+  const campaignId = randomUUID();
   const effectiveBatch = Math.max(1, Math.floor(batch_size ?? account_ids.length));
   const shuffledVideos = shuffle(videos);
   const shuffledAccounts = shuffle([...account_ids]);
@@ -127,6 +129,7 @@ export async function POST(req: NextRequest) {
         caption,
         scheduled_at: slotTime,
         status: "pending",
+        campaign_id: campaignId,
       });
     }
 
@@ -138,15 +141,25 @@ export async function POST(req: NextRequest) {
   // ── Inserção em massa ─────────────────────────────────────────────────────
   const { error: insertErr } = await admin.from("scheduled_posts").insert(posts);
 
-  if (insertErr) {
-    console.error("[posts/schedule] Insert error:", insertErr);
-    return NextResponse.json({ error: insertErr.message }, { status: 500 });
-  }
-
   const firstSlotTime = new Date(startMs).toISOString();
   const lastSlotTime = slotIndex > 0
     ? new Date(startMs + (slotIndex - 1) * intervalMs).toISOString()
     : firstSlotTime;
+
+  if (insertErr) {
+    // If campaign_id column not yet created, retry without it (graceful fallback)
+    if (insertErr.code === "42703" || insertErr.message?.includes("campaign_id")) {
+      const postsNoCampaign = posts.map(({ campaign_id: _, ...rest }) => rest);
+      const { error: err2 } = await admin.from("scheduled_posts").insert(postsNoCampaign);
+      if (err2) {
+        console.error("[posts/schedule] Insert error:", err2);
+        return NextResponse.json({ error: err2.message }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, count: posts.length, slots: slotIndex, first_slot: firstSlotTime, last_slot: lastSlotTime });
+    }
+    console.error("[posts/schedule] Insert error:", insertErr);
+    return NextResponse.json({ error: insertErr.message }, { status: 500 });
+  }
 
   return NextResponse.json({
     success: true,
@@ -154,5 +167,6 @@ export async function POST(req: NextRequest) {
     slots: slotIndex,
     first_slot: firstSlotTime,
     last_slot: lastSlotTime,
+    campaign_id: campaignId,
   });
 }

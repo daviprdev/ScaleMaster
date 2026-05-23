@@ -251,6 +251,7 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Login Simplificado** | Formulário de login `/auth/login` refatorado para solicitar apenas `username` (sem email); lógica de autenticação adaptada | ✅ Concluída |
 | **Inspirações (Fase Nova)** | Página `/dashboard/inspirations` reconstruída do zero com design Cyber-Military Elite: header com ícone `Sparkles`, barra de busca com `backdrop-blur-xl` e foco neon verde, cards mockup com `.ticks` e botão "Adicionar à Biblioteca" com glow, cards de histórico redesenhados, modal de importação com progress bar matrix/electric; toda lógica de scraping real mantida via `/api/inspirations/scrape` e `/api/inspirations/history`; link "Inspirações" adicionado na Sidebar (seção CONTEÚDOS) | ✅ Concluída |
 | **Download local de Reels** | Downloads de Inspirações salvam MP4 localmente no dispositivo via `/api/proxy-sanitize-download`: duplo passe FFmpeg (Pass 1: strip total `-map_metadata -1`, Pass 2: UUID + `-fflags +bitexact`) antes de enviar ao browser; HEAD validation rápida via `/api/proxy-download`; User-Agent iPhone para bypassar 403 do CDN Instagram; streaming proxy com allowlist SSRF; `InspirationCard` com toasts inline AnimatePresence (Iniciando/Concluído) | ✅ Concluída |
+| **Fase 44 (Campanhas)** | Gerenciamento de campanhas em lote na página Postar: coluna `campaign_id` UUID em `scheduled_posts` (fallback gracioso se migration não aplicada), API `GET/DELETE /api/campaigns` (agrupa posts por campaign_id, retorna progresso, cancela pendentes), UI em tabs "Criar Campanha" / "Campanhas Ativas" com cards de progresso (barra animada, badges de status 🟢/⚫, avatares de contas, próximo disparo), confirmação de 2 cliques para excluir, auto-refresh 15s quando há campanhas executando, notificação inline após criação | ✅ Concluída |
 
 **SQL pendente (executar no Supabase):**
 ```sql
@@ -291,6 +292,11 @@ CREATE INDEX IF NOT EXISTS user_meta_apps_user_id_idx ON public.user_meta_apps(u
 ALTER TABLE public.user_meta_apps ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "users_manage_own_meta_apps" ON public.user_meta_apps
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- Fase 44 — Campanhas (campaign_id em scheduled_posts)
+ALTER TABLE public.scheduled_posts
+  ADD COLUMN IF NOT EXISTS campaign_id uuid;
+CREATE INDEX IF NOT EXISTS idx_scheduled_posts_campaign_id ON public.scheduled_posts(campaign_id);
 ```
 
 **Env vars novas a adicionar na Vercel:**

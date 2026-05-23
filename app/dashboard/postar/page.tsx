@@ -6,7 +6,7 @@ import {
   Users, Film, CalendarDays, Send, FolderOpen, X, Check,
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
   Layers, ChevronDown, Shuffle, Zap, LayoutGrid, List,
-  Library, Save, BookMarked,
+  Library, Save, BookMarked, BarChart2, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +38,21 @@ interface SavedCaption {
   id: string;
   title: string | null;
   content: string;
+  created_at: string;
+}
+
+interface Campaign {
+  campaign_id: string;
+  total: number;
+  published: number;
+  pending: number;
+  failed: number;
+  cancelled: number;
+  first_slot: string;
+  last_slot: string;
+  next_pending: string | null;
+  account_ids: string[];
+  campaign_status: "running" | "completed";
   created_at: string;
 }
 
@@ -412,7 +427,6 @@ function CaptionEditor({
   const [savedFeedback, setSavedFeedback] = useState<number | null>(null);
   const libraryRef = useRef<HTMLDivElement>(null);
 
-  // Fetch saved captions on mount
   useEffect(() => {
     setLoadingSaved(true);
     fetch("/api/saved-captions")
@@ -422,7 +436,6 @@ function CaptionEditor({
       .finally(() => setLoadingSaved(false));
   }, []);
 
-  // Click outside to close library dropdown
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (libraryRef.current && !libraryRef.current.contains(e.target as Node)) {
@@ -446,13 +459,11 @@ function CaptionEditor({
 
   const add = () => onChange([...captions, ""]);
 
-  // Inject a saved caption as a new entry in the list
   const inject = (content: string) => {
     onChange([...captions, content]);
     setShowLibrary(false);
   };
 
-  // Save a caption to the library
   const handleSave = async (i: number) => {
     const content = captions[i];
     if (!content.trim()) return;
@@ -480,7 +491,6 @@ function CaptionEditor({
     }
   };
 
-  // Remove from library
   const removeFromLibrary = async (id: string) => {
     setSavedCaptions(prev => prev.filter(c => c.id !== id));
     await fetch("/api/saved-captions", {
@@ -593,7 +603,6 @@ function CaptionEditor({
 
       {/* Bottom action row */}
       <div className="flex gap-2">
-        {/* Add new empty caption */}
         <button
           type="button"
           onClick={add}
@@ -603,7 +612,6 @@ function CaptionEditor({
           Adicionar Legenda
         </button>
 
-        {/* Use saved caption */}
         <div ref={libraryRef} className="relative">
           <button
             type="button"
@@ -624,7 +632,6 @@ function CaptionEditor({
             )}
           </button>
 
-          {/* Library dropdown */}
           <AnimatePresence>
             {showLibrary && (
               <motion.div
@@ -730,9 +737,305 @@ function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: R
   );
 }
 
+// ── CampaignsList ──────────────────────────────────────────────────────────
+
+function CampaignsList({
+  accounts,
+  onCreateNew,
+}: {
+  accounts: Account[];
+  onCreateNew: () => void;
+}) {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const fetchCampaigns = useCallback(async () => {
+    try {
+      const res = await fetch("/api/campaigns");
+      const d = await res.json() as { campaigns: Campaign[] };
+      setCampaigns(d.campaigns ?? []);
+    } catch {/* silent */} finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
+
+  // Auto-refresh every 15s when running campaigns exist
+  useEffect(() => {
+    const hasRunning = campaigns.some(c => c.campaign_status === "running");
+    if (!hasRunning) return;
+    const interval = setInterval(fetchCampaigns, 15000);
+    return () => clearInterval(interval);
+  }, [campaigns, fetchCampaigns]);
+
+  const accountMap = useMemo(() => {
+    const m = new Map<string, Account>();
+    accounts.forEach(a => m.set(a.id, a));
+    return m;
+  }, [accounts]);
+
+  const handleDelete = async (campaignId: string) => {
+    if (confirmDelete !== campaignId) {
+      setConfirmDelete(campaignId);
+      setTimeout(() => setConfirmDelete(c => c === campaignId ? null : c), 3000);
+      return;
+    }
+    setDeletingId(campaignId);
+    setConfirmDelete(null);
+    try {
+      await fetch(`/api/campaigns?id=${encodeURIComponent(campaignId)}`, { method: "DELETE" });
+      await fetchCampaigns();
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 size={24} className="animate-spin text-[#00FF41]" />
+      </div>
+    );
+  }
+
+  if (campaigns.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center mb-4">
+          <BarChart2 size={24} className="text-white/15" />
+        </div>
+        <p className="text-white/30 text-sm mb-1">Nenhuma campanha encontrada</p>
+        <p className="text-white/15 text-xs mb-5">Crie sua primeira campanha em lote</p>
+        <button
+          onClick={onCreateNew}
+          className="px-5 py-2.5 rounded-xl bg-[#00FF41]/10 text-[#00FF41] text-sm font-medium hover:bg-[#00FF41]/20 transition-all border border-[#00FF41]/20"
+        >
+          Criar campanha
+        </button>
+      </div>
+    );
+  }
+
+  const running = campaigns.filter(c => c.campaign_status === "running");
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      {/* Summary bar */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-4 text-xs text-white/30">
+          {running.length > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00FF41] shadow-[0_0_4px_#00FF41] animate-pulse" />
+              <span className="text-[#00FF41]/70">{running.length} executando</span>
+            </span>
+          )}
+          <span>{campaigns.length} campanha{campaigns.length !== 1 ? "s" : ""} no total</span>
+        </div>
+        <button
+          onClick={fetchCampaigns}
+          className="flex items-center gap-1.5 text-xs text-white/25 hover:text-[#00E5FF] transition-colors"
+        >
+          <RefreshCw size={11} />
+          Atualizar
+        </button>
+      </div>
+
+      {/* Campaign cards */}
+      <div className="space-y-3">
+        {campaigns.map(campaign => {
+          const progress = campaign.total > 0
+            ? Math.round((campaign.published / campaign.total) * 100)
+            : 0;
+          const isRunning = campaign.campaign_status === "running";
+          const isDeleting = deletingId === campaign.campaign_id;
+          const isConfirming = confirmDelete === campaign.campaign_id;
+          const campAccounts = campaign.account_ids
+            .map(id => accountMap.get(id))
+            .filter(Boolean) as Account[];
+
+          return (
+            <motion.div
+              key={campaign.campaign_id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="glass-card rounded-2xl p-5 space-y-4"
+            >
+              {/* Row 1: ID + Status badge + Delete */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={cn(
+                    "w-2 h-2 rounded-full flex-shrink-0 mt-0.5",
+                    isRunning
+                      ? "bg-[#00FF41] shadow-[0_0_6px_rgba(0,255,65,0.8)]"
+                      : "bg-white/15"
+                  )} />
+                  <div className="min-w-0">
+                    <p className="text-white/60 font-mono text-xs tracking-wider">
+                      #{campaign.campaign_id.slice(0, 8).toUpperCase()}
+                    </p>
+                    <p className="text-white/25 text-[10px] mt-0.5">
+                      Criada {formatDatetime(campaign.created_at)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Status badge */}
+                  <span className={cn(
+                    "px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wide border whitespace-nowrap",
+                    isRunning
+                      ? "bg-[#00FF41]/10 text-[#00FF41] border-[#00FF41]/20"
+                      : "bg-white/[0.04] text-white/25 border-white/[0.08]"
+                  )}>
+                    {isRunning ? "🟢 Executando" : "⚫ Concluída"}
+                  </span>
+
+                  {/* Confirm-then-delete button */}
+                  <button
+                    onClick={() => handleDelete(campaign.campaign_id)}
+                    disabled={isDeleting}
+                    title={isConfirming
+                      ? "Clique novamente para confirmar"
+                      : isRunning
+                        ? "Cancelar posts pendentes"
+                        : "Remover campanha"}
+                    className={cn(
+                      "w-7 h-7 rounded-lg border flex items-center justify-center transition-all text-xs",
+                      isConfirming
+                        ? "bg-red-500/15 border-red-500/40 text-red-400 font-bold"
+                        : "bg-white/[0.04] border-white/[0.08] text-white/25 hover:text-red-400 hover:border-red-400/25 hover:bg-red-400/8",
+                      isDeleting && "opacity-40 cursor-not-allowed"
+                    )}
+                  >
+                    {isDeleting
+                      ? <Loader2 size={11} className="animate-spin" />
+                      : isConfirming
+                        ? "?"
+                        : <Trash2 size={11} />
+                    }
+                  </button>
+                </div>
+              </div>
+
+              {/* Row 2: Progress bar */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-white/40">
+                    {campaign.published} de {campaign.total} posts publicados
+                  </span>
+                  <span className={cn(
+                    "font-mono font-bold",
+                    progress >= 100 ? "text-[#00FF41]" : isRunning ? "text-[#00E5FF]" : "text-white/30"
+                  )}>
+                    {progress}%
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progress}%` }}
+                    transition={{ duration: 0.7, ease: "easeOut" }}
+                    className={cn(
+                      "h-full rounded-full",
+                      progress >= 100
+                        ? "bg-[#00FF41]"
+                        : "bg-gradient-to-r from-[#00FF41]/70 to-[#00E5FF]/70"
+                    )}
+                  />
+                </div>
+                {(campaign.failed > 0 || campaign.cancelled > 0 || campaign.pending > 0) && (
+                  <div className="flex gap-3 text-[10px]">
+                    {campaign.pending > 0 && (
+                      <span className="text-yellow-400/60">
+                        {campaign.pending} pendente{campaign.pending !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {campaign.failed > 0 && (
+                      <span className="text-red-400/60">
+                        {campaign.failed} falha{campaign.failed !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {campaign.cancelled > 0 && (
+                      <span className="text-white/20">
+                        {campaign.cancelled} cancelado{campaign.cancelled !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Row 3: Accounts + Next/Last slot */}
+              <div className="flex items-center justify-between gap-2">
+                {/* Account avatars */}
+                <div className="flex items-center gap-2">
+                  <div className="flex -space-x-1.5">
+                    {campAccounts.slice(0, 5).map(acc => (
+                      acc.avatar_url ? (
+                        <img
+                          key={acc.id}
+                          src={acc.avatar_url}
+                          alt={acc.username}
+                          title={`@${acc.username}`}
+                          className="w-5 h-5 rounded-full border border-black object-cover"
+                        />
+                      ) : (
+                        <div
+                          key={acc.id}
+                          title={`@${acc.username}`}
+                          className="w-5 h-5 rounded-full border border-black bg-gradient-to-br from-[#00FF41]/30 to-[#00E5FF]/30"
+                        />
+                      )
+                    ))}
+                    {/* Fallback circles when accounts not yet loaded */}
+                    {campAccounts.length === 0 && campaign.account_ids.slice(0, 5).map(id => (
+                      <div
+                        key={id}
+                        className="w-5 h-5 rounded-full border border-black bg-white/10"
+                      />
+                    ))}
+                    {campaign.account_ids.length > 5 && (
+                      <div className="w-5 h-5 rounded-full border border-black bg-white/10 flex items-center justify-center">
+                        <span className="text-[7px] text-white/40">+{campaign.account_ids.length - 5}</span>
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-white/25 text-[10px]">
+                    {campaign.account_ids.length} conta{campaign.account_ids.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+
+                {/* Next / Last slot */}
+                <div className="text-right text-[10px] flex-shrink-0">
+                  {isRunning && campaign.next_pending ? (
+                    <span className="flex items-center gap-1 text-[#00E5FF]/60">
+                      <Clock size={9} />
+                      Próximo: {formatDatetime(campaign.next_pending)}
+                    </span>
+                  ) : (
+                    <span className="text-white/20">
+                      Encerrada: {formatDatetime(campaign.last_slot)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function PostarPage() {
+  // ── Tab ───────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<"create" | "campaigns">("create");
+
   // ── Accounts ──────────────────────────────────────────────────
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
@@ -886,7 +1189,20 @@ export default function PostarPage() {
         return;
       }
 
+      // Success: reset form, show notification banner, switch to campaigns tab
+      setSelectedAccountIds([]);
+      setSelectedVideoIds([]);
+      setSelectedVideoItems([]);
+      setSelectedFolderId("");
+      setFolderVideoCount(0);
+      setStartDatetime("");
+      setIntervalMinutes(60);
+      setBatchSize(1);
+      setCaptions(["", ""]);
+      setMediaMode("videos");
+
       setSuccess({ count: data.count, slots: data.slots, first_slot: data.first_slot, last_slot: data.last_slot });
+      setActiveTab("campaigns");
     } catch {
       setSubmitError("Erro de conexão. Tente novamente.");
     } finally {
@@ -907,501 +1223,515 @@ export default function PostarPage() {
     setBatchSize(1);
     setCaptions(["", ""]);
     setMediaMode("videos");
+    setActiveTab("create");
   };
 
   const selectedFolder = folders.find(f => f.id === selectedFolderId);
 
-  // ── Success screen ───────────────────────────────────────────
-  if (success) {
-    return (
-      <div className="max-w-xl mx-auto px-4 py-16 flex flex-col items-center text-center">
-        <motion.div
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="w-20 h-20 rounded-3xl bg-[#00FF41]/10 border border-[#00FF41]/30 flex items-center justify-center mb-6"
-        >
-          <CheckCircle2 size={36} className="text-[#00FF41]" />
-        </motion.div>
-        <h2 className="text-white text-2xl font-bold mb-2">Campanha Criada!</h2>
-        <p className="text-white/40 text-sm mb-8">
-          {success.count} posts foram agendados em {success.slots} slot{success.slots !== 1 ? "s" : ""} de tempo.
-        </p>
-        <div className="w-full glass-card rounded-2xl p-5 text-left space-y-3 mb-8">
-          <div className="flex justify-between text-sm">
-            <span className="text-white/40">Primeiro post</span>
-            <span className="text-[#00FF41] font-mono text-xs">{formatDatetime(success.first_slot)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-white/40">Último post</span>
-            <span className="text-[#00E5FF] font-mono text-xs">{formatDatetime(success.last_slot)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-white/40">Total agendado</span>
-            <span className="text-white font-mono text-xs">{success.count} posts</span>
-          </div>
-        </div>
-        <div className="flex gap-3 w-full">
-          <button onClick={handleReset} className="flex-1 btn-primary py-3 text-sm">
-            Nova Campanha
-          </button>
-          <a href="/dashboard/schedule" className="flex-1 flex items-center justify-center py-3 rounded-xl border border-white/15 text-white/60 text-sm hover:border-white/30 hover:text-white transition-all">
-            Ver Agendamentos
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Main render ──────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="page-title">Gerenciador de Campanhas</h1>
         <p className="page-subtitle">Agendamento em lote com distribuição inteligente anti-spam</p>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6 items-start">
-        {/* ── Left: Form ── */}
-        <div className="flex-1 min-w-0 space-y-4">
-
-          {/* 1. Contas */}
-          <SectionCard>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Users size={14} className="text-white/35" />
-                <span className="text-xs font-semibold uppercase tracking-widest text-white/35">Contas</span>
-              </div>
-              {accounts.length > 0 && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={selectAllAccounts}
-                    className="text-xs text-[#00FF41]/70 hover:text-[#00FF41] transition-colors"
-                  >
-                    Selecionar Todas
-                  </button>
-                  <span className="text-white/15 text-xs">·</span>
-                  <button
-                    onClick={deselectAllAccounts}
-                    className="text-xs text-white/30 hover:text-white/60 transition-colors"
-                  >
-                    Desmarcar
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {loadingAccounts ? (
-              <div className="flex items-center gap-2 text-white/30 text-sm py-2">
-                <Loader2 size={14} className="animate-spin" /> Carregando contas...
-              </div>
-            ) : accounts.length === 0 ? (
-              <p className="text-white/25 text-sm py-4 text-center">
-                Nenhuma conta conectada.{" "}
-                <a href="/dashboard/accounts" className="text-[#00E5FF] hover:underline">Conectar conta</a>
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {accounts.map(acc => {
-                  const isSelected = selectedAccountIds.includes(acc.id);
-                  return (
-                    <button
-                      key={acc.id}
-                      onClick={() => toggleAccount(acc.id)}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left",
-                        isSelected
-                          ? "border-[#00FF41]/40 bg-[#00FF41]/5"
-                          : "border-white/[0.07] bg-white/[0.02] hover:border-white/15"
-                      )}
-                    >
-                      <div className={cn(
-                        "w-4 h-4 rounded-[4px] border flex items-center justify-center flex-shrink-0 transition-all",
-                        isSelected ? "bg-[#00FF41] border-[#00FF41]" : "border-white/20"
-                      )}>
-                        {isSelected && <Check size={9} className="text-black" strokeWidth={3} />}
-                      </div>
-                      {acc.avatar_url ? (
-                        <img src={acc.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
-                      ) : (
-                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#00FF41]/40 to-[#00E5FF]/40 flex-shrink-0" />
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-sm text-white truncate">@{acc.username}</p>
-                        {acc.display_name && (
-                          <p className="text-xs text-white/35 truncate">{acc.display_name}</p>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+      {/* Tabs */}
+      <div className="flex border-b border-white/[0.07] mb-6 gap-1">
+        {([
+          { id: "create", label: "Criar Campanha", Icon: Plus },
+          { id: "campaigns", label: "Campanhas Ativas", Icon: BarChart2 },
+        ] as const).map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={cn(
+              "flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all border-b-2 -mb-px",
+              activeTab === id
+                ? "border-[#00FF41] text-[#00FF41]"
+                : "border-transparent text-white/35 hover:text-white/60"
             )}
+          >
+            <Icon size={13} />
+            {label}
+          </button>
+        ))}
+      </div>
 
-            {selectedAccountIds.length > 0 && (
-              <p className="mt-3 text-xs text-[#00FF41]/60 font-mono">
-                {selectedAccountIds.length} conta{selectedAccountIds.length !== 1 ? "s" : ""} selecionada{selectedAccountIds.length !== 1 ? "s" : ""}
-              </p>
-            )}
-          </SectionCard>
+      {/* Success notification banner (visible in campaigns tab) */}
+      <AnimatePresence>
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="mb-5 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#00FF41]/10 border border-[#00FF41]/20"
+          >
+            <CheckCircle2 size={14} className="text-[#00FF41] flex-shrink-0" />
+            <p className="text-sm text-[#00FF41] flex-1">
+              <span className="font-semibold">{success.count} posts</span> agendados em{" "}
+              <span className="font-semibold">{success.slots} disparos</span>
+              {" · "}Primeiro disparo: {formatDatetime(success.first_slot)}
+            </p>
+            <button
+              onClick={() => setSuccess(null)}
+              className="text-[#00FF41]/40 hover:text-[#00FF41] transition-colors flex-shrink-0"
+            >
+              <X size={13} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          {/* 2. Mídia */}
-          <SectionCard>
-            <SectionLabel Icon={Film}>Mídia</SectionLabel>
+      {/* ── Tab Content ── */}
 
-            {/* Mode toggle */}
-            <div className="flex rounded-xl overflow-hidden border border-white/10 mb-4">
-              {(["videos", "folder"] as const).map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => setMediaMode(mode)}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-all",
-                    mediaMode === mode
-                      ? "bg-[#00FF41]/15 text-[#00FF41] border-r border-[#00FF41]/20"
-                      : "bg-white/[0.02] text-white/35 hover:text-white/60"
-                  )}
-                >
-                  {mode === "videos" ? <><Film size={14} /> Vídeos Avulsos</> : <><FolderOpen size={14} /> Pasta Completa</>}
-                </button>
-              ))}
-            </div>
+      {activeTab === "campaigns" ? (
+        <CampaignsList accounts={accounts} onCreateNew={handleReset} />
+      ) : (
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
+          {/* ── Left: Form ── */}
+          <div className="flex-1 min-w-0 space-y-4">
 
-            <AnimatePresence mode="wait">
-              {mediaMode === "videos" ? (
-                <motion.div
-                  key="videos"
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <button
-                    onClick={() => setShowVideoPicker(true)}
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-white/15 text-white/40 text-sm hover:border-[#00FF41]/40 hover:text-[#00FF41]/60 transition-all"
-                  >
-                    <Plus size={14} />
-                    {selectedVideoIds.length === 0 ? "Selecionar vídeos da biblioteca" : `${selectedVideoIds.length} vídeo${selectedVideoIds.length !== 1 ? "s" : ""} selecionado${selectedVideoIds.length !== 1 ? "s" : ""}`}
-                  </button>
-
-                  {selectedVideoItems.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {selectedVideoItems.slice(0, 8).map(v => (
-                        <div
-                          key={v.id}
-                          className="relative w-10 h-[71px] rounded-lg overflow-hidden border border-[#00FF41]/30"
-                        >
-                          <video src={v.public_url} className="w-full h-full object-cover" muted preload="metadata" />
-                        </div>
-                      ))}
-                      {selectedVideoItems.length > 8 && (
-                        <div className="w-10 h-[71px] rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center">
-                          <span className="text-white/30 text-[10px]">+{selectedVideoItems.length - 8}</span>
-                        </div>
-                      )}
-                      <button
-                        onClick={() => { setSelectedVideoIds([]); setSelectedVideoItems([]); }}
-                        className="ml-1 text-[10px] text-white/25 hover:text-red-400 transition-colors self-end pb-1"
-                      >
-                        Limpar
-                      </button>
-                    </div>
-                  )}
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="folder"
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  {loadingFolders ? (
-                    <div className="flex items-center gap-2 text-white/30 text-sm py-2">
-                      <Loader2 size={14} className="animate-spin" /> Carregando pastas...
-                    </div>
-                  ) : folders.length === 0 ? (
-                    <p className="text-white/25 text-sm py-4 text-center">
-                      Nenhuma pasta criada.{" "}
-                      <a href="/dashboard/library" className="text-[#00E5FF] hover:underline">Criar pasta</a>
-                    </p>
-                  ) : (
-                    <div className="relative">
-                      <button
-                        onClick={() => setFolderOpen(v => !v)}
-                        className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 hover:border-white/20 transition-colors"
-                      >
-                        <span className={cn("text-sm", selectedFolder ? "text-white" : "text-white/30")}>
-                          {selectedFolder
-                            ? `📁 ${selectedFolder.name} · ${folderVideoCount} vídeos`
-                            : "Selecionar pasta..."
-                          }
-                        </span>
-                        <ChevronDown size={14} className={cn("text-white/30 transition-transform", folderOpen && "rotate-180")} />
-                      </button>
-
-                      <AnimatePresence>
-                        {folderOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -6 }}
-                            transition={{ duration: 0.12 }}
-                            className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#0d111b] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
-                          >
-                            {folders.map(f => (
-                              <button
-                                key={f.id}
-                                onClick={() => { setSelectedFolderId(f.id); setFolderOpen(false); }}
-                                className={cn(
-                                  "w-full flex items-center justify-between px-4 py-3 text-sm text-left hover:bg-white/[0.05] transition-colors",
-                                  selectedFolderId === f.id && "bg-[#00FF41]/5 text-[#00FF41]"
-                                )}
-                              >
-                                <span className="text-white">📁 {f.name}</span>
-                                <span className="text-white/30 text-xs">{f.video_count} vídeos</span>
-                              </button>
-                            ))}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  )}
-
-                  {loadingFolderCount && selectedFolderId && (
-                    <p className="mt-2 text-xs text-white/30 flex items-center gap-1.5">
-                      <Loader2 size={10} className="animate-spin" /> Contando vídeos...
-                    </p>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </SectionCard>
-
-          {/* 3. Distribuição */}
-          <SectionCard>
-            <SectionLabel Icon={CalendarDays}>Distribuição de Tempo</SectionLabel>
-
-            <div className="space-y-6">
-
-              {/* ① Tamanho do Lote */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-5 h-5 rounded-full bg-[#00FF41]/15 text-[#00FF41] text-[10px] font-bold flex items-center justify-center flex-shrink-0">1</span>
-                  <label className="text-xs text-white/60 font-medium">Vídeos por disparo (tamanho do lote)</label>
-                </div>
-
-                {/* Stepper */}
-                <div className="flex items-center gap-4 mb-3">
-                  <button
-                    type="button"
-                    onClick={() => setBatchSize(v => Math.max(1, v - 1))}
-                    className="w-10 h-10 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:bg-white/[0.1] hover:text-white transition-all flex items-center justify-center text-lg font-light select-none"
-                  >
-                    −
-                  </button>
-                  <div className="flex-1 text-center">
-                    <span className="text-[#00FF41] font-mono text-3xl font-bold">{batchSize}</span>
-                    <p className="text-white/25 text-[10px] mt-0.5">vídeo{batchSize !== 1 ? "s" : ""} por disparo</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setBatchSize(v => Math.min(100, v + 1))}
-                    className="w-10 h-10 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:bg-white/[0.1] hover:text-white transition-all flex items-center justify-center text-lg font-light select-none"
-                  >
-                    +
-                  </button>
-                </div>
-
-                {/* Presets */}
-                <div className="flex gap-2">
-                  {BATCH_PRESETS.map(v => (
-                    <button
-                      key={v}
-                      onClick={() => setBatchSize(v)}
-                      className={cn(
-                        "flex-1 py-1.5 rounded-lg text-xs font-mono transition-all",
-                        batchSize === v
-                          ? "bg-[#00FF41]/15 text-[#00FF41] border border-[#00FF41]/30"
-                          : "bg-white/[0.04] text-white/35 border border-white/[0.07] hover:border-white/20 hover:text-white/60"
-                      )}
-                    >
-                      {v}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Divider */}
-              <div className="border-t border-white/[0.06]" />
-
-              {/* ② Intervalo */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-5 h-5 rounded-full bg-[#00E5FF]/15 text-[#00E5FF] text-[10px] font-bold flex items-center justify-center flex-shrink-0">2</span>
-                  <label className="text-xs text-white/60 font-medium">A cada quanto tempo (intervalo entre disparos)</label>
-                </div>
-                <div className="flex flex-wrap gap-1.5 mb-3">
-                  {INTERVAL_PRESETS.map(p => (
-                    <button
-                      key={p.minutes}
-                      onClick={() => setIntervalMinutes(p.minutes)}
-                      className={cn(
-                        "px-3 py-1 rounded-lg text-xs font-mono transition-all",
-                        intervalMinutes === p.minutes
-                          ? "bg-[#00E5FF]/15 text-[#00E5FF] border border-[#00E5FF]/30"
-                          : "bg-white/[0.04] text-white/40 border border-white/[0.07] hover:border-white/20 hover:text-white/60"
-                      )}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
+            {/* 1. Contas */}
+            <SectionCard>
+              <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    value={intervalMinutes}
-                    min={1}
-                    max={43200}
-                    onChange={e => setIntervalMinutes(Math.max(1, Number(e.target.value)))}
-                    className="w-24 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm text-center focus:outline-none focus:border-[#00E5FF]/40 focus:ring-1 focus:ring-[#00E5FF]/20 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  <span className="text-white/35 text-sm">minutos</span>
-                  {intervalMinutes >= 60 && (
-                    <span className="text-white/25 text-xs">
-                      ({(intervalMinutes / 60).toFixed(1).replace(".0", "")}h)
-                    </span>
-                  )}
+                  <Users size={14} className="text-white/35" />
+                  <span className="text-xs font-semibold uppercase tracking-widest text-white/35">Contas</span>
                 </div>
+                {accounts.length > 0 && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={selectAllAccounts}
+                      className="text-xs text-[#00FF41]/70 hover:text-[#00FF41] transition-colors"
+                    >
+                      Selecionar Todas
+                    </button>
+                    <span className="text-white/15 text-xs">·</span>
+                    <button
+                      onClick={deselectAllAccounts}
+                      className="text-xs text-white/30 hover:text-white/60 transition-colors"
+                    >
+                      Desmarcar
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* Divider */}
-              <div className="border-t border-white/[0.06]" />
-
-              {/* ③ Data de início */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-5 h-5 rounded-full bg-white/10 text-white/50 text-[10px] font-bold flex items-center justify-center flex-shrink-0">3</span>
-                  <label className="text-xs text-white/60 font-medium">Começando quando (data e hora de início)</label>
+              {loadingAccounts ? (
+                <div className="flex items-center gap-2 text-white/30 text-sm py-2">
+                  <Loader2 size={14} className="animate-spin" /> Carregando contas...
                 </div>
-                <input
-                  type="datetime-local"
-                  value={startDatetime}
-                  min={minDatetime}
-                  onChange={e => setStartDatetime(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all [color-scheme:dark]"
-                />
+              ) : accounts.length === 0 ? (
+                <p className="text-white/25 text-sm py-4 text-center">
+                  Nenhuma conta conectada.{" "}
+                  <a href="/dashboard/accounts" className="text-[#00E5FF] hover:underline">Conectar conta</a>
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {accounts.map(acc => {
+                    const isSelected = selectedAccountIds.includes(acc.id);
+                    return (
+                      <button
+                        key={acc.id}
+                        onClick={() => toggleAccount(acc.id)}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left",
+                          isSelected
+                            ? "border-[#00FF41]/40 bg-[#00FF41]/5"
+                            : "border-white/[0.07] bg-white/[0.02] hover:border-white/15"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-4 h-4 rounded-[4px] border flex items-center justify-center flex-shrink-0 transition-all",
+                          isSelected ? "bg-[#00FF41] border-[#00FF41]" : "border-white/20"
+                        )}>
+                          {isSelected && <Check size={9} className="text-black" strokeWidth={3} />}
+                        </div>
+                        {acc.avatar_url ? (
+                          <img src={acc.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#00FF41]/40 to-[#00E5FF]/40 flex-shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-sm text-white truncate">@{acc.username}</p>
+                          {acc.display_name && (
+                            <p className="text-xs text-white/35 truncate">{acc.display_name}</p>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {selectedAccountIds.length > 0 && (
+                <p className="mt-3 text-xs text-[#00FF41]/60 font-mono">
+                  {selectedAccountIds.length} conta{selectedAccountIds.length !== 1 ? "s" : ""} selecionada{selectedAccountIds.length !== 1 ? "s" : ""}
+                </p>
+              )}
+            </SectionCard>
+
+            {/* 2. Mídia */}
+            <SectionCard>
+              <SectionLabel Icon={Film}>Mídia</SectionLabel>
+
+              {/* Mode toggle */}
+              <div className="flex rounded-xl overflow-hidden border border-white/10 mb-4">
+                {(["videos", "folder"] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setMediaMode(mode)}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-all",
+                      mediaMode === mode
+                        ? "bg-[#00FF41]/15 text-[#00FF41] border-r border-[#00FF41]/20"
+                        : "bg-white/[0.02] text-white/35 hover:text-white/60"
+                    )}
+                  >
+                    {mode === "videos" ? <><Film size={14} /> Vídeos Avulsos</> : <><FolderOpen size={14} /> Pasta Completa</>}
+                  </button>
+                ))}
               </div>
 
-              {/* Dynamic summary */}
-              <AnimatePresence>
-                {totalVideos > 0 && startDatetime && (
+              <AnimatePresence mode="wait">
+                {mediaMode === "videos" ? (
                   <motion.div
-                    initial={{ opacity: 0, y: -4 }}
+                    key="videos"
+                    initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.2 }}
-                    className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.07]"
+                    transition={{ duration: 0.15 }}
                   >
-                    {(() => {
-                      const effectiveBatch = Math.max(1, batchSize);
-                      const slots = Math.ceil(totalVideos / effectiveBatch);
-                      const lastMs = new Date(startDatetime).getTime() + (slots - 1) * intervalMinutes * 60_000;
-                      const fmt = (iso: string) => new Date(iso).toLocaleString("pt-BR", {
-                        day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
-                      });
-                      const lastIso = new Date(lastMs).toISOString();
-                      return (
-                        <p className="text-xs text-white/55 leading-relaxed">
-                          <span className="text-[#00FF41] font-semibold">{totalVideos}</span> vídeo{totalVideos !== 1 ? "s" : ""} dividido{totalVideos !== 1 ? "s" : ""} em{" "}
-                          <span className="text-white font-semibold">{slots}</span> lote{slots !== 1 ? "s" : ""} de{" "}
-                          <span className="text-[#00E5FF] font-semibold">{effectiveBatch}</span> vídeo{effectiveBatch !== 1 ? "s" : ""}.{" "}
-                          Primeiro disparo: <span className="text-white/80">{fmt(startDatetime)}</span>
-                          {slots > 1 && <> · Último: <span className="text-white/80">{fmt(lastIso)}</span></>}.
-                        </p>
-                      );
-                    })()}
+                    <button
+                      onClick={() => setShowVideoPicker(true)}
+                      className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-white/15 text-white/40 text-sm hover:border-[#00FF41]/40 hover:text-[#00FF41]/60 transition-all"
+                    >
+                      <Plus size={14} />
+                      {selectedVideoIds.length === 0 ? "Selecionar vídeos da biblioteca" : `${selectedVideoIds.length} vídeo${selectedVideoIds.length !== 1 ? "s" : ""} selecionado${selectedVideoIds.length !== 1 ? "s" : ""}`}
+                    </button>
+
+                    {selectedVideoItems.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {selectedVideoItems.slice(0, 8).map(v => (
+                          <div
+                            key={v.id}
+                            className="relative w-10 h-[71px] rounded-lg overflow-hidden border border-[#00FF41]/30"
+                          >
+                            <video src={v.public_url} className="w-full h-full object-cover" muted preload="metadata" />
+                          </div>
+                        ))}
+                        {selectedVideoItems.length > 8 && (
+                          <div className="w-10 h-[71px] rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center">
+                            <span className="text-white/30 text-[10px]">+{selectedVideoItems.length - 8}</span>
+                          </div>
+                        )}
+                        <button
+                          onClick={() => { setSelectedVideoIds([]); setSelectedVideoItems([]); }}
+                          className="ml-1 text-[10px] text-white/25 hover:text-red-400 transition-colors self-end pb-1"
+                        >
+                          Limpar
+                        </button>
+                      </div>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="folder"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    {loadingFolders ? (
+                      <div className="flex items-center gap-2 text-white/30 text-sm py-2">
+                        <Loader2 size={14} className="animate-spin" /> Carregando pastas...
+                      </div>
+                    ) : folders.length === 0 ? (
+                      <p className="text-white/25 text-sm py-4 text-center">
+                        Nenhuma pasta criada.{" "}
+                        <a href="/dashboard/library" className="text-[#00E5FF] hover:underline">Criar pasta</a>
+                      </p>
+                    ) : (
+                      <div className="relative">
+                        <button
+                          onClick={() => setFolderOpen(v => !v)}
+                          className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 hover:border-white/20 transition-colors"
+                        >
+                          <span className={cn("text-sm", selectedFolder ? "text-white" : "text-white/30")}>
+                            {selectedFolder
+                              ? `📁 ${selectedFolder.name} · ${folderVideoCount} vídeos`
+                              : "Selecionar pasta..."
+                            }
+                          </span>
+                          <ChevronDown size={14} className={cn("text-white/30 transition-transform", folderOpen && "rotate-180")} />
+                        </button>
+
+                        <AnimatePresence>
+                          {folderOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, y: -6 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -6 }}
+                              transition={{ duration: 0.12 }}
+                              className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#0d111b] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                            >
+                              {folders.map(f => (
+                                <button
+                                  key={f.id}
+                                  onClick={() => { setSelectedFolderId(f.id); setFolderOpen(false); }}
+                                  className={cn(
+                                    "w-full flex items-center justify-between px-4 py-3 text-sm text-left hover:bg-white/[0.05] transition-colors",
+                                    selectedFolderId === f.id && "bg-[#00FF41]/5 text-[#00FF41]"
+                                  )}
+                                >
+                                  <span className="text-white">📁 {f.name}</span>
+                                  <span className="text-white/30 text-xs">{f.video_count} vídeos</span>
+                                </button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    )}
+
+                    {loadingFolderCount && selectedFolderId && (
+                      <p className="mt-2 text-xs text-white/30 flex items-center gap-1.5">
+                        <Loader2 size={10} className="animate-spin" /> Contando vídeos...
+                      </p>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
+            </SectionCard>
 
-            </div>
-          </SectionCard>
+            {/* 3. Distribuição */}
+            <SectionCard>
+              <SectionLabel Icon={CalendarDays}>Distribuição de Tempo</SectionLabel>
 
-          {/* 4. Legendas */}
-          <SectionCard>
-            <SectionLabel Icon={List}>Legendas Dinâmicas</SectionLabel>
-            <CaptionEditor captions={captions} onChange={setCaptions} />
-          </SectionCard>
+              <div className="space-y-6">
 
-          {/* Error */}
-          <AnimatePresence>
-            {submitError && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
-              >
-                <AlertCircle size={14} className="flex-shrink-0" />
-                {submitError}
-              </motion.div>
-            )}
-          </AnimatePresence>
+                {/* ① Tamanho do Lote */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-5 h-5 rounded-full bg-[#00FF41]/15 text-[#00FF41] text-[10px] font-bold flex items-center justify-center flex-shrink-0">1</span>
+                    <label className="text-xs text-white/60 font-medium">Vídeos por disparo (tamanho do lote)</label>
+                  </div>
 
-          {/* Submit */}
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={submitting}
-            className={cn(
-              "w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-black text-sm transition-all",
-              submitting
-                ? "bg-[#00FF41]/50 cursor-not-allowed"
-                : "bg-[#00FF41] hover:bg-[#00FF41]/90 hover:shadow-[0_0_28px_rgba(0,255,65,0.35)]"
-            )}
-          >
-            {submitting ? (
-              <><Loader2 size={16} className="animate-spin text-black/70" /> Criando campanha...</>
-            ) : (
-              <><Send size={16} /> Criar Campanha
-                {totalVideos > 0 && totalAccounts > 0 && (
-                  <span className="ml-1 opacity-70">
-                    ({totalVideos} vídeo{totalVideos !== 1 ? "s" : ""} · {totalAccounts} conta{totalAccounts !== 1 ? "s" : ""})
-                  </span>
-                )}
-              </>
-            )}
-          </button>
-        </div>
+                  {/* Stepper */}
+                  <div className="flex items-center gap-4 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => setBatchSize(v => Math.max(1, v - 1))}
+                      className="w-10 h-10 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:bg-white/[0.1] hover:text-white transition-all flex items-center justify-center text-lg font-light select-none"
+                    >
+                      −
+                    </button>
+                    <div className="flex-1 text-center">
+                      <span className="text-[#00FF41] font-mono text-3xl font-bold">{batchSize}</span>
+                      <p className="text-white/25 text-[10px] mt-0.5">vídeo{batchSize !== 1 ? "s" : ""} por disparo</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setBatchSize(v => Math.min(100, v + 1))}
+                      className="w-10 h-10 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:bg-white/[0.1] hover:text-white transition-all flex items-center justify-center text-lg font-light select-none"
+                    >
+                      +
+                    </button>
+                  </div>
 
-        {/* ── Right: Campaign Preview ── */}
-        <div className="w-full lg:w-72 lg:sticky lg:top-8 flex-shrink-0">
-          <CampaignPreview
-            totalVideos={totalVideos}
-            totalAccounts={totalAccounts}
-            batchSize={batchSize}
-            intervalMinutes={intervalMinutes}
-            startDatetime={startDatetime}
-            captionCount={validCaptions.length}
-          />
+                  {/* Presets */}
+                  <div className="flex gap-2">
+                    {BATCH_PRESETS.map(v => (
+                      <button
+                        key={v}
+                        onClick={() => setBatchSize(v)}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-xs font-mono transition-all",
+                          batchSize === v
+                            ? "bg-[#00FF41]/15 text-[#00FF41] border border-[#00FF41]/30"
+                            : "bg-white/[0.04] text-white/35 border border-white/[0.07] hover:border-white/20 hover:text-white/60"
+                        )}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-          {/* Quick tips */}
-          <div className="mt-4 glass-card rounded-2xl p-4 space-y-2.5">
-            <p className="text-[10px] text-white/25 uppercase tracking-wider">Como funciona</p>
-            {[
-              { icon: Shuffle, text: "Vídeos embaralhados (Fisher-Yates) uma vez para toda a campanha" },
-              { icon: Zap, text: "Mesmo slot → vídeos diferentes por conta (anti-spam)" },
-              { icon: Clock, text: "Slot 0 = início, Slot 1 = início + intervalo, ..." },
-            ].map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-start gap-2">
-                <Icon size={10} className="text-[#00FF41]/50 mt-0.5 flex-shrink-0" />
-                <p className="text-[10px] text-white/30 leading-relaxed">{text}</p>
+                {/* Divider */}
+                <div className="border-t border-white/[0.06]" />
+
+                {/* ② Intervalo */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-5 h-5 rounded-full bg-[#00E5FF]/15 text-[#00E5FF] text-[10px] font-bold flex items-center justify-center flex-shrink-0">2</span>
+                    <label className="text-xs text-white/60 font-medium">A cada quanto tempo (intervalo entre disparos)</label>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {INTERVAL_PRESETS.map(p => (
+                      <button
+                        key={p.minutes}
+                        onClick={() => setIntervalMinutes(p.minutes)}
+                        className={cn(
+                          "px-3 py-1 rounded-lg text-xs font-mono transition-all",
+                          intervalMinutes === p.minutes
+                            ? "bg-[#00E5FF]/15 text-[#00E5FF] border border-[#00E5FF]/30"
+                            : "bg-white/[0.04] text-white/40 border border-white/[0.07] hover:border-white/20 hover:text-white/60"
+                        )}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={intervalMinutes}
+                      min={1}
+                      max={43200}
+                      onChange={e => setIntervalMinutes(Math.max(1, Number(e.target.value)))}
+                      className="w-24 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm text-center focus:outline-none focus:border-[#00E5FF]/40 focus:ring-1 focus:ring-[#00E5FF]/20 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <span className="text-white/35 text-sm">minutos</span>
+                    {intervalMinutes >= 60 && (
+                      <span className="text-white/25 text-xs">
+                        ({(intervalMinutes / 60).toFixed(1).replace(".0", "")}h)
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Divider */}
+                <div className="border-t border-white/[0.06]" />
+
+                {/* ③ Data de início */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-5 h-5 rounded-full bg-white/10 text-white/50 text-[10px] font-bold flex items-center justify-center flex-shrink-0">3</span>
+                    <label className="text-xs text-white/60 font-medium">Começando quando (data e hora de início)</label>
+                  </div>
+                  <input
+                    type="datetime-local"
+                    value={startDatetime}
+                    min={minDatetime}
+                    onChange={e => setStartDatetime(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all [color-scheme:dark]"
+                  />
+                </div>
+
+                {/* Dynamic summary */}
+                <AnimatePresence>
+                  {totalVideos > 0 && startDatetime && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      transition={{ duration: 0.2 }}
+                      className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.07]"
+                    >
+                      {(() => {
+                        const effectiveBatch = Math.max(1, batchSize);
+                        const slots = Math.ceil(totalVideos / effectiveBatch);
+                        const lastMs = new Date(startDatetime).getTime() + (slots - 1) * intervalMinutes * 60_000;
+                        const fmt = (iso: string) => new Date(iso).toLocaleString("pt-BR", {
+                          day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
+                        });
+                        const lastIso = new Date(lastMs).toISOString();
+                        return (
+                          <p className="text-xs text-white/55 leading-relaxed">
+                            <span className="text-[#00FF41] font-semibold">{totalVideos}</span> vídeo{totalVideos !== 1 ? "s" : ""} dividido{totalVideos !== 1 ? "s" : ""} em{" "}
+                            <span className="text-white font-semibold">{slots}</span> lote{slots !== 1 ? "s" : ""} de{" "}
+                            <span className="text-[#00E5FF] font-semibold">{effectiveBatch}</span> vídeo{effectiveBatch !== 1 ? "s" : ""}.{" "}
+                            Primeiro disparo: <span className="text-white/80">{fmt(startDatetime)}</span>
+                            {slots > 1 && <> · Último: <span className="text-white/80">{fmt(lastIso)}</span></>}.
+                          </p>
+                        );
+                      })()}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
               </div>
-            ))}
+            </SectionCard>
+
+            {/* 4. Legendas */}
+            <SectionCard>
+              <SectionLabel Icon={List}>Legendas Dinâmicas</SectionLabel>
+              <CaptionEditor captions={captions} onChange={setCaptions} />
+            </SectionCard>
+
+            {/* Error */}
+            <AnimatePresence>
+              {submitError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
+                >
+                  <AlertCircle size={14} className="flex-shrink-0" />
+                  {submitError}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Submit */}
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting}
+              className={cn(
+                "w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-black text-sm transition-all",
+                submitting
+                  ? "bg-[#00FF41]/50 cursor-not-allowed"
+                  : "bg-[#00FF41] hover:bg-[#00FF41]/90 hover:shadow-[0_0_28px_rgba(0,255,65,0.35)]"
+              )}
+            >
+              {submitting ? (
+                <><Loader2 size={16} className="animate-spin text-black/70" /> Criando campanha...</>
+              ) : (
+                <><Send size={16} /> Criar Campanha
+                  {totalVideos > 0 && totalAccounts > 0 && (
+                    <span className="ml-1 opacity-70">
+                      ({totalVideos} vídeo{totalVideos !== 1 ? "s" : ""} · {totalAccounts} conta{totalAccounts !== 1 ? "s" : ""})
+                    </span>
+                  )}
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* ── Right: Campaign Preview ── */}
+          <div className="w-full lg:w-72 lg:sticky lg:top-8 flex-shrink-0">
+            <CampaignPreview
+              totalVideos={totalVideos}
+              totalAccounts={totalAccounts}
+              batchSize={batchSize}
+              intervalMinutes={intervalMinutes}
+              startDatetime={startDatetime}
+              captionCount={validCaptions.length}
+            />
+
+            {/* Quick tips */}
+            <div className="mt-4 glass-card rounded-2xl p-4 space-y-2.5">
+              <p className="text-[10px] text-white/25 uppercase tracking-wider">Como funciona</p>
+              {[
+                { icon: Shuffle, text: "Vídeos embaralhados (Fisher-Yates) uma vez para toda a campanha" },
+                { icon: Zap, text: "Mesmo slot → vídeos diferentes por conta (anti-spam)" },
+                { icon: Clock, text: "Slot 0 = início, Slot 1 = início + intervalo, ..." },
+              ].map(({ icon: Icon, text }) => (
+                <div key={text} className="flex items-start gap-2">
+                  <Icon size={10} className="text-[#00FF41]/50 mt-0.5 flex-shrink-0" />
+                  <p className="text-[10px] text-white/30 leading-relaxed">{text}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Video Picker Modal */}
       <AnimatePresence>
