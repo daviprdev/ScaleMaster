@@ -62,6 +62,7 @@ export default function LibraryPage() {
   // ── Multi-select ─────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   // ── Pastas ──────────────────────────────────────────────────
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
@@ -147,6 +148,7 @@ export default function LibraryPage() {
   const handleBulkDelete = useCallback(async () => {
     if (selectedIds.size === 0 || bulkDeleting) return;
     setBulkDeleting(true);
+    setBulkError(null);
     try {
       const items = videos
         .filter(v => selectedIds.has(v.id))
@@ -159,9 +161,15 @@ export default function LibraryPage() {
       });
 
       if (res.ok) {
+        // Remove from local state only after confirmed server-side deletion
         setVideos(prev => prev.filter(v => !selectedIds.has(v.id)));
         setSelectedIds(new Set());
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setBulkError(data.error ?? `Erro ao excluir (HTTP ${res.status}). Tente novamente.`);
       }
+    } catch {
+      setBulkError("Falha de rede ao excluir. Verifique sua conexão e tente novamente.");
     } finally {
       setBulkDeleting(false);
     }
@@ -782,6 +790,33 @@ export default function LibraryPage() {
           </div>
         </motion.div>
       )}
+
+      {/* ── Bulk delete error toast ──────────────────────────── */}
+      <AnimatePresence>
+        {bulkError && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl"
+            style={{
+              background: "rgba(20,6,6,0.95)",
+              border: "1px solid rgba(255,59,48,0.4)",
+              backdropFilter: "blur(16px)",
+              maxWidth: "min(90vw, 420px)",
+            }}
+          >
+            <AlertCircle size={15} style={{ color: "rgba(255,80,70,0.9)", flexShrink: 0 }} />
+            <span className="text-xs text-red-300 flex-1">{bulkError}</span>
+            <button
+              onClick={() => setBulkError(null)}
+              className="flex-shrink-0 text-white/30 hover:text-white/60 transition-colors"
+            >
+              <X size={13} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Floating selection bar ────────────────────────────── */}
       <AnimatePresence>
