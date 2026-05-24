@@ -308,11 +308,20 @@ export default function InspiracoesPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro ao buscar Reels.");
 
+      const fetchedReels = (data.reels ?? []) as InspirationReel[];
+      if (fetchedReels.length === 0) {
+        throw new Error(
+          `Nenhum Reel encontrado para @${target}. ` +
+          `O perfil pode ser privado, inexistente, não ter Reels ou ` +
+          `o Instagram está bloqueando temporariamente. Tente novamente.`
+        );
+      }
+
       setModalDone(true);
       setTimeout(() => {
         setShowModal(false);
         setActiveUsername(target);
-        setReels(data.reels as InspirationReel[]);
+        setReels(fetchedReels);
         setView("grid");
         refreshHistory();
       }, 700);

@@ -41,7 +41,14 @@ async function scrapeWithToken(token: string, username: string, limit: number) {
   const { items } = await client.dataset(run.defaultDatasetId).listItems();
 
   if (!Array.isArray(items) || items.length === 0) {
-    return { reels: [], fullName: username, profilePicUrl: null as string | null };
+    // Não mascarar como array vazio — o frontend não consegue distinguir
+    // "perfil com 0 reels" de "Instagram bloqueou a coleta".
+    throw new Error(
+      `Nenhum Reel encontrado para @${username}. ` +
+      `O perfil pode ser privado, inexistente, não ter Reels ou ` +
+      `o Instagram está bloqueando temporariamente a coleta. ` +
+      `Tente novamente em alguns minutos.`
+    );
   }
 
   const first = items[0] as Record<string, unknown>;

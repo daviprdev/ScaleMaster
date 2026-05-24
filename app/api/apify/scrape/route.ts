@@ -49,7 +49,14 @@ async function scrapeReels(
 
   const { items } = await client.dataset(run.defaultDatasetId).listItems();
 
-  if (!Array.isArray(items) || items.length === 0) return [];
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error(
+      `Nenhum Reel encontrado para @${username}. ` +
+      `O perfil pode ser privado, inexistente, não ter Reels ou ` +
+      `o Instagram está bloqueando temporariamente a coleta. ` +
+      `Tente novamente em alguns minutos.`
+    );
+  }
 
   return items
     .filter((item) => item.type === "Video" || resolveVideoUrl(item as Record<string, unknown>))

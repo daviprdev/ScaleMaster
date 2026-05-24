@@ -370,11 +370,22 @@ export default function InspiracoesPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro ao buscar Reels.");
+
+      const fetchedReels = (data.reels ?? []) as InspirationReel[];
+      // Defesa extra: API retornou 200 mas com lista vazia — tratar como bloqueio
+      if (fetchedReels.length === 0) {
+        throw new Error(
+          `Nenhum Reel encontrado para @${target}. ` +
+          `O perfil pode ser privado, inexistente, não ter Reels ou ` +
+          `o Instagram está bloqueando temporariamente. Tente novamente.`
+        );
+      }
+
       setModalDone(true);
       setTimeout(() => {
         setShowModal(false);
         setActiveUsername(target);
-        setReels(data.reels as InspirationReel[]);
+        setReels(fetchedReels);
         setView("grid");
         refreshHistory();
       }, 700);
@@ -728,12 +739,33 @@ export default function InspiracoesPage() {
             {/* Reels grid */}
             {reels.length > 0 && <InspirationGrid reels={sortedReels} onProcess={handleProcess} />}
             {reels.length === 0 && (
-              <div className="flex flex-col items-center py-20 gap-4 text-center">
-                <Instagram size={32} style={{ color: "rgba(255,255,255,0.1)" }} />
-                <p className="text-sm" style={{ color: "rgba(255,255,255,0.25)" }}>
-                  Nenhum Reel encontrado para @{activeUsername}
-                </p>
-              </div>
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col items-center py-20 gap-4 text-center"
+              >
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                  style={{ background: "rgba(255,59,48,0.07)", border: "0.5px solid rgba(255,59,48,0.2)" }}>
+                  <AlertCircle size={26} style={{ color: "rgba(255,100,90,0.5)" }} />
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.45)" }}>
+                    Nenhum Reel encontrado para @{activeUsername}
+                  </p>
+                  <p className="text-xs max-w-sm mx-auto leading-relaxed" style={{ color: "rgba(255,255,255,0.2)" }}>
+                    O perfil pode ser privado, inexistente, não ter Reels ou o Instagram
+                    pode estar bloqueando temporariamente a coleta.
+                  </p>
+                </div>
+                <button
+                  onClick={() => { handleBack(); }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all"
+                  style={{ background: "rgba(0,255,65,0.07)", border: "0.5px solid rgba(0,255,65,0.2)", color: "rgba(0,255,65,0.7)" }}
+                >
+                  <ArrowLeft size={11} />
+                  Voltar e buscar outro perfil
+                </button>
+              </motion.div>
             )}
           </>
         )}
