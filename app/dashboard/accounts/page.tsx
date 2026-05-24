@@ -174,12 +174,11 @@ function Metric({
 function AccountCard({
   account,
   storiesData,
-  folders,
   onRefresh,
   onToggle,
   onDelete,
   onRefreshToken,
-  onMove,
+  onMoveClick,
   refreshing,
   toggling,
   deleting,
@@ -188,12 +187,11 @@ function AccountCard({
 }: {
   account: Account;
   storiesData?: AccountStoriesData;
-  folders: AccountFolder[];
   onRefresh: (id: string) => void;
   onToggle: (acc: Account) => void;
   onDelete: (id: string) => void;
   onRefreshToken: (id: string) => void;
-  onMove: (accountId: string, folderId: string | null) => void;
+  onMoveClick: (account: Account) => void;
   refreshing: boolean;
   toggling: boolean;
   deleting: boolean;
@@ -201,8 +199,6 @@ function AccountCard({
   moving: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [moveModalOpen, setMoveModalOpen] = useState(false);
-  const [pendingFolderId, setPendingFolderId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -348,9 +344,9 @@ function AccountCard({
                   </button>
                 )}
 
-                {/* Mover para pasta — abre modal */}
+                {/* Mover para pasta — abre modal na página */}
                 <button
-                  onClick={() => { setPendingFolderId(account.folder_id); setMoveModalOpen(true); setMenuOpen(false); }}
+                  onClick={() => { onMoveClick(account); setMenuOpen(false); }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
                 >
                   <Folder size={12} className="text-violet-400/80" /> Mover para pasta...
@@ -427,128 +423,6 @@ function AccountCard({
         </div>
       )}
 
-      {/* ── Modal: Mover para pasta ── */}
-      <AnimatePresence>
-        {moveModalOpen && (
-          <>
-            <motion.div
-              key="move-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
-              onClick={() => setMoveModalOpen(false)}
-            />
-            <motion.div
-              key="move-modal"
-              initial={{ opacity: 0, scale: 0.95, y: 16 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 16 }}
-              transition={{ duration: 0.15 }}
-              className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
-            >
-              <div className="glass rounded-2xl neon-border w-full max-w-xs p-5 space-y-4 pointer-events-auto">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
-                      <Folder size={13} className="text-violet-400" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white">Mover para pasta</h3>
-                      <p className="text-[11px] text-white/30">@{account.username}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setMoveModalOpen(false)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-
-                {/* Folder options */}
-                <div className="space-y-1.5 max-h-52 overflow-y-auto">
-                  {/* Sem pasta */}
-                  <button
-                    onClick={() => setPendingFolderId(null)}
-                    className={cn(
-                      "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
-                      pendingFolderId === null
-                        ? "bg-white/[0.07] border-white/20 text-white"
-                        : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
-                    )}
-                  >
-                    <FolderOpen size={12} className="text-white/30 flex-shrink-0" />
-                    <span className="flex-1">Sem pasta</span>
-                    {account.folder_id === null && pendingFolderId !== null && (
-                      <span className="text-[9px] text-white/25 flex-shrink-0">atual</span>
-                    )}
-                    {pendingFolderId === null && (
-                      <CheckCircle2 size={12} className="text-[#00FF41] flex-shrink-0" />
-                    )}
-                  </button>
-
-                  {folders.length === 0 ? (
-                    <p className="text-[11px] text-white/25 text-center py-3">
-                      Nenhuma pasta criada. Crie pastas nas abas acima.
-                    </p>
-                  ) : (
-                    folders.map(f => (
-                      <button
-                        key={f.id}
-                        onClick={() => setPendingFolderId(f.id)}
-                        className={cn(
-                          "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
-                          pendingFolderId === f.id
-                            ? "bg-violet-600/15 border-violet-500/30 text-violet-200"
-                            : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
-                        )}
-                      >
-                        <Folder size={12} className={cn(
-                          "flex-shrink-0",
-                          pendingFolderId === f.id ? "text-violet-400" : "text-violet-400/50"
-                        )} />
-                        <span className="flex-1 truncate">{f.name}</span>
-                        {account.folder_id === f.id && pendingFolderId !== f.id && (
-                          <span className="text-[9px] text-white/25 flex-shrink-0">atual</span>
-                        )}
-                        {pendingFolderId === f.id && (
-                          <CheckCircle2 size={12} className="text-violet-400 flex-shrink-0" />
-                        )}
-                      </button>
-                    ))
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-2 pt-1">
-                  <button
-                    onClick={() => setMoveModalOpen(false)}
-                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={() => {
-                      onMove(account.id, pendingFolderId);
-                      setMoveModalOpen(false);
-                    }}
-                    disabled={moving || pendingFolderId === account.folder_id}
-                    className="flex-1 py-2.5 rounded-xl bg-violet-600/25 border border-violet-500/30 text-violet-300 text-xs font-semibold hover:bg-violet-600/35 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
-                  >
-                    {moving
-                      ? <Loader2 size={12} className="animate-spin" />
-                      : <Folder size={12} />
-                    }
-                    Mover
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }
@@ -612,6 +486,10 @@ export default function AccountsPage() {
   const [tokenRefreshingId, setTokenRefreshingId] = useState<string | null>(null);
   const [movingAccountId, setMovingAccountId] = useState<string | null>(null);
   const [storiesMap, setStoriesMap] = useState<Record<string, AccountStoriesData>>({});
+
+  // Move-to-folder modal (page-level, outside motion transforms)
+  const [moveAccount, setMoveAccount] = useState<Account | null>(null);
+  const [movePendingFolderId, setMovePendingFolderId] = useState<string | null>(null);
 
   const supabase = useMemo(() => createClient(), []);
   const _togglingRef = useRef<string | null>(null);
@@ -836,6 +714,11 @@ export default function AccountsPage() {
     }
   };
 
+  const handleMoveClick = useCallback((account: Account) => {
+    setMoveAccount(account);
+    setMovePendingFolderId(account.folder_id);
+  }, []);
+
   const handleMoveAccount = useCallback(async (accountId: string, folderId: string | null) => {
     setMovingAccountId(accountId);
     try {
@@ -855,11 +738,12 @@ export default function AccountsPage() {
           }));
           return prev.map(a => a.id === accountId ? { ...a, folder_id: folderId } : a);
         });
+        router.refresh();
       }
     } finally {
       setMovingAccountId(null);
     }
-  }, []);
+  }, [router]);
 
   // ── Folder CRUD ────────────────────────────────────────────────
 
@@ -1234,6 +1118,125 @@ export default function AccountsPage() {
         )}
       </AnimatePresence>
 
+      {/* Modal: Mover conta para pasta (page-level — fora de qualquer motion transform) */}
+      <AnimatePresence>
+        {moveAccount && (
+          <>
+            <motion.div
+              key="move-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => setMoveAccount(null)}
+            />
+            <motion.div
+              key="move-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
+            >
+              <div className="glass rounded-2xl neon-border w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
+                      <Folder size={13} className="text-violet-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Mover para pasta</h3>
+                      <p className="text-[11px] text-white/30">@{moveAccount.username}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setMoveAccount(null)}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                  <button
+                    onClick={() => setMovePendingFolderId(null)}
+                    className={cn(
+                      "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
+                      movePendingFolderId === null
+                        ? "bg-white/[0.07] border-white/20 text-white"
+                        : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
+                    )}
+                  >
+                    <FolderOpen size={12} className="text-white/30 flex-shrink-0" />
+                    <span className="flex-1">Sem pasta</span>
+                    {moveAccount.folder_id === null && movePendingFolderId !== null && (
+                      <span className="text-[9px] text-white/25 flex-shrink-0">atual</span>
+                    )}
+                    {movePendingFolderId === null && (
+                      <CheckCircle2 size={12} className="text-[#00FF41] flex-shrink-0" />
+                    )}
+                  </button>
+
+                  {folders.length === 0 ? (
+                    <p className="text-[11px] text-white/25 text-center py-3">
+                      Nenhuma pasta criada. Crie pastas nas abas acima.
+                    </p>
+                  ) : (
+                    folders.map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => setMovePendingFolderId(f.id)}
+                        className={cn(
+                          "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
+                          movePendingFolderId === f.id
+                            ? "bg-violet-600/15 border-violet-500/30 text-violet-200"
+                            : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
+                        )}
+                      >
+                        <Folder size={12} className={cn(
+                          "flex-shrink-0",
+                          movePendingFolderId === f.id ? "text-violet-400" : "text-violet-400/50"
+                        )} />
+                        <span className="flex-1 truncate">{f.name}</span>
+                        {moveAccount.folder_id === f.id && movePendingFolderId !== f.id && (
+                          <span className="text-[9px] text-white/25 flex-shrink-0">atual</span>
+                        )}
+                        {movePendingFolderId === f.id && (
+                          <CheckCircle2 size={12} className="text-violet-400 flex-shrink-0" />
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => setMoveAccount(null)}
+                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleMoveAccount(moveAccount.id, movePendingFolderId);
+                      setMoveAccount(null);
+                    }}
+                    disabled={movingAccountId === moveAccount.id || movePendingFolderId === moveAccount.folder_id}
+                    className="flex-1 py-2.5 rounded-xl bg-violet-600/25 border border-violet-500/30 text-violet-300 text-xs font-semibold hover:bg-violet-600/35 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    {movingAccountId === moveAccount.id
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : <Folder size={12} />
+                    }
+                    Mover
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Banner de notificação OAuth */}
       <AnimatePresence>
         {notification && (
@@ -1439,12 +1442,11 @@ export default function AccountsPage() {
                 key={account.id}
                 account={account}
                 storiesData={storiesMap[account.id]}
-                folders={folders}
                 onRefresh={handleRefresh}
                 onToggle={handleToggle}
                 onDelete={handleDelete}
                 onRefreshToken={handleRefreshToken}
-                onMove={handleMoveAccount}
+                onMoveClick={handleMoveClick}
                 refreshing={refreshingId === account.id}
                 toggling={togglingId === account.id}
                 deleting={deletingId === account.id}
