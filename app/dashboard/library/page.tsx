@@ -17,6 +17,9 @@ import {
   Trash2,
   FolderInput,
   Pencil,
+  CheckSquare,
+  Square,
+  ChevronDown,
 } from "lucide-react";
 import { VideoCard, type LibraryVideo } from "@/components/library/VideoCard";
 import { PostModal } from "@/components/library/PostModal";
@@ -47,30 +50,33 @@ export default function LibraryPage() {
   const router = useRouter();
   const [videos, setVideos] = useState<LibraryVideo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(0);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const _deletingRef = useRef<string | null>(null);
   const [postingVideo, setPostingVideo] = useState<LibraryVideo | null>(null);
 
+  // ── Multi-select ─────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   // ── Pastas ──────────────────────────────────────────────────
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
   const [currentFolder, setCurrentFolder] = useState<LibraryFolder | null>(null);
 
-  // Modal Nova Pasta
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
 
-  // Modal Mover Vídeo
   const [movingVideo, setMovingVideo] = useState<LibraryVideo | null>(null);
   const [movingTo, setMovingTo] = useState<string | null>("__root__");
   const [movingLoading, setMovingLoading] = useState(false);
 
-  // Modal deletar pasta
   const [deletingFolder, setDeletingFolder] = useState<LibraryFolder | null>(null);
 
-  // Modal renomear pasta
   const [renamingFolder, setRenamingFolder] = useState<LibraryFolder | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renamingLoading, setRenamingLoading] = useState(false);
@@ -82,27 +88,84 @@ export default function LibraryPage() {
     setFolders(data.folders ?? []);
   }, []);
 
-  const fetchVideos = useCallback(async (folderId?: string | null) => {
-    setLoading(true);
+  const fetchVideos = useCallback(async (
+    folderId: string | null | undefined,
+    targetPage: number,
+    append: boolean
+  ) => {
+    if (targetPage === 0) setLoading(true);
+    else setLoadingMore(true);
     try {
-      const param = folderId ? `?folderId=${folderId}` : "?folderId=root";
-      const res = await fetch(`/api/library${param}`);
-      const data = await res.json() as { videos: LibraryVideo[] };
-      setVideos(data.videos ?? []);
+      const params = new URLSearchParams();
+      params.set("folderId", folderId ? folderId : "root");
+      params.set("page", String(targetPage));
+      const res = await fetch(`/api/library?${params}`);
+      const data = await res.json() as { videos: LibraryVideo[]; hasMore: boolean };
+      const fetched = data.videos ?? [];
+      setVideos(prev => append ? [...prev, ...fetched] : fetched);
+      setHasMore(data.hasMore ?? false);
+      setPage(targetPage);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
   useEffect(() => {
     fetchFolders();
-    fetchVideos(null);
+    fetchVideos(null, 0, false);
   }, [fetchFolders, fetchVideos]);
 
   const navigateToFolder = useCallback((folder: LibraryFolder | null) => {
     setCurrentFolder(folder);
-    fetchVideos(folder?.id ?? null);
+    setSelectedIds(new Set());
+    fetchVideos(folder?.id ?? null, 0, false);
   }, [fetchVideos]);
+
+  const handleLoadMore = useCallback(() => {
+    fetchVideos(currentFolder?.id ?? null, page + 1, true);
+  }, [fetchVideos, currentFolder, page]);
+
+  // ── Multi-select handlers ────────────────────────────────────
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelectedIds(new Set(videos.map(v => v.id)));
+  }, [videos]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0 || bulkDeleting) return;
+    setBulkDeleting(true);
+    try {
+      const items = videos
+        .filter(v => selectedIds.has(v.id))
+        .map(v => ({ id: v.id, storage_path: v.storage_path }));
+
+      const res = await fetch("/api/library/bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+
+      if (res.ok) {
+        setVideos(prev => prev.filter(v => !selectedIds.has(v.id)));
+        setSelectedIds(new Set());
+      }
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [selectedIds, videos, bulkDeleting]);
 
   // ── Upload ────────────────────────────────────────────────────
   const currentFolderRef = useRef<LibraryFolder | null>(null);
@@ -157,7 +220,7 @@ export default function LibraryPage() {
       }
 
       setUploads(prev => prev.map(u => u.id === item.id ? { ...u, progress: 100, status: "done" } : u));
-      fetchVideos(currentFolderRef.current?.id ?? null);
+      fetchVideos(currentFolderRef.current?.id ?? null, 0, false);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erro desconhecido.";
       setUploads(prev => prev.map(u => u.id === item.id ? { ...u, status: "error", error: message } : u));
@@ -201,7 +264,10 @@ export default function LibraryPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: video.id, storage_path: video.storage_path }),
       });
-      if (res.ok) setVideos(prev => prev.filter(v => v.id !== video.id));
+      if (res.ok) {
+        setVideos(prev => prev.filter(v => v.id !== video.id));
+        setSelectedIds(prev => { const n = new Set(prev); n.delete(video.id); return n; });
+      }
     } finally {
       _deletingRef.current = null;
     }
@@ -233,7 +299,6 @@ export default function LibraryPage() {
     }
   };
 
-  // ── Pastas: criar ─────────────────────────────────────────────
   const handleCreateFolder = async () => {
     if (!newFolderName.trim() || creatingFolder) return;
     setCreatingFolder(true);
@@ -253,7 +318,6 @@ export default function LibraryPage() {
     }
   };
 
-  // ── Pastas: renomear ──────────────────────────────────────────
   const handleRenameFolder = async () => {
     if (!renamingFolder || !renameValue.trim() || renamingLoading) return;
     setRenamingLoading(true);
@@ -277,20 +341,19 @@ export default function LibraryPage() {
     }
   };
 
-  // ── Pastas: deletar ───────────────────────────────────────────
   const handleDeleteFolder = async (folder: LibraryFolder) => {
     const res = await fetch(`/api/library/folders/${folder.id}`, { method: "DELETE" });
     if (res.ok) {
       await fetchFolders();
-      if (currentFolder?.id === folder.id) {
-        navigateToFolder(null);
-      }
+      if (currentFolder?.id === folder.id) navigateToFolder(null);
       setDeletingFolder(null);
     }
   };
 
+  const allSelected = videos.length > 0 && selectedIds.size === videos.length;
+
   return (
-    <div className="space-y-5 max-w-full">
+    <div className="space-y-5 max-w-full pb-28">
 
       {/* Post modal */}
       <AnimatePresence>
@@ -303,16 +366,12 @@ export default function LibraryPage() {
       <AnimatePresence>
         {showNewFolder && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
             onClick={() => { setShowNewFolder(false); setNewFolderName(""); }}
           >
             <motion.div
-              initial={{ scale: 0.92, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.92, opacity: 0 }}
+              initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
               transition={{ type: "spring", duration: 0.35 }}
               onClick={e => e.stopPropagation()}
               className="glass w-full max-w-sm rounded-2xl p-6 space-y-5 border border-white/10"
@@ -326,29 +385,15 @@ export default function LibraryPage() {
                   <p className="text-xs text-white/40">Organize seus vídeos por tema ou campanha</p>
                 </div>
               </div>
-
               <input
-                autoFocus
-                type="text"
-                placeholder="Ex: Reels Fitness, Travel Vibes..."
-                value={newFolderName}
-                onChange={e => setNewFolderName(e.target.value)}
+                autoFocus type="text" placeholder="Ex: Reels Fitness, Travel Vibes..."
+                value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleCreateFolder()}
                 className="input-glass w-full text-sm"
               />
-
               <div className="flex gap-3">
-                <button
-                  onClick={() => { setShowNewFolder(false); setNewFolderName(""); }}
-                  className="btn-ghost flex-1 text-sm py-2.5"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleCreateFolder}
-                  disabled={!newFolderName.trim() || creatingFolder}
-                  className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50"
-                >
+                <button onClick={() => { setShowNewFolder(false); setNewFolderName(""); }} className="btn-ghost flex-1 text-sm py-2.5">Cancelar</button>
+                <button onClick={handleCreateFolder} disabled={!newFolderName.trim() || creatingFolder} className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50">
                   {creatingFolder ? <Loader2 size={14} className="animate-spin mx-auto" /> : "Criar Pasta"}
                 </button>
               </div>
@@ -361,16 +406,12 @@ export default function LibraryPage() {
       <AnimatePresence>
         {movingVideo && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
             onClick={() => setMovingVideo(null)}
           >
             <motion.div
-              initial={{ scale: 0.92, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.92, opacity: 0 }}
+              initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
               transition={{ type: "spring", duration: 0.35 }}
               onClick={e => e.stopPropagation()}
               className="glass w-full max-w-sm rounded-2xl p-6 space-y-4 border border-white/10"
@@ -397,13 +438,11 @@ export default function LibraryPage() {
                 >
                   <FolderOpen size={15} className="flex-shrink-0" />
                   <span>Raiz (sem pasta)</span>
-                  {movingTo === "__root__" && <CheckCircle size={14} className="ml-auto text-violet-400" />}
+                  {movingTo === "__root__" && <CheckMark />}
                 </button>
-
                 {folders.map(f => (
                   <button
-                    key={f.id}
-                    onClick={() => setMovingTo(f.id)}
+                    key={f.id} onClick={() => setMovingTo(f.id)}
                     className={cn(
                       "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150",
                       movingTo === f.id
@@ -413,26 +452,17 @@ export default function LibraryPage() {
                   >
                     <Folder size={15} className="flex-shrink-0 text-violet-400" />
                     <span className="truncate">{f.name}</span>
-                    {movingTo === f.id && <CheckCircle size={14} className="ml-auto text-violet-400" />}
+                    {movingTo === f.id && <CheckMark />}
                   </button>
                 ))}
-
                 {folders.length === 0 && (
-                  <p className="text-xs text-white/30 text-center py-4">
-                    Nenhuma pasta criada ainda
-                  </p>
+                  <p className="text-xs text-white/30 text-center py-4">Nenhuma pasta criada ainda</p>
                 )}
               </div>
 
               <div className="flex gap-3 pt-1">
-                <button onClick={() => setMovingVideo(null)} className="btn-ghost flex-1 text-sm py-2.5">
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleMoveConfirm}
-                  disabled={movingLoading}
-                  className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50"
-                >
+                <button onClick={() => setMovingVideo(null)} className="btn-ghost flex-1 text-sm py-2.5">Cancelar</button>
+                <button onClick={handleMoveConfirm} disabled={movingLoading} className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50">
                   {movingLoading ? <Loader2 size={14} className="animate-spin mx-auto" /> : "Mover"}
                 </button>
               </div>
@@ -445,16 +475,12 @@ export default function LibraryPage() {
       <AnimatePresence>
         {deletingFolder && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
             onClick={() => setDeletingFolder(null)}
           >
             <motion.div
-              initial={{ scale: 0.92, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.92, opacity: 0 }}
+              initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
               transition={{ type: "spring", duration: 0.35 }}
               onClick={e => e.stopPropagation()}
               className="glass w-full max-w-sm rounded-2xl p-6 space-y-4 border border-red-500/20"
@@ -468,15 +494,11 @@ export default function LibraryPage() {
                   <p className="text-xs text-white/40">Os vídeos serão movidos para a raiz</p>
                 </div>
               </div>
-
               <p className="text-sm text-white/60">
                 Tem certeza que deseja excluir <span className="text-white font-medium">&ldquo;{deletingFolder.name}&rdquo;</span>?
               </p>
-
               <div className="flex gap-3">
-                <button onClick={() => setDeletingFolder(null)} className="btn-ghost flex-1 text-sm py-2.5">
-                  Cancelar
-                </button>
+                <button onClick={() => setDeletingFolder(null)} className="btn-ghost flex-1 text-sm py-2.5">Cancelar</button>
                 <button
                   onClick={() => handleDeleteFolder(deletingFolder)}
                   className="flex-1 text-sm py-2.5 rounded-xl bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30 transition-all duration-200"
@@ -493,16 +515,12 @@ export default function LibraryPage() {
       <AnimatePresence>
         {renamingFolder && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
             onClick={() => setRenamingFolder(null)}
           >
             <motion.div
-              initial={{ scale: 0.92, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.92, opacity: 0 }}
+              initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
               transition={{ type: "spring", duration: 0.35 }}
               onClick={e => e.stopPropagation()}
               className="glass w-full max-w-sm rounded-2xl p-6 space-y-5 border border-white/10"
@@ -516,29 +534,15 @@ export default function LibraryPage() {
                   <p className="text-xs text-white/40">Escolha um novo nome para a pasta</p>
                 </div>
               </div>
-
               <input
-                autoFocus
-                type="text"
-                placeholder="Novo nome da pasta..."
-                value={renameValue}
-                onChange={e => setRenameValue(e.target.value)}
+                autoFocus type="text" placeholder="Novo nome da pasta..."
+                value={renameValue} onChange={e => setRenameValue(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleRenameFolder()}
                 className="input-glass w-full text-sm"
               />
-
               <div className="flex gap-3">
-                <button
-                  onClick={() => setRenamingFolder(null)}
-                  className="btn-ghost flex-1 text-sm py-2.5"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleRenameFolder}
-                  disabled={!renameValue.trim() || renamingLoading}
-                  className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50"
-                >
+                <button onClick={() => setRenamingFolder(null)} className="btn-ghost flex-1 text-sm py-2.5">Cancelar</button>
+                <button onClick={handleRenameFolder} disabled={!renameValue.trim() || renamingLoading} className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50">
                   {renamingLoading ? <Loader2 size={14} className="animate-spin mx-auto" /> : "Salvar"}
                 </button>
               </div>
@@ -549,7 +553,6 @@ export default function LibraryPage() {
 
       {/* Header: breadcrumbs + botão Nova Pasta */}
       <div className="flex items-center justify-between gap-4">
-        {/* Breadcrumbs */}
         <div className="flex items-center gap-1.5 text-sm">
           <button
             onClick={() => navigateToFolder(null)}
@@ -568,16 +571,11 @@ export default function LibraryPage() {
           )}
         </div>
 
-        {/* Botão Nova Pasta */}
         {!currentFolder && (
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
             onClick={() => setShowNewFolder(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl
-              bg-white/[0.05] border border-white/10
-              text-white/60 hover:text-white/90 hover:bg-white/[0.09] hover:border-white/20
-              text-xs font-medium transition-all duration-200 flex-shrink-0"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:text-white/90 hover:bg-white/[0.09] hover:border-white/20 text-xs font-medium transition-all duration-200 flex-shrink-0"
           >
             <FolderPlus size={14} />
             Nova Pasta
@@ -587,11 +585,8 @@ export default function LibraryPage() {
 
       {/* Upload zone */}
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+        onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
         className={cn(
           "relative rounded-2xl border-2 border-dashed transition-all duration-200 cursor-pointer",
@@ -623,9 +618,7 @@ export default function LibraryPage() {
       <AnimatePresence>
         {uploads.length > 0 && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
+            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
             className="glass-card overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
@@ -676,18 +669,14 @@ export default function LibraryPage() {
       <AnimatePresence>
         {!currentFolder && folders.length > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
             className="space-y-3"
           >
             <p className="text-xs font-semibold text-white/30 uppercase tracking-widest">Pastas</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
               {folders.map((folder, i) => (
                 <FolderCard
-                  key={folder.id}
-                  folder={folder}
-                  index={i}
+                  key={folder.id} folder={folder} index={i}
                   onClick={() => navigateToFolder(folder)}
                   onDelete={() => setDeletingFolder(folder)}
                   onRename={() => { setRenamingFolder(folder); setRenameValue(folder.name); }}
@@ -698,12 +687,30 @@ export default function LibraryPage() {
         )}
       </AnimatePresence>
 
-      {/* Separador */}
       {!currentFolder && folders.length > 0 && (
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-white/[0.06]" />
           <span className="text-xs text-white/25">Vídeos na raiz</span>
           <div className="flex-1 h-px bg-white/[0.06]" />
+        </div>
+      )}
+
+      {/* ── Barra de controle: contagem + selecionar todos ──── */}
+      {!loading && videos.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-white/30">
+            {videos.length} vídeo{videos.length !== 1 ? "s" : ""} carregado{videos.length !== 1 ? "s" : ""}
+            {hasMore && " (mais disponíveis)"}
+          </p>
+          <button
+            onClick={allSelected ? clearSelection : selectAll}
+            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors"
+          >
+            {allSelected
+              ? <><CheckSquare size={13} className="text-[#00FF41]" /> Desmarcar todos</>
+              : <><Square size={13} /> Selecionar todos</>
+            }
+          </button>
         </div>
       )}
 
@@ -731,10 +738,28 @@ export default function LibraryPage() {
                 onPost={handlePost}
                 onDelete={handleDelete}
                 onMove={handleMoveOpen}
+                selected={selectedIds.has(video.id)}
+                onSelect={toggleSelect}
               />
             ))}
           </motion.div>
         </AnimatePresence>
+      )}
+
+      {/* Load more */}
+      {!loading && hasMore && (
+        <div className="flex justify-center pt-2">
+          <button
+            onClick={handleLoadMore}
+            disabled={loadingMore}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl border border-white/[0.08] text-sm text-white/50 hover:text-white/80 hover:bg-white/[0.05] hover:border-white/[0.14] transition-all disabled:opacity-50"
+          >
+            {loadingMore
+              ? <><Loader2 size={14} className="animate-spin" /> Carregando...</>
+              : <><ChevronDown size={14} /> Carregar mais</>
+            }
+          </button>
+        </div>
       )}
 
       {/* Empty state */}
@@ -758,11 +783,78 @@ export default function LibraryPage() {
         </motion.div>
       )}
 
+      {/* ── Floating selection bar ────────────────────────────── */}
+      <AnimatePresence>
+        {selectedIds.size > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 24, scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
+          >
+            <div
+              className="flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl"
+              style={{
+                background: "rgba(8,8,12,0.92)",
+                border: "1px solid rgba(0,255,65,0.2)",
+                backdropFilter: "blur(20px)",
+                boxShadow: "0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,255,65,0.1)",
+              }}
+            >
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: "rgba(0,255,65,0.12)", border: "1px solid rgba(0,255,65,0.25)" }}
+              >
+                <CheckSquare size={14} style={{ color: "#00FF41" }} />
+              </div>
+              <span className="text-sm font-semibold text-white/80 whitespace-nowrap">
+                {selectedIds.size} vídeo{selectedIds.size !== 1 ? "s" : ""} selecionado{selectedIds.size !== 1 ? "s" : ""}
+              </span>
+
+              <div className="w-px h-4 bg-white/[0.12]" />
+
+              <button
+                onClick={clearSelection}
+                className="text-xs text-white/40 hover:text-white/70 transition-colors whitespace-nowrap"
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 disabled:opacity-50 whitespace-nowrap"
+                style={{
+                  background: "rgba(255,59,48,0.15)",
+                  border: "1px solid rgba(255,59,48,0.35)",
+                  color: "rgba(255,100,90,0.95)",
+                }}
+              >
+                {bulkDeleting
+                  ? <><Loader2 size={12} className="animate-spin" /> Excluindo...</>
+                  : <><Trash2 size={12} /> Excluir {selectedIds.size}</>
+                }
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-// ── Componente FolderCard ─────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────
+
+function CheckMark() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" className="ml-auto text-violet-400">
+      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ── FolderCard ────────────────────────────────────────────────
 
 const FOLDER_GRADIENTS = [
   { bg: "from-violet-600/20 to-purple-700/10", icon: "text-violet-400", border: "border-violet-500/20 hover:border-violet-500/40", glow: "hover:shadow-[0_4px_20px_rgba(139,92,246,0.2)]" },
@@ -772,15 +864,6 @@ const FOLDER_GRADIENTS = [
   { bg: "from-amber-500/20 to-orange-700/10", icon: "text-amber-400", border: "border-amber-500/20 hover:border-amber-500/40", glow: "hover:shadow-[0_4px_20px_rgba(245,158,11,0.2)]" },
   { bg: "from-indigo-500/20 to-violet-700/10", icon: "text-indigo-400", border: "border-indigo-500/20 hover:border-indigo-500/40", glow: "hover:shadow-[0_4px_20px_rgba(99,102,241,0.2)]" },
 ];
-
-// Dummy import to satisfy TS — CheckCircle isn't imported above
-function CheckCircle({ size, className }: { size: number; className?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 interface FolderCardProps {
   folder: LibraryFolder;
@@ -810,13 +893,10 @@ function FolderCard({ folder, index, onClick, onDelete, onRename }: FolderCardPr
       )}
       onClick={onClick}
     >
-      {/* Action buttons: rename + delete */}
       <AnimatePresence>
         {hovered && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.7 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.7 }}
+            initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }}
             transition={{ duration: 0.15 }}
             className="absolute top-2 right-2 flex gap-1"
           >
@@ -836,15 +916,11 @@ function FolderCard({ folder, index, onClick, onDelete, onRename }: FolderCardPr
         )}
       </AnimatePresence>
 
-      {/* Folder icon */}
       <div className={cn("w-10 h-10 mb-3 flex items-center justify-center", style.icon)}>
         <Folder size={36} strokeWidth={1.5} />
       </div>
 
-      {/* Name + count */}
-      <p className="text-xs font-semibold text-white/80 truncate leading-tight">
-        {folder.name}
-      </p>
+      <p className="text-xs font-semibold text-white/80 truncate leading-tight">{folder.name}</p>
       <p className="text-[10px] text-white/35 mt-0.5">
         {count === 0 ? "Vazia" : `${count} vídeo${count !== 1 ? "s" : ""}`}
       </p>

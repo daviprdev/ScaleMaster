@@ -14,6 +14,7 @@ import {
   Send,
   FolderInput,
   Film,
+  Check,
 } from "lucide-react";
 
 export interface LibraryVideo {
@@ -38,6 +39,8 @@ interface VideoCardProps {
   onPost: (video: LibraryVideo) => void;
   onDelete: (video: LibraryVideo) => Promise<void>;
   onMove?: (video: LibraryVideo) => void;
+  selected?: boolean;
+  onSelect?: (id: string) => void;
 }
 
 function formatBytes(bytes: number) {
@@ -65,7 +68,15 @@ function timeAgo(iso: string) {
   return `há ${d} dia${d > 1 ? "s" : ""}`;
 }
 
-export function VideoCard({ video, onSchedule, onPost, onDelete, onMove }: VideoCardProps) {
+export function VideoCard({
+  video,
+  onSchedule,
+  onPost,
+  onDelete,
+  onMove,
+  selected = false,
+  onSelect,
+}: VideoCardProps) {
   const [hovered, setHovered] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [videoError, setVideoError] = useState(false);
@@ -79,6 +90,11 @@ export function VideoCard({ video, onSchedule, onPost, onDelete, onMove }: Video
     } finally {
       setDeleting(false);
     }
+  };
+
+  const handleCheckbox = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSelect?.(video.id);
   };
 
   const displayName = video.filename
@@ -99,44 +115,77 @@ export function VideoCard({ video, onSchedule, onPost, onDelete, onMove }: Video
       className="relative rounded-2xl overflow-hidden cursor-pointer ticks"
       style={{
         aspectRatio: "9/16",
-        border: "0.5px solid rgba(255,255,255,0.08)",
-        transition: "border-color 0.3s, box-shadow 0.3s",
-        ...(hovered ? {
+        border: selected
+          ? "1.5px solid rgba(0,255,65,0.55)"
+          : "0.5px solid rgba(255,255,255,0.08)",
+        boxShadow: selected
+          ? "0 0 0 1px rgba(0,255,65,0.12), 0 4px 20px rgba(0,255,65,0.14)"
+          : undefined,
+        transition: "border-color 0.2s, box-shadow 0.2s",
+        ...(hovered && !selected ? {
           borderColor: "rgba(0,255,65,0.32)",
           boxShadow: "0 0 0 0.5px rgba(0,229,255,0.1), 0 8px 28px rgba(0,255,65,0.12)",
         } : {}),
       }}
     >
-      {/* ── Thumbnail: video first frame or gradient fallback ── */}
-      {!videoError && video.public_url ? (
+      {/* ── Video: only mounted when hovered to avoid loading 50+ videos ── */}
+      {hovered && !videoError && video.public_url ? (
         <video
+          key={video.id}
           src={video.public_url}
           className="absolute inset-0 w-full h-full object-cover"
           preload="metadata"
+          autoPlay
           muted
+          loop
           playsInline
           onError={() => setVideoError(true)}
         />
       ) : (
-        /* Gradient fallback */
+        /* Gradient fallback (default state — zero network cost) */
         <div className="absolute inset-0 flex items-center justify-center"
           style={{ background: "linear-gradient(160deg, rgba(0,255,65,0.07) 0%, rgba(0,0,0,0.55) 50%, rgba(0,229,255,0.05) 100%)" }}>
           <Film size={28} style={{ color: "rgba(0,255,65,0.18)" }} />
         </div>
       )}
 
-      {/* ── Persistent overlay: bottom gradient for text legibility ── */}
+      {/* ── Dark overlay gradient ── */}
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: "linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.35) 45%, rgba(0,0,0,0.15) 70%, transparent 100%)" }} />
 
-      {/* ── Top badges: owner + duration ── */}
-      <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between z-10 pointer-events-none">
-        {video.owner_username ? (
-          <div className="px-2 py-0.5 rounded-full text-[10px] font-medium truncate max-w-[60%]"
+      {/* ── Checkbox (top-left) — visible when hovered OR selected ── */}
+      <AnimatePresence>
+        {(hovered || selected) && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            transition={{ duration: 0.12 }}
+            className="absolute top-2.5 left-2.5 z-30"
+            onClick={handleCheckbox}
+          >
+            <div
+              className="w-5 h-5 rounded-md flex items-center justify-center transition-all duration-150 cursor-pointer"
+              style={{
+                background: selected ? "#00FF41" : "rgba(0,0,0,0.60)",
+                border: selected ? "1.5px solid #00FF41" : "1.5px solid rgba(255,255,255,0.35)",
+                boxShadow: selected ? "0 0 8px rgba(0,255,65,0.4)" : undefined,
+              }}
+            >
+              {selected && <Check size={11} strokeWidth={3} style={{ color: "#000" }} />}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Top-right badge: duration ── */}
+      <div className="absolute top-2.5 right-2.5 z-10 pointer-events-none">
+        {video.owner_username && (
+          <div className="px-2 py-0.5 rounded-full text-[10px] font-medium mb-1"
             style={{ background: "rgba(0,0,0,0.70)", color: "rgba(0,255,65,0.8)", backdropFilter: "blur(4px)" }}>
             @{video.owner_username}
           </div>
-        ) : <div />}
+        )}
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
           style={{ background: "rgba(0,0,0,0.70)", color: "rgba(255,255,255,0.7)", backdropFilter: "blur(4px)" }}>
           <Clock size={9} />
@@ -144,9 +193,9 @@ export function VideoCard({ video, onSchedule, onPost, onDelete, onMove }: Video
         </div>
       </div>
 
-      {/* ── Play button (idle) ── */}
+      {/* ── Play button (idle, not selected) ── */}
       <AnimatePresence>
-        {!hovered && (
+        {!hovered && !selected && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -177,12 +226,10 @@ export function VideoCard({ video, onSchedule, onPost, onDelete, onMove }: Video
             transition={{ duration: 0.15 }}
             className="absolute bottom-0 left-0 right-0 p-3 z-10 pointer-events-none"
           >
-            {/* Caption */}
             <p className="text-[11px] leading-snug line-clamp-2 overflow-hidden mb-1.5"
               style={{ color: "rgba(255,255,255,0.62)" }}>
               {video.caption || displayName}
             </p>
-            {/* Stats row */}
             <div className="flex items-center gap-3 text-[10px]" style={{ color: "rgba(255,255,255,0.28)" }}>
               <span className="flex items-center gap-1">
                 <Eye size={9} />{formatNumber(video.views)}
@@ -209,8 +256,7 @@ export function VideoCard({ video, onSchedule, onPost, onDelete, onMove }: Video
             className="absolute inset-0 flex flex-col justify-between p-3.5 z-20"
             style={{ background: "rgba(0,0,0,0.84)", backdropFilter: "blur(4px)" }}
           >
-            {/* Top: filename + added date */}
-            <div className="space-y-0.5">
+            <div className="space-y-0.5 pl-7">
               <p className="text-xs font-semibold truncate" style={{ color: "rgba(255,255,255,0.8)" }}>
                 {displayName}
               </p>
@@ -219,9 +265,7 @@ export function VideoCard({ video, onSchedule, onPost, onDelete, onMove }: Video
               </p>
             </div>
 
-            {/* Actions */}
             <div className="space-y-2">
-              {/* Postar agora */}
               <motion.button
                 onClick={() => onPost(video)}
                 whileTap={{ scale: 0.95 }}
@@ -245,7 +289,6 @@ export function VideoCard({ video, onSchedule, onPost, onDelete, onMove }: Video
                 Postar agora
               </motion.button>
 
-              {/* Agendar + Mover */}
               <div className="grid grid-cols-2 gap-2">
                 <motion.button
                   onClick={() => onSchedule(video)}
@@ -280,7 +323,6 @@ export function VideoCard({ video, onSchedule, onPost, onDelete, onMove }: Video
                 </motion.button>
               </div>
 
-              {/* Excluir */}
               <motion.button
                 onClick={handleDelete}
                 whileTap={{ scale: 0.95 }}

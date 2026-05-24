@@ -3,23 +3,28 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
-// GET /api/library — lista vídeos da biblioteca
+const PAGE_SIZE = 50;
+
+// GET /api/library — lista vídeos com paginação
 // ?folderId=root   → apenas vídeos sem pasta (folder_id IS NULL)
 // ?folderId=<uuid> → vídeos na pasta especificada
-// sem parâmetro    → todos os vídeos
+// ?page=N          → página N (0-indexed), 50 itens por página
 export async function GET(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado." }, { status: 503 });
   }
 
   const folderId = req.nextUrl.searchParams.get("folderId");
+  const page = Math.max(0, parseInt(req.nextUrl.searchParams.get("page") ?? "0", 10) || 0);
+  const from = page * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
 
   let query = getSupabaseAdmin()
     .from("videos_library")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .range(from, to);
 
-  // Push filter to DB — avoids fetching all rows just to slice in JS
   if (folderId === "root") {
     query = query.is("folder_id", null);
   } else if (folderId) {
@@ -32,7 +37,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ videos: (data ?? []) as Array<Record<string, unknown>> });
+  const videos = (data ?? []) as Array<Record<string, unknown>>;
+  return NextResponse.json({
+    videos,
+    hasMore: videos.length === PAGE_SIZE,
+    page,
+  });
 }
 
 // PATCH /api/library — move vídeo para pasta (ou para raiz)
@@ -79,9 +89,6 @@ export async function DELETE(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
 
-  // Storage delete is best-effort:
-  // - "direct/" prefix = saved from Inspirations without Storage upload → skip
-  // - Other paths: attempt deletion, log failures but don't block DB delete
   const isDirectUrl = storage_path.startsWith("direct/");
   if (!isDirectUrl) {
     const { error: storageError } = await admin.storage
@@ -93,7 +100,6 @@ export async function DELETE(req: NextRequest) {
     }
   }
 
-  // DB delete is always authoritative
   const { error: dbError } = await admin
     .from("videos_library")
     .delete()
@@ -105,4 +111,3 @@ export async function DELETE(req: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
-
