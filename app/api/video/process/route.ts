@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 // Timeout estendido (necessário para vídeos grandes)
 // Vercel Free: máx 10s | Pro: máx 300s
 // Para produção com vídeos longos, considere uma fila (ex: Inngest, Trigger.dev)
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/video/process
