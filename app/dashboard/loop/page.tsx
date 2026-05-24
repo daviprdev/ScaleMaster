@@ -94,7 +94,9 @@ const DEFAULT_FORM: FormData = {
 interface LoopAnalytics {
   loop: { id: string; name: string; cycles_done: number; created_at: string };
   progress: {
-    total_videos: number;
+    total_videos: number;       // vídeos_na_pasta × contas (denominador real de 1 ciclo)
+    videos_in_folder: number;
+    accounts_count: number;
     published: number;
     errors: number;
     pending: number;
@@ -220,7 +222,14 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
       <div className="space-y-2">
         <div className="flex items-center justify-between text-[10px]">
           <span className="text-white/40 font-medium uppercase tracking-wide">Progresso da Fila</span>
-          <span className="text-white/35">{progress.published}/{progress.total_videos} vídeos</span>
+          <span className="text-white/35">
+            {progress.published}/{progress.total_videos} posts
+            {progress.videos_in_folder > 0 && progress.accounts_count > 1 && (
+              <span className="text-white/20 ml-1">
+                ({progress.videos_in_folder}v × {progress.accounts_count}c)
+              </span>
+            )}
+          </span>
         </div>
         {/* Barra segmentada */}
         <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden flex">

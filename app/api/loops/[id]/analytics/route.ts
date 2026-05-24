@@ -107,7 +107,7 @@ export async function GET(
   if (!loop) return NextResponse.json({ error: "Loop não encontrado." }, { status: 404 });
 
   // Conta vídeos na pasta (respeitando media_limit)
-  let totalVideos = 0;
+  let videosInFolder = 0;
   if (loop.folder_id) {
     let q = (admin as any)
       .from("videos_library")
@@ -115,8 +115,16 @@ export async function GET(
       .eq("folder_id", loop.folder_id);
     if (loop.media_limit) q = q.limit(loop.media_limit);
     const { count } = await q;
-    totalVideos = count ?? 0;
+    videosInFolder = count ?? 0;
   }
+
+  // Conta contas vinculadas ao loop — o total real de um ciclo é vídeos × contas
+  const { count: accountCount } = await (admin as any)
+    .from("loop_accounts")
+    .select("account_id", { count: "exact", head: true })
+    .eq("loop_id", loopId);
+
+  const totalTarget = videosInFolder * Math.max(1, accountCount ?? 1);
 
   // Todos os containers deste loop com info das contas
   const { data: containers } = await (admin as any)
@@ -244,11 +252,14 @@ export async function GET(
       created_at: loop.created_at,
     },
     progress: {
-      total_videos: totalVideos,
+      // total_videos = vídeos_na_pasta × contas — denominador correto de 1 ciclo completo
+      total_videos: totalTarget,
+      videos_in_folder: videosInFolder,
+      accounts_count: accountCount ?? 0,
       published,
       errors,
       pending,
-      remaining: Math.max(0, totalVideos - published),
+      remaining: Math.max(0, totalTarget - published),
     },
     engagement: {
       total_likes:    totalLikes,
