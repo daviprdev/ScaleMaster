@@ -1,4 +1,5 @@
 "use client";
+// v2 — move-to-folder button in account context menu
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
