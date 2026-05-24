@@ -30,7 +30,7 @@ interface UploadItem {
   id: string;
   file: File;
   progress: number;
-  status: "pending" | "uploading" | "done" | "error";
+  status: "pending" | "uploading" | "done" | "error" | "skipped";
   error?: string;
 }
 
@@ -63,6 +63,9 @@ export default function LibraryPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkMovingOpen, setBulkMovingOpen] = useState(false);
+  const [bulkMoveTo, setBulkMoveTo] = useState<string>("__root__");
+  const [bulkMoveLoading, setBulkMoveLoading] = useState(false);
 
   // ── Pastas ──────────────────────────────────────────────────
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
@@ -175,17 +178,52 @@ export default function LibraryPage() {
     }
   }, [selectedIds, videos, bulkDeleting]);
 
+  const handleBulkMoveConfirm = useCallback(async () => {
+    if (bulkMoveLoading || selectedIds.size === 0) return;
+    setBulkMoveLoading(true);
+    try {
+      const folderId = bulkMoveTo === "__root__" ? null : bulkMoveTo;
+      const res = await fetch("/api/library/bulk-move", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoIds: Array.from(selectedIds), folderId }),
+      });
+      if (res.ok) {
+        setBulkMovingOpen(false);
+        setSelectedIds(new Set());
+        fetchVideos(currentFolder?.id ?? null, 0, false);
+      }
+    } finally {
+      setBulkMoveLoading(false);
+    }
+  }, [bulkMoveTo, selectedIds, bulkMoveLoading, fetchVideos, currentFolder]);
+
   // ── Upload ────────────────────────────────────────────────────
   const currentFolderRef = useRef<LibraryFolder | null>(null);
   currentFolderRef.current = currentFolder;
 
   const processUpload = useCallback(async (item: UploadItem) => {
     const { file } = item;
-    const timestamp = Date.now();
+    // Capture folder at START before any async work (avoids stale closure if user navigates)
+    const folderId = currentFolderRef.current?.id ?? null;
     const safeName = file.name.replace(/[^a-z0-9._-]/gi, "_");
-    const storagePath = `videos/upload_${timestamp}_${safeName}`;
 
     setUploads(prev => prev.map(u => u.id === item.id ? { ...u, status: "uploading" } : u));
+
+    // Duplicate check — skip upload if file with same name+size already exists
+    try {
+      const dupeRes = await fetch(`/api/library/check-duplicate?filename=${encodeURIComponent(safeName)}&fileSize=${file.size}`);
+      const dupeData = await dupeRes.json() as { exists: boolean };
+      if (dupeData.exists) {
+        setUploads(prev => prev.map(u => u.id === item.id ? { ...u, status: "skipped", progress: 100 } : u));
+        return;
+      }
+    } catch {
+      // Check failed — proceed with upload anyway
+    }
+
+    const timestamp = Date.now();
+    const storagePath = `videos/upload_${timestamp}_${safeName}`;
 
     try {
       await new Promise<void>((resolve, reject) => {
@@ -216,7 +254,6 @@ export default function LibraryPage() {
         });
       });
 
-      const folderId = currentFolderRef.current?.id ?? null;
       const res = await fetch("/api/library/record", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -260,7 +297,7 @@ export default function LibraryPage() {
   };
 
   const activeUploads = uploads.filter(u => u.status === "uploading" || u.status === "pending").length;
-  const clearDoneUploads = () => setUploads(prev => prev.filter(u => u.status !== "done" && u.status !== "error"));
+  const clearDoneUploads = () => setUploads(prev => prev.filter(u => u.status !== "done" && u.status !== "error" && u.status !== "skipped"));
 
   // ── Ações de vídeo ───────────────────────────────────────────
   const handleDelete = async (video: LibraryVideo) => {
@@ -479,6 +516,75 @@ export default function LibraryPage() {
         )}
       </AnimatePresence>
 
+      {/* Modal Mover em Massa */}
+      <AnimatePresence>
+        {bulkMovingOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={() => setBulkMovingOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+              transition={{ type: "spring", duration: 0.35 }}
+              onClick={e => e.stopPropagation()}
+              className="glass w-full max-w-sm rounded-2xl p-6 space-y-4 border border-white/10"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center">
+                  <FolderInput size={18} className="text-cyan-400" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-white">Mover {selectedIds.size} vídeo{selectedIds.size !== 1 ? "s" : ""}</h3>
+                  <p className="text-xs text-white/40">Selecione a pasta de destino</p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                <button
+                  onClick={() => setBulkMoveTo("__root__")}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150",
+                    bulkMoveTo === "__root__"
+                      ? "bg-violet-600/20 border border-violet-500/40 text-white"
+                      : "border border-transparent text-white/50 hover:bg-white/[0.05] hover:text-white/80"
+                  )}
+                >
+                  <FolderOpen size={15} className="flex-shrink-0" />
+                  <span>Raiz (sem pasta)</span>
+                  {bulkMoveTo === "__root__" && <CheckMark />}
+                </button>
+                {folders.map(f => (
+                  <button
+                    key={f.id} onClick={() => setBulkMoveTo(f.id)}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150",
+                      bulkMoveTo === f.id
+                        ? "bg-violet-600/20 border border-violet-500/40 text-white"
+                        : "border border-transparent text-white/50 hover:bg-white/[0.05] hover:text-white/80"
+                    )}
+                  >
+                    <Folder size={15} className="flex-shrink-0 text-violet-400" />
+                    <span className="truncate">{f.name}</span>
+                    {bulkMoveTo === f.id && <CheckMark />}
+                  </button>
+                ))}
+                {folders.length === 0 && (
+                  <p className="text-xs text-white/30 text-center py-4">Nenhuma pasta criada ainda</p>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <button onClick={() => setBulkMovingOpen(false)} className="btn-ghost flex-1 text-sm py-2.5">Cancelar</button>
+                <button onClick={handleBulkMoveConfirm} disabled={bulkMoveLoading} className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50">
+                  {bulkMoveLoading ? <Loader2 size={14} className="animate-spin mx-auto" /> : "Mover"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Modal confirmar exclusão de pasta */}
       <AnimatePresence>
         {deletingFolder && (
@@ -647,20 +753,22 @@ export default function LibraryPage() {
                 {uploads.map(item => (
                   <motion.div key={item.id} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="px-4 py-3 space-y-2">
                     <div className="flex items-center gap-3">
-                      <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", item.status === "done" ? "bg-emerald-500/15 text-emerald-400" : item.status === "error" ? "bg-red-500/15 text-red-400" : "bg-violet-600/15 text-violet-400")}>
-                        {item.status === "done" ? <CheckCircle2 size={14} /> : item.status === "error" ? <AlertCircle size={14} /> : item.status === "uploading" ? <Loader2 size={13} className="animate-spin" /> : <Film size={13} />}
+                      <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", item.status === "done" ? "bg-emerald-500/15 text-emerald-400" : item.status === "error" ? "bg-red-500/15 text-red-400" : item.status === "skipped" ? "bg-amber-500/15 text-amber-400" : "bg-violet-600/15 text-violet-400")}>
+                        {item.status === "done" ? <CheckCircle2 size={14} /> : item.status === "error" ? <AlertCircle size={14} /> : item.status === "skipped" ? <CheckCircle2 size={14} /> : item.status === "uploading" ? <Loader2 size={13} className="animate-spin" /> : <Film size={13} />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-white/75 truncate">{item.file.name}</p>
                         {item.status === "error"
                           ? <p className="text-[10px] text-red-400 truncate">{item.error}</p>
+                          : item.status === "skipped"
+                          ? <p className="text-[10px] text-amber-400 truncate">Já existe na biblioteca. Ignorado.</p>
                           : <p className="text-[10px] text-white/25">{formatBytes(item.file.size)}</p>}
                       </div>
-                      <span className={cn("text-[10px] font-semibold flex-shrink-0", item.status === "done" ? "text-emerald-400" : item.status === "error" ? "text-red-400" : "text-white/35")}>
-                        {item.status === "done" ? "Concluído" : item.status === "error" ? "Erro" : item.status === "uploading" ? `${item.progress}%` : "Na fila"}
+                      <span className={cn("text-[10px] font-semibold flex-shrink-0", item.status === "done" ? "text-emerald-400" : item.status === "error" ? "text-red-400" : item.status === "skipped" ? "text-amber-400" : "text-white/35")}>
+                        {item.status === "done" ? "Concluído" : item.status === "error" ? "Erro" : item.status === "skipped" ? "Ignorado" : item.status === "uploading" ? `${item.progress}%` : "Na fila"}
                       </span>
                     </div>
-                    {item.status !== "error" && (
+                    {item.status !== "error" && item.status !== "skipped" && (
                       <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
                         <motion.div className={cn("h-full rounded-full", item.status === "done" ? "bg-emerald-500" : "bg-gradient-to-r from-violet-600 to-cyan-500")} initial={{ width: "0%" }} animate={{ width: `${item.progress}%` }} transition={{ duration: 0.35, ease: "easeOut" }} />
                       </div>
@@ -854,6 +962,18 @@ export default function LibraryPage() {
                 className="text-xs text-white/40 hover:text-white/70 transition-colors whitespace-nowrap"
               >
                 Cancelar
+              </button>
+
+              <button
+                onClick={() => { setBulkMoveTo("__root__"); setBulkMovingOpen(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 whitespace-nowrap"
+                style={{
+                  background: "rgba(0,229,255,0.12)",
+                  border: "1px solid rgba(0,229,255,0.30)",
+                  color: "rgba(0,229,255,0.90)",
+                }}
+              >
+                <FolderInput size={12} /> Mover {selectedIds.size}
               </button>
 
               <button
