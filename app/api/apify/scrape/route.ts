@@ -63,9 +63,10 @@ async function scrapeViaRapidAPI(username: string, limit: number): Promise<Scrap
 
   const allItems: Record<string, unknown>[] = [];
   let nextMaxId: string | null = null;
-  const MAX_PAGES = 8; // safety cap — 8 × ~12 items = ~96 reels max
+  // Pages scale with limit: ~12 reels/page + small buffer to absorb non-video posts
+  const maxPages = Math.ceil(limit / 10) + 2;
 
-  for (let page = 0; page < MAX_PAGES && allItems.length < limit; page++) {
+  for (let page = 0; page < maxPages && allItems.length < limit; page++) {
     const params = new URLSearchParams({ username_or_id_or_url: username });
     if (nextMaxId) params.set("next_max_id", nextMaxId);
 
@@ -152,7 +153,7 @@ async function scrapeViaApify(
   // apify~instagram-reel-scraper: targeted for reels, less prone to IG blocks
   const run = await client.actor("apify~instagram-reel-scraper").call({
     username: [username],
-    resultsLimit: Math.min(limit, 100),
+    resultsLimit: Math.min(limit, 300),
   });
 
   if (run.status !== "SUCCEEDED") {
@@ -208,7 +209,7 @@ async function scrapeViaApify(
 // ── Handler ────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { username, limit = 50 } = body as { username: string; limit?: number };
+  const { username, limit = 300 } = body as { username: string; limit?: number };
 
   if (!username) {
     return NextResponse.json(
