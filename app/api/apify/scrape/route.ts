@@ -41,9 +41,10 @@ async function scrapeReels(
 ): Promise<Array<Record<string, unknown>>> {
   const client = new ApifyClient({ token });
 
-  const run = await client.actor("apify~instagram-reel-scraper").call({
-    username: [username],
-    resultsLimit: Math.min(limit, 300),
+  const run = await client.actor("apify/instagram-scraper").call({
+    directUrls: [`https://www.instagram.com/${username}/reels/`],
+    resultsType: "posts",
+    maxRequestsPerCrawl: Math.ceil(limit / 12) + 5,
   });
 
   if (run.status !== "SUCCEEDED") {
