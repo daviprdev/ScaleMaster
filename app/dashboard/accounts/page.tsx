@@ -749,25 +749,27 @@ export default function AccountsPage() {
   const handleMoveAccount = useCallback(async (accountId: string, folderId: string | null) => {
     setMovingAccountId(accountId);
     try {
-      const { error } = await supabase
-        .from("instagram_accounts")
-        .update({ folder_id: folderId })
-        .eq("id", accountId);
+      const res = await fetch(`/api/accounts/${accountId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder_id: folderId }),
+      });
 
-      if (!error) {
-        setAccounts(prev => prev.map(a => a.id === accountId ? { ...a, folder_id: folderId } : a));
-        // Update counts optimistically
-        setFolders(prev => prev.map(f => {
-          const movedAcc = accounts.find(a => a.id === accountId);
-          if (f.id === movedAcc?.folder_id) return { ...f, account_count: Math.max(0, f.account_count - 1) };
-          if (f.id === folderId) return { ...f, account_count: f.account_count + 1 };
-          return f;
-        }));
+      if (res.ok) {
+        setAccounts(prev => {
+          const movedAcc = prev.find(a => a.id === accountId);
+          setFolders(folders => folders.map(f => {
+            if (f.id === movedAcc?.folder_id) return { ...f, account_count: Math.max(0, f.account_count - 1) };
+            if (f.id === folderId) return { ...f, account_count: f.account_count + 1 };
+            return f;
+          }));
+          return prev.map(a => a.id === accountId ? { ...a, folder_id: folderId } : a);
+        });
       }
     } finally {
       setMovingAccountId(null);
     }
-  }, [supabase, accounts]);
+  }, []);
 
   // ── Folder CRUD ────────────────────────────────────────────────
 
