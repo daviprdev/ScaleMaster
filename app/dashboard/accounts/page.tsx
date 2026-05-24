@@ -22,6 +22,11 @@ import {
   ChevronRight,
   WifiOff,
   LinkIcon,
+  Folder,
+  FolderPlus,
+  FolderOpen,
+  Pencil,
+  Settings2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -31,6 +36,13 @@ interface UserMetaApp {
   id: string;
   app_name: string;
   ig_app_id: string;
+}
+
+interface AccountFolder {
+  id: string;
+  name: string;
+  account_count: number;
+  created_at: string;
 }
 
 interface Account {
@@ -48,6 +60,7 @@ interface Account {
   ig_business_account_id: string | null;
   token_expires_at: string | null;
   health_status: "online" | "error" | "blocked";
+  folder_id: string | null;
 }
 
 interface AccountStoriesData {
@@ -78,7 +91,7 @@ function tokenStatusChip(tokenExpiresAt: string | null, isMetaAccount: boolean) 
   if (days < 0) return { label: "Token expirado", color: "bg-red-500/15 text-red-400", icon: "danger" } as const;
   if (days <= 7) return { label: `Expira em ${days}d`, color: "bg-red-500/15 text-red-400", icon: "danger" } as const;
   if (days <= 15) return { label: `Expira em ${days}d`, color: "bg-amber-500/15 text-amber-400", icon: "warning" } as const;
-  return null; // saudável — não exibir chip
+  return null;
 }
 
 const AVATAR_COLORS = [
@@ -161,25 +174,31 @@ function Metric({
 function AccountCard({
   account,
   storiesData,
+  folders,
   onRefresh,
   onToggle,
   onDelete,
   onRefreshToken,
+  onMove,
   refreshing,
   toggling,
   deleting,
   tokenRefreshing,
+  moving,
 }: {
   account: Account;
   storiesData?: AccountStoriesData;
+  folders: AccountFolder[];
   onRefresh: (id: string) => void;
   onToggle: (acc: Account) => void;
   onDelete: (id: string) => void;
   onRefreshToken: (id: string) => void;
+  onMove: (accountId: string, folderId: string | null) => void;
   refreshing: boolean;
   toggling: boolean;
   deleting: boolean;
   tokenRefreshing: boolean;
+  moving: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -194,7 +213,7 @@ function AccountCard({
   }, [menuOpen]);
 
   const proxyImg = (url: string) => `/api/proxy-image?url=${encodeURIComponent(url)}`;
-  const busy = refreshing || toggling || deleting || tokenRefreshing;
+  const busy = refreshing || toggling || deleting || tokenRefreshing || moving;
   const isMetaConnected = !!account.ig_business_account_id;
   const tokenChip = tokenStatusChip(account.token_expires_at, isMetaConnected);
   const accountFell = account.health_status === "error" || account.health_status === "blocked";
@@ -263,7 +282,6 @@ function AccountCard({
                 {tokenChip.label}
               </span>
             )}
-            {/* Badge de status: esconde "ATIVA" e mostra "DESCONECTADA" quando conta caiu */}
             {accountFell ? (
               <span className="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide bg-red-500/20 text-red-400 border border-red-500/30 flex-shrink-0 animate-pulse">
                 <WifiOff size={8} className="flex-shrink-0" />
@@ -290,7 +308,7 @@ function AccountCard({
             disabled={busy}
             className="w-7 h-7 rounded-lg flex items-center justify-center text-white/25 hover:text-white/70 hover:bg-white/[0.06] transition-colors disabled:opacity-40"
           >
-            {refreshing || deleting || tokenRefreshing
+            {(refreshing || deleting || tokenRefreshing || moving)
               ? <Loader2 size={13} className="animate-spin text-cyan-400" />
               : <MoreHorizontal size={15} />
             }
@@ -304,7 +322,7 @@ function AccountCard({
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: -6 }}
                 transition={{ duration: 0.1 }}
-                className="absolute right-0 top-full mt-1.5 z-30 min-w-[168px] bg-[#111318] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden"
+                className="absolute right-0 top-full mt-1.5 z-30 min-w-[172px] bg-[#111318] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden"
               >
                 <button
                   onClick={() => { onRefresh(account.id); setMenuOpen(false); }}
@@ -327,6 +345,50 @@ function AccountCard({
                     <KeyRound size={12} className="text-violet-400" /> Renovar Token
                   </button>
                 )}
+
+                {/* Mover para pasta */}
+                {folders.length > 0 && (
+                  <>
+                    <div className="h-px bg-white/[0.06]" />
+                    <div className="px-3 pt-2 pb-0.5">
+                      <p className="text-[9px] uppercase tracking-widest text-white/20 font-semibold">Mover para</p>
+                    </div>
+                    <button
+                      onClick={() => { onMove(account.id, null); setMenuOpen(false); }}
+                      className={cn(
+                        "w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors",
+                        account.folder_id === null
+                          ? "text-white/70 bg-white/[0.04]"
+                          : "text-white/40 hover:bg-white/[0.05] hover:text-white/70"
+                      )}
+                    >
+                      <FolderOpen size={11} className="text-white/30 flex-shrink-0" />
+                      Sem pasta
+                      {account.folder_id === null && (
+                        <span className="ml-auto text-[9px] text-white/25">atual</span>
+                      )}
+                    </button>
+                    {folders.map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => { onMove(account.id, f.id); setMenuOpen(false); }}
+                        className={cn(
+                          "w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors",
+                          account.folder_id === f.id
+                            ? "text-white/70 bg-white/[0.04]"
+                            : "text-white/40 hover:bg-white/[0.05] hover:text-white/70"
+                        )}
+                      >
+                        <Folder size={11} className="text-violet-400/60 flex-shrink-0" />
+                        <span className="truncate">{f.name}</span>
+                        {account.folder_id === f.id && (
+                          <span className="ml-auto text-[9px] text-white/25 flex-shrink-0">atual</span>
+                        )}
+                      </button>
+                    ))}
+                  </>
+                )}
+
                 <div className="h-px bg-white/[0.06]" />
                 <button
                   onClick={() => { onDelete(account.id); setMenuOpen(false); }}
@@ -343,7 +405,6 @@ function AccountCard({
       <div className={cn("h-px mx-5", accountFell ? "bg-red-500/15" : "bg-white/[0.05]")} />
 
       {accountFell ? (
-        /* ── Banner de conta desconectada ── */
         <div className="px-5 py-4 space-y-3">
           <div className="flex items-start gap-2.5 p-3 rounded-xl bg-red-500/[0.08] border border-red-500/20">
             <WifiOff size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
@@ -372,7 +433,6 @@ function AccountCard({
           </button>
         </div>
       ) : (
-        /* ── Métricas normais ── */
         <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-5 py-3">
           <Metric icon={<Users size={11} />} label={`${formatNumber(account.followers_count)} seg.`} muted={account.followers_count == null} />
           <Metric icon={<FileText size={11} />} label={`${account.posts_count ?? "—"} posts`} muted={account.posts_count == null} />
@@ -437,11 +497,30 @@ export default function AccountsPage() {
   const [userApps, setUserApps] = useState<UserMetaApp[]>([]);
   const [appPickerOpen, setAppPickerOpen] = useState(false);
 
+  // Folder state
+  const [folders, setFolders] = useState<AccountFolder[]>([]);
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [openFolderMenuId, setOpenFolderMenuId] = useState<string | null>(null);
+
+  // New folder modal
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
+
+  // Rename modal
+  const [renameModal, setRenameModal] = useState<{ id: string; name: string } | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [renamingFolder, setRenamingFolder] = useState(false);
+
+  // Delete folder dialog
+  const [deleteDialog, setDeleteDialog] = useState<{ id: string; name: string; count: number } | null>(null);
+  const [deletingFolder, setDeletingFolder] = useState(false);
 
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [tokenRefreshingId, setTokenRefreshingId] = useState<string | null>(null);
+  const [movingAccountId, setMovingAccountId] = useState<string | null>(null);
   const [storiesMap, setStoriesMap] = useState<Record<string, AccountStoriesData>>({});
 
   const supabase = useMemo(() => createClient(), []);
@@ -451,6 +530,17 @@ export default function AccountsPage() {
   const _tokenRefreshingRef = useRef<string | null>(null);
   const _autoRefreshDone = useRef(false);
   const _autoSyncDone = useRef(false);
+
+  // Close folder menu on outside click
+  useEffect(() => {
+    if (!openFolderMenuId) return;
+    const close = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-folder-menu]")) setOpenFolderMenuId(null);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [openFolderMenuId]);
 
   const fetchUserApps = useCallback(async () => {
     try {
@@ -463,8 +553,16 @@ export default function AccountsPage() {
     }
   }, []);
 
+  const fetchFolders = useCallback(async () => {
+    try {
+      const res = await fetch("/api/accounts/folders");
+      if (!res.ok) return;
+      const data = await res.json() as { folders?: AccountFolder[] };
+      setFolders(data.folders ?? []);
+    } catch { /* silent */ }
+  }, []);
+
   const handleConnectClick = useCallback(async () => {
-    // Refetch fresh so apps added on /dashboard/apps appear immediately
     await fetchUserApps();
     setAppPickerOpen(true);
   }, [fetchUserApps]);
@@ -498,7 +596,7 @@ export default function AccountsPage() {
       const { data } = await supabase
         .from("instagram_accounts")
         .select(
-          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status"
+          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id"
         )
         .order("connected_at", { ascending: false });
       const fetched = (data ?? []) as unknown as Account[];
@@ -516,15 +614,14 @@ export default function AccountsPage() {
       const data = await res.json() as { stories?: Record<string, AccountStoriesData> };
       if (data.stories) setStoriesMap(data.stories);
     } catch {
-      // non-critical — stories just won't show
+      // non-critical
     }
   }, []);
 
-  // Auto-renova tokens expirando em < 7 dias e busca stories na primeira carga
   useEffect(() => {
     fetchUserApps();
+    fetchFolders();
     fetchAccounts().then(async (fetched) => {
-      // Fetch per-account stories in parallel (non-blocking)
       fetchStories();
 
       if (_autoRefreshDone.current) return;
@@ -557,9 +654,8 @@ export default function AccountsPage() {
         fetchAccounts();
       }
     });
-  }, [fetchAccounts, fetchStories, fetchUserApps]);
+  }, [fetchAccounts, fetchStories, fetchUserApps, fetchFolders]);
 
-  // Auto-sync Meta stats once on page load (background — shows fresh followers/posts)
   useEffect(() => {
     if (_autoSyncDone.current) return;
     _autoSyncDone.current = true;
@@ -638,11 +734,113 @@ export default function AccountsPage() {
     try {
       await supabase.from("instagram_accounts").delete().eq("id", id);
       setAccounts(prev => prev.filter(a => a.id !== id));
+      // Update folder counts
+      setFolders(prev => prev.map(f => {
+        const account = accounts.find(a => a.id === id);
+        if (account?.folder_id === f.id) return { ...f, account_count: Math.max(0, f.account_count - 1) };
+        return f;
+      }));
     } finally {
       _deletingRef.current = null;
       setDeletingId(null);
     }
   };
+
+  const handleMoveAccount = useCallback(async (accountId: string, folderId: string | null) => {
+    setMovingAccountId(accountId);
+    try {
+      const { error } = await supabase
+        .from("instagram_accounts")
+        .update({ folder_id: folderId })
+        .eq("id", accountId);
+
+      if (!error) {
+        setAccounts(prev => prev.map(a => a.id === accountId ? { ...a, folder_id: folderId } : a));
+        // Update counts optimistically
+        setFolders(prev => prev.map(f => {
+          const movedAcc = accounts.find(a => a.id === accountId);
+          if (f.id === movedAcc?.folder_id) return { ...f, account_count: Math.max(0, f.account_count - 1) };
+          if (f.id === folderId) return { ...f, account_count: f.account_count + 1 };
+          return f;
+        }));
+      }
+    } finally {
+      setMovingAccountId(null);
+    }
+  }, [supabase, accounts]);
+
+  // ── Folder CRUD ────────────────────────────────────────────────
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+    setCreatingFolder(true);
+    try {
+      const res = await fetch("/api/accounts/folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newFolderName.trim() }),
+      });
+      const data = await res.json() as { folder?: AccountFolder; error?: string };
+      if (data.folder) {
+        setFolders(prev => [...prev, data.folder!]);
+        setNewFolderName("");
+        setShowNewFolderModal(false);
+        setActiveFolderId(data.folder.id);
+      } else {
+        setNotification({ type: "error", message: data.error ?? "Erro ao criar pasta." });
+      }
+    } finally {
+      setCreatingFolder(false);
+    }
+  };
+
+  const handleRenameFolder = async () => {
+    if (!renameModal || !renameName.trim()) return;
+    setRenamingFolder(true);
+    try {
+      const res = await fetch(`/api/accounts/folders/${renameModal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameName.trim() }),
+      });
+      const data = await res.json() as { success?: boolean; error?: string };
+      if (data.success) {
+        setFolders(prev => prev.map(f => f.id === renameModal.id ? { ...f, name: renameName.trim() } : f));
+        setRenameModal(null);
+      } else {
+        setNotification({ type: "error", message: data.error ?? "Erro ao renomear pasta." });
+      }
+    } finally {
+      setRenamingFolder(false);
+    }
+  };
+
+  const handleDeleteFolder = async () => {
+    if (!deleteDialog) return;
+    setDeletingFolder(true);
+    try {
+      const res = await fetch(`/api/accounts/folders/${deleteDialog.id}`, { method: "DELETE" });
+      const data = await res.json() as { success?: boolean; error?: string };
+      if (data.success) {
+        setFolders(prev => prev.filter(f => f.id !== deleteDialog.id));
+        if (activeFolderId === deleteDialog.id) setActiveFolderId(null);
+        // Unlink accounts from deleted folder in local state
+        setAccounts(prev => prev.map(a =>
+          a.folder_id === deleteDialog.id ? { ...a, folder_id: null } : a
+        ));
+        setDeleteDialog(null);
+      } else {
+        setNotification({ type: "error", message: data.error ?? "Erro ao excluir pasta." });
+      }
+    } finally {
+      setDeletingFolder(false);
+    }
+  };
+
+  const filteredAccounts = useMemo(() => {
+    if (activeFolderId === null) return accounts;
+    return accounts.filter(a => a.folder_id === activeFolderId);
+  }, [accounts, activeFolderId]);
 
   const active = accounts.filter(a => a.is_active).length;
 
@@ -670,7 +868,6 @@ export default function AccountsPage() {
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
               <div className="glass rounded-2xl neon-border w-full max-w-sm p-6 space-y-4 pointer-events-auto">
-                {/* Header */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
@@ -687,7 +884,6 @@ export default function AccountsPage() {
                 </div>
 
                 {userApps.length === 0 ? (
-                  /* ── Estado vazio ── */
                   <motion.div
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -708,7 +904,6 @@ export default function AccountsPage() {
                     </button>
                   </motion.div>
                 ) : (
-                  /* ── Lista de apps ── */
                   <motion.div
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -752,6 +947,195 @@ export default function AccountsPage() {
                     </button>
                   </motion.div>
                 )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Nova pasta modal */}
+      <AnimatePresence>
+        {showNewFolderModal && (
+          <>
+            <motion.div
+              key="new-folder-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => { setShowNewFolderModal(false); setNewFolderName(""); }}
+            />
+            <motion.div
+              key="new-folder-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
+            >
+              <div className="glass rounded-2xl neon-border w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
+                      <FolderPlus size={13} className="text-violet-400" />
+                    </div>
+                    <h3 className="text-sm font-bold text-white">Nova Pasta</h3>
+                  </div>
+                  <button
+                    onClick={() => { setShowNewFolderModal(false); setNewFolderName(""); }}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <input
+                  autoFocus
+                  value={newFolderName}
+                  onChange={e => setNewFolderName(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handleCreateFolder(); }}
+                  placeholder="Ex: Cliente A, Marca XYZ..."
+                  maxLength={50}
+                  className="input-glass w-full text-sm px-3 py-2.5"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShowNewFolderModal(false); setNewFolderName(""); }}
+                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleCreateFolder}
+                    disabled={!newFolderName.trim() || creatingFolder}
+                    className="flex-1 py-2.5 rounded-xl bg-violet-600/25 border border-violet-500/30 text-violet-300 text-xs font-semibold hover:bg-violet-600/35 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    {creatingFolder ? <Loader2 size={12} className="animate-spin" /> : <FolderPlus size={12} />}
+                    Criar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Rename pasta modal */}
+      <AnimatePresence>
+        {renameModal && (
+          <>
+            <motion.div
+              key="rename-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => setRenameModal(null)}
+            />
+            <motion.div
+              key="rename-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
+            >
+              <div className="glass rounded-2xl neon-border w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
+                      <Pencil size={13} className="text-amber-400" />
+                    </div>
+                    <h3 className="text-sm font-bold text-white">Renomear Pasta</h3>
+                  </div>
+                  <button
+                    onClick={() => setRenameModal(null)}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <input
+                  autoFocus
+                  value={renameName}
+                  onChange={e => setRenameName(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") handleRenameFolder(); }}
+                  maxLength={50}
+                  className="input-glass w-full text-sm px-3 py-2.5"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setRenameModal(null)}
+                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleRenameFolder}
+                    disabled={!renameName.trim() || renamingFolder}
+                    className="flex-1 py-2.5 rounded-xl bg-amber-600/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-600/30 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    {renamingFolder ? <Loader2 size={12} className="animate-spin" /> : <Pencil size={12} />}
+                    Salvar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Delete folder dialog */}
+      <AnimatePresence>
+        {deleteDialog && (
+          <>
+            <motion.div
+              key="delete-folder-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => !deletingFolder && setDeleteDialog(null)}
+            />
+            <motion.div
+              key="delete-folder-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
+            >
+              <div className="glass rounded-2xl border border-red-500/20 w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-red-500/15 border border-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Trash2 size={15} className="text-red-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Excluir &quot;{deleteDialog.name}&quot;?</h3>
+                    <p className="text-xs text-white/40 mt-1 leading-relaxed">
+                      {deleteDialog.count > 0
+                        ? `${deleteDialog.count} conta${deleteDialog.count !== 1 ? "s" : ""} ficará${deleteDialog.count !== 1 ? "ão" : ""} sem pasta e continuará${deleteDialog.count !== 1 ? "ão" : ""} ativa${deleteDialog.count !== 1 ? "s" : ""}.`
+                        : "A pasta está vazia. Esta ação não pode ser desfeita."
+                      }
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setDeleteDialog(null)}
+                    disabled={deletingFolder}
+                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleDeleteFolder}
+                    disabled={deletingFolder}
+                    className="flex-1 py-2.5 rounded-xl bg-red-600/20 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-600/30 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    {deletingFolder ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                    Excluir
+                  </button>
+                </div>
               </div>
             </motion.div>
           </>
@@ -808,33 +1192,148 @@ export default function AccountsPage() {
         </motion.button>
       </motion.div>
 
+      {/* ── Pasta tabs ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+        {/* Tab: Todas */}
+        <button
+          onClick={() => setActiveFolderId(null)}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all",
+            activeFolderId === null
+              ? "bg-[#00FF41]/12 text-[#00FF41] border border-[#00FF41]/25"
+              : "text-white/40 hover:text-white/70 hover:bg-white/[0.05] border border-transparent"
+          )}
+        >
+          <Users size={11} className="flex-shrink-0" />
+          Todas ({accounts.length})
+        </button>
+
+        {/* Tabs por pasta */}
+        {folders.map(folder => {
+          const isActive = activeFolderId === folder.id;
+          const menuOpen = openFolderMenuId === folder.id;
+          return (
+            <div key={folder.id} className="relative flex items-center flex-shrink-0" data-folder-menu>
+              <button
+                onClick={() => setActiveFolderId(folder.id)}
+                className={cn(
+                  "flex items-center gap-1.5 pl-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all rounded-l-lg",
+                  isActive ? "pr-1" : "pr-3 rounded-r-lg",
+                  isActive
+                    ? "bg-violet-500/12 text-violet-300 border border-violet-500/25 border-r-0"
+                    : "text-white/40 hover:text-white/70 hover:bg-white/[0.05] border border-transparent"
+                )}
+              >
+                <Folder size={11} className="flex-shrink-0" />
+                {folder.name}
+                <span className={cn(
+                  "text-[9px] px-1 py-0.5 rounded-full",
+                  isActive ? "bg-violet-500/20 text-violet-300/70" : "bg-white/[0.06] text-white/25"
+                )}>
+                  {folder.account_count}
+                </span>
+              </button>
+
+              {/* Gear button — só visível na pasta ativa */}
+              {isActive && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setOpenFolderMenuId(menuOpen ? null : folder.id); }}
+                  className="h-full px-2 flex items-center rounded-r-lg bg-violet-500/12 border border-violet-500/25 border-l-0 text-violet-400/50 hover:text-violet-300 transition-colors"
+                >
+                  <Settings2 size={11} />
+                </button>
+              )}
+
+              {/* Folder gear dropdown */}
+              <AnimatePresence>
+                {menuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9, y: -4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: -4 }}
+                    transition={{ duration: 0.1 }}
+                    className="absolute left-0 top-full mt-1.5 z-30 min-w-[148px] bg-[#111318] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden"
+                  >
+                    <button
+                      onClick={() => {
+                        setRenameModal({ id: folder.id, name: folder.name });
+                        setRenameName(folder.name);
+                        setOpenFolderMenuId(null);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
+                    >
+                      <Pencil size={12} className="text-amber-400" /> Renomear Pasta
+                    </button>
+                    <div className="h-px bg-white/[0.06]" />
+                    <button
+                      onClick={() => {
+                        setDeleteDialog({ id: folder.id, name: folder.name, count: folder.account_count });
+                        setOpenFolderMenuId(null);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-red-400/70 hover:bg-red-500/[0.08] hover:text-red-400 transition-colors"
+                    >
+                      <Trash2 size={12} /> Excluir Pasta
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
+
+        {/* Nova pasta button */}
+        <button
+          onClick={() => setShowNewFolderModal(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 text-white/30 hover:text-violet-400 hover:bg-violet-500/[0.06] border border-transparent hover:border-violet-500/20 transition-all"
+        >
+          <FolderPlus size={11} className="flex-shrink-0" />
+          Nova Pasta
+        </button>
+      </div>
+
       {/* Grid de contas */}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {[1, 2, 3].map(i => <AccountSkeleton key={i} />)}
         </div>
-      ) : accounts.length === 0 ? (
+      ) : filteredAccounts.length === 0 ? (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="glass-card rounded-2xl flex flex-col items-center gap-4 py-20 text-center px-6"
         >
           <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center">
-            <Instagram size={24} className="text-white/20" />
+            {activeFolderId
+              ? <Folder size={24} className="text-white/20" />
+              : <Instagram size={24} className="text-white/20" />
+            }
           </div>
           <div className="space-y-1">
-            <p className="text-white/40 text-sm font-medium">Nenhuma conta conectada</p>
-            <p className="text-white/20 text-xs max-w-xs">
-              Clique em &quot;Conectar conta&quot; e autorize via Instagram para adicionar sua primeira conta Business ou Creator.
-            </p>
+            {activeFolderId ? (
+              <>
+                <p className="text-white/40 text-sm font-medium">Pasta vazia</p>
+                <p className="text-white/20 text-xs max-w-xs">
+                  Mova contas para esta pasta usando o menu ⋯ em cada conta.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-white/40 text-sm font-medium">Nenhuma conta conectada</p>
+                <p className="text-white/20 text-xs max-w-xs">
+                  Clique em &quot;Conectar conta&quot; e autorize via Instagram para adicionar sua primeira conta Business ou Creator.
+                </p>
+              </>
+            )}
           </div>
-          <motion.button
-            onClick={() => { handleConnectClick(); }}
-            whileTap={{ scale: 0.97 }}
-            className="btn-primary text-sm px-5 py-2.5 flex items-center gap-2"
-          >
-            <Plus size={14} /> Conectar primeira conta
-          </motion.button>
+          {!activeFolderId && (
+            <motion.button
+              onClick={() => { handleConnectClick(); }}
+              whileTap={{ scale: 0.97 }}
+              className="btn-primary text-sm px-5 py-2.5 flex items-center gap-2"
+            >
+              <Plus size={14} /> Conectar primeira conta
+            </motion.button>
+          )}
         </motion.div>
       ) : (
         <motion.div
@@ -843,19 +1342,22 @@ export default function AccountsPage() {
           className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4"
         >
           <AnimatePresence>
-            {accounts.map(account => (
+            {filteredAccounts.map(account => (
               <AccountCard
                 key={account.id}
                 account={account}
                 storiesData={storiesMap[account.id]}
+                folders={folders}
                 onRefresh={handleRefresh}
                 onToggle={handleToggle}
                 onDelete={handleDelete}
                 onRefreshToken={handleRefreshToken}
+                onMove={handleMoveAccount}
                 refreshing={refreshingId === account.id}
                 toggling={togglingId === account.id}
                 deleting={deletingId === account.id}
                 tokenRefreshing={tokenRefreshingId === account.id}
+                moving={movingAccountId === account.id}
               />
             ))}
           </AnimatePresence>

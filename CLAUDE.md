@@ -257,6 +257,7 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Style — Overflow nos cards de conta** | Rodapé de métricas dos cards em `/dashboard/accounts` cortava o último item (ex: "1 sto..."). `overflow-x-auto no-scrollbar` não funcionava no desktop (sem scroll wheel horizontal). Substituído por `flex flex-wrap gap-x-3.5 gap-y-2`; labels encurtados: `"sincronizado"→"sync"`, `"expira em"→"exp."` | ✅ Aplicado |
 | **Feat — Badge de erro de token na aba Logins** | API `/api/logins` agora inclui `health_status` no cross-reference com `instagram_accounts` e retorna `meta_status: "connected" \| "error" \| "not_connected"` (substitui `is_connected: boolean`). `LoginCard` exibe três estados: 🟢 Conectada / ⚪ Não Conectada / 🔴 Token Inválido (badge pulsante + borda vermelha + faixa de alerta com instrução de reconexão) | ✅ Aplicado |
 | **Chore — Limpeza de posts fantasmas + cache do dashboard** | Posts órfãos de campanhas antigas deletados via REST API do Supabase (0 pendentes restantes). Novo `POST /api/posts/clear-pending` para hard-reset da fila (usuário-escoped). Dashboard refatorado: `loadStats()` como `useCallback`, auto-refresh a cada 60s, `cache: "no-store"` nos fetches, botão "Atualizar" manual, botão "Limpar Fila" com 2 cliques no card Próximas Postagens. `export const dynamic = "force-dynamic"` adicionado ao `/api/dashboard/stats` | ✅ Aplicado |
+| **Pastas de Contas** | CRUD completo de pastas/clientes na tela Contas: tabela `account_folders` + coluna `folder_id` em `instagram_accounts` (FK ON DELETE SET NULL); APIs `GET/POST /api/accounts/folders` e `PATCH/DELETE /api/accounts/folders/[id]`; UI com tabs horizontais (Todas + por pasta), botão engrenagem na pasta ativa → modal Renomear + dialog Excluir com aviso de desvinculação, botão Nova Pasta, opção "Mover para" no menu ⋯ de cada conta com lista de pastas + "Sem pasta"; atualizações otimistas sem F5 | ✅ Concluída |
 
 **SQL pendente (executar no Supabase):**
 ```sql
@@ -306,6 +307,22 @@ CREATE INDEX IF NOT EXISTS idx_scheduled_posts_campaign_id ON public.scheduled_p
 -- Fix Stories — contagem inteira de stories ativos por conta
 ALTER TABLE public.instagram_accounts
   ADD COLUMN IF NOT EXISTS active_stories_count integer NOT NULL DEFAULT 0;
+
+-- Pastas de Contas (account_folders + folder_id em instagram_accounts)
+-- Script completo em supabase/account_folders.sql
+CREATE TABLE IF NOT EXISTS public.account_folders (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS account_folders_user_id_idx ON public.account_folders(user_id);
+ALTER TABLE public.account_folders ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users_manage_own_account_folders" ON public.account_folders
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+ALTER TABLE public.instagram_accounts
+  ADD COLUMN IF NOT EXISTS folder_id uuid REFERENCES public.account_folders(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS instagram_accounts_folder_id_idx ON public.instagram_accounts(folder_id);
 ```
 
 **Env vars novas a adicionar na Vercel:**
