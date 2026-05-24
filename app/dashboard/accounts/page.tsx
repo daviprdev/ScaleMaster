@@ -201,6 +201,8 @@ function AccountCard({
   moving: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [moveModalOpen, setMoveModalOpen] = useState(false);
+  const [pendingFolderId, setPendingFolderId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -346,48 +348,13 @@ function AccountCard({
                   </button>
                 )}
 
-                {/* Mover para pasta */}
-                {folders.length > 0 && (
-                  <>
-                    <div className="h-px bg-white/[0.06]" />
-                    <div className="px-3 pt-2 pb-0.5">
-                      <p className="text-[9px] uppercase tracking-widest text-white/20 font-semibold">Mover para</p>
-                    </div>
-                    <button
-                      onClick={() => { onMove(account.id, null); setMenuOpen(false); }}
-                      className={cn(
-                        "w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors",
-                        account.folder_id === null
-                          ? "text-white/70 bg-white/[0.04]"
-                          : "text-white/40 hover:bg-white/[0.05] hover:text-white/70"
-                      )}
-                    >
-                      <FolderOpen size={11} className="text-white/30 flex-shrink-0" />
-                      Sem pasta
-                      {account.folder_id === null && (
-                        <span className="ml-auto text-[9px] text-white/25">atual</span>
-                      )}
-                    </button>
-                    {folders.map(f => (
-                      <button
-                        key={f.id}
-                        onClick={() => { onMove(account.id, f.id); setMenuOpen(false); }}
-                        className={cn(
-                          "w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors",
-                          account.folder_id === f.id
-                            ? "text-white/70 bg-white/[0.04]"
-                            : "text-white/40 hover:bg-white/[0.05] hover:text-white/70"
-                        )}
-                      >
-                        <Folder size={11} className="text-violet-400/60 flex-shrink-0" />
-                        <span className="truncate">{f.name}</span>
-                        {account.folder_id === f.id && (
-                          <span className="ml-auto text-[9px] text-white/25 flex-shrink-0">atual</span>
-                        )}
-                      </button>
-                    ))}
-                  </>
-                )}
+                {/* Mover para pasta — abre modal */}
+                <button
+                  onClick={() => { setPendingFolderId(account.folder_id); setMoveModalOpen(true); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
+                >
+                  <Folder size={12} className="text-violet-400/80" /> Mover para pasta...
+                </button>
 
                 <div className="h-px bg-white/[0.06]" />
                 <button
@@ -459,6 +426,129 @@ function AccountCard({
           )}
         </div>
       )}
+
+      {/* ── Modal: Mover para pasta ── */}
+      <AnimatePresence>
+        {moveModalOpen && (
+          <>
+            <motion.div
+              key="move-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => setMoveModalOpen(false)}
+            />
+            <motion.div
+              key="move-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
+            >
+              <div className="glass rounded-2xl neon-border w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
+                      <Folder size={13} className="text-violet-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Mover para pasta</h3>
+                      <p className="text-[11px] text-white/30">@{account.username}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setMoveModalOpen(false)}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                {/* Folder options */}
+                <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                  {/* Sem pasta */}
+                  <button
+                    onClick={() => setPendingFolderId(null)}
+                    className={cn(
+                      "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
+                      pendingFolderId === null
+                        ? "bg-white/[0.07] border-white/20 text-white"
+                        : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
+                    )}
+                  >
+                    <FolderOpen size={12} className="text-white/30 flex-shrink-0" />
+                    <span className="flex-1">Sem pasta</span>
+                    {account.folder_id === null && pendingFolderId !== null && (
+                      <span className="text-[9px] text-white/25 flex-shrink-0">atual</span>
+                    )}
+                    {pendingFolderId === null && (
+                      <CheckCircle2 size={12} className="text-[#00FF41] flex-shrink-0" />
+                    )}
+                  </button>
+
+                  {folders.length === 0 ? (
+                    <p className="text-[11px] text-white/25 text-center py-3">
+                      Nenhuma pasta criada. Crie pastas nas abas acima.
+                    </p>
+                  ) : (
+                    folders.map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => setPendingFolderId(f.id)}
+                        className={cn(
+                          "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
+                          pendingFolderId === f.id
+                            ? "bg-violet-600/15 border-violet-500/30 text-violet-200"
+                            : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
+                        )}
+                      >
+                        <Folder size={12} className={cn(
+                          "flex-shrink-0",
+                          pendingFolderId === f.id ? "text-violet-400" : "text-violet-400/50"
+                        )} />
+                        <span className="flex-1 truncate">{f.name}</span>
+                        {account.folder_id === f.id && pendingFolderId !== f.id && (
+                          <span className="text-[9px] text-white/25 flex-shrink-0">atual</span>
+                        )}
+                        {pendingFolderId === f.id && (
+                          <CheckCircle2 size={12} className="text-violet-400 flex-shrink-0" />
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => setMoveModalOpen(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      onMove(account.id, pendingFolderId);
+                      setMoveModalOpen(false);
+                    }}
+                    disabled={moving || pendingFolderId === account.folder_id}
+                    className="flex-1 py-2.5 rounded-xl bg-violet-600/25 border border-violet-500/30 text-violet-300 text-xs font-semibold hover:bg-violet-600/35 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    {moving
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : <Folder size={12} />
+                    }
+                    Mover
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
