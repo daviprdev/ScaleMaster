@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 16;
 
 // GET /api/library — lista vídeos com paginação
 // ?folderId=root   → apenas vídeos sem pasta (folder_id IS NULL)
