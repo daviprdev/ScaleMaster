@@ -61,7 +61,8 @@ async function scrapeWithToken(
   const run = await client.actor("apify/instagram-scraper").call({
     directUrls: [`https://www.instagram.com/${username}/reels/`],
     resultsType: "posts",
-    maxRequestsPerCrawl: Math.ceil(limit / 12) + 5,
+    resultsLimit: Math.min(limit, 250),
+    maxRequestsPerCrawl: Math.ceil(limit / 12) + 10,
   });
 
   if (run.status !== "SUCCEEDED") {
