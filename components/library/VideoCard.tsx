@@ -128,23 +128,23 @@ export function VideoCard({
         } : {}),
       }}
     >
-      {/* ── Video: only mounted when hovered to avoid loading 50+ videos ── */}
-      {hovered && !videoError && video.public_url ? (
+      {/* ── Video: always mounted for thumbnail; plays on hover ── */}
+      {!videoError && video.public_url ? (
         <video
           key={video.id}
-          src={video.public_url}
+          src={`${video.public_url}#t=0.001`}
           className="absolute inset-0 w-full h-full object-cover"
           preload="metadata"
-          autoPlay
+          autoPlay={hovered}
           muted
           loop
           playsInline
           onError={() => setVideoError(true)}
         />
       ) : (
-        /* Gradient fallback (default state — zero network cost) */
-        <div className="absolute inset-0 flex items-center justify-center"
-          style={{ background: "linear-gradient(160deg, rgba(0,255,65,0.07) 0%, rgba(0,0,0,0.55) 50%, rgba(0,229,255,0.05) 100%)" }}>
+        /* Fallback when video unavailable or errored */
+        <div className="absolute inset-0 flex items-center justify-center bg-zinc-900"
+          style={{ background: "linear-gradient(160deg, rgba(0,255,65,0.07) 0%, rgba(18,18,18,1) 50%, rgba(0,229,255,0.05) 100%)" }}>
           <Film size={28} style={{ color: "rgba(0,255,65,0.18)" }} />
         </div>
       )}
