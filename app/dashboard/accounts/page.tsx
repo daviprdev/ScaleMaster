@@ -820,11 +820,12 @@ export default function AccountsPage() {
   };
 
   const filteredAccounts = useMemo(() => {
-    if (activeFolderId === null) return accounts;
+    if (activeFolderId === null) return accounts.filter(a => a.folder_id === null);
     return accounts.filter(a => a.folder_id === activeFolderId);
   }, [accounts, activeFolderId]);
 
   const active = accounts.filter(a => a.is_active).length;
+  const unassigned = accounts.filter(a => a.folder_id === null).length;
 
   return (
     <div className="space-y-6">
@@ -1295,7 +1296,7 @@ export default function AccountsPage() {
 
       {/* ── Pasta tabs ─────────────────────────────────────────── */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-        {/* Tab: Todas */}
+        {/* Tab: Sem Pasta */}
         <button
           onClick={() => setActiveFolderId(null)}
           className={cn(
@@ -1306,7 +1307,7 @@ export default function AccountsPage() {
           )}
         >
           <Users size={11} className="flex-shrink-0" />
-          Todas ({accounts.length})
+          Sem Pasta ({unassigned})
         </button>
 
         {/* Tabs por pasta */}
@@ -1406,7 +1407,9 @@ export default function AccountsPage() {
           <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center">
             {activeFolderId
               ? <Folder size={24} className="text-white/20" />
-              : <Instagram size={24} className="text-white/20" />
+              : accounts.length === 0
+                ? <Instagram size={24} className="text-white/20" />
+                : <CheckCircle2 size={24} className="text-[#00FF41]/40" />
             }
           </div>
           <div className="space-y-1">
@@ -1417,16 +1420,23 @@ export default function AccountsPage() {
                   Mova contas para esta pasta usando o menu ⋯ em cada conta.
                 </p>
               </>
-            ) : (
+            ) : accounts.length === 0 ? (
               <>
                 <p className="text-white/40 text-sm font-medium">Nenhuma conta conectada</p>
                 <p className="text-white/20 text-xs max-w-xs">
                   Clique em &quot;Conectar conta&quot; e autorize via Instagram para adicionar sua primeira conta Business ou Creator.
                 </p>
               </>
+            ) : (
+              <>
+                <p className="text-[#00FF41]/70 text-sm font-semibold">Tudo organizado</p>
+                <p className="text-white/20 text-xs max-w-xs">
+                  Todas as contas estão dentro de uma pasta. Use as abas acima para gerenciá-las.
+                </p>
+              </>
             )}
           </div>
-          {!activeFolderId && (
+          {!activeFolderId && accounts.length === 0 && (
             <motion.button
               onClick={() => { handleConnectClick(); }}
               whileTap={{ scale: 0.97 }}
