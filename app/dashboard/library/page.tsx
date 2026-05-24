@@ -49,7 +49,7 @@ function formatBytes(bytes: number) {
 export default function LibraryPage() {
   const router = useRouter();
   const [videos, setVideos] = useState<LibraryVideo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [page, setPage] = useState(0);
@@ -64,11 +64,12 @@ export default function LibraryPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkMovingOpen, setBulkMovingOpen] = useState(false);
-  const [bulkMoveTo, setBulkMoveTo] = useState<string>("__root__");
+  const [bulkMoveTo, setBulkMoveTo] = useState<string>("");
   const [bulkMoveLoading, setBulkMoveLoading] = useState(false);
 
   // ── Pastas ──────────────────────────────────────────────────
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
+  const [foldersLoading, setFoldersLoading] = useState(true);
   const [currentFolder, setCurrentFolder] = useState<LibraryFolder | null>(null);
 
   const [showNewFolder, setShowNewFolder] = useState(false);
@@ -76,7 +77,7 @@ export default function LibraryPage() {
   const [creatingFolder, setCreatingFolder] = useState(false);
 
   const [movingVideo, setMovingVideo] = useState<LibraryVideo | null>(null);
-  const [movingTo, setMovingTo] = useState<string | null>("__root__");
+  const [movingTo, setMovingTo] = useState<string | null>(null);
   const [movingLoading, setMovingLoading] = useState(false);
 
   const [deletingFolder, setDeletingFolder] = useState<LibraryFolder | null>(null);
@@ -87,9 +88,11 @@ export default function LibraryPage() {
 
   // ── Fetch ────────────────────────────────────────────────────
   const fetchFolders = useCallback(async () => {
+    setFoldersLoading(true);
     const res = await fetch("/api/library/folders");
     const data = await res.json() as { folders: LibraryFolder[] };
     setFolders(data.folders ?? []);
+    setFoldersLoading(false);
   }, []);
 
   const fetchVideos = useCallback(async (
@@ -117,13 +120,17 @@ export default function LibraryPage() {
 
   useEffect(() => {
     fetchFolders();
-    fetchVideos(null, 0, false);
-  }, [fetchFolders, fetchVideos]);
+  }, [fetchFolders]);
 
   const navigateToFolder = useCallback((folder: LibraryFolder | null) => {
     setCurrentFolder(folder);
     setSelectedIds(new Set());
-    fetchVideos(folder?.id ?? null, 0, false);
+    setUploads([]);
+    if (folder) {
+      fetchVideos(folder.id, 0, false);
+    } else {
+      setVideos([]);
+    }
   }, [fetchVideos]);
 
   const handleLoadMore = useCallback(() => {
@@ -179,14 +186,13 @@ export default function LibraryPage() {
   }, [selectedIds, videos, bulkDeleting]);
 
   const handleBulkMoveConfirm = useCallback(async () => {
-    if (bulkMoveLoading || selectedIds.size === 0) return;
+    if (bulkMoveLoading || selectedIds.size === 0 || !bulkMoveTo) return;
     setBulkMoveLoading(true);
     try {
-      const folderId = bulkMoveTo === "__root__" ? null : bulkMoveTo;
       const res = await fetch("/api/library/bulk-move", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoIds: Array.from(selectedIds), folderId }),
+        body: JSON.stringify({ videoIds: Array.from(selectedIds), folderId: bulkMoveTo }),
       });
       if (res.ok) {
         setBulkMovingOpen(false);
@@ -322,18 +328,17 @@ export default function LibraryPage() {
   const handlePost = (video: LibraryVideo) => setPostingVideo(video);
   const handleMoveOpen = (video: LibraryVideo) => {
     setMovingVideo(video);
-    setMovingTo(video.folder_id ?? "__root__");
+    setMovingTo(video.folder_id ?? null);
   };
 
   const handleMoveConfirm = async () => {
-    if (!movingVideo) return;
+    if (!movingVideo || !movingTo) return;
     setMovingLoading(true);
     try {
-      const folder_id = movingTo === "__root__" ? null : movingTo;
       const res = await fetch("/api/library", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: movingVideo.id, folder_id }),
+        body: JSON.stringify({ id: movingVideo.id, folder_id: movingTo }),
       });
       if (res.ok) {
         setVideos(prev => prev.filter(v => v.id !== movingVideo.id));
@@ -472,20 +477,7 @@ export default function LibraryPage() {
               </div>
 
               <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                <button
-                  onClick={() => setMovingTo("__root__")}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150",
-                    movingTo === "__root__"
-                      ? "bg-violet-600/20 border border-violet-500/40 text-white"
-                      : "border border-transparent text-white/50 hover:bg-white/[0.05] hover:text-white/80"
-                  )}
-                >
-                  <FolderOpen size={15} className="flex-shrink-0" />
-                  <span>Raiz (sem pasta)</span>
-                  {movingTo === "__root__" && <CheckMark />}
-                </button>
-                {folders.map(f => (
+                {folders.filter(f => f.id !== movingVideo?.folder_id).map(f => (
                   <button
                     key={f.id} onClick={() => setMovingTo(f.id)}
                     className={cn(
@@ -500,14 +492,14 @@ export default function LibraryPage() {
                     {movingTo === f.id && <CheckMark />}
                   </button>
                 ))}
-                {folders.length === 0 && (
-                  <p className="text-xs text-white/30 text-center py-4">Nenhuma pasta criada ainda</p>
+                {folders.filter(f => f.id !== movingVideo?.folder_id).length === 0 && (
+                  <p className="text-xs text-white/30 text-center py-4">Nenhuma outra pasta disponível</p>
                 )}
               </div>
 
               <div className="flex gap-3 pt-1">
                 <button onClick={() => setMovingVideo(null)} className="btn-ghost flex-1 text-sm py-2.5">Cancelar</button>
-                <button onClick={handleMoveConfirm} disabled={movingLoading} className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50">
+                <button onClick={handleMoveConfirm} disabled={movingLoading || !movingTo} className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50">
                   {movingLoading ? <Loader2 size={14} className="animate-spin mx-auto" /> : "Mover"}
                 </button>
               </div>
@@ -541,20 +533,7 @@ export default function LibraryPage() {
               </div>
 
               <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                <button
-                  onClick={() => setBulkMoveTo("__root__")}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150",
-                    bulkMoveTo === "__root__"
-                      ? "bg-violet-600/20 border border-violet-500/40 text-white"
-                      : "border border-transparent text-white/50 hover:bg-white/[0.05] hover:text-white/80"
-                  )}
-                >
-                  <FolderOpen size={15} className="flex-shrink-0" />
-                  <span>Raiz (sem pasta)</span>
-                  {bulkMoveTo === "__root__" && <CheckMark />}
-                </button>
-                {folders.map(f => (
+                {folders.filter(f => f.id !== currentFolder?.id).map(f => (
                   <button
                     key={f.id} onClick={() => setBulkMoveTo(f.id)}
                     className={cn(
@@ -569,14 +548,14 @@ export default function LibraryPage() {
                     {bulkMoveTo === f.id && <CheckMark />}
                   </button>
                 ))}
-                {folders.length === 0 && (
-                  <p className="text-xs text-white/30 text-center py-4">Nenhuma pasta criada ainda</p>
+                {folders.filter(f => f.id !== currentFolder?.id).length === 0 && (
+                  <p className="text-xs text-white/30 text-center py-4">Nenhuma outra pasta disponível</p>
                 )}
               </div>
 
               <div className="flex gap-3 pt-1">
                 <button onClick={() => setBulkMovingOpen(false)} className="btn-ghost flex-1 text-sm py-2.5">Cancelar</button>
-                <button onClick={handleBulkMoveConfirm} disabled={bulkMoveLoading} className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50">
+                <button onClick={handleBulkMoveConfirm} disabled={bulkMoveLoading || !bulkMoveTo} className="btn-primary flex-1 text-sm py-2.5 disabled:opacity-50">
                   {bulkMoveLoading ? <Loader2 size={14} className="animate-spin mx-auto" /> : "Mover"}
                 </button>
               </div>
@@ -605,7 +584,7 @@ export default function LibraryPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-white">Excluir pasta</h3>
-                  <p className="text-xs text-white/40">Os vídeos serão movidos para a raiz</p>
+                  <p className="text-xs text-white/40">Os vídeos dentro ficarão sem pasta até serem movidos</p>
                 </div>
               </div>
               <p className="text-sm text-white/60">
@@ -685,17 +664,19 @@ export default function LibraryPage() {
           )}
         </div>
 
-        {!currentFolder && (
-          <motion.button
-            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-            onClick={() => setShowNewFolder(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:text-white/90 hover:bg-white/[0.09] hover:border-white/20 text-xs font-medium transition-all duration-200 flex-shrink-0"
-          >
-            <FolderPlus size={14} />
-            Nova Pasta
-          </motion.button>
-        )}
+        <motion.button
+          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+          onClick={() => setShowNewFolder(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:text-white/90 hover:bg-white/[0.09] hover:border-white/20 text-xs font-medium transition-all duration-200 flex-shrink-0"
+        >
+          <FolderPlus size={14} />
+          Nova Pasta
+        </motion.button>
       </div>
+
+      {/* ── Vista dentro de uma pasta ──────────────────────── */}
+      {currentFolder && (
+      <>
 
       {/* Upload zone */}
       <motion.div
@@ -717,13 +698,11 @@ export default function LibraryPage() {
         <div>
           <p className="text-sm font-semibold text-white/70">
             {isDragOver
-              ? `Solte para enviar${currentFolder ? ` para "${currentFolder.name}"` : ""}`
+              ? `Solte para enviar para "${currentFolder.name}"`
               : "Arraste vídeos aqui ou clique para selecionar"}
           </p>
           <p className="text-xs text-white/25 mt-0.5">
-            {currentFolder
-              ? `Os vídeos serão salvos em "${currentFolder.name}"`
-              : "Suporta MP4, MOV, WebM · Múltiplos arquivos"}
+            Os vídeos serão salvos em &ldquo;{currentFolder.name}&rdquo; · MP4, MOV, WebM
           </p>
         </div>
       </motion.div>
@@ -780,36 +759,6 @@ export default function LibraryPage() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* ── Seção de Pastas (só na raiz) ─────────────────────── */}
-      <AnimatePresence>
-        {!currentFolder && folders.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-            className="space-y-3"
-          >
-            <p className="text-xs font-semibold text-white/30 uppercase tracking-widest">Pastas</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-              {folders.map((folder, i) => (
-                <FolderCard
-                  key={folder.id} folder={folder} index={i}
-                  onClick={() => navigateToFolder(folder)}
-                  onDelete={() => setDeletingFolder(folder)}
-                  onRename={() => { setRenamingFolder(folder); setRenameValue(folder.name); }}
-                />
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {!currentFolder && folders.length > 0 && (
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-white/[0.06]" />
-          <span className="text-xs text-white/25">Vídeos na raiz</span>
-          <div className="flex-1 h-px bg-white/[0.06]" />
-        </div>
-      )}
 
       {/* ── Barra de controle: contagem + selecionar todos ──── */}
       {!loading && videos.length > 0 && (
@@ -878,25 +827,85 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Pasta vazia */}
       {!loading && videos.length === 0 && uploads.length === 0 && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-20 gap-5 text-center">
           <div className="w-20 h-20 rounded-3xl bg-white/[0.03] border border-white/[0.07] flex items-center justify-center">
-            {currentFolder
-              ? <Folder size={32} className="text-white/15" />
-              : <FolderOpen size={32} className="text-white/15" />}
+            <Folder size={32} className="text-white/15" />
           </div>
           <div>
-            <p className="text-white/50 font-medium mb-1">
-              {currentFolder ? `A pasta "${currentFolder.name}" está vazia` : "Biblioteca vazia"}
-            </p>
-            <p className="text-white/25 text-sm max-w-xs">
-              {currentFolder
-                ? "Faça upload de vídeos acima ou mova arquivos da raiz para cá."
-                : "Faça upload de qualquer vídeo acima ou baixe Reels na seção Inspirações."}
-            </p>
+            <p className="text-white/50 font-medium mb-1">A pasta &ldquo;{currentFolder.name}&rdquo; está vazia</p>
+            <p className="text-white/25 text-sm max-w-xs">Faça upload de vídeos acima ou mova arquivos de outra pasta para cá.</p>
           </div>
         </motion.div>
+      )}
+
+      </> /* fim currentFolder */
+      )}
+
+      {/* ── Vista principal: grade de pastas ─────────────────── */}
+      {!currentFolder && (
+        <>
+          {/* Loading skeleton de pastas */}
+          {foldersLoading && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <motion.div key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.05 }}
+                  className="rounded-2xl animate-pulse"
+                  style={{ aspectRatio: "1", background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.06)" }}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Grade de pastas */}
+          {!foldersLoading && folders.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              className="space-y-3"
+            >
+              <p className="text-xs font-semibold text-white/30 uppercase tracking-widest">Pastas de mídia</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                {folders.map((folder, i) => (
+                  <FolderCard
+                    key={folder.id} folder={folder} index={i}
+                    onClick={() => navigateToFolder(folder)}
+                    onDelete={() => setDeletingFolder(folder)}
+                    onRename={() => { setRenamingFolder(folder); setRenameValue(folder.name); }}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Empty state — nenhuma pasta criada */}
+          {!foldersLoading && folders.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="flex flex-col items-center justify-center py-28 gap-6 text-center"
+            >
+              <div
+                className="w-24 h-24 rounded-3xl flex items-center justify-center"
+                style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.18)" }}
+              >
+                <FolderPlus size={40} className="text-violet-400/60" />
+              </div>
+              <div>
+                <p className="text-white/60 font-semibold text-lg mb-2">Nenhuma pasta criada</p>
+                <p className="text-white/25 text-sm max-w-xs">
+                  Crie pastas para organizar seus vídeos por tema, cliente ou campanha. O upload de vídeos só está disponível dentro de uma pasta.
+                </p>
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                onClick={() => setShowNewFolder(true)}
+                className="btn-primary px-6 py-3 text-sm flex items-center gap-2"
+              >
+                <FolderPlus size={15} /> Criar primeira pasta
+              </motion.button>
+            </motion.div>
+          )}
+        </>
       )}
 
       {/* ── Bulk delete error toast ──────────────────────────── */}

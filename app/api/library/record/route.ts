@@ -9,12 +9,19 @@ export async function POST(req: NextRequest) {
     storagePath: string;
     filename: string;
     fileSize: number;
-    folderId?: string | null;
+    folderId: string;
   };
 
   if (!storagePath || !filename) {
     return NextResponse.json(
       { error: "storagePath e filename são obrigatórios." },
+      { status: 400 }
+    );
+  }
+
+  if (!folderId) {
+    return NextResponse.json(
+      { error: "folderId é obrigatório. Selecione uma pasta antes de fazer upload." },
       { status: 400 }
     );
   }
@@ -61,7 +68,7 @@ export async function POST(req: NextRequest) {
     comments: 0,
     duration: 0,
   };
-  if (folderId) insertPayload.folder_id = folderId;
+  insertPayload.folder_id = folderId;
 
   const { data: record, error } = await getSupabaseAdmin()
     .from("videos_library")

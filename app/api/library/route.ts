@@ -5,33 +5,29 @@ export const runtime = "nodejs";
 
 const PAGE_SIZE = 16;
 
-// GET /api/library — lista vídeos com paginação
-// ?folderId=root   → apenas vídeos sem pasta (folder_id IS NULL)
+// GET /api/library — lista vídeos de uma pasta específica (folderId obrigatório)
 // ?folderId=<uuid> → vídeos na pasta especificada
-// ?page=N          → página N (0-indexed), 50 itens por página
+// ?page=N          → página N (0-indexed)
 export async function GET(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado." }, { status: 503 });
   }
 
   const folderId = req.nextUrl.searchParams.get("folderId");
+  if (!folderId) {
+    return NextResponse.json({ error: "folderId é obrigatório." }, { status: 400 });
+  }
+
   const page = Math.max(0, parseInt(req.nextUrl.searchParams.get("page") ?? "0", 10) || 0);
   const from = page * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
-  let query = getSupabaseAdmin()
+  const { data, error } = await getSupabaseAdmin()
     .from("videos_library")
     .select("*")
+    .eq("folder_id", folderId)
     .order("created_at", { ascending: false })
     .range(from, to);
-
-  if (folderId === "root") {
-    query = query.is("folder_id", null);
-  } else if (folderId) {
-    query = query.eq("folder_id", folderId);
-  }
-
-  const { data, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
