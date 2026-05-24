@@ -74,67 +74,80 @@ function isQuotaError(msg: string): boolean {
   );
 }
 
-// ── Strategy 1: RapidAPI ───────────────────────────────────────
+// ── Strategy 1: RapidAPI with pagination ──────────────────────
 // Default: instagram-scraper-api2.p.rapidapi.com (lamboiss, 500 free req/month)
 // Override via RAPIDAPI_INSTAGRAM_HOST env var
+// Paginates with next_max_id until `limit` reels are collected or no more pages
 async function scrapeViaRapidAPI(username: string, limit: number): Promise<ScrapeResult> {
   const apiKey = process.env.RAPIDAPI_KEY;
   if (!apiKey) throw new Error("RAPIDAPI_KEY not configured");
 
   const host =
     process.env.RAPIDAPI_INSTAGRAM_HOST ?? "instagram-scraper-api2.p.rapidapi.com";
-  const url = `https://${host}/v1/posts?username_or_id_or_url=${encodeURIComponent(username)}`;
 
-  const res = await fetch(url, {
-    headers: {
-      "x-rapidapi-key": apiKey,
-      "x-rapidapi-host": host,
-    },
-  });
+  const allItems: Record<string, unknown>[] = [];
+  let nextMaxId: string | null = null;
+  let firstPageData: Record<string, unknown> | null = null;
+  const MAX_PAGES = 8; // safety cap — 8 × ~12 items = ~96 reels max
 
-  if (res.status === 429) {
-    throw new Error(RATE_LIMIT_MESSAGE);
-  }
+  for (let page = 0; page < MAX_PAGES && allItems.length < limit; page++) {
+    const params = new URLSearchParams({ username_or_id_or_url: username });
+    if (nextMaxId) params.set("next_max_id", nextMaxId);
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(
-      `RapidAPI retornou ${res.status}${body ? `: ${body.slice(0, 120)}` : ""}`
+    const res = await fetch(`https://${host}/v1/posts?${params}`, {
+      headers: {
+        "x-rapidapi-key": apiKey,
+        "x-rapidapi-host": host,
+      },
+    });
+
+    if (res.status === 429) throw new Error(RATE_LIMIT_MESSAGE);
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(
+        `RapidAPI retornou ${res.status}${body ? `: ${body.slice(0, 120)}` : ""}`
+      );
+    }
+
+    const data = (await res.json()) as Record<string, unknown>;
+    const pageData = (data?.data as Record<string, unknown>) ?? data;
+    const pageItems = (pageData?.items as unknown[]) ?? [];
+
+    if (!Array.isArray(pageItems) || pageItems.length === 0) break;
+
+    if (page === 0) firstPageData = pageData;
+
+    const videoItems = (pageItems as Record<string, unknown>[]).filter(
+      (item) => item.media_type === 2 || item.video_url || item.videoUrl
     );
+    allItems.push(...videoItems);
+
+    console.log(
+      `[rapidapi] @${username} page ${page + 1}: ${videoItems.length} reels (total ${allItems.length})`
+    );
+
+    const moreAvailable = pageData?.more_available as boolean | undefined;
+    nextMaxId = (pageData?.next_max_id as string | null | undefined) ?? null;
+    if (!moreAvailable || !nextMaxId) break;
   }
 
-  const data = (await res.json()) as Record<string, unknown>;
-
-  // Response: { data: { items: [...] } } or { items: [...] }
-  const rawItems =
-    ((data?.data as Record<string, unknown>)?.items as unknown[]) ??
-    (data?.items as unknown[]) ??
-    [];
-
-  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+  if (allItems.length === 0) {
     throw new Error(
       `Nenhum Reel encontrado para @${username}. O perfil pode ser privado, inexistente ou não ter Reels.`
     );
   }
 
-  const videoItems = (rawItems as Record<string, unknown>[])
-    .filter((item) => item.media_type === 2 || item.video_url || item.videoUrl)
-    .slice(0, limit);
-
-  if (videoItems.length === 0) {
-    throw new Error(`@${username} não possui Reels públicos acessíveis.`);
-  }
-
   // Extract user metadata from first item
-  const firstItem = videoItems[0];
+  const firstItem = allItems[0];
   const userObj = firstItem.user as Record<string, unknown> | null | undefined;
   const fullName = String(userObj?.full_name ?? userObj?.username ?? username);
   const profilePicUrl =
     (userObj?.profile_pic_url as string | null | undefined) ??
     (firstItem.profile_pic_url as string | null | undefined) ??
-    null;
+    ((firstPageData as Record<string, unknown> | null)?.user as Record<string, unknown> | null)?.profile_pic_url as string | null ?? null;
 
-  const reels = videoItems.map((item, i) => {
+  const reels = allItems.slice(0, limit).map((item, i) => {
     const captionObj = item.caption as Record<string, unknown> | string | null | undefined;
     const captionText =
       typeof captionObj === "string"
@@ -181,7 +194,7 @@ async function scrapeViaApify(
   // apify~instagram-reel-scraper: targeted for reels, less prone to IG blocks
   const run = await client.actor("apify~instagram-reel-scraper").call({
     username: [username],
-    resultsLimit: Math.min(limit, 30),
+    resultsLimit: Math.min(limit, 100),
   });
 
   if (run.status !== "SUCCEEDED") {
@@ -376,7 +389,7 @@ async function saveToHistory(
 // ── Handler ────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { username, limit = 20 } = body as { username: string; limit?: number };
+  const { username, limit = 50 } = body as { username: string; limit?: number };
 
   if (!username) {
     return NextResponse.json(
