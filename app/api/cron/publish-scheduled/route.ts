@@ -2,9 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
+import type { MetaPublishResult } from "@/lib/meta-publish";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+// ── Orçamento de tempo anti-timeout ───────────────────────────────────────────
+// Hobby plan: serverless Node.js → 60s real. maxDuration=300 é o plano ideal
+// (Pro), mas assumimos 60s como piso seguro.
+// Cada post pode esperar no máximo 50s (pollContainerStatus: 6×8s = 48s + overhead).
+// Com BATCH_SIZE=5 e RUN_BUDGET_MS=55s paramos de aceitar novos posts antes
+// do kill do servidor, garantindo que o status seja gravado no DB.
+const BATCH_SIZE = 5;
+const RUN_BUDGET_MS = 55_000;   // para de clamar novos posts após 55s
+const PER_POST_TIMEOUT_MS = 50_000; // hard cap por post
 
 interface AccountRow {
   id: string;
@@ -27,12 +38,32 @@ interface PostRow {
   videos_library: { public_url: string } | null;
 }
 
+// Envolve publishViaMetaAPI num hard-timeout.
+// Se estourar: lança erro marcado com "[TIMEOUT]" para o catch saber que
+// deve resetar o status para "pending" (reprocessável) e não "failed".
+function publishWithTimeout(
+  igAccountId: string,
+  token: string,
+  videoUrl: string,
+  caption: string
+): Promise<MetaPublishResult> {
+  return Promise.race([
+    publishViaMetaAPI(igAccountId, token, videoUrl, caption),
+    new Promise<MetaPublishResult>((_, reject) =>
+      setTimeout(
+        () => reject(new Error("[TIMEOUT] Meta API não processou em 50s — será reprocessado.")),
+        PER_POST_TIMEOUT_MS
+      )
+    ),
+  ]);
+}
+
 export async function GET(req: NextRequest) {
+  const runStart = Date.now();
+
   const cronSecret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
 
-  // Enforce auth only when CRON_SECRET is configured.
-  // Without it, allow the route through (safe for initial setup / manual debug via browser).
   if (cronSecret && auth !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -47,9 +78,9 @@ export async function GET(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const now = new Date().toISOString();
 
-  console.log(`[publish-scheduled] ▶ Iniciando execução. now=${now}`);
+  console.log(`[publish-scheduled] ▶ Iniciando execução. now=${now} | batch_size=${BATCH_SIZE}`);
 
-  // ── Diagnóstico: conta total de posts na fila ────────────────────────────
+  // ── Diagnóstico ───────────────────────────────────────────────────────────
   const [{ count: countPending }, { count: countPublishing }] = await Promise.all([
     admin.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "pending"),
     admin.from("scheduled_posts").select("id", { count: "exact", head: true }).eq("status", "publishing"),
@@ -63,13 +94,13 @@ export async function GET(req: NextRequest) {
 
   console.log(
     `[publish-scheduled] Fila → pending: ${countPending ?? 0} | publishing: ${countPublishing ?? 0} | ` +
-    `elegíveis agora (scheduled_at ≤ ${now}): ${countEligible ?? 0}`
+    `elegíveis (scheduled_at ≤ ${now}): ${countEligible ?? 0}`
   );
 
   // ── Desbloqueio de posts presos em "publishing" ───────────────────────────
-  // Posts que o worker anterior deixou travados (crash após claim, antes do update final).
-  // Critério seguro: scheduled_at há mais de 30 min — o worker original já expirou.
-  const stuckCutoff = new Date(Date.now() - 30 * 60_000).toISOString();
+  // Cutoff de 10 min: se o worker anterior morreu antes de atualizar o status,
+  // o post fica preso. Resetamos após 10 min para reprocessar na próxima execução.
+  const stuckCutoff = new Date(Date.now() - 10 * 60_000).toISOString();
   const { data: unblocked, error: unblockErr } = await admin
     .from("scheduled_posts")
     .update({ status: "pending", error_message: null })
@@ -80,10 +111,12 @@ export async function GET(req: NextRequest) {
   if (unblockErr) {
     console.error("[publish-scheduled] Erro ao desbloquear posts presos:", unblockErr.message);
   } else if (unblocked?.length) {
-    console.log(`[publish-scheduled] ${unblocked.length} post(s) desbloqueados de "publishing" → "pending" (travados > 30 min)`);
+    console.log(`[publish-scheduled] ${unblocked.length} post(s) desbloqueados "publishing" → "pending" (presos > 10 min)`);
   }
 
   // ── Busca posts elegíveis ─────────────────────────────────────────────────
+  // BATCH_SIZE=5 para garantir que processamos dentro do orçamento de 60s.
+  // Os posts restantes serão processados nas próximas execuções do cron.
   const { data: rows, error: fetchErr } = await admin
     .from("scheduled_posts")
     .select(
@@ -94,7 +127,7 @@ export async function GET(req: NextRequest) {
     .eq("status", "pending")
     .lte("scheduled_at", now)
     .order("scheduled_at", { ascending: true })
-    .limit(20);
+    .limit(BATCH_SIZE);
 
   if (fetchErr) {
     console.error("[publish-scheduled] Erro ao buscar posts elegíveis:", fetchErr.message);
@@ -109,15 +142,23 @@ export async function GET(req: NextRequest) {
     published: 0,
     failed: 0,
     skipped: 0,
+    timed_out: 0,
     unblocked: unblocked?.length ?? 0,
     queue_pending: countPending ?? 0,
     queue_eligible: countEligible ?? 0,
   };
 
   for (const post of posts) {
-    console.log(`[publish-scheduled] Processando post ${post.id} | scheduled_at=${post.scheduled_at} | account=${post.account_id}`);
+    // ── Budget global da execução ─────────────────────────────────────────
+    const elapsed = Date.now() - runStart;
+    if (elapsed > RUN_BUDGET_MS) {
+      console.log(`[publish-scheduled] ⏱ Budget esgotado (${Math.round(elapsed / 1000)}s). Posts restantes serão processados na próxima execução.`);
+      break;
+    }
 
-    // Claim atômico: previne dupla publicação em execuções concorrentes
+    console.log(`[publish-scheduled] Processando post ${post.id} | scheduled_at=${post.scheduled_at} | elapsed=${Math.round(elapsed / 1000)}s`);
+
+    // Claim atômico: evita dupla publicação em execuções concorrentes
     const { data: claimed } = await admin
       .from("scheduled_posts")
       .update({ status: "publishing" })
@@ -126,7 +167,7 @@ export async function GET(req: NextRequest) {
       .select("id");
 
     if (!claimed?.length) {
-      console.log(`[publish-scheduled] Post ${post.id} já foi claimado por outra instância — pulando.`);
+      console.log(`[publish-scheduled] Post ${post.id} já claimado por outra instância — pulando.`);
       summary.skipped++;
       continue;
     }
@@ -137,10 +178,7 @@ export async function GET(req: NextRequest) {
     if (!account || !account.is_active) {
       const reason = "Conta não encontrada ou inativa.";
       console.error(`[publish-scheduled] ✗ Post ${post.id}: ${reason}`);
-      await admin
-        .from("scheduled_posts")
-        .update({ status: "failed", error_message: reason })
-        .eq("id", post.id);
+      await admin.from("scheduled_posts").update({ status: "failed", error_message: reason }).eq("id", post.id);
       summary.failed++;
       continue;
     }
@@ -148,10 +186,7 @@ export async function GET(req: NextRequest) {
     if (!videoUrl) {
       const reason = "URL do vídeo não encontrada.";
       console.error(`[publish-scheduled] ✗ Post ${post.id} (@${account.username}): ${reason}`);
-      await admin
-        .from("scheduled_posts")
-        .update({ status: "failed", error_message: reason })
-        .eq("id", post.id);
+      await admin.from("scheduled_posts").update({ status: "failed", error_message: reason }).eq("id", post.id);
       summary.failed++;
       continue;
     }
@@ -159,10 +194,7 @@ export async function GET(req: NextRequest) {
     if (!account.meta_access_token || !account.ig_business_account_id) {
       const reason = "Conta sem credenciais Meta. Reconecte a conta em Contas.";
       console.error(`[publish-scheduled] ✗ Post ${post.id} (@${account.username}): ${reason}`);
-      await admin
-        .from("scheduled_posts")
-        .update({ status: "failed", error_message: reason })
-        .eq("id", post.id);
+      await admin.from("scheduled_posts").update({ status: "failed", error_message: reason }).eq("id", post.id);
       summary.failed++;
       continue;
     }
@@ -189,7 +221,7 @@ export async function GET(req: NextRequest) {
 
       console.log(`[publish-scheduled] Publicando via Meta API para @${account.username} (ig_id=${account.ig_business_account_id}) | videoUrl=${videoUrl.slice(0, 80)}...`);
 
-      const result = await publishViaMetaAPI(
+      const result = await publishWithTimeout(
         account.ig_business_account_id,
         tokenToUse,
         videoUrl,
@@ -211,19 +243,34 @@ export async function GET(req: NextRequest) {
         .eq("id", post.id);
 
       summary.published++;
-      console.log(`[publish-scheduled] ✓ @${account.username} → media_id: ${result.media_id}`);
+      console.log(`[publish-scheduled] ✓ @${account.username} → media_id: ${result.media_id} | elapsed total: ${Math.round((Date.now() - runStart) / 1000)}s`);
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[publish-scheduled] ✗ @${account.username} (post ${post.id}):`, msg);
-      await admin
-        .from("scheduled_posts")
-        .update({ status: "failed", error_message: msg })
-        .eq("id", post.id);
-      summary.failed++;
+      const isTimeout = msg.startsWith("[TIMEOUT]");
+
+      if (isTimeout) {
+        // Timeout não é um erro permanente — resetar para "pending" permite que
+        // a próxima execução do cron tente publicar de novo.
+        console.warn(`[publish-scheduled] ⏱ @${account.username} (post ${post.id}): timeout — resetando para pending.`);
+        await admin
+          .from("scheduled_posts")
+          .update({ status: "pending", error_message: null })
+          .eq("id", post.id);
+        summary.timed_out++;
+      } else {
+        // Erro real (credenciais inválidas, vídeo rejeitado pela Meta, etc.)
+        console.error(`[publish-scheduled] ✗ @${account.username} (post ${post.id}):`, msg);
+        await admin
+          .from("scheduled_posts")
+          .update({ status: "failed", error_message: msg })
+          .eq("id", post.id);
+        summary.failed++;
+      }
     }
   }
 
-  console.log("[publish-scheduled] ■ Resumo:", summary);
-  return NextResponse.json({ ok: true, ...summary });
+  const totalElapsed = Math.round((Date.now() - runStart) / 1000);
+  console.log(`[publish-scheduled] ■ Resumo (${totalElapsed}s):`, summary);
+  return NextResponse.json({ ok: true, elapsed_seconds: totalElapsed, ...summary });
 }

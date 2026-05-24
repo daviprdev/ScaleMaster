@@ -22,6 +22,7 @@ async function createMediaContainer(
   const res = await fetch(`${GRAPH_API}/${igAccountId}/media`, {
     method: "POST",
     body: params,
+    signal: AbortSignal.timeout(15_000),
   });
   const data = (await res.json()) as { id?: string; error?: { message: string } };
   if (!res.ok || !data.id) {
@@ -33,13 +34,15 @@ async function createMediaContainer(
 async function pollContainerStatus(
   creationId: string,
   token: string,
-  maxAttempts = 12,
-  intervalMs = 10_000
+  // 6 tentativas × 8s = 48s max — fica dentro do orçamento de 60s do Hobby plan
+  maxAttempts = 6,
+  intervalMs = 8_000
 ): Promise<void> {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, i === 0 ? 5_000 : intervalMs));
     const res = await fetch(
-      `${GRAPH_API}/${creationId}?fields=status_code&access_token=${token}`
+      `${GRAPH_API}/${creationId}?fields=status_code&access_token=${token}`,
+      { signal: AbortSignal.timeout(15_000) }
     );
     const data = (await res.json()) as {
       status_code?: string;
@@ -66,6 +69,7 @@ async function publishContainer(
   const res = await fetch(`${GRAPH_API}/${igAccountId}/media_publish`, {
     method: "POST",
     body: params,
+    signal: AbortSignal.timeout(15_000),
   });
   const data = (await res.json()) as { id?: string; error?: { message: string } };
   if (!res.ok || !data.id) {
@@ -102,7 +106,8 @@ export async function pollContainerStatusOnce(
   token: string
 ): Promise<ContainerPollStatus> {
   const res = await fetch(
-    `${GRAPH_API}/${creationId}?fields=status_code&access_token=${token}`
+    `${GRAPH_API}/${creationId}?fields=status_code&access_token=${token}`,
+    { signal: AbortSignal.timeout(15_000) }
   );
   const data = (await res.json()) as {
     status_code?: string;
