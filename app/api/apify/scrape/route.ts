@@ -4,7 +4,34 @@ import { ApifyClient } from "apify-client";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-const ACTOR_ID = "apify/instagram-scraper";
+// ── Constants ─────────────────────────────────────────────────
+const RATE_LIMIT_MESSAGE =
+  "Nosso sistema de buscas está sobrecarregado no momento. Aguarde 5 minutos e tente novamente.";
+
+// ── Type ──────────────────────────────────────────────────────
+interface ScrapedReel {
+  id: string;
+  shortCode: string;
+  thumbnailUrl: string | null;
+  videoUrl: string;
+  caption: string;
+  views: number;
+  likes: number;
+  comments: number;
+  duration: number;
+  owner: string;
+}
+
+// ── Error helpers ──────────────────────────────────────────────
+function isRateLimitError(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return (
+    m.includes("429") ||
+    m.includes("rate limit") ||
+    m.includes("too many") ||
+    m.includes("sobrecarregado")
+  );
+}
 
 function isQuotaError(msg: string): boolean {
   const m = msg.toLowerCase();
@@ -23,24 +50,98 @@ function isQuotaError(msg: string): boolean {
   );
 }
 
-const resolveVideoUrl = (item: Record<string, unknown>): string =>
-  (item.videoUrl as string | undefined) ||
-  (item.video_url as string | undefined) ||
-  (item.videoPlayUrl as string | undefined) ||
-  (item.playVideoUrl as string | undefined) ||
-  "";
+// ── Strategy 1: RapidAPI ───────────────────────────────────────
+// Default host: instagram-scraper-api2.p.rapidapi.com (lamboiss)
+// Override via RAPIDAPI_INSTAGRAM_HOST env var
+async function scrapeViaRapidAPI(username: string, limit: number): Promise<ScrapedReel[]> {
+  const apiKey = process.env.RAPIDAPI_KEY;
+  if (!apiKey) throw new Error("RAPIDAPI_KEY not configured");
 
-async function scrapeReels(
+  const host =
+    process.env.RAPIDAPI_INSTAGRAM_HOST ?? "instagram-scraper-api2.p.rapidapi.com";
+  const url = `https://${host}/v1/posts?username_or_id_or_url=${encodeURIComponent(username)}`;
+
+  const res = await fetch(url, {
+    headers: {
+      "x-rapidapi-key": apiKey,
+      "x-rapidapi-host": host,
+    },
+  });
+
+  if (res.status === 429) {
+    throw new Error(RATE_LIMIT_MESSAGE);
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `RapidAPI retornou ${res.status}${body ? `: ${body.slice(0, 120)}` : ""}`
+    );
+  }
+
+  const data = (await res.json()) as Record<string, unknown>;
+
+  // Response: { data: { items: [...] } } or { items: [...] }
+  const rawItems =
+    ((data?.data as Record<string, unknown>)?.items as unknown[]) ??
+    (data?.items as unknown[]) ??
+    [];
+
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    throw new Error(
+      `Nenhum Reel encontrado para @${username}. O perfil pode ser privado, inexistente ou não ter Reels.`
+    );
+  }
+
+  const videoItems = (rawItems as Record<string, unknown>[])
+    .filter((item) => item.media_type === 2 || item.video_url || item.videoUrl)
+    .slice(0, limit);
+
+  if (videoItems.length === 0) {
+    throw new Error(`@${username} não possui Reels públicos acessíveis.`);
+  }
+
+  return videoItems.map((item, i) => {
+    const captionObj = item.caption as Record<string, unknown> | string | null | undefined;
+    const captionText =
+      typeof captionObj === "string"
+        ? captionObj
+        : ((captionObj as Record<string, unknown> | null)?.text as string | undefined) ?? "";
+
+    const userObj = item.user as Record<string, unknown> | null | undefined;
+    const imgVersions = item.image_versions2 as Record<string, unknown> | null | undefined;
+    const candidates = imgVersions?.candidates as Array<Record<string, unknown>> | undefined;
+
+    return {
+      id: String(item.pk ?? item.id ?? i),
+      shortCode: String(item.code ?? item.shortcode ?? ""),
+      thumbnailUrl:
+        (item.thumbnail_url as string | null | undefined) ??
+        (candidates?.[0]?.url as string | null | undefined) ??
+        null,
+      videoUrl: String(item.video_url ?? item.videoUrl ?? ""),
+      caption: String(captionText).slice(0, 120),
+      views: Number(item.view_count ?? item.play_count ?? 0),
+      likes: Number(item.like_count ?? 0),
+      comments: Number(item.comment_count ?? 0),
+      duration: Number(item.video_duration ?? 0),
+      owner: String(userObj?.username ?? username),
+    };
+  });
+}
+
+// ── Strategy 2: Apify (reel-specific actor) ────────────────────
+async function scrapeViaApify(
   token: string,
   username: string,
   limit: number
-): Promise<Array<Record<string, unknown>>> {
+): Promise<ScrapedReel[]> {
   const client = new ApifyClient({ token });
 
-  const run = await client.actor(ACTOR_ID).call({
-    directUrls: [`https://www.instagram.com/${username}/reels/`],
-    resultsType: "posts",
-    maxRequestsPerCrawl: Math.min(limit, 30),
+  // apify~instagram-reel-scraper: targeted for reels, less prone to IG blocks
+  const run = await client.actor("apify~instagram-reel-scraper").call({
+    username: [username],
+    resultsLimit: Math.min(limit, 30),
   });
 
   if (run.status !== "SUCCEEDED") {
@@ -52,52 +153,89 @@ async function scrapeReels(
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error(
       `Nenhum Reel encontrado para @${username}. ` +
-      `O perfil pode ser privado, inexistente, não ter Reels ou ` +
-      `o Instagram está bloqueando temporariamente a coleta. ` +
-      `Tente novamente em alguns minutos.`
+        `O perfil pode ser privado, inexistente, não ter Reels ou ` +
+        `o Instagram está bloqueando temporariamente a coleta. ` +
+        `Tente novamente em alguns minutos.`
     );
   }
 
   return items
-    .filter((item) => item.type === "Video" || resolveVideoUrl(item as Record<string, unknown>))
+    .filter(
+      (item) =>
+        item.type === "Video" ||
+        item.videoUrl ||
+        item.video_url ||
+        item.videoPlayUrl
+    )
     .map((item, i) => {
-      const videoUrl = resolveVideoUrl(item as Record<string, unknown>);
+      const raw = item as Record<string, unknown>;
+      const videoUrl =
+        (raw.videoUrl as string | undefined) ||
+        (raw.video_url as string | undefined) ||
+        (raw.videoPlayUrl as string | undefined) ||
+        "";
       if (i === 0) {
-        console.log(`[apify/scrape] @${username} first videoUrl: ${videoUrl.slice(0, 70) || "(empty)"}…`);
+        console.log(
+          `[apify/scrape] @${username} first videoUrl: ${videoUrl.slice(0, 70) || "(empty)"}…`
+        );
       }
       return {
-        id: String(item.id ?? item.shortCode ?? i),
-        shortCode: String(item.shortCode ?? ""),
-        thumbnailUrl: (item.displayUrl ?? item.thumbnailUrl ?? null) as string | null,
+        id: String(raw.id ?? raw.shortCode ?? i),
+        shortCode: String(raw.shortCode ?? ""),
+        thumbnailUrl: (raw.displayUrl ?? raw.thumbnailUrl ?? null) as string | null,
         videoUrl,
-        caption: String(item.caption ?? "").slice(0, 120),
-        views: Number(item.videoViewCount ?? 0),
-        likes: Number(item.likesCount ?? 0),
-        comments: Number(item.commentsCount ?? 0),
-        duration: Number(item.videoDuration ?? 0),
-        owner: String(item.ownerUsername ?? username),
+        caption: String(raw.caption ?? "").slice(0, 120),
+        views: Number(raw.videoViewCount ?? 0),
+        likes: Number(raw.likesCount ?? 0),
+        comments: Number(raw.commentsCount ?? 0),
+        duration: Number(raw.videoDuration ?? 0),
+        owner: String(raw.ownerUsername ?? username),
       };
     });
 }
 
+// ── Handler ────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { username, limit = 20 } = body as { username: string; limit?: number };
 
   if (!username) {
-    return NextResponse.json({ error: "O campo 'username' é obrigatório." }, { status: 400 });
+    return NextResponse.json(
+      { error: "O campo 'username' é obrigatório." },
+      { status: 400 }
+    );
   }
 
+  // ── Strategy 1: RapidAPI — distributed proxies, no cold start ──
+  if (process.env.RAPIDAPI_KEY) {
+    try {
+      const reels = await scrapeViaRapidAPI(username, limit);
+      return NextResponse.json({ reels });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isRateLimitError(msg)) {
+        return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
+      }
+      console.warn(`[scrape] RapidAPI falhou para @${username}: ${msg}. Tentando Apify…`);
+    }
+  }
+
+  // ── Strategy 2: Apify fallback ──────────────────────────────
   const tokens = [
     ...(process.env.APIFY_API_TOKENS?.split(",") ?? []),
     ...(process.env.APIFY_API_TOKEN?.split(",") ?? []),
-  ].map((t) => t.trim()).filter(Boolean);
+  ]
+    .map((t) => t.trim())
+    .filter(Boolean);
 
   const uniqueTokens = [...new Set(tokens)];
 
   if (uniqueTokens.length === 0) {
     return NextResponse.json(
-      { error: "APIFY_API_TOKEN não configurado. Adicione a variável de ambiente e faça um novo deploy." },
+      {
+        error:
+          "Nenhum provedor de scraping configurado. Configure RAPIDAPI_KEY ou APIFY_API_TOKEN.",
+      },
       { status: 503 }
     );
   }
@@ -106,7 +244,7 @@ export async function POST(req: NextRequest) {
 
   for (const token of uniqueTokens) {
     try {
-      const reels = await scrapeReels(token, username, limit);
+      const reels = await scrapeViaApify(token, username, limit);
       return NextResponse.json({ reels });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -119,8 +257,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json(
-    { error: `Todas as ${uniqueTokens.length} chaves Apify estão esgotadas. Último erro: ${lastError}` },
-    { status: 503 }
-  );
+  // All providers exhausted
+  return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
 }
