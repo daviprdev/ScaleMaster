@@ -6,7 +6,6 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-// ── Constants ─────────────────────────────────────────────────
 const RATE_LIMIT_MESSAGE =
   "Nosso sistema de buscas está sobrecarregado no momento. Aguarde 5 minutos e tente novamente.";
 
@@ -25,38 +24,6 @@ const GRADIENTS = [
   "from-orange-500 to-amber-700",
 ];
 
-// ── Types ─────────────────────────────────────────────────────
-interface ScrapedReel {
-  id: string;
-  shortCode: string;
-  thumbnailUrl: string | null;
-  videoUrl: string;
-  caption: string;
-  views: number;
-  likes: number;
-  comments: number;
-  duration: number;
-  owner: string;
-  gradient: string;
-}
-
-interface ScrapeResult {
-  reels: ScrapedReel[];
-  fullName: string;
-  profilePicUrl: string | null;
-}
-
-// ── Error helpers ──────────────────────────────────────────────
-function isRateLimitError(msg: string): boolean {
-  const m = msg.toLowerCase();
-  return (
-    m.includes("429") ||
-    m.includes("rate limit") ||
-    m.includes("too many") ||
-    m.includes("sobrecarregado")
-  );
-}
-
 function isQuotaError(msg: string): boolean {
   const m = msg.toLowerCase();
   return (
@@ -74,134 +41,23 @@ function isQuotaError(msg: string): boolean {
   );
 }
 
-// ── Strategy 1: RapidAPI with pagination ──────────────────────
-// Default: instagram-scraper-api2.p.rapidapi.com (lamboiss, 500 free req/month)
-// Override via RAPIDAPI_INSTAGRAM_HOST env var
-// Paginates with next_max_id until `limit` reels are collected or no more pages
-async function scrapeViaRapidAPI(username: string, limit: number): Promise<ScrapeResult> {
-  const apiKey = process.env.RAPIDAPI_KEY;
-  if (!apiKey) throw new Error("RAPIDAPI_KEY not configured");
-
-  const host =
-    process.env.RAPIDAPI_INSTAGRAM_HOST ?? "instagram-scraper-api2.p.rapidapi.com";
-
-  const allItems: Record<string, unknown>[] = [];
-  let nextMaxId: string | null = null;
-  let firstPageData: Record<string, unknown> | null = null;
-  // Pages scale with limit: ~12 reels/page + small buffer to absorb non-video posts
-  const maxPages = Math.ceil(limit / 10) + 2;
-
-  for (let page = 0; page < maxPages && allItems.length < limit; page++) {
-    const params = new URLSearchParams({ username_or_id_or_url: username });
-    if (nextMaxId) params.set("next_max_id", nextMaxId);
-
-    const res = await fetch(`https://${host}/v1/posts?${params}`, {
-      headers: {
-        "x-rapidapi-key": apiKey,
-        "x-rapidapi-host": host,
-      },
-    });
-
-    if (res.status === 429) throw new Error(RATE_LIMIT_MESSAGE);
-
-    const rawText = await res.text();
-
-    if (!res.ok) {
-      throw new Error(
-        `RapidAPI retornou ${res.status}${rawText ? `: ${rawText.slice(0, 120)}` : ""}`
-      );
-    }
-
-    let data: Record<string, unknown>;
-    try {
-      data = JSON.parse(rawText) as Record<string, unknown>;
-    } catch {
-      // Non-JSON response on a later page — stop pagination gracefully
-      console.warn(`[rapidapi] página ${page + 1} retornou resposta não-JSON, parando.`);
-      break;
-    }
-
-    const pageData = (data?.data as Record<string, unknown>) ?? data;
-    const pageItems = (pageData?.items as unknown[]) ?? [];
-
-    if (!Array.isArray(pageItems) || pageItems.length === 0) break;
-
-    if (page === 0) firstPageData = pageData;
-
-    const videoItems = (pageItems as Record<string, unknown>[]).filter(
-      (item) => item.media_type === 2 || item.video_url || item.videoUrl
-    );
-    allItems.push(...videoItems);
-
-    console.log(
-      `[rapidapi] @${username} page ${page + 1}: ${videoItems.length} reels (total ${allItems.length})`
-    );
-
-    const moreAvailable = pageData?.more_available as boolean | undefined;
-    nextMaxId = (pageData?.next_max_id as string | null | undefined) ?? null;
-    if (!moreAvailable || !nextMaxId) break;
-  }
-
-  if (allItems.length === 0) {
-    throw new Error(
-      `Nenhum Reel encontrado para @${username}. O perfil pode ser privado, inexistente ou não ter Reels.`
-    );
-  }
-
-  // Extract user metadata from first item
-  const firstItem = allItems[0];
-  const userObj = firstItem.user as Record<string, unknown> | null | undefined;
-  const fullName = String(userObj?.full_name ?? userObj?.username ?? username);
-  const profilePicUrl =
-    (userObj?.profile_pic_url as string | null | undefined) ??
-    (firstItem.profile_pic_url as string | null | undefined) ??
-    ((firstPageData as Record<string, unknown> | null)?.user as Record<string, unknown> | null)?.profile_pic_url as string | null ?? null;
-
-  const reels = allItems.slice(0, limit).map((item, i) => {
-    const captionObj = item.caption as Record<string, unknown> | string | null | undefined;
-    const captionText =
-      typeof captionObj === "string"
-        ? captionObj
-        : ((captionObj as Record<string, unknown> | null)?.text as string | undefined) ?? "";
-
-    const imgVersions = item.image_versions2 as Record<string, unknown> | null | undefined;
-    const candidates = imgVersions?.candidates as Array<Record<string, unknown>> | undefined;
-
-    if (i === 0) {
-      const videoUrl = String(item.video_url ?? item.videoUrl ?? "");
-      console.log(`[rapidapi] @${username} first videoUrl: ${videoUrl.slice(0, 70) || "(empty)"}…`);
-    }
-
-    return {
-      id: String(item.pk ?? item.id ?? i),
-      shortCode: String(item.code ?? item.shortcode ?? ""),
-      thumbnailUrl:
-        (item.thumbnail_url as string | null | undefined) ??
-        (candidates?.[0]?.url as string | null | undefined) ??
-        null,
-      videoUrl: String(item.video_url ?? item.videoUrl ?? ""),
-      caption: String(captionText).slice(0, 120),
-      views: Number(item.view_count ?? item.play_count ?? 0),
-      likes: Number(item.like_count ?? 0),
-      comments: Number(item.comment_count ?? 0),
-      duration: Number(item.video_duration ?? 0),
-      owner: String((item.user as Record<string, unknown> | null)?.username ?? username),
-      gradient: GRADIENTS[i % GRADIENTS.length],
-    };
-  });
-
-  return { reels, fullName, profilePicUrl };
+function resolveVideoUrl(item: Record<string, unknown>): string {
+  return (
+    (item.videoUrl as string | undefined) ||
+    (item.video_url as string | undefined) ||
+    (item.videoPlayUrl as string | undefined) ||
+    (item.playVideoUrl as string | undefined) ||
+    ""
+  );
 }
 
-// ── Strategy 2: Apify (reel-specific actor) ────────────────────
-async function scrapeViaApify(
+async function scrapeWithToken(
   token: string,
   username: string,
   limit: number
-): Promise<ScrapeResult> {
+): Promise<{ reels: object[]; fullName: string; profilePicUrl: string | null }> {
   const client = new ApifyClient({ token });
 
-  // apify~instagram-reel-scraper: targeted for reels, less prone to IG blocks
   const run = await client.actor("apify~instagram-reel-scraper").call({
     username: [username],
     resultsLimit: Math.min(limit, 300),
@@ -224,7 +80,6 @@ async function scrapeViaApify(
 
   const first = items[0] as Record<string, unknown>;
   const fullName = String(first.ownerFullName ?? first.ownerUsername ?? username);
-
   const ownerObj = (first.owner ?? {}) as Record<string, unknown>;
   const profilePicUrl: string | null =
     (first.ownerProfilePicUrl as string | null | undefined) ||
@@ -234,25 +89,16 @@ async function scrapeViaApify(
     null;
 
   const reels = items
-    .filter(
-      (item) =>
-        item.type === "Video" ||
-        item.videoUrl ||
-        item.video_url ||
-        item.videoPlayUrl
-    )
+    .filter((item) => item.type === "Video" || resolveVideoUrl(item as Record<string, unknown>))
     .map((item, i) => {
       const raw = item as Record<string, unknown>;
-      const videoUrl =
-        (raw.videoUrl as string | undefined) ||
-        (raw.video_url as string | undefined) ||
-        (raw.videoPlayUrl as string | undefined) ||
-        "";
+      const videoUrl = resolveVideoUrl(raw);
       if (i === 0) {
-        const preview = videoUrl
-          ? `${videoUrl.slice(0, 70)}…`
-          : "(empty — reel may be expired or private)";
-        console.log(`[apify] @${username} first reel videoUrl: ${preview}`);
+        console.log(
+          `[inspirations/scrape] @${username} first videoUrl: ${
+            videoUrl ? `${videoUrl.slice(0, 70)}…` : "(empty)"
+          }`
+        );
       }
       return {
         id: String(raw.id ?? raw.shortCode ?? i),
@@ -281,7 +127,7 @@ async function uploadProfilePicToStorage(
 ): Promise<string | null> {
   await admin.storage
     .createBucket("avatars", { public: true, fileSizeLimit: 1_048_576 })
-    .catch(() => {/* already exists */});
+    .catch(() => {});
 
   try {
     const imgRes = await fetch(cdnUrl, {
@@ -325,10 +171,7 @@ async function saveToHistory(
   fullName: string,
   profilePicUrl: string | null
 ) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    console.log("[scraped_profiles] Supabase não configurado, pulando save.");
-    return;
-  }
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
 
   try {
     const supabase = await createClient();
@@ -337,62 +180,37 @@ async function saveToHistory(
       error: authError,
     } = await supabase.auth.getUser();
 
-    if (authError) {
-      console.error("[scraped_profiles] Erro de autenticação:", authError.message);
-      return;
-    }
-
-    if (!user) {
-      console.warn("[scraped_profiles] Usuário não autenticado — upsert ignorado.");
-      return;
-    }
-
-    console.log(
-      `[scraped_profiles] Salvando @${username} para user ${user.id} (${reels.length} reels)`
-    );
+    if (authError || !user) return;
 
     const admin = getSupabaseAdmin();
 
     let finalProfilePicUrl = profilePicUrl;
     if (profilePicUrl) {
       const stored = await uploadProfilePicToStorage(admin, user.id, username, profilePicUrl);
-      if (stored) {
-        finalProfilePicUrl = stored;
-        console.log(`[scraped_profiles] Foto de perfil salva no Storage: ${stored}`);
-      }
+      if (stored) finalProfilePicUrl = stored;
     }
 
-    const { data, error } = await admin
-      .from("scraped_profiles")
-      .upsert(
-        {
-          user_id: user.id,
-          username,
-          full_name: fullName,
-          profile_pic_url: finalProfilePicUrl,
-          videos_data: reels,
-          video_count: reels.length,
-          scraped_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,username", ignoreDuplicates: false }
-      )
-      .select("id")
-      .single();
+    const { error } = await admin.from("scraped_profiles").upsert(
+      {
+        user_id: user.id,
+        username,
+        full_name: fullName,
+        profile_pic_url: finalProfilePicUrl,
+        videos_data: reels,
+        video_count: reels.length,
+        scraped_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,username", ignoreDuplicates: false }
+    );
 
     if (error) {
-      console.error(
-        `[scraped_profiles] Upsert falhou — code: ${error.code}, message: ${error.message}`
-      );
+      console.error(`[scraped_profiles] Upsert falhou: ${error.message}`);
       if (error.code === "42P01") {
-        console.error(
-          "[scraped_profiles] TABELA NÃO EXISTE. Execute o SQL da Fase 22 no Supabase Dashboard."
-        );
+        console.error("[scraped_profiles] Tabela não existe. Execute o SQL da Fase 22.");
       }
-    } else {
-      console.log(`[scraped_profiles] Upsert OK — id: ${data?.id}`);
     }
   } catch (err) {
-    console.error("[scraped_profiles] Exceção inesperada:", err);
+    console.error("[scraped_profiles] Exceção:", err);
   }
 }
 
@@ -402,30 +220,9 @@ export async function POST(req: NextRequest) {
   const { username, limit = 300 } = body as { username: string; limit?: number };
 
   if (!username) {
-    return NextResponse.json(
-      { error: "O campo 'username' é obrigatório." },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "O campo 'username' é obrigatório." }, { status: 400 });
   }
 
-  // ── Strategy 1: RapidAPI — distributed proxies, no cold start ──
-  if (process.env.RAPIDAPI_KEY) {
-    try {
-      const { reels, fullName, profilePicUrl } = await scrapeViaRapidAPI(username, limit);
-      await saveToHistory(username, reels, fullName, profilePicUrl);
-      return NextResponse.json({ reels });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (isRateLimitError(msg)) {
-        return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
-      }
-      console.warn(
-        `[inspirations/scrape] RapidAPI falhou para @${username}: ${msg}. Tentando Apify…`
-      );
-    }
-  }
-
-  // ── Strategy 2: Apify fallback ──────────────────────────────
   const tokens = [
     ...(process.env.APIFY_API_TOKENS?.split(",") ?? []),
     ...(process.env.APIFY_API_TOKEN?.split(",") ?? []),
@@ -439,7 +236,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Nenhum provedor de scraping configurado. Configure RAPIDAPI_KEY ou APIFY_API_TOKEN.",
+          "APIFY_API_TOKEN não configurado. Adicione a variável de ambiente e faça um novo deploy.",
       },
       { status: 503 }
     );
@@ -449,22 +246,19 @@ export async function POST(req: NextRequest) {
 
   for (const token of uniqueTokens) {
     try {
-      const { reels, fullName, profilePicUrl } = await scrapeViaApify(token, username, limit);
+      const { reels, fullName, profilePicUrl } = await scrapeWithToken(token, username, limit);
       await saveToHistory(username, reels, fullName, profilePicUrl);
       return NextResponse.json({ reels });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-
       if (isQuotaError(msg)) {
         console.warn(`[Apify] Token ...${token.slice(-6)} esgotado: ${msg}. Tentando próximo.`);
         lastError = msg;
         continue;
       }
-
       return NextResponse.json({ error: msg }, { status: 500 });
     }
   }
 
-  // All providers exhausted → surface as rate limit
   return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
 }
