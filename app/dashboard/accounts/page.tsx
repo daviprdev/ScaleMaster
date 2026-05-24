@@ -224,6 +224,11 @@ function AccountCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.2 }}
+      // Eleva o card acima dos irmãos quando o menu está aberto, para que a
+      // dropdown não fique escondida atrás dos cards adjacentes. O Framer Motion
+      // layout cria um stacking context via transform, então z-index no próprio
+      // card é necessário para escapar do contexto dos cards vizinhos.
+      style={{ position: "relative", zIndex: menuOpen ? 10 : "auto" }}
       className={cn("glass-card rounded-2xl", accountFell && "border border-red-500/25")}
     >
       {/* Cabeçalho */}
@@ -321,7 +326,7 @@ function AccountCard({
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: -6 }}
                 transition={{ duration: 0.1 }}
-                className="absolute right-0 top-full mt-1.5 z-30 min-w-[172px] bg-[#111318] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden"
+                className="absolute right-0 top-full mt-1.5 z-[200] min-w-[180px] bg-[#111318] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden"
               >
                 <button
                   onClick={() => { onRefresh(account.id); setMenuOpen(false); }}
