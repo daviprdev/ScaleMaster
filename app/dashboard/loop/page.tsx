@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Repeat2, Plus, Play, Pause, Trash2, Edit3, X,
@@ -22,6 +22,8 @@ interface Account {
   avatar_url: string | null;
   is_active: boolean;
   health_status?: "online" | "error" | "blocked";
+  folder_id?: string | null;
+  account_folders?: { name: string } | null;
 }
 
 interface Folder {
@@ -669,6 +671,50 @@ function AccountsMultiSelect({
     onChange(selected.includes(id) ? selected.filter(s => s !== id) : [...selected, id]);
   };
 
+  // Group accounts by folder; folders alphabetically, "Avulsas" (null) always last
+  const groups = useMemo(() => {
+    const map = new Map<string | null, { name: string; accounts: Account[] }>();
+    for (const acc of accounts) {
+      const key = acc.folder_id ?? null;
+      const name = acc.account_folders?.name ?? "";
+      if (!map.has(key)) map.set(key, { name, accounts: [] });
+      map.get(key)!.accounts.push(acc);
+    }
+    const result: Array<{ folderId: string | null; folderName: string; accounts: Account[] }> = [];
+    for (const [folderId, { name, accounts: accs }] of map) {
+      result.push({ folderId, folderName: name, accounts: accs });
+    }
+    result.sort((a, b) => {
+      if (a.folderId === null) return 1;
+      if (b.folderId === null) return -1;
+      return a.folderName.localeCompare(b.folderName);
+    });
+    return result;
+  }, [accounts]);
+
+  // Show folder headers only when there's more than one group or the single group has a folder
+  const showFolderHeaders = groups.length > 1 || (groups.length === 1 && groups[0].folderId !== null);
+
+  const isFolderFullySelected = (folderAccounts: Account[]) => {
+    const healthyIds = folderAccounts
+      .filter(a => a.health_status !== "error" && a.health_status !== "blocked")
+      .map(a => a.id);
+    return healthyIds.length > 0 && healthyIds.every(id => selected.includes(id));
+  };
+
+  const toggleFolder = (folderAccounts: Account[]) => {
+    const healthyIds = folderAccounts
+      .filter(a => a.health_status !== "error" && a.health_status !== "blocked")
+      .map(a => a.id);
+    const allSelected = healthyIds.every(id => selected.includes(id));
+    if (allSelected) {
+      onChange(selected.filter(id => !healthyIds.includes(id)));
+    } else {
+      const toAdd = healthyIds.filter(id => !selected.includes(id));
+      onChange([...selected, ...toAdd]);
+    }
+  };
+
   const selectedAccounts = accounts.filter(a => selected.includes(a.id));
 
   return (
@@ -697,7 +743,7 @@ function AccountsMultiSelect({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-xl max-h-60 overflow-y-auto"
+            className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-xl max-h-72 overflow-y-auto"
           >
             {accounts.length === 0 ? (
               <div className="px-4 py-6 text-center text-xs text-white/30">
@@ -705,8 +751,8 @@ function AccountsMultiSelect({
               </div>
             ) : (
               <>
-                {/* Selecionar / Desmarcar todas */}
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
+                {/* Global: Selecionar / Desmarcar todas */}
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02] sticky top-0 z-10">
                   <button
                     type="button"
                     onClick={() => {
@@ -726,56 +772,101 @@ function AccountsMultiSelect({
                     Desmarcar todas
                   </button>
                 </div>
-                {accounts.map(acc => {
-                const isSelected = selected.includes(acc.id);
-                const fell = acc.health_status === "error" || acc.health_status === "blocked";
-                return (
-                  <button
-                    key={acc.id}
-                    type="button"
-                    onClick={() => !fell && toggle(acc.id)}
-                    disabled={fell}
-                    title={fell ? `@${acc.username} está desconectada — reconecte na aba Contas` : undefined}
-                    className={cn(
-                      "w-full flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors text-left",
-                      fell
-                        ? "cursor-not-allowed opacity-60 bg-red-950/20"
-                        : isSelected ? "bg-violet-600/10 cursor-pointer" : "hover:bg-slate-800 cursor-pointer"
-                    )}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={cn(
-                        "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0",
-                        fell ? "bg-red-500/30" : "bg-gradient-to-br from-violet-500 to-cyan-500"
-                      )}>
-                        {acc.username.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className={cn("text-xs font-medium truncate", fell ? "text-red-400/80" : "text-white/80")}>
-                            @{acc.username}
-                          </p>
-                          {fell && (
-                            <span className="flex items-center gap-1 text-[9px] px-1 py-0.5 rounded bg-red-500/15 text-red-400 font-semibold flex-shrink-0">
-                              <AlertTriangle size={7} />
-                              {acc.health_status === "blocked" ? "BLOQUEADA" : "CAIU"}
+
+                {/* Grouped account list */}
+                {groups.map(({ folderId, folderName, accounts: groupAccounts }) => {
+                  const fullySelected = isFolderFullySelected(groupAccounts);
+                  const label = folderId ? folderName : "Avulsas";
+
+                  return (
+                    <div key={folderId ?? "__none__"}>
+                      {/* Folder header */}
+                      {showFolderHeaders && (
+                        <div className="flex items-center justify-between px-3 py-1.5 bg-white/[0.025] border-y border-white/[0.05]">
+                          <div className="flex items-center gap-1.5">
+                            <Folder
+                              size={10}
+                              className={folderId ? "text-[#00E5FF]/55" : "text-white/25"}
+                            />
+                            <span className={cn(
+                              "text-[10px] font-bold uppercase tracking-wider",
+                              folderId ? "text-[#00E5FF]/65" : "text-white/30"
+                            )}>
+                              {label}
                             </span>
-                          )}
+                            <span className="text-[9px] text-white/20">
+                              ({groupAccounts.length})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleFolder(groupAccounts)}
+                            className={cn(
+                              "text-[9px] font-semibold px-2 py-0.5 rounded-md transition-all duration-150",
+                              fullySelected
+                                ? "text-red-400/80 bg-red-500/[0.08] hover:bg-red-500/[0.16]"
+                                : "text-[#00FF41]/70 bg-[#00FF41]/[0.06] hover:bg-[#00FF41]/[0.13]"
+                            )}
+                          >
+                            {fullySelected ? "Desmarcar pasta" : "Selecionar pasta"}
+                          </button>
                         </div>
-                        {acc.display_name && (
-                          <p className="text-white/35 text-[11px] truncate">{acc.display_name}</p>
-                        )}
-                      </div>
+                      )}
+
+                      {/* Accounts in this group */}
+                      {groupAccounts.map(acc => {
+                        const isSelected = selected.includes(acc.id);
+                        const fell = acc.health_status === "error" || acc.health_status === "blocked";
+                        return (
+                          <button
+                            key={acc.id}
+                            type="button"
+                            onClick={() => !fell && toggle(acc.id)}
+                            disabled={fell}
+                            title={fell ? `@${acc.username} está desconectada — reconecte na aba Contas` : undefined}
+                            className={cn(
+                              "w-full flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors text-left",
+                              fell
+                                ? "cursor-not-allowed opacity-60 bg-red-950/20"
+                                : isSelected ? "bg-violet-600/10 cursor-pointer" : "hover:bg-slate-800 cursor-pointer"
+                            )}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={cn(
+                                "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0",
+                                fell ? "bg-red-500/30" : "bg-gradient-to-br from-violet-500 to-cyan-500"
+                              )}>
+                                {acc.username.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <p className={cn("text-xs font-medium truncate", fell ? "text-red-400/80" : "text-white/80")}>
+                                    @{acc.username}
+                                  </p>
+                                  {fell && (
+                                    <span className="flex items-center gap-1 text-[9px] px-1 py-0.5 rounded bg-red-500/15 text-red-400 font-semibold flex-shrink-0">
+                                      <AlertTriangle size={7} />
+                                      {acc.health_status === "blocked" ? "BLOQUEADA" : "CAIU"}
+                                    </span>
+                                  )}
+                                </div>
+                                {acc.display_name && (
+                                  <p className="text-white/35 text-[11px] truncate">{acc.display_name}</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className={cn(
+                              "w-4 h-4 rounded-md border flex items-center justify-center flex-shrink-0 transition-all duration-150",
+                              isSelected ? "bg-violet-600 border-violet-600" : "border-white/20"
+                            )}>
+                              {isSelected && <Check size={10} className="text-white" />}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
-                    <div className={cn(
-                      "w-4 h-4 rounded-md border flex items-center justify-center flex-shrink-0 transition-all duration-150",
-                      isSelected ? "bg-violet-600 border-violet-600" : "border-white/20"
-                    )}>
-                      {isSelected && <Check size={10} className="text-white" />}
-                    </div>
-                  </button>
-                );
-              })}
+                  );
+                })}
               </>
             )}
           </motion.div>

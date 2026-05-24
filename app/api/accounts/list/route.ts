@@ -19,7 +19,7 @@ export async function GET() {
 
   const { data, error } = await getSupabaseAdmin()
     .from("instagram_accounts")
-    .select("id, username, display_name, avatar_url, is_active, access_token, ig_business_account_id, health_status")
+    .select("id, username, display_name, avatar_url, is_active, access_token, ig_business_account_id, health_status, folder_id, account_folders(name)")
     .eq("user_id", user.id)
     .order("connected_at", { ascending: false });
 
