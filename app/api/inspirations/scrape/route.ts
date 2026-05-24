@@ -104,14 +104,23 @@ async function scrapeViaRapidAPI(username: string, limit: number): Promise<Scrap
 
     if (res.status === 429) throw new Error(RATE_LIMIT_MESSAGE);
 
+    const rawText = await res.text();
+
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
       throw new Error(
-        `RapidAPI retornou ${res.status}${body ? `: ${body.slice(0, 120)}` : ""}`
+        `RapidAPI retornou ${res.status}${rawText ? `: ${rawText.slice(0, 120)}` : ""}`
       );
     }
 
-    const data = (await res.json()) as Record<string, unknown>;
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(rawText) as Record<string, unknown>;
+    } catch {
+      // Non-JSON response on a later page — stop pagination gracefully
+      console.warn(`[rapidapi] página ${page + 1} retornou resposta não-JSON, parando.`);
+      break;
+    }
+
     const pageData = (data?.data as Record<string, unknown>) ?? data;
     const pageItems = (pageData?.items as unknown[]) ?? [];
 
