@@ -84,7 +84,7 @@ export async function sanitizeAndHashBust(
       .videoCodec("libx264")
       .outputOptions([
         "-crf",          "18",
-        "-preset",       "fast",
+        "-preset",       "ultrafast",
         "-profile:v",    "high",
         // Temporal noise: 1 luma unit per pixel per frame — imperceptible but
         // produces a unique perceptual hash on every processing event.
@@ -119,17 +119,18 @@ export async function sanitizeAndHashBust(
 /**
  * Two-pass sanitization used for local device downloads.
  *
+ * Optimized for Vercel Serverless — both passes use stream copy to avoid
+ * CPU-heavy re-encode that causes timeout on Serverless Functions.
+ *
  * Pass 1 — Metadata strip (stream copy, fast)
  *   Removes every metadata atom from the source container: EXIF, GPS, origin
- *   URL, encoder fingerprint, creation timestamps. Stream copy means this is
- *   near-instant regardless of file size.
+ *   URL, encoder fingerprint, creation timestamps.
  *
- * Pass 2 — Fingerprint mutation (re-encode, quality pass)
- *   libx264 CRF 20 (visually lossless), fast preset, `noise=alls=1:allf=u+t`.
- *   The temporal noise makes every output pixel unique → different MD5, SHA-256,
- *   and perceptual hash. UUID injection + `-fflags +bitexact` suppress any
- *   remaining FFmpeg muxer fingerprint atoms.
- *   Audio is stream-copied from the already-clean pass-1 output.
+ * Pass 2 — UUID injection (stream copy, fast)
+ *   Injects a unique UUID comment + -fflags +bitexact to suppress FFmpeg
+ *   muxer fingerprint atoms. No re-encode — near-instant for any file size.
+ *   Re-encode with noise is reserved for background library-save operations
+ *   (sanitizeAndHashBust) where there is no browser-facing timeout constraint.
  */
 export async function sanitizeDoublePass(
   videoUrl: string,
@@ -166,23 +167,18 @@ export async function sanitizeDoublePass(
       .run();
   });
 
-  // ── 3. Pass 2 — re-encode with noise + UUID + bitexact ───────────────────
+  // ── 3. Pass 2 — UUID injection + bitexact (stream copy, no re-encode) ────
+  // Stream copy avoids CPU-heavy libx264 re-encode that times out on Vercel.
+  // UUID in comment field ensures each output is container-unique.
   const hashSalt = crypto.randomUUID();
 
   await new Promise<void>((resolve, reject) => {
     ffmpeg(pass1Path)
-      .videoCodec("libx264")
       .outputOptions([
-        "-crf",          "20",
-        "-preset",       "fast",
-        "-profile:v",    "high",
-        // Per-pixel, per-frame temporal noise → unique perceptual hash every run.
-        "-vf",           "noise=alls=1:allf=u+t",
-        // Audio: stream-copy from the clean pass-1 output (zero quality loss).
+        "-c:v",          "copy",
         "-c:a",          "copy",
         "-map_metadata", "-1",
         "-metadata",     `comment=${hashSalt}`,
-        // Suppress FFmpeg's own muxer/encoder fingerprint atoms.
         "-fflags",       "+bitexact",
         "-movflags",     "+faststart",
       ])

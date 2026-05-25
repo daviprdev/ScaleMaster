@@ -50,7 +50,7 @@ export async function downloadAndStripMetadata(
       .videoCodec("libx264")
       .outputOptions([
         "-crf",          "18",
-        "-preset",       "fast",
+        "-preset",       "ultrafast",
         "-profile:v",    "high",
         // 1 luma-unit temporal noise: imperceptible to the eye, unique per frame.
         // Defeats both MD5 and perceptual-hash duplicate detection.
