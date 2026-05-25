@@ -81,6 +81,8 @@ export default function LibraryPage() {
   const [movingLoading, setMovingLoading] = useState(false);
 
   const [deletingFolder, setDeletingFolder] = useState<LibraryFolder | null>(null);
+  const [cleaningOrphans, setCleaningOrphans] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<string | null>(null);
 
   const [renamingFolder, setRenamingFolder] = useState<LibraryFolder | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -400,6 +402,23 @@ export default function LibraryPage() {
     }
   };
 
+  const handleCleanupOrphans = async () => {
+    if (cleaningOrphans) return;
+    setCleaningOrphans(true);
+    setCleanupResult(null);
+    try {
+      const res = await fetch("/api/library/cleanup-orphans", { method: "POST" });
+      const data = await res.json() as { deleted: number; message?: string };
+      setCleanupResult(data.deleted === 0 ? "Nenhum órfão" : `${data.deleted} removido(s)`);
+      if (data.deleted > 0) fetchFolders();
+    } catch {
+      setCleanupResult("Erro");
+    } finally {
+      setCleaningOrphans(false);
+      setTimeout(() => setCleanupResult(null), 4000);
+    }
+  };
+
   const allSelected = videos.length > 0 && selectedIds.size === videos.length;
 
   return (
@@ -584,7 +603,7 @@ export default function LibraryPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-white">Excluir pasta</h3>
-                  <p className="text-xs text-white/40">Os vídeos dentro ficarão sem pasta até serem movidos</p>
+                  <p className="text-xs text-white/40">Todos os vídeos dentro serão permanentemente deletados</p>
                 </div>
               </div>
               <p className="text-sm text-white/60">
@@ -664,14 +683,29 @@ export default function LibraryPage() {
           )}
         </div>
 
-        <motion.button
-          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-          onClick={() => setShowNewFolder(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:text-white/90 hover:bg-white/[0.09] hover:border-white/20 text-xs font-medium transition-all duration-200 flex-shrink-0"
-        >
-          <FolderPlus size={14} />
-          Nova Pasta
-        </motion.button>
+        <div className="flex items-center gap-2">
+          <motion.button
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+            onClick={handleCleanupOrphans}
+            disabled={cleaningOrphans}
+            title="Remove vídeos sem pasta que bloqueiam novos uploads"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400/70 hover:text-amber-300 hover:bg-amber-500/15 hover:border-amber-500/35 text-xs font-medium transition-all duration-200 flex-shrink-0 disabled:opacity-50"
+          >
+            {cleaningOrphans
+              ? <Loader2 size={13} className="animate-spin" />
+              : <Trash2 size={13} />}
+            {cleanupResult ?? "Limpar Órfãos"}
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+            onClick={() => setShowNewFolder(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:text-white/90 hover:bg-white/[0.09] hover:border-white/20 text-xs font-medium transition-all duration-200 flex-shrink-0"
+          >
+            <FolderPlus size={14} />
+            Nova Pasta
+          </motion.button>
+        </div>
       </div>
 
       {/* ── Vista dentro de uma pasta ──────────────────────── */}
