@@ -1,12 +1,14 @@
 /**
- * videoSanitizer.ts — Metadata sanitization pipeline for Instagram Reels
+ * videoSanitizer.ts — Aggressive multi-layer metadata sanitization for Instagram Reels
  *
  * Both exported functions produce a file that is:
  *   • Codec-identical to the source: stream copy preserves the original H.264/AAC
  *     profile so Meta API integrity checks pass without triggering bot detection
- *   • Metadata-free: no origin URL, encoder info, GPS, timestamps, or EXIF
- *   • Container-unique: UUID injected in the comment atom + -fflags +bitexact
- *     suppresses FFmpeg muxer fingerprint atoms
+ *   • Deep-wiped: metadata cleared at every container layer —
+ *     global (-map_metadata -1), video stream (-map_metadata:s:v -1),
+ *     audio stream (-map_metadata:s:a -1), chapters (-map_chapters -1)
+ *   • Freshly born: creation_time=now makes the file appear generated at upload time
+ *   • Container-unique: UUID in comment atom + -fflags +bitexact
  *
  * Re-encoding (libx264 / noise filters) is intentionally avoided — it alters
  * the codec profile in ways the Meta API flags as synthetic/spam content.
@@ -70,18 +72,24 @@ export async function sanitizeAndHashBust(
   const buffer = await response.arrayBuffer();
   fs.writeFileSync(inputPath, Buffer.from(buffer));
 
-  // ── 2. Stream copy + strip metadata + UUID salt ───────────────────────────
+  // ── 2. Deep wipe + stream copy + UUID salt + fresh creation_time ─────────
   const hashSalt = crypto.randomUUID();
 
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .outputOptions([
-        "-c:v",          "copy",
-        "-c:a",          "copy",
-        "-map_metadata", "-1",
-        "-metadata",     `comment=${hashSalt}`,
-        "-fflags",       "+bitexact",
-        "-movflags",     "+faststart",
+        "-c:v",              "copy",
+        "-c:a",              "copy",
+        // Deep wipe — clears metadata at every container layer
+        "-map_metadata",     "-1",
+        "-map_metadata:s:v", "-1",
+        "-map_metadata:s:a", "-1",
+        "-map_chapters",     "-1",
+        // Inject fresh identity so the file appears newly generated
+        "-metadata",         `comment=${hashSalt}`,
+        "-metadata",         "creation_time=now",
+        "-fflags",           "+bitexact",
+        "-movflags",         "+faststart",
       ])
       .output(outputPath)
       .on("end", () => resolve())
@@ -136,13 +144,16 @@ export async function sanitizeDoublePass(
   const buffer = await response.arrayBuffer();
   fs.writeFileSync(inputPath, Buffer.from(buffer));
 
-  // ── 2. Pass 1 — strip ALL metadata (stream copy, fast) ───────────────────
+  // ── 2. Pass 1 — deep wipe: strip ALL metadata at every container layer ───
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .outputOptions([
-        "-map_metadata", "-1",
-        "-c:v", "copy",
-        "-c:a", "copy",
+        "-c:v",              "copy",
+        "-c:a",              "copy",
+        "-map_metadata",     "-1",
+        "-map_metadata:s:v", "-1",
+        "-map_metadata:s:a", "-1",
+        "-map_chapters",     "-1",
       ])
       .output(pass1Path)
       .on("end", () => resolve())
@@ -150,19 +161,22 @@ export async function sanitizeDoublePass(
       .run();
   });
 
-  // ── 3. Pass 2 — UUID injection + bitexact (stream copy) ─────────────────
-  // UUID in comment field ensures each output is container-unique.
+  // ── 3. Pass 2 — UUID + fresh creation_time + bitexact (stream copy) ─────
   const hashSalt = crypto.randomUUID();
 
   await new Promise<void>((resolve, reject) => {
     ffmpeg(pass1Path)
       .outputOptions([
-        "-c:v",          "copy",
-        "-c:a",          "copy",
-        "-map_metadata", "-1",
-        "-metadata",     `comment=${hashSalt}`,
-        "-fflags",       "+bitexact",
-        "-movflags",     "+faststart",
+        "-c:v",              "copy",
+        "-c:a",              "copy",
+        "-map_metadata",     "-1",
+        "-map_metadata:s:v", "-1",
+        "-map_metadata:s:a", "-1",
+        "-map_chapters",     "-1",
+        "-metadata",         `comment=${hashSalt}`,
+        "-metadata",         "creation_time=now",
+        "-fflags",           "+bitexact",
+        "-movflags",         "+faststart",
       ])
       .output(outputPath)
       .on("end", () => resolve())
