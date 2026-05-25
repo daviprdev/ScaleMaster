@@ -14,17 +14,10 @@ export interface ProcessResult {
 }
 
 /**
- * Downloads a video and processes it through a high-quality, fingerprint-busting pipeline:
- *
- * 1. Quality: libx264 CRF 18 (visually lossless), fast preset, high profile.
- *    Audio is stream-copied (-c:a copy) — zero quality loss, no re-encode overhead.
- *
- * 2. Unique fingerprint: strips ALL metadata (-map_metadata -1) and applies
- *    `noise=alls=1:allf=u+t` — 1 luma-unit of temporally-varying random noise.
- *    This is below the human detection threshold (~0.4% per pixel) but produces
- *    a completely different MD5, SHA-256, and perceptual hash on every run.
- *    Unlike a uniform brightness/saturation shift, temporal noise varies per
- *    frame and per pixel, defeating both exact-match and pHash deduplication.
+ * Downloads a video and strips all metadata via stream copy.
+ * Uses -c:v copy / -c:a copy to preserve the original codec profile exactly —
+ * required for Meta API integrity checks. Metadata cleared with -map_metadata -1;
+ * UUID injected in comment field to ensure a unique container hash per file.
  */
 export async function downloadAndStripMetadata(
   videoUrl: string
@@ -47,18 +40,12 @@ export async function downloadAndStripMetadata(
 
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
-      .videoCodec("libx264")
       .outputOptions([
-        "-crf",          "18",
-        "-preset",       "ultrafast",
-        "-profile:v",    "high",
-        // 1 luma-unit temporal noise: imperceptible to the eye, unique per frame.
-        // Defeats both MD5 and perceptual-hash duplicate detection.
-        "-vf",           "noise=alls=1:allf=u+t",
-        // Stream-copy audio — preserves original quality with zero re-encode cost.
+        "-c:v",          "copy",
         "-c:a",          "copy",
         "-map_metadata", "-1",
         "-metadata",     `comment=${hashSalt}`,
+        "-fflags",       "+bitexact",
         "-movflags",     "+faststart",
       ])
       .output(outputPath)

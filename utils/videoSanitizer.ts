@@ -1,19 +1,15 @@
 /**
- * videoSanitizer.ts — Anti-duplicate fingerprint pipeline for Instagram Reels
+ * videoSanitizer.ts — Metadata sanitization pipeline for Instagram Reels
  *
  * Both exported functions produce a file that is:
- *   • Visually identical to the source (noise below human detection threshold)
- *   • Mathematically unique: different MD5, SHA-256, and perceptual hash on every run
+ *   • Codec-identical to the source: stream copy preserves the original H.264/AAC
+ *     profile so Meta API integrity checks pass without triggering bot detection
  *   • Metadata-free: no origin URL, encoder info, GPS, timestamps, or EXIF
+ *   • Container-unique: UUID injected in the comment atom + -fflags +bitexact
+ *     suppresses FFmpeg muxer fingerprint atoms
  *
- * Hash-busting technique: `noise=alls=1:allf=u+t`
- *   Adds 1 luma unit (0.4 % of 255) of temporally-varying uniform random noise.
- *   Because the noise is different for every pixel on every frame, it defeats
- *   both exact-match (MD5/SHA-256) and perceptual (pHash/dHash) deduplication —
- *   far more effective than a uniform brightness or saturation shift, which
- *   perceptual hash algorithms can easily normalise out.
- *
- * Audio: always stream-copied (-c:a copy). No re-encode, no quality loss.
+ * Re-encoding (libx264 / noise filters) is intentionally avoided — it alters
+ * the codec profile in ways the Meta API flags as synthetic/spam content.
  */
 
 import ffmpeg from "fluent-ffmpeg";
@@ -49,12 +45,10 @@ const DOWNLOAD_HEADERS = {
  * Single-pass sanitization used when saving Inspirations to the Library.
  *
  * Pipeline:
- *   download → libx264 CRF 18 + noise filter + audio copy + strip metadata + UUID salt
+ *   download → stream copy + strip metadata + UUID salt + bitexact
  *
- * CRF 18 is visually lossless for virtually all source material. The 1-LSB
- * noise filter changes every pixel independently per frame, producing a file
- * that is structurally and mathematically unique while remaining
- * perceptually identical to the original.
+ * Stream copy preserves the original codec profile (H.264 + AAC) exactly as
+ * downloaded from Instagram — required for Meta API integrity checks to pass.
  */
 export async function sanitizeAndHashBust(
   videoUrl: string,
@@ -76,23 +70,17 @@ export async function sanitizeAndHashBust(
   const buffer = await response.arrayBuffer();
   fs.writeFileSync(inputPath, Buffer.from(buffer));
 
-  // ── 2. Re-encode with noise + strip metadata ──────────────────────────────
+  // ── 2. Stream copy + strip metadata + UUID salt ───────────────────────────
   const hashSalt = crypto.randomUUID();
 
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
-      .videoCodec("libx264")
       .outputOptions([
-        "-crf",          "18",
-        "-preset",       "ultrafast",
-        "-profile:v",    "high",
-        // Temporal noise: 1 luma unit per pixel per frame — imperceptible but
-        // produces a unique perceptual hash on every processing event.
-        "-vf",           "noise=alls=1:allf=u+t",
-        // Stream-copy audio to preserve original quality without re-encode.
+        "-c:v",          "copy",
         "-c:a",          "copy",
         "-map_metadata", "-1",
         "-metadata",     `comment=${hashSalt}`,
+        "-fflags",       "+bitexact",
         "-movflags",     "+faststart",
       ])
       .output(outputPath)
@@ -119,18 +107,13 @@ export async function sanitizeAndHashBust(
 /**
  * Two-pass sanitization used for local device downloads.
  *
- * Optimized for Vercel Serverless — both passes use stream copy to avoid
- * CPU-heavy re-encode that causes timeout on Serverless Functions.
- *
- * Pass 1 — Metadata strip (stream copy, fast)
+ * Pass 1 — Metadata strip (stream copy)
  *   Removes every metadata atom from the source container: EXIF, GPS, origin
  *   URL, encoder fingerprint, creation timestamps.
  *
- * Pass 2 — UUID injection (stream copy, fast)
+ * Pass 2 — UUID injection + bitexact (stream copy)
  *   Injects a unique UUID comment + -fflags +bitexact to suppress FFmpeg
- *   muxer fingerprint atoms. No re-encode — near-instant for any file size.
- *   Re-encode with noise is reserved for background library-save operations
- *   (sanitizeAndHashBust) where there is no browser-facing timeout constraint.
+ *   muxer fingerprint atoms. Near-instant for any file size.
  */
 export async function sanitizeDoublePass(
   videoUrl: string,
@@ -167,8 +150,7 @@ export async function sanitizeDoublePass(
       .run();
   });
 
-  // ── 3. Pass 2 — UUID injection + bitexact (stream copy, no re-encode) ────
-  // Stream copy avoids CPU-heavy libx264 re-encode that times out on Vercel.
+  // ── 3. Pass 2 — UUID injection + bitexact (stream copy) ─────────────────
   // UUID in comment field ensures each output is container-unique.
   const hashSalt = crypto.randomUUID();
 
