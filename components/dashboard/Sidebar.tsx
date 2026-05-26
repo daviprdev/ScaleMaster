@@ -25,6 +25,7 @@ import {
   Activity,
   Lock,
   Sparkles,
+  TrendingUp,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -65,6 +66,12 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Inspirações", href: "/dashboard/inspirations", icon: Sparkles },
       { label: "Biblioteca", href: "/dashboard/library", icon: FolderOpen },
+    ],
+  },
+  {
+    label: "RELATÓRIOS",
+    items: [
+      { label: "Analytics", href: "/dashboard/analytics", icon: TrendingUp },
     ],
   },
   {
