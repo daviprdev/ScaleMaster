@@ -1,25 +1,77 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  BarChart2,
-  Heart,
-  MessageCircle,
-  Eye,
-  Play,
-  Share2,
-  Bookmark,
-  RefreshCw,
-  CheckCircle2,
-  Instagram,
-  TrendingUp,
-  AlertCircle,
+  AreaChart, Area, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import {
+  BarChart2, Heart, MessageCircle, Eye, Play, Share2,
+  Bookmark, RefreshCw, CheckCircle2, Instagram, TrendingUp,
+  AlertCircle, Users, Zap, Trophy, Loader2, ChevronDown,
+  ArrowUpRight, ArrowDownRight, Minus, BarChart as BarChartIcon,
+  Clock, Film,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
+// ── Chart theme (recharts doesn't read CSS vars) ──────────────────────────────
+const MATRIX   = "#00FF41";
+const ELECTRIC = "#00E5FF";
+const GRID     = "rgba(255,255,255,0.04)";
+const AXIS_CLR = "rgba(255,255,255,0.22)";
+
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+interface AccountItem {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  followers_count: number | null;
+  folder_id: string | null;
+}
+
+interface FolderItem { id: string; name: string; }
+
+interface ChartPoint {
+  date: string;
+  label: string;
+  followers: number;
+  posts: number;
+}
+
+interface Kpi {
+  followers_now: number;
+  followers_30d_ago: number;
+  followers_growth: number;
+  followers_growth_pct: number;
+  posts_30d: number;
+  reach_30d: number;
+  days_with_data: number;
+}
+
+interface TopVideo {
+  id: string;
+  caption: string | null;
+  video_url: string | null;
+  plays: number;
+  reach: number | null;
+  likes: number | null;
+  published_at: string | null;
+  account_username?: string;
+}
+
+interface GrowthData {
+  accounts: AccountItem[];
+  folders: FolderItem[];
+  chart_data: ChartPoint[];
+  kpi: Kpi;
+  top_videos: TopVideo[];
+  days: number;
+}
 
 interface AnalyticsPost {
   id: string;
@@ -38,14 +90,9 @@ interface AnalyticsPost {
   videos_library: { filename: string; public_url: string } | null;
 }
 
-interface Summary {
-  total_published: number;
-  total_likes: number;
-  total_comments: number;
-  total_reach: number;
-  total_plays: number;
-  total_shares: number;
-  total_saved: number;
+interface PostSummary {
+  total_published: number; total_likes: number; total_comments: number;
+  total_reach: number; total_plays: number; total_shares: number; total_saved: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -54,7 +101,7 @@ function fmt(n: number | null): string {
   if (n === null) return "—";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toString();
+  return n.toLocaleString("pt-BR");
 }
 
 function timeAgo(dateStr: string | null): string {
@@ -70,67 +117,150 @@ function timeAgo(dateStr: string | null): string {
   return new Date(dateStr).toLocaleDateString("pt-BR");
 }
 
-const ACCOUNT_COLORS = [
+const ACC_COLORS = [
+  "from-[#00FF41] to-emerald-600",
+  "from-[#00E5FF] to-blue-600",
   "from-violet-500 to-purple-600",
   "from-pink-500 to-rose-600",
-  "from-cyan-500 to-blue-600",
-  "from-emerald-500 to-teal-600",
   "from-amber-500 to-orange-600",
 ];
-
-function accountColor(username: string): string {
-  let hash = 0;
-  for (let i = 0; i < username.length; i++) hash = username.charCodeAt(i) + ((hash << 5) - hash);
-  return ACCOUNT_COLORS[Math.abs(hash) % ACCOUNT_COLORS.length];
+function accountGradient(u: string) {
+  let h = 0;
+  for (let i = 0; i < u.length; i++) h = u.charCodeAt(i) + ((h << 5) - h);
+  return ACC_COLORS[Math.abs(h) % ACC_COLORS.length];
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Custom Recharts Tooltip ───────────────────────────────────────────────────
 
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color,
-  loading,
+function CustomTooltip({
+  active, payload, label, valueKey, valueLabel, valueFmt,
+}: {
+  active?: boolean;
+  payload?: { value: number; color: string }[];
+  label?: string;
+  valueKey?: string;
+  valueLabel?: string;
+  valueFmt?: (n: number) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  const v = payload[0]?.value ?? 0;
+  return (
+    <div className="px-3 py-2 rounded-xl bg-black/90 border border-white/10 text-xs backdrop-blur-xl shadow-xl">
+      <p className="text-white/40 mb-1">{label}</p>
+      <p style={{ color: payload[0]?.color ?? MATRIX }} className="font-bold">
+        {valueLabel ?? valueKey ?? ""}: {valueFmt ? valueFmt(v) : v.toLocaleString("pt-BR")}
+      </p>
+    </div>
+  );
+}
+
+// ── KPI Card ──────────────────────────────────────────────────────────────────
+
+function KpiCard({
+  label, value, sub, delta, deltaLabel, icon: Icon, accent, loading,
 }: {
   label: string;
   value: string;
+  sub?: string;
+  delta?: number;
+  deltaLabel?: string;
   icon: React.ElementType;
-  color: string;
+  accent: string;
   loading: boolean;
 }) {
+  const isPositive = (delta ?? 0) > 0;
+  const isNeutral  = (delta ?? 0) === 0;
+
   return (
-    <div className="glass-card rounded-2xl p-5 flex items-start gap-4">
-      <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", color)}>
-        <Icon size={18} className="text-white" />
-      </div>
-      <div>
-        <p className="text-xs text-white/40 mb-0.5">{label}</p>
+    <div className={cn("glass-card p-5 relative overflow-hidden border", accent)}>
+      <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent" />
+      <div className="relative space-y-3">
+        <div className="flex items-center justify-between">
+          <Icon size={14} className="text-white/30" />
+          {delta !== undefined && !loading && (
+            <div className={cn(
+              "flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
+              isPositive ? "text-emerald-400 bg-emerald-500/10" :
+              isNeutral  ? "text-white/30 bg-white/5" :
+                           "text-red-400 bg-red-500/10"
+            )}>
+              {isPositive ? <ArrowUpRight size={10} /> : isNeutral ? <Minus size={10} /> : <ArrowDownRight size={10} />}
+              {Math.abs(delta)}%
+            </div>
+          )}
+        </div>
         {loading ? (
-          <div className="h-6 w-16 rounded bg-white/10 animate-pulse" />
+          <div className="space-y-1.5">
+            <div className="h-7 w-20 rounded bg-white/8 animate-pulse" />
+            <div className="h-3 w-14 rounded bg-white/5 animate-pulse" />
+          </div>
         ) : (
-          <p className="text-xl font-bold text-white">{value}</p>
+          <div>
+            <p className="text-2xl font-bold text-white tracking-tight">{value}</p>
+            <p className="text-[10px] text-white/35 mt-0.5">{sub ?? label}</p>
+            {deltaLabel && delta !== undefined && (
+              <p className="text-[10px] text-white/20 mt-0.5">{deltaLabel}</p>
+            )}
+          </div>
         )}
       </div>
     </div>
   );
 }
 
+// ── Account Avatar ────────────────────────────────────────────────────────────
+
+function AccountAvatar({ username, size = "sm" }: { username: string; size?: "sm" | "md" }) {
+  return (
+    <div className={cn(
+      "rounded-full bg-gradient-to-br flex items-center justify-center font-bold text-white flex-shrink-0",
+      accountGradient(username),
+      size === "sm" ? "w-7 h-7 text-[10px]" : "w-9 h-9 text-xs"
+    )}>
+      {username.charAt(0).toUpperCase()}
+    </div>
+  );
+}
+
+// ── Empty State ───────────────────────────────────────────────────────────────
+
+function EmptyGrowthState({ onSync, syncing }: { onSync: () => void; syncing: boolean }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="glass-card p-12 flex flex-col items-center text-center"
+    >
+      <div className="w-16 h-16 rounded-2xl bg-[var(--matrix)]/8 border border-[var(--matrix)]/15 flex items-center justify-center mb-5">
+        <BarChartIcon size={26} className="text-[var(--matrix)]/50" />
+      </div>
+      <p className="text-white/70 font-semibold text-base mb-2">Coletando dados...</p>
+      <p className="text-sm text-white/30 max-w-xs leading-relaxed mb-6">
+        Os gráficos de crescimento estarão disponíveis após a primeira sincronização.
+        Geralmente ocorre automaticamente às 2h UTC — ou clique abaixo para iniciar agora.
+      </p>
+      <button
+        onClick={onSync}
+        disabled={syncing}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[var(--matrix)]/30 bg-[var(--matrix)]/8 text-[var(--matrix)] text-sm font-semibold hover:bg-[var(--matrix)]/15 transition-all disabled:opacity-50"
+      >
+        {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+        {syncing ? "Sincronizando..." : "Iniciar coleta de dados"}
+      </button>
+    </motion.div>
+  );
+}
+
+// ── Post Row (existing analytics) ─────────────────────────────────────────────
+
 function PostRow({
-  post,
-  onRefresh,
-  refreshing,
+  post, onRefresh, refreshing,
 }: {
-  post: AnalyticsPost;
-  onRefresh: (id: string) => void;
-  refreshing: boolean;
+  post: AnalyticsPost; onRefresh: (id: string) => void; refreshing: boolean;
 }) {
   const account = post.instagram_accounts;
-  const video = post.videos_library;
-  const hasInsights =
-    post.insights_likes !== null ||
-    post.insights_comments !== null ||
-    post.insights_reach !== null;
+  const video   = post.videos_library;
+  const hasInsights = post.insights_likes !== null || post.insights_reach !== null;
 
   return (
     <motion.div
@@ -138,28 +268,19 @@ function PostRow({
       animate={{ opacity: 1, y: 0 }}
       className="glass-card rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-4"
     >
-      {/* Thumbnail */}
       <div className="flex-shrink-0">
         {video?.public_url ? (
-          <video
-            src={video.public_url}
-            className="w-14 h-20 sm:w-10 sm:h-14 rounded-xl object-cover bg-black/40"
-            muted
-          />
+          <video src={video.public_url} className="w-14 h-20 sm:w-10 sm:h-14 rounded-xl object-cover bg-black/40" muted />
         ) : (
-          <div
-            className={cn(
-              "w-14 h-20 sm:w-10 sm:h-14 rounded-xl bg-gradient-to-br",
-              account ? accountColor(account.username) : "from-gray-600 to-gray-700",
-              "flex items-center justify-center"
-            )}
-          >
+          <div className={cn(
+            "w-14 h-20 sm:w-10 sm:h-14 rounded-xl bg-gradient-to-br flex items-center justify-center",
+            account ? accountGradient(account.username) : "from-gray-600 to-gray-700"
+          )}>
             <Instagram size={16} className="text-white/60" />
           </div>
         )}
       </div>
 
-      {/* Account + date */}
       <div className="flex-shrink-0 min-w-[130px]">
         {account ? (
           <div className="flex items-center gap-2 mb-1">
@@ -170,14 +291,7 @@ function PostRow({
                 className="w-6 h-6 rounded-full object-cover"
               />
             ) : (
-              <div
-                className={cn(
-                  "w-6 h-6 rounded-full bg-gradient-to-br text-[9px] font-bold text-white flex items-center justify-center",
-                  accountColor(account.username)
-                )}
-              >
-                {account.username[0].toUpperCase()}
-              </div>
+              <AccountAvatar username={account.username} size="sm" />
             )}
             <span className="text-sm font-medium text-white/80">@{account.username}</span>
           </div>
@@ -185,21 +299,14 @@ function PostRow({
           <p className="text-sm text-white/40 mb-1">Conta removida</p>
         )}
         <p className="text-xs text-white/35">{timeAgo(post.published_at)}</p>
-        {post.media_id && (
-          <p className="text-[10px] text-white/20 font-mono mt-0.5 truncate max-w-[130px]">
-            {post.media_id}
-          </p>
-        )}
       </div>
 
-      {/* Caption */}
       <div className="flex-1 min-w-0">
         <p className="text-sm text-white/50 line-clamp-2">
           {post.caption || <span className="italic">Sem legenda</span>}
         </p>
       </div>
 
-      {/* Metrics grid */}
       <div className="flex-shrink-0 grid grid-cols-3 sm:grid-cols-6 gap-2">
         {[
           { icon: Heart, label: "Curtidas", value: post.insights_likes, color: "text-pink-400" },
@@ -218,7 +325,6 @@ function PostRow({
         ))}
       </div>
 
-      {/* Refresh button */}
       <div className="flex-shrink-0 flex flex-col items-end gap-1">
         <button
           onClick={() => onRefresh(post.id)}
@@ -244,38 +350,83 @@ function PostRow({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
-  const supabase = useMemo(() => createClient(), []);
-  void supabase;
+  const _supabase = useMemo(() => createClient(), []);
+  void _supabase;
 
-  const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState<Summary | null>(null);
+  // Tab
+  const [tab, setTab] = useState<"growth" | "posts">("growth");
+
+  // Growth tab state
+  const [growthData, setGrowthData] = useState<GrowthData | null>(null);
+  const [growthLoading, setGrowthLoading] = useState(true);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncToast, setSyncToast] = useState<string | null>(null);
+  const [selectorOpen, setSelectorOpen] = useState(false);
+
+  // Posts tab state
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [postSummary, setPostSummary] = useState<PostSummary | null>(null);
   const [posts, setPosts] = useState<AnalyticsPost[]>([]);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [postToast, setPostToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [postsLoaded, setPostsLoaded] = useState(false);
 
-  const _fetchRef = useRef(false);
+  // ── Load growth data ────────────────────────────────────────────────────────
+  const loadGrowth = useCallback(async () => {
+    setGrowthLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedAccountId) params.set("account_id", selectedAccountId);
+      if (selectedFolderId)  params.set("folder_id", selectedFolderId);
+      const res = await fetch(`/api/analytics/growth?${params.toString()}`, { cache: "no-store" });
+      if (res.status === 401) { window.location.href = "/auth/login"; return; }
+      if (res.ok) setGrowthData(await res.json() as GrowthData);
+    } catch { /* silent */ }
+    finally { setGrowthLoading(false); }
+  }, [selectedAccountId, selectedFolderId]);
 
-  const loadData = useCallback(async () => {
-    if (_fetchRef.current) return;
-    _fetchRef.current = true;
-    setLoading(true);
+  useEffect(() => { loadGrowth(); }, [loadGrowth]);
+
+  // ── Load posts (lazy — only when tab is opened) ───────────────────────────
+  const loadPosts = useCallback(async () => {
+    if (postsLoaded) return;
+    setPostsLoading(true);
     try {
       const res = await fetch("/api/analytics/summary", { cache: "no-store" });
-      if (res.status === 401) { window.location.href = "/auth/login"; return; }
-      if (!res.ok) throw new Error("Erro ao carregar analytics.");
-      const json = (await res.json()) as { summary: Summary; posts: AnalyticsPost[] };
-      setSummary(json.summary);
-      setPosts(json.posts);
+      if (res.ok) {
+        const json = await res.json() as { summary: PostSummary; posts: AnalyticsPost[] };
+        setPostSummary(json.summary);
+        setPosts(json.posts);
+        setPostsLoaded(true);
+      }
+    } catch { /* silent */ }
+    finally { setPostsLoading(false); }
+  }, [postsLoaded]);
+
+  useEffect(() => {
+    if (tab === "posts") loadPosts();
+  }, [tab, loadPosts]);
+
+  // ── Sync ───────────────────────────────────────────────────────────────────
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    setSyncToast(null);
+    try {
+      const res = await fetch("/api/analytics/sync", { method: "POST" });
+      const data = await res.json() as { synced?: number; errors?: number };
+      setSyncToast(`${data.synced ?? 0} conta(s) sincronizada(s).`);
+      await loadGrowth();
     } catch {
-      setToast({ msg: "Erro ao carregar dados de analytics.", ok: false });
+      setSyncToast("Erro ao sincronizar.");
     } finally {
-      setLoading(false);
-      _fetchRef.current = false;
+      setSyncing(false);
+      setTimeout(() => setSyncToast(null), 5000);
     }
-  }, []);
+  }, [loadGrowth]);
 
-  useEffect(() => { loadData(); }, [loadData]);
-
+  // ── Post refresh ───────────────────────────────────────────────────────────
   const handleRefresh = useCallback(async (postId: string) => {
     if (refreshingId) return;
     setRefreshingId(postId);
@@ -285,162 +436,577 @@ export default function AnalyticsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ post_id: postId }),
       });
-      const json = (await res.json()) as { ok?: boolean; metrics?: Record<string, number | null>; error?: string };
+      const json = await res.json() as { ok?: boolean; metrics?: Record<string, number | null>; error?: string };
       if (!res.ok || !json.ok) throw new Error(json.error ?? "Erro ao buscar métricas.");
-
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? {
-                ...p,
-                insights_likes: json.metrics?.likes ?? p.insights_likes,
-                insights_comments: json.metrics?.comments ?? p.insights_comments,
-                insights_reach: json.metrics?.reach ?? p.insights_reach,
-                insights_plays: json.metrics?.plays ?? p.insights_plays,
-                insights_shares: json.metrics?.shares ?? p.insights_shares,
-                insights_saved: json.metrics?.saved ?? p.insights_saved,
-                insights_fetched_at: new Date().toISOString(),
-              }
-            : p
-        )
-      );
-
-      // Update summary totals
-      setSummary((prev) => {
-        if (!prev || !json.metrics) return prev;
-        const old = posts.find((p) => p.id === postId);
-        const diff = (field: keyof typeof json.metrics, oldVal: number | null) =>
-          (json.metrics![field] ?? 0) - (oldVal ?? 0);
-        return {
-          ...prev,
-          total_likes: prev.total_likes + diff("likes", old?.insights_likes ?? null),
-          total_comments: prev.total_comments + diff("comments", old?.insights_comments ?? null),
-          total_reach: prev.total_reach + diff("reach", old?.insights_reach ?? null),
-          total_plays: prev.total_plays + diff("plays", old?.insights_plays ?? null),
-          total_shares: prev.total_shares + diff("shares", old?.insights_shares ?? null),
-          total_saved: prev.total_saved + diff("saved", old?.insights_saved ?? null),
-        };
-      });
-
-      setToast({ msg: "Métricas atualizadas!", ok: true });
+      setPosts((prev) => prev.map((p) =>
+        p.id !== postId ? p : {
+          ...p,
+          insights_likes: json.metrics?.likes ?? p.insights_likes,
+          insights_comments: json.metrics?.comments ?? p.insights_comments,
+          insights_reach: json.metrics?.reach ?? p.insights_reach,
+          insights_plays: json.metrics?.plays ?? p.insights_plays,
+          insights_shares: json.metrics?.shares ?? p.insights_shares,
+          insights_saved: json.metrics?.saved ?? p.insights_saved,
+          insights_fetched_at: new Date().toISOString(),
+        }
+      ));
+      setPostToast({ msg: "Métricas atualizadas!", ok: true });
     } catch (err) {
-      setToast({ msg: err instanceof Error ? err.message : "Erro ao atualizar.", ok: false });
+      setPostToast({ msg: err instanceof Error ? err.message : "Erro.", ok: false });
     } finally {
       setRefreshingId(null);
-      setTimeout(() => setToast(null), 4000);
+      setTimeout(() => setPostToast(null), 4000);
     }
-  }, [refreshingId, posts]);
+  }, [refreshingId]);
 
-  const handleRefreshAll = useCallback(async () => {
-    const publishedWithMedia = posts.filter((p) => p.media_id);
-    for (const p of publishedWithMedia) {
-      await handleRefresh(p.id);
+  // ── Derived data ───────────────────────────────────────────────────────────
+  const kpi = growthData?.kpi;
+  const hasHistory = (kpi?.days_with_data ?? 0) > 0;
+
+  // Label for the active selector
+  const selectorLabel = useMemo(() => {
+    if (!growthData) return "Carregando...";
+    if (selectedAccountId) {
+      const acc = growthData.accounts.find((a) => a.id === selectedAccountId);
+      return acc ? `@${acc.username}` : "Conta";
     }
-  }, [posts, handleRefresh]);
+    if (selectedFolderId) {
+      const f = growthData.folders.find((f) => f.id === selectedFolderId);
+      return f ? `📁 ${f.name}` : "Pasta";
+    }
+    return `Todas as contas (${growthData.accounts.length})`;
+  }, [growthData, selectedAccountId, selectedFolderId]);
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6">
-      {/* Header row */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 max-w-full">
+
+      {/* ── Header ────────────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-lg font-bold text-white">Desempenho dos Posts</h2>
-          <p className="text-sm text-white/35">
-            {loading ? "Carregando..." : `${summary?.total_published ?? 0} posts publicados`}
-          </p>
+          <h1 className="page-title">Analytics</h1>
+          <p className="page-subtitle">Desempenho e crescimento das contas automatizadas</p>
         </div>
-        {!loading && posts.length > 0 && (
+        <div className="flex items-center gap-2">
+          {tab === "growth" && (
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--matrix)]/20 bg-[var(--matrix)]/[0.05] text-xs text-[var(--matrix)]/70 hover:text-[var(--matrix)] hover:border-[var(--matrix)]/40 transition-all disabled:opacity-50"
+            >
+              {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              Sincronizar dados
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Tabs ──────────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/[0.06] w-fit">
+        {([
+          { key: "growth", label: "Relatório do Chefe", icon: TrendingUp },
+          { key: "posts",  label: "Posts Publicados",  icon: BarChart2    },
+        ] as const).map(({ key, label, icon: Icon }) => (
           <button
-            onClick={handleRefreshAll}
-            disabled={!!refreshingId}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium
-              bg-white/[0.06] border border-white/10 text-white/60
-              hover:text-white hover:bg-white/[0.10] transition-all disabled:opacity-40"
-          >
-            <RefreshCw size={13} className={refreshingId ? "animate-spin" : ""} />
-            Atualizar todos
-          </button>
-        )}
-      </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-        <StatCard label="Publicados" value={fmt(summary?.total_published ?? null)} icon={CheckCircle2} color="bg-violet-600/30" loading={loading} />
-        <StatCard label="Curtidas" value={fmt(summary?.total_likes ?? null)} icon={Heart} color="bg-pink-600/30" loading={loading} />
-        <StatCard label="Comentários" value={fmt(summary?.total_comments ?? null)} icon={MessageCircle} color="bg-cyan-600/30" loading={loading} />
-        <StatCard label="Alcance" value={fmt(summary?.total_reach ?? null)} icon={Eye} color="bg-violet-500/30" loading={loading} />
-        <StatCard label="Plays" value={fmt(summary?.total_plays ?? null)} icon={Play} color="bg-emerald-600/30" loading={loading} />
-        <StatCard label="Shares" value={fmt(summary?.total_shares ?? null)} icon={Share2} color="bg-amber-600/30" loading={loading} />
-        <StatCard label="Salvos" value={fmt(summary?.total_saved ?? null)} icon={Bookmark} color="bg-blue-600/30" loading={loading} />
-      </div>
-
-      {/* Note about advanced metrics */}
-      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/[0.08] border border-amber-500/20 text-sm text-amber-300/70">
-        <AlertCircle size={16} className="flex-shrink-0 mt-0.5 text-amber-400/60" />
-        <p>
-          <strong>Alcance, Plays, Shares e Salvos</strong> requerem a permissão{" "}
-          <code className="text-amber-300 bg-amber-500/10 px-1 rounded">instagram_manage_insights</code> no seu app Meta.
-          Curtidas e Comentários funcionam com as permissões atuais.
-        </p>
-      </div>
-
-      {/* Posts list */}
-      {loading ? (
-        <div className="space-y-3">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-24 rounded-2xl bg-white/[0.04] animate-pulse" />
-          ))}
-        </div>
-      ) : posts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-white/[0.04] flex items-center justify-center mb-4">
-            <BarChart2 size={28} className="text-white/20" />
-          </div>
-          <p className="text-white/50 font-medium mb-1">Nenhum post publicado ainda</p>
-          <p className="text-sm text-white/25">
-            Publique posts via Postagens → as métricas aparecerão aqui
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {posts.map((p) => (
-            <PostRow
-              key={p.id}
-              post={p}
-              onRefresh={handleRefresh}
-              refreshing={refreshingId === p.id}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Empty advanced metrics hint */}
-      {!loading && posts.length > 0 && posts.every((p) => p.insights_likes === null) && (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07] text-sm text-white/40">
-          <TrendingUp size={15} className="flex-shrink-0" />
-          <p>Clique em <strong>Atualizar</strong> em cada post para buscar as métricas da Meta API.</p>
-        </div>
-      )}
-
-      {/* Toast */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            key="toast"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
+            key={key}
+            onClick={() => setTab(key)}
             className={cn(
-              "fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-sm font-medium",
-              toast.ok
-                ? "bg-emerald-500/20 border border-emerald-500/30 text-emerald-300"
-                : "bg-red-500/20 border border-red-500/30 text-red-300"
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+              tab === key
+                ? "bg-[var(--matrix)]/15 text-[var(--matrix)] border border-[var(--matrix)]/20"
+                : "text-white/40 hover:text-white/70"
             )}
           >
-            {toast.ok ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-            {toast.msg}
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <Icon size={14} />
+            <span className="hidden sm:inline">{label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* TAB 1 — Relatório do Chefe                                         */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {tab === "growth" && (
+        <div className="space-y-6">
+
+          {/* Account / Folder Selector */}
+          <div className="relative w-fit">
+            <button
+              onClick={() => setSelectorOpen((o) => !o)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/10 bg-white/[0.03] text-sm text-white/70 hover:text-white hover:border-white/20 transition-all"
+            >
+              <Users size={14} className="text-white/40" />
+              <span>{selectorLabel}</span>
+              <ChevronDown size={14} className={cn("text-white/30 transition-transform", selectorOpen && "rotate-180")} />
+            </button>
+
+            <AnimatePresence>
+              {selectorOpen && growthData && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  className="absolute top-full mt-2 left-0 z-40 min-w-[220px] glass rounded-xl border border-white/10 shadow-2xl overflow-hidden"
+                >
+                  <div className="py-1">
+                    <button
+                      onClick={() => { setSelectedAccountId(null); setSelectedFolderId(null); setSelectorOpen(false); }}
+                      className={cn(
+                        "w-full text-left px-4 py-2.5 text-sm transition-colors",
+                        !selectedAccountId && !selectedFolderId
+                          ? "text-[var(--matrix)] bg-[var(--matrix)]/8"
+                          : "text-white/60 hover:text-white hover:bg-white/[0.05]"
+                      )}
+                    >
+                      Todas as contas ({growthData.accounts.length})
+                    </button>
+
+                    {growthData.folders.length > 0 && (
+                      <>
+                        <p className="px-4 py-1.5 text-[10px] text-white/25 uppercase tracking-wider">Pastas</p>
+                        {growthData.folders.map((f) => (
+                          <button
+                            key={f.id}
+                            onClick={() => { setSelectedFolderId(f.id); setSelectedAccountId(null); setSelectorOpen(false); }}
+                            className={cn(
+                              "w-full text-left px-4 py-2.5 text-sm transition-colors",
+                              selectedFolderId === f.id
+                                ? "text-[var(--matrix)] bg-[var(--matrix)]/8"
+                                : "text-white/60 hover:text-white hover:bg-white/[0.05]"
+                            )}
+                          >
+                            📁 {f.name}
+                          </button>
+                        ))}
+                      </>
+                    )}
+
+                    {growthData.accounts.length > 0 && (
+                      <>
+                        <p className="px-4 py-1.5 text-[10px] text-white/25 uppercase tracking-wider">Contas</p>
+                        {growthData.accounts.map((a) => (
+                          <button
+                            key={a.id}
+                            onClick={() => { setSelectedAccountId(a.id); setSelectedFolderId(null); setSelectorOpen(false); }}
+                            className={cn(
+                              "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2",
+                              selectedAccountId === a.id
+                                ? "text-[var(--matrix)] bg-[var(--matrix)]/8"
+                                : "text-white/60 hover:text-white hover:bg-white/[0.05]"
+                            )}
+                          >
+                            <AccountAvatar username={a.username} size="sm" />
+                            <div className="min-w-0">
+                              <span className="block truncate">@{a.username}</span>
+                              {a.followers_count !== null && (
+                                <span className="text-[10px] text-white/30">{fmt(a.followers_count)} seguidores</span>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <KpiCard
+              label="Seguidores"
+              value={fmt(kpi?.followers_now ?? null)}
+              sub="total atual"
+              delta={kpi?.followers_growth_pct}
+              deltaLabel={`vs. ${growthData?.days ?? 30} dias atrás`}
+              icon={Users}
+              accent="border-[var(--matrix)]/15"
+              loading={growthLoading}
+            />
+            <KpiCard
+              label="Crescimento"
+              value={kpi?.followers_growth !== undefined
+                ? `${kpi.followers_growth >= 0 ? "+" : ""}${fmt(kpi.followers_growth)}`
+                : "—"}
+              sub={`últimos ${growthData?.days ?? 30} dias`}
+              icon={TrendingUp}
+              accent="border-emerald-500/15"
+              loading={growthLoading}
+            />
+            <KpiCard
+              label="Posts Automáticos"
+              value={fmt(kpi?.posts_30d ?? null)}
+              sub={`últimos ${growthData?.days ?? 30} dias`}
+              icon={Zap}
+              accent="border-[var(--electric)]/15"
+              loading={growthLoading}
+            />
+            <KpiCard
+              label="Alcance Total"
+              value={fmt(kpi?.reach_30d ?? null)}
+              sub="via Meta Insights"
+              icon={Eye}
+              accent="border-violet-500/15"
+              loading={growthLoading}
+            />
+          </div>
+
+          {/* Growth Chart */}
+          <div className="glass-card p-5">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-sm font-semibold text-white/90">Crescimento de Seguidores</h2>
+                <p className="text-[10px] text-white/30 mt-0.5">
+                  {hasHistory
+                    ? `${kpi!.days_with_data} dias com dados históricos`
+                    : "Aguardando primeira sincronização"}
+                </p>
+              </div>
+              {hasHistory && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 rounded-full" style={{ background: MATRIX }} />
+                  <span className="text-[10px] text-white/30">Seguidores</span>
+                </div>
+              )}
+            </div>
+
+            {growthLoading ? (
+              <div className="h-52 rounded-xl bg-white/[0.03] animate-pulse" />
+            ) : !hasHistory ? (
+              <EmptyGrowthState onSync={handleSync} syncing={syncing} />
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={growthData!.chart_data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="grad-followers" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={MATRIX} stopOpacity={0.18} />
+                      <stop offset="100%" stopColor={MATRIX} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: AXIS_CLR, fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    tick={{ fill: AXIS_CLR, fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={48}
+                    tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : String(v)}
+                  />
+                  <Tooltip
+                    content={
+                      <CustomTooltip
+                        valueLabel="Seguidores"
+                        valueFmt={(n) => n.toLocaleString("pt-BR")}
+                      />
+                    }
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="followers"
+                    stroke={MATRIX}
+                    strokeWidth={2}
+                    fill="url(#grad-followers)"
+                    dot={false}
+                    activeDot={{ r: 4, fill: MATRIX, stroke: "#000", strokeWidth: 2 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* Posts per Day Chart */}
+          {hasHistory && (
+            <div className="glass-card p-5">
+              <div className="flex items-center gap-2 mb-5">
+                <div className="w-2 h-2 rounded-full" style={{ background: ELECTRIC }} />
+                <h2 className="text-sm font-semibold text-white/90">Posts Automáticos por Dia</h2>
+              </div>
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={growthData!.chart_data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: AXIS_CLR, fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    tick={{ fill: AXIS_CLR, fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={28}
+                    allowDecimals={false}
+                  />
+                  <Tooltip
+                    content={<CustomTooltip valueLabel="Posts" />}
+                  />
+                  <Bar
+                    dataKey="posts"
+                    fill={ELECTRIC}
+                    fillOpacity={0.7}
+                    radius={[3, 3, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Top 3 Videos */}
+          {!growthLoading && (
+            <div className="glass-card p-5">
+              <div className="flex items-center gap-2 mb-5">
+                <div className="w-7 h-7 rounded-xl bg-amber-500/15 flex items-center justify-center">
+                  <Trophy size={14} className="text-amber-400" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-white/90">Top 3 Vídeos Mais Vistos</h2>
+                  <p className="text-[10px] text-white/30">por número de plays registrados</p>
+                </div>
+              </div>
+
+              {!growthData?.top_videos.length ? (
+                <div className="flex flex-col items-center py-8 text-center">
+                  <Film size={24} className="text-white/15 mb-3" />
+                  <p className="text-sm text-white/30">Nenhum vídeo com dados de plays ainda</p>
+                  <p className="text-xs text-white/20 mt-1">
+                    Clique em &quot;Atualizar&quot; nos posts da aba Posts Publicados para buscar métricas
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {growthData.top_videos.map((video, i) => (
+                    <motion.div
+                      key={video.id}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.08 }}
+                      className="flex items-center gap-4 p-3 rounded-xl bg-white/[0.025] border border-white/[0.05] hover:bg-white/[0.04] transition-colors"
+                    >
+                      {/* Rank */}
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0",
+                        i === 0 ? "bg-amber-500/20 text-amber-400" :
+                        i === 1 ? "bg-white/8 text-white/50" :
+                                  "bg-white/5 text-white/30"
+                      )}>
+                        #{i + 1}
+                      </div>
+
+                      {/* Thumbnail/icon */}
+                      <div className="w-10 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-black/40">
+                        {video.video_url ? (
+                          <video src={video.video_url} className="w-full h-full object-cover" muted />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Film size={14} className="text-white/20" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white/70 line-clamp-1 font-medium">
+                          {video.caption || "Sem legenda"}
+                        </p>
+                        <div className="flex items-center gap-3 mt-1">
+                          {video.account_username && (
+                            <span className="text-[10px] text-white/30">@{video.account_username}</span>
+                          )}
+                          <span className="text-[10px] text-white/20">{timeAgo(video.published_at)}</span>
+                        </div>
+                      </div>
+
+                      {/* Metrics */}
+                      <div className="flex items-center gap-4 flex-shrink-0">
+                        <div className="text-center">
+                          <p className="text-sm font-bold text-emerald-400">{fmt(video.plays)}</p>
+                          <p className="text-[10px] text-white/25">plays</p>
+                        </div>
+                        {video.reach !== null && (
+                          <div className="text-center hidden sm:block">
+                            <p className="text-sm font-bold text-violet-400">{fmt(video.reach)}</p>
+                            <p className="text-[10px] text-white/25">alcance</p>
+                          </div>
+                        )}
+                        {video.likes !== null && (
+                          <div className="text-center hidden sm:block">
+                            <p className="text-sm font-bold text-pink-400">{fmt(video.likes)}</p>
+                            <p className="text-[10px] text-white/25">curtidas</p>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Per-account current stats table */}
+          {!growthLoading && (growthData?.accounts.length ?? 0) > 1 && (
+            <div className="glass-card p-5">
+              <h2 className="text-sm font-semibold text-white/90 mb-4">Seguidores por Conta</h2>
+              <div className="space-y-2">
+                {growthData!.accounts
+                  .sort((a, b) => (b.followers_count ?? 0) - (a.followers_count ?? 0))
+                  .map((acc) => {
+                    const maxFollowers = Math.max(...growthData!.accounts.map((a) => a.followers_count ?? 0), 1);
+                    const pct = Math.round(((acc.followers_count ?? 0) / maxFollowers) * 100);
+                    return (
+                      <div key={acc.id} className="flex items-center gap-3">
+                        <AccountAvatar username={acc.username} size="sm" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs text-white/70">@{acc.username}</span>
+                            <span className="text-xs text-white/50 tabular-nums">{fmt(acc.followers_count)}</span>
+                          </div>
+                          <div className="h-1 rounded-full bg-white/[0.05]">
+                            <div
+                              className="h-1 rounded-full transition-all duration-500"
+                              style={{ width: `${pct}%`, background: MATRIX }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {/* Sync toast */}
+          <AnimatePresence>
+            {syncToast && (
+              <motion.div
+                key="sync-toast"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-sm font-medium bg-[var(--matrix)]/15 border border-[var(--matrix)]/30 text-[var(--matrix)]"
+              >
+                <CheckCircle2 size={15} />
+                {syncToast}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* TAB 2 — Posts Publicados                                           */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {tab === "posts" && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-white/35">
+              {postsLoading ? "Carregando..." : `${postSummary?.total_published ?? 0} posts publicados`}
+            </p>
+            {!postsLoading && posts.length > 0 && (
+              <button
+                onClick={() => posts.filter((p) => p.media_id).forEach((p) => handleRefresh(p.id))}
+                disabled={!!refreshingId}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium bg-white/[0.06] border border-white/10 text-white/60 hover:text-white hover:bg-white/[0.10] transition-all disabled:opacity-40"
+              >
+                <RefreshCw size={13} className={refreshingId ? "animate-spin" : ""} />
+                Atualizar todos
+              </button>
+            )}
+          </div>
+
+          {/* Summary cards */}
+          {!postsLoading && postSummary && (
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+              {[
+                { label: "Publicados", value: fmt(postSummary.total_published), icon: CheckCircle2, color: "bg-violet-600/30" },
+                { label: "Curtidas",   value: fmt(postSummary.total_likes),     icon: Heart,        color: "bg-pink-600/30" },
+                { label: "Comentários",value: fmt(postSummary.total_comments),  icon: MessageCircle,color: "bg-cyan-600/30" },
+                { label: "Alcance",    value: fmt(postSummary.total_reach),     icon: Eye,          color: "bg-violet-500/30" },
+                { label: "Plays",      value: fmt(postSummary.total_plays),     icon: Play,         color: "bg-emerald-600/30" },
+                { label: "Shares",     value: fmt(postSummary.total_shares),    icon: Share2,       color: "bg-amber-600/30" },
+                { label: "Salvos",     value: fmt(postSummary.total_saved),     icon: Bookmark,     color: "bg-blue-600/30" },
+              ].map(({ label, value, icon: Icon, color }) => (
+                <div key={label} className="glass-card rounded-2xl p-5 flex items-start gap-4">
+                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", color)}>
+                    <Icon size={18} className="text-white" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/40 mb-0.5">{label}</p>
+                    <p className="text-xl font-bold text-white">{value}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/[0.08] border border-amber-500/20 text-sm text-amber-300/70">
+            <AlertCircle size={16} className="flex-shrink-0 mt-0.5 text-amber-400/60" />
+            <p>
+              <strong>Alcance, Plays, Shares e Salvos</strong> requerem a permissão{" "}
+              <code className="text-amber-300 bg-amber-500/10 px-1 rounded">instagram_manage_insights</code> no seu app Meta.
+            </p>
+          </div>
+
+          {postsLoading ? (
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-24 rounded-2xl bg-white/[0.04] animate-pulse" />
+              ))}
+            </div>
+          ) : posts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-white/[0.04] flex items-center justify-center mb-4">
+                <BarChart2 size={28} className="text-white/20" />
+              </div>
+              <p className="text-white/50 font-medium mb-1">Nenhum post publicado ainda</p>
+              <p className="text-sm text-white/25">Publique posts via Postagens → as métricas aparecerão aqui</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {posts.map((p) => (
+                <PostRow key={p.id} post={p} onRefresh={handleRefresh} refreshing={refreshingId === p.id} />
+              ))}
+            </div>
+          )}
+
+          {!postsLoading && posts.length > 0 && posts.every((p) => p.insights_likes === null) && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07] text-sm text-white/40">
+              <TrendingUp size={15} className="flex-shrink-0" />
+              <p>Clique em <strong>Atualizar</strong> em cada post para buscar as métricas da Meta API.</p>
+            </div>
+          )}
+
+          {/* Post toast */}
+          <AnimatePresence>
+            {postToast && (
+              <motion.div
+                key="post-toast"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className={cn(
+                  "fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-sm font-medium",
+                  postToast.ok
+                    ? "bg-emerald-500/20 border border-emerald-500/30 text-emerald-300"
+                    : "bg-red-500/20 border border-red-500/30 text-red-300"
+                )}
+              >
+                {postToast.ok ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                {postToast.msg}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+
     </div>
   );
 }
