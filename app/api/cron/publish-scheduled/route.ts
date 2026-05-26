@@ -92,9 +92,20 @@ export async function GET(req: NextRequest) {
     .eq("status", "pending")
     .lte("scheduled_at", now);
 
+  const { count: countFailed } = await admin
+    .from("scheduled_posts")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "failed");
+
+  const countFuture = Math.max(0, (countPending ?? 0) - (countEligible ?? 0));
+
   console.log(
-    `[publish-scheduled] Fila → pending: ${countPending ?? 0} | publishing: ${countPublishing ?? 0} | ` +
-    `elegíveis (scheduled_at ≤ ${now}): ${countEligible ?? 0}`
+    `[publish-scheduled] Diagnóstico da fila:\n` +
+    `  ├─ pending total:     ${countPending ?? 0}\n` +
+    `  ├─ elegíveis agora:   ${countEligible ?? 0}  (scheduled_at ≤ ${now})\n` +
+    `  ├─ data futura:       ${countFuture}  (aguardando horário agendado)\n` +
+    `  ├─ em publicação:     ${countPublishing ?? 0}\n` +
+    `  └─ falhas acumuladas: ${countFailed ?? 0}`
   );
 
   // ── Desbloqueio de posts presos em "publishing" ───────────────────────────
@@ -146,6 +157,8 @@ export async function GET(req: NextRequest) {
     unblocked: unblocked?.length ?? 0,
     queue_pending: countPending ?? 0,
     queue_eligible: countEligible ?? 0,
+    queue_future: countFuture,
+    queue_failed_total: countFailed ?? 0,
   };
 
   for (const post of posts) {

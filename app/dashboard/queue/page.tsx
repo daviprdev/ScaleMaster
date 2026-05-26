@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, CheckCircle2, Clock, AlertTriangle, Loader2,
   Zap, Users, RefreshCw, Radio, Ban, Inbox,
-  BarChart3, TrendingUp, XCircle,
+  BarChart3, TrendingUp, XCircle, Play, ChevronDown, ChevronUp,
+  Terminal, Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -51,6 +52,28 @@ interface QueueStats {
   idle_accounts: IdleAccount[];
   per_account: PerAccountStat[];
   last_updated: string;
+}
+
+interface DiagResult {
+  now: string;
+  scheduled_posts: {
+    pending_total: number;
+    eligible_now: number;
+    future_dated: number;
+    stuck_publishing: number;
+    zombie_posts: { id: string; scheduled_at: string }[];
+    failed: number;
+  };
+  pending_containers: number;
+  recent_failures: { id: string; error_message: string | null; scheduled_at: string }[];
+}
+
+interface ForceRunResult {
+  ok: boolean;
+  triggered_at: string;
+  process_loops: Record<string, unknown>;
+  publish_pending: Record<string, unknown>;
+  publish_scheduled: Record<string, unknown>;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -125,6 +148,145 @@ function MetricCard({
   );
 }
 
+// ── Diagnostic Panel ──────────────────────────────────────────
+
+function DiagPanel({ diag }: { diag: DiagResult }) {
+  const sp = diag.scheduled_posts;
+  return (
+    <div className="space-y-3 text-xs font-mono">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {[
+          { label: "Pending total",      value: sp.pending_total,    color: "text-cyan-400"    },
+          { label: "Elegíveis agora",    value: sp.eligible_now,     color: "text-emerald-400" },
+          { label: "Data futura",        value: sp.future_dated,     color: "text-amber-400"   },
+          { label: "Em publicação",      value: sp.stuck_publishing, color: "text-blue-400"    },
+          { label: "Containers pendentes", value: diag.pending_containers, color: "text-violet-400" },
+          { label: "Falhas acumuladas",  value: sp.failed,           color: "text-red-400"     },
+        ].map(row => (
+          <div key={row.label} className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+            <span className="text-white/40">{row.label}</span>
+            <span className={cn("font-bold tabular-nums", row.color)}>{row.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {sp.future_dated > 0 && (
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-500/[0.06] border border-amber-500/20">
+          <Info size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
+          <p className="text-amber-300/80 leading-relaxed">
+            <strong>{sp.future_dated}</strong> post(s) agendados para datas futuras — o cron não os publica até o horário chegar. Isso é normal se você agendou uma campanha.
+          </p>
+        </div>
+      )}
+
+      {sp.eligible_now === 0 && sp.pending_total > 0 && sp.future_dated > 0 && (
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-blue-500/[0.06] border border-blue-500/20">
+          <Clock size={12} className="text-blue-400 flex-shrink-0 mt-0.5" />
+          <p className="text-blue-300/80 leading-relaxed">
+            Todos os posts pendentes estão aguardando horário. Nenhum está vencido agora.
+          </p>
+        </div>
+      )}
+
+      {sp.eligible_now > 0 && (
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-500/[0.06] border border-red-500/20">
+          <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
+          <p className="text-red-300/80 leading-relaxed">
+            <strong>{sp.eligible_now}</strong> post(s) vencido(s) — horário passou mas ainda não foram publicados. Clique em &quot;Forçar Processamento&quot; para tentar agora.
+          </p>
+        </div>
+      )}
+
+      {diag.recent_failures.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-white/30 text-[10px] uppercase tracking-wider px-1">Últimas falhas</p>
+          {diag.recent_failures.map(f => (
+            <div key={f.id} className="px-2.5 py-2 rounded-lg bg-red-500/[0.05] border border-red-500/10">
+              <p className="text-red-300/70 break-all">{f.error_message ?? "Erro desconhecido"}</p>
+              <p className="text-white/25 text-[10px] mt-0.5">
+                {new Date(f.scheduled_at).toLocaleString("pt-BR")}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Force Run Result Panel ────────────────────────────────────
+
+function ForceRunPanel({ result }: { result: ForceRunResult }) {
+  const sched = result.publish_scheduled as {
+    published?: number; failed?: number; skipped?: number;
+    timed_out?: number; unblocked?: number; queue_eligible?: number;
+    queue_future?: number; queue_failed_total?: number; error?: string;
+  };
+
+  const pending = result.publish_pending as {
+    published?: number; in_progress?: number; expired?: number;
+    errors?: number; error?: string;
+  };
+
+  const loops = result.process_loops as {
+    processed?: number; skipped?: number; errors?: number; error?: string;
+  };
+
+  return (
+    <div className="space-y-3 text-xs font-mono">
+      <p className="text-white/30 text-[10px]">
+        Disparado em {new Date(result.triggered_at).toLocaleTimeString("pt-BR")}
+      </p>
+
+      {/* publish-scheduled */}
+      <div className="px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06] space-y-1">
+        <p className="text-white/50 text-[10px] uppercase tracking-wider mb-2">Postagens agendadas</p>
+        {sched.error ? (
+          <p className="text-red-400">{sched.error}</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+            <span className="text-white/35">Publicados</span><span className="text-emerald-400 font-bold">{sched.published ?? 0}</span>
+            <span className="text-white/35">Elegíveis</span><span className="text-cyan-400 font-bold">{sched.queue_eligible ?? 0}</span>
+            <span className="text-white/35">Data futura</span><span className="text-amber-400 font-bold">{sched.queue_future ?? 0}</span>
+            <span className="text-white/35">Falhas (execução)</span><span className="text-red-400 font-bold">{sched.failed ?? 0}</span>
+            <span className="text-white/35">Desbloqueados</span><span className="text-white/50">{sched.unblocked ?? 0}</span>
+            <span className="text-white/35">Total falhas DB</span><span className="text-red-400/60">{sched.queue_failed_total ?? 0}</span>
+          </div>
+        )}
+      </div>
+
+      {/* publish-pending containers */}
+      <div className="px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06] space-y-1">
+        <p className="text-white/50 text-[10px] uppercase tracking-wider mb-2">Containers de loop</p>
+        {pending.error ? (
+          <p className="text-red-400">{pending.error}</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+            <span className="text-white/35">Publicados</span><span className="text-emerald-400 font-bold">{pending.published ?? 0}</span>
+            <span className="text-white/35">Processando</span><span className="text-amber-400 font-bold">{pending.in_progress ?? 0}</span>
+            <span className="text-white/35">Expirados</span><span className="text-white/40">{pending.expired ?? 0}</span>
+            <span className="text-white/35">Erros</span><span className="text-red-400 font-bold">{pending.errors ?? 0}</span>
+          </div>
+        )}
+      </div>
+
+      {/* process-loops */}
+      <div className="px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06] space-y-1">
+        <p className="text-white/50 text-[10px] uppercase tracking-wider mb-2">Motor de loops</p>
+        {loops.error ? (
+          <p className="text-red-400">{loops.error}</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+            <span className="text-white/35">Processados</span><span className="text-emerald-400 font-bold">{loops.processed ?? 0}</span>
+            <span className="text-white/35">Pulados</span><span className="text-white/40">{loops.skipped ?? 0}</span>
+            <span className="text-white/35">Erros</span><span className="text-red-400 font-bold">{loops.errors ?? 0}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Constants ─────────────────────────────────────────────────
 
 const REFRESH_INTERVAL = 15;
@@ -136,6 +298,14 @@ export default function QueuePage() {
   const [loading, setLoading] = useState(true);
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
   const [updatedAt, setUpdatedAt] = useState("");
+
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [diagResult, setDiagResult] = useState<DiagResult | null>(null);
+  const [diagOpen, setDiagOpen] = useState(false);
+
+  const [forceLoading, setForceLoading] = useState(false);
+  const [forceResult, setForceResult] = useState<ForceRunResult | null>(null);
+  const [forceOpen, setForceOpen] = useState(false);
 
   const fetchStats = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -158,6 +328,38 @@ export default function QueuePage() {
       setLoading(false);
     }
   }, []);
+
+  const fetchDiag = useCallback(async () => {
+    setDiagLoading(true);
+    setDiagOpen(true);
+    try {
+      const res = await fetch("/api/cron/force-run");
+      if (!res.ok) return;
+      const data = await res.json() as DiagResult;
+      setDiagResult(data);
+    } catch {
+      // silent
+    } finally {
+      setDiagLoading(false);
+    }
+  }, []);
+
+  const handleForceRun = useCallback(async () => {
+    setForceLoading(true);
+    setForceOpen(true);
+    setForceResult(null);
+    try {
+      const res = await fetch("/api/cron/force-run", { method: "POST" });
+      const data = await res.json() as ForceRunResult;
+      setForceResult(data);
+      // Refresh stats after force run
+      await fetchStats(true);
+    } catch {
+      // silent
+    } finally {
+      setForceLoading(false);
+    }
+  }, [fetchStats]);
 
   // Initial load
   useEffect(() => { fetchStats(); }, [fetchStats]);
@@ -199,14 +401,114 @@ export default function QueuePage() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => fetchStats(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.07] bg-white/[0.03] text-xs text-white/40 hover:text-white/70 hover:border-white/15 transition-all"
-        >
-          <RefreshCw size={12} />
-          Atualizar agora
-        </button>
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => fetchStats(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.07] bg-white/[0.03] text-xs text-white/40 hover:text-white/70 hover:border-white/15 transition-all"
+          >
+            <RefreshCw size={12} />
+            Atualizar
+          </button>
+
+          <button
+            onClick={fetchDiag}
+            disabled={diagLoading}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.05] text-xs text-blue-400/70 hover:text-blue-300 hover:border-blue-500/40 transition-all disabled:opacity-50"
+          >
+            {diagLoading ? <Loader2 size={12} className="animate-spin" /> : <Terminal size={12} />}
+            Diagnóstico
+          </button>
+
+          <button
+            onClick={handleForceRun}
+            disabled={forceLoading}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-[var(--matrix)]/30 bg-[var(--matrix)]/[0.07] text-xs text-[var(--matrix)] hover:bg-[var(--matrix)]/[0.12] hover:border-[var(--matrix)]/50 transition-all disabled:opacity-50 font-semibold"
+          >
+            {forceLoading ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+            Forçar Processamento
+          </button>
+        </div>
       </div>
+
+      {/* ── Diagnostic Panel ────────────────────────────────── */}
+      <AnimatePresence>
+        {diagOpen && (diagLoading || diagResult) && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="glass-card p-5 border border-blue-500/15"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-blue-500/15 flex items-center justify-center">
+                  <Terminal size={14} className="text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-white/90">Diagnóstico da Fila</h2>
+                  <p className="text-[10px] text-white/30">estado atual sem disparar processamento</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDiagOpen(false)}
+                className="text-white/30 hover:text-white/60 transition-colors text-xs"
+              >
+                fechar
+              </button>
+            </div>
+
+            {diagLoading ? (
+              <div className="flex items-center gap-2 text-white/30 text-xs">
+                <Loader2 size={14} className="animate-spin" />
+                Consultando banco de dados...
+              </div>
+            ) : diagResult ? (
+              <DiagPanel diag={diagResult} />
+            ) : null}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Force Run Result Panel ───────────────────────────── */}
+      <AnimatePresence>
+        {forceOpen && (forceLoading || forceResult) && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="glass-card p-5 border border-[var(--matrix)]/20"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-[var(--matrix)]/10 flex items-center justify-center">
+                  <Play size={14} className="text-[var(--matrix)]" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-white/90">Resultado do Processamento</h2>
+                  <p className="text-[10px] text-white/30">logs do worker de publicação</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setForceOpen(false)}
+                className="text-white/30 hover:text-white/60 transition-colors text-xs"
+              >
+                fechar
+              </button>
+            </div>
+
+            {forceLoading ? (
+              <div className="flex items-center gap-2 text-white/30 text-xs">
+                <Loader2 size={14} className="animate-spin text-[var(--matrix)]" />
+                Processando fila... aguarde até 55s
+              </div>
+            ) : forceResult ? (
+              <ForceRunPanel result={forceResult} />
+            ) : null}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Metric Cards ────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
