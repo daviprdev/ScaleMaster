@@ -541,9 +541,14 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // Freeze detecta mutação destrutiva (.pop/.shift/.splice) em runtime — lançaria TypeError
+      Object.freeze(loopCaptionsRaw);
+
       console.log(
         `[loop-cron] @${account.username} [${accountIdx}/${validAccounts.length}] | ` +
-        `pool de legendas isolado: ${loopCaptionsRaw.length} variação(ões)`
+        `pool de legendas isolado: ${loopCaptionsRaw.length} variação(ões) | ` +
+        `loop.captions type=${typeof loop.captions} isArray=${Array.isArray(loop.captions)} ` +
+        `rawLen=${Array.isArray(loop.captions) ? (loop.captions as unknown[]).length : "N/A"}`
       );
 
       try {
@@ -605,12 +610,31 @@ export async function GET(req: NextRequest) {
         // ── Legenda — selecionada do pool isolado desta iteração ─────────────
         caption = selectDynamicCaption(loopCaptionsRaw);
 
+        // ── [RAIO-X] Sorteio — snapshot imediato antes de qualquer fallback ──
+        {
+          const xStatus = caption
+            ? `"${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}"`
+            : "VAZIA!!!";
+          console.log(
+            `[RAIO-X] Conta: ${account.id} (@${account.username}) | ` +
+            `Vídeo: "${selectedVideo.filename}" | ` +
+            `Pool: ${loopCaptionsRaw.length} variação(ões) | ` +
+            `Sorteada: ${xStatus}`
+          );
+        }
+
         if (!caption) {
           caption = '🔥 [TESTE DE SISTEMA] Legenda de emergência.';
           console.warn(
             `[loop-cron] FALLBACK EMERGÊNCIA | @${account.username} | loop="${loop.name}" — pool vazio.`
           );
         }
+
+        // ── [RAIO-X] Caption final que será persistida no container ──────────
+        console.log(
+          `[RAIO-X-FINAL] @${account.username} | caption_final (${caption.length}c): ` +
+          `"${caption.slice(0, 100)}${caption.length > 100 ? "…" : ""}"`
+        );
 
         console.log(
           `[loop-cron] AUDIT | "${loop.name}" | @${account.username} → ` +

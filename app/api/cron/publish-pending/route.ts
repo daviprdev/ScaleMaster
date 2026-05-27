@@ -166,6 +166,13 @@ export async function GET(req: NextRequest) {
       // intermitente durante o processamento do container. Este POST restaura a legenda
       // no post já publicado para garantir 100% de cobertura.
       if (container.caption) {
+        // [RAIO-X] — snapshot da caption armazenada no container antes do double-tap
+        console.log(
+          `[RAIO-X] double-tap | @${account.username} | mediaId=${mediaId} | ` +
+          `caption_stored_chars=${container.caption.length} | ` +
+          `caption_ok=${container.caption.trim().length > 0 ? "SIM" : "VAZIA!!!"} | ` +
+          `preview="${container.caption.slice(0, 80)}${container.caption.length > 80 ? "…" : ""}"`
+        );
         try {
           await updatePostCaption(mediaId, container.caption, tokenToUse);
           console.log(`[publish-pending] ✓ Caption aplicada @${account.username}`);
