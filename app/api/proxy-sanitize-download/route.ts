@@ -30,12 +30,15 @@ function isAllowed(raw: string): boolean {
 
 // GET /api/proxy-sanitize-download?url=<encoded>&filename=<name>
 //
-// Full pipeline:
+// Full pipeline (Instagram/Apify CDN URLs):
 //   1. Download video to /tmp
-//   2. FFmpeg Pass 1 — strip all original metadata (-map_metadata -1, stream copy)
-//   3. FFmpeg Pass 2 — inject UUID comment + bitexact flags (no encoder fingerprint)
-//   4. Send sanitized file to browser as attachment
-//   5. Clean up /tmp files
+//   2. FFmpeg — strip metadata + stream copy (pure extraction)
+//   3. Send sanitized file to browser as attachment
+//   4. Clean up /tmp files
+//
+// Supabase Storage URLs shortcut:
+//   Videos already in the library were sanitized once at save-to-library time.
+//   Redirect 307 directly to Supabase CDN — zero bytes through Vercel.
 //
 // The HEAD endpoint is intentionally omitted — use /api/proxy-download HEAD for
 // fast URL validation (no FFmpeg overhead).
@@ -58,7 +61,17 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  console.log(`[proxy-sanitize] starting double-pass for: ${url.slice(0, 100)}…`);
+  // Supabase Storage URLs are already sanitized (FFmpeg ran at save-to-library time).
+  // Redirect the browser directly to the CDN — no bytes flow through Vercel.
+  try {
+    const { hostname } = new URL(url);
+    if (hostname.endsWith(".supabase.co")) {
+      console.log(`[proxy-sanitize] supabase url — redirecting directly, no proxy: ${url.slice(0, 100)}`);
+      return NextResponse.redirect(url, 307);
+    }
+  } catch { /* invalid URL handled below */ }
+
+  console.log(`[proxy-sanitize] starting FFmpeg pass for: ${url.slice(0, 100)}…`);
 
   const baseName = filename.replace(/\.mp4$/i, "");
   let result: Awaited<ReturnType<typeof sanitizeDoublePass>> | null = null;
@@ -68,8 +81,10 @@ export async function GET(req: NextRequest) {
 
     const fileBuffer = fs.readFileSync(result.outputPath);
     const safe = filename.replace(/[^a-z0-9_.@()-]/gi, "_").slice(0, 120);
+    const mb = (fileBuffer.byteLength / 1_048_576).toFixed(1);
 
-    console.log(`[proxy-sanitize] done — ${fileBuffer.byteLength} bytes → ${safe}`);
+    // Log size to monitor Fast Origin Transfer consumption per download
+    console.log(`[proxy-sanitize] done — ${mb} MB (${fileBuffer.byteLength} bytes) → ${safe}`);
 
     return new NextResponse(fileBuffer, {
       headers: {

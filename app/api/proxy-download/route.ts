@@ -50,13 +50,11 @@ const VIDEO_FETCH_HEADERS = {
 // GET /api/proxy-download?url=<encoded-video-url>&filename=<filename>
 //
 // 1. Validates the URL against the allowlist (SSRF protection).
-// 2. Fetches the video server-side — bypasses browser CORS restrictions and
-//    CDN Referer checks that would block a direct client-side fetch.
-// 3. Streams the response body back with Content-Disposition: attachment so
-//    the browser triggers a save-as dialog.
+// 2. Supabase Storage URLs: redirect 307 directly — video is served by Supabase CDN,
+//    zero bytes flow through Vercel.
+// 3. Other CDN URLs: fetches server-side (bypasses CORS + Referer restrictions) and
+//    streams the body. Response is streamed (not buffered) to avoid OOM on large files.
 //
-// Response body is streamed (not buffered) so large files don't exhaust
-// serverless memory.
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url");
   const filename = req.nextUrl.searchParams.get("filename") ?? "autoscale_reel.mp4";
@@ -75,6 +73,16 @@ export async function GET(req: NextRequest) {
       { status: 403, headers: { "Content-Type": "application/json" } }
     );
   }
+
+  // Supabase Storage URLs — already on the Supabase CDN, publicly accessible.
+  // Redirect the browser directly: zero bytes flow through Vercel.
+  try {
+    const { hostname } = new URL(url);
+    if (hostname.endsWith(".supabase.co")) {
+      console.log(`[proxy-download] supabase url — redirecting directly: ${url.slice(0, 100)}`);
+      return NextResponse.redirect(url, 307);
+    }
+  } catch { /* invalid URL will fail below */ }
 
   console.log(`[proxy-download] fetching: ${url.slice(0, 100)}…`);
 
@@ -120,13 +128,22 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// HEAD is identical to GET but without a body — used by the client to check
-// whether a URL is accessible before attempting the full download.
+// HEAD is used by the client for fast URL validation before triggering a full download.
+// Supabase URLs are always reachable — return 200 without a network fetch.
 export async function HEAD(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url");
 
   if (!url || !isAllowed(url)) {
     return new NextResponse(null, { status: url ? 403 : 400 });
+  }
+
+  try {
+    const { hostname } = new URL(url);
+    if (hostname.endsWith(".supabase.co")) {
+      return new NextResponse(null, { status: 200 });
+    }
+  } catch {
+    return new NextResponse(null, { status: 400 });
   }
 
   try {
