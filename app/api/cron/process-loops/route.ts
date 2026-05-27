@@ -437,9 +437,21 @@ export async function GET(req: NextRequest) {
 
     // ── Legendas Dinâmicas — FONTE EXCLUSIVA: loops.captions (configuração do usuário) ──
     // videos_library.caption é sempre NULL para reels raspados — nunca é usado aqui.
-    const loopCaptionsRaw: string[] = Array.isArray(loop.captions)
-      ? (loop.captions as string[])
-      : [];
+    // Fallback JSON.parse: Supabase pode retornar text[] como string JSON em alguns contextos;
+    // sem este guard, Array.isArray() retorna false e loopCaptionsRaw vira [], zerando legendas.
+    let loopCaptionsRaw: string[];
+    if (Array.isArray(loop.captions)) {
+      loopCaptionsRaw = loop.captions as string[];
+    } else if (typeof loop.captions === "string") {
+      try {
+        const parsed = JSON.parse(loop.captions as string);
+        loopCaptionsRaw = Array.isArray(parsed) ? (parsed as string[]) : [];
+      } catch {
+        loopCaptionsRaw = [];
+      }
+    } else {
+      loopCaptionsRaw = [];
+    }
     const validCaptionCount = loopCaptionsRaw.filter(c => String(c ?? "").trim()).length;
 
     console.log(
