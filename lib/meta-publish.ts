@@ -13,24 +13,37 @@ async function createMediaContainer(
   caption: string,
   token: string
 ): Promise<string> {
-  // Guard: garante que caption nunca chega como undefined/null ao URLSearchParams
-  // (URLSearchParams({ caption: undefined }) enviaria a string literal "undefined")
-  const safeCaption = typeof caption === "string" ? caption : String(caption ?? "");
+  // Normaliza: remove espaços extremos e respeita limite de 2200 chars da Meta API.
+  // Nunca envia undefined/"undefined" — causaria posts sem legenda de forma silenciosa.
+  const captionFinal = (typeof caption === "string" ? caption : "").trim().slice(0, 2200);
+
+  // Log obrigatório ANTES da requisição HTTP — prova visual nos logs da Vercel
+  // de que a legenda não estava vazia ao chegar na Meta API.
   console.log(
-    `[meta-publish] Criando container | igId=${igAccountId.slice(0, 10)}… | ` +
-    `caption="${safeCaption.slice(0, 80)}${safeCaption.length > 80 ? "…" : ""}"`
+    `[meta-publish] ENVIANDO LEGENDA PARA A META: "${captionFinal.slice(0, 120)}` +
+    `${captionFinal.length > 120 ? "…" : ""}" | ${captionFinal.length} char(s) | igId=${igAccountId.slice(0, 10)}…`
   );
-  const params = new URLSearchParams({
-    media_type: "REELS",
-    video_url: videoUrl,
-    caption: safeCaption,
-    access_token: token,
-  });
+
+  // URLSearchParams codifica espaços como "+" (application/x-www-form-urlencoded),
+  // mas a Meta Graph API descarta silenciosamente captions com quebras de linha (\n),
+  // emojis ou aspas quando recebe "+" em vez de "%20".
+  // encodeURIComponent usa RFC 3986 (%20, %0A, %22, etc.) — sem ambiguidade.
+  const bodyParts = [
+    `media_type=REELS`,
+    `video_url=${encodeURIComponent(videoUrl)}`,
+    `access_token=${encodeURIComponent(token)}`,
+  ];
+  if (captionFinal) {
+    bodyParts.push(`caption=${encodeURIComponent(captionFinal)}`);
+  }
+
   const res = await fetch(`${GRAPH_API}/${igAccountId}/media`, {
     method: "POST",
-    body: params,
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: bodyParts.join("&"),
     signal: AbortSignal.timeout(15_000),
   });
+
   const data = (await res.json()) as { id?: string; error?: { message: string } };
   if (!res.ok || !data.id) {
     throw new Error(data.error?.message ?? "Falha ao criar container de mídia.");

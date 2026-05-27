@@ -448,7 +448,13 @@ export async function GET(req: NextRequest) {
 
     // ── Pool de legendas — construído uma vez por loop ───────────────────────
     // buildCaptionPool garante array limpo; pickCaption tem fallback em cascata
+    // Log do raw value do banco ANTES da normalização — diagnóstico de produção.
+    console.log(
+      `[loop-cron] "${loop.name}" | captions RAW do banco: ${JSON.stringify(loop.captions)} | ` +
+      `tipo: ${Array.isArray(loop.captions) ? "array" : typeof loop.captions}`
+    );
     const captionPool = buildCaptionPool(loop.captions);
+    console.log(`[loop-cron] "${loop.name}" | pool normalizado: ${captionPool.length} item(s) → ${JSON.stringify(captionPool.slice(0, 3))}`);
     if (captionPool.length === 0) {
       console.warn(
         `[loop-cron] "${loop.name}" sem legendas configuradas — ` +
@@ -570,7 +576,8 @@ export async function GET(req: NextRequest) {
         console.log(
           `[loop-cron] AUDIT | "${loop.name}" | @${account.username} → ` +
           `Vídeo: "${selectedVideo.filename}" (id=${selectedVideo.id}) | ` +
-          `Legenda: "${caption.slice(0, 60)}${caption.length > 60 ? "…" : ""}" | ` +
+          `Legenda (${caption.length} chars): "${caption.slice(0, 60)}${caption.length > 60 ? "…" : ""}" | ` +
+          `Pool: ${captionPool.length} item(s) | ` +
           `Histórico conta: ${postedByAccount.size} | ` +
           `NovoCiclo: ${isNewCycleForAccount}`
         );
