@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   pollContainerStatusOnce,
   publishReadyContainer,
+  updatePostCaption,
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 
@@ -160,6 +161,20 @@ export async function GET(req: NextRequest) {
 
       summary.published++;
       console.log(`[publish-pending] ✓ @${account.username} → media_id: ${mediaId}`);
+
+      // Reparo pós-publicação: a Meta API descarta legendas silenciosamente de forma
+      // intermitente durante o processamento do container. Este POST restaura a legenda
+      // no post já publicado para garantir 100% de cobertura.
+      if (container.caption) {
+        try {
+          await updatePostCaption(mediaId, container.caption, tokenToUse);
+          console.log(`[publish-pending] ✓ Caption aplicada @${account.username}`);
+        } catch (captionErr) {
+          const captMsg = captionErr instanceof Error ? captionErr.message : String(captionErr);
+          console.warn(`[publish-pending] Caption update falhou @${account.username}: ${captMsg}`);
+          // Não falha o publish — o reel foi publicado, apenas a legenda pode estar ausente
+        }
+      }
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
