@@ -307,12 +307,13 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
         <div className="space-y-1.5">
           <div className="flex items-center gap-1.5 text-[10px] text-white/30 uppercase tracking-wide mb-2">
             <TrendingUp size={10} />
-            Ranking de Views
+            Ranking de Curtidas
           </div>
-          {account_ranking.slice(0, 3).map((acc, idx) => {
-            const isChampion = idx === 0 && acc.total_plays > 0;
-            const engagementLabel = acc.total_plays > 0
-              ? `${formatNumber(acc.total_plays)} views`
+          <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-1.5 pr-0.5">
+          {account_ranking.map((acc, idx) => {
+            const isChampion = idx === 0 && acc.total_likes > 0;
+            const engagementLabel = acc.total_likes > 0
+              ? `${formatNumber(acc.total_likes)} curtidas`
               : `${acc.posts_count} post${acc.posts_count !== 1 ? "s" : ""}`;
 
             return (
@@ -380,6 +381,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
               </div>
             );
           })}
+          </div>
         </div>
       )}
     </div>

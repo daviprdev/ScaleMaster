@@ -242,7 +242,7 @@ export async function GET(
   }
 
   const ranking = Array.from(accMap.values())
-    .sort((a, b) => b.total_plays - a.total_plays);
+    .sort((a, b) => b.total_likes - a.total_likes);
 
   return NextResponse.json({
     loop: {
