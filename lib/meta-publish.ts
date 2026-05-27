@@ -17,27 +17,27 @@ async function createMediaContainer(
   // Nunca envia undefined/"undefined" — causaria posts sem legenda de forma silenciosa.
   const captionFinal = (typeof caption === "string" ? caption : "").trim().slice(0, 2200);
 
-  // Parâmetros enviados como URL query string — forma canônica documentada pela Meta:
-  // https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media
-  // encodeURIComponent (RFC 3986) garante %20 para espaços, %0A para newlines, etc.
-  // caption SEMPRE presente na query — nunca omitido condicionalmente.
-  const queryParams = [
-    `media_type=REELS`,
-    `video_url=${encodeURIComponent(videoUrl)}`,
-    `caption=${encodeURIComponent(captionFinal)}`,
-    `access_token=${encodeURIComponent(token)}`,
-  ].join("&");
+  // JSON body — única forma que garante encoding UTF-8 correto para emojis,
+  // quebras de linha e caracteres especiais. URL query params e form-encoded
+  // quebram silenciosamente o campo caption na Meta Graph API para textos longos.
+  const jsonBody = {
+    media_type: "REELS",
+    video_url: videoUrl,
+    caption: captionFinal,
+    access_token: token,
+  };
 
   // Log obrigatório imediatamente antes do fetch — prova visual nos logs da Vercel
   console.log('Enviando para Meta API. Legenda:', captionFinal);
   console.log(
     `[meta-publish] igId=${igAccountId.slice(0, 10)}… | ` +
-    `caption=${captionFinal.length} char(s): "${captionFinal.slice(0, 120)}${captionFinal.length > 120 ? "…" : ""}" | ` +
-    `query preview: ${queryParams.slice(0, 120)}…`
+    `caption=${captionFinal.length} char(s): "${captionFinal.slice(0, 120)}${captionFinal.length > 120 ? "…" : ""}"`
   );
 
-  const res = await fetch(`${GRAPH_API}/${igAccountId}/media?${queryParams}`, {
+  const res = await fetch(`${GRAPH_API}/${igAccountId}/media`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(jsonBody),
     signal: AbortSignal.timeout(15_000),
   });
 
