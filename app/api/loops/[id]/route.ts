@@ -24,7 +24,28 @@ export async function PATCH(
   const scalars = ["status", "name", "folder_id", "is_infinite", "cycles",
     "interval_minutes", "media_limit", "captions", "cover_image_url", "effect_mirror", "effect_invert"];
   for (const key of scalars) {
-    if (key in body) updatePayload[key] = body[key];
+    if (!(key in body)) continue;
+
+    if (key === "captions") {
+      // Legenda vem EXCLUSIVAMENTE da configuração do loop (campo preenchido pelo usuário no UI).
+      // NUNCA deve vir dos metadados do vídeo (videos_library.caption é NULL para vídeos raspados).
+      const raw = body[key];
+      const cleaned = Array.isArray(raw)
+        ? (raw as string[]).map(c => String(c ?? "").trim()).filter(Boolean)
+        : [];
+      updatePayload[key] = cleaned;
+      if (cleaned.length === 0) {
+        console.warn(
+          `[loops-api] PATCH loop ${id} — captions atualizado para ARRAY VAZIO. ` +
+          `Posts futuros deste loop irão sem legenda até novas legendas serem adicionadas.`
+        );
+      } else {
+        console.log(`[loops-api] PATCH loop ${id} — ${cleaned.length} legenda(s): ${JSON.stringify(cleaned.slice(0, 3))}`);
+      }
+      continue;
+    }
+
+    updatePayload[key] = body[key];
   }
 
   if (Object.keys(updatePayload).length > 0) {

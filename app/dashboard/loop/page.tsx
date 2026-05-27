@@ -1231,7 +1231,7 @@ function LoopFormModal({
         cycles: editingLoop.cycles,
         intervalMinutes: editingLoop.interval_minutes,
         mediaLimit: editingLoop.media_limit ?? null,
-        captions: editingLoop.captions.length > 0 ? editingLoop.captions : [""],
+        captions: Array.isArray(editingLoop.captions) && editingLoop.captions.length > 0 ? editingLoop.captions : [""],
         coverFile: null,
         coverPreviewUrl: editingLoop.cover_image_url,
         effectMirror: editingLoop.effect_mirror,

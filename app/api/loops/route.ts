@@ -63,6 +63,18 @@ export async function POST(req: NextRequest) {
 
   const anyAdmin = getSupabaseAdmin() as any;
 
+  // Filtra legendas em branco antes de salvar — valor vem do formulário do usuário,
+  // nunca dos metadados do vídeo (que são NULL na tabela videos_library).
+  const captionsToSave = (body.captions ?? []).map((c: string) => c.trim()).filter(Boolean);
+  if (captionsToSave.length === 0) {
+    console.warn(
+      `[loops-api] Loop "${body.name?.trim() ?? "?"}" criado SEM legendas configuradas. ` +
+      `Posts deste loop irão para a Meta API sem legenda até o usuário editar o loop e adicionar legendas.`
+    );
+  } else {
+    console.log(`[loops-api] Loop "${body.name?.trim() ?? "?"}" — ${captionsToSave.length} legenda(s) salva(s): ${JSON.stringify(captionsToSave.slice(0, 3))}`);
+  }
+
   const { data: loop, error: loopError } = await anyAdmin
     .from("loops")
     .insert({
@@ -73,7 +85,7 @@ export async function POST(req: NextRequest) {
       cycles: body.cycles,
       interval_minutes: Math.max(10, body.interval_minutes),
       media_limit: body.media_limit ?? null,
-      captions: body.captions.filter((c: string) => c.trim()),
+      captions: captionsToSave,
       cover_image_url: body.cover_image_url || null,
       effect_mirror: body.effect_mirror,
       effect_invert: body.effect_invert,

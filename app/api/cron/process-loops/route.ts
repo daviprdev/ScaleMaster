@@ -446,19 +446,30 @@ export async function GET(req: NextRequest) {
     // (ex: falha Supabase, remux, etc.) não interrompa o processamento dos demais loops.
     try {
 
-    // ── Pool de legendas — construído uma vez por loop ───────────────────────
-    // buildCaptionPool garante array limpo; pickCaption tem fallback em cascata
-    // Log do raw value do banco ANTES da normalização — diagnóstico de produção.
+    // ── Pool de legendas — FONTE: loops.captions (configuração do loop) ─────────
+    // A legenda vem EXCLUSIVAMENTE da coluna `loops.captions` (text[]) preenchida
+    // pelo usuário no painel. Vídeos raspados têm caption=NULL em videos_library
+    // e esse campo NUNCA é lido aqui.
+    //
+    // Log do raw value do banco ANTES da normalização — confirma o que chegou do Supabase.
+    const loopCaptionsRaw = Array.isArray(loop.captions)
+      ? loop.captions as string[]
+      : [];
     console.log(
-      `[loop-cron] "${loop.name}" | captions RAW do banco: ${JSON.stringify(loop.captions)} | ` +
-      `tipo: ${Array.isArray(loop.captions) ? "array" : typeof loop.captions}`
+      `[loop-cron] "${loop.name}" | captions RAW do banco: ${JSON.stringify(loopCaptionsRaw)} | ` +
+      `${loopCaptionsRaw.length} item(s) antes de normalizar`
     );
-    const captionPool = buildCaptionPool(loop.captions);
-    console.log(`[loop-cron] "${loop.name}" | pool normalizado: ${captionPool.length} item(s) → ${JSON.stringify(captionPool.slice(0, 3))}`);
+
+    const captionPool = buildCaptionPool(loopCaptionsRaw);
+    console.log(
+      `[loop-cron] "${loop.name}" | pool após normalizar: ${captionPool.length} item(s)` +
+      (captionPool.length > 0 ? ` → ${JSON.stringify(captionPool.slice(0, 3))}` : " (VAZIO)")
+    );
     if (captionPool.length === 0) {
       console.warn(
-        `[loop-cron] "${loop.name}" sem legendas configuradas — ` +
-        `posts irão com legenda vazia. Adicione legendas no formulário do loop.`
+        `[loop-cron] "${loop.name}" — sem legendas configuradas no loop. ` +
+        `Posts irão com legenda vazia para a Meta API. ` +
+        `Edite o loop no painel e adicione pelo menos uma legenda.`
       );
     }
 
@@ -569,8 +580,8 @@ export async function GET(req: NextRequest) {
         selectedVideo = available[0];
         assignedThisRun.add(selectedVideo.id);
 
-        // ── Legenda — pool pré-construído, fallback em cascata ───────────────
-        caption = pickCaption(captionPool, loop.captions);
+        // ── Legenda — extraída da configuração do loop (loops.captions), não do vídeo ──
+        caption = pickCaption(captionPool, loopCaptionsRaw);
 
         // ── LOG DE AUDITORIA ─────────────────────────────────────────────────
         console.log(
