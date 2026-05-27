@@ -1,14 +1,16 @@
 /**
- * videoSanitizer.ts — Aggressive multi-layer metadata sanitization for Instagram Reels
+ * videoSanitizer.ts — Vanilla stream-copy pipeline for Instagram Reels
  *
- * Both exported functions produce a file that is:
- *   • Codec-identical to the source: stream copy preserves the original H.264/AAC
- *     profile so Meta API integrity checks pass without triggering bot detection
- *   • Deep-wiped: metadata cleared at every container layer —
- *     global (-map_metadata -1), video stream (-map_metadata:s:v -1),
- *     audio stream (-map_metadata:s:a -1), chapters (-map_chapters -1)
- *   • Freshly born: creation_time=now makes the file appear generated at upload time
- *   • Container-unique: UUID in comment atom + -fflags +bitexact
+ * Pipeline: stream copy + metadata strip + faststart web optimization.
+ *
+ *   -c:v copy        — preserves original H.264/AAC codec profile exactly
+ *   -c:a copy        — required for Meta API integrity checks to pass
+ *   -map_metadata -1 — strips all source container metadata (EXIF, GPS, encoder tags)
+ *   -movflags +faststart — moves moov atom to front for progressive web playback
+ *
+ * No artificial metadata is injected (no UUID comment, no creation_time, no bitexact).
+ * The re-packaging itself (different atom ordering/muxer timestamps) naturally
+ * differentiates the output from the source without creating a programmatic fingerprint.
  *
  * Re-encoding (libx264 / noise filters) is intentionally avoided — it alters
  * the codec profile in ways the Meta API flags as synthetic/spam content.
@@ -44,13 +46,9 @@ const DOWNLOAD_HEADERS = {
 };
 
 /**
- * Single-pass sanitization used when saving Inspirations to the Library.
+ * Vanilla sanitization used when saving Inspirations to the Library.
  *
- * Pipeline:
- *   download → stream copy + strip metadata + UUID salt + bitexact
- *
- * Stream copy preserves the original codec profile (H.264 + AAC) exactly as
- * downloaded from Instagram — required for Meta API integrity checks to pass.
+ * Pipeline: download → stream copy + strip metadata + faststart
  */
 export async function sanitizeAndHashBust(
   videoUrl: string,
@@ -72,24 +70,14 @@ export async function sanitizeAndHashBust(
   const buffer = await response.arrayBuffer();
   fs.writeFileSync(inputPath, Buffer.from(buffer));
 
-  // ── 2. Deep wipe + stream copy + UUID salt + fresh creation_time ─────────
-  const hashSalt = crypto.randomUUID();
-
+  // ── 2. Stream copy + metadata strip + faststart ───────────────────────────
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .outputOptions([
-        "-c:v",              "copy",
-        "-c:a",              "copy",
-        // Deep wipe — clears metadata at every container layer
-        "-map_metadata",     "-1",
-        "-map_metadata:s:v", "-1",
-        "-map_metadata:s:a", "-1",
-        "-map_chapters",     "-1",
-        // Inject fresh identity so the file appears newly generated
-        "-metadata",         `comment=${hashSalt}`,
-        "-metadata",         "creation_time=now",
-        "-fflags",           "+bitexact",
-        "-movflags",         "+faststart",
+        "-c:v",          "copy",
+        "-c:a",          "copy",
+        "-map_metadata", "-1",
+        "-movflags",     "+faststart",
       ])
       .output(outputPath)
       .on("end", () => resolve())
@@ -113,15 +101,12 @@ export async function sanitizeAndHashBust(
 }
 
 /**
- * Two-pass sanitization used for local device downloads.
+ * Single-pass sanitization used for local device downloads.
  *
- * Pass 1 — Metadata strip (stream copy)
- *   Removes every metadata atom from the source container: EXIF, GPS, origin
- *   URL, encoder fingerprint, creation timestamps.
+ * Pipeline: download → stream copy + strip metadata + faststart
  *
- * Pass 2 — UUID injection + bitexact (stream copy)
- *   Injects a unique UUID comment + -fflags +bitexact to suppress FFmpeg
- *   muxer fingerprint atoms. Near-instant for any file size.
+ * Previously two passes; collapsed to one since the second pass only existed
+ * to inject a UUID comment (now removed to avoid programmatic fingerprinting).
  */
 export async function sanitizeDoublePass(
   videoUrl: string,
@@ -130,7 +115,6 @@ export async function sanitizeDoublePass(
   const tmpDir = os.tmpdir();
   const uid = crypto.randomUUID();
   const inputPath  = path.join(tmpDir, `asc_in_${uid}.mp4`);
-  const pass1Path  = path.join(tmpDir, `asc_p1_${uid}.mp4`);
   const outputPath = path.join(tmpDir, `asc_out_${uid}.mp4`);
 
   // ── 1. Download ───────────────────────────────────────────────────────────
@@ -144,54 +128,29 @@ export async function sanitizeDoublePass(
   const buffer = await response.arrayBuffer();
   fs.writeFileSync(inputPath, Buffer.from(buffer));
 
-  // ── 2. Pass 1 — deep wipe: strip ALL metadata at every container layer ───
+  // ── 2. Stream copy + metadata strip + faststart ───────────────────────────
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .outputOptions([
-        "-c:v",              "copy",
-        "-c:a",              "copy",
-        "-map_metadata",     "-1",
-        "-map_metadata:s:v", "-1",
-        "-map_metadata:s:a", "-1",
-        "-map_chapters",     "-1",
-      ])
-      .output(pass1Path)
-      .on("end", () => resolve())
-      .on("error", (err: Error) => reject(new Error(`FFmpeg pass 1: ${err.message}`)))
-      .run();
-  });
-
-  // ── 3. Pass 2 — UUID + fresh creation_time + bitexact (stream copy) ─────
-  const hashSalt = crypto.randomUUID();
-
-  await new Promise<void>((resolve, reject) => {
-    ffmpeg(pass1Path)
-      .outputOptions([
-        "-c:v",              "copy",
-        "-c:a",              "copy",
-        "-map_metadata",     "-1",
-        "-map_metadata:s:v", "-1",
-        "-map_metadata:s:a", "-1",
-        "-map_chapters",     "-1",
-        "-metadata",         `comment=${hashSalt}`,
-        "-metadata",         "creation_time=now",
-        "-fflags",           "+bitexact",
-        "-movflags",         "+faststart",
+        "-c:v",          "copy",
+        "-c:a",          "copy",
+        "-map_metadata", "-1",
+        "-movflags",     "+faststart",
       ])
       .output(outputPath)
       .on("end", () => resolve())
-      .on("error", (err: Error) => reject(new Error(`FFmpeg pass 2: ${err.message}`)))
+      .on("error", (err: Error) => reject(new Error(`FFmpeg: ${err.message}`)))
       .run();
   });
 
-  // ── 4. Build storage path ─────────────────────────────────────────────────
+  // ── 3. Build storage path ─────────────────────────────────────────────────
   const stats = fs.statSync(outputPath);
   const timestamp = Date.now();
   const safe = baseName.replace(/[^a-z0-9_-]/gi, "_").slice(0, 60);
   const storagePath = `videos/${safe}_${timestamp}_${uid.slice(0, 8)}.mp4`;
 
   const cleanup = () => {
-    for (const p of [inputPath, pass1Path, outputPath]) {
+    for (const p of [inputPath, outputPath]) {
       try { fs.unlinkSync(p); } catch { /* already removed */ }
     }
   };

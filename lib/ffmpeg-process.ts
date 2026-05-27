@@ -14,11 +14,14 @@ export interface ProcessResult {
 }
 
 /**
- * Downloads a video and performs aggressive multi-layer metadata stripping via stream copy.
- * Uses -c:v copy / -c:a copy to preserve the original codec profile exactly —
- * required for Meta API integrity checks. Clears metadata at every container level
- * (global, video stream, audio stream, chapters) and injects a fresh creation_time
- * so the file appears newly generated rather than a copy.
+ * Downloads a video and re-packages it via stream copy.
+ *
+ * Pipeline: -c:v copy -c:a copy -map_metadata -1 -movflags +faststart
+ *
+ * Preserves the original H.264/AAC codec profile (required for Meta API integrity
+ * checks). Strips all source container metadata. No artificial metadata is injected
+ * — the re-packaging alone (different moov atom ordering/muxer timestamps) naturally
+ * differentiates the file without creating a programmatic fingerprint.
  */
 export async function downloadAndStripMetadata(
   videoUrl: string
@@ -37,23 +40,13 @@ export async function downloadAndStripMetadata(
   const buffer = await response.arrayBuffer();
   fs.writeFileSync(inputPath, Buffer.from(buffer));
 
-  const hashSalt = crypto.randomUUID();
-
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .outputOptions([
-        "-c:v",              "copy",
-        "-c:a",              "copy",
-        // Deep wipe — clears metadata at every container layer
-        "-map_metadata",     "-1",
-        "-map_metadata:s:v", "-1",
-        "-map_metadata:s:a", "-1",
-        "-map_chapters",     "-1",
-        // Inject fresh identity so the file appears newly generated
-        "-metadata",         `comment=${hashSalt}`,
-        "-metadata",         "creation_time=now",
-        "-fflags",           "+bitexact",
-        "-movflags",         "+faststart",
+        "-c:v",          "copy",
+        "-c:a",          "copy",
+        "-map_metadata", "-1",
+        "-movflags",     "+faststart",
       ])
       .output(outputPath)
       .on("end", () => resolve())
