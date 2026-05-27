@@ -60,50 +60,39 @@ interface VideoRow {
 }
 
 // ---------------------------------------------------------------------------
-// Caption helpers — zero-mute guarantee
+// Dynamic Caption Selection (Spintax) — loops.captions DB column
 // ---------------------------------------------------------------------------
 
 /**
- * Constrói o pool de legendas de forma 100% defensiva.
- * Suporta: array JS, string JSON, null, undefined.
- * NUNCA muta o valor original.
+ * Seleção dinâmica de legenda a partir das variações configuradas no Loop.
+ *
+ * FONTE ÚNICA: loops.captions (text[] — preenchido pelo usuário no painel).
+ * NUNCA lê videos_library.caption (sempre NULL para reels raspados).
+ *
+ * Estratégia (Spintax / rotação aleatória):
+ *   Pool não-vazio → sorteia aleatoriamente entre as variações válidas.
+ *   Pool vazio     → retorna "" (usuário não configurou legendas — comportamento esperado).
+ *
+ * Garante que undefined/null nunca chegue à Meta API como string literal.
  */
-function buildCaptionPool(raw: unknown): string[] {
-  try {
-    let arr: unknown[];
-    if (Array.isArray(raw)) {
-      arr = raw;
-    } else if (typeof raw === "string" && raw.trim().startsWith("[")) {
-      arr = JSON.parse(raw) as unknown[];
-    } else {
-      arr = [];
-    }
-    return arr.map(c => String(c ?? "").trim()).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
+function selectDynamicCaption(rawCaptions: string[]): string {
+  // Normaliza: trim + descarta entradas em branco (mesma lógica do filtro da UI)
+  const pool = rawCaptions
+    .map(c => (typeof c === "string" ? c : String(c ?? "")).trim())
+    .filter(Boolean);
 
-/**
- * Retorna uma legenda aleatória do pool.
- * Fallback em cascata:
- *   1. Pool filtrado (não-vazio, trimmed)
- *   2. Primeiro item raw do array original (mesmo se tiver espaços)
- *   3. String vazia (nunca lança exceção)
- * NUNCA usa .pop() ou .splice() — o pool é read-only.
- */
-function pickCaption(pool: string[], raw: unknown): string {
-  // Opção 1: pool limpo tem itens → sorteio real
-  if (pool.length > 0) {
-    return pool[Math.floor(Math.random() * pool.length)];
-  }
-  // Opção 2: pool vazio mas array raw tem pelo menos um item
-  const arr = Array.isArray(raw) ? raw : [];
-  if (arr.length > 0) {
-    return String(arr[0] ?? "");
-  }
-  // Opção 3: nenhuma legenda configurada
-  return "";
+  if (pool.length === 0) return "";
+
+  const idx = Math.floor(Math.random() * pool.length);
+  const selected = pool[idx];
+
+  console.log(
+    `[dynamic-caption] ${pool.length} variação(ões) | ` +
+    `selecionada [${idx + 1}/${pool.length}]: ` +
+    `"${selected.slice(0, 100)}${selected.length > 100 ? "…" : ""}"`
+  );
+
+  return selected;
 }
 
 // ---------------------------------------------------------------------------
@@ -446,30 +435,22 @@ export async function GET(req: NextRequest) {
     // (ex: falha Supabase, remux, etc.) não interrompa o processamento dos demais loops.
     try {
 
-    // ── Pool de legendas — FONTE: loops.captions (configuração do loop) ─────────
-    // A legenda vem EXCLUSIVAMENTE da coluna `loops.captions` (text[]) preenchida
-    // pelo usuário no painel. Vídeos raspados têm caption=NULL em videos_library
-    // e esse campo NUNCA é lido aqui.
-    //
-    // Log do raw value do banco ANTES da normalização — confirma o que chegou do Supabase.
-    const loopCaptionsRaw = Array.isArray(loop.captions)
-      ? loop.captions as string[]
+    // ── Legendas Dinâmicas — FONTE EXCLUSIVA: loops.captions (configuração do usuário) ──
+    // videos_library.caption é sempre NULL para reels raspados — nunca é usado aqui.
+    const loopCaptionsRaw: string[] = Array.isArray(loop.captions)
+      ? (loop.captions as string[])
       : [];
-    console.log(
-      `[loop-cron] "${loop.name}" | captions RAW do banco: ${JSON.stringify(loopCaptionsRaw)} | ` +
-      `${loopCaptionsRaw.length} item(s) antes de normalizar`
-    );
+    const validCaptionCount = loopCaptionsRaw.filter(c => String(c ?? "").trim()).length;
 
-    const captionPool = buildCaptionPool(loopCaptionsRaw);
     console.log(
-      `[loop-cron] "${loop.name}" | pool após normalizar: ${captionPool.length} item(s)` +
-      (captionPool.length > 0 ? ` → ${JSON.stringify(captionPool.slice(0, 3))}` : " (VAZIO)")
+      `[loop-cron] "${loop.name}" | legendas dinâmicas: ${validCaptionCount} variação(ões) ` +
+      `| raw DB: ${JSON.stringify(loopCaptionsRaw.slice(0, 3))}${loopCaptionsRaw.length > 3 ? "…" : ""}`
     );
-    if (captionPool.length === 0) {
+    if (validCaptionCount === 0) {
       console.warn(
-        `[loop-cron] "${loop.name}" — sem legendas configuradas no loop. ` +
-        `Posts irão com legenda vazia para a Meta API. ` +
-        `Edite o loop no painel e adicione pelo menos uma legenda.`
+        `[loop-cron] "${loop.name}" — sem legendas configuradas. ` +
+        `Posts irão sem legenda para a Meta API. ` +
+        `Edite o loop no painel e adicione pelo menos uma variação.`
       );
     }
 
@@ -509,7 +490,7 @@ export async function GET(req: NextRequest) {
 
     console.log(
       `[loop-cron] "${loop.name}" — processando ${validAccounts.length} conta(s), ` +
-      `pool ${allVideos.length} vídeo(s), ${captionPool.length} legenda(s).`
+      `${allVideos.length} vídeo(s) na pasta, ${validCaptionCount} legenda(s) dinâmica(s).`
     );
 
     // ── LOOP POR CONTA — seleção de vídeo INDIVIDUAL por conta ───────────────
@@ -580,17 +561,15 @@ export async function GET(req: NextRequest) {
         selectedVideo = available[0];
         assignedThisRun.add(selectedVideo.id);
 
-        // ── Legenda — extraída da configuração do loop (loops.captions), não do vídeo ──
-        caption = pickCaption(captionPool, loopCaptionsRaw);
+        // ── Legenda Dinâmica — selectDynamicCaption lê de loops.captions, nunca do vídeo ──
+        caption = selectDynamicCaption(loopCaptionsRaw);
 
         // ── LOG DE AUDITORIA ─────────────────────────────────────────────────
         console.log(
           `[loop-cron] AUDIT | "${loop.name}" | @${account.username} → ` +
-          `Vídeo: "${selectedVideo.filename}" (id=${selectedVideo.id}) | ` +
-          `Legenda (${caption.length} chars): "${caption.slice(0, 60)}${caption.length > 60 ? "…" : ""}" | ` +
-          `Pool: ${captionPool.length} item(s) | ` +
-          `Histórico conta: ${postedByAccount.size} | ` +
-          `NovoCiclo: ${isNewCycleForAccount}`
+          `Vídeo: "${selectedVideo.filename}" | ` +
+          `Legenda dinâmica (${caption.length} chars): "${caption.slice(0, 60)}${caption.length > 60 ? "…" : ""}" | ` +
+          `Variações: ${validCaptionCount} | Histórico conta: ${postedByAccount.size} | NovoCiclo: ${isNewCycleForAccount}`
         );
 
         // ── URL do vídeo: processVideoEffects dentro do try ──────────────────
@@ -633,7 +612,7 @@ export async function GET(req: NextRequest) {
 
         await recordContainerError(
           admin, account, loop,
-          caption,                 // string vazia se falhou antes de pickCaption
+          caption,                 // string vazia se falhou antes de selectDynamicCaption
           msg,
           selectedVideo?.id ?? "", // string vazia se falhou antes da seleção de vídeo
           loop.current_cycle
