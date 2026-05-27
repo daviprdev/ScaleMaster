@@ -1,19 +1,17 @@
 /**
- * videoSanitizer.ts — Vanilla stream-copy pipeline for Instagram Reels
+ * videoSanitizer.ts — Pure Extraction pipeline for Instagram Reels
  *
- * Pipeline: stream copy + metadata strip + faststart web optimization.
+ * Extracts STRICTLY the primary video and primary audio tracks, discarding
+ * all other data streams, hidden subtitles and telemetry tracks embedded by
+ * source CDNs (Instagram, TikTok, etc.). Packages into a clean MP4.
  *
- *   -c:v copy        — preserves original H.264/AAC codec profile exactly
- *   -c:a copy        — required for Meta API integrity checks to pass
- *   -map_metadata -1 — strips all source container metadata (EXIF, GPS, encoder tags)
- *   -movflags +faststart — moves moov atom to front for progressive web playback
- *
- * No artificial metadata is injected (no UUID comment, no creation_time, no bitexact).
- * The re-packaging itself (different atom ordering/muxer timestamps) naturally
- * differentiates the output from the source without creating a programmatic fingerprint.
- *
- * Re-encoding (libx264 / noise filters) is intentionally avoided — it alters
- * the codec profile in ways the Meta API flags as synthetic/spam content.
+ *   -map 0:v:0          — first video track only; discards data streams / SEI atoms
+ *   -map 0:a:0?         — first audio track only, if present (? = optional)
+ *   -c:v copy -c:a copy — stream copy keeps 100% original H.264/AAC profile
+ *   -map_metadata -1    — strips all global container metadata (EXIF, GPS, encoder)
+ *   -map_chapters -1    — removes chapter markers
+ *   -movflags +faststart — moov atom at front for progressive web playback
+ *   -f mp4              — strict MP4 container (no non-standard atom types)
  */
 
 import ffmpeg from "fluent-ffmpeg";
@@ -74,10 +72,14 @@ export async function sanitizeAndHashBust(
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .outputOptions([
+        "-map 0:v:0",    // pure video extraction — first track only, no data streams
+        "-map 0:a:0?",   // pure audio extraction — first track only (optional)
         "-c:v",          "copy",
         "-c:a",          "copy",
         "-map_metadata", "-1",
+        "-map_chapters", "-1",
         "-movflags",     "+faststart",
+        "-f",            "mp4",
       ])
       .output(outputPath)
       .on("end", () => resolve())
@@ -132,10 +134,14 @@ export async function sanitizeDoublePass(
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .outputOptions([
+        "-map 0:v:0",    // pure video extraction — first track only, no data streams
+        "-map 0:a:0?",   // pure audio extraction — first track only (optional)
         "-c:v",          "copy",
         "-c:a",          "copy",
         "-map_metadata", "-1",
+        "-map_chapters", "-1",
         "-movflags",     "+faststart",
+        "-f",            "mp4",
       ])
       .output(outputPath)
       .on("end", () => resolve())

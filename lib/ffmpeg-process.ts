@@ -14,14 +14,20 @@ export interface ProcessResult {
 }
 
 /**
- * Downloads a video and re-packages it via stream copy.
+ * Downloads a video and re-packages it via pure stream extraction.
  *
- * Pipeline: -c:v copy -c:a copy -map_metadata -1 -movflags +faststart
- *
- * Preserves the original H.264/AAC codec profile (required for Meta API integrity
- * checks). Strips all source container metadata. No artificial metadata is injected
- * — the re-packaging alone (different moov atom ordering/muxer timestamps) naturally
- * differentiates the file without creating a programmatic fingerprint.
+ * Pipeline (Pure Extraction):
+ *   -map 0:v:0          — extract ONLY the first video track; discards all data
+ *                          streams, SEI custom atoms and telemetry tracks embedded
+ *                          by source CDNs (Instagram, TikTok, etc.)
+ *   -map 0:a:0?         — extract ONLY the first audio track (optional — ? flag
+ *                          prevents failure when the source has no audio)
+ *   -c:v copy -c:a copy — stream copy preserves 100% original codec profile
+ *                          (H.264/AAC); required for Meta API integrity checks
+ *   -map_metadata -1    — strips all global container metadata (EXIF, GPS, encoder)
+ *   -map_chapters -1    — removes chapter markers
+ *   -movflags +faststart — moves moov atom to front for progressive web playback
+ *   -f mp4              — forces strict MP4 container (no non-standard atom types)
  */
 export async function downloadAndStripMetadata(
   videoUrl: string
@@ -43,10 +49,14 @@ export async function downloadAndStripMetadata(
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .outputOptions([
+        "-map 0:v:0",    // pure video extraction — first track only, no data streams
+        "-map 0:a:0?",   // pure audio extraction — first track only (optional)
         "-c:v",          "copy",
         "-c:a",          "copy",
         "-map_metadata", "-1",
+        "-map_chapters", "-1",
         "-movflags",     "+faststart",
+        "-f",            "mp4",
       ])
       .output(outputPath)
       .on("end", () => resolve())
