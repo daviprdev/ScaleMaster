@@ -127,6 +127,12 @@ function isWithinHumanSchedule(
 }
 
 // ---------------------------------------------------------------------------
+// Rate-limit helper — espaça chamadas à Meta API para evitar throttling silencioso
+// ---------------------------------------------------------------------------
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// ---------------------------------------------------------------------------
 // Video effects stub
 // ---------------------------------------------------------------------------
 
@@ -531,14 +537,22 @@ export async function GET(req: NextRequest) {
       `${allVideos.length} vídeo(s) na pasta, ${validCaptionCount} legenda(s) dinâmica(s).`
     );
 
-    // ── LOOP POR CONTA — seleção de vídeo INDIVIDUAL por conta ───────────────
+    // ── LOOP POR CONTA — seleção de vídeo + legenda ISOLADAS por conta ────────
+    // Cada iteração declara suas próprias variáveis locais — sem compartilhamento
+    // entre contas. Delay de 600ms entre disparos evita throttling silencioso da
+    // Graph API (rate-limit por app ~200 req/hora no tier gratuito).
+    let accountIdx = 0;
     for (const account of validAccounts) {
+      // Delay a partir da 2ª conta — evita burst de requisições simultâneas
+      if (accountIdx++ > 0) await sleep(600);
+
       if (!account.meta_access_token || !account.ig_business_account_id) {
         console.warn(`[loop-cron] @${account.username} sem credenciais Meta — pulando.`);
         continue;
       }
 
-      // Declarados antes do try para estarem disponíveis no catch (failover + recordError)
+      // Declarados antes do try para estarem disponíveis no catch (failover + recordError).
+      // ESCOPO LOCAL: nenhuma dessas variáveis é compartilhada entre iterações de conta.
       let selectedVideo: VideoRow | null = null;
       let caption = "";
       let videoUrl = "";
@@ -599,8 +613,14 @@ export async function GET(req: NextRequest) {
         selectedVideo = available[0];
         assignedThisRun.add(selectedVideo.id);
 
-        // ── Legenda Dinâmica — selectDynamicCaption lê de loops.captions, nunca do vídeo ──
+        // ── Legenda Dinâmica — escopo LOCAL por conta, sorteio independente ────
+        // loopCaptionsRaw é read-only (não mutado). caption é variável local desta
+        // iteração — não há closure leak entre contas pois o for...of é sequencial.
         caption = selectDynamicCaption(loopCaptionsRaw);
+        console.log(
+          `[loop-cron] SCOPE-ISOLATE | @${account.username} | ` +
+          `caption local (${caption.length}c): "${caption.slice(0, 60)}${caption.length > 60 ? "…" : ""}"`
+        );
 
         // ── FALLBACK DE EMERGÊNCIA ───────────────────────────────────────────
         // Se após o parse agressivo a caption ainda estiver vazia, injeta string
