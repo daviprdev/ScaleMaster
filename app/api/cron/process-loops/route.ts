@@ -233,7 +233,7 @@ async function recordContainerError(
     caption,
     status: "error",
     error_message: errorMsg.slice(0, 500),
-    video_id: videoId,
+    video_id: videoId || null, // null quando não houve seleção de vídeo (erro prematuro)
     cycle_number: cycleNumber,
   }).catch(() => {/* best-effort — não bloqueia o restante */});
 }
@@ -442,6 +442,10 @@ export async function GET(req: NextRequest) {
 
     const allVideos = allVideoRows as VideoRow[];
 
+    // ── Core do loop — envolvido em try/catch para que um erro inesperado ──────
+    // (ex: falha Supabase, remux, etc.) não interrompa o processamento dos demais loops.
+    try {
+
     // ── Pool de legendas — construído uma vez por loop ───────────────────────
     // buildCaptionPool garante array limpo; pickCaption tem fallback em cascata
     const captionPool = buildCaptionPool(loop.captions);
@@ -498,88 +502,90 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // ── Idempotência por janela de tempo (protege contra dupla execução) ───
-      const alreadyDone = await containerAlreadyExists(
-        admin, loop.id, account.id, windowStartIso
-      );
-      if (alreadyDone) {
-        console.log(`[loop-cron] ⚡ @${account.username}: container já existe neste intervalo — pulando.`);
-        containersCreated++;
-        continue;
-      }
-
-      // ── Histórico POR CONTA: vídeos que esta conta específica já publicou ──
-      const { data: accountPostedRows } = await (admin as any)
-        .from("pending_containers")
-        .select("video_id")
-        .eq("loop_id", loop.id)
-        .eq("account_id", account.id)
-        .neq("status", "error")
-        .not("video_id", "is", null);
-
-      const postedByAccount = new Set<string>(
-        (accountPostedRows ?? []).map((r: { video_id: string }) => r.video_id)
-      );
-
-      // ── Seleção do vídeo: excluindo histórico desta conta + já atribuídos ──
-      let available = allVideos.filter(
-        v => !postedByAccount.has(v.id) && !assignedThisRun.has(v.id)
-      );
-
-      let isNewCycleForAccount = false;
-
-      if (available.length === 0) {
-        if (loop.is_infinite) {
-          // Esta conta completou um ciclo completo → reinicia apenas para ela
-          available = allVideos.filter(v => !assignedThisRun.has(v.id));
-          isNewCycleForAccount = true;
-          console.log(
-            `[loop-cron] @${account.username}: ciclo completo ` +
-            `(${postedByAccount.size} vídeos postados) → reiniciando histórico para esta conta.`
-          );
-        } else {
-          // Loop finito: esta conta esgotou seu conteúdo
-          console.log(`[loop-cron] @${account.username}: todos os vídeos postados (loop finito) — pulando.`);
-          continue;
-        }
-      }
-
-      if (available.length === 0) {
-        // Todos os vídeos do pool já foram atribuídos neste disparo para outras contas
-        console.warn(
-          `[loop-cron] @${account.username}: nenhum vídeo disponível — ` +
-          `${assignedThisRun.size} vídeo(s) já atribuídos neste disparo para outras contas.`
-        );
-        continue;
-      }
-
-      const selectedVideo = available[0];
-
-      // ── Registra atribuição em memória para evitar duplicação ─────────────
-      assignedThisRun.add(selectedVideo.id);
-
-      // ── Legenda com fallback em cascata — NUNCA muta o pool original ───────
-      const caption = pickCaption(captionPool, loop.captions);
-
-      // ── LOG DE AUDITORIA ─────────────────────────────────────────────────
-      console.log(
-        `[loop-cron] AUDIT | "${loop.name}" | @${account.username} → ` +
-        `Vídeo: "${selectedVideo.filename}" (id=${selectedVideo.id}) | ` +
-        `Legenda: "${caption.slice(0, 60)}${caption.length > 60 ? "…" : ""}" | ` +
-        `Histórico conta: ${postedByAccount.size} | ` +
-        `NovosCiclo: ${isNewCycleForAccount}`
-      );
-
-      // ── Processa efeitos de vídeo (stub — retorna URL original) ───────────
-      const videoUrl = await processVideoEffects(
-        selectedVideo.public_url,
-        loop.effect_mirror,
-        loop.effect_invert
-      );
+      // Declarados antes do try para estarem disponíveis no catch (failover + recordError)
+      let selectedVideo: VideoRow | null = null;
+      let caption = "";
+      let videoUrl = "";
 
       try {
-        let tokenToUse = account.meta_access_token;
+        // ── Idempotência por janela de tempo (protege contra dupla execução) ───
+        const alreadyDone = await containerAlreadyExists(
+          admin, loop.id, account.id, windowStartIso
+        );
+        if (alreadyDone) {
+          console.log(`[loop-cron] ⚡ @${account.username}: container já existe neste intervalo — pulando.`);
+          containersCreated++;
+          continue;
+        }
 
+        // ── Histórico POR CONTA: vídeos que esta conta específica já publicou ──
+        const { data: accountPostedRows } = await (admin as any)
+          .from("pending_containers")
+          .select("video_id")
+          .eq("loop_id", loop.id)
+          .eq("account_id", account.id)
+          .neq("status", "error")
+          .not("video_id", "is", null);
+
+        const postedByAccount = new Set<string>(
+          (accountPostedRows ?? []).map((r: { video_id: string }) => r.video_id)
+        );
+
+        // ── Seleção do vídeo: excluindo histórico desta conta + já atribuídos ──
+        let available = allVideos.filter(
+          v => !postedByAccount.has(v.id) && !assignedThisRun.has(v.id)
+        );
+
+        let isNewCycleForAccount = false;
+
+        if (available.length === 0) {
+          if (loop.is_infinite) {
+            available = allVideos.filter(v => !assignedThisRun.has(v.id));
+            isNewCycleForAccount = true;
+            console.log(
+              `[loop-cron] @${account.username}: ciclo completo ` +
+              `(${postedByAccount.size} vídeos postados) → reiniciando histórico para esta conta.`
+            );
+          } else {
+            console.log(`[loop-cron] @${account.username}: todos os vídeos postados (loop finito) — pulando.`);
+            continue;
+          }
+        }
+
+        if (available.length === 0) {
+          console.warn(
+            `[loop-cron] @${account.username}: nenhum vídeo disponível — ` +
+            `${assignedThisRun.size} vídeo(s) já atribuídos neste disparo para outras contas.`
+          );
+          continue;
+        }
+
+        selectedVideo = available[0];
+        assignedThisRun.add(selectedVideo.id);
+
+        // ── Legenda — pool pré-construído, fallback em cascata ───────────────
+        caption = pickCaption(captionPool, loop.captions);
+
+        // ── LOG DE AUDITORIA ─────────────────────────────────────────────────
+        console.log(
+          `[loop-cron] AUDIT | "${loop.name}" | @${account.username} → ` +
+          `Vídeo: "${selectedVideo.filename}" (id=${selectedVideo.id}) | ` +
+          `Legenda: "${caption.slice(0, 60)}${caption.length > 60 ? "…" : ""}" | ` +
+          `Histórico conta: ${postedByAccount.size} | ` +
+          `NovoCiclo: ${isNewCycleForAccount}`
+        );
+
+        // ── URL do vídeo: processVideoEffects dentro do try ──────────────────
+        // Fallback automático para URL original caso o remux lance exceção.
+        videoUrl = await processVideoEffects(
+          selectedVideo.public_url,
+          loop.effect_mirror,
+          loop.effect_invert
+        );
+        if (!videoUrl) videoUrl = selectedVideo.public_url;
+
+        // ── Token refresh preventivo ─────────────────────────────────────────
+        let tokenToUse = account.meta_access_token;
         if (isTokenExpiringSoon(account.token_expires_at, 7)) {
           try {
             const { token, expiresAt } = await refreshMetaToken(
@@ -608,14 +614,17 @@ export async function GET(req: NextRequest) {
         console.error(`[loop-cron] ✗ @${account.username}: ${msg}`);
 
         await recordContainerError(
-          admin, account, loop, caption, msg,
-          selectedVideo.id, loop.current_cycle
-        );
+          admin, account, loop,
+          caption,                 // string vazia se falhou antes de pickCaption
+          msg,
+          selectedVideo?.id ?? "", // string vazia se falhou antes da seleção de vídeo
+          loop.current_cycle
+        ).catch(() => {/* best-effort */});
 
-        if (isCriticalMetaError(msg)) {
+        if (isCriticalMetaError(msg) && videoUrl) {
           const failoverOk = await attemptFailover(
             admin, account, loop, videoUrl, caption, msg, windowStartIso,
-            selectedVideo.id, loop.current_cycle
+            selectedVideo?.id ?? "", loop.current_cycle
           );
           if (failoverOk) containersCreated++;
         }
@@ -624,6 +633,12 @@ export async function GET(req: NextRequest) {
 
     if (containersCreated > 0) summary.processed++;
     else summary.errors++;
+
+    } catch (loopErr) {
+      const loopErrMsg = loopErr instanceof Error ? loopErr.message : String(loopErr);
+      console.error(`[loop-cron] Erro inesperado no loop "${loop.name}": ${loopErrMsg}`);
+      summary.errors++;
+    }
 
   } // fim for loop
 

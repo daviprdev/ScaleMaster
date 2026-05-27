@@ -86,6 +86,17 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
+    // Guard: creation_id vazio indica container criado em modo de erro — descartar.
+    if (!container.creation_id) {
+      await (admin as any)
+        .from("pending_containers")
+        .update({ status: "error", error_message: "creation_id vazio — container inválido, descartado." })
+        .eq("id", container.id);
+      console.warn(`[publish-pending] Container ${container.id}: creation_id vazio — descartado.`);
+      summary.errors++;
+      continue;
+    }
+
     const account = container.instagram_accounts;
     if (!account?.meta_access_token) {
       await (admin as any)

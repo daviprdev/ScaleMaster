@@ -13,10 +13,17 @@ async function createMediaContainer(
   caption: string,
   token: string
 ): Promise<string> {
+  // Guard: garante que caption nunca chega como undefined/null ao URLSearchParams
+  // (URLSearchParams({ caption: undefined }) enviaria a string literal "undefined")
+  const safeCaption = typeof caption === "string" ? caption : String(caption ?? "");
+  console.log(
+    `[meta-publish] Criando container | igId=${igAccountId.slice(0, 10)}… | ` +
+    `caption="${safeCaption.slice(0, 80)}${safeCaption.length > 80 ? "…" : ""}"`
+  );
   const params = new URLSearchParams({
     media_type: "REELS",
     video_url: videoUrl,
-    caption,
+    caption: safeCaption,
     access_token: token,
   });
   const res = await fetch(`${GRAPH_API}/${igAccountId}/media`, {
