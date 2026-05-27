@@ -1815,3 +1815,76 @@ Posts deletados diretamente via script Node.js usando a Supabase REST API com se
   - `useEffect` registra `setInterval(loadStats(silent), 60_000)` — auto-refresh a cada 60s
   - Botão "Atualizar" (ícone `RefreshCw`) visível no header do dashboard
   - Botão "Limpar Fila" (2-click confirmation) no card de Próximas Postagens, visível apenas quando `pending > 0`
+
+---
+
+### ✅ Fix — Auditoria de Banda: 10 GB Fast Origin Transfer (2026-05-27)
+**Commits:** `54c6361` — `refactor: offload video bandwidth from vercel by passing direct public urls to meta api`
+
+#### Diagnóstico completo
+
+**Posting pipeline — ✅ Já estava correto**
+O caminho `process-loops → createContainerForAccount → createMediaContainerOnly → Meta Graph API` já enviava apenas o campo form `video_url=<URL_Supabase>`. A Meta faz pull direto do Supabase CDN. FFmpeg (`processVideoEffects`) era stub que retornava a URL sem alteração. Zero bytes de vídeo passavam pela Vercel ao publicar.
+
+**Causa real — `/api/proxy-sanitize-download`**
+Cada download de Inspiração no device roteava ~2× o tamanho do vídeo pela Vercel:
+1. Vercel baixava o MP4 do Instagram/Apify CDN (50–150 MB)
+2. FFmpeg processava em `/tmp`
+3. `fs.readFileSync` carregava o arquivo inteiro em memória
+4. Vercel enviava o buffer completo ao browser
+
+Custo estimado: 100 downloads × ~100 MB = **10 GB** — exatamente o limite do plano Hobby.
+
+#### Correções aplicadas
+
+| Rota | Antes | Depois |
+|------|-------|--------|
+| `proxy-sanitize-download GET` | Sempre baixava, processava FFmpeg, enviava buffer | URLs `*.supabase.co` → HTTP 307 redirect (zero bytes Vercel) |
+| `proxy-download GET` | Sempre fazia fetch e streamava | URLs `*.supabase.co` → HTTP 307 redirect |
+| `proxy-download HEAD` | Sempre fazia HEAD request remoto | URLs `*.supabase.co` → 200 instantâneo sem fetch |
+| `proxy-sanitize-download` | Log sem tamanho | Log de MB por download para monitorar consumo |
+
+#### Limitação permanente
+URLs do Instagram CDN (inspirações não salvas na biblioteca) ainda precisam do proxy — CORS + Referer restrictions impedem fetch direto pelo browser. Solução de longo prazo: exigir save na biblioteca antes de download (usa a URL Supabase já limpa).
+
+#### Upgrade de plano
+Vercel Hobby migrado para **Vercel Pro** nesta data. 1 TB de banda disponível, sem limites de timeout nas funções.
+
+---
+
+### ✅ Chore — X-Ray Logs: Diagnóstico Roleta Russa de Legendas (2026-05-27)
+**Commit:** `54bf456` — `chore: inject aggressive x-ray logs to debug caption russian roulette`
+
+#### Comportamento observado
+Lotes com postagem inconsistente de legendas: algumas contas publicavam todas as variações corretamente, outras publicavam posts sem legenda, outras parcialmente. Impossível distinguir se o bug era interno (array vazio no banco → seleção falhando) ou externo (Meta API descartando o double-tap silenciosamente).
+
+#### Blindagens injetadas
+
+**`app/api/cron/process-loops/route.ts`**
+
+| Adição | Propósito |
+|--------|-----------|
+| `Object.freeze(loopCaptionsRaw)` após parse | Qualquer `.pop()/.shift()/.splice()` lança `TypeError` imediatamente — revela mutação destrutiva |
+| Log estendido: `type + isArray + rawLen` de `loop.captions` | Detecta perda silenciosa de variações no parse (ex: array de 5 vira array de 0) |
+| `[RAIO-X]` pós-`selectDynamicCaption` | Por conta: pool size + caption sorteada (ou `VAZIA!!!`) — snapshot antes do fallback |
+| `[RAIO-X-FINAL]` | Caption final que efetivamente entra no container — confirma se fallback de emergência foi usado |
+
+**`app/api/cron/publish-pending/route.ts`**
+
+| Adição | Propósito |
+|--------|-----------|
+| `[RAIO-X]` antes do double-tap | Caption armazenada no banco (chars + preview + flag `VAZIA!!!`) — isola se o problema é interno |
+
+**`lib/meta-publish.ts` — `updatePostCaption`**
+
+| Adição | Propósito |
+|--------|-----------|
+| `[META DOUBLE-TAP RAW]` com `rawText` completo (sem slice) | Expõe qualquer resposta silenciosa da Meta que estava sendo truncada |
+| `HTTP status` no log | Detecta 429 imediatamente |
+| `rate_limited=SIM!!!` | Detecção inline de rate limit por regex |
+| `oauth_err=SIM!!!` | Detecção inline de `OAuthException`/token inválido |
+
+#### Como interpretar os logs na Vercel
+- `[RAIO-X] Sorteada: VAZIA!!!` → bug interno (parse do `loops.captions` está retornando array vazio)
+- `[RAIO-X] Sorteada: "OK"` + `[META DOUBLE-TAP RAW] rate_limited=SIM!!!` → Meta bloqueando edições consecutivas (rate limit no endpoint de caption update)
+- `[RAIO-X-FINAL]` com texto de emergência (`🔥 [TESTE DE SISTEMA]`) → pool estava vazio mas fallback funcionou; verificar configuração das legendas no painel Loop
