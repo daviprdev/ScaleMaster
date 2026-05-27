@@ -449,55 +449,6 @@ export async function GET(req: NextRequest) {
       `| isArray: ${Array.isArray(loop.captions)}`
     );
 
-    // ── Parse agressivo de legendas — FONTE EXCLUSIVA: loops.captions ───────
-    // Cobre todos os formatos possíveis que o Supabase pode retornar para text[]:
-    //   array nativo JS  → mapeia direto
-    //   string JSON "[…]" → parse + mapeia
-    //   string simples    → usa como variação única (salvo pelo usuário sem array)
-    //   qualquer outra coisa → trata como array de 1 elemento via String()
-    //   null / undefined  → pool vazio (sem legendas configuradas)
-    let loopCaptionsRaw: string[];
-    const rawCaptions = loop.captions;
-
-    if (Array.isArray(rawCaptions)) {
-      loopCaptionsRaw = (rawCaptions as unknown[]).map(c => String(c ?? "").trim()).filter(Boolean);
-    } else if (typeof rawCaptions === "string") {
-      const trimmed = (rawCaptions as string).trim();
-      if (trimmed.startsWith("[")) {
-        try {
-          const parsed = JSON.parse(trimmed);
-          loopCaptionsRaw = Array.isArray(parsed)
-            ? (parsed as unknown[]).map(c => String(c ?? "").trim()).filter(Boolean)
-            : [trimmed];
-        } catch {
-          // JSON.parse falhou — usa a string inteira como variação única
-          loopCaptionsRaw = trimmed ? [trimmed] : [];
-        }
-      } else {
-        // String simples (não é JSON array) — pode ser uma legenda única salva incorretamente
-        loopCaptionsRaw = trimmed ? [trimmed] : [];
-      }
-    } else if (rawCaptions !== null && rawCaptions !== undefined) {
-      // Tipo inesperado (número, objeto…) — converte para string e usa
-      const asStr = String(rawCaptions).trim();
-      loopCaptionsRaw = asStr ? [asStr] : [];
-    } else {
-      loopCaptionsRaw = [];
-    }
-
-    const validCaptionCount = loopCaptionsRaw.length;
-
-    console.log(
-      `[loop-cron] "${loop.name}" | legendas parseadas: ${validCaptionCount} variação(ões) ` +
-      `| pool: ${JSON.stringify(loopCaptionsRaw.slice(0, 3))}${loopCaptionsRaw.length > 3 ? "…" : ""}`
-    );
-    if (validCaptionCount === 0) {
-      console.warn(
-        `[loop-cron] "${loop.name}" — ZERO legendas após parse agressivo. ` +
-        `RAW="${JSON.stringify(rawCaptions)}". Fallback de emergência será usado.`
-      );
-    }
-
     // ── CLAIM: avança o estado do loop ANTES de processar contas ─────────────
     // Garante que dois crons concorrentes não avancem o mesmo loop duas vezes.
     const newCyclesDone = loop.cycles_done + 1;
@@ -527,38 +478,76 @@ export async function GET(req: NextRequest) {
     ).toISOString();
 
     // ── Set em memória: vídeos já atribuídos NESTE disparo ───────────────────
-    // Garante que nunca dois contas recebam o MESMO vídeo no mesmo cron run.
     const assignedThisRun = new Set<string>();
 
     let containersCreated = 0;
 
     console.log(
-      `[loop-cron] "${loop.name}" — processando ${validAccounts.length} conta(s), ` +
-      `${allVideos.length} vídeo(s) na pasta, ${validCaptionCount} legenda(s) dinâmica(s).`
+      `[loop-cron] "${loop.name}" — ${validAccounts.length} conta(s) para processar, ` +
+      `${allVideos.length} vídeo(s) na pasta. Execução estritamente sequencial, 3s de throttle entre contas.`
     );
 
-    // ── LOOP POR CONTA — seleção de vídeo + legenda ISOLADAS por conta ────────
-    // Cada iteração declara suas próprias variáveis locais — sem compartilhamento
-    // entre contas. Delay de 600ms entre disparos evita throttling silencioso da
-    // Graph API (rate-limit por app ~200 req/hora no tier gratuito).
+    // ── LOOP POR CONTA — execução estritamente sequencial, sem Promise.all ───
+    //
+    // Por conta:
+    //   1. Parse de legendas recriado do ZERO (bloco isolado com {}) — sem reuso de estado
+    //   2. Seleção de vídeo e legenda independentes desta iteração
+    //   3. Submissão única para a Meta API
+    //   4. Throttle de 3000ms APÓS a submissão, antes da próxima conta
+    //
+    // O throttle após (não antes) garante que o container foi aceito pela Meta
+    // antes de iniciarmos a próxima requisição — evita burst e rate-limit silencioso.
     let accountIdx = 0;
     for (const account of validAccounts) {
-      // Delay a partir da 2ª conta — evita burst de requisições simultâneas
-      if (accountIdx++ > 0) await sleep(600);
+      accountIdx++;
 
       if (!account.meta_access_token || !account.ig_business_account_id) {
         console.warn(`[loop-cron] @${account.username} sem credenciais Meta — pulando.`);
         continue;
       }
 
-      // Declarados antes do try para estarem disponíveis no catch (failover + recordError).
-      // ESCOPO LOCAL: nenhuma dessas variáveis é compartilhada entre iterações de conta.
+      // ── Estado local desta conta — zerado a cada iteração ────────────────
       let selectedVideo: VideoRow | null = null;
       let caption = "";
       let videoUrl = "";
 
+      // ── Parse de legendas ISOLADO — recriado do zero neste bloco ─────────
+      // Bloco {} garante que loopCaptionsRaw não vaza para a próxima iteração.
+      // FONTE EXCLUSIVA: loops.captions. Nunca reutiliza resultado anterior.
+      let loopCaptionsRaw: string[];
+      {
+        const rawCaptions = loop.captions;
+        if (Array.isArray(rawCaptions)) {
+          loopCaptionsRaw = (rawCaptions as unknown[]).map(c => String(c ?? "").trim()).filter(Boolean);
+        } else if (typeof rawCaptions === "string") {
+          const trimmed = (rawCaptions as string).trim();
+          if (trimmed.startsWith("[")) {
+            try {
+              const parsed = JSON.parse(trimmed);
+              loopCaptionsRaw = Array.isArray(parsed)
+                ? (parsed as unknown[]).map(c => String(c ?? "").trim()).filter(Boolean)
+                : [trimmed];
+            } catch {
+              loopCaptionsRaw = trimmed ? [trimmed] : [];
+            }
+          } else {
+            loopCaptionsRaw = trimmed ? [trimmed] : [];
+          }
+        } else if (rawCaptions !== null && rawCaptions !== undefined) {
+          const asStr = String(rawCaptions).trim();
+          loopCaptionsRaw = asStr ? [asStr] : [];
+        } else {
+          loopCaptionsRaw = [];
+        }
+      }
+
+      console.log(
+        `[loop-cron] @${account.username} [${accountIdx}/${validAccounts.length}] | ` +
+        `pool de legendas isolado: ${loopCaptionsRaw.length} variação(ões)`
+      );
+
       try {
-        // ── Idempotência por janela de tempo (protege contra dupla execução) ───
+        // ── Idempotência por janela de tempo ────────────────────────────────
         const alreadyDone = await containerAlreadyExists(
           admin, loop.id, account.id, windowStartIso
         );
@@ -568,7 +557,7 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        // ── Histórico POR CONTA: vídeos que esta conta específica já publicou ──
+        // ── Histórico POR CONTA ──────────────────────────────────────────────
         const { data: accountPostedRows } = await (admin as any)
           .from("pending_containers")
           .select("video_id")
@@ -581,7 +570,7 @@ export async function GET(req: NextRequest) {
           (accountPostedRows ?? []).map((r: { video_id: string }) => r.video_id)
         );
 
-        // ── Seleção do vídeo: excluindo histórico desta conta + já atribuídos ──
+        // ── Seleção do vídeo ─────────────────────────────────────────────────
         let available = allVideos.filter(
           v => !postedByAccount.has(v.id) && !assignedThisRun.has(v.id)
         );
@@ -605,7 +594,7 @@ export async function GET(req: NextRequest) {
         if (available.length === 0) {
           console.warn(
             `[loop-cron] @${account.username}: nenhum vídeo disponível — ` +
-            `${assignedThisRun.size} vídeo(s) já atribuídos neste disparo para outras contas.`
+            `${assignedThisRun.size} vídeo(s) já atribuídos neste disparo.`
           );
           continue;
         }
@@ -613,38 +602,24 @@ export async function GET(req: NextRequest) {
         selectedVideo = available[0];
         assignedThisRun.add(selectedVideo.id);
 
-        // ── Legenda Dinâmica — escopo LOCAL por conta, sorteio independente ────
-        // loopCaptionsRaw é read-only (não mutado). caption é variável local desta
-        // iteração — não há closure leak entre contas pois o for...of é sequencial.
+        // ── Legenda — selecionada do pool isolado desta iteração ─────────────
         caption = selectDynamicCaption(loopCaptionsRaw);
-        console.log(
-          `[loop-cron] SCOPE-ISOLATE | @${account.username} | ` +
-          `caption local (${caption.length}c): "${caption.slice(0, 60)}${caption.length > 60 ? "…" : ""}"`
-        );
 
-        // ── FALLBACK DE EMERGÊNCIA ───────────────────────────────────────────
-        // Se após o parse agressivo a caption ainda estiver vazia, injeta string
-        // de diagnóstico. Isso nos permite saber se o problema está na seleção
-        // de legenda OU se a Meta API está descartando o campo silenciosamente.
         if (!caption) {
           caption = '🔥 [TESTE DE SISTEMA] Legenda de emergência.';
           console.warn(
-            `[loop-cron] FALLBACK EMERGÊNCIA ativado para @${account.username} | ` +
-            `loop="${loop.name}" | raw captions pool=[] após parse. ` +
-            `Usando: "${caption}"`
+            `[loop-cron] FALLBACK EMERGÊNCIA | @${account.username} | loop="${loop.name}" — pool vazio.`
           );
         }
 
-        // ── LOG DE AUDITORIA ─────────────────────────────────────────────────
         console.log(
           `[loop-cron] AUDIT | "${loop.name}" | @${account.username} → ` +
           `Vídeo: "${selectedVideo.filename}" | ` +
-          `Legenda (${caption.length} chars): "${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}" | ` +
-          `Variações no pool: ${validCaptionCount} | NovoCiclo: ${isNewCycleForAccount}`
+          `Legenda (${caption.length}c): "${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}" | ` +
+          `NovoCiclo: ${isNewCycleForAccount}`
         );
 
-        // ── URL do vídeo: processVideoEffects dentro do try ──────────────────
-        // Fallback automático para URL original caso o remux lance exceção.
+        // ── Efeitos de vídeo ─────────────────────────────────────────────────
         videoUrl = await processVideoEffects(
           selectedVideo.public_url,
           loop.effect_mirror,
@@ -683,9 +658,9 @@ export async function GET(req: NextRequest) {
 
         await recordContainerError(
           admin, account, loop,
-          caption,                 // string vazia se falhou antes de selectDynamicCaption
+          caption,
           msg,
-          selectedVideo?.id ?? "", // string vazia se falhou antes da seleção de vídeo
+          selectedVideo?.id ?? "",
           loop.current_cycle
         ).catch(() => {/* best-effort */});
 
@@ -696,6 +671,20 @@ export async function GET(req: NextRequest) {
           );
           if (failoverOk) containersCreated++;
         }
+      }
+
+      // ── Throttle estratégico — 3s após cada conta exceto a última ────────
+      // Posicionado APÓS o try/catch: o container foi aceito (ou falhou) antes
+      // de aguardar — dá tempo à Meta API processar o payload antes do próximo.
+      if (accountIdx < validAccounts.length) {
+        console.log(
+          `[loop-cron] Post ${accountIdx}/${validAccounts.length} enviado. Aguardando 3s...`
+        );
+        await sleep(3_000);
+      } else {
+        console.log(
+          `[loop-cron] Post ${accountIdx}/${validAccounts.length} enviado. Último do lote — sem espera.`
+        );
       }
     } // fim for account
 
