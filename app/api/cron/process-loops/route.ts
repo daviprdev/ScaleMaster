@@ -435,34 +435,60 @@ export async function GET(req: NextRequest) {
     // (ex: falha Supabase, remux, etc.) não interrompa o processamento dos demais loops.
     try {
 
-    // ── Legendas Dinâmicas — FONTE EXCLUSIVA: loops.captions (configuração do usuário) ──
-    // videos_library.caption é sempre NULL para reels raspados — nunca é usado aqui.
-    // Fallback JSON.parse: Supabase pode retornar text[] como string JSON em alguns contextos;
-    // sem este guard, Array.isArray() retorna false e loopCaptionsRaw vira [], zerando legendas.
+    // ── RAW SUPABASE LOG — diagnóstico de regressão de legenda ──────────────
+    console.log(
+      `[loop-cron] RAW SUPABASE DATA loop.captions:`,
+      JSON.stringify(loop.captions),
+      `| type: ${typeof loop.captions}`,
+      `| isArray: ${Array.isArray(loop.captions)}`
+    );
+
+    // ── Parse agressivo de legendas — FONTE EXCLUSIVA: loops.captions ───────
+    // Cobre todos os formatos possíveis que o Supabase pode retornar para text[]:
+    //   array nativo JS  → mapeia direto
+    //   string JSON "[…]" → parse + mapeia
+    //   string simples    → usa como variação única (salvo pelo usuário sem array)
+    //   qualquer outra coisa → trata como array de 1 elemento via String()
+    //   null / undefined  → pool vazio (sem legendas configuradas)
     let loopCaptionsRaw: string[];
-    if (Array.isArray(loop.captions)) {
-      loopCaptionsRaw = loop.captions as string[];
-    } else if (typeof loop.captions === "string") {
-      try {
-        const parsed = JSON.parse(loop.captions as string);
-        loopCaptionsRaw = Array.isArray(parsed) ? (parsed as string[]) : [];
-      } catch {
-        loopCaptionsRaw = [];
+    const rawCaptions = loop.captions;
+
+    if (Array.isArray(rawCaptions)) {
+      loopCaptionsRaw = (rawCaptions as unknown[]).map(c => String(c ?? "").trim()).filter(Boolean);
+    } else if (typeof rawCaptions === "string") {
+      const trimmed = (rawCaptions as string).trim();
+      if (trimmed.startsWith("[")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          loopCaptionsRaw = Array.isArray(parsed)
+            ? (parsed as unknown[]).map(c => String(c ?? "").trim()).filter(Boolean)
+            : [trimmed];
+        } catch {
+          // JSON.parse falhou — usa a string inteira como variação única
+          loopCaptionsRaw = trimmed ? [trimmed] : [];
+        }
+      } else {
+        // String simples (não é JSON array) — pode ser uma legenda única salva incorretamente
+        loopCaptionsRaw = trimmed ? [trimmed] : [];
       }
+    } else if (rawCaptions !== null && rawCaptions !== undefined) {
+      // Tipo inesperado (número, objeto…) — converte para string e usa
+      const asStr = String(rawCaptions).trim();
+      loopCaptionsRaw = asStr ? [asStr] : [];
     } else {
       loopCaptionsRaw = [];
     }
-    const validCaptionCount = loopCaptionsRaw.filter(c => String(c ?? "").trim()).length;
+
+    const validCaptionCount = loopCaptionsRaw.length;
 
     console.log(
-      `[loop-cron] "${loop.name}" | legendas dinâmicas: ${validCaptionCount} variação(ões) ` +
-      `| raw DB: ${JSON.stringify(loopCaptionsRaw.slice(0, 3))}${loopCaptionsRaw.length > 3 ? "…" : ""}`
+      `[loop-cron] "${loop.name}" | legendas parseadas: ${validCaptionCount} variação(ões) ` +
+      `| pool: ${JSON.stringify(loopCaptionsRaw.slice(0, 3))}${loopCaptionsRaw.length > 3 ? "…" : ""}`
     );
     if (validCaptionCount === 0) {
       console.warn(
-        `[loop-cron] "${loop.name}" — sem legendas configuradas. ` +
-        `Posts irão sem legenda para a Meta API. ` +
-        `Edite o loop no painel e adicione pelo menos uma variação.`
+        `[loop-cron] "${loop.name}" — ZERO legendas após parse agressivo. ` +
+        `RAW="${JSON.stringify(rawCaptions)}". Fallback de emergência será usado.`
       );
     }
 
@@ -576,12 +602,25 @@ export async function GET(req: NextRequest) {
         // ── Legenda Dinâmica — selectDynamicCaption lê de loops.captions, nunca do vídeo ──
         caption = selectDynamicCaption(loopCaptionsRaw);
 
+        // ── FALLBACK DE EMERGÊNCIA ───────────────────────────────────────────
+        // Se após o parse agressivo a caption ainda estiver vazia, injeta string
+        // de diagnóstico. Isso nos permite saber se o problema está na seleção
+        // de legenda OU se a Meta API está descartando o campo silenciosamente.
+        if (!caption) {
+          caption = '🔥 [TESTE DE SISTEMA] Legenda de emergência.';
+          console.warn(
+            `[loop-cron] FALLBACK EMERGÊNCIA ativado para @${account.username} | ` +
+            `loop="${loop.name}" | raw captions pool=[] após parse. ` +
+            `Usando: "${caption}"`
+          );
+        }
+
         // ── LOG DE AUDITORIA ─────────────────────────────────────────────────
         console.log(
           `[loop-cron] AUDIT | "${loop.name}" | @${account.username} → ` +
           `Vídeo: "${selectedVideo.filename}" | ` +
-          `Legenda dinâmica (${caption.length} chars): "${caption.slice(0, 60)}${caption.length > 60 ? "…" : ""}" | ` +
-          `Variações: ${validCaptionCount} | Histórico conta: ${postedByAccount.size} | NovoCiclo: ${isNewCycleForAccount}`
+          `Legenda (${caption.length} chars): "${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}" | ` +
+          `Variações no pool: ${validCaptionCount} | NovoCiclo: ${isNewCycleForAccount}`
         );
 
         // ── URL do vídeo: processVideoEffects dentro do try ──────────────────
