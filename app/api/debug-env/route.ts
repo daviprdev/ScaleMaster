@@ -8,7 +8,7 @@ export async function GET() {
   const igAppId = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? "(não definida)";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "(não definida)";
   const redirectUri = "https://autoscale-ia.vercel.app/api/instagram/callback";
-  const scope = "instagram_business_basic,instagram_business_content_publish";
+  const scope = "instagram_business_basic,instagram_business_content_publish,instagram_manage_comments,instagram_manage_insights";
 
   const oauthUrl =
     "https://api.instagram.com/oauth/authorize" +
