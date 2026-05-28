@@ -219,18 +219,28 @@ async function recordContainerError(
   videoId: string,
   cycleNumber: number
 ): Promise<void> {
-  await (admin as any).from("pending_containers").insert({
-    user_id: loop.user_id,
-    loop_id: loop.id,
-    account_id: account.id,
-    ig_business_account_id: account.ig_business_account_id ?? "",
-    creation_id: "",
-    caption,
-    status: "error",
-    error_message: errorMsg.slice(0, 500),
-    video_id: videoId || null, // null quando não houve seleção de vídeo (erro prematuro)
-    cycle_number: cycleNumber,
-  }).catch(() => {/* best-effort — não bloqueia o restante */});
+  // NUNCA usar .catch() diretamente no builder do Supabase — o builder não é uma
+  // Promise completa e não possui .catch(). Sempre usar try/catch com await.
+  try {
+    const { error } = await (admin as any).from("pending_containers").insert({
+      user_id: loop.user_id,
+      loop_id: loop.id,
+      account_id: account.id,
+      ig_business_account_id: account.ig_business_account_id ?? "",
+      creation_id: "",
+      caption,
+      status: "error",
+      error_message: errorMsg.slice(0, 500),
+      video_id: videoId || null,
+      cycle_number: cycleNumber,
+    });
+    if (error) {
+      console.warn(`[loop-cron] recordContainerError: falha ao persistir erro para @${account.username}: ${error.message}`);
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`[loop-cron] recordContainerError: exceção ao persistir erro para @${account.username}: ${msg}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -277,12 +287,18 @@ async function attemptFailover(
 
   const backup = backups?.[0] ?? null;
 
-  await (admin as any).from("failover_logs").insert({
-    user_id: loop.user_id,
-    failed_account_id: failedAccount.id,
-    backup_account_id: backup?.id ?? null,
-    error_reason: errorMsg.slice(0, 500),
-  }).catch(() => {});
+  // NUNCA usar .catch() no builder Supabase — usar try/catch com await.
+  try {
+    await (admin as any).from("failover_logs").insert({
+      user_id: loop.user_id,
+      failed_account_id: failedAccount.id,
+      backup_account_id: backup?.id ?? null,
+      error_reason: errorMsg.slice(0, 500),
+    });
+  } catch (logErr) {
+    const logMsg = logErr instanceof Error ? logErr.message : String(logErr);
+    console.warn(`[loop-cron] failover_logs: falha ao registrar evento (best-effort): ${logMsg}`);
+  }
 
   if (!backup?.meta_access_token || !backup?.ig_business_account_id) {
     console.warn(`[loop-cron] Sem conta de backup disponível para "${loop.name}".`);
@@ -713,24 +729,36 @@ export async function GET(req: NextRequest) {
         containersCreated++;
 
       } catch (err) {
+        // ── Isolamento de falha por conta ───────────────────────────────────
+        // Este bloco NUNCA deve lançar: qualquer exceção aqui abortaria o
+        // processamento de todas as contas restantes do lote.
         const msg = err instanceof Error ? err.message : String(err);
         console.error(`[loop-cron] ✗ @${account.username}: ${msg}`);
 
+        // recordContainerError jamais lança (trata erros internamente).
         await recordContainerError(
           admin, account, loop,
           caption,
           msg,
           selectedVideo?.id ?? "",
           loop.current_cycle
-        ).catch(() => {/* best-effort */});
+        );
 
+        // Failover isolado: se attemptFailover explodir, logamos e seguimos
+        // para a PRÓXIMA CONTA com continue implícito ao final do catch.
         if (isCriticalMetaError(msg) && videoUrl) {
-          const failoverOk = await attemptFailover(
-            admin, account, loop, videoUrl, caption, msg, windowStartIso,
-            selectedVideo?.id ?? "", loop.current_cycle
-          );
-          if (failoverOk) containersCreated++;
+          try {
+            const failoverOk = await attemptFailover(
+              admin, account, loop, videoUrl, caption, msg, windowStartIso,
+              selectedVideo?.id ?? "", loop.current_cycle
+            );
+            if (failoverOk) containersCreated++;
+          } catch (failoverErr) {
+            const failoverMsg = failoverErr instanceof Error ? failoverErr.message : String(failoverErr);
+            console.error(`[loop-cron] ✗ Failover falhou para @${account.username} — próxima conta: ${failoverMsg}`);
+          }
         }
+        // Execução continua para a próxima conta do lote (continue implícito).
       }
 
       // ── Throttle estratégico — 3s após cada conta exceto a última ────────
