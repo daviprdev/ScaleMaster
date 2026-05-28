@@ -46,7 +46,35 @@ export async function GET(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
   const now = new Date();
-  const summary = { checked: 0, published: 0, in_progress: 0, expired: 0, errors: 0 };
+  const summary = { checked: 0, published: 0, in_progress: 0, expired: 0, errors: 0, auto_healed: 0 };
+
+  // ── AUTO-HEALING: Containers expirados (>30 min em pending) ──────────────
+  // Executa antes do loop principal para garantir que a query de busca retorne
+  // apenas containers legítimos ainda dentro do SLA de processamento da Meta.
+  {
+    const healCutoff = new Date(now.getTime() - CONTAINER_TTL_MS).toISOString();
+    const { data: healed, error: healErr } = await (admin as any)
+      .from("pending_containers")
+      .update({
+        status: "error",
+        error_message: "[AUTO-HEALING] Expirado: container preso em 'pending' por >30 minutos — desbloqueado pelo publish-pending.",
+      })
+      .eq("status", "pending")
+      .lt("created_at", healCutoff)
+      .select("id");
+
+    if (healErr) {
+      console.warn("[AUTO-HEALING] publish-pending: falha ao desbloquear containers:", healErr.message);
+    } else {
+      const healedCount = healed?.length ?? 0;
+      if (healedCount > 0) {
+        console.log(
+          `[AUTO-HEALING] Destravando ${healedCount} container(s) que ficaram presos em processamento.`
+        );
+        summary.auto_healed = healedCount;
+      }
+    }
+  }
 
   const { data: rows, error: fetchErr } = await (admin as any)
     .from("pending_containers")

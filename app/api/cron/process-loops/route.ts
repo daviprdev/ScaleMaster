@@ -335,6 +335,38 @@ export async function GET(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const now = new Date();
 
+  // ── AUTO-HEALING: Desbloquear pending_containers fantasmas ────────────────
+  // Containers em 'pending' por >30 min estão definitivamente travados:
+  // a Meta API processa vídeos em no máximo ~15 min. Marcar como 'error'
+  // libera containerAlreadyExists() e permite novas criações neste ciclo.
+  // Executa ANTES de buscar loops para garantir que a fila esteja saudável.
+  {
+    const healCutoff = new Date(now.getTime() - 30 * 60_000).toISOString();
+    const { data: healed, error: healErr } = await (admin as any)
+      .from("pending_containers")
+      .update({
+        status: "error",
+        error_message:
+          "[AUTO-HEALING] Fantasma: container preso em 'pending' por >30 minutos — desbloqueado pelo process-loops.",
+      })
+      .eq("status", "pending")
+      .lt("created_at", healCutoff)
+      .select("id");
+
+    if (healErr) {
+      console.warn("[AUTO-HEALING] Falha ao desbloquear containers fantasmas:", healErr.message);
+    } else {
+      const healedCount = healed?.length ?? 0;
+      if (healedCount > 0) {
+        console.log(
+          `[AUTO-HEALING] Destravando ${healedCount} container(s) que ficaram presos em processamento.`
+        );
+      } else {
+        console.log("[AUTO-HEALING] Fila saudável — nenhum container fantasma detectado.");
+      }
+    }
+  }
+
   // ── Busca todos os loops ativos com suas contas ──────────────────────────
   const { data: loopRows, error: fetchErr } = await (admin as any)
     .from("loops")
@@ -437,8 +469,11 @@ export async function GET(req: NextRequest) {
 
     const allVideos = allVideoRows as VideoRow[];
 
-    // ── Core do loop — envolvido em try/catch para que um erro inesperado ──────
-    // (ex: falha Supabase, remux, etc.) não interrompa o processamento dos demais loops.
+    // ── Core do loop — envolvido em try/catch/finally ────────────────────────
+    // finally GARANTE que qualquer cleanup de estado seja executado mesmo se a
+    // Meta API cair, a Vercel lançar ou o Supabase retornar erro catastrófico.
+    let loopClaimMade = false;
+    let loopContainersCreated = 0;
     try {
 
     // ── RAW SUPABASE LOG — diagnóstico de regressão de legenda ──────────────
@@ -465,6 +500,7 @@ export async function GET(req: NextRequest) {
       cycles_done: newCyclesDone,
       ...(isComplete ? { status: "completed" } : {}),
     }).eq("id", loop.id);
+    loopClaimMade = true;
 
     if (isComplete) {
       console.log(
@@ -712,13 +748,28 @@ export async function GET(req: NextRequest) {
       }
     } // fim for account
 
+    loopContainersCreated = containersCreated;
     if (containersCreated > 0) summary.processed++;
     else summary.errors++;
 
     } catch (loopErr) {
       const loopErrMsg = loopErr instanceof Error ? loopErr.message : String(loopErr);
-      console.error(`[loop-cron] Erro inesperado no loop "${loop.name}": ${loopErrMsg}`);
+      console.error(`[loop-cron] ✗ Erro inesperado no loop "${loop.name}": ${loopErrMsg}`);
       summary.errors++;
+    } finally {
+      // Bloco finally: executa SEMPRE — mesmo em crash catastrófico (Meta down,
+      // Vercel timeout, Supabase error). Garante logs de encerramento e detecta
+      // loops que fizeram CLAIM mas não criaram nenhum container.
+      if (loopClaimMade && loopContainersCreated === 0) {
+        console.warn(
+          `[AUTO-HEALING] Loop "${loop.name}" (${loop.id}): CLAIM feito mas 0 containers criados. ` +
+          `Containers fantasmas de ciclos anteriores foram desbloqueados no início desta execução.`
+        );
+      } else if (loopClaimMade) {
+        console.log(
+          `[loop-cron] [FINALLY] "${loop.name}": ${loopContainersCreated} container(s) criado(s) — execução encerrada com sucesso.`
+        );
+      }
     }
 
   } // fim for loop
