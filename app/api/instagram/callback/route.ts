@@ -71,8 +71,8 @@ async function resolveCredentials(
     return { appId: app.ig_app_id, appSecret: secret };
   }
 
-  const appId = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? "";
-  const appSecret = process.env.INSTAGRAM_APP_SECRET ?? "";
+  const appId = process.env.NEXT_PUBLIC_META_CLIENT_ID ?? "";
+  const appSecret = process.env.META_CLIENT_SECRET ?? "";
   if (!appId || !appSecret) return null;
   return { appId, appSecret };
 }

@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     clientId = app.ig_app_id;
   } else {
     // Fallback: global env var
-    clientId = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? "";
+    clientId = process.env.NEXT_PUBLIC_META_CLIENT_ID ?? "";
     if (!clientId) {
       return NextResponse.json(
         { error: "Nenhum App configurado. Cadastre seu app em Meus Apps." },
