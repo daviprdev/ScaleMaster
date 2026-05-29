@@ -59,6 +59,12 @@ interface VideoRow {
   filename: string;
 }
 
+// Resultado da fase de atribuição atômica: vídeo reservado + flag de ciclo reset.
+interface VideoAssignment {
+  video: VideoRow;
+  isCycleReset: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Dynamic Caption Selection (Spintax) — loops.captions DB column
 // ---------------------------------------------------------------------------
@@ -68,15 +74,8 @@ interface VideoRow {
  *
  * FONTE ÚNICA: loops.captions (text[] — preenchido pelo usuário no painel).
  * NUNCA lê videos_library.caption (sempre NULL para reels raspados).
- *
- * Estratégia (Spintax / rotação aleatória):
- *   Pool não-vazio → sorteia aleatoriamente entre as variações válidas.
- *   Pool vazio     → retorna "" (usuário não configurou legendas — comportamento esperado).
- *
- * Garante que undefined/null nunca chegue à Meta API como string literal.
  */
 function selectDynamicCaption(rawCaptions: string[]): string {
-  // Normaliza: trim + descarta entradas em branco (mesma lógica do filtro da UI)
   const pool = rawCaptions
     .map(c => (typeof c === "string" ? c : String(c ?? "")).trim())
     .filter(Boolean);
@@ -127,7 +126,7 @@ function isWithinHumanSchedule(
 }
 
 // ---------------------------------------------------------------------------
-// Rate-limit helper — espaça chamadas à Meta API para evitar throttling silencioso
+// Sleep helper
 // ---------------------------------------------------------------------------
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -333,6 +332,127 @@ async function attemptFailover(
 }
 
 // ---------------------------------------------------------------------------
+// FASE 1 — Atribuição atômica de vídeos (pre-assignment)
+//
+// Todas as decisões de qual vídeo vai para qual conta são tomadas ANTES de
+// qualquer chamada à Meta API ou escrita no banco. Isso elimina o race
+// condition TOCTOU onde duas invocações concorrentes do cron (ex: */15 e
+// */5 disparando no mesmo minuto) liam o mesmo estado do banco e escolhiam
+// o mesmo vídeo para contas diferentes — a raiz do erro 368 em burst.
+//
+// Estratégia:
+//  1. Busca o histórico de TODAS as contas em paralelo (Promise.allSettled)
+//  2. Busca vídeos já reivindicados por QUALQUER conta nesta janela (guard inter-run)
+//  3. Atribui vídeos em passagem síncrona única — sem async entre decisões.
+//     Conta[0] → Vídeo A, Conta[1] → Vídeo B, etc. Nenhum vídeo repetido.
+// ---------------------------------------------------------------------------
+
+async function assignVideosForLoop(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  loop: LoopRow,
+  allVideos: VideoRow[],
+  validAccounts: AccountRow[],
+  windowStartIso: string
+): Promise<Map<string, VideoAssignment>> {
+  // Busca paralela: histórico por conta + vídeos já tomados nesta janela
+  const [historySettled, windowClaimsRes] = await Promise.all([
+    Promise.allSettled(
+      validAccounts.map(account =>
+        (admin as any)
+          .from("pending_containers")
+          .select("video_id")
+          .eq("loop_id", loop.id)
+          .eq("account_id", account.id)
+          .neq("status", "error")
+          .not("video_id", "is", null)
+      )
+    ),
+    // Guard inter-run: vídeos reivindicados por QUALQUER conta nesta janela.
+    // Impede que duas invocações concorrentes do cron escolham o mesmo vídeo
+    // para contas diferentes, mesmo que cada processo tenha sua própria memória.
+    (admin as any)
+      .from("pending_containers")
+      .select("video_id")
+      .eq("loop_id", loop.id)
+      .neq("status", "error")
+      .gte("created_at", windowStartIso)
+      .not("video_id", "is", null),
+  ]);
+
+  const globallyTaken = new Set<string>(
+    ((windowClaimsRes as { data?: { video_id: string }[] }).data ?? [])
+      .map(r => r.video_id)
+      .filter(Boolean)
+  );
+
+  console.log(
+    `[assign-phase] "${loop.name}": ${globallyTaken.size} vídeo(s) já tomados nesta janela (guard inter-run).`
+  );
+
+  // Passagem síncrona: sem await entre as decisões — sem TOCTOU intra-run.
+  const assignments = new Map<string, VideoAssignment>();
+  const locallyAssigned = new Set<string>(); // reserva imediata para próximas contas desta passagem
+
+  for (let i = 0; i < validAccounts.length; i++) {
+    const account = validAccounts[i];
+    const settled = historySettled[i];
+
+    const postedByAccount = new Set<string>(
+      settled.status === "fulfilled"
+        ? ((settled.value as { data?: { video_id: string }[] }).data ?? []).map(r => r.video_id)
+        : [] // falha no histórico → trata como vazio (best-effort)
+    );
+
+    if (settled.status === "rejected") {
+      console.warn(
+        `[assign-phase] @${account.username}: falha ao buscar histórico — tratando como vazio. ` +
+        `Reason: ${String((settled as PromiseRejectedResult).reason)}`
+      );
+    }
+
+    // Exclusão combinada: postados por esta conta + tomados globalmente + atribuídos localmente
+    const alreadyUsed = new Set([...globallyTaken, ...locallyAssigned]);
+    let available = allVideos.filter(v => !postedByAccount.has(v.id) && !alreadyUsed.has(v.id));
+
+    let isCycleReset = false;
+    if (available.length === 0 && loop.is_infinite) {
+      // Ciclo completo para esta conta: limpa o histórico dela mas respeita o
+      // lock global — outros vídeos já atribuídos nesta rodada permanecem exclusos.
+      available = allVideos.filter(v => !alreadyUsed.has(v.id));
+      isCycleReset = available.length > 0;
+      if (isCycleReset) {
+        console.log(
+          `[assign-phase] @${account.username}: ciclo completo (${postedByAccount.size} postados) ` +
+          `→ reiniciando histórico.`
+        );
+      }
+    }
+
+    if (available.length === 0) {
+      console.warn(
+        `[assign-phase] @${account.username}: nenhum vídeo disponível ` +
+        `(pasta=${allVideos.length}, global=${globallyTaken.size}, local=${locallyAssigned.size}).`
+      );
+      continue;
+    }
+
+    const video = available[0];
+    assignments.set(account.id, { video, isCycleReset });
+    locallyAssigned.add(video.id); // reserva imediata: próximas contas não verão este vídeo
+  }
+
+  const summary = [...assignments.entries()]
+    .map(([, a]) => `${a.video.filename.slice(0, 20)}${a.isCycleReset ? "*" : ""}`)
+    .join(", ");
+  console.log(
+    `[assign-phase] "${loop.name}": ${assignments.size}/${validAccounts.length} conta(s) com vídeo único atribuído. ` +
+    `[${summary}]`
+  );
+
+  return assignments;
+}
+
+// ---------------------------------------------------------------------------
 // Cron handler
 // ---------------------------------------------------------------------------
 
@@ -486,8 +606,6 @@ export async function GET(req: NextRequest) {
     const allVideos = allVideoRows as VideoRow[];
 
     // ── Core do loop — envolvido em try/catch/finally ────────────────────────
-    // finally GARANTE que qualquer cleanup de estado seja executado mesmo se a
-    // Meta API cair, a Vercel lançar ou o Supabase retornar erro catastrófico.
     let loopClaimMade = false;
     let loopContainersCreated = 0;
     try {
@@ -529,26 +647,33 @@ export async function GET(req: NextRequest) {
       now.getTime() - loop.interval_minutes * 60_000
     ).toISOString();
 
-    // ── Set em memória: vídeos já atribuídos NESTE disparo ───────────────────
-    const assignedThisRun = new Set<string>();
+    // ── FASE 1: Atribuição atômica — vídeos únicos por conta ─────────────────
+    // Resolve ANTES de qualquer chamada à Meta API. Garante que a Conta 1
+    // receba o Vídeo A, a Conta 2 o Vídeo B, etc., sem possibilidade de
+    // duas contas receberem o mesmo vídeo neste disparo (race condition TOCTOU).
+    const videoAssignments = await assignVideosForLoop(
+      admin, loop, allVideos, validAccounts, windowStartIso
+    );
+
+    if (videoAssignments.size === 0) {
+      console.warn(`[loop-cron] "${loop.name}": sem vídeos disponíveis para nenhuma conta — pulando.`);
+      summary.skipped++;
+      continue;
+    }
 
     let containersCreated = 0;
 
     console.log(
-      `[loop-cron] "${loop.name}" — ${validAccounts.length} conta(s) para processar, ` +
-      `${allVideos.length} vídeo(s) na pasta. Execução estritamente sequencial, 3s de throttle entre contas.`
+      `[loop-cron] "${loop.name}" — ${validAccounts.length} conta(s), ` +
+      `${videoAssignments.size} atribuição(ões) prontas. Iniciando FASE 2 com jitter 3–15s.`
     );
 
-    // ── LOOP POR CONTA — execução estritamente sequencial, sem Promise.all ───
+    // ── FASE 2: Execução com jitter anti-burst ────────────────────────────────
     //
-    // Por conta:
-    //   1. Parse de legendas recriado do ZERO (bloco isolado com {}) — sem reuso de estado
-    //   2. Seleção de vídeo e legenda independentes desta iteração
-    //   3. Submissão única para a Meta API
-    //   4. Throttle de 3000ms APÓS a submissão, antes da próxima conta
-    //
-    // O throttle após (não antes) garante que o container foi aceito pela Meta
-    // antes de iniciarmos a próxima requisição — evita burst e rate-limit silencioso.
+    // Cada conta usa o vídeo pré-atribuído na Fase 1 — sem nova decisão de vídeo aqui.
+    // Jitter aleatório entre contas (exceto a primeira) espalha as requisições à
+    // Meta API em uma janela de 3–15s por conta, tornando o padrão de envio
+    // indetectável para o algoritmo de spam/rate-limit da Meta.
     let accountIdx = 0;
     for (const account of validAccounts) {
       accountIdx++;
@@ -558,8 +683,18 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // ── Estado local desta conta — zerado a cada iteração ────────────────
-      let selectedVideo: VideoRow | null = null;
+      // ── Lookup do vídeo pré-atribuído ────────────────────────────────────
+      const assignment = videoAssignments.get(account.id);
+      if (!assignment) {
+        console.log(
+          `[loop-cron] @${account.username}: sem vídeo pré-atribuído ` +
+          `(conta sem vídeos disponíveis na fase de assignment) — pulando.`
+        );
+        continue;
+      }
+
+      // Estado local desta conta — inicializado com o vídeo garantido
+      let selectedVideo: VideoRow | null = assignment.video;
       let caption = "";
       let videoUrl = "";
 
@@ -598,9 +733,8 @@ export async function GET(req: NextRequest) {
 
       console.log(
         `[loop-cron] @${account.username} [${accountIdx}/${validAccounts.length}] | ` +
-        `pool de legendas isolado: ${loopCaptionsRaw.length} variação(ões) | ` +
-        `loop.captions type=${typeof loop.captions} isArray=${Array.isArray(loop.captions)} ` +
-        `rawLen=${Array.isArray(loop.captions) ? (loop.captions as unknown[]).length : "N/A"}`
+        `pool de legendas: ${loopCaptionsRaw.length} variação(ões) | ` +
+        `vídeo pré-atribuído: "${selectedVideo.filename}" | cicloReset: ${assignment.isCycleReset}`
       );
 
       try {
@@ -609,55 +743,10 @@ export async function GET(req: NextRequest) {
           admin, loop.id, account.id, windowStartIso
         );
         if (alreadyDone) {
-          console.log(`[loop-cron] ⚡ @${account.username}: container já existe neste intervalo — pulando.`);
+          console.log(`[loop-cron] ⚡ @${account.username}: container já existe neste intervalo — idempotente.`);
           containersCreated++;
           continue;
         }
-
-        // ── Histórico POR CONTA ──────────────────────────────────────────────
-        const { data: accountPostedRows } = await (admin as any)
-          .from("pending_containers")
-          .select("video_id")
-          .eq("loop_id", loop.id)
-          .eq("account_id", account.id)
-          .neq("status", "error")
-          .not("video_id", "is", null);
-
-        const postedByAccount = new Set<string>(
-          (accountPostedRows ?? []).map((r: { video_id: string }) => r.video_id)
-        );
-
-        // ── Seleção do vídeo ─────────────────────────────────────────────────
-        let available = allVideos.filter(
-          v => !postedByAccount.has(v.id) && !assignedThisRun.has(v.id)
-        );
-
-        let isNewCycleForAccount = false;
-
-        if (available.length === 0) {
-          if (loop.is_infinite) {
-            available = allVideos.filter(v => !assignedThisRun.has(v.id));
-            isNewCycleForAccount = true;
-            console.log(
-              `[loop-cron] @${account.username}: ciclo completo ` +
-              `(${postedByAccount.size} vídeos postados) → reiniciando histórico para esta conta.`
-            );
-          } else {
-            console.log(`[loop-cron] @${account.username}: todos os vídeos postados (loop finito) — pulando.`);
-            continue;
-          }
-        }
-
-        if (available.length === 0) {
-          console.warn(
-            `[loop-cron] @${account.username}: nenhum vídeo disponível — ` +
-            `${assignedThisRun.size} vídeo(s) já atribuídos neste disparo.`
-          );
-          continue;
-        }
-
-        selectedVideo = available[0];
-        assignedThisRun.add(selectedVideo.id);
 
         // ── Legenda — selecionada do pool isolado desta iteração ─────────────
         caption = selectDynamicCaption(loopCaptionsRaw);
@@ -671,7 +760,7 @@ export async function GET(req: NextRequest) {
             `[RAIO-X] Conta: ${account.id} (@${account.username}) | ` +
             `Vídeo: "${selectedVideo.filename}" | ` +
             `Pool: ${loopCaptionsRaw.length} variação(ões) | ` +
-            `Sorteada: ${xStatus}`
+            `Sorteada: ${xStatus} | CicloReset: ${assignment.isCycleReset}`
           );
         }
 
@@ -692,7 +781,7 @@ export async function GET(req: NextRequest) {
           `[loop-cron] AUDIT | "${loop.name}" | @${account.username} → ` +
           `Vídeo: "${selectedVideo.filename}" | ` +
           `Legenda (${caption.length}c): "${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}" | ` +
-          `NovoCiclo: ${isNewCycleForAccount}`
+          `CicloReset: ${assignment.isCycleReset}`
         );
 
         // ── Efeitos de vídeo ─────────────────────────────────────────────────
@@ -702,6 +791,19 @@ export async function GET(req: NextRequest) {
           loop.effect_invert
         );
         if (!videoUrl) videoUrl = selectedVideo.public_url;
+
+        // ── Jitter anti-burst — espalhamento de requisições à Meta API ────────
+        // Inserido APÓS todas as verificações de banco e ANTES da chamada Meta,
+        // somente a partir da segunda conta. A primeira conta não espera para
+        // não atrasar o início do lote. Delay aleatório 3–15s torna o padrão
+        // de publicação indistinguível de comportamento humano.
+        if (containersCreated > 0) {
+          const jitterMs = Math.floor(Math.random() * 12_000) + 3_000;
+          console.log(
+            `[loop-cron] @${account.username}: jitter ${(jitterMs / 1000).toFixed(1)}s antes da Meta API…`
+          );
+          await sleep(jitterMs);
+        }
 
         // ── Token refresh preventivo ─────────────────────────────────────────
         let tokenToUse = account.meta_access_token;
@@ -755,25 +857,12 @@ export async function GET(req: NextRequest) {
             if (failoverOk) containersCreated++;
           } catch (failoverErr) {
             const failoverMsg = failoverErr instanceof Error ? failoverErr.message : String(failoverErr);
-            console.error(`[loop-cron] ✗ Failover falhou para @${account.username} — próxima conta: ${failoverMsg}`);
+            console.error(`[loop-cron] ✗ Failover falhou para @${account.username}: ${failoverMsg}`);
           }
         }
         // Execução continua para a próxima conta do lote (continue implícito).
       }
 
-      // ── Throttle estratégico — 3s após cada conta exceto a última ────────
-      // Posicionado APÓS o try/catch: o container foi aceito (ou falhou) antes
-      // de aguardar — dá tempo à Meta API processar o payload antes do próximo.
-      if (accountIdx < validAccounts.length) {
-        console.log(
-          `[loop-cron] Post ${accountIdx}/${validAccounts.length} enviado. Aguardando 3s...`
-        );
-        await sleep(3_000);
-      } else {
-        console.log(
-          `[loop-cron] Post ${accountIdx}/${validAccounts.length} enviado. Último do lote — sem espera.`
-        );
-      }
     } // fim for account
 
     loopContainersCreated = containersCreated;
