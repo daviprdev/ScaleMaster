@@ -117,7 +117,7 @@ async function exchangeCode(code: string, appId: string, appSecret: string): Pro
     code,
   });
 
-  const res = await fetchWithTimeout("https://graph.facebook.com/v21.0/oauth/access_token", {
+  const res = await fetchWithTimeout("https://api.instagram.com/oauth/access_token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
@@ -127,18 +127,20 @@ async function exchangeCode(code: string, appId: string, appSecret: string): Pro
 
   const data = (await res.json()) as {
     access_token?: string;
-    error?: { message?: string; type?: string; code?: number; fbtrace_id?: string };
+    error_type?: string;
+    error_message?: string;
+    code?: number;
   };
 
   console.log("[ig/callback] exchangeCode →", res.status, JSON.stringify(data).slice(0, 400));
 
-  const ecDetail = metaErrorDetail("exchangeCode", res.status, data.error?.message, data.error?.type, data.error?.code);
+  const ecDetail = metaErrorDetail("exchangeCode", res.status, data.error_message, data.error_type, data.code);
 
-  if (data.error?.code === 4 || data.error?.code === 17) {
+  if (data.code === 4 || data.code === 17) {
     throw Object.assign(new Error(ecDetail), { isRateLimit: true });
   }
 
-  const ecMsg = (data.error?.message ?? "").toLowerCase();
+  const ecMsg = (data.error_message ?? "").toLowerCase();
   if (
     ecMsg.includes("permission") ||
     ecMsg.includes("business") ||
@@ -157,17 +159,15 @@ async function exchangeCode(code: string, appId: string, appSecret: string): Pro
 
 async function getLongLivedToken(
   shortToken: string,
-  appSecret: string,
-  appId: string
+  appSecret: string
 ): Promise<{ token: string; expiresAt: Date }> {
   const params = new URLSearchParams({
-    grant_type: "fb_exchange_token",
-    client_id: appId,
+    grant_type: "ig_exchange_token",
     client_secret: appSecret,
-    fb_exchange_token: shortToken,
+    access_token: shortToken,
   });
 
-  const res = await fetchWithTimeout(`https://graph.facebook.com/v21.0/oauth/access_token?${params.toString()}`);
+  const res = await fetchWithTimeout(`${GRAPH_IG}/access_token?${params.toString()}`);
 
   detectRateLimit(res);
 
@@ -352,7 +352,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const shortToken = await exchangeCode(code, credentials.appId, credentials.appSecret);
-    const { token: longToken, expiresAt } = await getLongLivedToken(shortToken, credentials.appSecret, credentials.appId);
+    const { token: longToken, expiresAt } = await getLongLivedToken(shortToken, credentials.appSecret);
     const profile = await getIGProfile(longToken);
 
     console.log(`[ig/callback] @${profile.username} (id:${profile.id}) → user ${user.id}`);
