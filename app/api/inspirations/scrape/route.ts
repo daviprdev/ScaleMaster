@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import {
+  withApifyTokenPool,
+  APIFY_RATE_LIMIT_MESSAGE,
+} from "@/lib/apify-token-pool";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
-
-const RATE_LIMIT_MESSAGE =
-  "Nosso sistema de buscas está sobrecarregado no momento. Aguarde 5 minutos e tente novamente.";
 
 const GRADIENTS = [
   "from-violet-600 to-purple-800",
@@ -24,23 +25,6 @@ const GRADIENTS = [
   "from-orange-500 to-amber-700",
 ];
 
-function isQuotaError(msg: string): boolean {
-  const m = msg.toLowerCase();
-  return (
-    m.includes("limit exceeded") ||
-    m.includes("usage") ||
-    m.includes("quota") ||
-    m.includes("rate limit") ||
-    m.includes("429") ||
-    m.includes("401") ||
-    m.includes("403") ||
-    m.includes("unauthorized") ||
-    m.includes("authentication") ||
-    m.includes("forbidden") ||
-    m.includes("not found or authentication")
-  );
-}
-
 function resolveVideoUrl(item: Record<string, unknown>): string {
   return (
     (item.videoUrl as string | undefined) ||
@@ -51,13 +35,11 @@ function resolveVideoUrl(item: Record<string, unknown>): string {
   );
 }
 
-async function scrapeWithToken(
-  token: string,
+async function scrapeWithClient(
+  client: ApifyClient,
   username: string,
   limit: number
 ): Promise<{ reels: object[]; fullName: string; profilePicUrl: string | null }> {
-  const client = new ApifyClient({ token });
-
   const run = await client.actor("apify/instagram-scraper").call({
     directUrls: [`https://www.instagram.com/${username}/reels/`],
     resultsType: "posts",
@@ -225,42 +207,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "O campo 'username' é obrigatório." }, { status: 400 });
   }
 
-  const tokens = [
-    ...(process.env.APIFY_API_TOKENS?.split(",") ?? []),
-    ...(process.env.APIFY_API_TOKEN?.split(",") ?? []),
-  ]
-    .map((t) => t.trim())
-    .filter(Boolean);
-
-  const uniqueTokens = [...new Set(tokens)];
-
-  if (uniqueTokens.length === 0) {
-    return NextResponse.json(
-      {
-        error:
-          "APIFY_API_TOKEN não configurado. Adicione a variável de ambiente e faça um novo deploy.",
-      },
-      { status: 503 }
+  try {
+    const { reels, fullName, profilePicUrl } = await withApifyTokenPool((client) =>
+      scrapeWithClient(client, username, limit)
     );
-  }
+    await saveToHistory(username, reels, fullName, profilePicUrl);
+    return NextResponse.json({ reels });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
 
-  let lastError = "Erro desconhecido";
-
-  for (const token of uniqueTokens) {
-    try {
-      const { reels, fullName, profilePicUrl } = await scrapeWithToken(token, username, limit);
-      await saveToHistory(username, reels, fullName, profilePicUrl);
-      return NextResponse.json({ reels });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (isQuotaError(msg)) {
-        console.warn(`[Apify] Token ...${token.slice(-6)} esgotado: ${msg}. Tentando próximo.`);
-        lastError = msg;
-        continue;
-      }
-      return NextResponse.json({ error: msg }, { status: 500 });
+    if (msg.startsWith("NO_TOKENS:")) {
+      return NextResponse.json({ error: msg.replace("NO_TOKENS: ", "") }, { status: 503 });
     }
+    if (msg.startsWith("ALL_TOKENS_FAILED:")) {
+      return NextResponse.json({ error: APIFY_RATE_LIMIT_MESSAGE }, { status: 429 });
+    }
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
-
-  return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
 }
