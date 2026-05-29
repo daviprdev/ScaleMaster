@@ -46,10 +46,10 @@ export async function GET(request: NextRequest) {
   const state = crypto.randomUUID();
 
   const oauthUrl =
-    "https://api.instagram.com/oauth/authorize" +
+    "https://www.facebook.com/v21.0/dialog/oauth" +
     "?client_id=" + clientId +
     "&redirect_uri=" + encodeURIComponent(REDIRECT_URI) +
-    "&scope=instagram_business_basic,instagram_business_content_publish,instagram_manage_comments,instagram_manage_insights" +
+    "&scope=instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_insights,pages_show_list" +
     "&response_type=code" +
     "&state=" + state;
 
