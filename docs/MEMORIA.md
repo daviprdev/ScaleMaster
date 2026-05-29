@@ -1888,3 +1888,46 @@ Lotes com postagem inconsistente de legendas: algumas contas publicavam todas as
 - `[RAIO-X] Sorteada: VAZIA!!!` → bug interno (parse do `loops.captions` está retornando array vazio)
 - `[RAIO-X] Sorteada: "OK"` + `[META DOUBLE-TAP RAW] rate_limited=SIM!!!` → Meta bloqueando edições consecutivas (rate limit no endpoint de caption update)
 - `[RAIO-X-FINAL]` com texto de emergência (`🔥 [TESTE DE SISTEMA]`) → pool estava vazio mas fallback funcionou; verificar configuração das legendas no painel Loop
+
+---
+
+### ✅ Fix — OAuth Instagram: fluxo de conexão de contas corrigido (2026-05-29)
+**Commits:** `f4da4c7`, `15a64a8`, `c94fa9c`
+
+#### Histórico do problema
+
+**Commit `feat: add insights and comments management to oauth scopes`** adicionou os scopes `instagram_manage_comments` e `instagram_manage_insights` ao endpoint `api.instagram.com/oauth/authorize`. Esses dois scopes são exclusivos do **Facebook Login for Business** (`graph.facebook.com`) e não existem na **Instagram Business Login API** (`api.instagram.com`). Resultado: erro "Invalid platform app" ao clicar em Adicionar Conta.
+
+#### Tentativa 1 — Mudar URL para Facebook Login
+Alterado para `https://www.facebook.com/v21.0/dialog/oauth` com scopes do Facebook Login. Funcionou tecnicamente mas exibia **tela de login do Facebook** em vez do Instagram — UX errado.
+
+#### Tentativa 2 — Alinhar env vars
+Descoberto que o código buscava `NEXT_PUBLIC_INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET`, mas o `.env.local` e a Vercel têm `NEXT_PUBLIC_META_CLIENT_ID` / `META_CLIENT_SECRET`. Corrigido o mapeamento das variáveis.
+
+#### Tentativa 3 — Reverter para Instagram Business Login com scopes corretos
+Revertido para `api.instagram.com/oauth/authorize` e substituídos os scopes por equivalentes corretos:
+
+| Scope inválido (Facebook Login) | Scope correto (Instagram Business Login) |
+|---|---|
+| `instagram_business_basic` | `instagram_business_basic` ✓ (já correto) |
+| `instagram_business_content_publish` | `instagram_business_content_publish` ✓ (já correto) |
+| `instagram_manage_comments` | `instagram_business_manage_comments` |
+| `instagram_manage_insights` | **removido** (não existe no Instagram Login) |
+
+#### Erro "página não disponível" em `instagram.com/oauth/authorize/third_party/`
+Instagram detectou que o app é um **Business App** e roteou para `third_party/` automaticamente. A URI de redirecionamento `https://autoscale-ia.vercel.app/api/instagram/callback` não estava cadastrada nas configurações de Instagram Login do app no Meta Developer Console.
+
+**Fix no Meta Developer Console:**
+1. App `1011659591297709` → Instagram → Instagram Business Login → Configurações
+2. Adicionado `https://autoscale-ia.vercel.app/api/instagram/callback` em Valid OAuth Redirect URIs
+
+#### Estado final funcional
+- URL OAuth: `https://api.instagram.com/oauth/authorize`
+- Scopes: `instagram_business_basic, instagram_business_content_publish, instagram_business_manage_comments`
+- Troca de código: `api.instagram.com/oauth/access_token`
+- Token longo: `graph.instagram.com/access_token?grant_type=ig_exchange_token`
+- Profile: `graph.instagram.com/me?fields=id,username,name,profile_picture_url`
+- Env vars: `NEXT_PUBLIC_META_CLIENT_ID` / `META_CLIENT_SECRET`
+
+#### Lição aprendida
+`api.instagram.com` usa scopes com prefixo `instagram_business_*`. `graph.facebook.com/dialog/oauth` usa scopes sem esse prefixo (`instagram_basic`, `instagram_manage_*`). Misturar os dois conjuntos no mesmo endpoint gera erro silencioso ou "Invalid platform app".
