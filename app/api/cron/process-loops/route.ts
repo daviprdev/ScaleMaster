@@ -711,17 +711,27 @@ async function processOneLoop(
           console.warn(`[loop-cron] FALLBACK EMERGÊNCIA | @${account.username} | loop="${loop.name}"`);
         }
 
-        // Railway FFmpeg — dispara em paralelo com todas as outras contas
-        let videoUrl = await applyVideoEffectsRemote(assignment.video.public_url, {
-          mirror:    loop.effect_mirror,
-          invert:    loop.effect_invert,
-          zoom:      loop.effect_zoom,
-          blur:      loop.effect_blur,
-          noise:     loop.effect_noise,
-          antiAi:    loop.effect_anti_ai,
-          accountId: account.id,
-        });
-        if (!videoUrl) videoUrl = assignment.video.public_url;
+        // Railway FFmpeg — dispara em paralelo; fallback para URL original se falhar
+        let videoUrl = assignment.video.public_url;
+        try {
+          const processed = await applyVideoEffectsRemote(assignment.video.public_url, {
+            mirror:    loop.effect_mirror,
+            invert:    loop.effect_invert,
+            zoom:      loop.effect_zoom,
+            blur:      loop.effect_blur,
+            noise:     loop.effect_noise,
+            antiAi:    loop.effect_anti_ai,
+            accountId: account.id,
+          });
+          if (processed) videoUrl = processed;
+        } catch (fxErr) {
+          const fxMsg = fxErr instanceof Error ? fxErr.message : String(fxErr);
+          console.error(
+            `[video-effects] ✗ @${account.username}: Railway falhou, postando sem efeito. ` +
+            `Erro: ${fxMsg.slice(0, 200)}`
+          );
+          // videoUrl já está com a URL original — continua normalmente
+        }
 
         return { kind: "ready", account, assignment, caption, videoUrl };
       })
@@ -735,10 +745,19 @@ async function processOneLoop(
     // ── FASE 2b: sequencial + jitter 1–3s ─────────────────────────────────────
     let containersCreated = 0;
 
-    for (const settled of prepSettled) {
+    for (let i = 0; i < prepSettled.length; i++) {
+      const settled = prepSettled[i];
+
       if (settled.status === "rejected") {
         const msg = settled.reason instanceof Error ? settled.reason.message : String(settled.reason);
-        console.error(`[loop-cron] ✗ Erro na FASE 2a: ${msg}`);
+        const acct = validAccounts[i];
+        console.error(`[loop-cron] ✗ Erro na FASE 2a @${acct?.username ?? "?"}: ${msg}`);
+        if (acct) {
+          await recordContainerError(
+            admin, acct, loop, "", msg,
+            videoAssignments.get(acct.id)?.video.id ?? "", loop.current_cycle
+          );
+        }
         continue;
       }
 
