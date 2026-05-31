@@ -1,0 +1,9 @@
+# Nixpacks config — usado pelo Railway quando o builder está em modo Nixpacks
+# (sem Dockerfile). Se o Dockerfile estiver presente, o Railway usa Docker e
+# ignora este arquivo — mas ter os dois garante que qualquer builder funcione.
+
+[phases.setup]
+aptPkgs = ["ffmpeg"]
+
+[start]
+cmd = "uvicorn main:app --host 0.0.0.0 --port $PORT"
