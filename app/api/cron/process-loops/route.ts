@@ -766,9 +766,9 @@ export async function GET(req: NextRequest) {
       .update({
         status: "error",
         error_message:
-          "[AUTO-HEALING] Fantasma: container preso em 'pending' por >30 minutos — desbloqueado pelo process-loops.",
+          "[AUTO-HEALING] Container preso >30 min em pending/publishing — desbloqueado pelo process-loops.",
       })
-      .eq("status", "pending")
+      .in("status", ["pending", "publishing"])
       .lt("created_at", healCutoff)
       .select("id");
 

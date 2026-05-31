@@ -65,18 +65,18 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const summary = { checked: 0, published: 0, in_progress: 0, expired: 0, errors: 0, auto_healed: 0 };
 
-  // ── AUTO-HEALING: Containers expirados (>30 min em pending) ──────────────
-  // Executa antes do loop principal para garantir que a query de busca retorne
-  // apenas containers legítimos ainda dentro do SLA de processamento da Meta.
+  // ── AUTO-HEALING: Containers expirados (>30 min em pending/publishing) ──────
+  // Inclui 'publishing' para recuperar containers cujo cron invocador fez timeout
+  // sem concluir — sem isso ficariam presos em 'publishing' para sempre.
   {
     const healCutoff = new Date(now.getTime() - CONTAINER_TTL_MS).toISOString();
     const { data: healed, error: healErr } = await (admin as any)
       .from("pending_containers")
       .update({
         status: "error",
-        error_message: "[AUTO-HEALING] Expirado: container preso em 'pending' por >30 minutos — desbloqueado pelo publish-pending.",
+        error_message: "[AUTO-HEALING] Container preso >30 min em pending/publishing — desbloqueado.",
       })
-      .eq("status", "pending")
+      .in("status", ["pending", "publishing"])
       .lt("created_at", healCutoff)
       .select("id");
 
@@ -85,9 +85,7 @@ export async function GET(req: NextRequest) {
     } else {
       const healedCount = healed?.length ?? 0;
       if (healedCount > 0) {
-        console.log(
-          `[AUTO-HEALING] Destravando ${healedCount} container(s) que ficaram presos em processamento.`
-        );
+        console.log(`[AUTO-HEALING] Destravando ${healedCount} container(s) presos.`);
         summary.auto_healed = healedCount;
       }
     }
@@ -121,6 +119,25 @@ export async function GET(req: NextRequest) {
 
   for (const container of containers) {
     summary.checked++;
+
+    // ── Claim atômico: pending → publishing ───────────────────────────────────
+    // Garante que apenas UMA invocação concorrente do cron processe cada container.
+    // Duas invocações podem ler o mesmo container em "pending" na query inicial,
+    // mas apenas a primeira a executar este UPDATE vence — a outra recebe 0 rows.
+    // PostgreSQL garante serialização via row-level lock na instrução UPDATE.
+    {
+      const { data: claimed } = await (admin as any)
+        .from("pending_containers")
+        .update({ status: "publishing" })
+        .eq("id", container.id)
+        .eq("status", "pending")   // condição atômica — falha se outra invocação já reivindicou
+        .select("id");
+
+      if (!claimed?.length) {
+        console.log(`[publish-pending] Container ${container.id}: já reivindicado por invocação concorrente — pulando.`);
+        continue;
+      }
+    }
 
     // Expire containers stuck too long
     const age = now.getTime() - new Date(container.created_at).getTime();
@@ -245,11 +262,14 @@ export async function GET(req: NextRequest) {
       summary.errors++;
 
       if (isRetryableMetaError(msg)) {
-        // Erro transitório: mantém como "pending" para retry automático no próximo
-        // ciclo do cron (5 min). O AUTO-HEALING de 30 min garante que não fique
-        // preso indefinidamente caso o erro persista.
+        // Erro transitório: reset publishing → pending para retry no próximo ciclo.
+        // NÃO deixamos em "publishing" pois o AUTO-HEALING converteria para "error".
+        await (admin as any)
+          .from("pending_containers")
+          .update({ status: "pending" })
+          .eq("id", container.id);
         console.warn(
-          `[publish-pending] Erro transitório @${account?.username ?? "?"}: mantendo pending para retry. Motivo: "${msg}"`
+          `[publish-pending] Erro transitório @${account?.username ?? "?"}: resetando para pending (retry em 5 min). Motivo: "${msg}"`
         );
       } else {
         await (admin as any)
