@@ -958,5 +958,5 @@ export async function GET(req: NextRequest) {
   );
 
   console.log("[loop-cron] ■ Resumo final:", summary);
-  return NextResponse.json({ ok: true, ...summary });
+  return NextResponse.json({ ok: true, loopsFound: loops.length, ...summary });
 }
