@@ -159,7 +159,16 @@ async function applyVideoEffectsRemote(
   opts: VideoEffectOptions
 ): Promise<string> {
   const { mirror, invert, zoom, blur, noise, antiAi, accountId = "" } = opts;
-  if (!mirror && !invert && !zoom && !blur && !noise && !antiAi) return videoUrl;
+
+  console.log(
+    `[video-effects] opts: mirror=${mirror} invert=${invert} zoom=${zoom} ` +
+    `blur=${blur} noise=${noise} antiAi=${antiAi} | RAILWAY_URL_SET=${!!process.env.PYTHON_SERVER_URL}`
+  );
+
+  if (!mirror && !invert && !zoom && !blur && !noise && !antiAi) {
+    console.log("[video-effects] nenhum efeito ativo — retornando URL original.");
+    return videoUrl;
+  }
 
   const rawUrl = process.env.PYTHON_SERVER_URL;
   const railwaySecret = process.env.PYTHON_SERVER_SECRET;
