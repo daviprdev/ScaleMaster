@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
-import { applyVideoEffects } from "@/lib/video-effects";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -137,7 +136,70 @@ function isWithinHumanSchedule(
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-// (processVideoEffects removido — substituído por applyVideoEffects de lib/video-effects.ts)
+// ---------------------------------------------------------------------------
+// Video effects — delegado ao Railway (FastAPI + FFmpeg)
+//
+// O re-encode libx264 é pesado demais para a Vercel (timeout 300s).
+// O worker Railway não tem limite de duração e tem FFmpeg nativo via Docker.
+// PYTHON_SERVER_URL deve apontar para o serviço Railway (ex: https://xxx.railway.app).
+// ---------------------------------------------------------------------------
+
+interface VideoEffectOptions {
+  mirror: boolean;
+  invert: boolean;
+  zoom: boolean;
+  blur: boolean;
+  noise: boolean;
+  antiAi: boolean;
+  accountId?: string;
+}
+
+async function applyVideoEffectsRemote(
+  videoUrl: string,
+  opts: VideoEffectOptions
+): Promise<string> {
+  const { mirror, invert, zoom, blur, noise, antiAi, accountId = "" } = opts;
+  if (!mirror && !invert && !zoom && !blur && !noise && !antiAi) return videoUrl;
+
+  const railwayUrl = process.env.PYTHON_SERVER_URL;
+  const railwaySecret = process.env.PYTHON_SERVER_SECRET;
+
+  if (!railwayUrl) {
+    console.warn("[video-effects] PYTHON_SERVER_URL não configurado — pulando efeitos.");
+    return videoUrl;
+  }
+
+  const res = await fetch(`${railwayUrl}/video/effects`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(railwaySecret ? { Authorization: `Bearer ${railwaySecret}` } : {}),
+    },
+    body: JSON.stringify({
+      video_url: videoUrl,
+      account_id: accountId,
+      mirror,
+      invert,
+      zoom,
+      blur,
+      noise,
+      anti_ai: antiAi,
+    }),
+    // 4.5 min — bem dentro do maxDuration 300s do cron; Railway não tem limite
+    signal: AbortSignal.timeout(270_000),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Railway /video/effects: HTTP ${res.status} — ${body.slice(0, 300)}`);
+  }
+
+  const json = (await res.json()) as { url?: string };
+  if (!json.url) throw new Error("Railway /video/effects: resposta sem campo `url`.");
+
+  console.log(`[video-effects] ✓ Railway processou efeitos → ${json.url.slice(-60)}`);
+  return json.url;
+}
 
 // ---------------------------------------------------------------------------
 // Idempotency — evita dupla submissão em re-tentativas do cron dentro da
@@ -660,7 +722,7 @@ async function processOneLoop(
           `"${caption.slice(0, 100)}${caption.length > 100 ? "…" : ""}"`
         );
 
-        videoUrl = await applyVideoEffects(selectedVideo.public_url, {
+        videoUrl = await applyVideoEffectsRemote(selectedVideo.public_url, {
           mirror:  loop.effect_mirror,
           invert:  loop.effect_invert,
           zoom:    loop.effect_zoom,
