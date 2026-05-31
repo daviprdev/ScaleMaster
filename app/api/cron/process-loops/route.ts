@@ -57,6 +57,7 @@ interface VideoRow {
   id: string;
   public_url: string;
   filename: string;
+  file_size: number | null;
 }
 
 // Resultado da fase de atribuição atômica: vídeo reservado + flag de ciclo reset.
@@ -498,7 +499,7 @@ async function processOneLoop(
   // ── Busca todos os vídeos da pasta (pool global do loop) ───────────────────
   const { data: allVideoRows, error: videoErr } = await (admin as any)
     .from("videos_library")
-    .select("id, public_url, filename")
+    .select("id, public_url, filename, file_size")
     .eq("folder_id", loop.folder_id)
     .order("created_at", { ascending: true });
 
@@ -616,10 +617,24 @@ async function processOneLoop(
 
       Object.freeze(loopCaptionsRaw);
 
+      const fileSizeMB = selectedVideo.file_size
+        ? (selectedVideo.file_size / 1_048_576).toFixed(1) + " MB"
+        : "desconhecido";
+
+      // Alerta de qualidade: vídeos < 2 MB provavelmente são baixa resolução
+      // ou foram servidos pelo CDN do Instagram em versão comprimida.
+      if (selectedVideo.file_size && selectedVideo.file_size < 2_000_000) {
+        console.warn(
+          `[loop-cron] ⚠️ QUALIDADE BAIXA @${account.username}: vídeo "${selectedVideo.filename}" ` +
+          `tem apenas ${fileSizeMB} — provavelmente baixa resolução. ` +
+          `Verifique se o vídeo foi baixado em qualidade HD.`
+        );
+      }
+
       console.log(
         `[loop-cron] @${account.username} [${accountIdx}/${validAccounts.length}] | ` +
         `pool: ${loopCaptionsRaw.length} variação(ões) | ` +
-        `vídeo: "${selectedVideo.filename}" | cicloReset: ${assignment.isCycleReset}`
+        `vídeo: "${selectedVideo.filename}" (${fileSizeMB}) | cicloReset: ${assignment.isCycleReset}`
       );
 
       try {

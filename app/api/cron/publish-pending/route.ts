@@ -235,24 +235,36 @@ export async function GET(req: NextRequest) {
       summary.published++;
       console.log(`[publish-pending] ✓ @${account.username} → media_id: ${mediaId}`);
 
-      // Reparo pós-publicação: a Meta API descarta legendas silenciosamente de forma
-      // intermitente durante o processamento do container. Este POST restaura a legenda
-      // no post já publicado para garantir 100% de cobertura.
-      if (container.caption) {
-        // [RAIO-X] — snapshot da caption armazenada no container antes do double-tap
+      // Double-tap de legenda: a Meta pode descartar silenciosamente a caption
+      // configurada durante a criação do container. Este POST a restaura após o publish.
+      //
+      // Delay de 4s antes da primeira tentativa: o Reel precisa de alguns segundos
+      // para ser finalizado pela Meta antes de aceitar atualizações de caption.
+      // Retry de até 2 tentativas com intervalo crescente para casos de rate limit.
+      if (container.caption?.trim()) {
         console.log(
           `[RAIO-X] double-tap | @${account.username} | mediaId=${mediaId} | ` +
           `caption_stored_chars=${container.caption.length} | ` +
-          `caption_ok=${container.caption.trim().length > 0 ? "SIM" : "VAZIA!!!"} | ` +
           `preview="${container.caption.slice(0, 80)}${container.caption.length > 80 ? "…" : ""}"`
         );
-        try {
-          await updatePostCaption(mediaId, container.caption, tokenToUse);
-          console.log(`[publish-pending] ✓ Caption aplicada @${account.username}`);
-        } catch (captionErr) {
-          const captMsg = captionErr instanceof Error ? captionErr.message : String(captionErr);
-          console.warn(`[publish-pending] Caption update falhou @${account.username}: ${captMsg}`);
-          // Não falha o publish — o reel foi publicado, apenas a legenda pode estar ausente
+
+        await sleep(4_000); // aguarda a Meta finalizar o Reel antes de atualizar a legenda
+
+        let captionApplied = false;
+        for (let attempt = 1; attempt <= 2 && !captionApplied; attempt++) {
+          try {
+            await updatePostCaption(mediaId, container.caption, tokenToUse);
+            captionApplied = true;
+            console.log(`[publish-pending] ✓ Caption aplicada @${account.username} (tentativa ${attempt})`);
+          } catch (captionErr) {
+            const captMsg = captionErr instanceof Error ? captionErr.message : String(captionErr);
+            if (attempt < 2) {
+              console.warn(`[publish-pending] Caption tentativa ${attempt} falhou @${account.username}: "${captMsg}" — aguardando 6s para retry…`);
+              await sleep(6_000);
+            } else {
+              console.error(`[publish-pending] ✗ Caption NÃO aplicada @${account.username} após 2 tentativas: "${captMsg}"`);
+            }
+          }
         }
       }
 
