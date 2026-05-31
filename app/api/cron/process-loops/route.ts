@@ -611,38 +611,47 @@ async function processOneLoop(
       return "skipped";
     }
 
-    let containersCreated = 0;
+    // ── FASE 2: Dois sub-estágios para eliminar gargalo sequencial ───────────────
+    //
+    // 2a) PARALELO — idempotency + caption + Railway FFmpeg para TODAS as contas
+    //     simultaneamente. Tempo total = max(1 vídeo), não N × (1 vídeo).
+    //     Sem chamadas à Meta API aqui.
+    //
+    // 2b) SEQUENCIAL — token refresh + criação de container na Meta com jitter 1–3s.
+    //     Meta API é rate-sensitive: serialização mínima mantida.
+    //
+    // Speedup: 5 contas × 30s FFmpeg sequencial → 30s FFmpeg paralelo (invariante em N).
+
+    type AccountPrep =
+      | { kind: "skip";       account: AccountRow; reason: string }
+      | { kind: "already_done"; account: AccountRow }
+      | { kind: "ready";      account: AccountRow; assignment: VideoAssignment; caption: string; videoUrl: string };
+
+    const t2aStart = Date.now();
 
     console.log(
       `[loop-cron] "${loop.name}" — ${validAccounts.length} conta(s), ` +
-      `${videoAssignments.size} atribuição(ões) prontas. Iniciando FASE 2 com jitter 2–7s.`
+      `${videoAssignments.size} atribuição(ões). Iniciando FASE 2a (paralelo).`
     );
 
-    // ── FASE 2: Execução com jitter anti-burst ─────────────────────────────────
-    // Jitter 2–7s (reduzido de 3–15s): suficiente para parecer humano à Meta API
-    // sem travar lotes grandes dentro do budget de 300s do cron.
-    let accountIdx = 0;
-    for (const account of validAccounts) {
-      accountIdx++;
+    // ── FASE 2a: paralelo ─────────────────────────────────────────────────────
+    const prepSettled = await Promise.allSettled(
+      validAccounts.map(async (account): Promise<AccountPrep> => {
+        if (!account.meta_access_token || !account.ig_business_account_id) {
+          return { kind: "skip", account, reason: "sem credenciais Meta" };
+        }
 
-      if (!account.meta_access_token || !account.ig_business_account_id) {
-        console.warn(`[loop-cron] @${account.username} sem credenciais Meta — pulando.`);
-        continue;
-      }
+        const assignment = videoAssignments.get(account.id);
+        if (!assignment) {
+          return { kind: "skip", account, reason: "sem vídeo pré-atribuído" };
+        }
 
-      const assignment = videoAssignments.get(account.id);
-      if (!assignment) {
-        console.log(`[loop-cron] @${account.username}: sem vídeo pré-atribuído — pulando.`);
-        continue;
-      }
+        const alreadyDone = await containerAlreadyExists(admin, loop.id, account.id, windowStartIso);
+        if (alreadyDone) return { kind: "already_done", account };
 
-      let selectedVideo: VideoRow | null = assignment.video;
-      let caption = "";
-      let videoUrl = "";
-
-      let loopCaptionsRaw: string[];
-      {
+        // Parse captions (isolado por conta — sem estado compartilhado)
         const rawCaptions = loop.captions;
+        let loopCaptionsRaw: string[];
         if (Array.isArray(rawCaptions)) {
           loopCaptionsRaw = (rawCaptions as unknown[]).map(c => String(c ?? "").trim()).filter(Boolean);
         } else if (typeof rawCaptions === "string") {
@@ -660,54 +669,36 @@ async function processOneLoop(
             loopCaptionsRaw = trimmed ? [trimmed] : [];
           }
         } else if (rawCaptions !== null && rawCaptions !== undefined) {
-          const asStr = String(rawCaptions).trim();
-          loopCaptionsRaw = asStr ? [asStr] : [];
+          loopCaptionsRaw = [String(rawCaptions).trim()].filter(Boolean);
         } else {
           loopCaptionsRaw = [];
         }
-      }
+        Object.freeze(loopCaptionsRaw);
 
-      Object.freeze(loopCaptionsRaw);
+        const fileSizeMB = assignment.video.file_size
+          ? (assignment.video.file_size / 1_048_576).toFixed(1) + " MB"
+          : "desconhecido";
 
-      const fileSizeMB = selectedVideo.file_size
-        ? (selectedVideo.file_size / 1_048_576).toFixed(1) + " MB"
-        : "desconhecido";
-
-      // Alerta de qualidade: vídeos < 2 MB provavelmente são baixa resolução
-      // ou foram servidos pelo CDN do Instagram em versão comprimida.
-      if (selectedVideo.file_size && selectedVideo.file_size < 2_000_000) {
-        console.warn(
-          `[loop-cron] ⚠️ QUALIDADE BAIXA @${account.username}: vídeo "${selectedVideo.filename}" ` +
-          `tem apenas ${fileSizeMB} — provavelmente baixa resolução. ` +
-          `Verifique se o vídeo foi baixado em qualidade HD.`
-        );
-      }
-
-      console.log(
-        `[loop-cron] @${account.username} [${accountIdx}/${validAccounts.length}] | ` +
-        `pool: ${loopCaptionsRaw.length} variação(ões) | ` +
-        `vídeo: "${selectedVideo.filename}" (${fileSizeMB}) | cicloReset: ${assignment.isCycleReset}`
-      );
-
-      try {
-        const alreadyDone = await containerAlreadyExists(
-          admin, loop.id, account.id, windowStartIso
-        );
-        if (alreadyDone) {
-          console.log(`[loop-cron] ⚡ @${account.username}: container já existe — idempotente.`);
-          containersCreated++;
-          continue;
+        if (assignment.video.file_size && assignment.video.file_size < 2_000_000) {
+          console.warn(
+            `[loop-cron] ⚠️ QUALIDADE BAIXA @${account.username}: ` +
+            `"${assignment.video.filename}" tem apenas ${fileSizeMB}.`
+          );
         }
 
-        caption = selectDynamicCaption(loopCaptionsRaw);
+        console.log(
+          `[loop-cron] @${account.username} | pool: ${loopCaptionsRaw.length} variação(ões) | ` +
+          `vídeo: "${assignment.video.filename}" (${fileSizeMB}) | cicloReset: ${assignment.isCycleReset}`
+        );
+
+        let caption = selectDynamicCaption(loopCaptionsRaw);
 
         {
           const xStatus = caption
             ? `"${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}"`
             : "VAZIA!!!";
           console.log(
-            `[RAIO-X] @${account.username} | ` +
-            `Pool: ${loopCaptionsRaw.length} variação(ões) | ` +
+            `[RAIO-X] @${account.username} | Pool: ${loopCaptionsRaw.length} variação(ões) | ` +
             `Sorteada: ${xStatus} | CicloReset: ${assignment.isCycleReset}`
           );
         }
@@ -717,36 +708,72 @@ async function processOneLoop(
           console.warn(`[loop-cron] FALLBACK EMERGÊNCIA | @${account.username} | loop="${loop.name}"`);
         }
 
+        // Railway FFmpeg — dispara em paralelo com todas as outras contas
+        let videoUrl = await applyVideoEffectsRemote(assignment.video.public_url, {
+          mirror:    loop.effect_mirror,
+          invert:    loop.effect_invert,
+          zoom:      loop.effect_zoom,
+          blur:      loop.effect_blur,
+          noise:     loop.effect_noise,
+          antiAi:    loop.effect_anti_ai,
+          accountId: account.id,
+        });
+        if (!videoUrl) videoUrl = assignment.video.public_url;
+
+        return { kind: "ready", account, assignment, caption, videoUrl };
+      })
+    );
+
+    console.log(
+      `[loop-cron] "${loop.name}" — FASE 2a concluída em ${Date.now() - t2aStart}ms ` +
+      `(${prepSettled.length} conta(s) em paralelo). Iniciando FASE 2b (Meta API sequencial).`
+    );
+
+    // ── FASE 2b: sequencial + jitter 1–3s ─────────────────────────────────────
+    let containersCreated = 0;
+
+    for (const settled of prepSettled) {
+      if (settled.status === "rejected") {
+        const msg = settled.reason instanceof Error ? settled.reason.message : String(settled.reason);
+        console.error(`[loop-cron] ✗ Erro na FASE 2a: ${msg}`);
+        continue;
+      }
+
+      const prep = settled.value;
+
+      if (prep.kind === "skip") {
+        console.warn(`[loop-cron] @${prep.account.username}: pulando (${prep.reason}).`);
+        continue;
+      }
+
+      if (prep.kind === "already_done") {
+        console.log(`[loop-cron] ⚡ @${prep.account.username}: container já existe — idempotente.`);
+        containersCreated++;
+        continue;
+      }
+
+      const { account, assignment, caption, videoUrl } = prep;
+
+      try {
         console.log(
           `[RAIO-X-FINAL] @${account.username} | caption_final (${caption.length}c): ` +
           `"${caption.slice(0, 100)}${caption.length > 100 ? "…" : ""}"`
         );
 
-        videoUrl = await applyVideoEffectsRemote(selectedVideo.public_url, {
-          mirror:  loop.effect_mirror,
-          invert:  loop.effect_invert,
-          zoom:    loop.effect_zoom,
-          blur:    loop.effect_blur,
-          noise:   loop.effect_noise,
-          antiAi:  loop.effect_anti_ai,
-          accountId: account.id,
-        });
-        if (!videoUrl) videoUrl = selectedVideo.public_url;
-
-        // Jitter 2–7s por conta (a partir da segunda): espalha chamadas à Meta API
-        // sem travar lotes grandes. Loops diferentes rodam em paralelo então o
-        // delay só afeta contas do mesmo loop — sem amplificação inter-loop.
+        // Jitter 1–3s anti-burst (somente a partir da segunda conta)
         if (containersCreated > 0) {
-          const jitterMs = Math.floor(Math.random() * 5_000) + 2_000;
+          const jitterMs = Math.floor(Math.random() * 2_000) + 1_000;
           console.log(`[loop-cron] @${account.username}: jitter ${(jitterMs / 1000).toFixed(1)}s…`);
           await sleep(jitterMs);
         }
 
-        let tokenToUse = account.meta_access_token;
+        // meta_access_token é garantidamente non-null aqui: a FASE 2a só retorna
+        // kind="ready" após checar `!account.meta_access_token` e pular a conta.
+        let tokenToUse: string = account.meta_access_token!;
         if (isTokenExpiringSoon(account.token_expires_at, 7)) {
           try {
             const { token, expiresAt } = await refreshMetaToken(
-              account.meta_access_token,
+              account.meta_access_token!,
               account.fb_page_id
             );
             await (admin as any)
@@ -762,7 +789,7 @@ async function processOneLoop(
 
         await createContainerForAccount(
           admin, account, loop, videoUrl, caption, tokenToUse,
-          selectedVideo.id, loop.current_cycle
+          assignment.video.id, loop.current_cycle
         );
         containersCreated++;
 
@@ -772,14 +799,14 @@ async function processOneLoop(
 
         await recordContainerError(
           admin, account, loop, caption, msg,
-          selectedVideo?.id ?? "", loop.current_cycle
+          assignment.video.id, loop.current_cycle
         );
 
         if (isCriticalMetaError(msg) && videoUrl) {
           try {
             const failoverOk = await attemptFailover(
               admin, account, loop, videoUrl, caption, msg, windowStartIso,
-              selectedVideo?.id ?? "", loop.current_cycle
+              assignment.video.id, loop.current_cycle
             );
             if (failoverOk) containersCreated++;
           } catch (failoverErr) {
@@ -788,8 +815,7 @@ async function processOneLoop(
           }
         }
       }
-
-    } // fim for account
+    }
 
     loopContainersCreated = containersCreated;
     return containersCreated > 0 ? "processed" : "error";
