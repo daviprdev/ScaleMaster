@@ -16,20 +16,17 @@ import uuid
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Header
 from pydantic import BaseModel
-from supabase import create_client, Client
 
 # ---------------------------------------------------------------------------
-# App + clientes
+# Config — lidas na inicialização; crash imediato se ausentes
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="AutoScale Railway Worker", version="1.0.0", redirect_slashes=False)
 
-SUPABASE_URL: str = os.environ["SUPABASE_URL"]
+SUPABASE_URL: str = os.environ["SUPABASE_URL"].rstrip("/")
 SUPABASE_SERVICE_KEY: str = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 SERVER_SECRET: str = os.environ.get("PYTHON_SERVER_SECRET", "")
 BUCKET: str = "videos-library"
-
-_supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -76,9 +73,8 @@ def _fnv1_hash(s: str) -> int:
 
 
 def _account_color_params(account_id: str) -> tuple[float, float, float]:
-    """Gera parâmetros de eq determinísticos únicos por account_id."""
     h = _fnv1_hash(account_id)
-    contrast = 1.005 + (h % 11) * 0.001
+    contrast   = 1.005 + (h % 11) * 0.001
     brightness = 0.002 + ((h >> 4) % 8) * 0.001
     saturation = 1.005 + ((h >> 8) % 11) * 0.001
     return contrast, brightness, saturation
@@ -86,7 +82,6 @@ def _account_color_params(account_id: str) -> tuple[float, float, float]:
 
 def _build_vf_chain(req: VideoEffectsRequest) -> list[str]:
     parts: list[str] = []
-
     if req.mirror:
         parts.append("hflip")
     if req.invert:
@@ -105,8 +100,28 @@ def _build_vf_chain(req: VideoEffectsRequest) -> list[str]:
         parts.append(
             f"eq=contrast={contrast:.4f}:brightness={brightness:.4f}:saturation={saturation:.4f}"
         )
-
     return parts
+
+
+def _upload_to_supabase(storage_path: str, file_bytes: bytes) -> str:
+    """
+    Faz upload para Supabase Storage via REST API diretamente com httpx.
+    Não usa supabase-py — funciona com qualquer formato de chave (sb_secret_*, eyJ*, etc).
+    """
+    upload_url = f"{SUPABASE_URL}/storage/v1/object/{BUCKET}/{storage_path}"
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        "Content-Type": "video/mp4",
+    }
+    with httpx.Client(timeout=120.0) as client:
+        resp = client.post(upload_url, content=file_bytes, headers=headers)
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(
+                f"Supabase upload falhou: HTTP {resp.status_code} — {resp.text[:300]}"
+            )
+
+    # URL pública é determinística — não precisa de chamada adicional
+    return f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET}/{storage_path}"
 
 
 def _process_effects_sync(req: VideoEffectsRequest) -> str:
@@ -116,7 +131,7 @@ def _process_effects_sync(req: VideoEffectsRequest) -> str:
     """
     uid = str(uuid.uuid4())
     tmp = tempfile.gettempdir()
-    input_path = os.path.join(tmp, f"vfx_in_{uid}.mp4")
+    input_path  = os.path.join(tmp, f"vfx_in_{uid}.mp4")
     output_path = os.path.join(tmp, f"vfx_out_{uid}.mp4")
 
     try:
@@ -130,7 +145,6 @@ def _process_effects_sync(req: VideoEffectsRequest) -> str:
 
         # ── 2. Monta filtros ───────────────────────────────────────────────────
         vf_parts = _build_vf_chain(req)
-
         cmd = ["ffmpeg", "-y", "-i", input_path]
         if vf_parts:
             cmd += ["-vf", ",".join(vf_parts)]
@@ -152,35 +166,26 @@ def _process_effects_sync(req: VideoEffectsRequest) -> str:
             stderr_tail = result.stderr.decode(errors="replace")[-600:]
             raise RuntimeError(f"FFmpeg erro (code {result.returncode}): {stderr_tail}")
 
-        # ── 4. Upload Supabase ────────────────────────────────────────────────
+        # ── 4. Upload para Supabase Storage ───────────────────────────────────
         storage_path = f"temp/vfx_{uid}.mp4"
         with open(output_path, "rb") as f:
             file_bytes = f.read()
 
-        _supabase.storage.from_(BUCKET).upload(
-            path=storage_path,
-            file=file_bytes,
-            file_options={"content-type": "video/mp4"},
-        )
-
-        public_url: str = _supabase.storage.from_(BUCKET).get_public_url(storage_path)
+        public_url = _upload_to_supabase(storage_path, file_bytes)
 
         active_fx = "+".join(
-            label
-            for label, active in [
-                ("mirror", req.mirror),
-                ("invert", req.invert),
-                ("zoom", req.zoom),
-                ("blur", req.blur),
-                ("noise", req.noise),
-                ("anti_ai", req.anti_ai),
-            ]
-            if active
+            label for label, active in [
+                ("mirror",   req.mirror),
+                ("invert",   req.invert),
+                ("zoom",     req.zoom),
+                ("blur",     req.blur),
+                ("noise",    req.noise),
+                ("anti_ai",  req.anti_ai),
+            ] if active
         )
-        size_mb = len(file_bytes) / 1_048_576
         print(
             f"[video-effects] ✓ efeitos [{active_fx}] | "
-            f"{size_mb:.1f} MB → {storage_path}"
+            f"{len(file_bytes) / 1_048_576:.1f} MB → {storage_path}"
         )
 
         return public_url
