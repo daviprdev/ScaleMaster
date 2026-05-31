@@ -10,9 +10,26 @@ import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Containers mais velhos que 30 min são considerados expirados
-// (Meta processa vídeos em no máximo ~15 min)
 const CONTAINER_TTL_MS = 30 * 60_000;
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// Erros transitórios da Meta API que devem ser retentados no próximo ciclo.
+// NÃO marcamos como "error" — o container fica em "pending" e o próximo
+// disparo do cron (em 5 min) tenta novamente automaticamente.
+const RETRYABLE_META_ERRORS = [
+  "too many actions",
+  "an unexpected error has occurred",
+  "retry your request later",
+  "please retry",
+  "service unavailable",
+  "internal server error",
+];
+
+function isRetryableMetaError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return RETRYABLE_META_ERRORS.some(p => lower.includes(p));
+}
 
 interface AccountRow {
   id: string;
@@ -97,6 +114,11 @@ export async function GET(req: NextRequest) {
   const containers = (rows ?? []) as PendingContainerRow[];
   console.log(`[publish-pending] ${containers.length} container(s) pendente(s).`);
 
+  // Conta publishes neste ciclo para inserir delay anti-rate-limit entre cada chamada
+  // a media_publish. A Meta API bloqueia com "too many actions" quando múltiplas
+  // publicações chegam em burst (>~12/min por app). 2s de espaçamento resolve.
+  let publishedInThisRun = 0;
+
   for (const container of containers) {
     summary.checked++;
 
@@ -175,7 +197,12 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // FINISHED — publicar agora
+      // FINISHED — delay anti-burst antes de cada publish (exceto o primeiro).
+      // Espaça as chamadas a media_publish em 2s para evitar "too many actions".
+      if (publishedInThisRun > 0) {
+        await sleep(2_000);
+      }
+
       const mediaId = await publishReadyContainer(
         container.ig_business_account_id,
         container.creation_id,
@@ -187,6 +214,7 @@ export async function GET(req: NextRequest) {
         .update({ status: "published", media_id: mediaId })
         .eq("id", container.id);
 
+      publishedInThisRun++;
       summary.published++;
       console.log(`[publish-pending] ✓ @${account.username} → media_id: ${mediaId}`);
 
@@ -214,11 +242,21 @@ export async function GET(req: NextRequest) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[publish-pending] ✗ container ${container.id}:`, msg);
-      await (admin as any)
-        .from("pending_containers")
-        .update({ status: "error", error_message: msg })
-        .eq("id", container.id);
       summary.errors++;
+
+      if (isRetryableMetaError(msg)) {
+        // Erro transitório: mantém como "pending" para retry automático no próximo
+        // ciclo do cron (5 min). O AUTO-HEALING de 30 min garante que não fique
+        // preso indefinidamente caso o erro persista.
+        console.warn(
+          `[publish-pending] Erro transitório @${account?.username ?? "?"}: mantendo pending para retry. Motivo: "${msg}"`
+        );
+      } else {
+        await (admin as any)
+          .from("pending_containers")
+          .update({ status: "error", error_message: msg })
+          .eq("id", container.id);
+      }
     }
   }
 
