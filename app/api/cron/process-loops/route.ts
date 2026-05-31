@@ -453,13 +453,300 @@ async function assignVideosForLoop(
 }
 
 // ---------------------------------------------------------------------------
+// Processa um único loop elegível. Retorna o resultado para o resumo final.
+// ---------------------------------------------------------------------------
+
+type LoopOutcome = "processed" | "skipped" | "error";
+
+async function processOneLoop(
+  loop: LoopRow,
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  now: Date,
+  scheduleMap: Map<string, HumanScheduleRow>
+): Promise<LoopOutcome> {
+
+  // ── Horário Humano ─────────────────────────────────────────────────────────
+  const schedule = scheduleMap.get(loop.user_id);
+  if (schedule?.is_active) {
+    const allowed = isWithinHumanSchedule(
+      now, schedule.timezone, schedule.start_time, schedule.end_time
+    );
+    if (!allowed) {
+      console.log(
+        `[loop-cron] "${loop.name}" bloqueado pelo Horário Humano ` +
+        `(fora de ${schedule.start_time}–${schedule.end_time} ${schedule.timezone}).`
+      );
+      return "skipped";
+    }
+  }
+
+  // ── Contas válidas ─────────────────────────────────────────────────────────
+  const validAccounts = loop.loop_accounts
+    .map(la => la.instagram_accounts)
+    .filter((acc): acc is AccountRow => acc !== null && acc.is_active === true);
+
+  if (validAccounts.length === 0) {
+    console.warn(`[loop-cron] "${loop.name}" sem contas ativas — pulando.`);
+    return "skipped";
+  }
+
+  if (!loop.folder_id) {
+    console.warn(`[loop-cron] "${loop.name}" sem pasta configurada — pulando.`);
+    return "skipped";
+  }
+
+  // ── Busca todos os vídeos da pasta (pool global do loop) ───────────────────
+  const { data: allVideoRows, error: videoErr } = await (admin as any)
+    .from("videos_library")
+    .select("id, public_url, filename")
+    .eq("folder_id", loop.folder_id)
+    .order("created_at", { ascending: true });
+
+  if (videoErr || !allVideoRows?.length) {
+    console.warn(`[loop-cron] "${loop.name}" sem vídeos na pasta — pulando.`);
+    return "skipped";
+  }
+
+  const allVideos = allVideoRows as VideoRow[];
+
+  let loopClaimMade = false;
+  let loopContainersCreated = 0;
+
+  try {
+    console.log(
+      `[loop-cron] RAW SUPABASE DATA loop.captions:`,
+      JSON.stringify(loop.captions),
+      `| type: ${typeof loop.captions}`,
+      `| isArray: ${Array.isArray(loop.captions)}`
+    );
+
+    // ── CLAIM: avança o estado do loop ANTES de processar contas ──────────────
+    const newCyclesDone = loop.cycles_done + 1;
+    const cyclesExhausted = !loop.is_infinite && newCyclesDone >= loop.cycles;
+    const mediaLimitReached =
+      !loop.is_infinite &&
+      loop.media_limit !== null &&
+      loop.media_limit !== undefined &&
+      newCyclesDone >= loop.media_limit;
+    const isComplete = cyclesExhausted || mediaLimitReached;
+
+    await (admin as any).from("loops").update({
+      last_posted_at: now.toISOString(),
+      cycles_done: newCyclesDone,
+      ...(isComplete ? { status: "completed" } : {}),
+    }).eq("id", loop.id);
+    loopClaimMade = true;
+
+    if (isComplete) {
+      console.log(
+        `[loop-cron] "${loop.name}" atingiu limite de execuções ` +
+        `(${newCyclesDone}/${loop.is_infinite ? "∞" : loop.cycles}) → completed.`
+      );
+    }
+
+    const windowStartIso = new Date(
+      now.getTime() - loop.interval_minutes * 60_000
+    ).toISOString();
+
+    // ── FASE 1: Atribuição atômica de vídeos ──────────────────────────────────
+    const videoAssignments = await assignVideosForLoop(
+      admin, loop, allVideos, validAccounts, windowStartIso
+    );
+
+    if (videoAssignments.size === 0) {
+      console.warn(`[loop-cron] "${loop.name}": sem vídeos disponíveis — pulando.`);
+      return "skipped";
+    }
+
+    let containersCreated = 0;
+
+    console.log(
+      `[loop-cron] "${loop.name}" — ${validAccounts.length} conta(s), ` +
+      `${videoAssignments.size} atribuição(ões) prontas. Iniciando FASE 2 com jitter 2–7s.`
+    );
+
+    // ── FASE 2: Execução com jitter anti-burst ─────────────────────────────────
+    // Jitter 2–7s (reduzido de 3–15s): suficiente para parecer humano à Meta API
+    // sem travar lotes grandes dentro do budget de 300s do cron.
+    let accountIdx = 0;
+    for (const account of validAccounts) {
+      accountIdx++;
+
+      if (!account.meta_access_token || !account.ig_business_account_id) {
+        console.warn(`[loop-cron] @${account.username} sem credenciais Meta — pulando.`);
+        continue;
+      }
+
+      const assignment = videoAssignments.get(account.id);
+      if (!assignment) {
+        console.log(`[loop-cron] @${account.username}: sem vídeo pré-atribuído — pulando.`);
+        continue;
+      }
+
+      let selectedVideo: VideoRow | null = assignment.video;
+      let caption = "";
+      let videoUrl = "";
+
+      let loopCaptionsRaw: string[];
+      {
+        const rawCaptions = loop.captions;
+        if (Array.isArray(rawCaptions)) {
+          loopCaptionsRaw = (rawCaptions as unknown[]).map(c => String(c ?? "").trim()).filter(Boolean);
+        } else if (typeof rawCaptions === "string") {
+          const trimmed = (rawCaptions as string).trim();
+          if (trimmed.startsWith("[")) {
+            try {
+              const parsed = JSON.parse(trimmed);
+              loopCaptionsRaw = Array.isArray(parsed)
+                ? (parsed as unknown[]).map(c => String(c ?? "").trim()).filter(Boolean)
+                : [trimmed];
+            } catch {
+              loopCaptionsRaw = trimmed ? [trimmed] : [];
+            }
+          } else {
+            loopCaptionsRaw = trimmed ? [trimmed] : [];
+          }
+        } else if (rawCaptions !== null && rawCaptions !== undefined) {
+          const asStr = String(rawCaptions).trim();
+          loopCaptionsRaw = asStr ? [asStr] : [];
+        } else {
+          loopCaptionsRaw = [];
+        }
+      }
+
+      Object.freeze(loopCaptionsRaw);
+
+      console.log(
+        `[loop-cron] @${account.username} [${accountIdx}/${validAccounts.length}] | ` +
+        `pool: ${loopCaptionsRaw.length} variação(ões) | ` +
+        `vídeo: "${selectedVideo.filename}" | cicloReset: ${assignment.isCycleReset}`
+      );
+
+      try {
+        const alreadyDone = await containerAlreadyExists(
+          admin, loop.id, account.id, windowStartIso
+        );
+        if (alreadyDone) {
+          console.log(`[loop-cron] ⚡ @${account.username}: container já existe — idempotente.`);
+          containersCreated++;
+          continue;
+        }
+
+        caption = selectDynamicCaption(loopCaptionsRaw);
+
+        {
+          const xStatus = caption
+            ? `"${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}"`
+            : "VAZIA!!!";
+          console.log(
+            `[RAIO-X] @${account.username} | ` +
+            `Pool: ${loopCaptionsRaw.length} variação(ões) | ` +
+            `Sorteada: ${xStatus} | CicloReset: ${assignment.isCycleReset}`
+          );
+        }
+
+        if (!caption) {
+          caption = '🔥 [TESTE DE SISTEMA] Legenda de emergência.';
+          console.warn(`[loop-cron] FALLBACK EMERGÊNCIA | @${account.username} | loop="${loop.name}"`);
+        }
+
+        console.log(
+          `[RAIO-X-FINAL] @${account.username} | caption_final (${caption.length}c): ` +
+          `"${caption.slice(0, 100)}${caption.length > 100 ? "…" : ""}"`
+        );
+
+        videoUrl = await processVideoEffects(
+          selectedVideo.public_url,
+          loop.effect_mirror,
+          loop.effect_invert
+        );
+        if (!videoUrl) videoUrl = selectedVideo.public_url;
+
+        // Jitter 2–7s por conta (a partir da segunda): espalha chamadas à Meta API
+        // sem travar lotes grandes. Loops diferentes rodam em paralelo então o
+        // delay só afeta contas do mesmo loop — sem amplificação inter-loop.
+        if (containersCreated > 0) {
+          const jitterMs = Math.floor(Math.random() * 5_000) + 2_000;
+          console.log(`[loop-cron] @${account.username}: jitter ${(jitterMs / 1000).toFixed(1)}s…`);
+          await sleep(jitterMs);
+        }
+
+        let tokenToUse = account.meta_access_token;
+        if (isTokenExpiringSoon(account.token_expires_at, 7)) {
+          try {
+            const { token, expiresAt } = await refreshMetaToken(
+              account.meta_access_token,
+              account.fb_page_id
+            );
+            await (admin as any)
+              .from("instagram_accounts")
+              .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })
+              .eq("id", account.id);
+            tokenToUse = token;
+            console.log(`[loop-cron] Token renovado para @${account.username}.`);
+          } catch {
+            console.warn(`[loop-cron] Falha ao renovar token @${account.username} — usando atual.`);
+          }
+        }
+
+        await createContainerForAccount(
+          admin, account, loop, videoUrl, caption, tokenToUse,
+          selectedVideo.id, loop.current_cycle
+        );
+        containersCreated++;
+
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[loop-cron] ✗ @${account.username}: ${msg}`);
+
+        await recordContainerError(
+          admin, account, loop, caption, msg,
+          selectedVideo?.id ?? "", loop.current_cycle
+        );
+
+        if (isCriticalMetaError(msg) && videoUrl) {
+          try {
+            const failoverOk = await attemptFailover(
+              admin, account, loop, videoUrl, caption, msg, windowStartIso,
+              selectedVideo?.id ?? "", loop.current_cycle
+            );
+            if (failoverOk) containersCreated++;
+          } catch (failoverErr) {
+            const failoverMsg = failoverErr instanceof Error ? failoverErr.message : String(failoverErr);
+            console.error(`[loop-cron] ✗ Failover falhou @${account.username}: ${failoverMsg}`);
+          }
+        }
+      }
+
+    } // fim for account
+
+    loopContainersCreated = containersCreated;
+    return containersCreated > 0 ? "processed" : "error";
+
+  } catch (loopErr) {
+    const loopErrMsg = loopErr instanceof Error ? loopErr.message : String(loopErr);
+    console.error(`[loop-cron] ✗ Erro inesperado no loop "${loop.name}": ${loopErrMsg}`);
+    return "error";
+  } finally {
+    if (loopClaimMade && loopContainersCreated === 0) {
+      console.warn(
+        `[AUTO-HEALING] Loop "${loop.name}" (${loop.id}): CLAIM feito mas 0 containers criados.`
+      );
+    } else if (loopClaimMade) {
+      console.log(
+        `[loop-cron] [FINALLY] "${loop.name}": ${loopContainersCreated} container(s) — OK.`
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Cron handler
 // ---------------------------------------------------------------------------
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
-  // Bloqueia apenas quando CRON_SECRET está configurado E não bate
   if (cronSecret && auth !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -472,10 +759,6 @@ export async function GET(req: NextRequest) {
   const now = new Date();
 
   // ── AUTO-HEALING: Desbloquear pending_containers fantasmas ────────────────
-  // Containers em 'pending' por >30 min estão definitivamente travados:
-  // a Meta API processa vídeos em no máximo ~15 min. Marcar como 'error'
-  // libera containerAlreadyExists() e permite novas criações neste ciclo.
-  // Executa ANTES de buscar loops para garantir que a fila esteja saudável.
   {
     const healCutoff = new Date(now.getTime() - 30 * 60_000).toISOString();
     const { data: healed, error: healErr } = await (admin as any)
@@ -494,9 +777,7 @@ export async function GET(req: NextRequest) {
     } else {
       const healedCount = healed?.length ?? 0;
       if (healedCount > 0) {
-        console.log(
-          `[AUTO-HEALING] Destravando ${healedCount} container(s) que ficaram presos em processamento.`
-        );
+        console.log(`[AUTO-HEALING] Destravando ${healedCount} container(s) presos.`);
       } else {
         console.log("[AUTO-HEALING] Fila saudável — nenhum container fantasma detectado.");
       }
@@ -552,344 +833,28 @@ export async function GET(req: NextRequest) {
 
   console.log(`[loop-cron] ${loops.length} loop(s) ativo(s), ${eligible.length} elegível(eis) agora.`);
 
-  const summary = { total: eligible.length, processed: 0, skipped: 0, errors: 0 };
+  // ── Processa todos os loops elegíveis em PARALELO ─────────────────────────
+  // Loops são completamente independentes (pastas, contas e claims distintos),
+  // portanto podem rodar simultaneamente sem risco de conflito. Com 2+ loops,
+  // o tempo total = max(tempo de um loop), não a soma — elimina o gargalo
+  // sequencial que causava atraso em cascata quando múltiplos loops estavam elegíveis.
+  const loopResults = await Promise.allSettled(
+    eligible.map(loop => processOneLoop(loop, admin, now, scheduleMap))
+  );
 
-  // ── Processa cada loop elegível ───────────────────────────────────────────
-  for (const loop of eligible) {
-
-    // ── Horário Humano ───────────────────────────────────────────────────────
-    const schedule = scheduleMap.get(loop.user_id);
-    if (schedule?.is_active) {
-      const allowed = isWithinHumanSchedule(
-        now, schedule.timezone, schedule.start_time, schedule.end_time
-      );
-      if (!allowed) {
-        console.log(
-          `[loop-cron] "${loop.name}" bloqueado pelo Horário Humano ` +
-          `(fora de ${schedule.start_time}–${schedule.end_time} ${schedule.timezone}).`
-        );
-        summary.skipped++;
-        continue;
+  const summary = loopResults.reduce(
+    (acc, r) => {
+      if (r.status === "fulfilled") {
+        if (r.value === "processed") acc.processed++;
+        else if (r.value === "skipped") acc.skipped++;
+        else acc.errors++;
+      } else {
+        acc.errors++;
       }
-    }
-
-    // ── Contas válidas ───────────────────────────────────────────────────────
-    const validAccounts = loop.loop_accounts
-      .map(la => la.instagram_accounts)
-      .filter((acc): acc is AccountRow => acc !== null && acc.is_active === true);
-
-    if (validAccounts.length === 0) {
-      console.warn(`[loop-cron] "${loop.name}" sem contas ativas — pulando.`);
-      summary.skipped++;
-      continue;
-    }
-
-    if (!loop.folder_id) {
-      console.warn(`[loop-cron] "${loop.name}" sem pasta configurada — pulando.`);
-      summary.skipped++;
-      continue;
-    }
-
-    // ── Busca todos os vídeos da pasta (pool global do loop) ─────────────────
-    const { data: allVideoRows, error: videoErr } = await (admin as any)
-      .from("videos_library")
-      .select("id, public_url, filename")
-      .eq("folder_id", loop.folder_id)
-      .order("created_at", { ascending: true });
-
-    if (videoErr || !allVideoRows?.length) {
-      console.warn(`[loop-cron] "${loop.name}" sem vídeos na pasta — pulando.`);
-      summary.skipped++;
-      continue;
-    }
-
-    const allVideos = allVideoRows as VideoRow[];
-
-    // ── Core do loop — envolvido em try/catch/finally ────────────────────────
-    let loopClaimMade = false;
-    let loopContainersCreated = 0;
-    try {
-
-    // ── RAW SUPABASE LOG — diagnóstico de regressão de legenda ──────────────
-    console.log(
-      `[loop-cron] RAW SUPABASE DATA loop.captions:`,
-      JSON.stringify(loop.captions),
-      `| type: ${typeof loop.captions}`,
-      `| isArray: ${Array.isArray(loop.captions)}`
-    );
-
-    // ── CLAIM: avança o estado do loop ANTES de processar contas ─────────────
-    // Garante que dois crons concorrentes não avancem o mesmo loop duas vezes.
-    const newCyclesDone = loop.cycles_done + 1;
-    const cyclesExhausted = !loop.is_infinite && newCyclesDone >= loop.cycles;
-    const mediaLimitReached =
-      !loop.is_infinite &&
-      loop.media_limit !== null &&
-      loop.media_limit !== undefined &&
-      newCyclesDone >= loop.media_limit;
-    const isComplete = cyclesExhausted || mediaLimitReached;
-
-    await (admin as any).from("loops").update({
-      last_posted_at: now.toISOString(),
-      cycles_done: newCyclesDone,
-      ...(isComplete ? { status: "completed" } : {}),
-    }).eq("id", loop.id);
-    loopClaimMade = true;
-
-    if (isComplete) {
-      console.log(
-        `[loop-cron] "${loop.name}" atingiu limite de execuções ` +
-        `(${newCyclesDone}/${loop.is_infinite ? "∞" : loop.cycles}) → completed.`
-      );
-    }
-
-    const windowStartIso = new Date(
-      now.getTime() - loop.interval_minutes * 60_000
-    ).toISOString();
-
-    // ── FASE 1: Atribuição atômica — vídeos únicos por conta ─────────────────
-    // Resolve ANTES de qualquer chamada à Meta API. Garante que a Conta 1
-    // receba o Vídeo A, a Conta 2 o Vídeo B, etc., sem possibilidade de
-    // duas contas receberem o mesmo vídeo neste disparo (race condition TOCTOU).
-    const videoAssignments = await assignVideosForLoop(
-      admin, loop, allVideos, validAccounts, windowStartIso
-    );
-
-    if (videoAssignments.size === 0) {
-      console.warn(`[loop-cron] "${loop.name}": sem vídeos disponíveis para nenhuma conta — pulando.`);
-      summary.skipped++;
-      continue;
-    }
-
-    let containersCreated = 0;
-
-    console.log(
-      `[loop-cron] "${loop.name}" — ${validAccounts.length} conta(s), ` +
-      `${videoAssignments.size} atribuição(ões) prontas. Iniciando FASE 2 com jitter 3–15s.`
-    );
-
-    // ── FASE 2: Execução com jitter anti-burst ────────────────────────────────
-    //
-    // Cada conta usa o vídeo pré-atribuído na Fase 1 — sem nova decisão de vídeo aqui.
-    // Jitter aleatório entre contas (exceto a primeira) espalha as requisições à
-    // Meta API em uma janela de 3–15s por conta, tornando o padrão de envio
-    // indetectável para o algoritmo de spam/rate-limit da Meta.
-    let accountIdx = 0;
-    for (const account of validAccounts) {
-      accountIdx++;
-
-      if (!account.meta_access_token || !account.ig_business_account_id) {
-        console.warn(`[loop-cron] @${account.username} sem credenciais Meta — pulando.`);
-        continue;
-      }
-
-      // ── Lookup do vídeo pré-atribuído ────────────────────────────────────
-      const assignment = videoAssignments.get(account.id);
-      if (!assignment) {
-        console.log(
-          `[loop-cron] @${account.username}: sem vídeo pré-atribuído ` +
-          `(conta sem vídeos disponíveis na fase de assignment) — pulando.`
-        );
-        continue;
-      }
-
-      // Estado local desta conta — inicializado com o vídeo garantido
-      let selectedVideo: VideoRow | null = assignment.video;
-      let caption = "";
-      let videoUrl = "";
-
-      // ── Parse de legendas ISOLADO — recriado do zero neste bloco ─────────
-      // Bloco {} garante que loopCaptionsRaw não vaza para a próxima iteração.
-      // FONTE EXCLUSIVA: loops.captions. Nunca reutiliza resultado anterior.
-      let loopCaptionsRaw: string[];
-      {
-        const rawCaptions = loop.captions;
-        if (Array.isArray(rawCaptions)) {
-          loopCaptionsRaw = (rawCaptions as unknown[]).map(c => String(c ?? "").trim()).filter(Boolean);
-        } else if (typeof rawCaptions === "string") {
-          const trimmed = (rawCaptions as string).trim();
-          if (trimmed.startsWith("[")) {
-            try {
-              const parsed = JSON.parse(trimmed);
-              loopCaptionsRaw = Array.isArray(parsed)
-                ? (parsed as unknown[]).map(c => String(c ?? "").trim()).filter(Boolean)
-                : [trimmed];
-            } catch {
-              loopCaptionsRaw = trimmed ? [trimmed] : [];
-            }
-          } else {
-            loopCaptionsRaw = trimmed ? [trimmed] : [];
-          }
-        } else if (rawCaptions !== null && rawCaptions !== undefined) {
-          const asStr = String(rawCaptions).trim();
-          loopCaptionsRaw = asStr ? [asStr] : [];
-        } else {
-          loopCaptionsRaw = [];
-        }
-      }
-
-      // Freeze detecta mutação destrutiva (.pop/.shift/.splice) em runtime — lançaria TypeError
-      Object.freeze(loopCaptionsRaw);
-
-      console.log(
-        `[loop-cron] @${account.username} [${accountIdx}/${validAccounts.length}] | ` +
-        `pool de legendas: ${loopCaptionsRaw.length} variação(ões) | ` +
-        `vídeo pré-atribuído: "${selectedVideo.filename}" | cicloReset: ${assignment.isCycleReset}`
-      );
-
-      try {
-        // ── Idempotência por janela de tempo ────────────────────────────────
-        const alreadyDone = await containerAlreadyExists(
-          admin, loop.id, account.id, windowStartIso
-        );
-        if (alreadyDone) {
-          console.log(`[loop-cron] ⚡ @${account.username}: container já existe neste intervalo — idempotente.`);
-          containersCreated++;
-          continue;
-        }
-
-        // ── Legenda — selecionada do pool isolado desta iteração ─────────────
-        caption = selectDynamicCaption(loopCaptionsRaw);
-
-        // ── [RAIO-X] Sorteio — snapshot imediato antes de qualquer fallback ──
-        {
-          const xStatus = caption
-            ? `"${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}"`
-            : "VAZIA!!!";
-          console.log(
-            `[RAIO-X] Conta: ${account.id} (@${account.username}) | ` +
-            `Vídeo: "${selectedVideo.filename}" | ` +
-            `Pool: ${loopCaptionsRaw.length} variação(ões) | ` +
-            `Sorteada: ${xStatus} | CicloReset: ${assignment.isCycleReset}`
-          );
-        }
-
-        if (!caption) {
-          caption = '🔥 [TESTE DE SISTEMA] Legenda de emergência.';
-          console.warn(
-            `[loop-cron] FALLBACK EMERGÊNCIA | @${account.username} | loop="${loop.name}" — pool vazio.`
-          );
-        }
-
-        // ── [RAIO-X] Caption final que será persistida no container ──────────
-        console.log(
-          `[RAIO-X-FINAL] @${account.username} | caption_final (${caption.length}c): ` +
-          `"${caption.slice(0, 100)}${caption.length > 100 ? "…" : ""}"`
-        );
-
-        console.log(
-          `[loop-cron] AUDIT | "${loop.name}" | @${account.username} → ` +
-          `Vídeo: "${selectedVideo.filename}" | ` +
-          `Legenda (${caption.length}c): "${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}" | ` +
-          `CicloReset: ${assignment.isCycleReset}`
-        );
-
-        // ── Efeitos de vídeo ─────────────────────────────────────────────────
-        videoUrl = await processVideoEffects(
-          selectedVideo.public_url,
-          loop.effect_mirror,
-          loop.effect_invert
-        );
-        if (!videoUrl) videoUrl = selectedVideo.public_url;
-
-        // ── Jitter anti-burst — espalhamento de requisições à Meta API ────────
-        // Inserido APÓS todas as verificações de banco e ANTES da chamada Meta,
-        // somente a partir da segunda conta. A primeira conta não espera para
-        // não atrasar o início do lote. Delay aleatório 3–15s torna o padrão
-        // de publicação indistinguível de comportamento humano.
-        if (containersCreated > 0) {
-          const jitterMs = Math.floor(Math.random() * 12_000) + 3_000;
-          console.log(
-            `[loop-cron] @${account.username}: jitter ${(jitterMs / 1000).toFixed(1)}s antes da Meta API…`
-          );
-          await sleep(jitterMs);
-        }
-
-        // ── Token refresh preventivo ─────────────────────────────────────────
-        let tokenToUse = account.meta_access_token;
-        if (isTokenExpiringSoon(account.token_expires_at, 7)) {
-          try {
-            const { token, expiresAt } = await refreshMetaToken(
-              account.meta_access_token,
-              account.fb_page_id
-            );
-            await (admin as any)
-              .from("instagram_accounts")
-              .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })
-              .eq("id", account.id);
-            tokenToUse = token;
-            console.log(`[loop-cron] Token renovado para @${account.username}.`);
-          } catch {
-            console.warn(`[loop-cron] Falha ao renovar token de @${account.username} — usando atual.`);
-          }
-        }
-
-        await createContainerForAccount(
-          admin, account, loop, videoUrl, caption, tokenToUse,
-          selectedVideo.id, loop.current_cycle
-        );
-        containersCreated++;
-
-      } catch (err) {
-        // ── Isolamento de falha por conta ───────────────────────────────────
-        // Este bloco NUNCA deve lançar: qualquer exceção aqui abortaria o
-        // processamento de todas as contas restantes do lote.
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[loop-cron] ✗ @${account.username}: ${msg}`);
-
-        // recordContainerError jamais lança (trata erros internamente).
-        await recordContainerError(
-          admin, account, loop,
-          caption,
-          msg,
-          selectedVideo?.id ?? "",
-          loop.current_cycle
-        );
-
-        // Failover isolado: se attemptFailover explodir, logamos e seguimos
-        // para a PRÓXIMA CONTA com continue implícito ao final do catch.
-        if (isCriticalMetaError(msg) && videoUrl) {
-          try {
-            const failoverOk = await attemptFailover(
-              admin, account, loop, videoUrl, caption, msg, windowStartIso,
-              selectedVideo?.id ?? "", loop.current_cycle
-            );
-            if (failoverOk) containersCreated++;
-          } catch (failoverErr) {
-            const failoverMsg = failoverErr instanceof Error ? failoverErr.message : String(failoverErr);
-            console.error(`[loop-cron] ✗ Failover falhou para @${account.username}: ${failoverMsg}`);
-          }
-        }
-        // Execução continua para a próxima conta do lote (continue implícito).
-      }
-
-    } // fim for account
-
-    loopContainersCreated = containersCreated;
-    if (containersCreated > 0) summary.processed++;
-    else summary.errors++;
-
-    } catch (loopErr) {
-      const loopErrMsg = loopErr instanceof Error ? loopErr.message : String(loopErr);
-      console.error(`[loop-cron] ✗ Erro inesperado no loop "${loop.name}": ${loopErrMsg}`);
-      summary.errors++;
-    } finally {
-      // Bloco finally: executa SEMPRE — mesmo em crash catastrófico (Meta down,
-      // Vercel timeout, Supabase error). Garante logs de encerramento e detecta
-      // loops que fizeram CLAIM mas não criaram nenhum container.
-      if (loopClaimMade && loopContainersCreated === 0) {
-        console.warn(
-          `[AUTO-HEALING] Loop "${loop.name}" (${loop.id}): CLAIM feito mas 0 containers criados. ` +
-          `Containers fantasmas de ciclos anteriores foram desbloqueados no início desta execução.`
-        );
-      } else if (loopClaimMade) {
-        console.log(
-          `[loop-cron] [FINALLY] "${loop.name}": ${loopContainersCreated} container(s) criado(s) — execução encerrada com sucesso.`
-        );
-      }
-    }
-
-  } // fim for loop
+      return acc;
+    },
+    { total: eligible.length, processed: 0, skipped: 0, errors: 0 }
+  );
 
   console.log("[loop-cron] ■ Resumo final:", summary);
   return NextResponse.json({ ok: true, ...summary });

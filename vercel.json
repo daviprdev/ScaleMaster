@@ -1,6 +1,14 @@
 {
   "crons": [
     {
+      "path": "/api/cron/process-loops",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/publish-pending",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/analytics/sync",
       "schedule": "0 2 * * *"
     }
