@@ -161,13 +161,16 @@ async function applyVideoEffectsRemote(
   const { mirror, invert, zoom, blur, noise, antiAi, accountId = "" } = opts;
   if (!mirror && !invert && !zoom && !blur && !noise && !antiAi) return videoUrl;
 
-  const railwayUrl = process.env.PYTHON_SERVER_URL;
+  const rawUrl = process.env.PYTHON_SERVER_URL;
   const railwaySecret = process.env.PYTHON_SERVER_SECRET;
 
-  if (!railwayUrl) {
+  if (!rawUrl) {
     console.warn("[video-effects] PYTHON_SERVER_URL não configurado — pulando efeitos.");
     return videoUrl;
   }
+
+  // Strip trailing slash para evitar barra dupla quando a env var vem com "/"
+  const railwayUrl = rawUrl.replace(/\/+$/, "");
 
   const res = await fetch(`${railwayUrl}/video/effects`, {
     method: "POST",

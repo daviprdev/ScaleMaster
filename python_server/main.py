@@ -22,7 +22,7 @@ from supabase import create_client, Client
 # App + clientes
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="AutoScale Railway Worker", version="1.0.0")
+app = FastAPI(title="AutoScale Railway Worker", version="1.0.0", redirect_slashes=False)
 
 SUPABASE_URL: str = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_KEY: str = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
@@ -199,6 +199,7 @@ def _process_effects_sync(req: VideoEffectsRequest) -> str:
 
 
 @app.post("/video/effects", response_model=VideoEffectsResponse)
+@app.post("/video/effects/", response_model=VideoEffectsResponse, include_in_schema=False)
 async def video_effects(
     req: VideoEffectsRequest,
     _: None = Depends(verify_secret),
