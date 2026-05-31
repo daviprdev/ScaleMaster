@@ -958,5 +958,16 @@ export async function GET(req: NextRequest) {
   );
 
   console.log("[loop-cron] ■ Resumo final:", summary);
-  return NextResponse.json({ ok: true, loopsFound: loops.length, ...summary });
+
+  const loopDebug = loops.map(l => ({
+    name: l.name,
+    last_posted_at: l.last_posted_at,
+    interval_minutes: l.interval_minutes,
+    next_run_at: l.last_posted_at
+      ? new Date(new Date(l.last_posted_at).getTime() + l.interval_minutes * 60_000).toISOString()
+      : null,
+    eligible: eligible.some(e => e.id === l.id),
+  }));
+
+  return NextResponse.json({ ok: true, loopsFound: loops.length, loopDebug, ...summary });
 }
