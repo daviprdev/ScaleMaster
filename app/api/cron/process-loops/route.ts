@@ -707,8 +707,8 @@ async function processOneLoop(
         }
 
         if (!caption) {
-          caption = '🔥 [TESTE DE SISTEMA] Legenda de emergência.';
-          console.warn(`[loop-cron] FALLBACK EMERGÊNCIA | @${account.username} | loop="${loop.name}"`);
+          // Loop sem legendas configuradas — posta sem legenda (Meta API omite o campo)
+          console.warn(`[loop-cron] SEM LEGENDA | @${account.username} | loop="${loop.name}" — configure legendas no painel`);
         }
 
         // Railway FFmpeg — dispara em paralelo; fallback para URL original se falhar
@@ -977,16 +977,5 @@ export async function GET(req: NextRequest) {
   );
 
   console.log("[loop-cron] ■ Resumo final:", summary);
-
-  const loopDebug = loops.map(l => ({
-    name: l.name,
-    last_posted_at: l.last_posted_at,
-    interval_minutes: l.interval_minutes,
-    next_run_at: l.last_posted_at
-      ? new Date(new Date(l.last_posted_at).getTime() + l.interval_minutes * 60_000).toISOString()
-      : null,
-    eligible: eligible.some(e => e.id === l.id),
-  }));
-
-  return NextResponse.json({ ok: true, loopsFound: loops.length, loopDebug, ...summary });
+  return NextResponse.json({ ok: true, ...summary });
 }
