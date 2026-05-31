@@ -54,6 +54,10 @@ export async function POST(req: NextRequest) {
     cover_image_url: string | null;
     effect_mirror: boolean;
     effect_invert: boolean;
+    effect_zoom: boolean;
+    effect_blur: boolean;
+    effect_noise: boolean;
+    effect_anti_ai: boolean;
     account_ids: string[];
   };
 
@@ -87,8 +91,12 @@ export async function POST(req: NextRequest) {
       media_limit: body.media_limit ?? null,
       captions: captionsToSave,
       cover_image_url: body.cover_image_url || null,
-      effect_mirror: body.effect_mirror,
-      effect_invert: body.effect_invert,
+      effect_mirror:   body.effect_mirror,
+      effect_invert:   body.effect_invert,
+      effect_zoom:     body.effect_zoom    ?? false,
+      effect_blur:     body.effect_blur    ?? false,
+      effect_noise:    body.effect_noise   ?? false,
+      effect_anti_ai:  body.effect_anti_ai ?? false,
       status: "active",
     })
     .select()

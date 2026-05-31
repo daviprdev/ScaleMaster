@@ -22,7 +22,8 @@ export async function PATCH(
 
   const updatePayload: Record<string, unknown> = {};
   const scalars = ["status", "name", "folder_id", "is_infinite", "cycles",
-    "interval_minutes", "media_limit", "captions", "cover_image_url", "effect_mirror", "effect_invert"];
+    "interval_minutes", "media_limit", "captions", "cover_image_url",
+    "effect_mirror", "effect_invert", "effect_zoom", "effect_blur", "effect_noise", "effect_anti_ai"];
   for (const key of scalars) {
     if (!(key in body)) continue;
 

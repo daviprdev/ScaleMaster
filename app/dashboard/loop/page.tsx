@@ -9,6 +9,7 @@ import {
   Loader2, AlertCircle, ChevronDown, Info, Film, AlertTriangle,
   BarChart2, Heart, MessageCircle, Eye, Crown, TrendingUp, ChevronUp,
   Save, Library, BookMarked, Shuffle, CheckCircle2,
+  ZoomIn, Waves, Droplets, Shield,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -46,8 +47,12 @@ interface Loop {
   media_limit: number | null;
   captions: string[];
   cover_image_url: string | null;
-  effect_mirror: boolean;
-  effect_invert: boolean;
+  effect_mirror:   boolean;
+  effect_invert:   boolean;
+  effect_zoom:     boolean;
+  effect_blur:     boolean;
+  effect_noise:    boolean;
+  effect_anti_ai:  boolean;
   status: "active" | "paused";
   created_at: string;
   loop_accounts?: LoopAccountData[];
@@ -65,8 +70,12 @@ interface FormData {
   captions: string[];
   coverFile: File | null;
   coverPreviewUrl: string | null;
-  effectMirror: boolean;
-  effectInvert: boolean;
+  effectMirror:  boolean;
+  effectInvert:  boolean;
+  effectZoom:    boolean;
+  effectBlur:    boolean;
+  effectNoise:   boolean;
+  effectAntiAi:  boolean;
 }
 
 interface SavedCaption {
@@ -89,6 +98,10 @@ const DEFAULT_FORM: FormData = {
   coverPreviewUrl: null,
   effectMirror: false,
   effectInvert: false,
+  effectZoom:   false,
+  effectBlur:   false,
+  effectNoise:  false,
+  effectAntiAi: false,
 };
 
 // ── Analytics types ───────────────────────────────────────────
@@ -453,10 +466,14 @@ function LoopCard({
           <Clock size={11} />
           {formatInterval(loop.interval_minutes)}
         </span>
-        {(loop.effect_mirror || loop.effect_invert) && (
+        {(loop.effect_mirror || loop.effect_invert || loop.effect_zoom || loop.effect_blur || loop.effect_noise || loop.effect_anti_ai) && (
           <span className="flex items-center gap-1">
-            {loop.effect_mirror && <FlipHorizontal size={10} className="text-cyan-400/60" />}
-            {loop.effect_invert && <Contrast size={10} className="text-cyan-400/60" />}
+            {loop.effect_mirror   && <FlipHorizontal size={10} className="text-cyan-400/60" />}
+            {loop.effect_invert   && <Contrast       size={10} className="text-cyan-400/60" />}
+            {loop.effect_zoom     && <ZoomIn         size={10} className="text-cyan-400/60" />}
+            {loop.effect_blur     && <Droplets       size={10} className="text-cyan-400/60" />}
+            {loop.effect_noise    && <Waves          size={10} className="text-cyan-400/60" />}
+            {loop.effect_anti_ai  && <Shield         size={10} className="text-cyan-400/60" />}
           </span>
         )}
       </div>
@@ -1238,6 +1255,10 @@ function LoopFormModal({
         coverPreviewUrl: editingLoop.cover_image_url,
         effectMirror: editingLoop.effect_mirror,
         effectInvert: editingLoop.effect_invert,
+        effectZoom:   editingLoop.effect_zoom   ?? false,
+        effectBlur:   editingLoop.effect_blur   ?? false,
+        effectNoise:  editingLoop.effect_noise  ?? false,
+        effectAntiAi: editingLoop.effect_anti_ai ?? false,
       };
     }
     return DEFAULT_FORM;
@@ -1519,6 +1540,50 @@ function LoopFormModal({
                 </div>
                 <Toggle checked={form.effectInvert} onChange={v => update("effectInvert", v)} />
               </div>
+
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
+                <div className="flex items-center gap-3">
+                  <ZoomIn size={15} className="text-cyan-400/60" />
+                  <div>
+                    <p className="text-sm text-white/80 font-medium">Zoom Sutil (+15%)</p>
+                    <p className="text-xs text-white/30">Recorta bordas e amplia o frame central</p>
+                  </div>
+                </div>
+                <Toggle checked={form.effectZoom} onChange={v => update("effectZoom", v)} />
+              </div>
+
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
+                <div className="flex items-center gap-3">
+                  <Droplets size={15} className="text-cyan-400/60" />
+                  <div>
+                    <p className="text-sm text-white/80 font-medium">Desfoque Leve</p>
+                    <p className="text-xs text-white/30">Filtro de privacidade imperceptível</p>
+                  </div>
+                </div>
+                <Toggle checked={form.effectBlur} onChange={v => update("effectBlur", v)} />
+              </div>
+
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
+                <div className="flex items-center gap-3">
+                  <Waves size={15} className="text-cyan-400/60" />
+                  <div>
+                    <p className="text-sm text-white/80 font-medium">Grão Digital</p>
+                    <p className="text-xs text-white/30">Ruído frame-a-frame, imperceptível</p>
+                  </div>
+                </div>
+                <Toggle checked={form.effectNoise} onChange={v => update("effectNoise", v)} />
+              </div>
+
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
+                <div className="flex items-center gap-3">
+                  <Shield size={15} className="text-cyan-400/60" />
+                  <div>
+                    <p className="text-sm text-white/80 font-medium">Anti-IA</p>
+                    <p className="text-xs text-white/30">Variação de cor única por conta</p>
+                  </div>
+                </div>
+                <Toggle checked={form.effectAntiAi} onChange={v => update("effectAntiAi", v)} />
+              </div>
             </div>
           </div>
 
@@ -1626,8 +1691,12 @@ export default function LoopPage() {
       media_limit: form.mediaLimit,
       captions: form.captions.filter(c => c.trim()),
       cover_image_url: coverImageUrl,
-      effect_mirror: form.effectMirror,
-      effect_invert: form.effectInvert,
+      effect_mirror:  form.effectMirror,
+      effect_invert:  form.effectInvert,
+      effect_zoom:    form.effectZoom,
+      effect_blur:    form.effectBlur,
+      effect_noise:   form.effectNoise,
+      effect_anti_ai: form.effectAntiAi,
       account_ids: form.accountIds,
     };
 

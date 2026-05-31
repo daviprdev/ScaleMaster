@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
+import { applyVideoEffects } from "@/lib/video-effects";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -41,6 +42,10 @@ interface LoopRow {
   captions: unknown; // raw from DB — pode ser string[], null ou JSON string
   effect_mirror: boolean;
   effect_invert: boolean;
+  effect_zoom: boolean;
+  effect_blur: boolean;
+  effect_noise: boolean;
+  effect_anti_ai: boolean;
   last_posted_at: string | null;
   loop_accounts: LoopAccountRow[];
 }
@@ -132,22 +137,7 @@ function isWithinHumanSchedule(
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-// ---------------------------------------------------------------------------
-// Video effects stub
-// ---------------------------------------------------------------------------
-
-async function processVideoEffects(
-  videoUrl: string,
-  effectMirror: boolean,
-  effectInvert: boolean
-): Promise<string> {
-  if (!effectMirror && !effectInvert) return videoUrl;
-  console.warn(
-    `[loop-cron] Efeitos (mirror=${effectMirror}, invert=${effectInvert}) — ` +
-    `worker de vídeo não configurado, passthrough.`
-  );
-  return videoUrl;
-}
+// (processVideoEffects removido — substituído por applyVideoEffects de lib/video-effects.ts)
 
 // ---------------------------------------------------------------------------
 // Idempotency — evita dupla submissão em re-tentativas do cron dentro da
@@ -670,11 +660,15 @@ async function processOneLoop(
           `"${caption.slice(0, 100)}${caption.length > 100 ? "…" : ""}"`
         );
 
-        videoUrl = await processVideoEffects(
-          selectedVideo.public_url,
-          loop.effect_mirror,
-          loop.effect_invert
-        );
+        videoUrl = await applyVideoEffects(selectedVideo.public_url, {
+          mirror:  loop.effect_mirror,
+          invert:  loop.effect_invert,
+          zoom:    loop.effect_zoom,
+          blur:    loop.effect_blur,
+          noise:   loop.effect_noise,
+          antiAi:  loop.effect_anti_ai,
+          accountId: account.id,
+        });
         if (!videoUrl) videoUrl = selectedVideo.public_url;
 
         // Jitter 2–7s por conta (a partir da segunda): espalha chamadas à Meta API
@@ -805,6 +799,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, user_id, name, folder_id, is_infinite, cycles, cycles_done, current_cycle,
       interval_minutes, media_limit, captions, effect_mirror, effect_invert,
+      effect_zoom, effect_blur, effect_noise, effect_anti_ai,
       last_posted_at,
       loop_accounts (
         account_id,
