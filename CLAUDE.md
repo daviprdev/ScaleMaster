@@ -269,6 +269,10 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fix — Auditoria de Banda: 10 GB Fast Origin Transfer (Vercel Hobby)** | Diagnóstico: o pipeline de postagem (cron `process-loops` + `publish-pending` + `posts/create`) já passava apenas `video_url` à Meta Graph API — zero bytes de vídeo por Vercel. Causa real: cada download de inspiração via `/api/proxy-sanitize-download` roteava ~2× o tamanho do vídeo (download do CDN + envio ao browser), ~100 MB por reel. Fix: URLs do Supabase Storage (`*.supabase.co`) em ambas as rotas de proxy agora retornam HTTP 307 redirect direto ao CDN — zero bytes pela Vercel. HEAD de URLs Supabase retorna 200 instantâneo sem fetch remoto. Log de MB por download adicionado para monitorar consumo futuro. FFmpeg confirmado como rodando apenas no `save-to-library` (uma vez por vídeo). Commit `54c6361`. | ✅ Aplicado |
 | **Chore — X-Ray Logs: Diagnóstico Roleta Russa de Legendas** | Comportamento: lotes com postagem inconsistente de legendas (algumas contas com todas, outras sem nenhuma, outras parcial). Blindagens injetadas: (1) `Object.freeze(loopCaptionsRaw)` em `process-loops` — mutação destrutiva (`.pop()/.shift()/.splice()`) lança TypeError imediatamente; (2) log estendido com `type + isArray + rawLen` de `loop.captions` antes do parse para detectar perda silenciosa de variações; (3) `[RAIO-X]` pós-sorteio por conta: pool size + caption sorteada ou `VAZIA!!!`; (4) `[RAIO-X-FINAL]` mostra caption final persistida no container; (5) `[RAIO-X]` em `publish-pending` antes do double-tap: caption armazenada no banco + chars + status; (6) `[META DOUBLE-TAP RAW]` em `updatePostCaption`: resposta RAW completa (sem slice) + HTTP status + detecção inline de `rate_limited=SIM!!!` e `oauth_err=SIM!!!`. Commit `54bf456`. | ✅ Aplicado |
 | **Fix — OAuth Instagram: conexão de contas funcionando** | Raiz: commit de scopes (`instagram_manage_comments`, `instagram_manage_insights`) adicionou scopes do Facebook Login no endpoint do Instagram Login API, causando "Invalid platform app". Correções em 3 commits: (1) URL OAuth revertida para `api.instagram.com/oauth/authorize`; (2) scopes trocados pelos equivalentes corretos da Instagram Business Login API (`instagram_business_basic`, `instagram_business_content_publish`, `instagram_business_manage_comments`); (3) env vars alinhadas com `NEXT_PUBLIC_META_CLIENT_ID` / `META_CLIENT_SECRET` (o código buscava nomes errados `NEXT_PUBLIC_INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET`); (4) redirect URI `https://autoscale-ia.vercel.app/api/instagram/callback` cadastrada no Meta Developer Console em Instagram Business Login → Valid OAuth Redirect URIs. Fluxo completo funcional: tela de login Instagram → `api.instagram.com/oauth/access_token` → `graph.instagram.com/access_token?grant_type=ig_exchange_token` → `graph.instagram.com/me`. | ✅ Aplicado |
+| **Fix — Loops paralelos + crons restaurados** | `process-loops` e `publish-pending` estavam faltando no `vercel.json` — crons não disparavam automaticamente. `process-loops` refatorado: loop sequencial `for (const loop of eligible)` substituído por `Promise.allSettled(eligible.map(processOneLoop))` — múltiplos loops rodam em paralelo, eliminando gargalo em cascata. Jitter inter-conta reduzido de 3–15s para 2–7s. `processOneLoop` extraída como função nomeada. | ✅ Aplicado |
+| **Fix — Lock atômico pending→publishing (double-publish)** | Race condition: duas invocações concorrentes do `publish-pending` (cron */5) liam os mesmos containers `pending` e publicavam o mesmo reel duas vezes. Fix: antes de `publishReadyContainer`, UPDATE atômico `status='publishing' WHERE status='pending'` — PostgreSQL row-level lock garante que apenas uma invocação vença. Status `publishing` adicionado ao CHECK constraint (`supabase/pending_containers_publishing_status.sql`). AUTO-HEALING estendido para limpar `publishing` stuck >30 min. Erros transitórios (`too many actions`, `unexpected error`) resetam `publishing→pending` para retry automático em 5 min. Delay de 2s entre publishes anti-burst adicionado. | ✅ Aplicado |
+| **Fix — Double-tap caption com delay+retry** | `updatePostCaption` chamado imediatamente após publish causava descarte silencioso pela Meta (Reel ainda sendo finalizado). Fix: delay de 4s antes do double-tap + retry automático (2 tentativas, intervalo 6s). Log explícito quando ambas as tentativas falham. Diagnóstico de qualidade de vídeo: `file_size` incluído na query de vídeos em `process-loops`, alerta quando < 2 MB. | ✅ Aplicado |
+| **Feat — Motor de Efeitos de Vídeo (6 efeitos reais)** | `lib/video-effects.ts` (novo): `applyVideoEffects()` — download → FFmpeg libx264 ultrafast → upload `temp/` Supabase → retorna URL processada. 6 efeitos: hflip (espelhar), negate (inverter cores — antes stubs inoperantes), zoom +15% (`scale=115%` + crop centrado), smartblur leve (`lr=1 ls=0.25`), ruído temporal (`c0s=3 t+u`), anti-IA (micro-eq determinístico por account_id via FNV-1 hash — cor única por conta). `process-loops` substitui stub por chamada real. UI loop: 4 toggles novos (ZoomIn, Droplets, Waves, Shield) + badges no card. SQL: 4 colunas novas na tabela loops. | ✅ Concluída |
 
 **SQL pendente (executar no Supabase):**
 ```sql
@@ -334,6 +338,20 @@ CREATE POLICY "users_manage_own_account_folders" ON public.account_folders
 ALTER TABLE public.instagram_accounts
   ADD COLUMN IF NOT EXISTS folder_id uuid REFERENCES public.account_folders(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS instagram_accounts_folder_id_idx ON public.instagram_accounts(folder_id);
+
+-- Lock atômico publish-pending (supabase/pending_containers_publishing_status.sql)
+ALTER TABLE public.pending_containers
+  DROP CONSTRAINT IF EXISTS pending_containers_status_check;
+ALTER TABLE public.pending_containers
+  ADD CONSTRAINT pending_containers_status_check
+  CHECK (status IN ('pending', 'publishing', 'published', 'error'));
+
+-- Novos efeitos de vídeo (supabase/loops_new_effects.sql)
+ALTER TABLE public.loops
+  ADD COLUMN IF NOT EXISTS effect_zoom     boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS effect_blur     boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS effect_noise    boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS effect_anti_ai  boolean NOT NULL DEFAULT false;
 ```
 
 **Env vars novas a adicionar na Vercel:**
