@@ -112,10 +112,10 @@ export async function GET(req: NextRequest) {
   const containers = (rows ?? []) as PendingContainerRow[];
   console.log(`[publish-pending] ${containers.length} container(s) pendente(s).`);
 
-  // Conta publishes neste ciclo para inserir delay anti-rate-limit entre cada chamada
-  // a media_publish. A Meta API bloqueia com "too many actions" quando múltiplas
-  // publicações chegam em burst (>~12/min por app). 2s de espaçamento resolve.
-  let publishedInThisRun = 0;
+  // Conta tentativas de publish neste ciclo para inserir delay anti-rate-limit.
+  // O delay é aplicado entre TODAS as tentativas (inclusive falhas), não só após sucesso.
+  // A Meta bloqueia com "too many actions" quando múltiplas chamadas chegam em burst.
+  let publishAttemptsInThisRun = 0;
 
   for (const container of containers) {
     summary.checked++;
@@ -215,10 +215,12 @@ export async function GET(req: NextRequest) {
       }
 
       // FINISHED — delay anti-burst antes de cada publish (exceto o primeiro).
-      // Espaça as chamadas a media_publish em 2s para evitar "too many actions".
-      if (publishedInThisRun > 0) {
+      // Aplica delay entre TODAS as tentativas de publish (sucesso ou falha),
+      // pois "too many actions" acontece mesmo quando a tentativa anterior falhou.
+      if (publishAttemptsInThisRun > 0) {
         await sleep(2_000);
       }
+      publishAttemptsInThisRun++;
 
       const mediaId = await publishReadyContainer(
         container.ig_business_account_id,
@@ -231,7 +233,6 @@ export async function GET(req: NextRequest) {
         .update({ status: "published", media_id: mediaId })
         .eq("id", container.id);
 
-      publishedInThisRun++;
       summary.published++;
       console.log(`[publish-pending] ✓ @${account.username} → media_id: ${mediaId}`);
 

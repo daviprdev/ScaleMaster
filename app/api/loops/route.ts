@@ -25,7 +25,9 @@ export async function GET() {
   })("loops")
     .select(`
       id, user_id, folder_id, name, is_infinite, cycles, interval_minutes,
-      media_limit, captions, cover_image_url, effect_mirror, effect_invert, status, created_at,
+      media_limit, captions, cover_image_url,
+      effect_mirror, effect_invert, effect_zoom, effect_blur, effect_noise, effect_anti_ai,
+      status, created_at,
       loop_accounts ( account_id, instagram_accounts ( id, username, display_name, avatar_url ) ),
       library_folders ( id, name )
     `)

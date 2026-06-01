@@ -1286,6 +1286,7 @@ function LoopFormModal({
     if (!form.name.trim()) { setError("Dê um nome ao loop."); return; }
     if (form.accountIds.length === 0) { setError("Selecione pelo menos uma conta."); return; }
     if (!form.folderId) { setError("Selecione uma pasta da biblioteca."); return; }
+    if (!form.captions.some(c => c.trim())) { setError("Adicione pelo menos uma legenda para o loop."); return; }
     setError(null);
     setSaving(true);
     try {
