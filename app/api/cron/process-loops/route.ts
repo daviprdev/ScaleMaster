@@ -574,8 +574,26 @@ async function processOneLoop(
 
   const allVideos = allVideoRows as VideoRow[];
 
+  // ── Pré-flight: verificar legendas ANTES do CLAIM ─────────────────────────
+  // Se não há legendas, pular sem avançar last_posted_at — o loop não perde
+  // o intervalo e tenta novamente no próximo ciclo do cron.
+  const hasConfiguredCaptions = Array.isArray(loop.captions)
+    ? (loop.captions as unknown[]).some(c => typeof c === "string" && (c as string).trim().length > 0)
+    : typeof loop.captions === "string" && (loop.captions as string).trim().length > 0;
+
+  if (!hasConfiguredCaptions) {
+    console.warn(
+      `[loop-cron] "${loop.name}" sem legendas configuradas — pulando sem avançar last_posted_at. ` +
+      `Configure legendas no painel para ativar as postagens.`
+    );
+    return "skipped";
+  }
+
   let loopClaimMade = false;
   let loopContainersCreated = 0;
+  // Hoisted: newCyclesDone e isComplete precisam ser acessíveis no finally para revert do CLAIM.
+  let newCyclesDone = loop.cycles_done + 1;
+  let isComplete = false;
 
   try {
     console.log(
@@ -586,14 +604,13 @@ async function processOneLoop(
     );
 
     // ── CLAIM: avança o estado do loop ANTES de processar contas ──────────────
-    const newCyclesDone = loop.cycles_done + 1;
     const cyclesExhausted = !loop.is_infinite && newCyclesDone >= loop.cycles;
     const mediaLimitReached =
       !loop.is_infinite &&
       loop.media_limit !== null &&
       loop.media_limit !== undefined &&
       newCyclesDone >= loop.media_limit;
-    const isComplete = cyclesExhausted || mediaLimitReached;
+    isComplete = cyclesExhausted || mediaLimitReached;
 
     await (admin as any).from("loops").update({
       last_posted_at: now.toISOString(),
@@ -716,8 +733,9 @@ async function processOneLoop(
         }
 
         if (!caption) {
-          // Loop sem legendas configuradas — posta sem legenda (Meta API omite o campo)
-          console.warn(`[loop-cron] SEM LEGENDA | @${account.username} | loop="${loop.name}" — configure legendas no painel`);
+          // Não deve acontecer após o pré-flight check, mas é uma segunda linha de defesa.
+          console.warn(`[loop-cron] SEM LEGENDA | @${account.username} | loop="${loop.name}" — pulando conta`);
+          return { kind: "skip", account, reason: "sem legendas no loop" };
         }
 
         // Railway FFmpeg — dispara em paralelo; fallback para URL original se falhar
@@ -764,7 +782,7 @@ async function processOneLoop(
         if (acct) {
           await recordContainerError(
             admin, acct, loop, "", msg,
-            videoAssignments.get(acct.id)?.video.id ?? "", loop.current_cycle
+            videoAssignments.get(acct.id)?.video.id ?? "", newCyclesDone
           );
         }
         continue;
@@ -820,7 +838,7 @@ async function processOneLoop(
 
         await createContainerForAccount(
           admin, account, loop, videoUrl, caption, tokenToUse,
-          assignment.video.id, loop.current_cycle
+          assignment.video.id, newCyclesDone
         );
         containersCreated++;
 
@@ -830,14 +848,14 @@ async function processOneLoop(
 
         await recordContainerError(
           admin, account, loop, caption, msg,
-          assignment.video.id, loop.current_cycle
+          assignment.video.id, newCyclesDone
         );
 
         if (isCriticalMetaError(msg) && videoUrl) {
           try {
             const failoverOk = await attemptFailover(
               admin, account, loop, videoUrl, caption, msg, windowStartIso,
-              assignment.video.id, loop.current_cycle
+              assignment.video.id, newCyclesDone
             );
             if (failoverOk) containersCreated++;
           } catch (failoverErr) {
@@ -857,9 +875,24 @@ async function processOneLoop(
     return "error";
   } finally {
     if (loopClaimMade && loopContainersCreated === 0) {
+      // Nenhum container foi criado com sucesso — reverter o CLAIM para que o
+      // intervalo não seja consumido em vão. O loop será elegível novamente no
+      // próximo ciclo do cron (em vez de só após interval_minutes desde o CLAIM).
       console.warn(
-        `[AUTO-HEALING] Loop "${loop.name}" (${loop.id}): CLAIM feito mas 0 containers criados.`
+        `[AUTO-HEALING] Loop "${loop.name}" (${loop.id}): CLAIM revertido — 0 containers criados.`
       );
+      try {
+        const revertPayload: Record<string, unknown> = {
+          last_posted_at: loop.last_posted_at,
+          cycles_done:    loop.cycles_done,
+        };
+        if (isComplete) revertPayload.status = "active";
+        await (admin as any).from("loops").update(revertPayload).eq("id", loop.id);
+        console.log(`[AUTO-HEALING] last_posted_at/cycles_done revertidos para "${loop.name}".`);
+      } catch (revertErr) {
+        const revertMsg = revertErr instanceof Error ? revertErr.message : String(revertErr);
+        console.error(`[AUTO-HEALING] Falha ao reverter CLAIM de "${loop.name}": ${revertMsg}`);
+      }
     } else if (loopClaimMade) {
       console.log(
         `[loop-cron] [FINALLY] "${loop.name}": ${loopContainersCreated} container(s) — OK.`
