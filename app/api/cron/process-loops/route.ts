@@ -220,23 +220,29 @@ async function applyVideoEffectsRemote(
 }
 
 // ---------------------------------------------------------------------------
-// Idempotency — evita dupla submissão em re-tentativas do cron dentro da
-// mesma janela de intervalo. Verifica por (loop, conta, janela de tempo).
+// Idempotency — evita dupla submissão enquanto há container em voo.
+// Verifica apenas status in-flight (pending/publishing) — sem janela de tempo.
+//
+// Razão: windowStartIso = now (adotado em eca649c) tornava esta query sempre
+// false (nenhum container pode ser criado no "futuro"), causando spam de
+// containers por conta por ciclo. A Meta detecta isso como ação abusiva (#368)
+// e bloqueia todas as contas. Agora só bloqueamos re-criação quando há um
+// container genuinamente em processamento. Containers "published" não bloqueiam
+// (queremos postar novamente depois que o anterior foi publicado).
 // ---------------------------------------------------------------------------
 
 async function containerAlreadyExists(
   admin: ReturnType<typeof getSupabaseAdmin>,
   loopId: string,
   accountId: string,
-  windowStartIso: string
+  _windowStartIso: string // mantido na assinatura para compatibilidade, mas não usado
 ): Promise<boolean> {
   const { data } = await (admin as any)
     .from("pending_containers")
     .select("id")
     .eq("loop_id", loopId)
     .eq("account_id", accountId)
-    .neq("status", "error")
-    .gte("created_at", windowStartIso)
+    .in("status", ["pending", "publishing"])
     .limit(1)
     .maybeSingle();
   return data !== null;
@@ -631,21 +637,34 @@ async function processOneLoop(
       newCyclesDone >= loop.media_limit;
     isComplete = cyclesExhausted || mediaLimitReached;
 
-    // Claim atômico: verifica quantas rows foram afetadas.
-    // Se 0, outra invocação concorrente já reivindicou este loop — aborta sem criar containers.
-    const { data: claimResult, error: claimErr } = await (admin as any)
+    // Claim verdadeiramente atômico: condiciona no last_posted_at que vimos no
+    // fetch. Se outra invocação concorrente do cron já atualizou o loop (mudou
+    // last_posted_at), o UPDATE afeta 0 rows — esta invocação aborta sem criar
+    // containers duplicados.
+    //
+    // Sem esta condição, duas invocações simultâneas (crons sobrepostos) ambas
+    // ganhariam o CLAIM e criariam containers duplicados → spam Meta API (#368).
+    let claimQuery = (admin as any)
       .from("loops")
       .update({
         last_posted_at: now.toISOString(),
         cycles_done: newCyclesDone,
         ...(isComplete ? { status: "completed" } : {}),
       })
-      .eq("id", loop.id)
-      .select("id");
+      .eq("id", loop.id);
+
+    // Filtra pelo valor exato que vimos no fetch para garantir exclusão mútua.
+    if (loop.last_posted_at === null || loop.last_posted_at === undefined) {
+      claimQuery = claimQuery.is("last_posted_at", null);
+    } else {
+      claimQuery = claimQuery.eq("last_posted_at", loop.last_posted_at);
+    }
+
+    const { data: claimResult, error: claimErr } = await claimQuery.select("id");
 
     if (claimErr) throw new Error(`Falha no CLAIM: ${claimErr.message}`);
     if (!claimResult?.length) {
-      console.warn(`[loop-cron] "${loop.name}": CLAIM retornou 0 rows — outra invocação já reivindicou. Pulando.`);
+      console.warn(`[loop-cron] "${loop.name}": CLAIM retornou 0 rows — outra invocação concorrente já reivindicou. Pulando.`);
       return "skipped";
     }
     loopClaimMade = true;

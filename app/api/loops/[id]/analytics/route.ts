@@ -18,6 +18,7 @@ interface ContainerRow {
   account_id: string;
   status: string;
   media_id: string | null;
+  error_message: string | null;
   insights_likes: number | null;
   insights_comments: number | null;
   insights_plays: number | null;
@@ -130,7 +131,7 @@ export async function GET(
   const { data: containers } = await (admin as any)
     .from("pending_containers")
     .select(`
-      id, account_id, status, media_id,
+      id, account_id, status, media_id, error_message,
       insights_likes, insights_comments, insights_plays, insights_reach,
       insights_fetched_at, created_at,
       instagram_accounts (
@@ -186,6 +187,16 @@ export async function GET(
   const published = rows.filter(r => r.status === "published").length;
   const errors    = rows.filter(r => r.status === "error").length;
   const pending   = rows.filter(r => r.status === "pending").length;
+
+  // Mensagens de erro recentes (máx 10) para diagnóstico
+  const recentErrors = rows
+    .filter(r => r.status === "error" && r.error_message)
+    .slice(0, 10)
+    .map(r => ({
+      created_at: r.created_at,
+      username: r.instagram_accounts?.username ?? "?",
+      error_message: r.error_message,
+    }));
 
   // ── Engajamento total ───────────────────────────────────────────────────
   const pubRows = rows.filter(r => r.status === "published");
@@ -260,6 +271,7 @@ export async function GET(
       errors,
       pending,
       remaining: Math.max(0, totalTarget - published),
+      recent_errors: recentErrors,
     },
     engagement: {
       total_likes:    totalLikes,
