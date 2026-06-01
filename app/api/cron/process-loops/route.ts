@@ -124,7 +124,13 @@ function isWithinHumanSchedule(
       const [th, tm] = t.split(":").map(Number);
       return th * 60 + (tm ?? 0);
     };
-    return cur >= toMin(startTime) && cur < toMin(endTime);
+    const start = toMin(startTime);
+    const end   = toMin(endTime);
+    // Janela normal (ex: 09:00–17:00): start < end
+    // Janela noturna crossing midnight (ex: 21:00–09:00): start > end
+    return start <= end
+      ? cur >= start && cur < end
+      : cur >= start || cur < end;
   } catch {
     return true;
   }
@@ -625,11 +631,23 @@ async function processOneLoop(
       newCyclesDone >= loop.media_limit;
     isComplete = cyclesExhausted || mediaLimitReached;
 
-    await (admin as any).from("loops").update({
-      last_posted_at: now.toISOString(),
-      cycles_done: newCyclesDone,
-      ...(isComplete ? { status: "completed" } : {}),
-    }).eq("id", loop.id);
+    // Claim atômico: verifica quantas rows foram afetadas.
+    // Se 0, outra invocação concorrente já reivindicou este loop — aborta sem criar containers.
+    const { data: claimResult, error: claimErr } = await (admin as any)
+      .from("loops")
+      .update({
+        last_posted_at: now.toISOString(),
+        cycles_done: newCyclesDone,
+        ...(isComplete ? { status: "completed" } : {}),
+      })
+      .eq("id", loop.id)
+      .select("id");
+
+    if (claimErr) throw new Error(`Falha no CLAIM: ${claimErr.message}`);
+    if (!claimResult?.length) {
+      console.warn(`[loop-cron] "${loop.name}": CLAIM retornou 0 rows — outra invocação já reivindicou. Pulando.`);
+      return "skipped";
+    }
     loopClaimMade = true;
 
     if (isComplete) {
