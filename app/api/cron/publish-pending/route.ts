@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
     `)
     .eq("status", "pending")
     .order("created_at", { ascending: true })
-    .limit(50);
+    .limit(10); // 10 max: pior caso 10 FINISHED × ~15s = 150s << maxDuration 300s
 
   if (fetchErr) {
     console.error("[publish-pending] Erro ao buscar containers:", fetchErr.message);
@@ -252,14 +252,10 @@ export async function GET(req: NextRequest) {
           : "VAZIA — post será publicado sem legenda")
       );
 
-      // Double-tap de legenda: a Meta descarta silenciosamente a caption enviada
-      // durante a criação do container na maioria das vezes para Reels.
-      // Este POST após o publish é o mecanismo real que garante a legenda no post.
-      //
-      // 10s de delay: Reel precisa finalizar o processamento antes de aceitar update.
-      // 3 tentativas com 8s entre elas para absorver rate limits transitórios.
+      // Double-tap de legenda: 5s de delay (Reel finaliza rápido após publish).
+      // 3 tentativas com 4s de intervalo — total pior caso: 5 + 3×(API+4s) ≈ 20s.
       if (captionStored.trim()) {
-        await sleep(10_000);
+        await sleep(5_000);
 
         let captionApplied = false;
         for (let attempt = 1; attempt <= 3 && !captionApplied; attempt++) {
@@ -272,9 +268,9 @@ export async function GET(req: NextRequest) {
             if (attempt < 3) {
               console.warn(
                 `[publish-pending] Legenda tentativa ${attempt}/3 falhou @${account.username}: ` +
-                `"${captMsg}" — aguardando 8s…`
+                `"${captMsg}" — aguardando 4s…`
               );
-              await sleep(8_000);
+              await sleep(4_000);
             } else {
               console.error(
                 `[publish-pending] ✗ Legenda NÃO aplicada @${account.username} após 3 tentativas: ` +
