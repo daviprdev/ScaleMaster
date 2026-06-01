@@ -494,10 +494,23 @@ async function assignVideosForLoop(
     }
 
     if (available.length === 0) {
-      console.warn(
-        `[assign-phase] @${account.username}: nenhum vídeo disponível ` +
-        `(pasta=${allVideos.length}, global=${globallyTaken.size}, local=${locallyAssigned.size}).`
-      );
+      if (allVideos.length > 0) {
+        // Fallback: mais contas que vídeos na pasta. Distribui usando wrap-around pelo
+        // índice da conta — sem adicionar ao locallyAssigned para que as demais contas
+        // overflow também consigam seus vídeos ciclados.
+        const fallbackIdx = i % allVideos.length;
+        const fallbackVideo = allVideos[fallbackIdx];
+        console.log(
+          `[assign-phase] @${account.username}: wrap-around (${allVideos.length} vídeo(s) para ${validAccounts.length} conta(s)) ` +
+          `→ vídeo[${fallbackIdx}] "${fallbackVideo.filename.slice(0, 24)}".`
+        );
+        assignments.set(account.id, { video: fallbackVideo, isCycleReset: true });
+      } else {
+        console.warn(
+          `[assign-phase] @${account.username}: sem vídeos na pasta ` +
+          `(global=${globallyTaken.size}, local=${locallyAssigned.size}).`
+        );
+      }
       continue;
     }
 
@@ -626,9 +639,12 @@ async function processOneLoop(
       );
     }
 
-    const windowStartIso = new Date(
-      now.getTime() - loop.interval_minutes * 60_000
-    ).toISOString();
+    // Janela de idempotência: usa o momento do CLAIM (now) como fronteira.
+    // Containers desta execução são criados APÓS now → ficam dentro da janela.
+    // Containers da execução anterior foram criados antes do now anterior → fora da janela.
+    // NUNCA usar interval_minutes aqui: isso incluiria os containers da execução anterior,
+    // fazendo containerAlreadyExists() retornar true e pulando a postagem sem criar nada.
+    const windowStartIso = now.toISOString();
 
     // ── FASE 1: Atribuição atômica de vídeos ──────────────────────────────────
     const videoAssignments = await assignVideosForLoop(
