@@ -14,9 +14,8 @@ const CONTAINER_TTL_MS = 30 * 60_000;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-// Erros transitórios da Meta API que devem ser retentados no próximo ciclo.
-// NÃO marcamos como "error" — o container fica em "pending" e o próximo
-// disparo do cron (em 5 min) tenta novamente automaticamente.
+// Erros transitórios que disparam backoff exponencial em vez de retry imediato.
+// NÃO marcamos como "error" — o container fica "pending" com retry_after no futuro.
 const RETRYABLE_META_ERRORS = [
   "too many actions",
   "an unexpected error has occurred",
@@ -47,6 +46,8 @@ interface PendingContainerRow {
   creation_id: string;
   caption: string;
   created_at: string;
+  retry_count: number;
+  retry_after: string | null;
   instagram_accounts: AccountRow | null;
 }
 
@@ -63,11 +64,12 @@ export async function GET(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
   const now = new Date();
+  const nowIso = now.toISOString();
   const summary = { checked: 0, published: 0, in_progress: 0, expired: 0, errors: 0, auto_healed: 0 };
 
   // ── AUTO-HEALING: Containers expirados (>30 min em pending/publishing) ──────
-  // Inclui 'publishing' para recuperar containers cujo cron invocador fez timeout
-  // sem concluir — sem isso ficariam presos em 'publishing' para sempre.
+  // Exclui containers explicitamente em backoff (retry_after > now) —
+  // esses estão aguardando intencionalmente e NÃO devem ser mortos como erro.
   {
     const healCutoff = new Date(now.getTime() - CONTAINER_TTL_MS).toISOString();
     const { data: healed, error: healErr } = await (admin as any)
@@ -78,6 +80,7 @@ export async function GET(req: NextRequest) {
       })
       .in("status", ["pending", "publishing"])
       .lt("created_at", healCutoff)
+      .or(`retry_after.is.null,retry_after.lte.${nowIso}`)
       .select("id");
 
     if (healErr) {
@@ -91,18 +94,20 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Busca apenas containers elegíveis: pending + fora do período de backoff
   const { data: rows, error: fetchErr } = await (admin as any)
     .from("pending_containers")
     .select(`
       id, user_id, account_id, ig_business_account_id,
-      creation_id, caption, created_at,
+      creation_id, caption, created_at, retry_count, retry_after,
       instagram_accounts (
         id, username, meta_access_token, token_expires_at, fb_page_id
       )
     `)
     .eq("status", "pending")
+    .or(`retry_after.is.null,retry_after.lte.${nowIso}`)
     .order("created_at", { ascending: true })
-    .limit(10); // 10 max: pior caso 10 FINISHED × ~15s = 150s << maxDuration 300s
+    .limit(5); // 5 max — 5 × (8s delay + ~5s API) = ~65s, dentro do maxDuration
 
   if (fetchErr) {
     console.error("[publish-pending] Erro ao buscar containers:", fetchErr.message);
@@ -110,27 +115,22 @@ export async function GET(req: NextRequest) {
   }
 
   const containers = (rows ?? []) as PendingContainerRow[];
-  console.log(`[publish-pending] ${containers.length} container(s) pendente(s).`);
+  console.log(`[publish-pending] ${containers.length} container(s) elegíveis.`);
 
-  // Conta tentativas de publish neste ciclo para inserir delay anti-rate-limit.
-  // O delay é aplicado entre TODAS as tentativas (inclusive falhas), não só após sucesso.
-  // A Meta bloqueia com "too many actions" quando múltiplas chamadas chegam em burst.
+  // Delay de 8s entre publishes (anti-burst).
+  // A Meta bloqueia com "too many actions" com intervalos < 5s entre publicações.
   let publishAttemptsInThisRun = 0;
 
   for (const container of containers) {
     summary.checked++;
 
     // ── Claim atômico: pending → publishing ───────────────────────────────────
-    // Garante que apenas UMA invocação concorrente do cron processe cada container.
-    // Duas invocações podem ler o mesmo container em "pending" na query inicial,
-    // mas apenas a primeira a executar este UPDATE vence — a outra recebe 0 rows.
-    // PostgreSQL garante serialização via row-level lock na instrução UPDATE.
     {
       const { data: claimed } = await (admin as any)
         .from("pending_containers")
         .update({ status: "publishing" })
         .eq("id", container.id)
-        .eq("status", "pending")   // condição atômica — falha se outra invocação já reivindicou
+        .eq("status", "pending")
         .select("id");
 
       if (!claimed?.length) {
@@ -197,8 +197,6 @@ export async function GET(req: NextRequest) {
       const pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse);
 
       if (pollStatus === "in_progress") {
-        // Volta para "pending" — sem isso o container fica preso em "publishing"
-        // (a query só busca "pending") e o AUTO-HEALING mata-o como "error" em 30 min.
         await (admin as any)
           .from("pending_containers")
           .update({ status: "pending" })
@@ -220,11 +218,9 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      // FINISHED — delay anti-burst antes de cada publish (exceto o primeiro).
-      // Aplica delay entre TODAS as tentativas de publish (sucesso ou falha),
-      // pois "too many actions" acontece mesmo quando a tentativa anterior falhou.
+      // FINISHED — delay anti-burst de 8s antes de cada publish (exceto o primeiro).
       if (publishAttemptsInThisRun > 0) {
-        await sleep(2_000);
+        await sleep(8_000);
       }
       publishAttemptsInThisRun++;
 
@@ -242,8 +238,6 @@ export async function GET(req: NextRequest) {
       summary.published++;
       console.log(`[publish-pending] ✓ @${account.username} → media_id: ${mediaId}`);
 
-      // Log diagnóstico: sempre mostra o estado da legenda armazenada,
-      // incluindo quando está vazia (facilita identificar onde a legenda se perde).
       const captionStored = container.caption ?? "";
       console.log(
         `[publish-pending] legenda_armazenada @${account.username}: ` +
@@ -253,7 +247,6 @@ export async function GET(req: NextRequest) {
       );
 
       // Double-tap de legenda: 5s de delay (Reel finaliza rápido após publish).
-      // 3 tentativas com 4s de intervalo — total pior caso: 5 + 3×(API+4s) ≈ 20s.
       if (captionStored.trim()) {
         await sleep(5_000);
 
@@ -287,14 +280,20 @@ export async function GET(req: NextRequest) {
       summary.errors++;
 
       if (isRetryableMetaError(msg)) {
-        // Erro transitório: reset publishing → pending para retry no próximo ciclo.
-        // NÃO deixamos em "publishing" pois o AUTO-HEALING converteria para "error".
+        // Backoff exponencial: 10, 20, 40, 60 min (cap em 60).
+        // Impede o retry storm que acontecia quando 10 containers falhavam e
+        // eram imediatamente recolocados em "pending", tentados novamente 5 min
+        // depois, falhavam de novo — ciclo infinito que esgota os limites da Meta.
+        const retryCount = (container.retry_count ?? 0) + 1;
+        const backoffMinutes = Math.min(60, 10 * Math.pow(2, retryCount - 1));
+        const retryAfter = new Date(Date.now() + backoffMinutes * 60_000).toISOString();
         await (admin as any)
           .from("pending_containers")
-          .update({ status: "pending" })
+          .update({ status: "pending", retry_count: retryCount, retry_after: retryAfter })
           .eq("id", container.id);
         console.warn(
-          `[publish-pending] Erro transitório @${account?.username ?? "?"}: resetando para pending (retry em 5 min). Motivo: "${msg}"`
+          `[publish-pending] Backoff @${account?.username ?? "?"}: ` +
+          `retry_count=${retryCount}, retry_after=${retryAfter} (+${backoffMinutes}min). Motivo: "${msg}"`
         );
       } else {
         await (admin as any)
