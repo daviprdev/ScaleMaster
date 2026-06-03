@@ -974,6 +974,8 @@ export async function GET(req: NextRequest) {
   const now = new Date();
 
   // ── AUTO-HEALING: Desbloquear pending_containers fantasmas ────────────────
+  // Exclui containers em backoff intencional (retry_after > now) — esses estão
+  // aguardando recuperação do rate-limit da Meta e NÃO devem ser mortos.
   {
     const healCutoff = new Date(now.getTime() - 30 * 60_000).toISOString();
     const { data: healed, error: healErr } = await (admin as any)
@@ -985,6 +987,7 @@ export async function GET(req: NextRequest) {
       })
       .in("status", ["pending", "publishing"])
       .lt("created_at", healCutoff)
+      .or(`retry_after.is.null,retry_after.lte.${now.toISOString()}`)
       .select("id");
 
     if (healErr) {
