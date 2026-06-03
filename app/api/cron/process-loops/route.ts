@@ -438,9 +438,7 @@ async function assignVideosForLoop(
         (admin as any)
           .from("pending_containers")
           .select("video_id")
-          // Histório global por conta (não filtrado por loop_id):
-          // quando o usuário pausa um loop e cria outro, a conta já sabe
-          // quais vídeos postou anteriormente e continua de onde parou.
+          .eq("loop_id", loop.id)
           .eq("account_id", account.id)
           .neq("status", "error")
           .not("video_id", "is", null)
