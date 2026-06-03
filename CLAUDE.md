@@ -273,6 +273,10 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Fix — Lock atômico pending→publishing (double-publish)** | Race condition: duas invocações concorrentes do `publish-pending` (cron */5) liam os mesmos containers `pending` e publicavam o mesmo reel duas vezes. Fix: antes de `publishReadyContainer`, UPDATE atômico `status='publishing' WHERE status='pending'` — PostgreSQL row-level lock garante que apenas uma invocação vença. Status `publishing` adicionado ao CHECK constraint (`supabase/pending_containers_publishing_status.sql`). AUTO-HEALING estendido para limpar `publishing` stuck >30 min. Erros transitórios (`too many actions`, `unexpected error`) resetam `publishing→pending` para retry automático em 5 min. Delay de 2s entre publishes anti-burst adicionado. | ✅ Aplicado |
 | **Fix — Double-tap caption com delay+retry** | `updatePostCaption` chamado imediatamente após publish causava descarte silencioso pela Meta (Reel ainda sendo finalizado). Fix: delay de 4s antes do double-tap + retry automático (2 tentativas, intervalo 6s). Log explícito quando ambas as tentativas falham. Diagnóstico de qualidade de vídeo: `file_size` incluído na query de vídeos em `process-loops`, alerta quando < 2 MB. | ✅ Aplicado |
 | **Feat — Motor de Efeitos de Vídeo (6 efeitos reais)** | `lib/video-effects.ts` (novo): `applyVideoEffects()` — download → FFmpeg libx264 ultrafast → upload `temp/` Supabase → retorna URL processada. 6 efeitos: hflip (espelhar), negate (inverter cores — antes stubs inoperantes), zoom +15% (`scale=115%` + crop centrado), smartblur leve (`lr=1 ls=0.25`), ruído temporal (`c0s=3 t+u`), anti-IA (micro-eq determinístico por account_id via FNV-1 hash — cor única por conta). `process-loops` substitui stub por chamada real. UI loop: 4 toggles novos (ZoomIn, Droplets, Waves, Shield) + badges no card. SQL: 4 colunas novas na tabela loops. | ✅ Concluída |
+| **Fix — Backoff exponencial no publish-pending (retry storm)** | `publish-pending`: troca reset imediato para "pending" por backoff exponencial (10→20→40→60 min cap) ao receber "too many actions" da Meta. Novas colunas `retry_count` + `retry_after` em `pending_containers`; query filtra `retry_after IS NULL OR retry_after <= now`; delay anti-burst elevado 2s→8s; limit por run 10→5. Auto-healing atualizado para excluir containers em backoff (`OR retry_after.is.null,retry_after.lte.now`). Elimina retry storm que travava 20+ contas por horas a cada noite. SQL: `supabase/pending_containers_backoff.sql` (já aplicado). | ✅ Aplicado |
+| **Fix — comment_enabled obrigatório no double-tap** | Meta API passou a exigir `comment_enabled=1` no endpoint `POST /{media-id}` (atualização de legenda pós-publicação). Sem ele, todas as 3 tentativas do double-tap retornavam HTTP 400 `"The parameter comment_enabled is required."`. Adicionado em `updatePostCaption` em `lib/meta-publish.ts`. | ✅ Aplicado |
+| **Fix — process-loops auto-healing respeita retry_after** | Auto-healing do `process-loops` matava containers em backoff intencional (status=pending, retry_after futuro) por estarem >30 min em pending — reiniciando o ciclo. Adicionado `.or('retry_after.is.null,retry_after.lte.now')` na query de healing para excluir containers aguardando recuperação do rate-limit. | ✅ Aplicado |
+| **Fix — Seleção aleatória de vídeo no loop** | Motor de loops sempre pegava `available[0]` (primeiro da lista por `created_at`): ao criar novo loop com a mesma pasta, a sequência de vídeos era idêntica à anterior. Substituído por `available[randomIdx]` (índice aleatório). Resultado: cada ciclo e cada novo loop possuem ordem de vídeos embaralhada. O histórico de vídeos postados continua por `loop_id` — novo loop começa do zero com todos os vídeos disponíveis, mas em sequência diferente. | ✅ Aplicado |
 
 **SQL pendente (executar no Supabase):**
 ```sql
@@ -352,6 +356,11 @@ ALTER TABLE public.loops
   ADD COLUMN IF NOT EXISTS effect_blur     boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS effect_noise    boolean NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS effect_anti_ai  boolean NOT NULL DEFAULT false;
+
+-- Backoff exponencial publish-pending (supabase/pending_containers_backoff.sql) — JÁ APLICADO 2026-06-03
+-- ALTER TABLE public.pending_containers
+--   ADD COLUMN IF NOT EXISTS retry_count integer NOT NULL DEFAULT 0,
+--   ADD COLUMN IF NOT EXISTS retry_after  timestamptz;
 ```
 
 **Env vars novas a adicionar na Vercel:**

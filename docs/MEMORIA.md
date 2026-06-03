@@ -1931,3 +1931,49 @@ Instagram detectou que o app é um **Business App** e roteou para `third_party/`
 
 #### Lição aprendida
 `api.instagram.com` usa scopes com prefixo `instagram_business_*`. `graph.facebook.com/dialog/oauth` usa scopes sem esse prefixo (`instagram_basic`, `instagram_manage_*`). Misturar os dois conjuntos no mesmo endpoint gera erro silencioso ou "Invalid platform app".
+
+---
+
+### ✅ Fix — Backoff exponencial + comment_enabled + rotação aleatória de vídeos (2026-06-03)
+**Commits:** `ae8b30a`, `e9e9fbd`, `8f6ec02`, `77ac28a`
+
+#### Problema 1: Retry storm de "too many actions" travando 20+ contas por horas
+
+**Sintoma:** A cada noite, o `publish-pending` tentava publicar 10 containers ao mesmo tempo. Os que falhavam com "User is performing too many actions" eram imediatamente resetados para `pending` e tentados de novo em 5 min — criando um ciclo infinito. Com o `process-loops` criando novos containers a cada vez que o auto-healing matava os velhos, o ciclo se autoperpetua. 21 contas chegaram a ficar 6+ horas sem publicar.
+
+**Root cause:** Sem backoff, cada falha → retry imediato em 5 min → falha de novo → sem fim.
+
+**Fix em `publish-pending`:**
+- Novas colunas `retry_count` (int, default 0) e `retry_after` (timestamptz) em `pending_containers`
+- Ao receber erro transitório: `retry_count++`, `retry_after = now() + min(60, 10 × 2^(retry_count-1)) min` (10→20→40→60 min)
+- Query filtra `.or('retry_after.is.null,retry_after.lte.now')` — containers em backoff não são selecionados
+- Delay anti-burst: 2s → 8s entre publishes; batch limit: 10 → 5 por run
+- Auto-healing também exclui containers com `retry_after` futuro (não mata quem está em backoff intencional)
+
+**Fix em `process-loops`:** Auto-healing recebia `.in("status", ["pending","publishing"]).lt("created_at", cutoff)` sem considerar `retry_after` — matava containers em backoff, triggering nova criação e reiniciando o ciclo. Adicionado `.or('retry_after.is.null,retry_after.lte.now')` aqui também.
+
+**Por que funciona:** Container em backoff permanece `status=pending`. `containerAlreadyExists` retorna true → `process-loops` não cria novo container → sem cascade.
+
+**SQL aplicado em 2026-06-03:**
+```sql
+ALTER TABLE public.pending_containers
+  ADD COLUMN IF NOT EXISTS retry_count integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS retry_after  timestamptz;
+CREATE INDEX IF NOT EXISTS pending_containers_retry_idx
+  ON public.pending_containers (retry_after) WHERE status = 'pending';
+```
+
+#### Problema 2: comment_enabled obrigatório no double-tap de legenda
+
+**Sintoma:** Todas as tentativas de `updatePostCaption` retornavam HTTP 400: `"The parameter comment_enabled is required."` — legendas nunca eram aplicadas pós-publicação.
+
+**Fix:** Adicionar `comment_enabled=1` ao form body em `lib/meta-publish.ts` → `updatePostCaption`.
+
+#### Problema 3: Novo loop repetia a mesma sequência de vídeos
+
+**Sintoma:** Ao pausar um loop e criar outro com a mesma pasta, os vídeos eram postados na mesma ordem de antes (ordenados por `created_at` asc, sempre `available[0]`).
+
+**Fix:** Substituir `available[0]` por `available[Math.floor(Math.random() * available.length)]`. O histórico de vídeos continua por `loop_id` (novo loop começa do zero com todos disponíveis), mas a sequência é sempre embaralhada.
+
+#### Lição aprendida: backoff implícito via status=pending
+Containers em backoff ficam com `status=pending` (não `error`). Isso é intencional: `containerAlreadyExists` busca `in(status,["pending","publishing"])` → encontra → retorna `true` → `process-loops` não cria novo container. O backoff no `publish-pending` serve automaticamente como circuit breaker para o `process-loops`.
