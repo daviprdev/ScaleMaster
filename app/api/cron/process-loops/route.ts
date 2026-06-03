@@ -528,7 +528,8 @@ async function assignVideosForLoop(
       continue;
     }
 
-    const video = available[0];
+    const randomIdx = Math.floor(Math.random() * available.length);
+    const video = available[randomIdx];
     assignments.set(account.id, { video, isCycleReset });
     locallyAssigned.add(video.id); // reserva imediata: próximas contas não verão este vídeo
   }
