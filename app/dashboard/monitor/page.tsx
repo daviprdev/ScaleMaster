@@ -359,14 +359,13 @@ function AccountCard({ acc }: { acc: AccountStatus }) {
 
 // ── Filter Tabs ────────────────────────────────────────────────────────────────
 
-type FilterKey = "all" | "published" | "pending" | "error" | "none";
+type FilterKey = "all" | "published" | "pending" | "error";
 
 const FILTERS: { key: FilterKey; label: string; color: string }[] = [
-  { key: "all",       label: "Todas",     color: "text-white/60"             },
-  { key: "published", label: "Publicado", color: "text-[var(--matrix)]"      },
-  { key: "pending",   label: "Aguardando",color: "text-[var(--electric)]"    },
-  { key: "error",     label: "Erro",      color: "text-red-400"              },
-  { key: "none",      label: "Inativo",   color: "text-white/30"             },
+  { key: "all",       label: "Todas",     color: "text-white/60"         },
+  { key: "published", label: "Publicado", color: "text-[var(--matrix)]"  },
+  { key: "pending",   label: "Aguardando",color: "text-[var(--electric)]"},
+  { key: "error",     label: "Erro",      color: "text-red-400"          },
 ];
 
 // ── Page ───────────────────────────────────────────────────────────────────────
@@ -411,7 +410,7 @@ export default function MonitorPage() {
   const allAccounts = data?.accounts ?? [];
 
   const filtered = filter === "all" ? allAccounts
-    : filter === "error" ? allAccounts.filter(a => a.container_status === "error" || a.health_status === "error")
+    : filter === "error" ? allAccounts.filter(a => a.container_status === "error")
     : allAccounts.filter(a => a.container_status === filter);
 
   // Sort: error → publishing → pending → published → none
@@ -426,8 +425,7 @@ export default function MonitorPage() {
     all:       allAccounts.length,
     published: allAccounts.filter(a => a.container_status === "published").length,
     pending:   allAccounts.filter(a => a.container_status === "pending").length,
-    error:     allAccounts.filter(a => a.container_status === "error" || a.health_status === "error").length,
-    none:      allAccounts.filter(a => a.container_status === "none" && a.health_status !== "error").length,
+    error:     allAccounts.filter(a => a.container_status === "error").length,
   };
 
   return (
