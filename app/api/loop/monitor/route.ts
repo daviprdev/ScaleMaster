@@ -25,7 +25,8 @@ export async function GET() {
       .from("instagram_accounts")
       .select("id, username, display_name, avatar_url, health_status, is_active")
       .eq("user_id", user.id)
-      .eq("is_active", true),
+      .eq("is_active", true)
+      .eq("health_status", "online"),
 
     admin
       .from("loops")
