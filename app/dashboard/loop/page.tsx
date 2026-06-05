@@ -675,22 +675,10 @@ function AccountsMultiSelect({
   selected: string[];
   onChange: (ids: string[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
   const toggle = (id: string) => {
     onChange(selected.includes(id) ? selected.filter(s => s !== id) : [...selected, id]);
   };
 
-  // Group accounts by folder; folders alphabetically, "Avulsas" (null) always last
   const groups = useMemo(() => {
     const map = new Map<string | null, { name: string; accounts: Account[] }>();
     for (const acc of accounts) {
@@ -711,212 +699,144 @@ function AccountsMultiSelect({
     return result;
   }, [accounts]);
 
-  // Show folder headers only when there's more than one group or the single group has a folder
-  const showFolderHeaders = groups.length > 1 || (groups.length === 1 && groups[0].folderId !== null);
+  const healthyIds = (accs: Account[]) =>
+    accs.filter(a => a.health_status !== "error" && a.health_status !== "blocked").map(a => a.id);
 
-  const isFolderFullySelected = (folderAccounts: Account[]) => {
-    const healthyIds = folderAccounts
-      .filter(a => a.health_status !== "error" && a.health_status !== "blocked")
-      .map(a => a.id);
-    return healthyIds.length > 0 && healthyIds.every(id => selected.includes(id));
+  const isFolderFullySelected = (accs: Account[]) => {
+    const ids = healthyIds(accs);
+    return ids.length > 0 && ids.every(id => selected.includes(id));
   };
 
-  const toggleFolder = (folderAccounts: Account[]) => {
-    const healthyIds = folderAccounts
-      .filter(a => a.health_status !== "error" && a.health_status !== "blocked")
-      .map(a => a.id);
-    const allSelected = healthyIds.every(id => selected.includes(id));
-    if (allSelected) {
-      onChange(selected.filter(id => !healthyIds.includes(id)));
-    } else {
-      const toAdd = healthyIds.filter(id => !selected.includes(id));
-      onChange([...selected, ...toAdd]);
-    }
+  const isFolderPartial = (accs: Account[]) => {
+    const ids = healthyIds(accs);
+    return ids.some(id => selected.includes(id)) && !ids.every(id => selected.includes(id));
   };
 
-  const selectedAccounts = accounts.filter(a => selected.includes(a.id));
+  const toggleFolder = (accs: Account[]) => {
+    const ids = healthyIds(accs);
+    const allSel = ids.every(id => selected.includes(id));
+    if (allSel) onChange(selected.filter(id => !ids.includes(id)));
+    else onChange([...selected, ...ids.filter(id => !selected.includes(id))]);
+  };
+
+  if (accounts.length === 0) {
+    return (
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-5 text-center text-xs text-white/30">
+        Nenhuma conta conectada
+      </div>
+    );
+  }
+
+  const allHealthy = accounts.filter(a => a.health_status !== "error" && a.health_status !== "blocked");
+  const allSelected = allHealthy.length > 0 && allHealthy.every(a => selected.includes(a.id));
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className={cn(
-          "w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-sm transition-all duration-200",
-          "bg-white/[0.06] border-white/10 text-white",
-          open ? "border-violet-500/50 ring-1 ring-violet-500/30" : "hover:border-white/20"
-        )}
-      >
-        <span className={selected.length === 0 ? "text-white/30" : "text-white"}>
-          {selected.length === 0
-            ? "Selecionar contas..."
-            : `${selected.length} conta${selected.length > 1 ? "s" : ""} selecionada${selected.length > 1 ? "s" : ""}`}
-        </span>
-        <ChevronDown size={14} className={cn("text-white/30 transition-transform duration-150", open && "rotate-180")} />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-xl max-h-72 overflow-y-auto"
+    <div className="space-y-3">
+      {/* Ações globais */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onChange(allHealthy.map(a => a.id))}
+          className={cn(
+            "text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition-all",
+            allSelected
+              ? "bg-[#00FF41]/10 border-[#00FF41]/25 text-[#00FF41]"
+              : "border-white/[0.08] text-white/35 hover:text-[#00FF41] hover:border-[#00FF41]/20 hover:bg-[#00FF41]/[0.05]"
+          )}
+        >
+          {allSelected ? <><Check size={10} className="inline mr-1" />Todas selecionadas</> : "Selecionar todas"}
+        </button>
+        {selected.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className="text-[11px] font-semibold px-3 py-1.5 rounded-lg border border-white/[0.06] text-white/25 hover:text-red-400 hover:border-red-500/20 hover:bg-red-500/[0.05] transition-all"
           >
-            {accounts.length === 0 ? (
-              <div className="px-4 py-6 text-center text-xs text-white/30">
-                Nenhuma conta conectada
-              </div>
-            ) : (
-              <>
-                {/* Global: Selecionar / Desmarcar todas */}
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02] sticky top-0 z-10">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const healthy = accounts.filter(a => a.health_status !== "error" && a.health_status !== "blocked");
-                      onChange(healthy.map(a => a.id));
-                    }}
-                    className="flex-1 text-center text-[10px] font-semibold text-white/40 hover:text-[#00FF41] transition-colors py-1 rounded-lg hover:bg-[#00FF41]/[0.06]"
-                  >
-                    Selecionar todas
-                  </button>
-                  <div className="w-px h-4 bg-white/10" />
-                  <button
-                    type="button"
-                    onClick={() => onChange([])}
-                    className="flex-1 text-center text-[10px] font-semibold text-white/40 hover:text-red-400 transition-colors py-1 rounded-lg hover:bg-red-500/[0.06]"
-                  >
-                    Desmarcar todas
-                  </button>
-                </div>
-
-                {/* Grouped account list */}
-                {groups.map(({ folderId, folderName, accounts: groupAccounts }) => {
-                  const fullySelected = isFolderFullySelected(groupAccounts);
-                  const label = folderId ? folderName : "Avulsas";
-
-                  return (
-                    <div key={folderId ?? "__none__"}>
-                      {/* Folder header */}
-                      {showFolderHeaders && (
-                        <div className="flex items-center justify-between px-3 py-1.5 bg-white/[0.025] border-y border-white/[0.05]">
-                          <div className="flex items-center gap-1.5">
-                            <Folder
-                              size={10}
-                              className={folderId ? "text-[#00E5FF]/55" : "text-white/25"}
-                            />
-                            <span className={cn(
-                              "text-[10px] font-bold uppercase tracking-wider",
-                              folderId ? "text-[#00E5FF]/65" : "text-white/30"
-                            )}>
-                              {label}
-                            </span>
-                            <span className="text-[9px] text-white/20">
-                              ({groupAccounts.length})
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => toggleFolder(groupAccounts)}
-                            className={cn(
-                              "text-[9px] font-semibold px-2 py-0.5 rounded-md transition-all duration-150",
-                              fullySelected
-                                ? "text-red-400/80 bg-red-500/[0.08] hover:bg-red-500/[0.16]"
-                                : "text-[#00FF41]/70 bg-[#00FF41]/[0.06] hover:bg-[#00FF41]/[0.13]"
-                            )}
-                          >
-                            {fullySelected ? "Desmarcar pasta" : "Selecionar pasta"}
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Accounts in this group */}
-                      {groupAccounts.map(acc => {
-                        const isSelected = selected.includes(acc.id);
-                        const fell = acc.health_status === "error" || acc.health_status === "blocked";
-                        return (
-                          <button
-                            key={acc.id}
-                            type="button"
-                            onClick={() => !fell && toggle(acc.id)}
-                            disabled={fell}
-                            title={fell ? `@${acc.username} está desconectada — reconecte na aba Contas` : undefined}
-                            className={cn(
-                              "w-full flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors text-left",
-                              fell
-                                ? "cursor-not-allowed opacity-60 bg-red-950/20"
-                                : isSelected ? "bg-violet-600/10 cursor-pointer" : "hover:bg-slate-800 cursor-pointer"
-                            )}
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className={cn(
-                                "w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0",
-                                fell ? "bg-red-500/30" : "bg-gradient-to-br from-violet-500 to-cyan-500"
-                              )}>
-                                {acc.username.charAt(0).toUpperCase()}
-                              </div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <p className={cn("text-xs font-medium truncate", fell ? "text-red-400/80" : "text-white/80")}>
-                                    @{acc.username}
-                                  </p>
-                                  {fell && (
-                                    <span className="flex items-center gap-1 text-[9px] px-1 py-0.5 rounded bg-red-500/15 text-red-400 font-semibold flex-shrink-0">
-                                      <AlertTriangle size={7} />
-                                      {acc.health_status === "blocked" ? "BLOQUEADA" : "CAIU"}
-                                    </span>
-                                  )}
-                                </div>
-                                {acc.display_name && (
-                                  <p className="text-white/35 text-[11px] truncate">{acc.display_name}</p>
-                                )}
-                              </div>
-                            </div>
-                            <div className={cn(
-                              "w-4 h-4 rounded-md border flex items-center justify-center flex-shrink-0 transition-all duration-150",
-                              isSelected ? "bg-violet-600 border-violet-600" : "border-white/20"
-                            )}>
-                              {isSelected && <Check size={10} className="text-white" />}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </>
-            )}
-          </motion.div>
+            Limpar
+          </button>
         )}
-      </AnimatePresence>
+        {selected.length > 0 && (
+          <span className="ml-auto text-[11px] text-white/35">
+            {selected.length} selecionada{selected.length > 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
 
-      {/* Selected pills */}
-      {selectedAccounts.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-2">
-          {selectedAccounts.map(acc => {
-            const fell = acc.health_status === "error" || acc.health_status === "blocked";
-            return (
-              <span
-                key={acc.id}
+      {/* Grupos por pasta */}
+      <div className="space-y-2">
+        {groups.map(({ folderId, folderName, accounts: groupAccounts }) => {
+          const label = folderId ? folderName : "Avulsas";
+          const fullySel = isFolderFullySelected(groupAccounts);
+          const partial = isFolderPartial(groupAccounts);
+
+          return (
+            <div key={folderId ?? "__none__"} className="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+              {/* Cabeçalho da pasta — clicável para selecionar toda a pasta */}
+              <button
+                type="button"
+                onClick={() => toggleFolder(groupAccounts)}
                 className={cn(
-                  "flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] border",
-                  fell
-                    ? "bg-red-500/10 border-red-500/25 text-red-400"
-                    : "bg-violet-600/15 border-violet-500/25 text-violet-300"
+                  "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors",
+                  fullySel
+                    ? "bg-violet-600/10"
+                    : "hover:bg-white/[0.03]"
                 )}
               >
-                {fell && <AlertTriangle size={9} />}
-                @{acc.username}
-                <button type="button" onClick={() => toggle(acc.id)} className="hover:text-white transition-colors">
-                  <X size={10} />
-                </button>
-              </span>
-            );
-          })}
-        </div>
-      )}
+                <div className={cn(
+                  "w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all",
+                  fullySel
+                    ? "bg-violet-600 border-violet-600"
+                    : partial
+                      ? "bg-violet-600/30 border-violet-500/40"
+                      : "border-white/20"
+                )}>
+                  {fullySel && <Check size={9} className="text-white" />}
+                  {partial && <div className="w-1.5 h-1.5 rounded-sm bg-violet-400" />}
+                </div>
+                <Folder size={11} className={cn("flex-shrink-0", folderId ? "text-violet-400/70" : "text-white/25")} />
+                <span className={cn(
+                  "text-xs font-semibold flex-1 truncate",
+                  fullySel ? "text-violet-200" : partial ? "text-white/60" : "text-white/45"
+                )}>
+                  {label}
+                </span>
+                <span className="text-[10px] text-white/25 flex-shrink-0">
+                  {healthyIds(groupAccounts).length} conta{healthyIds(groupAccounts).length !== 1 ? "s" : ""}
+                </span>
+              </button>
+
+              {/* Contas da pasta — chips compactos */}
+              <div className="flex flex-wrap gap-1.5 px-3 pb-2.5 pt-1">
+                {groupAccounts.map(acc => {
+                  const isSel = selected.includes(acc.id);
+                  const fell = acc.health_status === "error" || acc.health_status === "blocked";
+                  return (
+                    <button
+                      key={acc.id}
+                      type="button"
+                      onClick={() => !fell && toggle(acc.id)}
+                      disabled={fell}
+                      title={fell ? `@${acc.username} está desconectada` : `@${acc.username}`}
+                      className={cn(
+                        "flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border transition-all",
+                        fell
+                          ? "border-red-500/15 bg-red-500/[0.06] text-red-400/50 cursor-not-allowed"
+                          : isSel
+                            ? "border-violet-500/40 bg-violet-600/15 text-violet-200 cursor-pointer hover:bg-violet-600/25"
+                            : "border-white/[0.07] bg-white/[0.03] text-white/40 cursor-pointer hover:text-white/70 hover:border-white/15"
+                      )}
+                    >
+                      {fell && <AlertTriangle size={8} className="flex-shrink-0 text-red-400/60" />}
+                      {isSel && !fell && <Check size={8} className="flex-shrink-0 text-violet-400" />}
+                      <span className="font-medium">@{acc.username}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
