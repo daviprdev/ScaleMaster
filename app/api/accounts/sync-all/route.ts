@@ -61,7 +61,9 @@ async function syncOne(acc: AccountRow): Promise<{ id: string; ok: boolean; toke
       followers_count: (data.followers_count as number) ?? 0,
       posts_count: (data.media_count as number) ?? 0,
       profile_refreshed_at: new Date().toISOString(),
-      health_status: "online",
+      // NÃO incluir health_status: "online" aqui — o cron pode ter marcado
+      // a conta como 'error' por motivo de API (não token), e o sync de
+      // perfil não deve desfazer essa marcação.
     };
     if (lastPostAt) update.last_post_at = lastPostAt;
     if (data.name) update.display_name = data.name as string;

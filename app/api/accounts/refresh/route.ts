@@ -145,12 +145,14 @@ export async function POST(req: NextRequest) {
   const update: Record<string, unknown> = {
     followers_count: profile.followers_count ?? 0,
     posts_count: profile.media_count ?? 0,
-    // has_active_stories uses existing boolean column (Fase 25)
     has_active_stories: activeStoriesCount > 0,
-    // active_stories_count requires the migration below to be applied first
     active_stories_count: activeStoriesCount,
     profile_refreshed_at: new Date().toISOString(),
-    health_status: "online",
+    // NÃO sobrescrever health_status aqui:
+    // health_status='error' pode ter sido definido pelo cron por erro de API
+    // (ex: "Unsupported request - method type: post"), não por token inválido.
+    // O refresh de perfil não deve desfazer essa marcação.
+    // Para restaurar, use: Failover → Restaurar (manual).
   };
   if (lastPostAt) update.last_post_at = lastPostAt;
   if (profile.name) update.display_name = profile.name;
