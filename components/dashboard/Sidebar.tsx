@@ -26,7 +26,6 @@ import {
   Lock,
   Sparkles,
   TrendingUp,
-  Radar,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -59,8 +58,7 @@ const navGroups: NavGroup[] = [
       { label: "Postar", href: "/dashboard/postar", icon: Send },
       { label: "Automatizar contas", href: "/dashboard/automation", icon: Bot },
       { label: "Loop", href: "/dashboard/loop", icon: Repeat2 },
-      { label: "Monitor", href: "/dashboard/monitor", icon: Radar },
-      { label: "Status da Fila", href: "/dashboard/queue", icon: Activity },
+      { label: "Monitor", href: "/dashboard/monitor", icon: Activity },
     ],
   },
   {
