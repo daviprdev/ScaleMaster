@@ -39,7 +39,21 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  // Exclui todas as contas da pasta antes de excluir a pasta
+  // Busca IDs das contas da pasta para limpar dependências
+  const { data: accountRows } = await supabase
+    .from("instagram_accounts")
+    .select("id")
+    .eq("folder_id", id)
+    .eq("user_id", user.id);
+
+  const accountIdsToDelete = (accountRows ?? []).map((r: { id: string }) => r.id);
+
+  // Limpa pending_containers órfãos antes de deletar as contas
+  if (accountIdsToDelete.length > 0) {
+    await supabase.from("pending_containers").delete().in("account_id", accountIdsToDelete);
+  }
+
+  // Exclui todas as contas da pasta
   const { error: accErr } = await supabase
     .from("instagram_accounts")
     .delete()

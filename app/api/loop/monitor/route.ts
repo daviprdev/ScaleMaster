@@ -43,7 +43,16 @@ export async function GET() {
 
   const accounts  = (accountsRes.data  ?? []) as { id: string; username: string; display_name: string | null; avatar_url: string | null; health_status: string; is_active: boolean }[];
   const loops     = (loopsRes.data     ?? []) as { id: string; name: string; status: string; loop_accounts: { account_id: string }[] }[];
-  const containers = (containersRes.data ?? []) as { id: string; account_id: string; status: string; retry_after: string | null; retry_count: number; created_at: string; error_message: string | null; media_id: string | null }[];
+  const allContainers = (containersRes.data ?? []) as { id: string; account_id: string; status: string; retry_after: string | null; retry_count: number; created_at: string; error_message: string | null; media_id: string | null }[];
+
+  // Filtra containers cujas contas já foram excluídas
+  const accountIds = new Set(accounts.map(a => a.id));
+  const orphanIds  = allContainers.filter(c => !accountIds.has(c.account_id)).map(c => c.id);
+  if (orphanIds.length > 0) {
+    // Limpa silenciosamente os containers órfãos
+    await admin.from("pending_containers").delete().in("id", orphanIds);
+  }
+  const containers = allContainers.filter(c => accountIds.has(c.account_id));
 
   // Build loop membership map: accountId → loopName
   const accountLoopMap = new Map<string, string>();
