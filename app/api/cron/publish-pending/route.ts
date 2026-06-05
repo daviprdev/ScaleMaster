@@ -280,13 +280,13 @@ export async function GET(req: NextRequest) {
       summary.errors++;
 
       if (isRetryableMetaError(msg)) {
-        // Backoff exponencial: 10, 20, 40, 60 min (cap em 60).
-        // Impede o retry storm que acontecia quando 10 containers falhavam e
-        // eram imediatamente recolocados em "pending", tentados novamente 5 min
-        // depois, falhavam de novo — ciclo infinito que esgota os limites da Meta.
+        // Backoff exponencial: 10, 20, 40, 60 min (cap em 60) + jitter 0–5 min.
+        // O jitter garante que containers criados no mesmo batch não saiam do backoff
+        // simultaneamente (thundering herd) e causem novo rate-limit em cascata.
         const retryCount = (container.retry_count ?? 0) + 1;
         const backoffMinutes = Math.min(60, 10 * Math.pow(2, retryCount - 1));
-        const retryAfter = new Date(Date.now() + backoffMinutes * 60_000).toISOString();
+        const jitterMs = Math.floor(Math.random() * 5 * 60_000); // 0–5 min aleatório
+        const retryAfter = new Date(Date.now() + backoffMinutes * 60_000 + jitterMs).toISOString();
         await (admin as any)
           .from("pending_containers")
           .update({ status: "pending", retry_count: retryCount, retry_after: retryAfter })

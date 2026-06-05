@@ -331,6 +331,11 @@ function isCriticalMetaError(msg: string): boolean {
     "account has been restricted", "blocked", "checkpoint",
     "error_code\":190", "error_code\":200",
     "error code 190", "error code 200",
+    // Conta pessoal sem suporte a reels via API
+    "unsupported request - method type: post",
+    // Token de conta não confirmada / sessão inválida
+    "not a confirmed user",
+    "sessions for the user are not allowed",
   ];
   return patterns.some(p => lower.includes(p));
 }
@@ -572,9 +577,15 @@ async function processOneLoop(
   }
 
   // ── Contas válidas ─────────────────────────────────────────────────────────
+  // Exclui contas marcadas como 'error' — evita ciclos infinitos de falha que
+  // causam rate-limit na Meta e poluem a fila de pending_containers.
   const validAccounts = loop.loop_accounts
     .map(la => la.instagram_accounts)
-    .filter((acc): acc is AccountRow => acc !== null && acc.is_active === true);
+    .filter((acc): acc is AccountRow =>
+      acc !== null &&
+      acc.is_active === true &&
+      (acc.health_status ?? "online") !== "error"
+    );
 
   if (validAccounts.length === 0) {
     console.warn(`[loop-cron] "${loop.name}" sem contas ativas — pulando.`);
@@ -905,16 +916,35 @@ async function processOneLoop(
           assignment.video.id, newCyclesDone
         );
 
-        if (isCriticalMetaError(msg) && videoUrl) {
+        if (isCriticalMetaError(msg)) {
+          // Marca a conta como 'error' para excluí-la dos próximos ciclos do loop.
+          // Evita o ciclo infinito: conta falha → cria container → falha → cria container...
+          // que esgota o rate-limit da Meta e trava contas saudáveis.
           try {
-            const failoverOk = await attemptFailover(
-              admin, account, loop, videoUrl, caption, msg, windowStartIso,
-              assignment.video.id, newCyclesDone
+            await (admin as any)
+              .from("instagram_accounts")
+              .update({ health_status: "error" })
+              .eq("id", account.id);
+            console.warn(
+              `[loop-cron] ⚠️ @${account.username} marcada como health_status=error ` +
+              `(erro crítico Meta: "${msg.slice(0, 100)}"). ` +
+              `Restaure manualmente em Failover quando o problema for resolvido.`
             );
-            if (failoverOk) containersCreated++;
-          } catch (failoverErr) {
-            const failoverMsg = failoverErr instanceof Error ? failoverErr.message : String(failoverErr);
-            console.error(`[loop-cron] ✗ Failover falhou @${account.username}: ${failoverMsg}`);
+          } catch (markErr) {
+            console.warn(`[loop-cron] Falha ao marcar @${account.username} como error: ${markErr}`);
+          }
+
+          if (videoUrl) {
+            try {
+              const failoverOk = await attemptFailover(
+                admin, account, loop, videoUrl, caption, msg, windowStartIso,
+                assignment.video.id, newCyclesDone
+              );
+              if (failoverOk) containersCreated++;
+            } catch (failoverErr) {
+              const failoverMsg = failoverErr instanceof Error ? failoverErr.message : String(failoverErr);
+              console.error(`[loop-cron] ✗ Failover falhou @${account.username}: ${failoverMsg}`);
+            }
           }
         }
       }
