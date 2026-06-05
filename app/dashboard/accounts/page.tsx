@@ -1097,7 +1097,7 @@ export default function AccountsPage() {
                     <h3 className="text-sm font-bold text-white">Excluir &quot;{deleteDialog.name}&quot;?</h3>
                     <p className="text-xs text-white/40 mt-1 leading-relaxed">
                       {deleteDialog.count > 0
-                        ? `${deleteDialog.count} conta${deleteDialog.count !== 1 ? "s" : ""} ficará${deleteDialog.count !== 1 ? "ão" : ""} sem pasta e continuará${deleteDialog.count !== 1 ? "ão" : ""} ativa${deleteDialog.count !== 1 ? "s" : ""}.`
+                        ? `${deleteDialog.count} conta${deleteDialog.count !== 1 ? "s" : ""} dentro desta pasta será${deleteDialog.count !== 1 ? "ão" : ""} excluída${deleteDialog.count !== 1 ? "s" : ""} permanentemente. Esta ação não pode ser desfeita.`
                         : "A pasta está vazia. Esta ação não pode ser desfeita."
                       }
                     </p>

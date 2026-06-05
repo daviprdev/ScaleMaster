@@ -680,22 +680,19 @@ function AccountsMultiSelect({
   };
 
   const groups = useMemo(() => {
-    const map = new Map<string | null, { name: string; accounts: Account[] }>();
+    const map = new Map<string, { name: string; accounts: Account[] }>();
     for (const acc of accounts) {
-      const key = acc.folder_id ?? null;
+      if (!acc.folder_id) continue; // ignora contas sem pasta
+      const key = acc.folder_id;
       const name = acc.account_folders?.name ?? "";
       if (!map.has(key)) map.set(key, { name, accounts: [] });
       map.get(key)!.accounts.push(acc);
     }
-    const result: Array<{ folderId: string | null; folderName: string; accounts: Account[] }> = [];
+    const result: Array<{ folderId: string; folderName: string; accounts: Account[] }> = [];
     for (const [folderId, { name, accounts: accs }] of map) {
       result.push({ folderId, folderName: name, accounts: accs });
     }
-    result.sort((a, b) => {
-      if (a.folderId === null) return 1;
-      if (b.folderId === null) return -1;
-      return a.folderName.localeCompare(b.folderName);
-    });
+    result.sort((a, b) => a.folderName.localeCompare(b.folderName));
     return result;
   }, [accounts]);
 
@@ -719,15 +716,18 @@ function AccountsMultiSelect({
     else onChange([...selected, ...ids.filter(id => !selected.includes(id))]);
   };
 
-  if (accounts.length === 0) {
+  // Só contas que estão em uma pasta
+  const accountsInFolders = accounts.filter(a => a.folder_id);
+
+  if (accountsInFolders.length === 0) {
     return (
       <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-5 text-center text-xs text-white/30">
-        Nenhuma conta conectada
+        Nenhuma conta em pasta. Crie pastas e mova suas contas na aba Contas.
       </div>
     );
   }
 
-  const allHealthy = accounts.filter(a => a.health_status !== "error" && a.health_status !== "blocked");
+  const allHealthy = accountsInFolders.filter(a => a.health_status !== "error" && a.health_status !== "blocked");
   const allSelected = allHealthy.length > 0 && allHealthy.every(a => selected.includes(a.id));
 
   return (
@@ -765,12 +765,11 @@ function AccountsMultiSelect({
       {/* Grupos por pasta */}
       <div className="space-y-2">
         {groups.map(({ folderId, folderName, accounts: groupAccounts }) => {
-          const label = folderId ? folderName : "Avulsas";
           const fullySel = isFolderFullySelected(groupAccounts);
           const partial = isFolderPartial(groupAccounts);
 
           return (
-            <div key={folderId ?? "__none__"} className="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+            <div key={folderId} className="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
               {/* Cabeçalho da pasta — clicável para selecionar toda a pasta */}
               <button
                 type="button"
@@ -793,12 +792,12 @@ function AccountsMultiSelect({
                   {fullySel && <Check size={9} className="text-white" />}
                   {partial && <div className="w-1.5 h-1.5 rounded-sm bg-violet-400" />}
                 </div>
-                <Folder size={11} className={cn("flex-shrink-0", folderId ? "text-violet-400/70" : "text-white/25")} />
+                <Folder size={11} className="flex-shrink-0 text-violet-400/70" />
                 <span className={cn(
                   "text-xs font-semibold flex-1 truncate",
                   fullySel ? "text-violet-200" : partial ? "text-white/60" : "text-white/45"
                 )}>
-                  {label}
+                  {folderName}
                 </span>
                 <span className="text-[10px] text-white/25 flex-shrink-0">
                   {healthyIds(groupAccounts).length} conta{healthyIds(groupAccounts).length !== 1 ? "s" : ""}

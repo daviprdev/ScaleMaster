@@ -39,7 +39,15 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  // FK ON DELETE SET NULL desvincula as contas automaticamente
+  // Exclui todas as contas da pasta antes de excluir a pasta
+  const { error: accErr } = await supabase
+    .from("instagram_accounts")
+    .delete()
+    .eq("folder_id", id)
+    .eq("user_id", user.id);
+
+  if (accErr) return NextResponse.json({ error: accErr.message }, { status: 500 });
+
   const { error } = await supabase
     .from("account_folders")
     .delete()
