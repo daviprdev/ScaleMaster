@@ -260,7 +260,11 @@ async function createContainerForAccount(
   caption: string,
   tokenToUse: string,
   videoId: string,
-  cycleNumber: number
+  cycleNumber: number,
+  // Atraso inicial antes da primeira tentativa de publicação.
+  // Usado para escalonar containers criados no mesmo ciclo e evitar
+  // o burst simultâneo que dispara "User is performing too many actions".
+  initialDelayMinutes = 0
 ): Promise<void> {
   const creationId = await createMediaContainerOnly(
     account.ig_business_account_id!,
@@ -268,7 +272,7 @@ async function createContainerForAccount(
     caption,
     tokenToUse
   );
-  const { error } = await (admin as any).from("pending_containers").insert({
+  const insertData: Record<string, unknown> = {
     user_id: loop.user_id,
     loop_id: loop.id,
     account_id: account.id,
@@ -277,9 +281,16 @@ async function createContainerForAccount(
     caption,
     video_id: videoId,
     cycle_number: cycleNumber,
-  });
+  };
+  if (initialDelayMinutes > 0) {
+    insertData.retry_after = new Date(Date.now() + initialDelayMinutes * 60_000).toISOString();
+  }
+  const { error } = await (admin as any).from("pending_containers").insert(insertData);
   if (error) throw new Error(`Falha ao salvar container: ${error.message}`);
-  console.log(`[loop-cron] ✓ @${account.username} → container ${creationId} persistido.`);
+  console.log(
+    `[loop-cron] ✓ @${account.username} → container ${creationId} persistido` +
+    (initialDelayMinutes > 0 ? ` (publicar em +${initialDelayMinutes}min)` : "") + "."
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -836,6 +847,10 @@ async function processOneLoop(
 
     // ── FASE 2b: sequencial + jitter 1–3s ─────────────────────────────────────
     let containersCreated = 0;
+    // Índice de escalonamento: cada novo container criado recebe um atraso
+    // inicial de newContainerIdx * 2 min para publicação, distribuindo o burst
+    // de 25 accounts ao longo de ~48 min e evitando rate-limit simultâneo.
+    let newContainerIdx = 0;
 
     for (let i = 0; i < prepSettled.length; i++) {
       const settled = prepSettled[i];
@@ -903,8 +918,10 @@ async function processOneLoop(
 
         await createContainerForAccount(
           admin, account, loop, videoUrl, caption, tokenToUse,
-          assignment.video.id, newCyclesDone
+          assignment.video.id, newCyclesDone,
+          newContainerIdx * 2   // 0, 2, 4, … min de atraso inicial
         );
+        newContainerIdx++;
         containersCreated++;
 
       } catch (err) {
@@ -1007,13 +1024,13 @@ export async function GET(req: NextRequest) {
   // Exclui containers em backoff intencional (retry_after > now) — esses estão
   // aguardando recuperação do rate-limit da Meta e NÃO devem ser mortos.
   {
-    const healCutoff = new Date(now.getTime() - 30 * 60_000).toISOString();
+    const healCutoff = new Date(now.getTime() - 90 * 60_000).toISOString();
     const { data: healed, error: healErr } = await (admin as any)
       .from("pending_containers")
       .update({
         status: "error",
         error_message:
-          "[AUTO-HEALING] Container preso >30 min em pending/publishing — desbloqueado pelo process-loops.",
+          "[AUTO-HEALING] Container preso >90 min em pending/publishing — desbloqueado pelo process-loops.",
       })
       .in("status", ["pending", "publishing"])
       .lt("created_at", healCutoff)

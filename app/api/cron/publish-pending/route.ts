@@ -10,7 +10,11 @@ import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const CONTAINER_TTL_MS = 30 * 60_000;
+// 90 min: cobre o atraso inicial máximo de ~48 min (24 contas × 2 min/conta)
+// mais 30 min de margem para processamento e retries.
+// Antes era 30 min, mas containers com stagger inicial ficavam sendo mortos
+// pelo auto-healing no exato momento em que expiravam para publicação.
+const CONTAINER_TTL_MS = 90 * 60_000;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -285,7 +289,9 @@ export async function GET(req: NextRequest) {
         // simultaneamente (thundering herd) e causem novo rate-limit em cascata.
         const retryCount = (container.retry_count ?? 0) + 1;
         const backoffMinutes = Math.min(60, 10 * Math.pow(2, retryCount - 1));
-        const jitterMs = Math.floor(Math.random() * 5 * 60_000); // 0–5 min aleatório
+        // Jitter 0–20 min: containers criados no mesmo batch saem do backoff
+        // em momentos distintos, evitando novo burst simultâneo após o cooldown.
+        const jitterMs = Math.floor(Math.random() * 20 * 60_000);
         const retryAfter = new Date(Date.now() + backoffMinutes * 60_000 + jitterMs).toISOString();
         await (admin as any)
           .from("pending_containers")
