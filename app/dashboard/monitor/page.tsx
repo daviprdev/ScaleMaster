@@ -413,13 +413,36 @@ export default function MonitorPage() {
     : filter === "error" ? allAccounts.filter(a => a.container_status === "error")
     : allAccounts.filter(a => a.container_status === filter);
 
-  // Sort: error → publishing → pending → published → none
-  const ORDER: Record<string, number> = { error: 0, publishing: 1, pending: 2, published: 3, none: 4 };
-  const sorted = [...filtered].sort((a, b) => {
-    const ao = a.health_status === "error" ? 0 : (ORDER[a.container_status] ?? 5);
-    const bo = b.health_status === "error" ? 0 : (ORDER[b.container_status] ?? 5);
-    return ao - bo;
-  });
+  // Sort por post mais recente (last_published_at desc), sem post vai pro fim
+  const byRecent = (a: AccountStatus, b: AccountStatus) => {
+    if (a.last_published_at && b.last_published_at)
+      return new Date(b.last_published_at).getTime() - new Date(a.last_published_at).getTime();
+    if (a.last_published_at) return -1;
+    if (b.last_published_at) return 1;
+    return 0;
+  };
+
+  const sorted = [...filtered].sort(byRecent);
+
+  // Agrupamento por loop (usado na aba "Todas")
+  const groups: { loopName: string | null; accounts: AccountStatus[] }[] = [];
+  if (filter === "all") {
+    const map = new Map<string, AccountStatus[]>();
+    for (const acc of sorted) {
+      const key = acc.loop_name ?? "__none__";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(acc);
+    }
+    // loops nomeados primeiro (ordem alfabética), sem loop por último
+    const keys = [...map.keys()].sort((a, b) => {
+      if (a === "__none__") return 1;
+      if (b === "__none__") return -1;
+      return a.localeCompare(b);
+    });
+    for (const k of keys) {
+      groups.push({ loopName: k === "__none__" ? null : k, accounts: map.get(k)! });
+    }
+  }
 
   const counts: Record<FilterKey, number> = {
     all:       allAccounts.length,
@@ -517,7 +540,44 @@ export default function MonitorPage() {
             <Zap size={22} className="text-white/15 mb-3" />
             <p className="text-sm text-white/30">Nenhuma conta com este status</p>
           </div>
+        ) : filter === "all" ? (
+          /* ── Agrupado por loop ── */
+          <div className="space-y-6">
+            {groups.map(({ loopName, accounts: groupAccs }) => (
+              <div key={loopName ?? "__none__"}>
+                {/* Cabeçalho do grupo */}
+                <div className="flex items-center gap-2 mb-3">
+                  <Radio size={11} className={loopName ? "text-[var(--electric)]/60" : "text-white/20"} />
+                  <span className={cn(
+                    "text-[11px] font-bold uppercase tracking-widest",
+                    loopName ? "text-[var(--electric)]/70" : "text-white/25"
+                  )}>
+                    {loopName ?? "Sem loop"}
+                  </span>
+                  <span className="text-[10px] text-white/20">{groupAccs.length}</span>
+                  <div className="flex-1 h-px bg-white/[0.05]" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+                  <AnimatePresence mode="popLayout">
+                    {groupAccs.map((acc, i) => (
+                      <motion.div
+                        key={acc.id}
+                        layout
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ delay: i * 0.03, duration: 0.2 }}
+                      >
+                        <AccountCard acc={acc} />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
+          /* ── Lista plana para filtros específicos, ordenada por recência ── */
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
             <AnimatePresence mode="popLayout">
               {sorted.map((acc, i) => (
