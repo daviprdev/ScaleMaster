@@ -485,6 +485,7 @@ export default function AccountsPage() {
   // Delete folder dialog
   const [deleteDialog, setDeleteDialog] = useState<{ id: string; name: string; count: number } | null>(null);
   const [deletingFolder, setDeletingFolder] = useState(false);
+  const [folderMenuPos, setFolderMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -1339,14 +1340,19 @@ export default function AccountsPage() {
               {/* Gear button — só visível na pasta ativa */}
               {isActive && (
                 <button
-                  onClick={(e) => { e.stopPropagation(); setOpenFolderMenuId(menuOpen ? null : folder.id); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                    setFolderMenuPos({ top: rect.bottom + 6, left: rect.left });
+                    setOpenFolderMenuId(menuOpen ? null : folder.id);
+                  }}
                   className="h-full px-2 flex items-center rounded-r-lg bg-violet-500/12 border border-violet-500/25 border-l-0 text-violet-400/50 hover:text-violet-300 transition-colors"
                 >
                   <Settings2 size={11} />
                 </button>
               )}
 
-              {/* Folder gear dropdown */}
+              {/* Folder gear dropdown — fixed para escapar do overflow-x-auto das tabs */}
               <AnimatePresence>
                 {menuOpen && (
                   <motion.div
@@ -1354,7 +1360,8 @@ export default function AccountsPage() {
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.9, y: -4 }}
                     transition={{ duration: 0.1 }}
-                    className="absolute left-0 top-full mt-1.5 z-30 min-w-[148px] bg-[#111318] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden"
+                    style={{ position: "fixed", top: folderMenuPos.top, left: folderMenuPos.left }}
+                    className="z-[200] min-w-[148px] bg-[#111318] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden"
                   >
                     <button
                       onClick={() => {
