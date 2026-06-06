@@ -881,11 +881,11 @@ async function processOneLoop(
 
     // ── FASE 2b: sequencial + jitter 1–3s ─────────────────────────────────────
     let containersCreated = 0;
-    // Stagger dinâmico: distribui os containers uniformemente dentro do intervalo
-    // configurado no loop, garantindo que TODAS as contas sejam publicadas antes
-    // do próximo ciclo do cron. Ex: 48 contas × 15 min → 18.75s entre contas.
-    // Mínimo 5s para não gerar burst simultâneo; máximo: interval_minutes.
-    const staggerPerAccountSec = Math.max(
+    // Stagger dinâmico com jitter aleatório: distribui os containers dentro do
+    // intervalo configurado + ruído aleatório de ±30% por conta para que a Meta
+    // não detecte um padrão periódico fixo no timing de postagem.
+    // Ex: 48 contas × 15 min → base 18.75s ± ~5s de jitter por conta.
+    const staggerBaseSec = Math.max(
       5,
       (loop.interval_minutes * 60) / Math.max(validAccounts.length, 1)
     );
@@ -957,7 +957,9 @@ async function processOneLoop(
           }
         }
 
-        const initialDelayMinutes = (newContainerIdx * staggerPerAccountSec) / 60;
+        // Jitter ±30% sobre o stagger base — timing humano, não robótico
+        const jitter = staggerBaseSec * 0.3 * (Math.random() * 2 - 1);
+        const initialDelayMinutes = Math.max(0, (newContainerIdx * staggerBaseSec + jitter)) / 60;
         await createContainerForAccount(
           admin, account, loop, videoUrl, caption, tokenToUse,
           assignment.video.id, newCyclesDone,
