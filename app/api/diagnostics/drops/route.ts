@@ -88,27 +88,32 @@ export async function GET() {
 
   const admin = getSupabaseAdmin() as any;
   const now = new Date();
-  const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60_000).toISOString();
+  const since30d = new Date(now.getTime() - 30 * 24 * 60 * 60_000).toISOString();
   const since48h = new Date(now.getTime() - 48 * 60 * 60_000).toISOString();
+  const since7d  = new Date(now.getTime() -  7 * 24 * 60 * 60_000).toISOString();
 
   // Busca paralela
   const [failoverRes, containersRes, accountsRes] = await Promise.all([
+    // 30 dias para cobrir contas que caíram antes da janela de 7d
     admin
       .from("failover_logs")
       .select("id, error_reason, created_at, failed_account_id, failed_account:failed_account_id(username)")
       .eq("user_id", user.id)
-      .gte("created_at", since7d)
+      .gte("created_at", since30d)
       .order("created_at", { ascending: false })
-      .limit(500),
+      .limit(1000),
 
+    // pending_containers com erros reais (exclui mensagens de sistema do AUTO-HEALING)
+    // Sem filtro de data — queremos o erro mais recente independente de quando ocorreu
     admin
       .from("pending_containers")
       .select("id, error_message, created_at, account_id, instagram_accounts:account_id(username)")
       .eq("user_id", user.id)
       .eq("status", "error")
-      .gte("created_at", since7d)
+      .not("error_message", "is", null)
+      .not("error_message", "like", "[AUTO-HEALING]%")
       .order("created_at", { ascending: false })
-      .limit(500),
+      .limit(1000),
 
     admin
       .from("instagram_accounts")
@@ -197,12 +202,29 @@ export async function GET() {
     hasToken: boolean;
   }[] = [];
 
+  // Constante para detectar mensagens de sistema que não representam o erro real
+  const isSystemMessage = (msg: string | null) =>
+    !msg ||
+    msg.startsWith("[AUTO-HEALING]") ||
+    msg.startsWith("[loop-cron]") ||
+    msg.trim() === "";
+
   const errorAccountsList = allAccounts.filter(a => a.health_status === "error");
   for (const acc of errorAccountsList) {
-    const lastLog = failoverLogs.find(l => l.failed_account_id === acc.id);
+    // 1. Prioridade: failover_logs (tem o erro do momento da queda)
+    const lastLog = failoverLogs.find(
+      l => l.failed_account_id === acc.id && !isSystemMessage(l.error_reason)
+    );
+
+    // 2. Fallback: pending_containers com erro real (já filtrado de AUTO-HEALING na query)
     const lastContainer = errorContainers.find(c => c.account_id === acc.id);
+
+    // 3. Último recurso: qualquer failover_log desta conta (mesmo sem mensagem)
+    const anyLog = failoverLogs.find(l => l.failed_account_id === acc.id);
+
     const lastError = lastLog?.error_reason ?? lastContainer?.error_message ?? null;
-    const lastDropAt = lastLog?.created_at ?? lastContainer?.created_at ?? null;
+    const lastDropAt = lastLog?.created_at ?? lastContainer?.created_at ?? anyLog?.created_at ?? null;
+
     const { category, label, color } = categorize(lastError);
     errorAccounts.push({
       id: acc.id,
@@ -210,7 +232,7 @@ export async function GET() {
       category,
       categoryLabel: label,
       categoryColor: color,
-      lastError: lastError ? lastError.slice(0, 200) : null,
+      lastError: lastError ? lastError.slice(0, 300) : null,
       lastDropAt,
       tokenExpiresAt: acc.token_expires_at,
       hasToken: !!acc.meta_access_token,
@@ -252,9 +274,11 @@ export async function GET() {
       category: categorize(message),
     }));
 
+  const drops7d = failoverLogs.filter(l => l.created_at >= since7d).length;
+
   return NextResponse.json({
     summary: {
-      total_drops_7d: totalLogs,
+      total_drops_7d: drops7d,
       accounts_in_error: errorAccountsList.length,
       accounts_online: allAccounts.filter(a => a.health_status === "online").length,
       tokens_expiring_soon: expiringTokens.length,
