@@ -6,6 +6,7 @@ import {
   updatePostCaption,
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
+import { getProxyForAccount } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -40,6 +41,7 @@ interface AccountRow {
   meta_access_token: string | null;
   token_expires_at: string | null;
   fb_page_id: string | null;
+  proxy_url?: string | null;
 }
 
 interface PendingContainerRow {
@@ -105,7 +107,7 @@ export async function GET(req: NextRequest) {
       id, user_id, account_id, ig_business_account_id,
       creation_id, caption, created_at, retry_count, retry_after,
       instagram_accounts (
-        id, username, meta_access_token, token_expires_at, fb_page_id
+        id, username, meta_access_token, token_expires_at, fb_page_id, proxy_url
       )
     `)
     .eq("status", "pending")
@@ -180,13 +182,15 @@ export async function GET(req: NextRequest) {
     }
 
     try {
+      const proxy = getProxyForAccount(account.id, account.proxy_url);
       let tokenToUse = account.meta_access_token;
 
       if (isTokenExpiringSoon(account.token_expires_at, 7)) {
         try {
           const { token, expiresAt } = await refreshMetaToken(
             account.meta_access_token,
-            account.fb_page_id
+            account.fb_page_id,
+            proxy
           );
           await (admin as any)
             .from("instagram_accounts")
@@ -198,7 +202,7 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      const pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse);
+      const pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse, proxy);
 
       if (pollStatus === "in_progress") {
         await (admin as any)
@@ -231,7 +235,8 @@ export async function GET(req: NextRequest) {
       const mediaId = await publishReadyContainer(
         container.ig_business_account_id,
         container.creation_id,
-        tokenToUse
+        tokenToUse,
+        proxy
       );
 
       await (admin as any)
@@ -257,7 +262,7 @@ export async function GET(req: NextRequest) {
         let captionApplied = false;
         for (let attempt = 1; attempt <= 3 && !captionApplied; attempt++) {
           try {
-            await updatePostCaption(mediaId, captionStored, tokenToUse);
+            await updatePostCaption(mediaId, captionStored, tokenToUse, proxy);
             captionApplied = true;
             console.log(`[publish-pending] ✓ Legenda aplicada @${account.username} (tentativa ${attempt})`);
           } catch (captionErr) {

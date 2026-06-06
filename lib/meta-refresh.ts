@@ -1,3 +1,6 @@
+import type { ProxyAgent } from "undici";
+import { proxyInit } from "@/lib/proxy";
+
 const GRAPH_FB = "https://graph.facebook.com/v19.0";
 const GRAPH_IG = "https://graph.instagram.com";
 
@@ -19,19 +22,26 @@ export interface TokenRefreshResult {
  */
 export async function refreshMetaToken(
   currentToken: string,
-  fbPageId?: string | null
+  fbPageId?: string | null,
+  proxy: ProxyAgent | null = null
 ): Promise<TokenRefreshResult> {
   return fbPageId
-    ? refreshFacebookToken(currentToken)
-    : refreshInstagramToken(currentToken);
+    ? refreshFacebookToken(currentToken, proxy)
+    : refreshInstagramToken(currentToken, proxy);
 }
 
-async function refreshInstagramToken(currentToken: string): Promise<TokenRefreshResult> {
+async function refreshInstagramToken(
+  currentToken: string,
+  proxy: ProxyAgent | null = null
+): Promise<TokenRefreshResult> {
   const params = new URLSearchParams({
     grant_type: "ig_refresh_token",
     access_token: currentToken,
   });
-  const res = await fetch(`${GRAPH_IG}/refresh_access_token?${params}`);
+  const res = await fetch(
+    `${GRAPH_IG}/refresh_access_token?${params}`,
+    proxyInit(proxy)
+  );
   const data = (await res.json()) as {
     access_token?: string;
     expires_in?: number;
@@ -47,14 +57,20 @@ async function refreshInstagramToken(currentToken: string): Promise<TokenRefresh
   };
 }
 
-async function refreshFacebookToken(currentToken: string): Promise<TokenRefreshResult> {
+async function refreshFacebookToken(
+  currentToken: string,
+  proxy: ProxyAgent | null = null
+): Promise<TokenRefreshResult> {
   const params = new URLSearchParams({
     grant_type: "fb_exchange_token",
     client_id: process.env.NEXT_PUBLIC_META_CLIENT_ID!,
     client_secret: process.env.META_CLIENT_SECRET!,
     fb_exchange_token: currentToken,
   });
-  const res = await fetch(`${GRAPH_FB}/oauth/access_token?${params}`);
+  const res = await fetch(
+    `${GRAPH_FB}/oauth/access_token?${params}`,
+    proxyInit(proxy)
+  );
   const data = (await res.json()) as {
     access_token?: string;
     expires_in?: number;

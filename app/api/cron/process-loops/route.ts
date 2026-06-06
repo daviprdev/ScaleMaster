@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
+import { getProxyForAccount } from "@/lib/proxy";
+import type { ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -20,6 +22,7 @@ interface AccountRow {
   fb_page_id: string | null;
   health_status?: string;
   failover_priority?: number;
+  proxy_url?: string | null;
 }
 
 interface LoopAccountRow {
@@ -264,13 +267,15 @@ async function createContainerForAccount(
   // Atraso inicial antes da primeira tentativa de publicação.
   // Usado para escalonar containers criados no mesmo ciclo e evitar
   // o burst simultâneo que dispara "User is performing too many actions".
-  initialDelayMinutes = 0
+  initialDelayMinutes = 0,
+  proxy: ProxyAgent | null = null
 ): Promise<void> {
   const creationId = await createMediaContainerOnly(
     account.ig_business_account_id!,
     videoUrl,
     caption,
-    tokenToUse
+    tokenToUse,
+    proxy
   );
   const insertData: Record<string, unknown> = {
     user_id: loop.user_id,
@@ -369,7 +374,7 @@ async function attemptFailover(
 
   const { data: backups } = await (admin as any)
     .from("instagram_accounts")
-    .select("id, username, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, is_active")
+    .select("id, username, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, is_active, proxy_url")
     .eq("user_id", loop.user_id)
     .eq("is_active", true)
     .eq("health_status", "online")
@@ -404,6 +409,7 @@ async function attemptFailover(
   }
 
   console.log(`[loop-cron] Failover: @${failedAccount.username} → @${backup.username}`);
+  const backupProxy = getProxyForAccount(backup.id, (backup as AccountRow).proxy_url);
   try {
     await createContainerForAccount(
       admin,
@@ -413,7 +419,9 @@ async function attemptFailover(
       caption,
       backup.meta_access_token,
       videoId,
-      cycleNumber
+      cycleNumber,
+      0,
+      backupProxy
     );
     return true;
   } catch (backupErr) {
@@ -898,12 +906,14 @@ async function processOneLoop(
 
         // meta_access_token é garantidamente non-null aqui: a FASE 2a só retorna
         // kind="ready" após checar `!account.meta_access_token` e pular a conta.
+        const proxy = getProxyForAccount(account.id, account.proxy_url);
         let tokenToUse: string = account.meta_access_token!;
         if (isTokenExpiringSoon(account.token_expires_at, 7)) {
           try {
             const { token, expiresAt } = await refreshMetaToken(
               account.meta_access_token!,
-              account.fb_page_id
+              account.fb_page_id,
+              proxy
             );
             await (admin as any)
               .from("instagram_accounts")
@@ -919,7 +929,8 @@ async function processOneLoop(
         await createContainerForAccount(
           admin, account, loop, videoUrl, caption, tokenToUse,
           assignment.video.id, newCyclesDone,
-          newContainerIdx * 2   // 0, 2, 4, … min de atraso inicial
+          newContainerIdx * 2,  // 0, 2, 4, … min de atraso inicial
+          proxy
         );
         newContainerIdx++;
         containersCreated++;
@@ -1062,7 +1073,7 @@ export async function GET(req: NextRequest) {
         instagram_accounts (
           id, username, is_active, meta_access_token,
           ig_business_account_id, token_expires_at, fb_page_id,
-          health_status, failover_priority
+          health_status, failover_priority, proxy_url
         )
       )
     `)
