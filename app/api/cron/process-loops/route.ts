@@ -398,9 +398,6 @@ async function attemptFailover(
     .update({ health_status: "error" })
     .eq("id", failedAccount.id);
 
-  // Remove de todos os loops: conta morta não deve consumir mais ciclos do cron.
-  await removeFromAllLoops(admin, failedAccount.id, failedAccount.username);
-
   const { data: backups } = await (admin as any)
     .from("instagram_accounts")
     .select("id, username, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, is_active, proxy_url")
@@ -974,17 +971,18 @@ async function processOneLoop(
         );
 
         if (isCriticalMetaError(msg)) {
-          // Marca como error E remove de todos os loops: conta morta não deve
-          // continuar consumindo ciclos do cron nem rate-limit da Meta API.
+          // Marca como error — o filtro validAccounts já a exclui do próximo ciclo.
+          // NÃO removemos de loop_accounts: o erro pode ser transitório e a conta
+          // pode ser restaurada manualmente em Failover sem precisar re-adicionar ao loop.
           try {
             await (admin as any)
               .from("instagram_accounts")
               .update({ health_status: "error" })
               .eq("id", account.id);
-            await removeFromAllLoops(admin, account.id, account.username);
             console.warn(
-              `[loop-cron] ⚠️ @${account.username} marcada como error e removida dos loops ` +
-              `(erro crítico Meta: "${msg.slice(0, 100)}").`
+              `[loop-cron] ⚠️ @${account.username} marcada como health_status=error ` +
+              `(erro crítico Meta: "${msg.slice(0, 100)}"). ` +
+              `Restaure em Failover → botão Restaurar se o problema for resolvido.`
             );
           } catch (markErr) {
             console.warn(`[loop-cron] Falha ao marcar @${account.username} como error: ${markErr}`);
