@@ -299,6 +299,32 @@ async function createContainerForAccount(
 }
 
 // ---------------------------------------------------------------------------
+// Remove conta de todos os loop_accounts após erro crítico irrecuperável.
+// Contas mortas (banidas, não-confirmadas, pessoais sem API) não devem
+// continuar consumindo ciclos do cron nem rate-limit da Meta.
+// ---------------------------------------------------------------------------
+
+async function removeFromAllLoops(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  accountId: string,
+  username: string
+): Promise<void> {
+  try {
+    const { error } = await (admin as any)
+      .from("loop_accounts")
+      .delete()
+      .eq("account_id", accountId);
+    if (error) {
+      console.warn(`[loop-cron] Falha ao remover @${username} dos loops: ${error.message}`);
+    } else {
+      console.log(`[loop-cron] 🗑️ @${username} removida de todos os loops (conta morta/inválida).`);
+    }
+  } catch (e) {
+    console.warn(`[loop-cron] Exceção ao remover @${username} dos loops: ${String(e)}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Registra erro em pending_containers para rastreabilidade.
 // ---------------------------------------------------------------------------
 
@@ -371,6 +397,9 @@ async function attemptFailover(
     .from("instagram_accounts")
     .update({ health_status: "error" })
     .eq("id", failedAccount.id);
+
+  // Remove de todos os loops: conta morta não deve consumir mais ciclos do cron.
+  await removeFromAllLoops(admin, failedAccount.id, failedAccount.username);
 
   const { data: backups } = await (admin as any)
     .from("instagram_accounts")
@@ -945,18 +974,17 @@ async function processOneLoop(
         );
 
         if (isCriticalMetaError(msg)) {
-          // Marca a conta como 'error' para excluí-la dos próximos ciclos do loop.
-          // Evita o ciclo infinito: conta falha → cria container → falha → cria container...
-          // que esgota o rate-limit da Meta e trava contas saudáveis.
+          // Marca como error E remove de todos os loops: conta morta não deve
+          // continuar consumindo ciclos do cron nem rate-limit da Meta API.
           try {
             await (admin as any)
               .from("instagram_accounts")
               .update({ health_status: "error" })
               .eq("id", account.id);
+            await removeFromAllLoops(admin, account.id, account.username);
             console.warn(
-              `[loop-cron] ⚠️ @${account.username} marcada como health_status=error ` +
-              `(erro crítico Meta: "${msg.slice(0, 100)}"). ` +
-              `Restaure manualmente em Failover quando o problema for resolvido.`
+              `[loop-cron] ⚠️ @${account.username} marcada como error e removida dos loops ` +
+              `(erro crítico Meta: "${msg.slice(0, 100)}").`
             );
           } catch (markErr) {
             console.warn(`[loop-cron] Falha ao marcar @${account.username} como error: ${markErr}`);

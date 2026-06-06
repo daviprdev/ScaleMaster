@@ -185,6 +185,9 @@ export default function FailoverPage() {
   const [saving, setSaving] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cleanupConfirm, setCleanupConfirm] = useState(false);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"failover" | "diagnostico">("failover");
   const [diag, setDiag] = useState<DiagData | null>(null);
   const [diagLoading, setDiagLoading] = useState(false);
@@ -249,6 +252,24 @@ export default function FailoverPage() {
     [arr[idx], arr[swap]] = [arr[swap], arr[idx]];
     setAccounts(arr);
     savePriorities(arr);
+  };
+
+  const cleanupErrorAccounts = async () => {
+    if (!cleanupConfirm) { setCleanupConfirm(true); return; }
+    setCleanupLoading(true);
+    setCleanupConfirm(false);
+    setCleanupResult(null);
+    try {
+      const res = await fetch("/api/failover/remove-from-loops", { method: "POST" });
+      const data = await res.json() as { removed?: number; usernames?: string[]; error?: string };
+      if (data.error) throw new Error(data.error);
+      setCleanupResult(`${data.removed ?? 0} conta(s) removidas de todos os loops.`);
+      load();
+    } catch (e) {
+      setCleanupResult(`Erro: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setCleanupLoading(false);
+    }
   };
 
   const restore = async (id: string) => {
@@ -534,6 +555,52 @@ export default function FailoverPage() {
       {/* ── Aba Failover (conteúdo original) ───────────────────────────────── */}
       {activeTab === "failover" && (
         <div className="space-y-6">
+
+      {/* Cleanup banner — aparece quando há contas em erro */}
+      {!loading && (healthCounts.error ?? 0) > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-xl bg-red-500/[0.08] border border-red-500/20">
+          <div className="flex items-start gap-3">
+            <XCircle size={15} className="text-red-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-red-300">
+                {healthCounts.error} conta(s) com erro ainda dentro dos loops
+              </p>
+              <p className="text-xs text-white/40 mt-0.5">
+                Contas mortas continuam sendo tentadas pelo cron e consomem rate-limit das contas saudáveis.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {cleanupResult && (
+              <span className="text-xs text-green-400">{cleanupResult}</span>
+            )}
+            <button
+              onClick={cleanupErrorAccounts}
+              disabled={cleanupLoading}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 ${
+                cleanupConfirm
+                  ? "bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30"
+                  : "bg-white/[0.06] border border-white/[0.1] text-white/70 hover:text-white hover:bg-white/[0.1]"
+              }`}
+            >
+              {cleanupLoading ? (
+                <RefreshCw size={13} className="animate-spin" />
+              ) : (
+                <XCircle size={13} />
+              )}
+              {cleanupConfirm ? "Confirmar remoção" : "Remover dos loops"}
+            </button>
+            {cleanupConfirm && (
+              <button
+                onClick={() => setCleanupConfirm(false)}
+                className="text-xs text-white/30 hover:text-white/60 transition-colors"
+              >
+                Cancelar
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Summary chips */}
       {!loading && accounts.length > 0 && (
