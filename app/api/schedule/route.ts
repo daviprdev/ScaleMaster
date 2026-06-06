@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
 // POST /api/schedule — cria postagens agendadas para múltiplas contas
 export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+
   const body = await req.json() as {
     video_id: string;
     account_ids: string[];
@@ -37,7 +42,7 @@ export async function POST(req: NextRequest) {
 
   // Cria um registro por conta selecionada
   const records = account_ids.map((account_id) => ({
-    user_id: null, // TODO: substituir por auth.uid() na Fase 6
+    user_id: user.id,
     video_id,
     account_id,
     caption,
@@ -59,6 +64,10 @@ export async function POST(req: NextRequest) {
 
 // GET /api/schedule — lista postagens agendadas
 export async function GET() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ posts: [] });
   }
@@ -66,6 +75,7 @@ export async function GET() {
   const { data, error } = await getSupabaseAdmin()
     .from("scheduled_posts")
     .select("*, instagram_accounts(username, display_name, avatar_url), videos_library(filename, public_url)")
+    .eq("user_id", user.id)
     .order("scheduled_at", { ascending: true });
 
   if (error) {

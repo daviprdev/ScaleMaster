@@ -11,7 +11,7 @@ import { getProxyForAccount } from "@/lib/proxy";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// 90 min: cobre o atraso inicial máximo de ~48 min (24 contas × 2 min/conta)
+// 90 min: cobre o atraso inicial máximo (stagger dinâmico = interval_minutes por loop)
 // mais 30 min de margem para processamento e retries.
 // Antes era 30 min, mas containers com stagger inicial ficavam sendo mortos
 // pelo auto-healing no exato momento em que expiravam para publicação.
@@ -152,7 +152,7 @@ export async function GET(req: NextRequest) {
         .from("pending_containers")
         .update({
           status: "error",
-          error_message: "Expirado: Meta não terminou de processar em 30 minutos.",
+          error_message: "Expirado: Meta não terminou de processar em 90 minutos.",
         })
         .eq("id", container.id);
       console.warn(`[publish-pending] Container ${container.id} expirado após ${Math.round(age / 60_000)} min.`);

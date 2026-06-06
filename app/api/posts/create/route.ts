@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
+import { getProxyForAccount } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -17,6 +18,7 @@ interface AccountRow {
   ig_business_account_id: string | null;
   token_expires_at: string | null;
   fb_page_id: string | null;
+  proxy_url: string | null;
 }
 
 interface PostAccountResult {
@@ -95,7 +97,7 @@ export async function POST(req: NextRequest) {
   // Publish now: fetch account credentials
   const { data: accounts, error: accsErr } = await admin
     .from("instagram_accounts")
-    .select("id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id")
+    .select("id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url")
     .in("id", account_ids)
     .eq("is_active", true);
 
@@ -125,10 +127,11 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    const proxy = getProxyForAccount(account.id, account.proxy_url);
     let tokenToUse = account.meta_access_token;
     if (isTokenExpiringSoon(account.token_expires_at, 7)) {
       try {
-        const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id);
+        const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id, proxy);
         await admin
           .from("instagram_accounts")
           .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })
@@ -144,7 +147,8 @@ export async function POST(req: NextRequest) {
         account.ig_business_account_id,
         tokenToUse,
         media_url,
-        caption ?? ""
+        caption ?? "",
+        proxy
       );
 
       if (result.status !== "ok") throw new Error(result.error ?? "Erro na Meta API.");

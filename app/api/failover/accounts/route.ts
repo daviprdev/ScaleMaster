@@ -41,7 +41,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const admin = getSupabaseAdmin() as any;
-  await Promise.all(
+  const results = await Promise.allSettled(
     body.updates.map(({ id, failover_priority }) =>
       admin
         .from("instagram_accounts")
@@ -50,6 +50,10 @@ export async function PATCH(req: NextRequest) {
         .eq("user_id", user.id)
     )
   );
+  const failed = results.filter(r => r.status === "rejected");
+  if (failed.length > 0) {
+    console.error("[failover/accounts PATCH] Falha em", failed.length, "update(s)");
+  }
 
   return NextResponse.json({ success: true });
 }
