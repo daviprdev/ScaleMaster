@@ -8,7 +8,10 @@ export const maxDuration = 30;
 const GRAPH = "https://graph.instagram.com/v21.0";
 
 // OAuth / permission error codes → token is dead, mark account as error
-const TOKEN_ERROR_CODES = new Set([190, 102, 104, 200, 10, 4, 368]);
+// Códigos que indicam token/conta inválida permanentemente.
+// Código 4 (rate limit de app) e 17 (rate limit de usuário) removidos —
+// são temporários e não devem marcar a conta como error permanentemente.
+const TOKEN_ERROR_CODES = new Set([190, 102, 104, 200, 10, 368]);
 
 interface GraphProfile {
   id?: string;

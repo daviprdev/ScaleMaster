@@ -263,6 +263,9 @@ async function upsertAccount(
     access_token: null,
     fb_page_id: null,
     connected_at: now,
+    // Sempre reseta ao conectar/reconectar — o usuário forneceu um token novo,
+    // então qualquer marcação de erro anterior não se aplica mais.
+    health_status: "online",
   };
 
   // Tenta UPSERT pela chave composta (user_id, ig_business_account_id)
@@ -306,6 +309,7 @@ async function upsertAccount(
         token_expires_at: expiresAt.toISOString(),
         access_token: null,
         fb_page_id: null,
+        health_status: "online",
       })
       .eq("id", existing.id);
 

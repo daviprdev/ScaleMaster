@@ -7,7 +7,10 @@ export const maxDuration = 60;
 
 const GRAPH = "https://graph.instagram.com/v21.0";
 const STALE_MS = 5 * 60 * 1000; // only re-sync if data is > 5 min old
-const TOKEN_ERROR_CODES = new Set([190, 102, 104, 200, 10, 4, 368]);
+// Códigos que indicam token/conta inválida permanentemente.
+// NÃO inclui 4 (rate limit de app) nem 17 (rate limit de usuário) — esses são
+// erros temporários que NÃO devem marcar a conta como error permanentemente.
+const TOKEN_ERROR_CODES = new Set([190, 102, 104, 200, 10, 368]);
 
 interface AccountRow {
   id: string;
