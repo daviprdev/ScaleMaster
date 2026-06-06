@@ -881,9 +881,14 @@ async function processOneLoop(
 
     // ── FASE 2b: sequencial + jitter 1–3s ─────────────────────────────────────
     let containersCreated = 0;
-    // Índice de escalonamento: cada novo container criado recebe um atraso
-    // inicial de newContainerIdx * 2 min para publicação, distribuindo o burst
-    // de 25 accounts ao longo de ~48 min e evitando rate-limit simultâneo.
+    // Stagger dinâmico: distribui os containers uniformemente dentro do intervalo
+    // configurado no loop, garantindo que TODAS as contas sejam publicadas antes
+    // do próximo ciclo do cron. Ex: 48 contas × 15 min → 18.75s entre contas.
+    // Mínimo 5s para não gerar burst simultâneo; máximo: interval_minutes.
+    const staggerPerAccountSec = Math.max(
+      5,
+      (loop.interval_minutes * 60) / Math.max(validAccounts.length, 1)
+    );
     let newContainerIdx = 0;
 
     for (let i = 0; i < prepSettled.length; i++) {
@@ -952,10 +957,11 @@ async function processOneLoop(
           }
         }
 
+        const initialDelayMinutes = (newContainerIdx * staggerPerAccountSec) / 60;
         await createContainerForAccount(
           admin, account, loop, videoUrl, caption, tokenToUse,
           assignment.video.id, newCyclesDone,
-          newContainerIdx * 2,  // 0, 2, 4, … min de atraso inicial
+          initialDelayMinutes,
           proxy
         );
         newContainerIdx++;

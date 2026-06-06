@@ -113,7 +113,7 @@ export async function GET(req: NextRequest) {
     .eq("status", "pending")
     .or(`retry_after.is.null,retry_after.lte.${nowIso}`)
     .order("created_at", { ascending: true })
-    .limit(5); // 5 max — 5 × (8s delay + ~5s API) = ~65s, dentro do maxDuration
+    .limit(10); // 10 max — com stagger dinâmico só ~6 ficam prontos por janela de 2min
 
   if (fetchErr) {
     console.error("[publish-pending] Erro ao buscar containers:", fetchErr.message);
