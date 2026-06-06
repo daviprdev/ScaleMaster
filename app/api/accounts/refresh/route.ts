@@ -8,10 +8,9 @@ export const maxDuration = 30;
 const GRAPH = "https://graph.instagram.com/v21.0";
 
 // OAuth / permission error codes → token is dead, mark account as error
-// Códigos que indicam token/conta inválida permanentemente.
-// Código 4 (rate limit de app) e 17 (rate limit de usuário) removidos —
-// são temporários e não devem marcar a conta como error permanentemente.
-const TOKEN_ERROR_CODES = new Set([190, 102, 104, 200, 10, 368]);
+// Apenas tokens genuinamente mortos: 190 = token inválido/expirado, 102/104 = session inválida.
+// Permissão (200, 10, 368) e rate limit (4, 17) NÃO marcam como error permanente.
+const TOKEN_ERROR_CODES = new Set([190, 102, 104]);
 
 interface GraphProfile {
   id?: string;
@@ -133,6 +132,17 @@ export async function POST(req: NextRequest) {
         .from("instagram_accounts")
         .update({ health_status: "error" })
         .eq("id", accountId);
+      // Grava no failover_logs para o diagnóstico mostrar o motivo real
+      void (async () => {
+        try {
+          await (admin as any).from("failover_logs").insert({
+            user_id: user.id,
+            failed_account_id: accountId,
+            backup_account_id: null,
+            error_reason: `[refresh] code=${code} — ${profile.error?.message ?? ""}`,
+          });
+        } catch { /* não crítico */ }
+      })();
     }
 
     return NextResponse.json(

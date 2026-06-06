@@ -7,14 +7,17 @@ export const maxDuration = 60;
 
 const GRAPH = "https://graph.instagram.com/v21.0";
 const STALE_MS = 5 * 60 * 1000; // only re-sync if data is > 5 min old
-// Códigos que indicam token/conta inválida permanentemente.
-// NÃO inclui 4 (rate limit de app) nem 17 (rate limit de usuário) — esses são
-// erros temporários que NÃO devem marcar a conta como error permanentemente.
-const TOKEN_ERROR_CODES = new Set([190, 102, 104, 200, 10, 368]);
+// Apenas tokens genuinamente mortos justificam marcar health_status='error'.
+// 190 = Invalid OAuth 2.0 Access Token (token expirado/revogado)
+// 102/104 = Session key invalid / Incorrect signature
+// Códigos de permissão (200, 10, 368) e rate limit (4, 17) NÃO marcam como error:
+// permissão pode ser temporária ou específica de campo; rate limit é transitório.
+const TOKEN_ERROR_CODES = new Set([190, 102, 104]);
 
 interface AccountRow {
   id: string;
   username: string;
+  user_id: string;
   ig_business_account_id: string;
   meta_access_token: string;
   profile_refreshed_at: string | null;
@@ -39,8 +42,24 @@ async function syncOne(acc: AccountRow): Promise<{ id: string; ok: boolean; toke
           .from("instagram_accounts")
           .update({ health_status: "error" })
           .eq("id", acc.id);
+        // Grava no failover_logs para o diagnóstico mostrar o motivo real
+        void (async () => {
+          try {
+            await admin.from("failover_logs").insert({
+              user_id: acc.user_id,
+              failed_account_id: acc.id,
+              backup_account_id: null,
+              error_reason: `[sync-all] code=${err.code} — ${err.message}`,
+            });
+          } catch { /* não crítico */ }
+        })();
         console.warn(
           `[sync-all] Token inválido para @${acc.username}: code=${err.code} — ${err.message}`
+        );
+      } else {
+        // Erro de permissão/rate-limit — não marca como error, só loga
+        console.warn(
+          `[sync-all] Erro não-fatal para @${acc.username}: code=${err.code} — ${err.message}`
         );
       }
       return { id: acc.id, ok: false, tokenError: tokenBad };
@@ -90,7 +109,7 @@ export async function POST() {
   const admin = getSupabaseAdmin();
   const { data: accounts } = await admin
     .from("instagram_accounts")
-    .select("id, username, ig_business_account_id, meta_access_token, profile_refreshed_at")
+    .select("id, username, user_id, ig_business_account_id, meta_access_token, profile_refreshed_at")
     .eq("user_id", user.id)
     .not("ig_business_account_id", "is", null)
     .not("meta_access_token", "is", null);
