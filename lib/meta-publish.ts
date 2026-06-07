@@ -13,7 +13,7 @@ import { proxyInit } from "@/lib/proxy";
  */
 function sanitizeCaption(raw: string): string {
   return raw
-    .replace(/ /g, "")
+    .replace(/\x00/g, "")
     // eslint-disable-next-line no-control-regex
     .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
     .trim()
