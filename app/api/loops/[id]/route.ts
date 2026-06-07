@@ -83,7 +83,18 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const { error } = await (getSupabaseAdmin() as any)
+  const admin = getSupabaseAdmin() as any;
+
+  // Cancela containers pendentes ANTES de deletar o loop.
+  // Sem isso, ON DELETE SET NULL faz loop_id=NULL nos containers — eles ficam
+  // presos na fila do publish-pending e bloqueiam postagens do novo loop.
+  await admin
+    .from("pending_containers")
+    .update({ status: "error", error_message: "Loop excluído pelo usuário." })
+    .eq("loop_id", id)
+    .in("status", ["pending", "publishing"]);
+
+  const { error } = await admin
     .from("loops")
     .delete()
     .eq("id", id)

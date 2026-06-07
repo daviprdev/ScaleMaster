@@ -19,6 +19,15 @@ export async function GET() {
   const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const since6h  = new Date(now.getTime() -  6 * 60 * 60 * 1000).toISOString();
 
+  // Cancela containers pendentes de loops já deletados (loop_id=NULL).
+  // Esses containers bloqueiam o publish-pending e aparecem como fantasmas no monitor.
+  await admin
+    .from("pending_containers")
+    .update({ status: "error", error_message: "Loop excluído — container cancelado." })
+    .eq("user_id", user.id)
+    .in("status", ["pending", "publishing"])
+    .is("loop_id", null);
+
   // Parallel fetch: accounts + loops + containers (last 24h) + active loops count
   const [accountsRes, loopsRes, containersRes] = await Promise.all([
     admin
@@ -36,15 +45,16 @@ export async function GET() {
 
     admin
       .from("pending_containers")
-      .select("id, account_id, status, retry_after, retry_count, created_at, error_message, media_id")
+      .select("id, account_id, loop_id, status, retry_after, retry_count, created_at, error_message, media_id")
       .eq("user_id", user.id)
+      .not("loop_id", "is", null)  // ignora containers de loops deletados
       .gte("created_at", since24h)
       .order("created_at", { ascending: false }),
   ]);
 
   const accounts  = (accountsRes.data  ?? []) as { id: string; username: string; display_name: string | null; avatar_url: string | null; health_status: string; is_active: boolean }[];
   const loops     = (loopsRes.data     ?? []) as { id: string; name: string; status: string; loop_accounts: { account_id: string }[] }[];
-  const allContainers = (containersRes.data ?? []) as { id: string; account_id: string; status: string; retry_after: string | null; retry_count: number; created_at: string; error_message: string | null; media_id: string | null }[];
+  const allContainers = (containersRes.data ?? []) as { id: string; account_id: string; loop_id: string | null; status: string; retry_after: string | null; retry_count: number; created_at: string; error_message: string | null; media_id: string | null }[];
 
   // Filtra containers cujas contas já foram excluídas
   const accountIds = new Set(accounts.map(a => a.id));
