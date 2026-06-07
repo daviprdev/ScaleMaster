@@ -890,6 +890,11 @@ async function processOneLoop(
       (loop.interval_minutes * 60) / Math.max(validAccounts.length, 1)
     );
     let newContainerIdx = 0;
+    // Contador separado para o sleep anti-burst: DEVE ser incrementado por conta
+    // tentada, não por container criado com sucesso. Sem isso, quando todos os
+    // containers falham (ex: proxy down), containersCreated fica 0 → nenhum sleep
+    // → 28 chamadas em burst com 150ms entre elas → proxy rejeita tudo em cascata.
+    let phase2bAttempts = 0;
 
     for (let i = 0; i < prepSettled.length; i++) {
       const settled = prepSettled[i];
@@ -922,18 +927,21 @@ async function processOneLoop(
 
       const { account, assignment, caption, videoUrl } = prep;
 
+      // Jitter 1–3s anti-burst a partir da segunda conta TENTADA (independe de sucesso).
+      // Bug anterior: condicionava em containersCreated > 0 — quando todos falham
+      // o contador nunca sobe e nenhum sleep ocorre → burst de 28 chamadas em 3s.
+      if (phase2bAttempts > 0) {
+        const jitterMs = Math.floor(Math.random() * 2_000) + 1_000;
+        console.log(`[loop-cron] @${account.username}: jitter ${(jitterMs / 1000).toFixed(1)}s…`);
+        await sleep(jitterMs);
+      }
+      phase2bAttempts++;
+
       try {
         console.log(
           `[RAIO-X-FINAL] @${account.username} | caption_final (${caption.length}c): ` +
           `"${caption.slice(0, 100)}${caption.length > 100 ? "…" : ""}"`
         );
-
-        // Jitter 1–3s anti-burst (somente a partir da segunda conta)
-        if (containersCreated > 0) {
-          const jitterMs = Math.floor(Math.random() * 2_000) + 1_000;
-          console.log(`[loop-cron] @${account.username}: jitter ${(jitterMs / 1000).toFixed(1)}s…`);
-          await sleep(jitterMs);
-        }
 
         // meta_access_token é garantidamente non-null aqui: a FASE 2a só retorna
         // kind="ready" após checar `!account.meta_access_token` e pular a conta.
@@ -960,12 +968,35 @@ async function processOneLoop(
         // Jitter ±30% sobre o stagger base — timing humano, não robótico
         const jitter = staggerBaseSec * 0.3 * (Math.random() * 2 - 1);
         const initialDelayMinutes = Math.max(0, (newContainerIdx * staggerBaseSec + jitter)) / 60;
-        await createContainerForAccount(
-          admin, account, loop, videoUrl, caption, tokenToUse,
-          assignment.video.id, newCyclesDone,
-          initialDelayMinutes,
-          proxy
-        );
+
+        try {
+          await createContainerForAccount(
+            admin, account, loop, videoUrl, caption, tokenToUse,
+            assignment.video.id, newCyclesDone,
+            initialDelayMinutes,
+            proxy
+          );
+        } catch (proxyErr) {
+          const proxyMsg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
+          // "fetch failed" = falha de rede no proxy (TCP recusado/timeout), não erro da Meta.
+          // Retry imediato sem proxy: garante que o container seja criado mesmo com proxy down.
+          // Risco: chamada sai do IP da Vercel. Aceitável como fallback — melhor que 0% sucesso.
+          if (proxyMsg.toLowerCase() === "fetch failed" && proxy !== null) {
+            console.warn(
+              `[loop-cron] ⚡ Proxy falhou @${account.username} (fetch failed) — ` +
+              `retentando SEM proxy. Verifique PROXY_URL_TEMPLATE na Vercel.`
+            );
+            await createContainerForAccount(
+              admin, account, loop, videoUrl, caption, tokenToUse,
+              assignment.video.id, newCyclesDone,
+              initialDelayMinutes,
+              null  // sem proxy
+            );
+          } else {
+            throw proxyErr;
+          }
+        }
+
         newContainerIdx++;
         containersCreated++;
 
