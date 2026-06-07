@@ -38,9 +38,11 @@ async function syncOne(acc: AccountRow): Promise<{ id: string; ok: boolean; toke
       const err = data.error as { code: number; message: string };
       const tokenBad = TOKEN_ERROR_CODES.has(err.code);
       if (tokenBad) {
+        // Marca como error + atualiza profile_refreshed_at para não re-sincronizar
+        // a cada abertura de página (conta com error fica "always stale" sem isso)
         await admin
           .from("instagram_accounts")
-          .update({ health_status: "error" })
+          .update({ health_status: "error", profile_refreshed_at: new Date().toISOString() })
           .eq("id", acc.id);
         // Grava no failover_logs para o diagnóstico mostrar o motivo real
         void (async () => {
@@ -111,6 +113,7 @@ export async function POST() {
     .from("instagram_accounts")
     .select("id, username, user_id, ig_business_account_id, meta_access_token, profile_refreshed_at")
     .eq("user_id", user.id)
+    .neq("health_status", "error")   // contas já marcadas como error não precisam de sync
     .not("ig_business_account_id", "is", null)
     .not("meta_access_token", "is", null);
 
