@@ -182,7 +182,7 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-      const proxy = getProxyForAccount(account.id, account.proxy_url);
+      let proxy = getProxyForAccount(account.id, account.proxy_url);
       let tokenToUse = account.meta_access_token;
 
       if (isTokenExpiringSoon(account.token_expires_at, 7)) {
@@ -202,7 +202,20 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      const pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse, proxy);
+      // Poll com fallback: se o proxy falhar, tenta sem proxy.
+      let pollStatus: Awaited<ReturnType<typeof pollContainerStatusOnce>>;
+      try {
+        pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse, proxy);
+      } catch (pollErr) {
+        const pollMsg = pollErr instanceof Error ? pollErr.message : String(pollErr);
+        if (pollMsg.toLowerCase() === "fetch failed" && proxy !== null) {
+          console.warn(`[publish-pending] ⚡ Proxy falhou @${account.username} (poll) — retentando sem proxy.`);
+          proxy = null;
+          pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse, null);
+        } else {
+          throw pollErr;
+        }
+      }
 
       if (pollStatus === "in_progress") {
         await (admin as any)
@@ -232,12 +245,29 @@ export async function GET(req: NextRequest) {
       }
       publishAttemptsInThisRun++;
 
-      const mediaId = await publishReadyContainer(
-        container.ig_business_account_id,
-        container.creation_id,
-        tokenToUse,
-        proxy
-      );
+      // Publish com fallback: se o proxy falhar, tenta sem proxy.
+      let mediaId = "";
+      try {
+        mediaId = await publishReadyContainer(
+          container.ig_business_account_id,
+          container.creation_id,
+          tokenToUse,
+          proxy
+        );
+      } catch (pubErr) {
+        const pubMsg = pubErr instanceof Error ? pubErr.message : String(pubErr);
+        if (pubMsg.toLowerCase() === "fetch failed" && proxy !== null) {
+          console.warn(`[publish-pending] ⚡ Proxy falhou @${account.username} (publish) — retentando sem proxy.`);
+          mediaId = await publishReadyContainer(
+            container.ig_business_account_id,
+            container.creation_id,
+            tokenToUse,
+            null
+          );
+        } else {
+          throw pubErr;
+        }
+      }
 
       await (admin as any)
         .from("pending_containers")
