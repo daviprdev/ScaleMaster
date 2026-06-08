@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount } from "@/lib/proxy";
+import { applyVideoEffects } from "@/lib/video-effects";
 import type { ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
@@ -146,81 +147,11 @@ function isWithinHumanSchedule(
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------------------
-// Video effects — delegado ao Railway (FastAPI + FFmpeg)
+// Video effects — executado localmente via fluent-ffmpeg + @ffmpeg-installer
 //
-// O re-encode libx264 é pesado demais para a Vercel (timeout 300s).
-// O worker Railway não tem limite de duração e tem FFmpeg nativo via Docker.
-// PYTHON_SERVER_URL deve apontar para o serviço Railway (ex: https://xxx.railway.app).
+// serverExternalPackages em next.config.ts garante que o binário nativo
+// não é empacotado pelo webpack e funciona corretamente no runtime Node.js da Vercel.
 // ---------------------------------------------------------------------------
-
-interface VideoEffectOptions {
-  mirror: boolean;
-  invert: boolean;
-  zoom: boolean;
-  blur: boolean;
-  noise: boolean;
-  antiAi: boolean;
-  accountId?: string;
-}
-
-async function applyVideoEffectsRemote(
-  videoUrl: string,
-  opts: VideoEffectOptions
-): Promise<string> {
-  const { mirror, invert, zoom, blur, noise, antiAi, accountId = "" } = opts;
-
-  console.log(
-    `[video-effects] opts: mirror=${mirror} invert=${invert} zoom=${zoom} ` +
-    `blur=${blur} noise=${noise} antiAi=${antiAi} | RAILWAY_URL_SET=${!!process.env.PYTHON_SERVER_URL}`
-  );
-
-  if (!mirror && !invert && !zoom && !blur && !noise && !antiAi) {
-    console.log("[video-effects] nenhum efeito ativo — retornando URL original.");
-    return videoUrl;
-  }
-
-  const rawUrl = process.env.PYTHON_SERVER_URL;
-  const railwaySecret = process.env.PYTHON_SERVER_SECRET;
-
-  if (!rawUrl) {
-    console.warn("[video-effects] PYTHON_SERVER_URL não configurado — pulando efeitos.");
-    return videoUrl;
-  }
-
-  // Strip trailing slash para evitar barra dupla quando a env var vem com "/"
-  const railwayUrl = rawUrl.replace(/\/+$/, "");
-
-  const res = await fetch(`${railwayUrl}/video/effects`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(railwaySecret ? { Authorization: `Bearer ${railwaySecret}` } : {}),
-    },
-    body: JSON.stringify({
-      video_url: videoUrl,
-      account_id: accountId,
-      mirror,
-      invert,
-      zoom,
-      blur,
-      noise,
-      anti_ai: antiAi,
-    }),
-    // 4.5 min — bem dentro do maxDuration 300s do cron; Railway não tem limite
-    signal: AbortSignal.timeout(270_000),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Railway /video/effects: HTTP ${res.status} — ${body.slice(0, 300)}`);
-  }
-
-  const json = (await res.json()) as { url?: string };
-  if (!json.url) throw new Error("Railway /video/effects: resposta sem campo `url`.");
-
-  console.log(`[video-effects] ✓ Railway processou efeitos → ${json.url.slice(-60)}`);
-  return json.url;
-}
 
 // ---------------------------------------------------------------------------
 // Idempotency — evita dupla submissão enquanto há container em voo.
@@ -848,10 +779,11 @@ async function processOneLoop(
           return { kind: "skip", account, reason: "sem legendas no loop" };
         }
 
-        // Railway FFmpeg — dispara em paralelo; fallback para URL original se falhar
+        // Efeitos de vídeo — FFmpeg local (fluent-ffmpeg + @ffmpeg-installer).
+        // Roda em paralelo com as demais contas na FASE 2a; fallback para URL original se falhar.
         let videoUrl = assignment.video.public_url;
         try {
-          const processed = await applyVideoEffectsRemote(assignment.video.public_url, {
+          const processed = await applyVideoEffects(assignment.video.public_url, {
             mirror:    loop.effect_mirror,
             invert:    loop.effect_invert,
             zoom:      loop.effect_zoom,
@@ -864,7 +796,7 @@ async function processOneLoop(
         } catch (fxErr) {
           const fxMsg = fxErr instanceof Error ? fxErr.message : String(fxErr);
           console.error(
-            `[video-effects] ✗ @${account.username}: Railway falhou, postando sem efeito. ` +
+            `[video-effects] ✗ @${account.username}: FFmpeg falhou, postando sem efeito. ` +
             `Erro: ${fxMsg.slice(0, 200)}`
           );
           // videoUrl já está com a URL original — continua normalmente
