@@ -1977,3 +1977,37 @@ CREATE INDEX IF NOT EXISTS pending_containers_retry_idx
 
 #### Lição aprendida: backoff implícito via status=pending
 Containers em backoff ficam com `status=pending` (não `error`). Isso é intencional: `containerAlreadyExists` busca `in(status,["pending","publishing"])` → encontra → retorna `true` → `process-loops` não cria novo container. O backoff no `publish-pending` serve automaticamente como circuit breaker para o `process-loops`.
+
+---
+
+### ✅ Fix — Double-tap limpava legenda dos Reels pós-publish (2026-06-08)
+**Commits:** `402f210`
+
+#### Problema
+Loop novo postando todos os vídeos sem legenda. Legendas estavam corretas no DB (`loops.captions` e `pending_containers.caption`), e o double-tap (`updatePostCaption`) retornava HTTP 200 sem erros — mas os posts chegavam sem legenda no Instagram.
+
+#### Root cause
+`updatePostCaption` chamava `POST /{media-id}` com `caption + comment_enabled=1` após o publish. A Meta Graph API v21 aceitava o request (HTTP 200) mas apagava silenciosamente a legenda original do container — efeito colateral documentado para Reels quando `comment_enabled` é enviado junto com `caption` no endpoint de atualização de post.
+
+#### Fix
+Double-tap removido de `publish-pending`. A legenda é definida corretamente em `createMediaContainer` (criação do container, Fase 1 do pipeline) e não precisa ser reaplicada após o publish. Comentário explicativo adicionado no código.
+
+#### Lição aprendida
+HTTP 200 da Meta API não garante que o campo foi aplicado. Para Reels, a legenda deve ser enviada APENAS na criação do container (`POST /{ig-user-id}/media` com `caption=...`). Qualquer `POST /{media-id}` pós-publish pode silenciosamente apagar campos do container original.
+
+---
+
+### ✅ Fix — Intervalo efetivo dobrado por stagger ultrapassando a janela (2026-06-08)
+**Commits:** `252c45b`
+
+#### Problema
+Loop configurado com 15 min postando a cada ~30–50 min para algumas contas.
+
+#### Root cause
+Com 24 contas e intervalo de 15 min, `staggerBaseSec = 900/24 = 37.5s`. Com jitter +30%, a conta[23] (última) recebia `retry_after = now + 23 × 37.5 × 1.3 / 60 = 18.7 min` — ultrapassando a janela de 15 min. Quando o `process-loops` rodava no ciclo seguinte (T+15min), esse container ainda estava `status=pending` → `containerAlreadyExists = true` → conta pulava um ciclo inteiro → próximo post só no ciclo T+30min.
+
+#### Fix
+Cap em `initialDelayMinutes`: `min(rawDelay, interval_minutes - 3)`. Para 15 min: max delay = 12 min. Garante que todas as contas têm pelo menos 3 min de folga para o `publish-pending` (roda a cada 2 min) processar o container antes do próximo ciclo do `process-loops`.
+
+#### Lição aprendida
+O jitter ±30% sobre o stagger já calculado sem margem causava overflow da janela para as contas de índice mais alto. O cap deve ser aplicado APÓS adicionar o jitter (não no stagger base), garantindo que o valor final nunca exceda o limite. Buffer de 3 min é suficiente com publish-pending a cada 2 min.
