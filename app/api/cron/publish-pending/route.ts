@@ -3,7 +3,6 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   pollContainerStatusOnce,
   publishReadyContainer,
-  updatePostCaption,
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount } from "@/lib/proxy";
@@ -282,36 +281,13 @@ export async function GET(req: NextRequest) {
         `[publish-pending] legenda_armazenada @${account.username}: ` +
         (captionStored.trim()
           ? `${captionStored.length} char(s) — "${captionStored.slice(0, 80)}${captionStored.length > 80 ? "…" : ""}"`
-          : "VAZIA — post será publicado sem legenda")
+          : "VAZIA — post publicado sem legenda (nenhuma legenda configurada no loop)")
       );
-
-      // Double-tap de legenda: 5s de delay (Reel finaliza rápido após publish).
-      if (captionStored.trim()) {
-        await sleep(5_000);
-
-        let captionApplied = false;
-        for (let attempt = 1; attempt <= 3 && !captionApplied; attempt++) {
-          try {
-            await updatePostCaption(mediaId, captionStored, tokenToUse, proxy);
-            captionApplied = true;
-            console.log(`[publish-pending] ✓ Legenda aplicada @${account.username} (tentativa ${attempt})`);
-          } catch (captionErr) {
-            const captMsg = captionErr instanceof Error ? captionErr.message : String(captionErr);
-            if (attempt < 3) {
-              console.warn(
-                `[publish-pending] Legenda tentativa ${attempt}/3 falhou @${account.username}: ` +
-                `"${captMsg}" — aguardando 4s…`
-              );
-              await sleep(4_000);
-            } else {
-              console.error(
-                `[publish-pending] ✗ Legenda NÃO aplicada @${account.username} após 3 tentativas: ` +
-                `"${captMsg}" | media_id=${mediaId} | caption="${captionStored.slice(0, 100)}"`
-              );
-            }
-          }
-        }
-      }
+      // Double-tap desativado: o endpoint POST /{media-id} aceita o request com HTTP 200
+      // mas estava limpando a legenda original do container para Reels (efeito colateral
+      // documentado da Meta API v21 quando comment_enabled é enviado junto com caption).
+      // A legenda é definida corretamente no createMediaContainer (container creation)
+      // e não precisa ser reaplicada após o publish.
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
