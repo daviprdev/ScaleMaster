@@ -1,4 +1,4 @@
-import type { ProxyAgent } from "undici";
+import { fetch as undiciFetch, type ProxyAgent } from "undici";
 import { proxyInit } from "@/lib/proxy";
 
 const GRAPH_FB = "https://graph.facebook.com/v19.0";
@@ -38,9 +38,9 @@ async function refreshInstagramToken(
     grant_type: "ig_refresh_token",
     access_token: currentToken,
   });
-  const res = await fetch(
+  const res = await undiciFetch(
     `${GRAPH_IG}/refresh_access_token?${params}`,
-    proxyInit(proxy)
+    proxyInit(proxy, { signal: AbortSignal.timeout(45_000) }) as any
   );
   const data = (await res.json()) as {
     access_token?: string;
@@ -67,9 +67,9 @@ async function refreshFacebookToken(
     client_secret: process.env.META_CLIENT_SECRET!,
     fb_exchange_token: currentToken,
   });
-  const res = await fetch(
+  const res = await undiciFetch(
     `${GRAPH_FB}/oauth/access_token?${params}`,
-    proxyInit(proxy)
+    proxyInit(proxy, { signal: AbortSignal.timeout(45_000) }) as any
   );
   const data = (await res.json()) as {
     access_token?: string;

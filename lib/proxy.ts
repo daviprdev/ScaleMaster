@@ -30,6 +30,33 @@ function sessionId(accountId: string): string {
 }
 
 /**
+ * Censura a senha da URL de proxy para uso em logs (nunca expõe credenciais).
+ * http://user:SENHA@host:port → http://user:***@host:port
+ */
+function censorProxyUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.password) parsed.password = "***";
+    return parsed.toString();
+  } catch {
+    // Fallback regex caso a URL seja inválida para o construtor URL
+    return url.replace(/:([^:@]+)@/, ":***@");
+  }
+}
+
+// WeakMap: ProxyAgent → URL censurada para log nos pontos de disparo HTTP.
+// Elimina a necessidade de passar a URL por toda a call stack só para logging.
+const proxyLabels = new WeakMap<ProxyAgent, string>();
+
+/**
+ * Retorna a URL censurada registrada para o agent (para log de pré-disparo).
+ * Retorna undefined se o agent não foi criado por este módulo.
+ */
+export function getProxyLabel(agent: ProxyAgent): string | undefined {
+  return proxyLabels.get(agent);
+}
+
+/**
  * Constrói um ProxyAgent undici a partir de uma URL de proxy.
  * Substitui {SESSION} pelo session ID gerado para o account_id.
  * Retorna null se a URL for inválida.
@@ -37,7 +64,9 @@ function sessionId(accountId: string): string {
 function buildProxyAgent(rawUrl: string, accountId: string): ProxyAgent | null {
   try {
     const url = rawUrl.replace("{SESSION}", sessionId(accountId));
-    return new ProxyAgent(url);
+    const agent = new ProxyAgent(url);
+    proxyLabels.set(agent, censorProxyUrl(url));
+    return agent;
   } catch (e) {
     console.warn(`[proxy] URL inválida para @account ${accountId.slice(0, 8)}…: ${String(e)}`);
     return null;
@@ -74,7 +103,8 @@ export function getProxyForAccount(
     const agent = buildProxyAgent(template, accountId);
     if (agent) {
       const sid = sessionId(accountId);
-      console.log(`[proxy] @${accountId.slice(0, 8)}… → template global (sessão ${sid})`);
+      const label = proxyLabels.get(agent) ?? "URL inválida";
+      console.log(`[proxy] @${accountId.slice(0, 8)}… → template global (sessão ${sid}) | host configurado: ${label}`);
       return agent;
     }
   }

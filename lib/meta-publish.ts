@@ -1,8 +1,12 @@
 // Tokens gerados via Instagram Login funcionam com graph.instagram.com
 const GRAPH_API = "https://graph.instagram.com/v21.0";
 
-import type { ProxyAgent } from "undici";
-import { proxyInit } from "@/lib/proxy";
+// undici.fetch é usado em vez do fetch global do Node/Next.js porque o Next.js
+// patcha o fetch global para caching e descarta silenciosamente a propriedade
+// `dispatcher` antes de chegar ao layer HTTP — fazendo o ProxyAgent ser ignorado.
+// undici.fetch lê `dispatcher` nativamente sem intermediários.
+import { fetch as undiciFetch, type ProxyAgent } from "undici";
+import { proxyInit, getProxyLabel } from "@/lib/proxy";
 
 /**
  * Remove caracteres que corrompem envios em lote silenciosamente:
@@ -51,9 +55,9 @@ async function createMediaContainer(
   ];
   const formBody = formParts.join("&");
 
-  // Log imediatamente antes do fetch — prova visual nos logs da Vercel
+  // Log imediatamente antes do disparo — prova visual nos logs da Vercel
   if (proxy) {
-    console.log(`[info] Disparando container para Meta através do Proxy Smartproxy: OK | ig=${igAccountId.slice(0, 10)}…`);
+    console.log(`[info] Disparando container para Meta através do Proxy Smartproxy: OK | host: ${getProxyLabel(proxy) ?? "desconhecido"} | ig=${igAccountId.slice(0, 10)}…`);
   } else {
     console.warn(`[PROXY-WARN] ⚠️  Disparando container para Meta SEM proxy — requisição saindo pelo IP puro da Vercel! | ig=${igAccountId.slice(0, 10)}…`);
   }
@@ -65,12 +69,13 @@ async function createMediaContainer(
     `body[0..150]: ${formBody.slice(0, 150)}…`
   );
 
-  const res = await fetch(`${GRAPH_API}/${igAccountId}/media`, proxyInit(proxy, {
+  // undiciFetch: bypassa o patch do Next.js e entrega `dispatcher` diretamente ao undici
+  const res = await undiciFetch(`${GRAPH_API}/${igAccountId}/media`, proxyInit(proxy, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: formBody,
-    signal: AbortSignal.timeout(15_000),
-  }));
+    signal: AbortSignal.timeout(45_000),
+  }) as any);
 
   // Lê como texto antes de parsear — captura warnings/messages ocultas que a Meta
   // inclui no body mesmo com 200 OK (ex: campo ignorado, scope insuficiente).
@@ -100,9 +105,9 @@ async function pollContainerStatus(
 ): Promise<void> {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, i === 0 ? 5_000 : intervalMs));
-    const res = await fetch(
+    const res = await undiciFetch(
       `${GRAPH_API}/${creationId}?fields=status_code&access_token=${token}`,
-      proxyInit(proxy, { signal: AbortSignal.timeout(15_000) })
+      proxyInit(proxy, { signal: AbortSignal.timeout(45_000) }) as any
     );
     const data = (await res.json()) as {
       status_code?: string;
@@ -128,15 +133,15 @@ async function publishContainer(
     access_token: token,
   });
   if (proxy) {
-    console.log(`[info] Disparando publicação para Meta através do Proxy Smartproxy: OK | ig=${igAccountId.slice(0, 10)}… | creation=${creationId.slice(0, 10)}…`);
+    console.log(`[info] Disparando publicação para Meta através do Proxy Smartproxy: OK | host: ${getProxyLabel(proxy) ?? "desconhecido"} | ig=${igAccountId.slice(0, 10)}… | creation=${creationId.slice(0, 10)}…`);
   } else {
     console.warn(`[PROXY-WARN] ⚠️  Publicando para Meta SEM proxy — requisição saindo pelo IP puro da Vercel! | ig=${igAccountId.slice(0, 10)}…`);
   }
-  const res = await fetch(`${GRAPH_API}/${igAccountId}/media_publish`, proxyInit(proxy, {
+  const res = await undiciFetch(`${GRAPH_API}/${igAccountId}/media_publish`, proxyInit(proxy, {
     method: "POST",
     body: params,
-    signal: AbortSignal.timeout(15_000),
-  }));
+    signal: AbortSignal.timeout(45_000),
+  }) as any);
   const data = (await res.json()) as { id?: string; error?: { message: string } };
   if (!res.ok || !data.id) {
     throw new Error(data.error?.message ?? "Falha ao publicar o container de mídia.");
@@ -167,12 +172,12 @@ export async function updatePostCaption(
     `comment_enabled=1`,
     `access_token=${encodeURIComponent(token)}`,
   ].join("&");
-  const res = await fetch(`${GRAPH_API}/${mediaId}`, proxyInit(proxy, {
+  const res = await undiciFetch(`${GRAPH_API}/${mediaId}`, proxyInit(proxy, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: formBody,
-    signal: AbortSignal.timeout(15_000),
-  }));
+    signal: AbortSignal.timeout(45_000),
+  }) as any);
   const rawText = await res.text();
   const isRateLimit = /rate.?limit|too many/i.test(rawText) || res.status === 429;
   const isOAuthErr = /OAuthException|invalid.token|token.expired/i.test(rawText);
@@ -215,9 +220,9 @@ export async function pollContainerStatusOnce(
   token: string,
   proxy: ProxyAgent | null = null
 ): Promise<ContainerPollStatus> {
-  const res = await fetch(
+  const res = await undiciFetch(
     `${GRAPH_API}/${creationId}?fields=status_code&access_token=${token}`,
-    proxyInit(proxy, { signal: AbortSignal.timeout(15_000) })
+    proxyInit(proxy, { signal: AbortSignal.timeout(45_000) }) as any
   );
   const data = (await res.json()) as {
     status_code?: string;
