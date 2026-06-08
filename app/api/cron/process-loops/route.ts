@@ -983,19 +983,27 @@ async function processOneLoop(
           );
         } catch (proxyErr) {
           const proxyMsg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
-          // "fetch failed" = falha de rede no proxy (TCP recusado/timeout), não erro da Meta.
-          // Retry imediato sem proxy: garante que o container seja criado mesmo com proxy down.
-          // Risco: chamada sai do IP da Vercel. Aceitável como fallback — melhor que 0% sucesso.
           if (proxyMsg.toLowerCase() === "fetch failed" && proxy !== null) {
+            if (process.env.PROXY_URL_TEMPLATE) {
+              // Proxy configurado mas falhou → NÃO fazer fallback para IP da Vercel.
+              // Pulamos esta conta neste ciclo sem gravar container de erro —
+              // o loop tentará novamente no próximo interval_minutes.
+              console.error(
+                `[loop-cron] ⛔ @${account.username}: Proxy Smartproxy falhou (fetch failed) — ` +
+                `sem fallback para IP da Vercel. Conta pulada neste ciclo; tentará no próximo.`
+              );
+              continue;
+            }
+            // PROXY_URL_TEMPLATE ausente: fallback aceitável (proxy não era intencional)
             console.warn(
               `[loop-cron] ⚡ Proxy falhou @${account.username} (fetch failed) — ` +
-              `retentando SEM proxy. Verifique PROXY_URL_TEMPLATE na Vercel.`
+              `retentando SEM proxy. Configure PROXY_URL_TEMPLATE para forçar Smartproxy.`
             );
             await createContainerForAccount(
               admin, account, loop, videoUrl, caption, tokenToUse,
               assignment.video.id, newCyclesDone,
               initialDelayMinutes,
-              null  // sem proxy
+              null
             );
           } else {
             throw proxyErr;
@@ -1100,6 +1108,13 @@ export async function GET(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
   const now = new Date();
+
+  // Verificação de proxy — diagnóstico de segurança no início de cada run
+  if (process.env.PROXY_URL_TEMPLATE) {
+    console.log(`[loop-cron] PROXY_URL_TEMPLATE: configurado — todas as requisições Meta usarão Proxy Smartproxy. Fallback para IP da Vercel: DESATIVADO.`);
+  } else {
+    console.warn(`[loop-cron] PROXY_URL_TEMPLATE: NÃO configurado — requisições Meta saindo pelo IP puro da Vercel!`);
+  }
 
   // ── AUTO-HEALING: Desbloquear pending_containers fantasmas ────────────────
   // Exclui containers em backoff intencional (retry_after > now) — esses estão

@@ -20,6 +20,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // Erros transitórios que disparam backoff exponencial em vez de retry imediato.
 // NÃO marcamos como "error" — o container fica "pending" com retry_after no futuro.
+// "fetch failed" cobre falhas de rede incluindo proxy down — sempre retryável.
 const RETRYABLE_META_ERRORS = [
   "too many actions",
   "an unexpected error has occurred",
@@ -27,6 +28,8 @@ const RETRYABLE_META_ERRORS = [
   "please retry",
   "service unavailable",
   "internal server error",
+  "fetch failed",
+  "[proxy] smartproxy falhou",
 ];
 
 function isRetryableMetaError(msg: string): boolean {
@@ -71,6 +74,13 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const nowIso = now.toISOString();
   const summary = { checked: 0, published: 0, in_progress: 0, expired: 0, errors: 0, auto_healed: 0 };
+
+  // Verificação de proxy — diagnóstico de segurança no início de cada run
+  if (process.env.PROXY_URL_TEMPLATE) {
+    console.log(`[publish-pending] PROXY_URL_TEMPLATE: configurado — todas as requisições Meta usarão Proxy Smartproxy. Fallback para IP da Vercel: DESATIVADO.`);
+  } else {
+    console.warn(`[publish-pending] PROXY_URL_TEMPLATE: NÃO configurado — requisições Meta saindo pelo IP puro da Vercel!`);
+  }
 
   // ── AUTO-HEALING: Containers expirados (>30 min em pending/publishing) ──────
   // Exclui containers explicitamente em backoff (retry_after > now) —
@@ -201,13 +211,18 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Poll com fallback: se o proxy falhar, tenta sem proxy.
+      // Poll com proxy — sem fallback para Vercel IP quando PROXY_URL_TEMPLATE está configurado.
       let pollStatus: Awaited<ReturnType<typeof pollContainerStatusOnce>>;
       try {
         pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse, proxy);
       } catch (pollErr) {
         const pollMsg = pollErr instanceof Error ? pollErr.message : String(pollErr);
         if (pollMsg.toLowerCase() === "fetch failed" && proxy !== null) {
+          if (process.env.PROXY_URL_TEMPLATE) {
+            // Proxy configurado mas falhou → NÃO cair no IP da Vercel.
+            // Relança → catch externo → backoff exponencial via RETRYABLE_META_ERRORS.
+            throw new Error(`[PROXY] Smartproxy falhou no poll (fetch failed) @${account.username} — sem fallback para IP da Vercel. Container entrará em backoff.`);
+          }
           console.warn(`[publish-pending] ⚡ Proxy falhou @${account.username} (poll) — retentando sem proxy.`);
           proxy = null;
           pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse, null);
@@ -244,7 +259,7 @@ export async function GET(req: NextRequest) {
       }
       publishAttemptsInThisRun++;
 
-      // Publish com fallback: se o proxy falhar, tenta sem proxy.
+      // Publish via proxy — sem fallback para Vercel IP quando PROXY_URL_TEMPLATE está configurado.
       let mediaId = "";
       try {
         mediaId = await publishReadyContainer(
@@ -256,6 +271,11 @@ export async function GET(req: NextRequest) {
       } catch (pubErr) {
         const pubMsg = pubErr instanceof Error ? pubErr.message : String(pubErr);
         if (pubMsg.toLowerCase() === "fetch failed" && proxy !== null) {
+          if (process.env.PROXY_URL_TEMPLATE) {
+            // Proxy configurado mas falhou → NÃO cair no IP da Vercel.
+            // Relança → catch externo → backoff exponencial via RETRYABLE_META_ERRORS.
+            throw new Error(`[PROXY] Smartproxy falhou no publish (fetch failed) @${account.username} — sem fallback para IP da Vercel. Container entrará em backoff.`);
+          }
           console.warn(`[publish-pending] ⚡ Proxy falhou @${account.username} (publish) — retentando sem proxy.`);
           mediaId = await publishReadyContainer(
             container.ig_business_account_id,

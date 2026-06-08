@@ -52,10 +52,15 @@ async function createMediaContainer(
   const formBody = formParts.join("&");
 
   // Log imediatamente antes do fetch — prova visual nos logs da Vercel
+  if (proxy) {
+    console.log(`[info] Disparando container para Meta através do Proxy Smartproxy: OK | ig=${igAccountId.slice(0, 10)}…`);
+  } else {
+    console.warn(`[PROXY-WARN] ⚠️  Disparando container para Meta SEM proxy — requisição saindo pelo IP puro da Vercel! | ig=${igAccountId.slice(0, 10)}…`);
+  }
   console.log('Enviando para Meta API. Legenda:', captionFinal);
   console.log(
     `[meta-publish] igId=${igAccountId.slice(0, 10)}… | ` +
-    `proxy=${proxy ? "SIM" : "não"} | ` +
+    `proxy=${proxy ? "SIM ✓" : "NÃO ⚠️"} | ` +
     `caption=${captionFinal.length} char(s): "${captionFinal.slice(0, 120)}${captionFinal.length > 120 ? "…" : ""}" | ` +
     `body[0..150]: ${formBody.slice(0, 150)}…`
   );
@@ -122,6 +127,11 @@ async function publishContainer(
     creation_id: creationId,
     access_token: token,
   });
+  if (proxy) {
+    console.log(`[info] Disparando publicação para Meta através do Proxy Smartproxy: OK | ig=${igAccountId.slice(0, 10)}… | creation=${creationId.slice(0, 10)}…`);
+  } else {
+    console.warn(`[PROXY-WARN] ⚠️  Publicando para Meta SEM proxy — requisição saindo pelo IP puro da Vercel! | ig=${igAccountId.slice(0, 10)}…`);
+  }
   const res = await fetch(`${GRAPH_API}/${igAccountId}/media_publish`, proxyInit(proxy, {
     method: "POST",
     body: params,
