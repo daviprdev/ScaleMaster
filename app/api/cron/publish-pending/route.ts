@@ -18,23 +18,37 @@ const CONTAINER_TTL_MS = 90 * 60_000;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-// Erros transitórios que disparam backoff exponencial em vez de retry imediato.
-// NÃO marcamos como "error" — o container fica "pending" com retry_after no futuro.
-// "fetch failed" cobre falhas de rede incluindo proxy down — sempre retryável.
-const RETRYABLE_META_ERRORS = [
+// Erros de proxy/rede → retry fixo curto (3 min), SEM backoff exponencial.
+// Esses erros são independentes do rate-limit da Meta — não devem sequestrar
+// o intervalo configurado pelo usuário (ex: 15 min virar 40 min).
+const PROXY_NETWORK_ERRORS = [
+  "fetch failed",
+  "[proxy] smartproxy falhou",
+];
+
+// Erros de rate-limit da Meta → backoff exponencial: 10, 20, 40, 60 min + jitter.
+// Backoff agressivo é necessário aqui para evitar thundering-herd após cooldown.
+const META_RATE_LIMIT_ERRORS = [
   "too many actions",
   "an unexpected error has occurred",
   "retry your request later",
   "please retry",
   "service unavailable",
   "internal server error",
-  "fetch failed",
-  "[proxy] smartproxy falhou",
 ];
 
-function isRetryableMetaError(msg: string): boolean {
+function isProxyNetworkError(msg: string): boolean {
   const lower = msg.toLowerCase();
-  return RETRYABLE_META_ERRORS.some(p => lower.includes(p));
+  return PROXY_NETWORK_ERRORS.some(p => lower.includes(p));
+}
+
+function isMetaRateLimitError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return META_RATE_LIMIT_ERRORS.some(p => lower.includes(p));
+}
+
+function isRetryableMetaError(msg: string): boolean {
+  return isProxyNetworkError(msg) || isMetaRateLimitError(msg);
 }
 
 interface AccountRow {
@@ -314,14 +328,24 @@ export async function GET(req: NextRequest) {
       console.error(`[publish-pending] ✗ container ${container.id}:`, msg);
       summary.errors++;
 
-      if (isRetryableMetaError(msg)) {
-        // Backoff exponencial: 10, 20, 40, 60 min (cap em 60) + jitter 0–5 min.
-        // O jitter garante que containers criados no mesmo batch não saiam do backoff
-        // simultaneamente (thundering herd) e causem novo rate-limit em cascata.
+      if (isProxyNetworkError(msg)) {
+        // Proxy/rede: retry fixo em 3 min — NÃO usa backoff exponencial.
+        // Preserva rigorosamente o interval_minutes configurado pelo usuário.
+        // retry_count NÃO é incrementado: erro de rede não é culpa da Meta.
+        const retryAfter = new Date(Date.now() + 3 * 60_000).toISOString();
+        await (admin as any)
+          .from("pending_containers")
+          .update({ status: "pending", retry_after: retryAfter })
+          .eq("id", container.id);
+        console.warn(
+          `[publish-pending] Proxy/rede falhou @${account?.username ?? "?"}: ` +
+          `retry fixo em 3 min (${retryAfter}). Motivo: "${msg}"`
+        );
+      } else if (isMetaRateLimitError(msg)) {
+        // Rate-limit Meta: backoff exponencial 10→20→40→60 min + jitter 0–20 min.
+        // O jitter evita thundering-herd após cooldown (todos saindo juntos).
         const retryCount = (container.retry_count ?? 0) + 1;
         const backoffMinutes = Math.min(60, 10 * Math.pow(2, retryCount - 1));
-        // Jitter 0–20 min: containers criados no mesmo batch saem do backoff
-        // em momentos distintos, evitando novo burst simultâneo após o cooldown.
         const jitterMs = Math.floor(Math.random() * 20 * 60_000);
         const retryAfter = new Date(Date.now() + backoffMinutes * 60_000 + jitterMs).toISOString();
         await (admin as any)
@@ -329,7 +353,7 @@ export async function GET(req: NextRequest) {
           .update({ status: "pending", retry_count: retryCount, retry_after: retryAfter })
           .eq("id", container.id);
         console.warn(
-          `[publish-pending] Backoff @${account?.username ?? "?"}: ` +
+          `[publish-pending] Rate-limit Meta @${account?.username ?? "?"}: ` +
           `retry_count=${retryCount}, retry_after=${retryAfter} (+${backoffMinutes}min). Motivo: "${msg}"`
         );
       } else {
