@@ -297,6 +297,20 @@ async function recordContainerError(
 // Failover
 // ---------------------------------------------------------------------------
 
+// Erros de rate limit temporário — a conta será pulada neste ciclo e tentará no próximo.
+// NÃO gravar container de erro para esses casos: o acúmulo polui o monitor e
+// desperdiça chamadas à Meta API enquanto a janela de throttle ainda está ativa.
+function isRateLimitError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("too many actions") ||
+    lower.includes("performing too many") ||
+    lower.includes("retry your request later") ||
+    lower.includes("please retry") ||
+    lower.includes("service temporarily unavailable")
+  );
+}
+
 function isCriticalMetaError(msg: string): boolean {
   const lower = msg.toLowerCase();
   const patterns = [
@@ -735,27 +749,6 @@ async function processOneLoop(
         const alreadyDone = await containerAlreadyExists(admin, loop.id, account.id, windowStartIso);
         if (alreadyDone) return { kind: "already_done", account };
 
-        // ── Cap diário por conta (anti-rate-limit Meta) ───────────────────────
-        // Meta permite ~50 publicações/conta/dia via Content Publishing API.
-        // Quando o cap é atingido, a conta recebe "User is performing too many
-        // actions" em TODAS as tentativas — inclusive de outros loops.
-        // Pulamos a conta silenciosamente até a janela de 24h rolar.
-        const DAILY_POST_CAP = 40; // margem segura abaixo do limite de ~50
-        const { count: postsToday } = await (admin as any)
-          .from("pending_containers")
-          .select("id", { count: "exact", head: true })
-          .eq("account_id", account.id)
-          .eq("status", "published")
-          .gte("created_at", new Date(Date.now() - 24 * 60 * 60_000).toISOString());
-        if ((postsToday ?? 0) >= DAILY_POST_CAP) {
-          console.log(
-            `[loop-cron] @${account.username} atingiu o cap diário ` +
-            `(${postsToday}/${DAILY_POST_CAP} posts/24h) — pulando até a janela rolar.`
-          );
-          return { kind: "skip", account, reason: `cap diário atingido (${postsToday}/${DAILY_POST_CAP})` };
-        }
-        // ─────────────────────────────────────────────────────────────────────
-
         // Parse captions (isolado por conta — sem estado compartilhado)
         const rawCaptions = loop.captions;
         let loopCaptionsRaw: string[];
@@ -984,6 +977,19 @@ async function processOneLoop(
 
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+
+        // Rate limit temporário da Meta — pula silenciosamente sem gravar erro.
+        // O próximo ciclo (interval_minutes) tentará de novo automaticamente.
+        // Gravar container de erro aqui causaria acúmulo infinito de erros no monitor
+        // e chamadas desnecessárias à Meta API enquanto a conta está throttled.
+        if (isRateLimitError(msg)) {
+          console.warn(
+            `[loop-cron] ⏸ @${account.username}: rate limit Meta ("${msg.slice(0, 80)}") — ` +
+            `pulando este ciclo sem erro. Tentará de novo em ${loop.interval_minutes} min.`
+          );
+          continue;
+        }
+
         console.error(`[loop-cron] ✗ @${account.username}: ${msg}`);
 
         await recordContainerError(
