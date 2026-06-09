@@ -302,8 +302,8 @@ function CampaignPreview({
   captionCount: number;
 }) {
   const effectiveBatch = Math.max(1, batchSize);
-  const postsPerSlot = Math.max(1, totalAccounts) * effectiveBatch;
-  const slots = totalVideos > 0 ? Math.ceil(totalVideos / postsPerSlot) : 0;
+  // slots = quantos disparos no tempo (avança por vídeo, não por conta)
+  const slots = totalVideos > 0 ? Math.ceil(totalVideos / effectiveBatch) : 0;
 
   const lastSlot = slots > 0 && startDatetime
     ? computeLastSlot(startDatetime, intervalMinutes, slots)
@@ -311,18 +311,20 @@ function CampaignPreview({
 
   const previewSlots = useMemo(() => {
     if (!startDatetime || slots === 0) return [];
+    const nAccounts = Math.max(1, totalAccounts);
     const preview = [];
     for (let i = 0; i < Math.min(4, slots); i++) {
       const t = new Date(new Date(startDatetime).getTime() + i * intervalMinutes * 60_000);
-      const remaining = totalVideos - i * postsPerSlot;
+      const videosRemaining = totalVideos - i * effectiveBatch;
+      const videosThisSlot = Math.min(effectiveBatch, videosRemaining);
       preview.push({
         time: t.toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }),
-        count: Math.min(postsPerSlot, remaining),
+        count: videosThisSlot * nAccounts,
       });
     }
     if (slots > 4) preview.push({ time: "...", count: 0 });
     return preview;
-  }, [startDatetime, slots, postsPerSlot, intervalMinutes, totalVideos]);
+  }, [startDatetime, slots, effectiveBatch, intervalMinutes, totalVideos, totalAccounts]);
 
   const isReady = totalVideos > 0 && totalAccounts > 0 && startDatetime;
 
@@ -344,7 +346,7 @@ function CampaignPreview({
             {[
               { label: "Vídeos", value: totalVideos, color: "text-[#00FF41]" },
               { label: "Contas", value: totalAccounts, color: "text-[#00E5FF]" },
-              { label: "Por Lote", value: effectiveBatch, color: "text-white" },
+              { label: "Por Disparo", value: effectiveBatch, color: "text-white" },
               { label: "Disparos", value: slots, color: "text-white" },
               { label: "Legendas", value: captionCount, color: "text-white/60" },
               { label: "Intervalo", value: `${intervalMinutes}min`, color: "text-white/60" },
@@ -374,7 +376,7 @@ function CampaignPreview({
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#00FF41]/5 border border-[#00FF41]/20">
             <Shuffle size={12} className="text-[#00FF41] flex-shrink-0" />
             <p className="text-[10px] text-[#00FF41]/80">
-              Anti-spam ativo — vídeos diferentes por conta em cada disparo
+              Mesmo vídeo para todas as contas em cada disparo
             </p>
           </div>
 
@@ -390,10 +392,10 @@ function CampaignPreview({
                       <div className="flex-1 h-[3px] rounded-full bg-white/[0.05] overflow-hidden">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-[#00FF41]/60 to-[#00E5FF]/60"
-                          style={{ width: `${Math.round((s.count / postsPerSlot) * 100)}%` }}
+                          style={{ width: `${Math.round((s.count / (effectiveBatch * Math.max(1, totalAccounts))) * 100)}%` }}
                         />
                       </div>
-                      <span className="text-white/30 text-[10px] w-16 text-right">{s.count} vídeo{s.count !== 1 ? "s" : ""}</span>
+                      <span className="text-white/30 text-[10px] w-16 text-right">{s.count} post{s.count !== 1 ? "s" : ""}</span>
                     </>
                   ) : (
                     <span className="text-white/15 text-[10px]">
@@ -1636,8 +1638,8 @@ export default function PostarPage() {
                       {(() => {
                         const effectiveBatch = Math.max(1, batchSize);
                         const nAccounts = Math.max(1, selectedAccountIds.length);
-                        const postsPerSlot = nAccounts * effectiveBatch;
-                        const slots = Math.ceil(totalVideos / postsPerSlot);
+                        const slots = Math.ceil(totalVideos / effectiveBatch);
+                        const totalPosts = totalVideos * nAccounts;
                         const lastMs = new Date(startDatetime).getTime() + (slots - 1) * intervalMinutes * 60_000;
                         const fmt = (iso: string) => new Date(iso).toLocaleString("pt-BR", {
                           day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
@@ -1645,9 +1647,9 @@ export default function PostarPage() {
                         const lastIso = new Date(lastMs).toISOString();
                         return (
                           <p className="text-xs text-white/55 leading-relaxed">
-                            <span className="text-[#00FF41] font-semibold">{totalVideos}</span> vídeo{totalVideos !== 1 ? "s" : ""} em{" "}
-                            <span className="text-white font-semibold">{slots}</span> disparo{slots !== 1 ? "s" : ""} —{" "}
-                            <span className="text-[#00E5FF] font-semibold">{nAccounts}</span> conta{nAccounts !== 1 ? "s" : ""} × <span className="text-[#00E5FF] font-semibold">{effectiveBatch}</span> vídeo{effectiveBatch !== 1 ? "s" : ""} por disparo.{" "}
+                            <span className="text-[#00FF41] font-semibold">{totalVideos}</span> vídeo{totalVideos !== 1 ? "s" : ""} × <span className="text-[#00E5FF] font-semibold">{nAccounts}</span> conta{nAccounts !== 1 ? "s" : ""} ={" "}
+                            <span className="text-white font-semibold">{totalPosts}</span> posts em{" "}
+                            <span className="text-white font-semibold">{slots}</span> disparo{slots !== 1 ? "s" : ""}.{" "}
                             Início: <span className="text-white/80">{fmt(startDatetime)}</span>
                             {slots > 1 && <> · Fim: <span className="text-white/80">{fmt(lastIso)}</span></>}.
                           </p>
@@ -1723,7 +1725,7 @@ export default function PostarPage() {
               <p className="text-[10px] text-white/25 uppercase tracking-wider">Como funciona</p>
               {[
                 { icon: Shuffle, text: "Vídeos embaralhados (Fisher-Yates) uma vez para toda a campanha" },
-                { icon: Zap, text: "Mesmo slot → vídeos diferentes por conta (anti-spam)" },
+                { icon: Zap, text: "Cada disparo → mesmo vídeo distribuído para todas as contas" },
                 { icon: Clock, text: "Slot 0 = início, Slot 1 = início + intervalo, ..." },
               ].map(({ icon: Icon, text }) => (
                 <div key={text} className="flex items-start gap-2">
