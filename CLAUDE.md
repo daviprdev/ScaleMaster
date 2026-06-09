@@ -310,10 +310,6 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 
 **SQL pendente (executar no Supabase):**
 ```sql
--- Proxy dedicado por conta (supabase/account_proxy.sql) — PENDENTE
-ALTER TABLE public.instagram_accounts
-  ADD COLUMN IF NOT EXISTS proxy_url text;
-
 -- Fase 43 — Failover (executar supabase/failover.sql)
 ALTER TABLE public.instagram_accounts
   ADD COLUMN IF NOT EXISTS health_status text NOT NULL DEFAULT 'online'
