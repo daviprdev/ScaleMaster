@@ -26,6 +26,7 @@ import {
   Lock,
   Sparkles,
   TrendingUp,
+  Globe,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -80,6 +81,7 @@ const navGroups: NavGroup[] = [
       { label: "Meus Apps", href: "/dashboard/apps", icon: KeyRound },
       { label: "Failover", href: "/dashboard/failover", icon: ShieldAlert },
       { label: "Horário Humano", href: "/dashboard/human-schedule", icon: Clock },
+      { label: "Proxies", href: "/dashboard/proxy-test", icon: Globe },
     ],
   },
 ];
