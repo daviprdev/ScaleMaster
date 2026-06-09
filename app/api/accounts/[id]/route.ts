@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { encrypt } from "@/lib/encrypt";
 
 export const runtime = "nodejs";
 
-// PATCH /api/accounts/[id] — update account fields (folder_id, etc.)
+// PATCH /api/accounts/[id] — update account fields (folder_id, is_active, proxy_url)
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -15,11 +16,24 @@ export async function PATCH(
   }
 
   const body = await req.json() as Record<string, unknown>;
-  const allowedFields = ["folder_id", "is_active"];
   const updates: Record<string, unknown> = {};
 
-  for (const field of allowedFields) {
+  for (const field of ["folder_id", "is_active"]) {
     if (field in body) updates[field] = body[field];
+  }
+
+  // proxy_url: aceita string (plain URL → encripta) ou null (remove proxy)
+  if ("proxy_url" in body) {
+    const raw = body.proxy_url;
+    if (raw === null || raw === "") {
+      updates.proxy_url = null;
+    } else if (typeof raw === "string") {
+      try {
+        updates.proxy_url = encrypt(raw.trim());
+      } catch {
+        return NextResponse.json({ error: "Falha ao encriptar a URL do proxy." }, { status: 500 });
+      }
+    }
   }
 
   if (Object.keys(updates).length === 0) {

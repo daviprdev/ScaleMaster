@@ -28,6 +28,7 @@ import {
   FolderOpen,
   Pencil,
   Settings2,
+  Globe,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -62,6 +63,7 @@ interface Account {
   token_expires_at: string | null;
   health_status: "online" | "error" | "blocked";
   folder_id: string | null;
+  has_proxy: boolean;
 }
 
 interface AccountStoriesData {
@@ -180,6 +182,7 @@ function AccountCard({
   onDelete,
   onRefreshToken,
   onMoveClick,
+  onProxyClick,
   refreshing,
   toggling,
   deleting,
@@ -193,6 +196,7 @@ function AccountCard({
   onDelete: (id: string) => void;
   onRefreshToken: (id: string) => void;
   onMoveClick: (account: Account) => void;
+  onProxyClick: (account: Account) => void;
   refreshing: boolean;
   toggling: boolean;
   deleting: boolean;
@@ -358,6 +362,15 @@ function AccountCard({
                   <Folder size={12} className="text-violet-400/80" /> Mover para pasta...
                 </button>
 
+                {/* Configurar proxy dedicado */}
+                <button
+                  onClick={() => { onProxyClick(account); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
+                >
+                  <Globe size={12} className={account.has_proxy ? "text-[#00FF41]" : "text-white/40"} />
+                  {account.has_proxy ? "Editar Proxy" : "Configurar Proxy"}
+                </button>
+
                 <div className="h-px bg-white/[0.06]" />
                 <button
                   onClick={() => { onDelete(account.id); setMenuOpen(false); }}
@@ -426,6 +439,12 @@ function AccountCard({
               muted={storiesData.count === 0}
             />
           )}
+          <Metric
+            icon={<Globe size={11} />}
+            label={account.has_proxy ? "proxy ativo" : "sem proxy"}
+            blue={account.has_proxy}
+            muted={!account.has_proxy}
+          />
         </div>
       )}
 
@@ -497,6 +516,11 @@ export default function AccountsPage() {
   // Move-to-folder modal (page-level, outside motion transforms)
   const [moveAccount, setMoveAccount] = useState<Account | null>(null);
   const [movePendingFolderId, setMovePendingFolderId] = useState<string | null>(null);
+
+  // Proxy modal
+  const [proxyAccount, setProxyAccount] = useState<Account | null>(null);
+  const [proxyInput, setProxyInput] = useState("");
+  const [savingProxy, setSavingProxy] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
   const _togglingRef = useRef<string | null>(null);
@@ -571,10 +595,12 @@ export default function AccountsPage() {
       const { data } = await supabase
         .from("instagram_accounts")
         .select(
-          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id"
+          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url"
         )
         .order("connected_at", { ascending: false });
-      const fetched = (data ?? []) as unknown as Account[];
+      const fetched = ((data ?? []) as unknown as (Account & { proxy_url: string | null })[]).map(
+        (row) => ({ ...row, has_proxy: row.proxy_url !== null })
+      ) as Account[];
       setAccounts(fetched);
       return fetched;
     } finally {
@@ -725,6 +751,38 @@ export default function AccountsPage() {
     setMoveAccount(account);
     setMovePendingFolderId(account.folder_id);
   }, []);
+
+  const handleProxyClick = useCallback((account: Account) => {
+    setProxyAccount(account);
+    setProxyInput("");
+  }, []);
+
+  const handleSaveProxy = useCallback(async (proxyUrl: string | null) => {
+    if (!proxyAccount) return;
+    setSavingProxy(true);
+    try {
+      const res = await fetch(`/api/accounts/${proxyAccount.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxy_url: proxyUrl }),
+      });
+      const data = await res.json() as { success?: boolean; error?: string };
+      if (data.success) {
+        setAccounts(prev =>
+          prev.map(a => a.id === proxyAccount.id ? { ...a, has_proxy: proxyUrl !== null } : a)
+        );
+        setNotification({
+          type: "success",
+          message: proxyUrl ? `Proxy configurado para @${proxyAccount.username}.` : `Proxy removido de @${proxyAccount.username}.`,
+        });
+        setProxyAccount(null);
+      } else {
+        setNotification({ type: "error", message: data.error ?? "Erro ao salvar proxy." });
+      }
+    } finally {
+      setSavingProxy(false);
+    }
+  }, [proxyAccount]);
 
   const handleMoveAccount = useCallback(async (accountId: string, folderId: string | null) => {
     setMovingAccountId(accountId);
@@ -1245,6 +1303,103 @@ export default function AccountsPage() {
         )}
       </AnimatePresence>
 
+      {/* Modal: Configurar Proxy por conta */}
+      <AnimatePresence>
+        {proxyAccount && (
+          <>
+            <motion.div
+              key="proxy-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => !savingProxy && setProxyAccount(null)}
+            />
+            <motion.div
+              key="proxy-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
+            >
+              <div className="glass rounded-2xl neon-border w-full max-w-sm p-5 space-y-4 pointer-events-auto">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-[#00FF41]/10 border border-[#00FF41]/20 flex items-center justify-center">
+                      <Globe size={13} className="text-[#00FF41]" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Proxy Dedicado</h3>
+                      <p className="text-[10px] text-white/30">@{proxyAccount.username}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setProxyAccount(null)}
+                    disabled={savingProxy}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors disabled:opacity-40"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2.5 text-[11px] text-white/35 leading-relaxed">
+                  {proxyAccount.has_proxy
+                    ? "Esta conta já tem um proxy configurado. Insira uma nova URL para substituir, ou clique em Remover Proxy."
+                    : "Insira a URL completa do proxy residencial dedicado a esta conta. A senha será criptografada antes de ser salva."
+                  }
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-white/40 uppercase tracking-wide font-semibold">
+                    URL do Proxy
+                  </label>
+                  <input
+                    autoFocus
+                    value={proxyInput}
+                    onChange={e => setProxyInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && proxyInput.trim()) handleSaveProxy(proxyInput.trim()); }}
+                    placeholder="http://user:senha@host:porta"
+                    className="input-glass w-full text-sm px-3 py-2.5 font-mono"
+                  />
+                  <p className="text-[10px] text-white/20">
+                    Formatos aceitos: http://, https://, socks5://
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  {proxyAccount.has_proxy && (
+                    <button
+                      onClick={() => handleSaveProxy(null)}
+                      disabled={savingProxy}
+                      className="px-3 py-2.5 rounded-xl bg-red-600/15 border border-red-500/25 text-red-400 text-xs font-semibold hover:bg-red-600/25 disabled:opacity-50 transition-all flex items-center gap-1.5 flex-shrink-0"
+                    >
+                      {savingProxy ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                      Remover
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setProxyAccount(null)}
+                    disabled={savingProxy}
+                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors disabled:opacity-40"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleSaveProxy(proxyInput.trim() || null)}
+                    disabled={!proxyInput.trim() || savingProxy}
+                    className="flex-1 py-2.5 rounded-xl bg-[#00FF41]/15 border border-[#00FF41]/25 text-[#00FF41] text-xs font-semibold hover:bg-[#00FF41]/25 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    {savingProxy ? <Loader2 size={12} className="animate-spin" /> : <Globe size={12} />}
+                    Salvar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Banner de notificação OAuth */}
       <AnimatePresence>
         {notification && (
@@ -1470,6 +1625,7 @@ export default function AccountsPage() {
                 onDelete={handleDelete}
                 onRefreshToken={handleRefreshToken}
                 onMoveClick={handleMoveClick}
+                onProxyClick={handleProxyClick}
                 refreshing={refreshingId === account.id}
                 toggling={togglingId === account.id}
                 deleting={deletingId === account.id}
