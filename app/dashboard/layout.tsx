@@ -6,6 +6,7 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { ImpersonationBanner } from "@/components/dashboard/ImpersonationBanner";
 import { AnnouncementBanner } from "@/components/dashboard/AnnouncementBanner";
 import { AccountHealthBanner, type AccountHealthError } from "@/components/dashboard/AccountHealthBanner";
+import { CascadeHealthBanner } from "@/components/dashboard/CascadeHealthBanner";
 
 export default async function DashboardLayout({
   children,
@@ -56,8 +57,9 @@ export default async function DashboardLayout({
     // table not created yet — safe to ignore
   }
 
-  // Contas com erro de publicação — banner de saúde
+  // Contas com erro de publicação — banner de saúde + detecção de cascade
   let accountHealthErrors: AccountHealthError[] = [];
+  let cascadeCount = 0;
   try {
     const adminClient = getSupabaseAdmin();
     const { data: errAccounts } = await adminClient
@@ -68,11 +70,12 @@ export default async function DashboardLayout({
       .eq("is_active", true);
 
     if (errAccounts && errAccounts.length > 0) {
+      const accountIds = (errAccounts as { id: string; username: string }[]).map(a => a.id);
+
       // Busca o último erro real de cada conta para categorizar
-      const accountIds = errAccounts.map((a: { id: string }) => a.id);
       const { data: errContainers } = await adminClient
         .from("pending_containers")
-        .select("account_id, error_message")
+        .select("account_id, error_message, created_at")
         .in("account_id", accountIds)
         .eq("status", "error")
         .not("error_message", "is", null)
@@ -81,7 +84,7 @@ export default async function DashboardLayout({
 
       // Pega o último erro por conta
       const lastErrorByAccount = new Map<string, string>();
-      for (const row of (errContainers ?? []) as { account_id: string; error_message: string }[]) {
+      for (const row of (errContainers ?? []) as { account_id: string; error_message: string; created_at: string }[]) {
         if (!lastErrorByAccount.has(row.account_id)) {
           lastErrorByAccount.set(row.account_id, row.error_message);
         }
@@ -96,9 +99,29 @@ export default async function DashboardLayout({
           : "unknown";
         return { id: a.id, username: a.username, errorType };
       });
+
+      // Detecção de queda em cascata: 4+ contas com erros na última hora
+      // Sinal de problema no App Meta, não nas contas individualmente
+      if (accountIds.length >= 4) {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const { data: recentErrors } = await adminClient
+          .from("pending_containers")
+          .select("account_id")
+          .in("account_id", accountIds)
+          .eq("status", "error")
+          .gte("created_at", oneHourAgo)
+          .not("error_message", "like", "%AUTO-HEALING%");
+
+        const distinctRecent = new Set(
+          (recentErrors ?? []).map((r: { account_id: string }) => r.account_id)
+        );
+        if (distinctRecent.size >= 4) {
+          cascadeCount = distinctRecent.size;
+        }
+      }
     }
   } catch {
-    // falha silenciosa — banner não é crítico
+    // falha silenciosa — banners não são críticos
   }
 
   return (
@@ -112,6 +135,9 @@ export default async function DashboardLayout({
       )}
       {announcementMessage && !impData && (
         <AnnouncementBanner message={announcementMessage} />
+      )}
+      {cascadeCount >= 4 && (
+        <CascadeHealthBanner count={cascadeCount} />
       )}
       {accountHealthErrors.length > 0 && (
         <AccountHealthBanner accounts={accountHealthErrors} />
