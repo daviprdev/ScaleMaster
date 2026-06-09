@@ -49,6 +49,7 @@ interface LoopRow {
   effect_blur: boolean;
   effect_noise: boolean;
   effect_anti_ai: boolean;
+  account_folder_id: string | null;
   last_posted_at: string | null;
   loop_accounts: LoopAccountRow[];
 }
@@ -555,13 +556,28 @@ async function processOneLoop(
   // ── Contas válidas ─────────────────────────────────────────────────────────
   // Exclui contas marcadas como 'error' — evita ciclos infinitos de falha que
   // causam rate-limit na Meta e poluem a fila de pending_containers.
-  const validAccounts = loop.loop_accounts
-    .map(la => la.instagram_accounts)
-    .filter((acc): acc is AccountRow =>
-      acc !== null &&
-      acc.is_active === true &&
-      (acc.health_status ?? "online") !== "error"
-    );
+  // Quando account_folder_id está configurado, busca dinamicamente as contas
+  // saudáveis da pasta — novas contas adicionadas entram automaticamente.
+  let validAccounts: AccountRow[];
+  if (loop.account_folder_id) {
+    const { data: folderAccounts } = await (admin as any)
+      .from("instagram_accounts")
+      .select("id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, health_status, failover_priority, proxy_url")
+      .eq("folder_id", loop.account_folder_id)
+      .eq("user_id", loop.user_id)
+      .eq("is_active", true)
+      .neq("health_status", "error");
+    validAccounts = (folderAccounts ?? []) as AccountRow[];
+    console.log(`[loop-cron] "${loop.name}" modo pasta — ${validAccounts.length} conta(s) ativa(s) na pasta.`);
+  } else {
+    validAccounts = loop.loop_accounts
+      .map(la => la.instagram_accounts)
+      .filter((acc): acc is AccountRow =>
+        acc !== null &&
+        acc.is_active === true &&
+        (acc.health_status ?? "online") !== "error"
+      );
+  }
 
   if (validAccounts.length === 0) {
     console.warn(`[loop-cron] "${loop.name}" sem contas ativas — pulando.`);
@@ -1081,7 +1097,7 @@ export async function GET(req: NextRequest) {
   const { data: loopRows, error: fetchErr } = await (admin as any)
     .from("loops")
     .select(`
-      id, user_id, name, folder_id, is_infinite, cycles, cycles_done, current_cycle,
+      id, user_id, name, folder_id, account_folder_id, is_infinite, cycles, cycles_done, current_cycle,
       interval_minutes, media_limit, captions, effect_mirror, effect_invert,
       effect_zoom, effect_blur, effect_noise, effect_anti_ai,
       last_posted_at,

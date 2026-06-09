@@ -24,7 +24,7 @@ export async function GET() {
     }
   })("loops")
     .select(`
-      id, user_id, folder_id, name, is_infinite, cycles, interval_minutes,
+      id, user_id, folder_id, account_folder_id, name, is_infinite, cycles, interval_minutes,
       media_limit, captions, cover_image_url,
       effect_mirror, effect_invert, effect_zoom, effect_blur, effect_noise, effect_anti_ai,
       status, created_at,
@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json() as {
     name: string;
     folder_id: string | null;
+    account_folder_id?: string | null;
     is_infinite: boolean;
     cycles: number;
     interval_minutes: number;
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
     .insert({
       user_id: user.id,
       folder_id: body.folder_id || null,
+      account_folder_id: body.account_folder_id || null,
       name: body.name.trim() || "Meu Loop",
       is_infinite: body.is_infinite,
       cycles: body.cycles,

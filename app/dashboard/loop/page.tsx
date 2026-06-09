@@ -32,6 +32,12 @@ interface Folder {
   name: string;
 }
 
+interface AccountFolder {
+  id: string;
+  name: string;
+  account_count?: number;
+}
+
 interface LoopAccountData {
   account_id: string;
   instagram_accounts?: Account | null;
@@ -41,6 +47,7 @@ interface Loop {
   id: string;
   name: string;
   folder_id: string | null;
+  account_folder_id: string | null;
   is_infinite: boolean;
   cycles: number;
   interval_minutes: number;
@@ -61,6 +68,8 @@ interface Loop {
 
 interface FormData {
   name: string;
+  accountMode: "folder" | "specific";
+  accountFolderId: string;
   accountIds: string[];
   folderId: string;
   isInfinite: boolean;
@@ -87,6 +96,8 @@ interface SavedCaption {
 
 const DEFAULT_FORM: FormData = {
   name: "",
+  accountMode: "folder",
+  accountFolderId: "",
   accountIds: [],
   folderId: "",
   isInfinite: true,
@@ -405,17 +416,20 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
 
 function LoopCard({
   loop,
+  accountFolders,
   onToggleStatus,
   onEdit,
   onDelete,
 }: {
   loop: Loop;
+  accountFolders: AccountFolder[];
   onToggleStatus: (loop: Loop) => void;
   onEdit: (loop: Loop) => void;
   onDelete: (loop: Loop) => void;
 }) {
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const accounts = loop.loop_accounts?.map(la => la.instagram_accounts).filter(Boolean) as Account[] ?? [];
+  const accountFolder = accountFolders.find(f => f.id === loop.account_folder_id);
   const isActive = loop.status === "active";
 
   return (
@@ -478,8 +492,17 @@ function LoopCard({
         )}
       </div>
 
-      {/* Accounts */}
-      {accounts.length > 0 && (
+      {/* Accounts / Account Folder */}
+      {loop.account_folder_id ? (
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-violet-500/20 bg-violet-600/[0.07]">
+            <Folder size={11} className="text-violet-400/70 flex-shrink-0" />
+            <span className="text-[11px] text-violet-300/80 font-medium">{accountFolder?.name ?? "Pasta"}</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-600/20 text-violet-400 font-semibold uppercase tracking-wide">Auto</span>
+          </div>
+          <span className="text-[10px] text-white/25">novas contas entram automaticamente</span>
+        </div>
+      ) : accounts.length > 0 ? (
         <div className="flex items-center gap-1.5 flex-wrap">
           {accounts.slice(0, 5).map(acc => {
             const fell = acc.health_status === "error" || acc.health_status === "blocked";
@@ -513,7 +536,7 @@ function LoopCard({
             <span className="text-[10px] text-white/25">+{accounts.length - 5}</span>
           )}
         </div>
-      )}
+      ) : null}
 
       {/* Analytics expandable panel */}
       <AnimatePresence initial={false}>
@@ -1150,12 +1173,14 @@ function LoopFormModal({
   editingLoop,
   accounts,
   folders,
+  accountFolders,
   onSave,
   onClose,
 }: {
   editingLoop: Loop | null;
   accounts: Account[];
   folders: Folder[];
+  accountFolders: AccountFolder[];
   onSave: (form: FormData, loopId?: string) => Promise<void>;
   onClose: () => void;
 }) {
@@ -1163,6 +1188,8 @@ function LoopFormModal({
     if (editingLoop) {
       return {
         name: editingLoop.name,
+        accountMode: editingLoop.account_folder_id ? "folder" : "specific",
+        accountFolderId: editingLoop.account_folder_id ?? "",
         accountIds: editingLoop.loop_accounts?.map(la => la.account_id) ?? [],
         folderId: editingLoop.folder_id ?? "",
         isInfinite: editingLoop.is_infinite,
@@ -1203,7 +1230,8 @@ function LoopFormModal({
 
   const handleSubmit = async () => {
     if (!form.name.trim()) { setError("Dê um nome ao loop."); return; }
-    if (form.accountIds.length === 0) { setError("Selecione pelo menos uma conta."); return; }
+    if (form.accountMode === "folder" && !form.accountFolderId) { setError("Selecione uma pasta de contas."); return; }
+    if (form.accountMode === "specific" && form.accountIds.length === 0) { setError("Selecione pelo menos uma conta."); return; }
     if (!form.folderId) { setError("Selecione uma pasta da biblioteca."); return; }
     if (!form.captions.some(c => c.trim())) { setError("Adicione pelo menos uma legenda para o loop."); return; }
     setError(null);
@@ -1270,11 +1298,70 @@ function LoopFormModal({
           {/* Contas */}
           <div>
             <SectionLabel icon={Users} label="Contas do Instagram" />
-            <AccountsMultiSelect
-              accounts={accounts}
-              selected={form.accountIds}
-              onChange={ids => update("accountIds", ids)}
-            />
+            {/* Mode toggle */}
+            <div className="flex rounded-xl border border-white/[0.08] overflow-hidden mb-4">
+              <button
+                type="button"
+                onClick={() => update("accountMode", "folder")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold transition-all",
+                  form.accountMode === "folder"
+                    ? "bg-violet-600/20 text-violet-200 border-r border-violet-500/20"
+                    : "text-white/40 hover:text-white/70 border-r border-white/[0.05]"
+                )}
+              >
+                <Folder size={12} />
+                Pasta de contas
+              </button>
+              <button
+                type="button"
+                onClick={() => update("accountMode", "specific")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold transition-all",
+                  form.accountMode === "specific"
+                    ? "bg-violet-600/20 text-violet-200"
+                    : "text-white/40 hover:text-white/70"
+                )}
+              >
+                <Users size={12} />
+                Contas específicas
+              </button>
+            </div>
+
+            {form.accountMode === "folder" ? (
+              <div className="space-y-3">
+                <select
+                  value={form.accountFolderId}
+                  onChange={e => update("accountFolderId", e.target.value)}
+                  className="input-glass w-full text-sm"
+                >
+                  <option value="">Selecione uma pasta de contas...</option>
+                  {accountFolders.map(f => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}{f.account_count !== undefined ? ` (${f.account_count} conta${f.account_count !== 1 ? "s" : ""})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {accountFolders.length === 0 && (
+                  <p className="text-xs text-amber-400/60 flex items-center gap-1.5">
+                    <AlertCircle size={11} />
+                    Nenhuma pasta de contas encontrada. Crie pastas na aba Contas primeiro.
+                  </p>
+                )}
+                {form.accountFolderId && (
+                  <p className="text-[11px] text-white/30 flex items-start gap-1.5">
+                    <Info size={10} className="flex-shrink-0 mt-0.5" />
+                    Novas contas adicionadas a esta pasta entrarão automaticamente neste loop.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <AccountsMultiSelect
+                accounts={accounts}
+                selected={form.accountIds}
+                onChange={ids => update("accountIds", ids)}
+              />
+            )}
           </div>
 
           {/* Pasta */}
@@ -1548,6 +1635,7 @@ function LoopFormModal({
 export default function LoopPage() {
   const [loops, setLoops] = useState<Loop[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [accountFolders, setAccountFolders] = useState<AccountFolder[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -1570,9 +1658,11 @@ export default function LoopPage() {
       fetchLoops(),
       fetch("/api/library/folders").then(r => r.json() as Promise<{ folders: Folder[] }>),
       fetch("/api/accounts/list").then(r => r.json() as Promise<{ accounts: Account[] }>),
-    ]).then(([, foldersData, accountsData]) => {
+      fetch("/api/accounts/folders").then(r => r.json() as Promise<{ folders: AccountFolder[] }>),
+    ]).then(([, foldersData, accountsData, accountFoldersData]) => {
       setFolders(foldersData.folders ?? []);
       setAccounts(accountsData.accounts ?? []);
+      setAccountFolders(accountFoldersData.folders ?? []);
     });
   }, [fetchLoops]);
 
@@ -1605,6 +1695,7 @@ export default function LoopPage() {
     const payload = {
       name: form.name,
       folder_id: form.folderId || null,
+      account_folder_id: form.accountMode === "folder" ? (form.accountFolderId || null) : null,
       is_infinite: form.isInfinite,
       cycles: form.cycles,
       interval_minutes: form.intervalMinutes,
@@ -1617,7 +1708,7 @@ export default function LoopPage() {
       effect_blur:    form.effectBlur,
       effect_noise:   form.effectNoise,
       effect_anti_ai: form.effectAntiAi,
-      account_ids: form.accountIds,
+      account_ids: form.accountMode === "folder" ? [] : form.accountIds,
     };
 
     const url = loopId ? `/api/loops/${loopId}` : "/api/loops";
@@ -1670,6 +1761,7 @@ export default function LoopPage() {
             editingLoop={editingLoop}
             accounts={accounts}
             folders={folders}
+            accountFolders={accountFolders}
             onSave={handleSave}
             onClose={closeForm}
           />
@@ -1724,6 +1816,7 @@ export default function LoopPage() {
               <LoopCard
                 key={loop.id}
                 loop={loop}
+                accountFolders={accountFolders}
                 onToggleStatus={handleToggleStatus}
                 onEdit={openEditForm}
                 onDelete={handleDelete}
