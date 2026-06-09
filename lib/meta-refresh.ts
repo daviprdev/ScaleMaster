@@ -23,10 +23,11 @@ export interface TokenRefreshResult {
 export async function refreshMetaToken(
   currentToken: string,
   fbPageId?: string | null,
-  proxy: ProxyAgent | null = null
+  proxy: ProxyAgent | null = null,
+  appCredentials?: { clientId: string; clientSecret: string } | null
 ): Promise<TokenRefreshResult> {
   return fbPageId
-    ? refreshFacebookToken(currentToken, proxy)
+    ? refreshFacebookToken(currentToken, proxy, appCredentials)
     : refreshInstagramToken(currentToken, proxy);
 }
 
@@ -59,12 +60,15 @@ async function refreshInstagramToken(
 
 async function refreshFacebookToken(
   currentToken: string,
-  proxy: ProxyAgent | null = null
+  proxy: ProxyAgent | null = null,
+  appCredentials?: { clientId: string; clientSecret: string } | null
 ): Promise<TokenRefreshResult> {
+  const clientId = appCredentials?.clientId ?? process.env.NEXT_PUBLIC_META_CLIENT_ID!;
+  const clientSecret = appCredentials?.clientSecret ?? process.env.META_CLIENT_SECRET!;
   const params = new URLSearchParams({
     grant_type: "fb_exchange_token",
-    client_id: process.env.NEXT_PUBLIC_META_CLIENT_ID!,
-    client_secret: process.env.META_CLIENT_SECRET!,
+    client_id: clientId,
+    client_secret: clientSecret,
     fb_exchange_token: currentToken,
   });
   const res = await undiciFetch(

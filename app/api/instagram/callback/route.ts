@@ -44,7 +44,7 @@ function metaErrorDetail(
 async function resolveCredentials(
   req: NextRequest,
   userId: string
-): Promise<{ appId: string; appSecret: string } | null> {
+): Promise<{ appId: string; appSecret: string; metaAppId: string | null } | null> {
   const appCookieId = req.cookies.get("ig_oauth_app_id")?.value ?? "";
 
   if (appCookieId) {
@@ -68,13 +68,13 @@ async function resolveCredentials(
       console.error("[ig/callback] resolveCredentials: falha ao decriptar secret →", (e as Error).message);
       return null;
     }
-    return { appId: app.ig_app_id, appSecret: secret };
+    return { appId: app.ig_app_id, appSecret: secret, metaAppId: appCookieId };
   }
 
   const appId = process.env.NEXT_PUBLIC_META_CLIENT_ID ?? "";
   const appSecret = process.env.META_CLIENT_SECRET ?? "";
   if (!appId || !appSecret) return null;
-  return { appId, appSecret };
+  return { appId, appSecret, metaAppId: null };
 }
 
 // Wrapper de fetch com AbortController para prevenir hangs
@@ -248,7 +248,8 @@ async function upsertAccount(
   userId: string,
   profile: { id: string; username: string; name: string | null; profile_picture_url: string | null },
   longToken: string,
-  expiresAt: Date
+  expiresAt: Date,
+  metaAppId: string | null
 ): Promise<void> {
   const now = new Date().toISOString();
   const payload = {
@@ -263,6 +264,7 @@ async function upsertAccount(
     access_token: null,
     fb_page_id: null,
     connected_at: now,
+    meta_app_id: metaAppId,
     // Sempre reseta ao conectar/reconectar — o usuário forneceu um token novo,
     // então qualquer marcação de erro anterior não se aplica mais.
     health_status: "online",
@@ -361,7 +363,7 @@ export async function GET(req: NextRequest) {
 
     console.log(`[ig/callback] @${profile.username} (id:${profile.id}) → user ${user.id}`);
 
-    await upsertAccount(admin, user.id, profile, longToken, expiresAt);
+    await upsertAccount(admin, user.id, profile, longToken, expiresAt, credentials.metaAppId);
 
     const response = NextResponse.redirect(`${APP_URL}/dashboard/accounts?connected=1`);
     clearOAuthCookies(response);

@@ -64,6 +64,8 @@ interface Account {
   health_status: "online" | "error" | "blocked";
   folder_id: string | null;
   has_proxy: boolean;
+  meta_app_id: string | null;
+  meta_app_name: string | null;
 }
 
 interface AccountStoriesData {
@@ -445,6 +447,13 @@ function AccountCard({
             blue={account.has_proxy}
             muted={!account.has_proxy}
           />
+          {account.meta_app_name && (
+            <Metric
+              icon={<KeyRound size={11} />}
+              label={account.meta_app_name}
+              muted={false}
+            />
+          )}
         </div>
       )}
 
@@ -595,11 +604,11 @@ export default function AccountsPage() {
       const { data } = await supabase
         .from("instagram_accounts")
         .select(
-          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url"
+          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url, meta_app_id, user_meta_apps(app_name)"
         )
         .order("connected_at", { ascending: false });
-      const fetched = ((data ?? []) as unknown as (Account & { proxy_url: string | null })[]).map(
-        (row) => ({ ...row, has_proxy: row.proxy_url !== null })
+      const fetched = ((data ?? []) as unknown as (Account & { proxy_url: string | null; user_meta_apps: { app_name: string } | null })[]).map(
+        (row) => ({ ...row, has_proxy: row.proxy_url !== null, meta_app_name: row.user_meta_apps?.app_name ?? null })
       ) as Account[];
       setAccounts(fetched);
       return fetched;
