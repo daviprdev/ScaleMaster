@@ -2036,3 +2036,29 @@ Parâmetro `same_video_per_slot: boolean` adicionado ao body de `POST /api/posts
 
 #### Lição aprendida
 O conceito de "intervalo" era ambíguo: intervalo entre **lotes** (grupo de contas × vídeos) vs intervalo entre **vídeos**. O usuário pensa em "1 vídeo a cada N min", o que mapeia para intervalo entre vídeos com todas as contas recebendo o mesmo vídeo. A lógica de campanha agora reflete esse modelo mental, com o modo anti-spam disponível como opção secundária.
+
+---
+
+### ✅ Fix — Rate limit Meta: skip silencioso no process-loops — 2026-06-09
+**Commits:** `ed119e8`, `2c4db59`
+
+#### Problema (root cause das "quedas em cascata")
+Quando `process-loops` recebia "User is performing too many actions" ao criar um container, chamava `recordContainerError` → gravava `pending_container status=error` no banco. No próximo ciclo de 15 min, `containerAlreadyExists` checava apenas `pending/publishing` → ignorava o erro → criava OUTRO container → que falhava de novo → loop infinito. Com 14 contas throttled simultaneamente: 46 erros acumulados em horas, monitor poluído, chamadas desnecessárias à Meta a cada 15 min.
+
+#### Fix (commit `2c4db59`)
+`isRateLimitError()` adicionada ao `process-loops`. Quando container creation falha com rate limit:
+- `continue` — pula a conta naquele ciclo
+- Zero escrita no banco (sem `recordContainerError`)
+- Zero mudança em `health_status`
+- Log de aviso: `⏸ @username: rate limit Meta — pulando este ciclo. Tentará em N min`
+- Retoma automaticamente quando Meta liberar (horas, não 24h)
+
+Padrões tratados: "too many actions", "performing too many", "retry your request later", "please retry", "service temporarily unavailable".
+
+#### Também corrigido na mesma sessão (commit `ed119e8`)
+- `publish-scheduled` **não estava no `vercel.json`** — cron nunca havia disparado automaticamente. Adicionado `*/5 * * * *`.
+- `publish-scheduled`: proxy por conta via `getProxyForAccount` adicionado.
+- `publish-scheduled`: rate limit errors resetam para `pending` em vez de `failed` permanente.
+
+#### Lição aprendida
+Cap diário (40 posts/dia) foi implementado e revertido na mesma sessão. Bloqueia contas por horas artificialmente — usuário quer postagem contínua 24/7. O skip silencioso é a abordagem correta: não acumula erros, não bloqueia outras contas, retoma sozinho. A Meta limita por janela temporal (horas), não por dia fixo.
