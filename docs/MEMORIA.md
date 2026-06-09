@@ -2011,3 +2011,28 @@ Cap em `initialDelayMinutes`: `min(rawDelay, interval_minutes - 3)`. Para 15 min
 
 #### Lição aprendida
 O jitter ±30% sobre o stagger já calculado sem margem causava overflow da janela para as contas de índice mais alto. O cap deve ser aplicado APÓS adicionar o jitter (não no stagger base), garantindo que o valor final nunca exceda o limite. Buffer de 3 min é suficiente com publish-pending a cada 2 min.
+
+---
+
+### ✅ Fix + Feat — Distribuição de Campanha (aba Postar) — 2026-06-09
+**Commits:** `6b3ff29`, `13f7c88`
+
+#### Problema
+O algoritmo de agendamento em massa distribuía vídeos **diferentes por conta** em cada slot de tempo (`postsPerSlot = contas × batch_size`). Com 30 vídeos, 3 contas, intervalo 15min → 10 disparos — cada conta recebia 10 vídeos distintos, mas o "intervalo" era na prática entre lotes de contas, não entre vídeos. O usuário queria o oposto: **1 vídeo a cada 15min por conta**, ou seja, todos postando o mesmo vídeo ao mesmo tempo.
+
+#### Fix (commit 6b3ff29)
+Algoritmo refatorado em `app/api/posts/schedule/route.ts`:
+- Cada slot coleta `batch_size` vídeos do pool shuffled
+- Distribui os **mesmos vídeos** para TODAS as contas selecionadas
+- `ptr` avança por vídeo (não por conta × vídeo)
+- Resultado: 30 vídeos, 3 contas, 15min → 30 disparos × 90 posts totais, 1 vídeo a cada 15min por conta
+
+#### Feat — Toggle de modo (commit 13f7c88)
+Adicionado toggle "Modo de distribuição" na seção Distribuição de Tempo:
+- **Mesmo vídeo** (padrão): slot inteiro → todas as contas (novo comportamento)
+- **Vídeo único por conta** (anti-spam): vídeo diferente por conta no mesmo slot (comportamento original)
+
+Parâmetro `same_video_per_slot: boolean` adicionado ao body de `POST /api/posts/schedule`. `CampaignPreview`, resumo dinâmico e timeline atualizam em tempo real conforme o modo selecionado.
+
+#### Lição aprendida
+O conceito de "intervalo" era ambíguo: intervalo entre **lotes** (grupo de contas × vídeos) vs intervalo entre **vídeos**. O usuário pensa em "1 vídeo a cada N min", o que mapeia para intervalo entre vídeos com todas as contas recebendo o mesmo vídeo. A lógica de campanha agora reflete esse modelo mental, com o modo anti-spam disponível como opção secundária.
