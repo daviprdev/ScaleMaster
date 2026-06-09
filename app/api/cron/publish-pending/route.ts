@@ -10,46 +10,12 @@ import { getProxyForAccount } from "@/lib/proxy";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// 90 min: cobre o atraso inicial máximo (stagger dinâmico = interval_minutes por loop)
-// mais 30 min de margem para processamento e retries.
-// Antes era 30 min, mas containers com stagger inicial ficavam sendo mortos
-// pelo auto-healing no exato momento em que expiravam para publicação.
+// 90 min: cobre o atraso inicial máximo (stagger dinâmico = interval_minutes por loop).
+// Containers com stagger inicial (retry_after futuro no INSERT) não devem ser mortos
+// antes de chegarem ao publish-pending.
 const CONTAINER_TTL_MS = 90 * 60_000;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-// Erros de proxy/rede → retry fixo curto (3 min), SEM backoff exponencial.
-// Esses erros são independentes do rate-limit da Meta — não devem sequestrar
-// o intervalo configurado pelo usuário (ex: 15 min virar 40 min).
-const PROXY_NETWORK_ERRORS = [
-  "fetch failed",
-  "[proxy] smartproxy falhou",
-];
-
-// Erros de rate-limit da Meta → backoff exponencial: 10, 20, 40, 60 min + jitter.
-// Backoff agressivo é necessário aqui para evitar thundering-herd após cooldown.
-const META_RATE_LIMIT_ERRORS = [
-  "too many actions",
-  "an unexpected error has occurred",
-  "retry your request later",
-  "please retry",
-  "service unavailable",
-  "internal server error",
-];
-
-function isProxyNetworkError(msg: string): boolean {
-  const lower = msg.toLowerCase();
-  return PROXY_NETWORK_ERRORS.some(p => lower.includes(p));
-}
-
-function isMetaRateLimitError(msg: string): boolean {
-  const lower = msg.toLowerCase();
-  return META_RATE_LIMIT_ERRORS.some(p => lower.includes(p));
-}
-
-function isRetryableMetaError(msg: string): boolean {
-  return isProxyNetworkError(msg) || isMetaRateLimitError(msg);
-}
 
 interface AccountRow {
   id: string;
@@ -68,7 +34,6 @@ interface PendingContainerRow {
   creation_id: string;
   caption: string;
   created_at: string;
-  retry_count: number;
   retry_after: string | null;
   instagram_accounts: AccountRow | null;
 }
@@ -96,16 +61,16 @@ export async function GET(req: NextRequest) {
     console.warn(`[publish-pending] PROXY_URL_TEMPLATE: NÃO configurado — requisições Meta saindo pelo IP puro da Vercel!`);
   }
 
-  // ── AUTO-HEALING: Containers expirados (>30 min em pending/publishing) ──────
-  // Exclui containers explicitamente em backoff (retry_after > now) —
-  // esses estão aguardando intencionalmente e NÃO devem ser mortos como erro.
+  // ── AUTO-HEALING: Containers expirados (>90 min em pending/publishing) ──────
+  // Exclui containers com stagger inicial ainda pendente (retry_after > now) —
+  // esses foram criados com atraso intencional e NÃO devem ser mortos antes de serem publicados.
   {
     const healCutoff = new Date(now.getTime() - CONTAINER_TTL_MS).toISOString();
     const { data: healed, error: healErr } = await (admin as any)
       .from("pending_containers")
       .update({
         status: "error",
-        error_message: "[AUTO-HEALING] Container preso >30 min em pending/publishing — desbloqueado.",
+        error_message: "[AUTO-HEALING] Container preso >90 min em pending/publishing — desbloqueado.",
       })
       .in("status", ["pending", "publishing"])
       .lt("created_at", healCutoff)
@@ -123,12 +88,12 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Busca apenas containers elegíveis: pending + fora do período de backoff
+  // Busca containers elegíveis: pending + stagger inicial expirado (retry_after <= now)
   const { data: rows, error: fetchErr } = await (admin as any)
     .from("pending_containers")
     .select(`
       id, user_id, account_id, ig_business_account_id,
-      creation_id, caption, created_at, retry_count, retry_after,
+      creation_id, caption, created_at, retry_after,
       instagram_accounts (
         id, username, meta_access_token, token_expires_at, fb_page_id, proxy_url
       )
@@ -234,8 +199,8 @@ export async function GET(req: NextRequest) {
         if (pollMsg.toLowerCase() === "fetch failed" && proxy !== null) {
           if (process.env.PROXY_URL_TEMPLATE) {
             // Proxy configurado mas falhou → NÃO cair no IP da Vercel.
-            // Relança → catch externo → backoff exponencial via RETRYABLE_META_ERRORS.
-            throw new Error(`[PROXY] Smartproxy falhou no poll (fetch failed) @${account.username} — sem fallback para IP da Vercel. Container entrará em backoff.`);
+            // Relança → catch externo → container marcado como error (Fail Fast).
+            throw new Error(`[PROXY] Smartproxy falhou no poll (fetch failed) @${account.username} — sem fallback para IP da Vercel.`);
           }
           console.warn(`[publish-pending] ⚡ Proxy falhou @${account.username} (poll) — retentando sem proxy.`);
           proxy = null;
@@ -287,8 +252,8 @@ export async function GET(req: NextRequest) {
         if (pubMsg.toLowerCase() === "fetch failed" && proxy !== null) {
           if (process.env.PROXY_URL_TEMPLATE) {
             // Proxy configurado mas falhou → NÃO cair no IP da Vercel.
-            // Relança → catch externo → backoff exponencial via RETRYABLE_META_ERRORS.
-            throw new Error(`[PROXY] Smartproxy falhou no publish (fetch failed) @${account.username} — sem fallback para IP da Vercel. Container entrará em backoff.`);
+            // Relança → catch externo → container marcado como error (Fail Fast).
+            throw new Error(`[PROXY] Smartproxy falhou no publish (fetch failed) @${account.username} — sem fallback para IP da Vercel.`);
           }
           console.warn(`[publish-pending] ⚡ Proxy falhou @${account.username} (publish) — retentando sem proxy.`);
           mediaId = await publishReadyContainer(
@@ -324,44 +289,16 @@ export async function GET(req: NextRequest) {
       // e não precisa ser reaplicada após o publish.
 
     } catch (err) {
+      // FAIL FAST: qualquer erro (proxy, Meta, rate-limit) → marca como error imediatamente.
+      // Sem retry, sem backoff. O próximo ciclo do process-loops (interval_minutes) cria
+      // um novo container para esta conta. Cadência preservada sem travar a fila.
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[publish-pending] ✗ container ${container.id}:`, msg);
+      console.error(`[publish-pending] ✗ FAIL FAST @${account?.username ?? "?"} container ${container.id}: ${msg}`);
       summary.errors++;
-
-      if (isProxyNetworkError(msg)) {
-        // Proxy/rede: retry fixo em 3 min — NÃO usa backoff exponencial.
-        // Preserva rigorosamente o interval_minutes configurado pelo usuário.
-        // retry_count NÃO é incrementado: erro de rede não é culpa da Meta.
-        const retryAfter = new Date(Date.now() + 3 * 60_000).toISOString();
-        await (admin as any)
-          .from("pending_containers")
-          .update({ status: "pending", retry_after: retryAfter })
-          .eq("id", container.id);
-        console.warn(
-          `[publish-pending] Proxy/rede falhou @${account?.username ?? "?"}: ` +
-          `retry fixo em 3 min (${retryAfter}). Motivo: "${msg}"`
-        );
-      } else if (isMetaRateLimitError(msg)) {
-        // Rate-limit Meta: backoff exponencial 10→20→40→60 min + jitter 0–20 min.
-        // O jitter evita thundering-herd após cooldown (todos saindo juntos).
-        const retryCount = (container.retry_count ?? 0) + 1;
-        const backoffMinutes = Math.min(60, 10 * Math.pow(2, retryCount - 1));
-        const jitterMs = Math.floor(Math.random() * 20 * 60_000);
-        const retryAfter = new Date(Date.now() + backoffMinutes * 60_000 + jitterMs).toISOString();
-        await (admin as any)
-          .from("pending_containers")
-          .update({ status: "pending", retry_count: retryCount, retry_after: retryAfter })
-          .eq("id", container.id);
-        console.warn(
-          `[publish-pending] Rate-limit Meta @${account?.username ?? "?"}: ` +
-          `retry_count=${retryCount}, retry_after=${retryAfter} (+${backoffMinutes}min). Motivo: "${msg}"`
-        );
-      } else {
-        await (admin as any)
-          .from("pending_containers")
-          .update({ status: "error", error_message: msg })
-          .eq("id", container.id);
-      }
+      await (admin as any)
+        .from("pending_containers")
+        .update({ status: "error", error_message: msg.slice(0, 500) })
+        .eq("id", container.id);
     }
   }
 
