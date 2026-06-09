@@ -293,6 +293,7 @@ function CampaignPreview({
   intervalMinutes,
   startDatetime,
   captionCount,
+  sameVideoPerSlot,
 }: {
   totalVideos: number;
   totalAccounts: number;
@@ -300,10 +301,18 @@ function CampaignPreview({
   intervalMinutes: number;
   startDatetime: string;
   captionCount: number;
+  sameVideoPerSlot: boolean;
 }) {
   const effectiveBatch = Math.max(1, batchSize);
-  // slots = quantos disparos no tempo (avança por vídeo, não por conta)
-  const slots = totalVideos > 0 ? Math.ceil(totalVideos / effectiveBatch) : 0;
+  const nAccounts = Math.max(1, totalAccounts);
+  const postsPerSlot = sameVideoPerSlot
+    ? effectiveBatch * nAccounts
+    : effectiveBatch * nAccounts;
+  const slots = totalVideos > 0
+    ? sameVideoPerSlot
+      ? Math.ceil(totalVideos / effectiveBatch)
+      : Math.ceil(totalVideos / (effectiveBatch * nAccounts))
+    : 0;
 
   const lastSlot = slots > 0 && startDatetime
     ? computeLastSlot(startDatetime, intervalMinutes, slots)
@@ -311,20 +320,24 @@ function CampaignPreview({
 
   const previewSlots = useMemo(() => {
     if (!startDatetime || slots === 0) return [];
-    const nAccounts = Math.max(1, totalAccounts);
+    const nAcc = Math.max(1, totalAccounts);
+    // videos consumed per slot (differs by mode)
+    const videosPerSlot = sameVideoPerSlot ? effectiveBatch : effectiveBatch * nAcc;
     const preview = [];
     for (let i = 0; i < Math.min(4, slots); i++) {
       const t = new Date(new Date(startDatetime).getTime() + i * intervalMinutes * 60_000);
-      const videosRemaining = totalVideos - i * effectiveBatch;
-      const videosThisSlot = Math.min(effectiveBatch, videosRemaining);
+      const videosRemaining = totalVideos - i * videosPerSlot;
+      const videosThisSlot = Math.min(videosPerSlot, videosRemaining);
+      // posts created this slot
+      const postsThisSlot = sameVideoPerSlot ? videosThisSlot * nAcc : videosThisSlot;
       preview.push({
         time: t.toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }),
-        count: videosThisSlot * nAccounts,
+        count: postsThisSlot,
       });
     }
     if (slots > 4) preview.push({ time: "...", count: 0 });
     return preview;
-  }, [startDatetime, slots, effectiveBatch, intervalMinutes, totalVideos, totalAccounts]);
+  }, [startDatetime, slots, effectiveBatch, intervalMinutes, totalVideos, totalAccounts, sameVideoPerSlot]);
 
   const isReady = totalVideos > 0 && totalAccounts > 0 && startDatetime;
 
@@ -376,7 +389,9 @@ function CampaignPreview({
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#00FF41]/5 border border-[#00FF41]/20">
             <Shuffle size={12} className="text-[#00FF41] flex-shrink-0" />
             <p className="text-[10px] text-[#00FF41]/80">
-              Mesmo vídeo para todas as contas em cada disparo
+              {sameVideoPerSlot
+                ? "Mesmo vídeo para todas as contas em cada disparo"
+                : "Vídeo diferente por conta em cada disparo (anti-spam)"}
             </p>
           </div>
 
@@ -1058,6 +1073,7 @@ export default function PostarPage() {
   const [folderOpen, setFolderOpen] = useState(false);
 
   // ── Schedule ──────────────────────────────────────────────────
+  const [sameVideoPerSlot, setSameVideoPerSlot] = useState(true);
   const [startDatetime, setStartDatetime] = useState("");
   const [intervalMinutes, setIntervalMinutes] = useState(60);
   const [batchSize, setBatchSize] = useState(1);
@@ -1164,6 +1180,7 @@ export default function PostarPage() {
         start_datetime: new Date(startDatetime).toISOString(),
         interval_minutes: intervalMinutes,
         batch_size: Math.max(1, batchSize),
+        same_video_per_slot: sameVideoPerSlot,
       };
 
       if (mediaMode === "videos") {
@@ -1224,6 +1241,7 @@ export default function PostarPage() {
     setStartDatetime("");
     setIntervalMinutes(60);
     setBatchSize(1);
+    setSameVideoPerSlot(true);
     setCaptions(["", ""]);
     setMediaMode("videos");
     setActiveTab("create");
@@ -1516,6 +1534,41 @@ export default function PostarPage() {
 
               <div className="space-y-6">
 
+                {/* ⓪ Modo de distribuição */}
+                <div>
+                  <p className="text-xs text-white/60 font-medium mb-2">Modo de distribuição por conta</p>
+                  <div className="flex rounded-xl overflow-hidden border border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setSameVideoPerSlot(true)}
+                      className={cn(
+                        "flex-1 flex flex-col items-center gap-0.5 px-3 py-2.5 text-xs font-medium transition-all",
+                        sameVideoPerSlot
+                          ? "bg-[#00FF41]/15 text-[#00FF41] border-r border-[#00FF41]/20"
+                          : "bg-white/[0.02] text-white/35 hover:text-white/60"
+                      )}
+                    >
+                      <span>Mesmo vídeo</span>
+                      <span className={cn("text-[9px] font-normal", sameVideoPerSlot ? "text-[#00FF41]/60" : "text-white/20")}>todas as contas por disparo</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSameVideoPerSlot(false)}
+                      className={cn(
+                        "flex-1 flex flex-col items-center gap-0.5 px-3 py-2.5 text-xs font-medium transition-all",
+                        !sameVideoPerSlot
+                          ? "bg-[#00E5FF]/15 text-[#00E5FF]"
+                          : "bg-white/[0.02] text-white/35 hover:text-white/60"
+                      )}
+                    >
+                      <span>Vídeo único</span>
+                      <span className={cn("text-[9px] font-normal", !sameVideoPerSlot ? "text-[#00E5FF]/60" : "text-white/20")}>diferente por conta (anti-spam)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border-t border-white/[0.06]" />
+
                 {/* ① Tamanho do Lote */}
                 <div>
                   <div className="flex items-center gap-2 mb-3">
@@ -1638,8 +1691,12 @@ export default function PostarPage() {
                       {(() => {
                         const effectiveBatch = Math.max(1, batchSize);
                         const nAccounts = Math.max(1, selectedAccountIds.length);
-                        const slots = Math.ceil(totalVideos / effectiveBatch);
-                        const totalPosts = totalVideos * nAccounts;
+                        const slots = sameVideoPerSlot
+                          ? Math.ceil(totalVideos / effectiveBatch)
+                          : Math.ceil(totalVideos / (effectiveBatch * nAccounts));
+                        const totalPosts = sameVideoPerSlot
+                          ? totalVideos * nAccounts
+                          : totalVideos;
                         const lastMs = new Date(startDatetime).getTime() + (slots - 1) * intervalMinutes * 60_000;
                         const fmt = (iso: string) => new Date(iso).toLocaleString("pt-BR", {
                           day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
@@ -1647,9 +1704,18 @@ export default function PostarPage() {
                         const lastIso = new Date(lastMs).toISOString();
                         return (
                           <p className="text-xs text-white/55 leading-relaxed">
-                            <span className="text-[#00FF41] font-semibold">{totalVideos}</span> vídeo{totalVideos !== 1 ? "s" : ""} × <span className="text-[#00E5FF] font-semibold">{nAccounts}</span> conta{nAccounts !== 1 ? "s" : ""} ={" "}
-                            <span className="text-white font-semibold">{totalPosts}</span> posts em{" "}
-                            <span className="text-white font-semibold">{slots}</span> disparo{slots !== 1 ? "s" : ""}.{" "}
+                            {sameVideoPerSlot ? (
+                              <>
+                                <span className="text-[#00FF41] font-semibold">{totalVideos}</span> vídeo{totalVideos !== 1 ? "s" : ""} × <span className="text-[#00E5FF] font-semibold">{nAccounts}</span> conta{nAccounts !== 1 ? "s" : ""} ={" "}
+                                <span className="text-white font-semibold">{totalPosts}</span> posts em{" "}
+                                <span className="text-white font-semibold">{slots}</span> disparo{slots !== 1 ? "s" : ""}.
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-[#00FF41] font-semibold">{totalVideos}</span> vídeo{totalVideos !== 1 ? "s" : ""} distribuídos entre <span className="text-[#00E5FF] font-semibold">{nAccounts}</span> conta{nAccounts !== 1 ? "s" : ""} em{" "}
+                                <span className="text-white font-semibold">{slots}</span> disparo{slots !== 1 ? "s" : ""}.
+                              </>
+                            )}{" "}
                             Início: <span className="text-white/80">{fmt(startDatetime)}</span>
                             {slots > 1 && <> · Fim: <span className="text-white/80">{fmt(lastIso)}</span></>}.
                           </p>
@@ -1718,6 +1784,7 @@ export default function PostarPage() {
               intervalMinutes={intervalMinutes}
               startDatetime={startDatetime}
               captionCount={validCaptions.length}
+              sameVideoPerSlot={sameVideoPerSlot}
             />
 
             {/* Quick tips */}
