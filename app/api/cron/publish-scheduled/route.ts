@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
+import { getProxyForAccount } from "@/lib/proxy";
 import type { MetaPublishResult } from "@/lib/meta-publish";
 
 export const runtime = "nodejs";
@@ -25,6 +26,7 @@ interface AccountRow {
   ig_business_account_id: string | null;
   token_expires_at: string | null;
   fb_page_id: string | null;
+  proxy_url: string | null;
 }
 
 interface PostRow {
@@ -38,6 +40,24 @@ interface PostRow {
   videos_library: { public_url: string } | null;
 }
 
+// Erros de rate limit da Meta → resetar para "pending" (retentável no próximo ciclo).
+// Erros de token/credenciais → marcar como "failed" (permanente).
+const RATE_LIMIT_PATTERNS = [
+  "too many actions",
+  "an unexpected error has occurred",
+  "retry your request later",
+  "please retry",
+  "service unavailable",
+  "internal server error",
+  "fetch failed",
+  "smartproxy",
+];
+
+function isRateLimitError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return RATE_LIMIT_PATTERNS.some(p => lower.includes(p));
+}
+
 // Envolve publishViaMetaAPI num hard-timeout.
 // Se estourar: lança erro marcado com "[TIMEOUT]" para o catch saber que
 // deve resetar o status para "pending" (reprocessável) e não "failed".
@@ -45,10 +65,11 @@ function publishWithTimeout(
   igAccountId: string,
   token: string,
   videoUrl: string,
-  caption: string
+  caption: string,
+  proxy: import("undici").ProxyAgent | null
 ): Promise<MetaPublishResult> {
   return Promise.race([
-    publishViaMetaAPI(igAccountId, token, videoUrl, caption),
+    publishViaMetaAPI(igAccountId, token, videoUrl, caption, proxy),
     new Promise<MetaPublishResult>((_, reject) =>
       setTimeout(
         () => reject(new Error("[TIMEOUT] Meta API não processou em 50s — será reprocessado.")),
@@ -132,7 +153,7 @@ export async function GET(req: NextRequest) {
     .from("scheduled_posts")
     .select(
       "id, video_id, video_url, caption, scheduled_at, account_id, " +
-      "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id), " +
+      "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url), " +
       "videos_library(public_url)"
     )
     .eq("status", "pending")
@@ -213,13 +234,14 @@ export async function GET(req: NextRequest) {
     }
 
     const caption = post.caption ?? "";
+    const proxy = getProxyForAccount(account.id, account.proxy_url ?? null);
 
     try {
       let tokenToUse = account.meta_access_token;
 
       if (isTokenExpiringSoon(account.token_expires_at, 7)) {
         try {
-          const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id);
+          const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id, proxy);
           await admin
             .from("instagram_accounts")
             .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })
@@ -232,13 +254,14 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      console.log(`[publish-scheduled] Publicando via Meta API para @${account.username} (ig_id=${account.ig_business_account_id}) | videoUrl=${videoUrl.slice(0, 80)}...`);
+      console.log(`[publish-scheduled] Publicando via Meta API para @${account.username} (ig_id=${account.ig_business_account_id}) | proxy=${proxy ? "sim" : "não"} | videoUrl=${videoUrl.slice(0, 80)}...`);
 
       const result = await publishWithTimeout(
         account.ig_business_account_id,
         tokenToUse,
         videoUrl,
-        caption
+        caption,
+        proxy
       );
 
       if (result.status !== "ok") {
@@ -261,18 +284,19 @@ export async function GET(req: NextRequest) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const isTimeout = msg.startsWith("[TIMEOUT]");
+      const isRateLimit = isRateLimitError(msg);
 
-      if (isTimeout) {
-        // Timeout não é um erro permanente — resetar para "pending" permite que
-        // a próxima execução do cron tente publicar de novo.
-        console.warn(`[publish-scheduled] ⏱ @${account.username} (post ${post.id}): timeout — resetando para pending.`);
+      if (isTimeout || isRateLimit) {
+        // Erros transitórios → resetar para "pending" (retentável no próximo ciclo a cada 5 min).
+        const kind = isTimeout ? "timeout" : "rate-limit";
+        console.warn(`[publish-scheduled] ⏱ @${account.username} (post ${post.id}): ${kind} — resetando para pending.`);
         await admin
           .from("scheduled_posts")
           .update({ status: "pending", error_message: null })
           .eq("id", post.id);
-        summary.timed_out++;
+        if (isTimeout) summary.timed_out++; else summary.failed++;
       } else {
-        // Erro real (credenciais inválidas, vídeo rejeitado pela Meta, etc.)
+        // Erro permanente (credenciais inválidas, vídeo rejeitado pela Meta, etc.)
         console.error(`[publish-scheduled] ✗ @${account.username} (post ${post.id}):`, msg);
         await admin
           .from("scheduled_posts")

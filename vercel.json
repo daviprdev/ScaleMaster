@@ -9,6 +9,10 @@
       "schedule": "*/2 * * * *"
     },
     {
+      "path": "/api/cron/publish-scheduled",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/analytics/sync",
       "schedule": "0 2 * * *"
     }

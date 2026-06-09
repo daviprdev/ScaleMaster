@@ -735,6 +735,27 @@ async function processOneLoop(
         const alreadyDone = await containerAlreadyExists(admin, loop.id, account.id, windowStartIso);
         if (alreadyDone) return { kind: "already_done", account };
 
+        // ── Cap diário por conta (anti-rate-limit Meta) ───────────────────────
+        // Meta permite ~50 publicações/conta/dia via Content Publishing API.
+        // Quando o cap é atingido, a conta recebe "User is performing too many
+        // actions" em TODAS as tentativas — inclusive de outros loops.
+        // Pulamos a conta silenciosamente até a janela de 24h rolar.
+        const DAILY_POST_CAP = 40; // margem segura abaixo do limite de ~50
+        const { count: postsToday } = await (admin as any)
+          .from("pending_containers")
+          .select("id", { count: "exact", head: true })
+          .eq("account_id", account.id)
+          .eq("status", "published")
+          .gte("created_at", new Date(Date.now() - 24 * 60 * 60_000).toISOString());
+        if ((postsToday ?? 0) >= DAILY_POST_CAP) {
+          console.log(
+            `[loop-cron] @${account.username} atingiu o cap diário ` +
+            `(${postsToday}/${DAILY_POST_CAP} posts/24h) — pulando até a janela rolar.`
+          );
+          return { kind: "skip", account, reason: `cap diário atingido (${postsToday}/${DAILY_POST_CAP})` };
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         // Parse captions (isolado por conta — sem estado compartilhado)
         const rawCaptions = loop.captions;
         let loopCaptionsRaw: string[];
