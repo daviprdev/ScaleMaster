@@ -55,7 +55,7 @@ const VIDEO_COUNT_PRESETS = [
   { label: "Todos", value: -1 },
 ];
 
-const POSTS_PER_DAY_OPTIONS = [1, 2, 3, 4, 5];
+const POSTS_PER_DAY_PRESETS = [1, 2, 3, 5, 10];
 
 const MAX_CAPTION_CHARS = 2200;
 
@@ -690,6 +690,7 @@ export default function PostarPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
+  const [accountsWithCampaign, setAccountsWithCampaign] = useState<Set<string>>(new Set());
 
   // Folder
   const [folders, setFolders] = useState<FolderItem[]>([]);
@@ -731,6 +732,19 @@ export default function PostarPage() {
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
   useEffect(() => {
+    fetch("/api/campaigns")
+      .then(r => r.json() as Promise<{ campaigns: Campaign[] }>)
+      .then(d => {
+        const ids = new Set<string>();
+        (d.campaigns ?? [])
+          .filter(c => c.campaign_status === "running")
+          .forEach(c => c.account_ids.forEach(id => ids.add(id)));
+        setAccountsWithCampaign(ids);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     setLoadingFolders(true);
     fetch("/api/library/folders")
       .then(r => r.json() as Promise<{ folders: FolderItem[] }>)
@@ -755,6 +769,7 @@ export default function PostarPage() {
 
   const validCaptions = captions.filter(c => c.trim().length > 0);
   const selectedFolder = folders.find(f => f.id === selectedFolderId);
+  const accountsWithoutCampaign = accounts.filter(a => !accountsWithCampaign.has(a.id));
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -902,7 +917,7 @@ export default function PostarPage() {
                   <span className="text-xs font-semibold uppercase tracking-widest text-white/35">Contas</span>
                 </div>
                 {accounts.length > 0 && (
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button onClick={() => setSelectedAccountIds(accounts.map(a => a.id))} className="text-xs text-[#00FF41]/70 hover:text-[#00FF41] transition-colors">
                       Todas
                     </button>
@@ -910,6 +925,17 @@ export default function PostarPage() {
                     <button onClick={() => setSelectedAccountIds([])} className="text-xs text-white/30 hover:text-white/60 transition-colors">
                       Nenhuma
                     </button>
+                    {accountsWithCampaign.size > 0 && accountsWithoutCampaign.length > 0 && (
+                      <>
+                        <span className="text-white/15 text-xs">·</span>
+                        <button
+                          onClick={() => setSelectedAccountIds(accountsWithoutCampaign.map(a => a.id))}
+                          className="text-xs text-red-400/80 hover:text-red-400 transition-colors font-medium"
+                        >
+                          Novas ({accountsWithoutCampaign.length})
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -927,15 +953,24 @@ export default function PostarPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {accounts.map(acc => {
                     const isSelected = selectedAccountIds.includes(acc.id);
+                    const hasCampaign = accountsWithCampaign.has(acc.id);
+                    const isNew = !hasCampaign && accountsWithCampaign.size > 0;
                     return (
                       <button
                         key={acc.id}
                         onClick={() => toggleAccount(acc.id)}
                         className={cn(
-                          "flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left",
-                          isSelected ? "border-[#00FF41]/40 bg-[#00FF41]/5" : "border-white/[0.07] bg-white/[0.02] hover:border-white/15"
+                          "flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left relative",
+                          isSelected
+                            ? "border-[#00FF41]/40 bg-[#00FF41]/5"
+                            : isNew
+                              ? "border-red-500/35 bg-red-500/[0.05] hover:border-red-400/50"
+                              : "border-white/[0.07] bg-white/[0.02] hover:border-white/15"
                         )}
                       >
+                        {isNew && !isSelected && (
+                          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-400/70" />
+                        )}
                         <div className={cn("w-4 h-4 rounded-[4px] border flex items-center justify-center flex-shrink-0 transition-all", isSelected ? "bg-[#00FF41] border-[#00FF41]" : "border-white/20")}>
                           {isSelected && <Check size={9} className="text-black" strokeWidth={3} />}
                         </div>
@@ -1060,30 +1095,40 @@ export default function PostarPage() {
               {/* Posts por dia */}
               <div className="mb-5">
                 <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Posts por dia por conta</p>
-                <div className="flex gap-2">
-                  {POSTS_PER_DAY_OPTIONS.map(n => (
+                <div className="flex items-center gap-3 mb-3">
+                  <input
+                    type="number"
+                    min={1}
+                    max={24}
+                    value={postsPerDay}
+                    onChange={e => {
+                      const v = parseInt(e.target.value);
+                      if (!isNaN(v) && v >= 1 && v <= 24) setPostsPerDay(v);
+                    }}
+                    className="w-20 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-white text-center text-sm font-bold focus:outline-none focus:border-[#00E5FF]/40 focus:ring-1 focus:ring-[#00E5FF]/20 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span className="text-xs text-white/30">posts/dia</span>
+                  <span className="text-white/10 text-xs">·</span>
+                  <span className="text-xs text-white/25">
+                    ~{postsPerDay >= 24 ? "1" : Math.floor(24 / postsPerDay)}h de intervalo
+                  </span>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {POSTS_PER_DAY_PRESETS.map(n => (
                     <button
                       key={n}
                       onClick={() => setPostsPerDay(n)}
                       className={cn(
-                        "flex-1 py-3 rounded-xl text-sm font-bold transition-all border",
+                        "px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all border",
                         postsPerDay === n
                           ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
-                          : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                          : "bg-white/[0.04] text-white/35 border-white/[0.07] hover:border-white/20 hover:text-white/70"
                       )}
                     >
                       {n}
                     </button>
                   ))}
                 </div>
-                {postsPerDay > 0 && (
-                  <p className="mt-2 text-[11px] text-white/30">
-                    Intervalo de ~{Math.floor(24 / postsPerDay)}h entre posts
-                    {postsPerDay === 1 && " — 1 post por dia"}
-                    {postsPerDay === 2 && " — manhã e noite"}
-                    {postsPerDay === 3 && " — manhã, tarde e noite"}
-                  </p>
-                )}
               </div>
 
               {/* Start datetime */}
