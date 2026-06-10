@@ -697,7 +697,6 @@ export default function PostarPage() {
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [selectedFolderId, setSelectedFolderId] = useState<string>("");
   const [folderVideoCount, setFolderVideoCount] = useState<number>(0);
-  const [loadingFolderCount, setLoadingFolderCount] = useState(false);
   const [folderOpen, setFolderOpen] = useState(false);
 
   // Distribution
@@ -753,13 +752,9 @@ export default function PostarPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedFolderId) { setFolderVideoCount(0); return; }
-    setLoadingFolderCount(true);
-    fetch(`/api/library?folderId=${selectedFolderId}`)
-      .then(r => r.json() as Promise<{ videos: { id: string }[] }>)
-      .then(d => setFolderVideoCount(d.videos?.length ?? 0))
-      .finally(() => setLoadingFolderCount(false));
-  }, [selectedFolderId]);
+    const folder = folders.find(f => f.id === selectedFolderId);
+    setFolderVideoCount(folder?.video_count ?? 0);
+  }, [selectedFolderId, folders]);
 
   // ── Computed ───────────────────────────────────────────────────────────────
 
@@ -1077,14 +1072,13 @@ export default function PostarPage() {
                     );
                   })}
                 </div>
-                {selectedFolderId && !loadingFolderCount && folderVideoCount > 0 && (
+                {selectedFolderId && folderVideoCount > 0 && (
                   <p className="mt-2 text-[11px] text-white/30">
                     {videosPerAccount === folderVideoCount
                       ? `Todos os ${folderVideoCount} vídeos da pasta serão usados`
                       : `${videosPerAccount} de ${folderVideoCount} vídeos serão usados`}
                   </p>
                 )}
-                {loadingFolderCount && <p className="mt-2 text-xs text-white/30 flex items-center gap-1.5"><Loader2 size={10} className="animate-spin" /> Contando...</p>}
               </div>
             </SectionCard>
 
