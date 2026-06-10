@@ -14,7 +14,7 @@ export const maxDuration = 300;
 // Cada post pode esperar no máximo 50s (pollContainerStatus: 6×8s = 48s + overhead).
 // Com BATCH_SIZE=5 e RUN_BUDGET_MS=55s paramos de aceitar novos posts antes
 // do kill do servidor, garantindo que o status seja gravado no DB.
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 10;
 const RUN_BUDGET_MS = 55_000;   // para de clamar novos posts após 55s
 const PER_POST_TIMEOUT_MS = 50_000; // hard cap por post
 

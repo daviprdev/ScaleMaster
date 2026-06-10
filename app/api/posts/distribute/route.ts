@@ -39,8 +39,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Selecione ao menos 1 conta." }, { status: 400 });
   if (!folder_id)
     return NextResponse.json({ error: "Selecione uma pasta de mídia." }, { status: 400 });
-  if (!posts_per_day || posts_per_day < 1 || posts_per_day > 10)
-    return NextResponse.json({ error: "Posts por dia deve ser entre 1 e 10." }, { status: 400 });
+  if (!posts_per_day || posts_per_day < 1 || posts_per_day > 1440)
+    return NextResponse.json({ error: "Posts por dia deve ser entre 1 e 1440." }, { status: 400 });
   if (!start_at)
     return NextResponse.json({ error: "Informe a data e hora de início." }, { status: 400 });
 
