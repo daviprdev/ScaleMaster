@@ -314,17 +314,30 @@ function isRateLimitError(msg: string): boolean {
 function isCriticalMetaError(msg: string): boolean {
   const lower = msg.toLowerCase();
   const patterns = [
-    "oauthexception", "invalid_token", "token has expired",
-    "access token", "session has been invalidated",
-    "account has been restricted", "blocked", "checkpoint",
-    "error_code\":190", "error_code\":200",
-    "error code 190", "error code 200",
+    // Token OAuth genuinamente morto (não corresponde a erros transitórios)
+    "oauthexception",
+    "invalid_token",
+    "token has expired",
+    "session has been invalidated",
+    "invalid oauth access token",
+    "cannot parse access token",
+    // Restrição de conta (permanente)
+    "account has been restricted",
+    "blocked",
+    "checkpoint",
+    // Códigos de erro específicos da Meta (na mensagem legível)
+    "error code 190",
+    "error code 102",
+    "error code 104",
     // Conta pessoal sem suporte a reels via API
     "unsupported request - method type: post",
     // Token de conta não confirmada / sessão inválida
     "not a confirmed user",
     "sessions for the user are not allowed",
   ];
+  // NUNCA usar "access token" como padrão — é genérico demais e corresponde
+  // a erros transitórios da Meta (rate-limit temporário, instabilidade da API)
+  // marcando contas saudáveis como error de forma incorreta.
   return patterns.some(p => lower.includes(p));
 }
 
@@ -1089,6 +1102,30 @@ export async function GET(req: NextRequest) {
     console.log(`[loop-cron] PROXY_URL_TEMPLATE: configurado — todas as requisições Meta usarão Proxy Smartproxy. Fallback para IP da Vercel: DESATIVADO.`);
   } else {
     console.warn(`[loop-cron] PROXY_URL_TEMPLATE: NÃO configurado — requisições Meta saindo pelo IP puro da Vercel!`);
+  }
+
+  // ── CLEANUP: Arquivos temporários de efeitos de vídeo (temp/vfx_*) ─────────
+  // video-effects.ts faz upload para temp/ mas não deleta após o publish.
+  // Limpamos arquivos com mais de 2h a cada run do process-loops (a cada 15min).
+  {
+    const cleanupCutoff = new Date(now.getTime() - 2 * 60 * 60_000).toISOString();
+    try {
+      const { data: tempFiles } = await admin.storage
+        .from("videos-library")
+        .list("temp", { limit: 100, sortBy: { column: "created_at", order: "asc" } });
+
+      const toDelete = (tempFiles ?? [])
+        .filter(f => f.name.startsWith("vfx_") && f.created_at && f.created_at < cleanupCutoff)
+        .map(f => `temp/${f.name}`);
+
+      if (toDelete.length > 0) {
+        await admin.storage.from("videos-library").remove(toDelete);
+        console.log(`[cleanup] ${toDelete.length} arquivo(s) temp/vfx_* removidos (>2h).`);
+      }
+    } catch (cleanupErr) {
+      // Best-effort — não deve travar o cron
+      console.warn("[cleanup] Falha ao limpar arquivos temp:", String(cleanupErr));
+    }
   }
 
   // ── AUTO-HEALING: Desbloquear pending_containers fantasmas ────────────────

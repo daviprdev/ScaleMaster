@@ -289,16 +289,45 @@ export async function GET(req: NextRequest) {
       // e não precisa ser reaplicada após o publish.
 
     } catch (err) {
-      // FAIL FAST: qualquer erro (proxy, Meta, rate-limit) → marca como error imediatamente.
-      // Sem retry, sem backoff. O próximo ciclo do process-loops (interval_minutes) cria
-      // um novo container para esta conta. Cadência preservada sem travar a fila.
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[publish-pending] ✗ FAIL FAST @${account?.username ?? "?"} container ${container.id}: ${msg}`);
-      summary.errors++;
-      await (admin as any)
-        .from("pending_containers")
-        .update({ status: "error", error_message: msg.slice(0, 500) })
-        .eq("id", container.id);
+      const lower = msg.toLowerCase();
+
+      // Erros TRANSITÓRIOS: proxy, rate-limit, timeout → retry com backoff 5 min.
+      // Não destroem o container — o próximo publish-pending tentará novamente.
+      const isTransient = (
+        lower.includes("fetch failed") ||
+        lower.includes("smartproxy") ||
+        lower.includes("proxy") ||
+        lower.includes("timeout") ||
+        lower.includes("too many actions") ||
+        lower.includes("performing too many") ||
+        lower.includes("retry your request later") ||
+        lower.includes("please retry") ||
+        lower.includes("service temporarily unavailable") ||
+        lower.includes("an unexpected error has occurred")
+      );
+
+      if (isTransient) {
+        const retryAfter = new Date(Date.now() + 5 * 60_000).toISOString();
+        console.warn(
+          `[publish-pending] ⏸ @${account?.username ?? "?"} container ${container.id}: ` +
+          `erro transitório — retry em 5min. Motivo: ${msg.slice(0, 120)}`
+        );
+        await (admin as any)
+          .from("pending_containers")
+          .update({ status: "pending", retry_after: retryAfter })
+          .eq("id", container.id);
+        // Não incrementa summary.errors — é um retry esperado, não uma falha permanente
+      } else {
+        // Erro PERMANENTE (token inválido, conta restrita, vídeo rejeitado)
+        // → FAIL FAST: marca como error, process-loops criará novo container no próximo ciclo.
+        console.error(`[publish-pending] ✗ FAIL FAST @${account?.username ?? "?"} container ${container.id}: ${msg}`);
+        summary.errors++;
+        await (admin as any)
+          .from("pending_containers")
+          .update({ status: "error", error_message: msg.slice(0, 500) })
+          .eq("id", container.id);
+      }
     }
   }
 
