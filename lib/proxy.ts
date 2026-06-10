@@ -1,33 +1,19 @@
 /**
- * lib/proxy.ts — Suporte a proxies residenciais para chamadas à Meta Graph API.
+ * lib/proxy.ts — Suporte a proxies estáticos por conta para chamadas à Meta Graph API.
  *
- * Prioridade por conta:
- *   1. instagram_accounts.proxy_url (AES-256-GCM via ENCRYPTION_SECRET) — proxy dedicado
- *   2. PROXY_URL_TEMPLATE env var com placeholder {SESSION} — sticky session por conta
- *   3. Sem proxy (comportamento atual) — todas as chamadas saem do IP da Vercel
+ * Modelo: 1 proxy fixo por conta — IP nunca muda.
+ *   1. instagram_accounts.proxy_url (AES-256-GCM via ENCRYPTION_SECRET) → proxy dedicado da conta
+ *   2. null → sem proxy (chamadas saem pelo IP da Vercel)
  *
- * Sticky session: o session ID é derivado deterministicamente do account_id com
- * SHA-256 truncado a 8 hex chars. Provedores como Bright Data, Smartproxy, IPRoyal e
- * Oxylabs aceitam `username-session-{ID}:password@host:port` e retornam sempre o
- * mesmo IP residencial para o mesmo session ID (por ~10–30 min).
+ * Configurar via UI: menu ⋯ do card da conta → "Configurar Proxy"
  *
  * Formato suportado de URL de proxy:
  *   http://user:pass@proxy.host.com:port
- *   http://user-session-{SESSION}:pass@proxy.host.com:port  ← template com placeholder
  *   socks5://user:pass@proxy.host.com:port
  */
 
-import crypto from "crypto";
 import { ProxyAgent } from "undici";
 import { decrypt } from "@/lib/encrypt";
-
-/**
- * Gera um session ID de 8 hex chars determinístico para o account_id.
- * Mesmo account_id → mesmo ID → mesmo IP residencial (sticky session).
- */
-function sessionId(accountId: string): string {
-  return crypto.createHash("sha256").update(accountId).digest("hex").slice(0, 8);
-}
 
 /**
  * Censura a senha da URL de proxy para uso em logs (nunca expõe credenciais).
@@ -58,14 +44,12 @@ export function getProxyLabel(agent: ProxyAgent): string | undefined {
 
 /**
  * Constrói um ProxyAgent undici a partir de uma URL de proxy.
- * Substitui {SESSION} pelo session ID gerado para o account_id.
  * Retorna null se a URL for inválida.
  */
 function buildProxyAgent(rawUrl: string, accountId: string): ProxyAgent | null {
   try {
-    const url = rawUrl.replace("{SESSION}", sessionId(accountId));
-    const agent = new ProxyAgent(url);
-    proxyLabels.set(agent, censorProxyUrl(url));
+    const agent = new ProxyAgent(rawUrl);
+    proxyLabels.set(agent, censorProxyUrl(rawUrl));
     return agent;
   } catch (e) {
     console.warn(`[proxy] URL inválida para @account ${accountId.slice(0, 8)}…: ${String(e)}`);
@@ -89,7 +73,7 @@ export function getProxyForAccount(
       const raw = decrypt(encryptedProxyUrl);
       const agent = buildProxyAgent(raw, accountId);
       if (agent) {
-        console.log(`[proxy] @${accountId.slice(0, 8)}… → proxy dedicado (sessão ${sessionId(accountId)})`);
+        console.log(`[proxy] @${accountId.slice(0, 8)}… → proxy dedicado | ${proxyLabels.get(agent) ?? "URL configurada"}`);
         return agent;
       }
     } catch (e) {
@@ -97,19 +81,7 @@ export function getProxyForAccount(
     }
   }
 
-  // 2. Template global de proxy (env var PROXY_URL_TEMPLATE)
-  const template = process.env.PROXY_URL_TEMPLATE;
-  if (template) {
-    const agent = buildProxyAgent(template, accountId);
-    if (agent) {
-      const sid = sessionId(accountId);
-      const label = proxyLabels.get(agent) ?? "URL inválida";
-      console.log(`[proxy] @${accountId.slice(0, 8)}… → template global (sessão ${sid}) | host configurado: ${label}`);
-      return agent;
-    }
-  }
-
-  // 3. Sem proxy — comportamento padrão
+  // 2. Sem proxy — IP da Vercel
   return null;
 }
 

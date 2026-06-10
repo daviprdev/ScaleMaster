@@ -959,27 +959,13 @@ async function processOneLoop(
         } catch (proxyErr) {
           const proxyMsg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
           if (proxyMsg.toLowerCase() === "fetch failed" && proxy !== null) {
-            if (process.env.PROXY_URL_TEMPLATE) {
-              // Proxy configurado mas falhou → NÃO fazer fallback para IP da Vercel.
-              // Pulamos esta conta neste ciclo sem gravar container de erro —
-              // o loop tentará novamente no próximo interval_minutes.
-              console.error(
-                `[loop-cron] ⛔ @${account.username}: Proxy Smartproxy falhou (fetch failed) — ` +
-                `sem fallback para IP da Vercel. Conta pulada neste ciclo; tentará no próximo.`
-              );
-              continue;
-            }
-            // PROXY_URL_TEMPLATE ausente: fallback aceitável (proxy não era intencional)
-            console.warn(
-              `[loop-cron] ⚡ Proxy falhou @${account.username} (fetch failed) — ` +
-              `retentando SEM proxy. Configure PROXY_URL_TEMPLATE para forçar Smartproxy.`
+            // Proxy dedicado falhou → pula esta conta neste ciclo sem gravar container de erro.
+            // Tentará novamente no próximo interval_minutes.
+            console.error(
+              `[loop-cron] ⛔ @${account.username}: proxy falhou (fetch failed) — ` +
+              `conta pulada neste ciclo.`
             );
-            await createContainerForAccount(
-              admin, account, loop, videoUrl, caption, tokenToUse,
-              assignment.video.id, newCyclesDone,
-              initialDelayMinutes,
-              null
-            );
+            continue;
           } else {
             throw proxyErr;
           }
@@ -1096,13 +1082,6 @@ export async function GET(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
   const now = new Date();
-
-  // Verificação de proxy — diagnóstico de segurança no início de cada run
-  if (process.env.PROXY_URL_TEMPLATE) {
-    console.log(`[loop-cron] PROXY_URL_TEMPLATE: configurado — todas as requisições Meta usarão Proxy Smartproxy. Fallback para IP da Vercel: DESATIVADO.`);
-  } else {
-    console.warn(`[loop-cron] PROXY_URL_TEMPLATE: NÃO configurado — requisições Meta saindo pelo IP puro da Vercel!`);
-  }
 
   // ── CLEANUP: Arquivos temporários de efeitos de vídeo (temp/vfx_*) ─────────
   // video-effects.ts faz upload para temp/ mas não deleta após o publish.

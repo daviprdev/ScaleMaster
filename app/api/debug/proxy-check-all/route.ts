@@ -33,7 +33,7 @@ export async function GET() {
     accounts.map(async (account: { id: string; username: string; proxy_url: string | null }) => {
       const proxy = getProxyForAccount(account.id, account.proxy_url ?? null);
       const sessionId = crypto.createHash("sha256").update(account.id).digest("hex").slice(0, 8);
-      const source = account.proxy_url ? "dedicado" : process.env.PROXY_URL_TEMPLATE ? "template" : "nenhum";
+      const source = account.proxy_url ? "dedicado" : "nenhum";
 
       let ip: string | null = null;
       let err: string | null = null;

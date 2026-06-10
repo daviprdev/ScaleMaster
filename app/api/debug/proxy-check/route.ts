@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       active: !!proxy,
       session_id: sessionId,
       label: proxy ? (getProxyLabel(proxy) ?? "proxy configurado") : null,
-      source: account.proxy_url ? "dedicado (banco)" : process.env.PROXY_URL_TEMPLATE ? "template global" : "nenhum",
+      source: account.proxy_url ? "dedicado (banco)" : "nenhum",
     },
     result: {
       ip,

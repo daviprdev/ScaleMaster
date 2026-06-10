@@ -445,7 +445,7 @@ function AccountCard({
             icon={<Globe size={11} />}
             label={account.has_proxy ? "proxy ativo" : "sem proxy"}
             blue={account.has_proxy}
-            muted={!account.has_proxy}
+            amber={!account.has_proxy}
           />
           {account.meta_app_name && (
             <Metric

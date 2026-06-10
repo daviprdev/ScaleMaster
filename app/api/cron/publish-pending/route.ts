@@ -54,13 +54,6 @@ export async function GET(req: NextRequest) {
   const nowIso = now.toISOString();
   const summary = { checked: 0, published: 0, in_progress: 0, expired: 0, errors: 0, auto_healed: 0 };
 
-  // Verificação de proxy — diagnóstico de segurança no início de cada run
-  if (process.env.PROXY_URL_TEMPLATE) {
-    console.log(`[publish-pending] PROXY_URL_TEMPLATE: configurado — todas as requisições Meta usarão Proxy Smartproxy. Fallback para IP da Vercel: DESATIVADO.`);
-  } else {
-    console.warn(`[publish-pending] PROXY_URL_TEMPLATE: NÃO configurado — requisições Meta saindo pelo IP puro da Vercel!`);
-  }
-
   // ── AUTO-HEALING: Containers expirados (>90 min em pending/publishing) ──────
   // Exclui containers com stagger inicial ainda pendente (retry_after > now) —
   // esses foram criados com atraso intencional e NÃO devem ser mortos antes de serem publicados.
@@ -190,24 +183,17 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Poll com proxy — sem fallback para Vercel IP quando PROXY_URL_TEMPLATE está configurado.
+      // Poll via proxy dedicado da conta (se configurado).
       let pollStatus: Awaited<ReturnType<typeof pollContainerStatusOnce>>;
       try {
         pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse, proxy);
       } catch (pollErr) {
         const pollMsg = pollErr instanceof Error ? pollErr.message : String(pollErr);
         if (pollMsg.toLowerCase() === "fetch failed" && proxy !== null) {
-          if (process.env.PROXY_URL_TEMPLATE) {
-            // Proxy configurado mas falhou → NÃO cair no IP da Vercel.
-            // Relança → catch externo → container marcado como error (Fail Fast).
-            throw new Error(`[PROXY] Smartproxy falhou no poll (fetch failed) @${account.username} — sem fallback para IP da Vercel.`);
-          }
-          console.warn(`[publish-pending] ⚡ Proxy falhou @${account.username} (poll) — retentando sem proxy.`);
-          proxy = null;
-          pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse, null);
-        } else {
-          throw pollErr;
+          // Proxy dedicado falhou → sem fallback para IP da Vercel; relança para backoff.
+          throw new Error(`[PROXY] Proxy dedicado falhou no poll (fetch failed) @${account.username}.`);
         }
+        throw pollErr;
       }
 
       if (pollStatus === "in_progress") {
@@ -238,7 +224,7 @@ export async function GET(req: NextRequest) {
       }
       publishAttemptsInThisRun++;
 
-      // Publish via proxy — sem fallback para Vercel IP quando PROXY_URL_TEMPLATE está configurado.
+      // Publish via proxy dedicado da conta (se configurado).
       let mediaId = "";
       try {
         mediaId = await publishReadyContainer(
@@ -250,21 +236,10 @@ export async function GET(req: NextRequest) {
       } catch (pubErr) {
         const pubMsg = pubErr instanceof Error ? pubErr.message : String(pubErr);
         if (pubMsg.toLowerCase() === "fetch failed" && proxy !== null) {
-          if (process.env.PROXY_URL_TEMPLATE) {
-            // Proxy configurado mas falhou → NÃO cair no IP da Vercel.
-            // Relança → catch externo → container marcado como error (Fail Fast).
-            throw new Error(`[PROXY] Smartproxy falhou no publish (fetch failed) @${account.username} — sem fallback para IP da Vercel.`);
-          }
-          console.warn(`[publish-pending] ⚡ Proxy falhou @${account.username} (publish) — retentando sem proxy.`);
-          mediaId = await publishReadyContainer(
-            container.ig_business_account_id,
-            container.creation_id,
-            tokenToUse,
-            null
-          );
-        } else {
-          throw pubErr;
+          // Proxy dedicado falhou → sem fallback para IP da Vercel; relança para backoff.
+          throw new Error(`[PROXY] Proxy dedicado falhou no publish (fetch failed) @${account.username}.`);
         }
+        throw pubErr;
       }
 
       await (admin as any)
