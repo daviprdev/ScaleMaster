@@ -55,7 +55,7 @@ const VIDEO_COUNT_PRESETS = [
   { label: "Todos", value: -1 },
 ];
 
-const POSTS_PER_DAY_PRESETS = [1, 2, 3, 5, 10];
+const POSTS_PER_DAY_OPTIONS = [1, 2, 3, 4, 6, 8, 12, 24, 36, 48, 72];
 
 const MAX_CAPTION_CHARS = 2200;
 
@@ -1095,39 +1095,29 @@ export default function PostarPage() {
               {/* Posts por dia */}
               <div className="mb-5">
                 <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Posts por dia por conta</p>
-                <div className="flex items-center gap-3 mb-3">
-                  <input
-                    type="number"
-                    min={1}
-                    max={24}
-                    value={postsPerDay}
-                    onChange={e => {
-                      const v = parseInt(e.target.value);
-                      if (!isNaN(v) && v >= 1 && v <= 24) setPostsPerDay(v);
-                    }}
-                    className="w-20 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-white text-center text-sm font-bold focus:outline-none focus:border-[#00E5FF]/40 focus:ring-1 focus:ring-[#00E5FF]/20 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  <span className="text-xs text-white/30">posts/dia</span>
-                  <span className="text-white/10 text-xs">·</span>
-                  <span className="text-xs text-white/25">
-                    ~{postsPerDay >= 24 ? "1" : Math.floor(24 / postsPerDay)}h de intervalo
-                  </span>
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  {POSTS_PER_DAY_PRESETS.map(n => (
-                    <button
-                      key={n}
-                      onClick={() => setPostsPerDay(n)}
-                      className={cn(
-                        "px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all border",
-                        postsPerDay === n
-                          ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
-                          : "bg-white/[0.04] text-white/35 border-white/[0.07] hover:border-white/20 hover:text-white/70"
-                      )}
-                    >
-                      {n}
-                    </button>
-                  ))}
+                <div className="flex flex-wrap gap-2">
+                  {POSTS_PER_DAY_OPTIONS.map(n => {
+                    const mins = Math.floor((24 * 60) / n);
+                    const hint = mins >= 60
+                      ? `${Math.floor(mins / 60)}h`
+                      : `${mins}min`;
+                    return (
+                      <button
+                        key={n}
+                        onClick={() => setPostsPerDay(n)}
+                        title={`Intervalo: ~${hint} entre posts`}
+                        className={cn(
+                          "flex flex-col items-center px-3.5 py-2 rounded-xl border transition-all",
+                          postsPerDay === n
+                            ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
+                            : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                        )}
+                      >
+                        <span className="text-sm font-bold leading-none">{n}</span>
+                        <span className="text-[9px] opacity-50 mt-0.5 leading-none">{hint}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
