@@ -5,8 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, Film, CalendarDays, Send, FolderOpen, X, Check,
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
-  Layers, ChevronDown, Shuffle, Zap, LayoutGrid, List,
-  Library, Save, BookMarked, BarChart2, RefreshCw,
+  Shuffle, Zap, List, Library, Save, BookMarked, BarChart2,
+  RefreshCw, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,14 +18,6 @@ interface Account {
   display_name: string | null;
   avatar_url: string | null;
   is_active: boolean;
-}
-
-interface VideoItem {
-  id: string;
-  filename: string;
-  public_url: string;
-  folder_id: string | null;
-  created_at: string;
 }
 
 interface FolderItem {
@@ -56,17 +48,14 @@ interface Campaign {
   created_at: string;
 }
 
-const INTERVAL_PRESETS = [
-  { label: "15m", minutes: 15 },
-  { label: "30m", minutes: 30 },
-  { label: "1h", minutes: 60 },
-  { label: "2h", minutes: 120 },
-  { label: "4h", minutes: 240 },
-  { label: "12h", minutes: 720 },
-  { label: "24h", minutes: 1440 },
+const VIDEO_COUNT_PRESETS = [
+  { label: "10", value: 10 },
+  { label: "20", value: 20 },
+  { label: "50", value: 50 },
+  { label: "Todos", value: -1 },
 ];
 
-const BATCH_PRESETS = [1, 3, 5, 10, 20];
+const POSTS_PER_DAY_OPTIONS = [1, 2, 3, 4, 5];
 
 const MAX_CAPTION_CHARS = 2200;
 
@@ -81,271 +70,54 @@ function formatDatetime(iso: string): string {
   } catch { return iso; }
 }
 
-function computeLastSlot(startIso: string, intervalMinutes: number, slots: number): string {
-  if (!startIso || slots <= 1) return startIso;
-  try {
-    const ms = new Date(startIso).getTime() + (slots - 1) * intervalMinutes * 60_000;
-    return new Date(ms).toISOString();
-  } catch { return startIso; }
-}
+// ── DistributePreview ──────────────────────────────────────────────────────
 
-// ── VideoPickerModal ───────────────────────────────────────────────────────
-
-function VideoPickerModal({
-  selected,
-  onConfirm,
-  onClose,
-}: {
-  selected: string[];
-  onConfirm: (ids: string[], items: VideoItem[]) => void;
-  onClose: () => void;
-}) {
-  const [videos, setVideos] = useState<VideoItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [checked, setChecked] = useState<Set<string>>(new Set(selected));
-  const [gridView, setGridView] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/library")
-      .then(r => r.json() as Promise<{ videos: VideoItem[] }>)
-      .then(d => setVideos(d.videos ?? []))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const toggle = (id: string) =>
-    setChecked(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-
-  const toggleAll = () =>
-    setChecked(prev =>
-      prev.size === videos.length ? new Set() : new Set(videos.map(v => v.id))
-    );
-
-  const handleConfirm = () => {
-    const selectedItems = videos.filter(v => checked.has(v.id));
-    onConfirm([...checked], selectedItems);
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.96, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.96, opacity: 0 }}
-        transition={{ duration: 0.18 }}
-        onClick={e => e.stopPropagation()}
-        className="bg-black border border-white/10 rounded-2xl w-full max-w-3xl flex flex-col"
-        style={{ maxHeight: "85vh" }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.07] flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <Film size={16} className="text-[#00FF41]" />
-            <h2 className="text-white font-semibold text-sm">Selecionar Vídeos</h2>
-            {checked.size > 0 && (
-              <span className="px-2 py-0.5 rounded-md bg-[#00FF41]/15 text-[#00FF41] text-xs font-mono">
-                {checked.size} selecionados
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setGridView(v => !v)}
-              className="w-8 h-8 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors"
-            >
-              {gridView ? <List size={14} /> : <LayoutGrid size={14} />}
-            </button>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-white/40 hover:text-white transition-colors"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        </div>
-
-        {/* Toolbar */}
-        <div className="flex items-center gap-3 px-6 py-3 border-b border-white/[0.05] flex-shrink-0">
-          <button
-            onClick={toggleAll}
-            className="text-xs text-[#00E5FF] hover:text-white transition-colors"
-          >
-            {checked.size === videos.length ? "Desmarcar todos" : "Selecionar todos"}
-          </button>
-          <span className="text-white/15 text-xs">·</span>
-          <span className="text-white/30 text-xs">{videos.length} vídeos na biblioteca</span>
-        </div>
-
-        {/* Grid / List */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <div className="flex items-center justify-center h-48">
-              <Loader2 size={24} className="animate-spin text-[#00FF41]" />
-            </div>
-          ) : videos.length === 0 ? (
-            <div className="text-center py-16 text-white/25 text-sm">
-              Nenhum vídeo na biblioteca
-            </div>
-          ) : gridView ? (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-              {videos.map(v => {
-                const isChecked = checked.has(v.id);
-                return (
-                  <button
-                    key={v.id}
-                    onClick={() => toggle(v.id)}
-                    className={cn(
-                      "group relative aspect-[9/16] rounded-xl overflow-hidden border transition-all",
-                      isChecked
-                        ? "border-[#00FF41]/60 ring-1 ring-[#00FF41]/30"
-                        : "border-white/10 hover:border-white/25"
-                    )}
-                  >
-                    <video
-                      src={v.public_url}
-                      className="w-full h-full object-cover"
-                      muted preload="metadata"
-                    />
-                    <div className={cn(
-                      "absolute inset-0 transition-colors",
-                      isChecked ? "bg-[#00FF41]/10" : "bg-black/0 group-hover:bg-black/20"
-                    )} />
-                    {isChecked && (
-                      <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-[#00FF41] flex items-center justify-center">
-                        <Check size={11} className="text-black" strokeWidth={3} />
-                      </div>
-                    )}
-                    <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
-                      <p className="text-white text-[9px] truncate">{v.filename}</p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {videos.map(v => {
-                const isChecked = checked.has(v.id);
-                return (
-                  <button
-                    key={v.id}
-                    onClick={() => toggle(v.id)}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left",
-                      isChecked
-                        ? "border-[#00FF41]/30 bg-[#00FF41]/5"
-                        : "border-transparent hover:border-white/10 hover:bg-white/[0.03]"
-                    )}
-                  >
-                    <div className={cn(
-                      "w-4 h-4 rounded-[4px] border flex items-center justify-center flex-shrink-0 transition-all",
-                      isChecked ? "bg-[#00FF41] border-[#00FF41]" : "border-white/20"
-                    )}>
-                      {isChecked && <Check size={9} className="text-black" strokeWidth={3} />}
-                    </div>
-                    <div className="w-8 h-8 rounded-lg overflow-hidden bg-black/50 flex-shrink-0 border border-white/10">
-                      <video src={v.public_url} className="w-full h-full object-cover" muted preload="metadata" />
-                    </div>
-                    <span className="text-white/70 text-xs truncate flex-1">{v.filename}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-white/[0.07] flex-shrink-0">
-          <span className="text-white/30 text-xs">{checked.size} de {videos.length} selecionados</span>
-          <button
-            onClick={handleConfirm}
-            disabled={checked.size === 0}
-            className={cn(
-              "px-6 py-2 rounded-xl text-sm font-semibold transition-all",
-              checked.size > 0
-                ? "bg-[#00FF41] text-black hover:bg-[#00FF41]/90"
-                : "bg-white/[0.05] text-white/25 cursor-not-allowed"
-            )}
-          >
-            Confirmar ({checked.size})
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ── CampaignPreview ────────────────────────────────────────────────────────
-
-function CampaignPreview({
-  totalVideos,
+function DistributePreview({
+  videosPerAccount,
   totalAccounts,
-  batchSize,
-  intervalMinutes,
+  postsPerDay,
   startDatetime,
   captionCount,
-  sameVideoPerSlot,
 }: {
-  totalVideos: number;
+  videosPerAccount: number;
   totalAccounts: number;
-  batchSize: number;
-  intervalMinutes: number;
+  postsPerDay: number;
   startDatetime: string;
   captionCount: number;
-  sameVideoPerSlot: boolean;
 }) {
-  const effectiveBatch = Math.max(1, batchSize);
-  const nAccounts = Math.max(1, totalAccounts);
-  const postsPerSlot = sameVideoPerSlot
-    ? effectiveBatch * nAccounts
-    : effectiveBatch * nAccounts;
-  const slots = totalVideos > 0
-    ? sameVideoPerSlot
-      ? Math.ceil(totalVideos / effectiveBatch)
-      : Math.ceil(totalVideos / (effectiveBatch * nAccounts))
-    : 0;
+  const intervalMinutes = Math.floor((24 * 60) / Math.max(1, postsPerDay));
+  const days = videosPerAccount > 0 ? Math.ceil(videosPerAccount / Math.max(1, postsPerDay)) : 0;
+  const totalPosts = videosPerAccount * Math.max(1, totalAccounts);
 
-  const lastSlot = slots > 0 && startDatetime
-    ? computeLastSlot(startDatetime, intervalMinutes, slots)
-    : null;
+  const lastSlotIso = useMemo(() => {
+    if (!startDatetime || videosPerAccount === 0) return null;
+    try {
+      // Last post = last account (+ stagger) + last video slot
+      const lastAccountStagger = (Math.max(1, totalAccounts) - 1) * 5 * 60_000;
+      const lastVideoSlot = (videosPerAccount - 1) * intervalMinutes * 60_000;
+      return new Date(new Date(startDatetime).getTime() + lastVideoSlot + lastAccountStagger).toISOString();
+    } catch { return null; }
+  }, [startDatetime, videosPerAccount, totalAccounts, intervalMinutes]);
 
-  const previewSlots = useMemo(() => {
-    if (!startDatetime || slots === 0) return [];
-    const nAcc = Math.max(1, totalAccounts);
-    // videos consumed per slot (differs by mode)
-    const videosPerSlot = sameVideoPerSlot ? effectiveBatch : effectiveBatch * nAcc;
-    const preview = [];
-    for (let i = 0; i < Math.min(4, slots); i++) {
+  const timelineSlots = useMemo(() => {
+    if (!startDatetime || videosPerAccount === 0) return [];
+    const slots = [];
+    // Show first 3 days max (up to posts_per_day × 3 slots)
+    const total = Math.min(postsPerDay * 3, videosPerAccount);
+    for (let i = 0; i < total; i++) {
       const t = new Date(new Date(startDatetime).getTime() + i * intervalMinutes * 60_000);
-      const videosRemaining = totalVideos - i * videosPerSlot;
-      const videosThisSlot = Math.min(videosPerSlot, videosRemaining);
-      // posts created this slot
-      const postsThisSlot = sameVideoPerSlot ? videosThisSlot * nAcc : videosThisSlot;
-      preview.push({
-        time: t.toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }),
-        count: postsThisSlot,
-      });
+      slots.push(t.toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }));
     }
-    if (slots > 4) preview.push({ time: "...", count: 0 });
-    return preview;
-  }, [startDatetime, slots, effectiveBatch, intervalMinutes, totalVideos, totalAccounts, sameVideoPerSlot]);
+    return slots;
+  }, [startDatetime, postsPerDay, videosPerAccount, intervalMinutes]);
 
-  const isReady = totalVideos > 0 && totalAccounts > 0 && startDatetime;
+  const isReady = videosPerAccount > 0 && totalAccounts > 0 && startDatetime;
 
   return (
     <div className="glass-card rounded-2xl p-5 space-y-5">
       <div className="flex items-center gap-2">
-        <Layers size={14} className="text-[#00E5FF]" />
-        <span className="text-xs font-semibold uppercase tracking-widest text-white/40">Resumo da Campanha</span>
+        <Zap size={14} className="text-[#00E5FF]" />
+        <span className="text-xs font-semibold uppercase tracking-widest text-white/40">Resumo</span>
       </div>
 
       {!isReady ? (
@@ -354,15 +126,14 @@ function CampaignPreview({
         </p>
       ) : (
         <>
-          {/* Metrics grid */}
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: "Vídeos", value: totalVideos, color: "text-[#00FF41]" },
+              { label: "Vídeos/conta", value: videosPerAccount, color: "text-[#00FF41]" },
               { label: "Contas", value: totalAccounts, color: "text-[#00E5FF]" },
-              { label: "Por Disparo", value: effectiveBatch, color: "text-white" },
-              { label: "Disparos", value: slots, color: "text-white" },
+              { label: "Total de posts", value: totalPosts, color: "text-white" },
+              { label: "Duração", value: `${days}d`, color: "text-white" },
+              { label: "Posts/dia", value: postsPerDay, color: "text-white/60" },
               { label: "Legendas", value: captionCount, color: "text-white/60" },
-              { label: "Intervalo", value: `${intervalMinutes}min`, color: "text-white/60" },
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/[0.06]">
                 <p className="text-white/35 text-[10px] uppercase tracking-wider">{label}</p>
@@ -371,54 +142,43 @@ function CampaignPreview({
             ))}
           </div>
 
-          {/* Time range */}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <div className="flex justify-between text-[10px]">
               <span className="text-white/30 uppercase tracking-wider">Início</span>
               <span className="text-[#00FF41] font-mono">{formatDatetime(startDatetime)}</span>
             </div>
-            {lastSlot && (
+            {lastSlotIso && (
               <div className="flex justify-between text-[10px]">
-                <span className="text-white/30 uppercase tracking-wider">Fim</span>
-                <span className="text-[#00E5FF] font-mono">{formatDatetime(lastSlot)}</span>
+                <span className="text-white/30 uppercase tracking-wider">Fim estimado</span>
+                <span className="text-[#00E5FF] font-mono">{formatDatetime(lastSlotIso)}</span>
               </div>
             )}
           </div>
 
-          {/* Anti-spam badge */}
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#00FF41]/5 border border-[#00FF41]/20">
             <Shuffle size={12} className="text-[#00FF41] flex-shrink-0" />
             <p className="text-[10px] text-[#00FF41]/80">
-              {sameVideoPerSlot
-                ? "Mesmo vídeo para todas as contas em cada disparo"
-                : "Vídeo diferente por conta em cada disparo (anti-spam)"}
+              Cada conta recebe os vídeos em ordem aleatória única
             </p>
           </div>
 
-          {/* Slot preview timeline */}
-          {previewSlots.length > 0 && (
+          {timelineSlots.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-[10px] text-white/25 uppercase tracking-wider">Timeline</p>
-              {previewSlots.map((s, i) => (
+              <p className="text-[10px] text-white/25 uppercase tracking-wider">
+                Horários por conta (Conta 1)
+              </p>
+              {timelineSlots.slice(0, 6).map((s, i) => (
                 <div key={i} className="flex items-center gap-3">
-                  {s.time !== "..." ? (
-                    <>
-                      <span className="text-[#00E5FF]/60 font-mono text-[10px] w-28 flex-shrink-0">{s.time}</span>
-                      <div className="flex-1 h-[3px] rounded-full bg-white/[0.05] overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-[#00FF41]/60 to-[#00E5FF]/60"
-                          style={{ width: `${Math.round((s.count / (effectiveBatch * Math.max(1, totalAccounts))) * 100)}%` }}
-                        />
-                      </div>
-                      <span className="text-white/30 text-[10px] w-16 text-right">{s.count} post{s.count !== 1 ? "s" : ""}</span>
-                    </>
-                  ) : (
-                    <span className="text-white/15 text-[10px]">
-                      + {slots - 4} disparos restantes...
-                    </span>
-                  )}
+                  <span className="text-[#00E5FF]/60 font-mono text-[10px] w-28 flex-shrink-0">{s}</span>
+                  <div className="flex-1 h-[3px] rounded-full bg-white/[0.05] overflow-hidden">
+                    <div className="h-full rounded-full bg-gradient-to-r from-[#00FF41]/60 to-[#00E5FF]/60 w-full" />
+                  </div>
+                  <span className="text-white/30 text-[10px] w-16 text-right">{totalAccounts} conta{totalAccounts !== 1 ? "s" : ""}</span>
                 </div>
               ))}
+              {timelineSlots.length < videosPerAccount && (
+                <p className="text-white/15 text-[10px]">+ {videosPerAccount - timelineSlots.length} slots restantes...</p>
+              )}
             </div>
           )}
         </>
@@ -490,10 +250,7 @@ function CaptionEditor({
       const res = await fetch("/api/saved-captions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: saveTitle.trim() || null,
-          content: content.trim(),
-        }),
+        body: JSON.stringify({ title: saveTitle.trim() || null, content: content.trim() }),
       });
       const d = await res.json() as { caption?: SavedCaption };
       if (d.caption) {
@@ -530,7 +287,6 @@ function CaptionEditor({
             transition={{ duration: 0.15 }}
           >
             <div>
-              {/* Textarea */}
               <div className="relative">
                 <div className="absolute top-3 left-3 flex items-center gap-1.5 pointer-events-none z-10">
                   <span className="text-[10px] font-mono text-[#00FF41]/50 bg-[#00FF41]/10 rounded-md px-1.5 py-0.5">
@@ -545,10 +301,7 @@ function CaptionEditor({
                   className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm placeholder-white/20 resize-none focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all leading-relaxed"
                 />
                 <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
-                  <span className={cn(
-                    "text-[10px] transition-colors",
-                    cap.length > MAX_CAPTION_CHARS * 0.9 ? "text-yellow-400" : "text-white/20"
-                  )}>
+                  <span className={cn("text-[10px] transition-colors", cap.length > MAX_CAPTION_CHARS * 0.9 ? "text-yellow-400" : "text-white/20")}>
                     {cap.length}/{MAX_CAPTION_CHARS}
                   </span>
                   {captions.length > 1 && (
@@ -562,7 +315,6 @@ function CaptionEditor({
                 </div>
               </div>
 
-              {/* Save-to-library inline panel */}
               <AnimatePresence>
                 {cap.trim().length > 0 && (
                   <motion.div
@@ -619,7 +371,6 @@ function CaptionEditor({
         ))}
       </AnimatePresence>
 
-      {/* Bottom action row */}
       <div className="flex gap-2">
         <button
           type="button"
@@ -678,7 +429,6 @@ function CaptionEditor({
                     <div className="py-8 text-center">
                       <BookMarked size={20} className="text-white/10 mx-auto mb-2" />
                       <p className="text-white/25 text-xs">Nenhuma legenda salva ainda.</p>
-                      <p className="text-white/15 text-[10px] mt-1">Use o botão &ldquo;Salvar para depois&rdquo; abaixo de uma legenda.</p>
                     </div>
                   ) : (
                     savedCaptions.map(sc => (
@@ -686,21 +436,12 @@ function CaptionEditor({
                         key={sc.id}
                         className="group flex items-start gap-2 px-4 py-3 hover:bg-white/[0.04] transition-colors border-b border-white/[0.04] last:border-0"
                       >
-                        <button
-                          onClick={() => inject(sc.content)}
-                          className="flex-1 text-left min-w-0"
-                        >
+                        <button onClick={() => inject(sc.content)} className="flex-1 text-left min-w-0">
                           {sc.title && (
-                            <p className="text-xs font-medium text-[#00E5FF]/80 truncate mb-0.5">
-                              {sc.title}
-                            </p>
+                            <p className="text-xs font-medium text-[#00E5FF]/80 truncate mb-0.5">{sc.title}</p>
                           )}
-                          <p className="text-xs text-white/55 line-clamp-2 leading-relaxed">
-                            {sc.content}
-                          </p>
-                          <p className="text-[9px] text-white/20 mt-1">
-                            Clique para usar
-                          </p>
+                          <p className="text-xs text-white/55 line-clamp-2 leading-relaxed">{sc.content}</p>
+                          <p className="text-[9px] text-white/20 mt-1">Clique para usar</p>
                         </button>
                         <button
                           onClick={() => removeFromLibrary(sc.id)}
@@ -712,14 +453,6 @@ function CaptionEditor({
                     ))
                   )}
                 </div>
-
-                {savedCaptions.length > 0 && (
-                  <div className="px-4 py-2.5 border-t border-white/[0.05]">
-                    <p className="text-[9px] text-white/20 text-center">
-                      Clique em uma legenda para adicioná-la à campanha
-                    </p>
-                  </div>
-                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -736,14 +469,10 @@ function CaptionEditor({
   );
 }
 
-// ── SectionCard ────────────────────────────────────────────────────────────
+// ── SectionCard / SectionLabel ─────────────────────────────────────────────
 
 function SectionCard({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div className={cn("glass-card p-5 rounded-2xl", className)}>
-      {children}
-    </div>
-  );
+  return <div className={cn("glass-card p-5 rounded-2xl", className)}>{children}</div>;
 }
 
 function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: React.ReactNode }) {
@@ -757,13 +486,7 @@ function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: R
 
 // ── CampaignsList ──────────────────────────────────────────────────────────
 
-function CampaignsList({
-  accounts,
-  onCreateNew,
-}: {
-  accounts: Account[];
-  onCreateNew: () => void;
-}) {
+function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreateNew: () => void }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -774,14 +497,11 @@ function CampaignsList({
       const res = await fetch("/api/campaigns");
       const d = await res.json() as { campaigns: Campaign[] };
       setCampaigns(d.campaigns ?? []);
-    } catch {/* silent */} finally {
-      setLoading(false);
-    }
+    } catch {/* silent */} finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
 
-  // Auto-refresh every 15s when running campaigns exist
   useEffect(() => {
     const hasRunning = campaigns.some(c => c.campaign_status === "running");
     if (!hasRunning) return;
@@ -806,9 +526,7 @@ function CampaignsList({
     try {
       await fetch(`/api/campaigns?id=${encodeURIComponent(campaignId)}`, { method: "DELETE" });
       await fetchCampaigns();
-    } finally {
-      setDeletingId(null);
-    }
+    } finally { setDeletingId(null); }
   };
 
   if (loading) {
@@ -826,12 +544,12 @@ function CampaignsList({
           <BarChart2 size={24} className="text-white/15" />
         </div>
         <p className="text-white/30 text-sm mb-1">Nenhuma campanha encontrada</p>
-        <p className="text-white/15 text-xs mb-5">Crie sua primeira campanha em lote</p>
+        <p className="text-white/15 text-xs mb-5">Crie sua primeira distribuição</p>
         <button
           onClick={onCreateNew}
           className="px-5 py-2.5 rounded-xl bg-[#00FF41]/10 text-[#00FF41] text-sm font-medium hover:bg-[#00FF41]/20 transition-all border border-[#00FF41]/20"
         >
-          Criar campanha
+          Nova Distribuição
         </button>
       </div>
     );
@@ -841,7 +559,6 @@ function CampaignsList({
 
   return (
     <div className="max-w-3xl mx-auto">
-      {/* Summary bar */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-4 text-xs text-white/30">
           {running.length > 0 && (
@@ -861,18 +578,13 @@ function CampaignsList({
         </button>
       </div>
 
-      {/* Campaign cards */}
       <div className="space-y-3">
         {campaigns.map(campaign => {
-          const progress = campaign.total > 0
-            ? Math.round((campaign.published / campaign.total) * 100)
-            : 0;
+          const progress = campaign.total > 0 ? Math.round((campaign.published / campaign.total) * 100) : 0;
           const isRunning = campaign.campaign_status === "running";
           const isDeleting = deletingId === campaign.campaign_id;
           const isConfirming = confirmDelete === campaign.campaign_id;
-          const campAccounts = campaign.account_ids
-            .map(id => accountMap.get(id))
-            .filter(Boolean) as Account[];
+          const campAccounts = campaign.account_ids.map(id => accountMap.get(id)).filter(Boolean) as Account[];
 
           return (
             <motion.div
@@ -882,138 +594,68 @@ function CampaignsList({
               transition={{ duration: 0.2 }}
               className="glass-card rounded-2xl p-5 space-y-4"
             >
-              {/* Row 1: ID + Status badge + Delete */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className={cn(
-                    "w-2 h-2 rounded-full flex-shrink-0 mt-0.5",
-                    isRunning
-                      ? "bg-[#00FF41] shadow-[0_0_6px_rgba(0,255,65,0.8)]"
-                      : "bg-white/15"
-                  )} />
+                  <div className={cn("w-2 h-2 rounded-full flex-shrink-0 mt-0.5", isRunning ? "bg-[#00FF41] shadow-[0_0_6px_rgba(0,255,65,0.8)]" : "bg-white/15")} />
                   <div className="min-w-0">
-                    <p className="text-white/60 font-mono text-xs tracking-wider">
-                      #{campaign.campaign_id.slice(0, 8).toUpperCase()}
-                    </p>
-                    <p className="text-white/25 text-[10px] mt-0.5">
-                      Criada {formatDatetime(campaign.created_at)}
-                    </p>
+                    <p className="text-white/60 font-mono text-xs tracking-wider">#{campaign.campaign_id.slice(0, 8).toUpperCase()}</p>
+                    <p className="text-white/25 text-[10px] mt-0.5">Criada {formatDatetime(campaign.created_at)}</p>
                   </div>
                 </div>
-
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  {/* Status badge */}
                   <span className={cn(
                     "px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wide border whitespace-nowrap",
-                    isRunning
-                      ? "bg-[#00FF41]/10 text-[#00FF41] border-[#00FF41]/20"
-                      : "bg-white/[0.04] text-white/25 border-white/[0.08]"
+                    isRunning ? "bg-[#00FF41]/10 text-[#00FF41] border-[#00FF41]/20" : "bg-white/[0.04] text-white/25 border-white/[0.08]"
                   )}>
                     {isRunning ? "🟢 Executando" : "⚫ Concluída"}
                   </span>
-
-                  {/* Confirm-then-delete button */}
                   <button
                     onClick={() => handleDelete(campaign.campaign_id)}
                     disabled={isDeleting}
-                    title={isConfirming
-                      ? "Clique novamente para confirmar"
-                      : isRunning
-                        ? "Cancelar posts pendentes"
-                        : "Remover campanha"}
                     className={cn(
                       "w-7 h-7 rounded-lg border flex items-center justify-center transition-all text-xs",
-                      isConfirming
-                        ? "bg-red-500/15 border-red-500/40 text-red-400 font-bold"
-                        : "bg-white/[0.04] border-white/[0.08] text-white/25 hover:text-red-400 hover:border-red-400/25 hover:bg-red-400/8",
+                      isConfirming ? "bg-red-500/15 border-red-500/40 text-red-400 font-bold" : "bg-white/[0.04] border-white/[0.08] text-white/25 hover:text-red-400 hover:border-red-400/25 hover:bg-red-400/8",
                       isDeleting && "opacity-40 cursor-not-allowed"
                     )}
                   >
-                    {isDeleting
-                      ? <Loader2 size={11} className="animate-spin" />
-                      : isConfirming
-                        ? "?"
-                        : <Trash2 size={11} />
-                    }
+                    {isDeleting ? <Loader2 size={11} className="animate-spin" /> : isConfirming ? "?" : <Trash2 size={11} />}
                   </button>
                 </div>
               </div>
 
-              {/* Row 2: Progress bar */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[10px]">
-                  <span className="text-white/40">
-                    {campaign.published} de {campaign.total} posts publicados
-                  </span>
-                  <span className={cn(
-                    "font-mono font-bold",
-                    progress >= 100 ? "text-[#00FF41]" : isRunning ? "text-[#00E5FF]" : "text-white/30"
-                  )}>
-                    {progress}%
-                  </span>
+                  <span className="text-white/40">{campaign.published} de {campaign.total} posts publicados</span>
+                  <span className={cn("font-mono font-bold", progress >= 100 ? "text-[#00FF41]" : isRunning ? "text-[#00E5FF]" : "text-white/30")}>{progress}%</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
                     transition={{ duration: 0.7, ease: "easeOut" }}
-                    className={cn(
-                      "h-full rounded-full",
-                      progress >= 100
-                        ? "bg-[#00FF41]"
-                        : "bg-gradient-to-r from-[#00FF41]/70 to-[#00E5FF]/70"
-                    )}
+                    className={cn("h-full rounded-full", progress >= 100 ? "bg-[#00FF41]" : "bg-gradient-to-r from-[#00FF41]/70 to-[#00E5FF]/70")}
                   />
                 </div>
-                {(campaign.failed > 0 || campaign.cancelled > 0 || campaign.pending > 0) && (
+                {(campaign.failed > 0 || campaign.pending > 0) && (
                   <div className="flex gap-3 text-[10px]">
-                    {campaign.pending > 0 && (
-                      <span className="text-yellow-400/60">
-                        {campaign.pending} pendente{campaign.pending !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                    {campaign.failed > 0 && (
-                      <span className="text-red-400/60">
-                        {campaign.failed} falha{campaign.failed !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                    {campaign.cancelled > 0 && (
-                      <span className="text-white/20">
-                        {campaign.cancelled} cancelado{campaign.cancelled !== 1 ? "s" : ""}
-                      </span>
-                    )}
+                    {campaign.pending > 0 && <span className="text-yellow-400/60">{campaign.pending} pendente{campaign.pending !== 1 ? "s" : ""}</span>}
+                    {campaign.failed > 0 && <span className="text-red-400/60">{campaign.failed} falha{campaign.failed !== 1 ? "s" : ""}</span>}
                   </div>
                 )}
               </div>
 
-              {/* Row 3: Accounts + Next/Last slot */}
               <div className="flex items-center justify-between gap-2">
-                {/* Account avatars */}
                 <div className="flex items-center gap-2">
                   <div className="flex -space-x-1.5">
                     {campAccounts.slice(0, 5).map(acc => (
                       acc.avatar_url ? (
-                        <img
-                          key={acc.id}
-                          src={acc.avatar_url}
-                          alt={acc.username}
-                          title={`@${acc.username}`}
-                          className="w-5 h-5 rounded-full border border-black object-cover"
-                        />
+                        <img key={acc.id} src={acc.avatar_url} alt={acc.username} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-black object-cover" />
                       ) : (
-                        <div
-                          key={acc.id}
-                          title={`@${acc.username}`}
-                          className="w-5 h-5 rounded-full border border-black bg-gradient-to-br from-[#00FF41]/30 to-[#00E5FF]/30"
-                        />
+                        <div key={acc.id} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-black bg-gradient-to-br from-[#00FF41]/30 to-[#00E5FF]/30" />
                       )
                     ))}
-                    {/* Fallback circles when accounts not yet loaded */}
                     {campAccounts.length === 0 && campaign.account_ids.slice(0, 5).map(id => (
-                      <div
-                        key={id}
-                        className="w-5 h-5 rounded-full border border-black bg-white/10"
-                      />
+                      <div key={id} className="w-5 h-5 rounded-full border border-black bg-white/10" />
                     ))}
                     {campaign.account_ids.length > 5 && (
                       <div className="w-5 h-5 rounded-full border border-black bg-white/10 flex items-center justify-center">
@@ -1021,22 +663,13 @@ function CampaignsList({
                       </div>
                     )}
                   </div>
-                  <span className="text-white/25 text-[10px]">
-                    {campaign.account_ids.length} conta{campaign.account_ids.length !== 1 ? "s" : ""}
-                  </span>
+                  <span className="text-white/25 text-[10px]">{campaign.account_ids.length} conta{campaign.account_ids.length !== 1 ? "s" : ""}</span>
                 </div>
-
-                {/* Next / Last slot */}
                 <div className="text-right text-[10px] flex-shrink-0">
                   {isRunning && campaign.next_pending ? (
-                    <span className="flex items-center gap-1 text-[#00E5FF]/60">
-                      <Clock size={9} />
-                      Próximo: {formatDatetime(campaign.next_pending)}
-                    </span>
+                    <span className="flex items-center gap-1 text-[#00E5FF]/60"><Clock size={9} />Próximo: {formatDatetime(campaign.next_pending)}</span>
                   ) : (
-                    <span className="text-white/20">
-                      Encerrada: {formatDatetime(campaign.last_slot)}
-                    </span>
+                    <span className="text-white/20">Encerrada: {formatDatetime(campaign.last_slot)}</span>
                   )}
                 </div>
               </div>
@@ -1051,20 +684,14 @@ function CampaignsList({
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function PostarPage() {
-  // ── Tab ───────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"create" | "campaigns">("create");
 
-  // ── Accounts ──────────────────────────────────────────────────
+  // Accounts
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
 
-  // ── Media ─────────────────────────────────────────────────────
-  const [mediaMode, setMediaMode] = useState<"videos" | "folder">("videos");
-  const [showVideoPicker, setShowVideoPicker] = useState(false);
-  const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
-  const [selectedVideoItems, setSelectedVideoItems] = useState<VideoItem[]>([]);
-
+  // Folder
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [selectedFolderId, setSelectedFolderId] = useState<string>("");
@@ -1072,156 +699,119 @@ export default function PostarPage() {
   const [loadingFolderCount, setLoadingFolderCount] = useState(false);
   const [folderOpen, setFolderOpen] = useState(false);
 
-  // ── Schedule ──────────────────────────────────────────────────
-  const [sameVideoPerSlot, setSameVideoPerSlot] = useState(true);
+  // Distribution
+  const [videoCount, setVideoCount] = useState<number>(20);      // -1 = todos
+  const [postsPerDay, setPostsPerDay] = useState<number>(2);
   const [startDatetime, setStartDatetime] = useState("");
-  const [intervalMinutes, setIntervalMinutes] = useState(60);
-  const [batchSize, setBatchSize] = useState(1);
 
-  // ── Captions ──────────────────────────────────────────────────
+  // Captions
   const [captions, setCaptions] = useState<string[]>(["", ""]);
 
-  // ── Submit ────────────────────────────────────────────────────
+  // Submit
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{
-    count: number; slots: number; first_slot: string; last_slot: string;
+    total_posts: number; videos_per_account: number; days: number;
+    accounts: number; first_slot: string; last_slot: string;
   } | null>(null);
 
   const minDatetime = new Date(Date.now() + 5 * 60_000).toISOString().slice(0, 16);
 
-  // ── Fetch accounts ──────────────────────────────────────────
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+
   const fetchAccounts = useCallback(async () => {
     setLoadingAccounts(true);
     try {
       const res = await fetch("/api/accounts/list");
       const d = await res.json() as { accounts: Account[] };
       setAccounts((d.accounts ?? []).filter(a => a.is_active));
-    } finally {
-      setLoadingAccounts(false);
-    }
+    } finally { setLoadingAccounts(false); }
   }, []);
 
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
-  // ── Fetch folders ────────────────────────────────────────────
   useEffect(() => {
-    if (mediaMode !== "folder") return;
     setLoadingFolders(true);
     fetch("/api/library/folders")
       .then(r => r.json() as Promise<{ folders: FolderItem[] }>)
       .then(d => setFolders(d.folders ?? []))
       .finally(() => setLoadingFolders(false));
-  }, [mediaMode]);
+  }, []);
 
-  // ── Fetch folder video count when folder changes ──────────────
   useEffect(() => {
     if (!selectedFolderId) { setFolderVideoCount(0); return; }
     setLoadingFolderCount(true);
     fetch(`/api/library?folderId=${selectedFolderId}`)
-      .then(r => r.json() as Promise<{ videos: VideoItem[] }>)
+      .then(r => r.json() as Promise<{ videos: { id: string }[] }>)
       .then(d => setFolderVideoCount(d.videos?.length ?? 0))
       .finally(() => setLoadingFolderCount(false));
   }, [selectedFolderId]);
 
-  // ── Computed values ──────────────────────────────────────────
-  const totalVideos = mediaMode === "videos"
-    ? selectedVideoIds.length
-    : folderVideoCount;
+  // ── Computed ───────────────────────────────────────────────────────────────
 
-  const totalAccounts = selectedAccountIds.length;
+  const videosPerAccount = videoCount === -1
+    ? folderVideoCount
+    : Math.min(videoCount, folderVideoCount);
 
   const validCaptions = captions.filter(c => c.trim().length > 0);
+  const selectedFolder = folders.find(f => f.id === selectedFolderId);
 
-  // ── Handlers ─────────────────────────────────────────────────
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
   const toggleAccount = (id: string) =>
-    setSelectedAccountIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-
-  const selectAllAccounts = () =>
-    setSelectedAccountIds(accounts.map(a => a.id));
-
-  const deselectAllAccounts = () =>
-    setSelectedAccountIds([]);
-
-  const handleVideoConfirm = (ids: string[], items: VideoItem[]) => {
-    setSelectedVideoIds(ids);
-    setSelectedVideoItems(items);
-    setShowVideoPicker(false);
-  };
+    setSelectedAccountIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const handleSubmit = async () => {
-    if (totalAccounts === 0) { setSubmitError("Selecione ao menos 1 conta."); return; }
-    if (mediaMode === "videos" && selectedVideoIds.length === 0) {
-      setSubmitError("Selecione ao menos 1 vídeo.");
-      return;
-    }
-    if (mediaMode === "folder" && !selectedFolderId) {
-      setSubmitError("Selecione uma pasta.");
-      return;
-    }
-    if (mediaMode === "folder" && folderVideoCount === 0) {
-      setSubmitError("A pasta selecionada está vazia.");
-      return;
-    }
+    if (selectedAccountIds.length === 0) { setSubmitError("Selecione ao menos 1 conta."); return; }
+    if (!selectedFolderId) { setSubmitError("Selecione uma pasta de mídia."); return; }
+    if (folderVideoCount === 0) { setSubmitError("A pasta selecionada está vazia."); return; }
     if (validCaptions.length === 0) { setSubmitError("Adicione ao menos 1 legenda."); return; }
     if (!startDatetime) { setSubmitError("Defina a data e hora de início."); return; }
-    if (intervalMinutes < 1) { setSubmitError("Intervalo mínimo de 1 minuto."); return; }
 
     setSubmitError(null);
     setSubmitting(true);
 
     try {
-      const body: Record<string, unknown> = {
-        account_ids: selectedAccountIds,
-        captions: validCaptions,
-        start_datetime: new Date(startDatetime).toISOString(),
-        interval_minutes: intervalMinutes,
-        batch_size: Math.max(1, batchSize),
-        same_video_per_slot: sameVideoPerSlot,
-      };
-
-      if (mediaMode === "videos") {
-        body.video_ids = selectedVideoIds;
-      } else {
-        body.folder_id = selectedFolderId;
-      }
-
-      const res = await fetch("/api/posts/schedule", {
+      const res = await fetch("/api/posts/distribute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          account_ids: selectedAccountIds,
+          folder_id: selectedFolderId,
+          video_count: videoCount,
+          posts_per_day: postsPerDay,
+          start_at: new Date(startDatetime).toISOString(),
+          captions: validCaptions,
+        }),
       });
 
       const data = await res.json() as {
-        success: boolean;
-        count: number;
-        slots: number;
-        first_slot: string;
-        last_slot: string;
-        error?: string;
+        success?: boolean; error?: string;
+        total_posts?: number; videos_per_account?: number;
+        days?: number; accounts?: number; first_slot?: string; last_slot?: string;
       };
 
       if (!res.ok || data.error) {
-        setSubmitError(data.error ?? "Erro ao criar campanha.");
+        setSubmitError(data.error ?? "Erro ao criar distribuição.");
         return;
       }
 
-      // Success: reset form, show notification banner, switch to campaigns tab
       setSelectedAccountIds([]);
-      setSelectedVideoIds([]);
-      setSelectedVideoItems([]);
       setSelectedFolderId("");
       setFolderVideoCount(0);
       setStartDatetime("");
-      setIntervalMinutes(60);
-      setBatchSize(1);
+      setVideoCount(20);
+      setPostsPerDay(2);
       setCaptions(["", ""]);
-      setMediaMode("videos");
 
-      setSuccess({ count: data.count, slots: data.slots, first_slot: data.first_slot, last_slot: data.last_slot });
+      setSuccess({
+        total_posts: data.total_posts ?? 0,
+        videos_per_account: data.videos_per_account ?? 0,
+        days: data.days ?? 0,
+        accounts: data.accounts ?? 0,
+        first_slot: data.first_slot ?? "",
+        last_slot: data.last_slot ?? "",
+      });
       setActiveTab("campaigns");
     } catch {
       setSubmitError("Erro de conexão. Tente novamente.");
@@ -1234,34 +824,28 @@ export default function PostarPage() {
     setSuccess(null);
     setSubmitError(null);
     setSelectedAccountIds([]);
-    setSelectedVideoIds([]);
-    setSelectedVideoItems([]);
     setSelectedFolderId("");
     setFolderVideoCount(0);
     setStartDatetime("");
-    setIntervalMinutes(60);
-    setBatchSize(1);
-    setSameVideoPerSlot(true);
+    setVideoCount(20);
+    setPostsPerDay(2);
     setCaptions(["", ""]);
-    setMediaMode("videos");
     setActiveTab("create");
   };
 
-  const selectedFolder = folders.find(f => f.id === selectedFolderId);
+  // ── Render ─────────────────────────────────────────────────────────────────
 
-  // ── Render ───────────────────────────────────────────────────
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
-      {/* Header */}
       <div className="mb-6">
-        <h1 className="page-title">Gerenciador de Campanhas</h1>
-        <p className="page-subtitle">Agendamento em lote com distribuição inteligente anti-spam</p>
+        <h1 className="page-title">Distribuição de Conteúdo</h1>
+        <p className="page-subtitle">Distribua vídeos de uma pasta para múltiplas contas com ordem aleatória única por conta</p>
       </div>
 
       {/* Tabs */}
       <div className="flex border-b border-white/[0.07] mb-6 gap-1">
         {([
-          { id: "create", label: "Criar Campanha", Icon: Plus },
+          { id: "create", label: "Nova Distribuição", Icon: Film },
           { id: "campaigns", label: "Campanhas Ativas", Icon: BarChart2 },
         ] as const).map(({ id, label, Icon }) => (
           <button
@@ -1269,9 +853,7 @@ export default function PostarPage() {
             onClick={() => setActiveTab(id)}
             className={cn(
               "flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all border-b-2 -mb-px",
-              activeTab === id
-                ? "border-[#00FF41] text-[#00FF41]"
-                : "border-transparent text-white/35 hover:text-white/60"
+              activeTab === id ? "border-[#00FF41] text-[#00FF41]" : "border-transparent text-white/35 hover:text-white/60"
             )}
           >
             <Icon size={13} />
@@ -1280,7 +862,7 @@ export default function PostarPage() {
         ))}
       </div>
 
-      {/* Success notification banner (visible in campaigns tab) */}
+      {/* Success banner */}
       <AnimatePresence>
         {success && (
           <motion.div
@@ -1292,27 +874,24 @@ export default function PostarPage() {
           >
             <CheckCircle2 size={14} className="text-[#00FF41] flex-shrink-0" />
             <p className="text-sm text-[#00FF41] flex-1">
-              <span className="font-semibold">{success.count} posts</span> agendados em{" "}
-              <span className="font-semibold">{success.slots} disparos</span>
-              {" · "}Primeiro disparo: {formatDatetime(success.first_slot)}
+              <span className="font-semibold">{success.total_posts} posts</span> criados —{" "}
+              <span className="font-semibold">{success.videos_per_account} vídeos</span> por conta em{" "}
+              <span className="font-semibold">{success.days} dia{success.days !== 1 ? "s" : ""}</span>
+              {" · "}Início: {formatDatetime(success.first_slot)}
             </p>
-            <button
-              onClick={() => setSuccess(null)}
-              className="text-[#00FF41]/40 hover:text-[#00FF41] transition-colors flex-shrink-0"
-            >
+            <button onClick={() => setSuccess(null)} className="text-[#00FF41]/40 hover:text-[#00FF41] transition-colors flex-shrink-0">
               <X size={13} />
             </button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Tab Content ── */}
-
       {activeTab === "campaigns" ? (
         <CampaignsList accounts={accounts} onCreateNew={handleReset} />
       ) : (
         <div className="flex flex-col lg:flex-row gap-6 items-start">
-          {/* ── Left: Form ── */}
+
+          {/* Form */}
           <div className="flex-1 min-w-0 space-y-4">
 
             {/* 1. Contas */}
@@ -1324,18 +903,12 @@ export default function PostarPage() {
                 </div>
                 {accounts.length > 0 && (
                   <div className="flex gap-2">
-                    <button
-                      onClick={selectAllAccounts}
-                      className="text-xs text-[#00FF41]/70 hover:text-[#00FF41] transition-colors"
-                    >
-                      Selecionar Todas
+                    <button onClick={() => setSelectedAccountIds(accounts.map(a => a.id))} className="text-xs text-[#00FF41]/70 hover:text-[#00FF41] transition-colors">
+                      Todas
                     </button>
                     <span className="text-white/15 text-xs">·</span>
-                    <button
-                      onClick={deselectAllAccounts}
-                      className="text-xs text-white/30 hover:text-white/60 transition-colors"
-                    >
-                      Desmarcar
+                    <button onClick={() => setSelectedAccountIds([])} className="text-xs text-white/30 hover:text-white/60 transition-colors">
+                      Nenhuma
                     </button>
                   </div>
                 )}
@@ -1360,15 +933,10 @@ export default function PostarPage() {
                         onClick={() => toggleAccount(acc.id)}
                         className={cn(
                           "flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left",
-                          isSelected
-                            ? "border-[#00FF41]/40 bg-[#00FF41]/5"
-                            : "border-white/[0.07] bg-white/[0.02] hover:border-white/15"
+                          isSelected ? "border-[#00FF41]/40 bg-[#00FF41]/5" : "border-white/[0.07] bg-white/[0.02] hover:border-white/15"
                         )}
                       >
-                        <div className={cn(
-                          "w-4 h-4 rounded-[4px] border flex items-center justify-center flex-shrink-0 transition-all",
-                          isSelected ? "bg-[#00FF41] border-[#00FF41]" : "border-white/20"
-                        )}>
+                        <div className={cn("w-4 h-4 rounded-[4px] border flex items-center justify-center flex-shrink-0 transition-all", isSelected ? "bg-[#00FF41] border-[#00FF41]" : "border-white/20")}>
                           {isSelected && <Check size={9} className="text-black" strokeWidth={3} />}
                         </div>
                         {acc.avatar_url ? (
@@ -1378,9 +946,7 @@ export default function PostarPage() {
                         )}
                         <div className="min-w-0">
                           <p className="text-sm text-white truncate">@{acc.username}</p>
-                          {acc.display_name && (
-                            <p className="text-xs text-white/35 truncate">{acc.display_name}</p>
-                          )}
+                          {acc.display_name && <p className="text-xs text-white/35 truncate">{acc.display_name}</p>}
                         </div>
                       </button>
                     );
@@ -1395,337 +961,169 @@ export default function PostarPage() {
               )}
             </SectionCard>
 
-            {/* 2. Mídia */}
+            {/* 2. Pasta + Quantidade */}
             <SectionCard>
-              <SectionLabel Icon={Film}>Mídia</SectionLabel>
+              <SectionLabel Icon={FolderOpen}>Pasta de Mídia</SectionLabel>
 
-              {/* Mode toggle */}
-              <div className="flex rounded-xl overflow-hidden border border-white/10 mb-4">
-                {(["videos", "folder"] as const).map(mode => (
+              {/* Folder selector */}
+              {loadingFolders ? (
+                <div className="flex items-center gap-2 text-white/30 text-sm py-2">
+                  <Loader2 size={14} className="animate-spin" /> Carregando pastas...
+                </div>
+              ) : folders.length === 0 ? (
+                <p className="text-white/25 text-sm py-4 text-center">
+                  Nenhuma pasta criada.{" "}
+                  <a href="/dashboard/library" className="text-[#00E5FF] hover:underline">Criar pasta</a>
+                </p>
+              ) : (
+                <div className="relative mb-4">
                   <button
-                    key={mode}
-                    onClick={() => setMediaMode(mode)}
-                    className={cn(
-                      "flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-all",
-                      mediaMode === mode
-                        ? "bg-[#00FF41]/15 text-[#00FF41] border-r border-[#00FF41]/20"
-                        : "bg-white/[0.02] text-white/35 hover:text-white/60"
-                    )}
+                    onClick={() => setFolderOpen(v => !v)}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 hover:border-white/20 transition-colors"
                   >
-                    {mode === "videos" ? <><Film size={14} /> Vídeos Avulsos</> : <><FolderOpen size={14} /> Pasta Completa</>}
+                    <span className={cn("text-sm", selectedFolder ? "text-white" : "text-white/30")}>
+                      {selectedFolder
+                        ? `📁 ${selectedFolder.name} · ${folderVideoCount} vídeos`
+                        : "Selecionar pasta..."}
+                    </span>
+                    <ChevronDown size={14} className={cn("text-white/30 transition-transform", folderOpen && "rotate-180")} />
                   </button>
-                ))}
+
+                  <AnimatePresence>
+                    {folderOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.12 }}
+                        className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#0d111b] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                      >
+                        {folders.map(f => (
+                          <button
+                            key={f.id}
+                            onClick={() => { setSelectedFolderId(f.id); setFolderOpen(false); }}
+                            className={cn(
+                              "w-full flex items-center justify-between px-4 py-3 text-sm text-left hover:bg-white/[0.05] transition-colors",
+                              selectedFolderId === f.id && "bg-[#00FF41]/5 text-[#00FF41]"
+                            )}
+                          >
+                            <span className="text-white">📁 {f.name}</span>
+                            <span className="text-white/30 text-xs">{f.video_count} vídeos</span>
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+
+              {/* Quantidade */}
+              <div>
+                <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Quantos vídeos postar</p>
+                <div className="flex gap-2">
+                  {VIDEO_COUNT_PRESETS.map(({ label, value }) => {
+                    const isDisabled = value !== -1 && value > folderVideoCount && folderVideoCount > 0;
+                    return (
+                      <button
+                        key={value}
+                        onClick={() => !isDisabled && setVideoCount(value)}
+                        disabled={isDisabled}
+                        className={cn(
+                          "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all border",
+                          videoCount === value
+                            ? "bg-[#00FF41]/15 text-[#00FF41] border-[#00FF41]/30"
+                            : isDisabled
+                              ? "bg-white/[0.02] text-white/15 border-white/[0.05] cursor-not-allowed"
+                              : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedFolderId && !loadingFolderCount && folderVideoCount > 0 && (
+                  <p className="mt-2 text-[11px] text-white/30">
+                    {videosPerAccount === folderVideoCount
+                      ? `Todos os ${folderVideoCount} vídeos da pasta serão usados`
+                      : `${videosPerAccount} de ${folderVideoCount} vídeos serão usados`}
+                  </p>
+                )}
+                {loadingFolderCount && <p className="mt-2 text-xs text-white/30 flex items-center gap-1.5"><Loader2 size={10} className="animate-spin" /> Contando...</p>}
+              </div>
+            </SectionCard>
+
+            {/* 3. Cadência */}
+            <SectionCard>
+              <SectionLabel Icon={CalendarDays}>Cadência</SectionLabel>
+
+              {/* Posts por dia */}
+              <div className="mb-5">
+                <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Posts por dia por conta</p>
+                <div className="flex gap-2">
+                  {POSTS_PER_DAY_OPTIONS.map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setPostsPerDay(n)}
+                      className={cn(
+                        "flex-1 py-3 rounded-xl text-sm font-bold transition-all border",
+                        postsPerDay === n
+                          ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
+                          : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                      )}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                {postsPerDay > 0 && (
+                  <p className="mt-2 text-[11px] text-white/30">
+                    Intervalo de ~{Math.floor(24 / postsPerDay)}h entre posts
+                    {postsPerDay === 1 && " — 1 post por dia"}
+                    {postsPerDay === 2 && " — manhã e noite"}
+                    {postsPerDay === 3 && " — manhã, tarde e noite"}
+                  </p>
+                )}
               </div>
 
-              <AnimatePresence mode="wait">
-                {mediaMode === "videos" ? (
+              {/* Start datetime */}
+              <div>
+                <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Data e hora do primeiro post</p>
+                <input
+                  type="datetime-local"
+                  value={startDatetime}
+                  min={minDatetime}
+                  onChange={e => setStartDatetime(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all [color-scheme:dark]"
+                />
+              </div>
+
+              {/* Summary */}
+              <AnimatePresence>
+                {videosPerAccount > 0 && startDatetime && selectedAccountIds.length > 0 && (
                   <motion.div
-                    key="videos"
-                    initial={{ opacity: 0, y: 4 }}
+                    initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.15 }}
+                    transition={{ duration: 0.2 }}
+                    className="mt-5 p-4 rounded-xl bg-white/[0.03] border border-white/[0.07]"
                   >
-                    <button
-                      onClick={() => setShowVideoPicker(true)}
-                      className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-white/15 text-white/40 text-sm hover:border-[#00FF41]/40 hover:text-[#00FF41]/60 transition-all"
-                    >
-                      <Plus size={14} />
-                      {selectedVideoIds.length === 0 ? "Selecionar vídeos da biblioteca" : `${selectedVideoIds.length} vídeo${selectedVideoIds.length !== 1 ? "s" : ""} selecionado${selectedVideoIds.length !== 1 ? "s" : ""}`}
-                    </button>
-
-                    {selectedVideoItems.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {selectedVideoItems.slice(0, 8).map(v => (
-                          <div
-                            key={v.id}
-                            className="relative w-10 h-[71px] rounded-lg overflow-hidden border border-[#00FF41]/30"
-                          >
-                            <video src={v.public_url} className="w-full h-full object-cover" muted preload="metadata" />
-                          </div>
-                        ))}
-                        {selectedVideoItems.length > 8 && (
-                          <div className="w-10 h-[71px] rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center">
-                            <span className="text-white/30 text-[10px]">+{selectedVideoItems.length - 8}</span>
-                          </div>
-                        )}
-                        <button
-                          onClick={() => { setSelectedVideoIds([]); setSelectedVideoItems([]); }}
-                          className="ml-1 text-[10px] text-white/25 hover:text-red-400 transition-colors self-end pb-1"
-                        >
-                          Limpar
-                        </button>
-                      </div>
-                    )}
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="folder"
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.15 }}
-                  >
-                    {loadingFolders ? (
-                      <div className="flex items-center gap-2 text-white/30 text-sm py-2">
-                        <Loader2 size={14} className="animate-spin" /> Carregando pastas...
-                      </div>
-                    ) : folders.length === 0 ? (
-                      <p className="text-white/25 text-sm py-4 text-center">
-                        Nenhuma pasta criada.{" "}
-                        <a href="/dashboard/library" className="text-[#00E5FF] hover:underline">Criar pasta</a>
-                      </p>
-                    ) : (
-                      <div className="relative">
-                        <button
-                          onClick={() => setFolderOpen(v => !v)}
-                          className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 hover:border-white/20 transition-colors"
-                        >
-                          <span className={cn("text-sm", selectedFolder ? "text-white" : "text-white/30")}>
-                            {selectedFolder
-                              ? `📁 ${selectedFolder.name} · ${folderVideoCount} vídeos`
-                              : "Selecionar pasta..."
-                            }
-                          </span>
-                          <ChevronDown size={14} className={cn("text-white/30 transition-transform", folderOpen && "rotate-180")} />
-                        </button>
-
-                        <AnimatePresence>
-                          {folderOpen && (
-                            <motion.div
-                              initial={{ opacity: 0, y: -6 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -6 }}
-                              transition={{ duration: 0.12 }}
-                              className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#0d111b] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
-                            >
-                              {folders.map(f => (
-                                <button
-                                  key={f.id}
-                                  onClick={() => { setSelectedFolderId(f.id); setFolderOpen(false); }}
-                                  className={cn(
-                                    "w-full flex items-center justify-between px-4 py-3 text-sm text-left hover:bg-white/[0.05] transition-colors",
-                                    selectedFolderId === f.id && "bg-[#00FF41]/5 text-[#00FF41]"
-                                  )}
-                                >
-                                  <span className="text-white">📁 {f.name}</span>
-                                  <span className="text-white/30 text-xs">{f.video_count} vídeos</span>
-                                </button>
-                              ))}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    )}
-
-                    {loadingFolderCount && selectedFolderId && (
-                      <p className="mt-2 text-xs text-white/30 flex items-center gap-1.5">
-                        <Loader2 size={10} className="animate-spin" /> Contando vídeos...
-                      </p>
-                    )}
+                    {(() => {
+                      const days = Math.ceil(videosPerAccount / postsPerDay);
+                      const totalPosts = videosPerAccount * selectedAccountIds.length;
+                      return (
+                        <p className="text-xs text-white/55 leading-relaxed">
+                          <span className="text-[#00FF41] font-semibold">{videosPerAccount}</span> vídeos ×{" "}
+                          <span className="text-[#00E5FF] font-semibold">{selectedAccountIds.length}</span> conta{selectedAccountIds.length !== 1 ? "s" : ""} ={" "}
+                          <span className="text-white font-semibold">{totalPosts}</span> posts ao longo de{" "}
+                          <span className="text-white font-semibold">{days}</span> dia{days !== 1 ? "s" : ""}.
+                          {" "}Cada conta recebe os vídeos em ordem aleatória única.
+                        </p>
+                      );
+                    })()}
                   </motion.div>
                 )}
               </AnimatePresence>
-            </SectionCard>
-
-            {/* 3. Distribuição */}
-            <SectionCard>
-              <SectionLabel Icon={CalendarDays}>Distribuição de Tempo</SectionLabel>
-
-              <div className="space-y-6">
-
-                {/* ⓪ Modo de distribuição */}
-                <div>
-                  <p className="text-xs text-white/60 font-medium mb-2">Modo de distribuição por conta</p>
-                  <div className="flex rounded-xl overflow-hidden border border-white/10">
-                    <button
-                      type="button"
-                      onClick={() => setSameVideoPerSlot(true)}
-                      className={cn(
-                        "flex-1 flex flex-col items-center gap-0.5 px-3 py-2.5 text-xs font-medium transition-all",
-                        sameVideoPerSlot
-                          ? "bg-[#00FF41]/15 text-[#00FF41] border-r border-[#00FF41]/20"
-                          : "bg-white/[0.02] text-white/35 hover:text-white/60"
-                      )}
-                    >
-                      <span>Mesmo vídeo</span>
-                      <span className={cn("text-[9px] font-normal", sameVideoPerSlot ? "text-[#00FF41]/60" : "text-white/20")}>todas as contas por disparo</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSameVideoPerSlot(false)}
-                      className={cn(
-                        "flex-1 flex flex-col items-center gap-0.5 px-3 py-2.5 text-xs font-medium transition-all",
-                        !sameVideoPerSlot
-                          ? "bg-[#00E5FF]/15 text-[#00E5FF]"
-                          : "bg-white/[0.02] text-white/35 hover:text-white/60"
-                      )}
-                    >
-                      <span>Vídeo único</span>
-                      <span className={cn("text-[9px] font-normal", !sameVideoPerSlot ? "text-[#00E5FF]/60" : "text-white/20")}>diferente por conta (anti-spam)</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="border-t border-white/[0.06]" />
-
-                {/* ① Tamanho do Lote */}
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-5 h-5 rounded-full bg-[#00FF41]/15 text-[#00FF41] text-[10px] font-bold flex items-center justify-center flex-shrink-0">1</span>
-                    <label className="text-xs text-white/60 font-medium">Vídeos por disparo (tamanho do lote)</label>
-                  </div>
-
-                  {/* Stepper */}
-                  <div className="flex items-center gap-4 mb-3">
-                    <button
-                      type="button"
-                      onClick={() => setBatchSize(v => Math.max(1, v - 1))}
-                      className="w-10 h-10 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:bg-white/[0.1] hover:text-white transition-all flex items-center justify-center text-lg font-light select-none"
-                    >
-                      −
-                    </button>
-                    <div className="flex-1 text-center">
-                      <span className="text-[#00FF41] font-mono text-3xl font-bold">{batchSize}</span>
-                      <p className="text-white/25 text-[10px] mt-0.5">vídeo{batchSize !== 1 ? "s" : ""} por disparo</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setBatchSize(v => Math.min(100, v + 1))}
-                      className="w-10 h-10 rounded-xl bg-white/[0.05] border border-white/10 text-white/60 hover:bg-white/[0.1] hover:text-white transition-all flex items-center justify-center text-lg font-light select-none"
-                    >
-                      +
-                    </button>
-                  </div>
-
-                  {/* Presets */}
-                  <div className="flex gap-2">
-                    {BATCH_PRESETS.map(v => (
-                      <button
-                        key={v}
-                        onClick={() => setBatchSize(v)}
-                        className={cn(
-                          "flex-1 py-1.5 rounded-lg text-xs font-mono transition-all",
-                          batchSize === v
-                            ? "bg-[#00FF41]/15 text-[#00FF41] border border-[#00FF41]/30"
-                            : "bg-white/[0.04] text-white/35 border border-white/[0.07] hover:border-white/20 hover:text-white/60"
-                        )}
-                      >
-                        {v}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Divider */}
-                <div className="border-t border-white/[0.06]" />
-
-                {/* ② Intervalo */}
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-5 h-5 rounded-full bg-[#00E5FF]/15 text-[#00E5FF] text-[10px] font-bold flex items-center justify-center flex-shrink-0">2</span>
-                    <label className="text-xs text-white/60 font-medium">A cada quanto tempo (intervalo entre disparos)</label>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {INTERVAL_PRESETS.map(p => (
-                      <button
-                        key={p.minutes}
-                        onClick={() => setIntervalMinutes(p.minutes)}
-                        className={cn(
-                          "px-3 py-1 rounded-lg text-xs font-mono transition-all",
-                          intervalMinutes === p.minutes
-                            ? "bg-[#00E5FF]/15 text-[#00E5FF] border border-[#00E5FF]/30"
-                            : "bg-white/[0.04] text-white/40 border border-white/[0.07] hover:border-white/20 hover:text-white/60"
-                        )}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={intervalMinutes}
-                      min={1}
-                      max={43200}
-                      onChange={e => setIntervalMinutes(Math.max(1, Number(e.target.value)))}
-                      className="w-24 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm text-center focus:outline-none focus:border-[#00E5FF]/40 focus:ring-1 focus:ring-[#00E5FF]/20 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    <span className="text-white/35 text-sm">minutos</span>
-                    {intervalMinutes >= 60 && (
-                      <span className="text-white/25 text-xs">
-                        ({(intervalMinutes / 60).toFixed(1).replace(".0", "")}h)
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Divider */}
-                <div className="border-t border-white/[0.06]" />
-
-                {/* ③ Data de início */}
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-5 h-5 rounded-full bg-white/10 text-white/50 text-[10px] font-bold flex items-center justify-center flex-shrink-0">3</span>
-                    <label className="text-xs text-white/60 font-medium">Começando quando (data e hora de início)</label>
-                  </div>
-                  <input
-                    type="datetime-local"
-                    value={startDatetime}
-                    min={minDatetime}
-                    onChange={e => setStartDatetime(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all [color-scheme:dark]"
-                  />
-                </div>
-
-                {/* Dynamic summary */}
-                <AnimatePresence>
-                  {totalVideos > 0 && startDatetime && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      transition={{ duration: 0.2 }}
-                      className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.07]"
-                    >
-                      {(() => {
-                        const effectiveBatch = Math.max(1, batchSize);
-                        const nAccounts = Math.max(1, selectedAccountIds.length);
-                        const slots = sameVideoPerSlot
-                          ? Math.ceil(totalVideos / effectiveBatch)
-                          : Math.ceil(totalVideos / (effectiveBatch * nAccounts));
-                        const totalPosts = sameVideoPerSlot
-                          ? totalVideos * nAccounts
-                          : totalVideos;
-                        const lastMs = new Date(startDatetime).getTime() + (slots - 1) * intervalMinutes * 60_000;
-                        const fmt = (iso: string) => new Date(iso).toLocaleString("pt-BR", {
-                          day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
-                        });
-                        const lastIso = new Date(lastMs).toISOString();
-                        return (
-                          <p className="text-xs text-white/55 leading-relaxed">
-                            {sameVideoPerSlot ? (
-                              <>
-                                <span className="text-[#00FF41] font-semibold">{totalVideos}</span> vídeo{totalVideos !== 1 ? "s" : ""} × <span className="text-[#00E5FF] font-semibold">{nAccounts}</span> conta{nAccounts !== 1 ? "s" : ""} ={" "}
-                                <span className="text-white font-semibold">{totalPosts}</span> posts em{" "}
-                                <span className="text-white font-semibold">{slots}</span> disparo{slots !== 1 ? "s" : ""}.
-                              </>
-                            ) : (
-                              <>
-                                <span className="text-[#00FF41] font-semibold">{totalVideos}</span> vídeo{totalVideos !== 1 ? "s" : ""} distribuídos entre <span className="text-[#00E5FF] font-semibold">{nAccounts}</span> conta{nAccounts !== 1 ? "s" : ""} em{" "}
-                                <span className="text-white font-semibold">{slots}</span> disparo{slots !== 1 ? "s" : ""}.
-                              </>
-                            )}{" "}
-                            Início: <span className="text-white/80">{fmt(startDatetime)}</span>
-                            {slots > 1 && <> · Fim: <span className="text-white/80">{fmt(lastIso)}</span></>}.
-                          </p>
-                        );
-                      })()}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-              </div>
             </SectionCard>
 
             {/* 4. Legendas */}
@@ -1756,18 +1154,16 @@ export default function PostarPage() {
               disabled={submitting}
               className={cn(
                 "w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-black text-sm transition-all",
-                submitting
-                  ? "bg-[#00FF41]/50 cursor-not-allowed"
-                  : "bg-[#00FF41] hover:bg-[#00FF41]/90 hover:shadow-[0_0_28px_rgba(0,255,65,0.35)]"
+                submitting ? "bg-[#00FF41]/50 cursor-not-allowed" : "bg-[#00FF41] hover:bg-[#00FF41]/90 hover:shadow-[0_0_28px_rgba(0,255,65,0.35)]"
               )}
             >
               {submitting ? (
-                <><Loader2 size={16} className="animate-spin text-black/70" /> Criando campanha...</>
+                <><Loader2 size={16} className="animate-spin text-black/70" /> Criando distribuição...</>
               ) : (
-                <><Send size={16} /> Criar Campanha
-                  {totalVideos > 0 && totalAccounts > 0 && (
+                <><Send size={16} /> Criar Distribuição
+                  {videosPerAccount > 0 && selectedAccountIds.length > 0 && (
                     <span className="ml-1 opacity-70">
-                      ({totalVideos} vídeo{totalVideos !== 1 ? "s" : ""} · {totalAccounts} conta{totalAccounts !== 1 ? "s" : ""})
+                      ({videosPerAccount * selectedAccountIds.length} posts · {selectedAccountIds.length} conta{selectedAccountIds.length !== 1 ? "s" : ""})
                     </span>
                   )}
                 </>
@@ -1775,25 +1171,22 @@ export default function PostarPage() {
             </button>
           </div>
 
-          {/* ── Right: Campaign Preview ── */}
+          {/* Preview */}
           <div className="w-full lg:w-72 lg:sticky lg:top-8 flex-shrink-0">
-            <CampaignPreview
-              totalVideos={totalVideos}
-              totalAccounts={totalAccounts}
-              batchSize={batchSize}
-              intervalMinutes={intervalMinutes}
+            <DistributePreview
+              videosPerAccount={videosPerAccount}
+              totalAccounts={selectedAccountIds.length}
+              postsPerDay={postsPerDay}
               startDatetime={startDatetime}
               captionCount={validCaptions.length}
-              sameVideoPerSlot={sameVideoPerSlot}
             />
 
-            {/* Quick tips */}
             <div className="mt-4 glass-card rounded-2xl p-4 space-y-2.5">
               <p className="text-[10px] text-white/25 uppercase tracking-wider">Como funciona</p>
               {[
-                { icon: Shuffle, text: "Vídeos embaralhados (Fisher-Yates) uma vez para toda a campanha" },
-                { icon: Zap, text: "Cada disparo → mesmo vídeo distribuído para todas as contas" },
-                { icon: Clock, text: "Slot 0 = início, Slot 1 = início + intervalo, ..." },
+                { icon: Shuffle, text: "Cada conta recebe os vídeos em uma ordem aleatória diferente" },
+                { icon: CalendarDays, text: "Posts distribuídos uniformemente ao longo do dia" },
+                { icon: Clock, text: "5 min de stagger entre contas — sem burst simultâneo" },
               ].map(({ icon: Icon, text }) => (
                 <div key={text} className="flex items-start gap-2">
                   <Icon size={10} className="text-[#00FF41]/50 mt-0.5 flex-shrink-0" />
@@ -1804,17 +1197,6 @@ export default function PostarPage() {
           </div>
         </div>
       )}
-
-      {/* Video Picker Modal */}
-      <AnimatePresence>
-        {showVideoPicker && (
-          <VideoPickerModal
-            selected={selectedVideoIds}
-            onConfirm={handleVideoConfirm}
-            onClose={() => setShowVideoPicker(false)}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
