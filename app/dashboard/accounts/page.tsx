@@ -66,6 +66,9 @@ interface Account {
   has_proxy: boolean;
   meta_app_id: string | null;
   meta_app_name: string | null;
+  is_warmed_up: boolean;
+  warmup_posts_done: number;
+  warmup_paused_until: string | null;
 }
 
 interface AccountStoriesData {
@@ -447,6 +450,16 @@ function AccountCard({
             blue={account.has_proxy}
             amber={!account.has_proxy}
           />
+          {!account.is_warmed_up && (() => {
+            const paused = account.warmup_paused_until ? new Date(account.warmup_paused_until) : null;
+            const isPaused = paused !== null && paused > new Date();
+            if (isPaused) {
+              const mins = Math.ceil((paused.getTime() - Date.now()) / 60_000);
+              const label = mins >= 60 ? `pausa ${Math.floor(mins / 60)}h` : `pausa ${mins}min`;
+              return <Metric icon={<span className="text-amber-400">⏸</span>} label={label} amber />;
+            }
+            return <Metric icon={<span className="text-amber-400">🔥</span>} label={`warmup ${account.warmup_posts_done}/30`} amber />;
+          })()}
           {account.meta_app_name && (
             <Metric
               icon={<KeyRound size={11} />}
@@ -604,7 +617,7 @@ export default function AccountsPage() {
       const { data } = await supabase
         .from("instagram_accounts")
         .select(
-          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url, meta_app_id, user_meta_apps(app_name)"
+          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url, meta_app_id, is_warmed_up, warmup_posts_done, warmup_paused_until, user_meta_apps(app_name)"
         )
         .order("connected_at", { ascending: false });
       const fetched = ((data ?? []) as unknown as (Account & { proxy_url: string | null; user_meta_apps: { app_name: string } | null })[]).map(

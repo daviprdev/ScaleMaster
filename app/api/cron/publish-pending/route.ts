@@ -24,6 +24,9 @@ interface AccountRow {
   token_expires_at: string | null;
   fb_page_id: string | null;
   proxy_url?: string | null;
+  is_warmed_up?: boolean;
+  warmup_posts_done?: number;
+  warmup_paused_until?: string | null;
 }
 
 interface PendingContainerRow {
@@ -88,7 +91,8 @@ export async function GET(req: NextRequest) {
       id, user_id, account_id, ig_business_account_id,
       creation_id, caption, created_at, retry_after,
       instagram_accounts (
-        id, username, meta_access_token, token_expires_at, fb_page_id, proxy_url
+        id, username, meta_access_token, token_expires_at, fb_page_id, proxy_url,
+        is_warmed_up, warmup_posts_done, warmup_paused_until
       )
     `)
     .eq("status", "pending")
@@ -249,6 +253,31 @@ export async function GET(req: NextRequest) {
 
       summary.published++;
       console.log(`[publish-pending] ✓ @${account.username} → media_id: ${mediaId}`);
+
+      // ── Warmup: atualiza contador após cada publish de conta nova ────────────
+      if (!account.is_warmed_up) {
+        const newDone = (account.warmup_posts_done ?? 0) + 1;
+        if (newDone >= 30) {
+          await (admin as any)
+            .from("instagram_accounts")
+            .update({ is_warmed_up: true, warmup_posts_done: 30, warmup_paused_until: null })
+            .eq("id", account.id);
+          console.log(`[warmup] @${account.username} ✓ aquecimento concluído (30 posts) — modo normal ativado.`);
+        } else if (newDone % 10 === 0) {
+          const pauseUntil = new Date(now.getTime() + 8 * 60 * 60 * 1_000).toISOString();
+          await (admin as any)
+            .from("instagram_accounts")
+            .update({ warmup_posts_done: newDone, warmup_paused_until: pauseUntil })
+            .eq("id", account.id);
+          console.log(`[warmup] @${account.username} lote ${newDone / 10}/3 completo → pausa 8h até ${pauseUntil}.`);
+        } else {
+          await (admin as any)
+            .from("instagram_accounts")
+            .update({ warmup_posts_done: newDone })
+            .eq("id", account.id);
+          console.log(`[warmup] @${account.username} ${newDone}/30 posts no aquecimento.`);
+        }
+      }
 
       const captionStored = container.caption ?? "";
       console.log(

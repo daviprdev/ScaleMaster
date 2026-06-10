@@ -198,7 +198,7 @@ async function getLongLivedToken(
 
 async function getIGProfile(token: string) {
   const res = await fetchWithTimeout(
-    `${GRAPH_IG}/me?fields=id,username,name,profile_picture_url&access_token=${token}`
+    `${GRAPH_IG}/me?fields=id,username,name,profile_picture_url,media_count&access_token=${token}`
   );
 
   detectRateLimit(res);
@@ -208,6 +208,7 @@ async function getIGProfile(token: string) {
     username?: string;
     name?: string;
     profile_picture_url?: string;
+    media_count?: number;
     error?: { message: string; type?: string; code?: number; fbtrace_id?: string };
   };
 
@@ -240,6 +241,7 @@ async function getIGProfile(token: string) {
     username: data.username,
     name: data.name ?? null,
     profile_picture_url: data.profile_picture_url ?? null,
+    media_count: data.media_count ?? null,
   };
 }
 
@@ -364,6 +366,22 @@ export async function GET(req: NextRequest) {
     console.log(`[ig/callback] @${profile.username} (id:${profile.id}) → user ${user.id}`);
 
     await upsertAccount(admin, user.id, profile, longToken, expiresAt, credentials.metaAppId);
+
+    // Se a conta já tem >= 30 posts no Instagram, marca como aquecida imediatamente.
+    // Contas com < 30 posts entram em warmup automático no Loop (is_warmed_up = false por padrão).
+    if (profile.media_count !== null && profile.media_count >= 30) {
+      await admin
+        .from("instagram_accounts")
+        .update({ is_warmed_up: true, posts_count: profile.media_count })
+        .eq("user_id", user.id)
+        .eq("ig_business_account_id", profile.id);
+    } else if (profile.media_count !== null) {
+      await admin
+        .from("instagram_accounts")
+        .update({ posts_count: profile.media_count })
+        .eq("user_id", user.id)
+        .eq("ig_business_account_id", profile.id);
+    }
 
     const response = NextResponse.redirect(`${APP_URL}/dashboard/accounts?connected=1`);
     clearOAuthCookies(response);
