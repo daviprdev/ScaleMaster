@@ -1,45 +1,56 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2, Clock, AlertTriangle, Loader2, RefreshCw,
-  Radio, Zap, TrendingUp, XCircle, Activity,
+  Radio, Zap, TrendingUp, XCircle, Activity, Heart, Layers,
+  BarChart2, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-interface AccountStatus {
-  id: string;
-  username: string;
-  display_name: string | null;
-  health_status: string;
-  in_active_loop: boolean;
-  loop_name: string | null;
-  container_status: "published" | "pending" | "publishing" | "error" | "none";
-  last_published_at: string | null;
-  last_media_id: string | null;
-  next_publish_at: string | null;
-  pending_since: string | null;
-  retry_count: number;
-  last_error: string | null;
-  published_24h: number;
-  errors_24h: number;
-}
+// ── Shared Types ───────────────────────────────────────────────────────────────
 
 interface TimelineEntry { account_username: string; at: string; media_id: string | null }
-interface UpcomingEntry { account_username: string; at: string; retry_count: number }
+interface UpcomingEntry { account_username: string; at: string; retry_count?: number }
 
-interface MonitorData {
+// ── Loop Types ─────────────────────────────────────────────────────────────────
+
+interface AccountStatus {
+  id: string; username: string; display_name: string | null; health_status: string;
+  in_active_loop: boolean; loop_name: string | null;
+  container_status: "published" | "pending" | "publishing" | "error" | "none";
+  last_published_at: string | null; last_media_id: string | null;
+  next_publish_at: string | null; pending_since: string | null;
+  retry_count: number; last_error: string | null;
+  published_24h: number; errors_24h: number;
+}
+
+interface LoopMonitorData {
   metrics: {
-    published_24h: number;
-    pending: number;
-    errors_24h: number;
-    next_publish_in_ms: number | null;
-    active_loops: number;
+    published_24h: number; pending: number; errors_24h: number;
+    next_publish_in_ms: number | null; active_loops: number;
   };
   accounts: AccountStatus[];
+  timeline: { published: TimelineEntry[]; upcoming: UpcomingEntry[] };
+  last_updated: string;
+}
+
+// ── Campaign Types ─────────────────────────────────────────────────────────────
+
+interface CampaignAccountStatus {
+  account_id: string; username: string; display_name: string | null; avatar_url: string | null;
+  total: number; published: number; pending: number; failed: number;
+  last_published_at: string | null; next_scheduled_at: string | null;
+  total_likes: number; campaign_ids: string[];
+}
+
+interface CampaignMonitorData {
+  metrics: {
+    total_published: number; total_pending: number; total_failed: number;
+    total_likes: number; active_campaigns: number; next_publish_in_ms: number | null;
+  };
+  accounts: CampaignAccountStatus[];
   timeline: { published: TimelineEntry[]; upcoming: UpcomingEntry[] };
   last_updated: string;
 }
@@ -72,7 +83,13 @@ function formatClock(ms: number | null): string {
   return `${s}s`;
 }
 
-const STATUS_CONFIG = {
+function fmtNum(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+const LOOP_STATUS_CONFIG = {
   published:  { label: "Publicado",   color: "text-[var(--matrix)]",  bg: "bg-[var(--matrix)]/10",  border: "border-[var(--matrix)]/25",  dot: "bg-[var(--matrix)]"  },
   pending:    { label: "Aguardando",  color: "text-[var(--electric)]", bg: "bg-[var(--electric)]/10", border: "border-[var(--electric)]/25", dot: "bg-[var(--electric)]" },
   publishing: { label: "Publicando",  color: "text-amber-400",         bg: "bg-amber-500/10",         border: "border-amber-500/25",         dot: "bg-amber-400"          },
@@ -80,7 +97,7 @@ const STATUS_CONFIG = {
   none:       { label: "Sem atividade", color: "text-white/25",        bg: "bg-white/[0.03]",         border: "border-white/[0.06]",         dot: "bg-white/20"           },
 };
 
-// ── Components ─────────────────────────────────────────────────────────────────
+// ── Shared Components ──────────────────────────────────────────────────────────
 
 function Countdown({ ms }: { ms: number | null }) {
   const [val, setVal] = useState(ms);
@@ -111,7 +128,7 @@ function Avatar({ username, size = "md" }: { username: string; size?: "sm" | "md
 }
 
 function MetricCard({ label, sub, value, color, icon: Icon, extra }: {
-  label: string; sub: string; value: string | number; color: "green" | "cyan" | "red" | "amber" | "violet";
+  label: string; sub: string; value: string | number; color: "green" | "cyan" | "red" | "amber" | "violet" | "pink";
   icon: React.ElementType; extra?: React.ReactNode;
 }) {
   const c = {
@@ -120,6 +137,7 @@ function MetricCard({ label, sub, value, color, icon: Icon, extra }: {
     red:    { border: "border-red-500/20",    glow: "from-red-500/8",    num: "text-red-400",    ic: "text-red-400/40"    },
     amber:  { border: "border-amber-500/20",  glow: "from-amber-500/8",  num: "text-amber-400",  ic: "text-amber-400/40"  },
     violet: { border: "border-violet-500/20", glow: "from-violet-500/8", num: "text-violet-400", ic: "text-violet-400/40" },
+    pink:   { border: "border-pink-500/20",   glow: "from-pink-500/8",   num: "text-pink-400",   ic: "text-pink-400/40"   },
   }[color];
   return (
     <div className={cn("glass-card p-4 border relative overflow-hidden", c.border)}>
@@ -139,11 +157,9 @@ function MetricCard({ label, sub, value, color, icon: Icon, extra }: {
   );
 }
 
-// ── Timeline ───────────────────────────────────────────────────────────────────
-
 function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcoming: UpcomingEntry[] }) {
   const now = Date.now();
-  const windowMs = 9 * 60 * 60 * 1000; // 9 hours window: 6h back + 3h forward
+  const windowMs = 9 * 60 * 60 * 1000;
   const startMs = now - 6 * 60 * 60 * 1000;
   const endMs   = now + 3 * 60 * 60 * 1000;
 
@@ -169,17 +185,13 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
         </div>
       </div>
 
-      {/* Track */}
       <div className="relative h-2 rounded-full bg-white/[0.04] border border-white/[0.06] overflow-visible mx-2">
-        {/* Past region */}
         <div className="absolute inset-y-0 left-0 rounded-full bg-white/[0.03]" style={{ width: `${nowPct}%` }} />
-        {/* Now line */}
         <div className="absolute top-1/2 -translate-y-1/2 z-20" style={{ left: `${nowPct}%` }}>
           <div className="w-px h-6 bg-white/40 -translate-x-1/2 -translate-y-2" />
           <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-[9px] text-white/40 whitespace-nowrap">agora</div>
         </div>
 
-        {/* Published dots */}
         {published.map((p, i) => {
           const pct = toPercent(new Date(p.at).getTime());
           if (pct < 0 || pct > nowPct) return null;
@@ -196,7 +208,6 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
           );
         })}
 
-        {/* Upcoming dots */}
         {upcoming.map((u, i) => {
           const pct = toPercent(new Date(u.at).getTime());
           if (pct <= nowPct || pct > 100) return null;
@@ -207,7 +218,9 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
                 <div className="bg-black/90 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white/70 whitespace-nowrap">
                   @{u.account_username}<br />
                   <span className="text-white/40">{timeIn(u.at)}</span>
-                  {u.retry_count > 0 && <span className="text-amber-400/70"> · retry {u.retry_count}</span>}
+                  {u.retry_count && u.retry_count > 0 && (
+                    <span className="text-amber-400/70"> · retry {u.retry_count}</span>
+                  )}
                 </div>
               </div>
             </div>
@@ -215,18 +228,12 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
         })}
       </div>
 
-      {/* Time labels */}
       <div className="flex justify-between mt-3 text-[9px] text-white/20 px-2">
-        <span>-6h</span>
-        <span>-4h</span>
-        <span>-2h</span>
+        <span>-6h</span><span>-4h</span><span>-2h</span>
         <span className="text-white/40 font-medium">agora</span>
-        <span>+1h</span>
-        <span>+2h</span>
-        <span>+3h</span>
+        <span>+1h</span><span>+2h</span><span>+3h</span>
       </div>
 
-      {/* Upcoming queue list */}
       {upcoming.length > 0 && (
         <div className="mt-5 border-t border-white/[0.05] pt-4">
           <p className="text-[10px] text-white/30 uppercase tracking-wider mb-3">Próximas na fila</p>
@@ -236,7 +243,7 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--electric)] animate-pulse shrink-0" />
                 <span className="text-[11px] text-white/60 font-medium">@{u.account_username}</span>
                 <span className="text-[10px] text-[var(--electric)]/70">{timeIn(u.at)}</span>
-                {u.retry_count > 0 && (
+                {u.retry_count && u.retry_count > 0 && (
                   <span className="text-[9px] text-amber-400/60 border border-amber-500/20 rounded px-1">retry {u.retry_count}</span>
                 )}
               </div>
@@ -253,31 +260,20 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
   );
 }
 
-// ── Account Card ───────────────────────────────────────────────────────────────
+// ── Loop Account Card ──────────────────────────────────────────────────────────
 
-function AccountCard({ acc }: { acc: AccountStatus }) {
-  const cfg = STATUS_CONFIG[acc.container_status];
+function LoopAccountCard({ acc }: { acc: AccountStatus }) {
+  const cfg = LOOP_STATUS_CONFIG[acc.container_status];
   const [expanded, setExpanded] = useState(false);
   const hasError = acc.container_status === "error" || acc.health_status === "error";
   const errorMsg = acc.last_error ?? (acc.health_status === "error" ? "Conta marcada como erro" : null);
 
   return (
-    <motion.div
-      layout
-      className={cn(
-        "glass-card p-4 border flex flex-col gap-3 cursor-default",
-        cfg.border,
-        hasError && "border-red-500/25"
-      )}
-    >
-      {/* Header */}
+    <motion.div layout className={cn("glass-card p-4 border flex flex-col gap-3 cursor-default", cfg.border, hasError && "border-red-500/25")}>
       <div className="flex items-start gap-3">
         <div className="relative">
           <Avatar username={acc.username} size="md" />
-          <span className={cn(
-            "absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-black",
-            hasError ? "bg-red-500" : cfg.dot
-          )} />
+          <span className={cn("absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-black", hasError ? "bg-red-500" : cfg.dot)} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -289,15 +285,10 @@ function AccountCard({ acc }: { acc: AccountStatus }) {
               </span>
             )}
           </div>
-          {acc.display_name && (
-            <p className="text-[10px] text-white/30 truncate">{acc.display_name}</p>
-          )}
+          {acc.display_name && <p className="text-[10px] text-white/30 truncate">{acc.display_name}</p>}
         </div>
-        {/* Status badge */}
-        <span className={cn(
-          "shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border",
-          hasError ? "text-red-400 bg-red-500/10 border-red-500/25" : cn(cfg.color, cfg.bg, cfg.border)
-        )}>
+        <span className={cn("shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border",
+          hasError ? "text-red-400 bg-red-500/10 border-red-500/25" : cn(cfg.color, cfg.bg, cfg.border))}>
           {acc.container_status === "published"  && <CheckCircle2 size={10} />}
           {acc.container_status === "pending"    && <Clock size={10} className="animate-pulse" />}
           {acc.container_status === "publishing" && <Loader2 size={10} className="animate-spin" />}
@@ -307,7 +298,6 @@ function AccountCard({ acc }: { acc: AccountStatus }) {
         </span>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 gap-2 text-[11px]">
         <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
           <span className="text-white/30 text-[9px] uppercase tracking-wider">Último post</span>
@@ -329,25 +319,16 @@ function AccountCard({ acc }: { acc: AccountStatus }) {
         </div>
       </div>
 
-      {/* Error detail */}
       {hasError && errorMsg && (
-        <div
-          className="flex items-start gap-2 px-3 py-2 rounded-xl bg-red-500/[0.05] border border-red-500/15 cursor-pointer"
-          onClick={() => setExpanded(e => !e)}
-        >
+        <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-red-500/[0.05] border border-red-500/15 cursor-pointer" onClick={() => setExpanded(e => !e)}>
           <AlertTriangle size={11} className="text-red-400 shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
-            <p className={cn("text-[10px] text-red-400/80 leading-relaxed", !expanded && "line-clamp-1")}>
-              {errorMsg}
-            </p>
-            {errorMsg.length > 60 && (
-              <p className="text-[9px] text-red-500/50 mt-0.5">{expanded ? "▲ ocultar" : "▼ ver tudo"}</p>
-            )}
+            <p className={cn("text-[10px] text-red-400/80 leading-relaxed", !expanded && "line-clamp-1")}>{errorMsg}</p>
+            {errorMsg.length > 60 && <p className="text-[9px] text-red-500/50 mt-0.5">{expanded ? "▲ ocultar" : "▼ ver tudo"}</p>}
           </div>
         </div>
       )}
 
-      {/* Retry info */}
       {acc.container_status === "pending" && acc.retry_count > 0 && (
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/[0.04] border border-amber-500/15">
           <span className="text-[10px] text-amber-400/70">Tentativa #{acc.retry_count + 1} · {timeIn(acc.next_publish_at)}</span>
@@ -357,24 +338,116 @@ function AccountCard({ acc }: { acc: AccountStatus }) {
   );
 }
 
+// ── Campaign Account Card ──────────────────────────────────────────────────────
+
+function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
+  const progress = acc.total > 0 ? (acc.published / acc.total) * 100 : 0;
+  const hasPending = acc.pending > 0;
+  const hasFailed  = acc.failed > 0;
+
+  const borderColor = hasFailed && !hasPending
+    ? "border-red-500/20"
+    : hasPending
+      ? "border-[var(--electric)]/20"
+      : "border-[var(--matrix)]/20";
+
+  return (
+    <motion.div layout className={cn("glass-card p-4 border flex flex-col gap-3 cursor-default", borderColor)}>
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <div className="relative">
+          <Avatar username={acc.username} size="md" />
+          <span className={cn(
+            "absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-black",
+            hasPending ? "bg-[var(--electric)] animate-pulse" : hasFailed && !hasPending ? "bg-red-500" : "bg-[var(--matrix)]"
+          )} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-white/90 truncate">@{acc.username}</p>
+          {acc.display_name && <p className="text-[10px] text-white/30 truncate">{acc.display_name}</p>}
+        </div>
+        {/* Campaign count badge */}
+        <span className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border border-white/10 bg-white/[0.04] text-white/40">
+          <Layers size={9} />
+          {acc.campaign_ids.length} camp.
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      <div>
+        <div className="flex items-center justify-between text-[10px] mb-1.5">
+          <span className="text-white/30">Progresso</span>
+          <span className="text-white/50 tabular-nums">{acc.published}/{acc.total}</span>
+        </div>
+        <div className="h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+          <motion.div
+            className="h-full rounded-full bg-gradient-to-r from-[var(--matrix)] to-[var(--electric)]"
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+          />
+        </div>
+      </div>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-4 gap-1.5 text-[10px]">
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+          <CheckCircle2 size={11} className="text-[var(--matrix)]/60" />
+          <span className="font-bold text-[var(--matrix)] tabular-nums">{acc.published}</span>
+          <span className="text-[9px] text-white/25">publ.</span>
+        </div>
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+          <Clock size={11} className={cn(hasPending ? "text-[var(--electric)]/60" : "text-white/15")} />
+          <span className={cn("font-bold tabular-nums", hasPending ? "text-[var(--electric)]" : "text-white/25")}>{acc.pending}</span>
+          <span className="text-[9px] text-white/25">fila</span>
+        </div>
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+          <XCircle size={11} className={cn(hasFailed ? "text-red-400/60" : "text-white/15")} />
+          <span className={cn("font-bold tabular-nums", hasFailed ? "text-red-400" : "text-white/25")}>{acc.failed}</span>
+          <span className="text-[9px] text-white/25">falha</span>
+        </div>
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+          <Heart size={11} className={cn(acc.total_likes > 0 ? "text-pink-400/60" : "text-white/15")} />
+          <span className={cn("font-bold tabular-nums", acc.total_likes > 0 ? "text-pink-400" : "text-white/25")}>{fmtNum(acc.total_likes)}</span>
+          <span className="text-[9px] text-white/25">likes</span>
+        </div>
+      </div>
+
+      {/* Timing row */}
+      <div className="grid grid-cols-2 gap-2 text-[11px]">
+        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+          <span className="text-white/30 text-[9px] uppercase tracking-wider">Último post</span>
+          <span className={cn("font-medium", acc.last_published_at ? "text-[var(--matrix)]" : "text-white/20")}>
+            {timeAgo(acc.last_published_at)}
+          </span>
+        </div>
+        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+          <span className="text-white/30 text-[9px] uppercase tracking-wider">
+            {hasPending ? "Próximo" : "Concluído"}
+          </span>
+          {hasPending ? (
+            <span className="font-medium text-[var(--electric)]">{timeIn(acc.next_scheduled_at)}</span>
+          ) : (
+            <span className="font-medium text-[var(--matrix)]/60 text-[10px]">✓ todos enviados</span>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 // ── Filter Tabs ────────────────────────────────────────────────────────────────
 
-type FilterKey = "all" | "published" | "pending" | "error";
+type LoopFilter = "all" | "published" | "pending" | "error";
+type CampaignFilter = "all" | "active" | "completed";
 
-const FILTERS: { key: FilterKey; label: string; color: string }[] = [
-  { key: "all",       label: "Todas",     color: "text-white/60"         },
-  { key: "published", label: "Publicado", color: "text-[var(--matrix)]"  },
-  { key: "pending",   label: "Aguardando",color: "text-[var(--electric)]"},
-  { key: "error",     label: "Erro",      color: "text-red-400"          },
-];
+// ── Loop View ──────────────────────────────────────────────────────────────────
 
-// ── Page ───────────────────────────────────────────────────────────────────────
-
-export default function MonitorPage() {
-  const [data, setData] = useState<MonitorData | null>(null);
+function LoopView() {
+  const [data, setData] = useState<LoopMonitorData | null>(null);
   const [loading, setLoading] = useState(true);
   const [countdown, setCountdown] = useState(15);
-  const [filter, setFilter] = useState<FilterKey>("all");
+  const [filter, setFilter] = useState<LoopFilter>("all");
   const [updatedAt, setUpdatedAt] = useState("");
 
   const fetchData = useCallback(async (silent = false) => {
@@ -382,7 +455,7 @@ export default function MonitorPage() {
     try {
       const res = await fetch("/api/loop/monitor");
       if (!res.ok) return;
-      const d = await res.json() as MonitorData;
+      const d = await res.json() as LoopMonitorData;
       setData(d);
       setCountdown(15);
       setUpdatedAt(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
@@ -391,7 +464,6 @@ export default function MonitorPage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
   useEffect(() => {
     const r = setInterval(() => fetchData(true), 15_000);
     const t = setInterval(() => setCountdown(c => c <= 1 ? 15 : c - 1), 1_000);
@@ -399,21 +471,23 @@ export default function MonitorPage() {
   }, [fetchData]);
 
   if (loading && !data) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={24} className="animate-spin text-[var(--electric)]" />
-      </div>
-    );
+    return <div className="flex items-center justify-center h-64"><Loader2 size={24} className="animate-spin text-[var(--electric)]" /></div>;
   }
 
   const m = data?.metrics ?? { published_24h: 0, pending: 0, errors_24h: 0, next_publish_in_ms: null, active_loops: 0 };
   const allAccounts = data?.accounts ?? [];
 
+  const LOOP_FILTERS = [
+    { key: "all" as const,       label: "Todas",      color: "text-white/60"          },
+    { key: "published" as const, label: "Publicado",  color: "text-[var(--matrix)]"   },
+    { key: "pending" as const,   label: "Aguardando", color: "text-[var(--electric)]" },
+    { key: "error" as const,     label: "Erro",       color: "text-red-400"           },
+  ];
+
   const filtered = filter === "all" ? allAccounts
     : filter === "error" ? allAccounts.filter(a => a.container_status === "error")
     : allAccounts.filter(a => a.container_status === filter);
 
-  // Sort por post mais recente (last_published_at desc), sem post vai pro fim
   const byRecent = (a: AccountStatus, b: AccountStatus) => {
     if (a.last_published_at && b.last_published_at)
       return new Date(b.last_published_at).getTime() - new Date(a.last_published_at).getTime();
@@ -424,7 +498,6 @@ export default function MonitorPage() {
 
   const sorted = [...filtered].sort(byRecent);
 
-  // Agrupamento por loop (usado na aba "Todas")
   const groups: { loopName: string | null; accounts: AccountStatus[] }[] = [];
   if (filter === "all") {
     const map = new Map<string, AccountStatus[]>();
@@ -433,18 +506,15 @@ export default function MonitorPage() {
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(acc);
     }
-    // loops nomeados primeiro (ordem alfabética), sem loop por último
     const keys = [...map.keys()].sort((a, b) => {
       if (a === "__none__") return 1;
       if (b === "__none__") return -1;
       return a.localeCompare(b);
     });
-    for (const k of keys) {
-      groups.push({ loopName: k === "__none__" ? null : k, accounts: map.get(k)! });
-    }
+    for (const k of keys) groups.push({ loopName: k === "__none__" ? null : k, accounts: map.get(k)! });
   }
 
-  const counts: Record<FilterKey, number> = {
+  const counts = {
     all:       allAccounts.length,
     published: allAccounts.filter(a => a.container_status === "published").length,
     pending:   allAccounts.filter(a => a.container_status === "pending").length,
@@ -452,81 +522,48 @@ export default function MonitorPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-full">
-
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="page-title">Monitor de Postagens</h1>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--matrix)] opacity-50" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--matrix)]" />
-            </span>
-            <p className="text-xs text-white/35">
-              {updatedAt ? `Atualizado ${updatedAt}` : "Carregando..."}
-              {" · "}auto em <span className="tabular-nums text-white/50">{countdown}s</span>
-            </p>
-          </div>
+    <div className="space-y-6">
+      {/* Sub-header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--matrix)] opacity-50" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--matrix)]" />
+          </span>
+          <p className="text-xs text-white/35">
+            {updatedAt ? `Atualizado ${updatedAt}` : "Carregando..."}
+            {" · "}auto em <span className="tabular-nums text-white/50">{countdown}s</span>
+          </p>
         </div>
-        <button
-          onClick={() => fetchData(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.07] bg-white/[0.03] text-xs text-white/40 hover:text-white/70 hover:border-white/15 transition-all"
-        >
-          <RefreshCw size={12} />
-          Atualizar
+        <button onClick={() => fetchData(true)}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.07] bg-white/[0.03] text-xs text-white/40 hover:text-white/70 hover:border-white/15 transition-all">
+          <RefreshCw size={12} />Atualizar
         </button>
       </div>
 
-      {/* ── Metrics ────────────────────────────────────────────── */}
+      {/* Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <MetricCard label="Publicados" sub="últimas 24h" value={m.published_24h} color="green" icon={CheckCircle2} />
         <MetricCard label="Na fila" sub="aguardando" value={m.pending} color="cyan" icon={Clock} />
         <MetricCard label="Erros" sub="últimas 24h" value={m.errors_24h} color="red" icon={XCircle} />
-        <MetricCard
-          label="Próxima postagem"
-          sub="countdown"
-          value=""
-          color="amber"
-          icon={TrendingUp}
-          extra={
-            <p className="text-sm font-bold text-amber-400 tabular-nums">
-              <Countdown ms={m.next_publish_in_ms} />
-            </p>
-          }
-        />
+        <MetricCard label="Próxima postagem" sub="countdown" value="" color="amber" icon={TrendingUp}
+          extra={<p className="text-sm font-bold text-amber-400 tabular-nums"><Countdown ms={m.next_publish_in_ms} /></p>} />
         <MetricCard label="Loops ativos" sub="em execução" value={m.active_loops} color="violet" icon={Radio} />
       </div>
 
-      {/* ── Timeline ───────────────────────────────────────────── */}
-      {data && (
-        <Timeline
-          published={data.timeline.published}
-          upcoming={data.timeline.upcoming}
-        />
-      )}
+      {data && <Timeline published={data.timeline.published} upcoming={data.timeline.upcoming} />}
 
-      {/* ── Filter Tabs + Grid ─────────────────────────────────── */}
+      {/* Filter + Grid */}
       <div>
-        {/* Tabs */}
         <div className="flex items-center gap-1 mb-4 overflow-x-auto no-scrollbar pb-1">
-          {FILTERS.map(f => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap",
-                filter === f.key
-                  ? "bg-white/[0.08] border border-white/15 text-white/80"
-                  : "text-white/30 hover:text-white/55 hover:bg-white/[0.04]"
-              )}
-            >
+          {LOOP_FILTERS.map(f => (
+            <button key={f.key} onClick={() => setFilter(f.key)}
+              className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap",
+                filter === f.key ? "bg-white/[0.08] border border-white/15 text-white/80" : "text-white/30 hover:text-white/55 hover:bg-white/[0.04]")}>
               <span className={f.color}>{f.label}</span>
               {counts[f.key] > 0 && (
-                <span className={cn(
-                  "text-[9px] px-1.5 py-0.5 rounded-full tabular-nums",
-                  filter === f.key ? "bg-white/10 text-white/60" : "bg-white/[0.05] text-white/25"
-                )}>
+                <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full tabular-nums",
+                  filter === f.key ? "bg-white/10 text-white/60" : "bg-white/[0.05] text-white/25")}>
                   {counts[f.key]}
                 </span>
               )}
@@ -534,24 +571,19 @@ export default function MonitorPage() {
           ))}
         </div>
 
-        {/* Grid */}
         {sorted.length === 0 ? (
           <div className="glass-card p-12 flex flex-col items-center justify-center text-center">
             <Zap size={22} className="text-white/15 mb-3" />
             <p className="text-sm text-white/30">Nenhuma conta com este status</p>
           </div>
         ) : filter === "all" ? (
-          /* ── Agrupado por loop ── */
           <div className="space-y-6">
             {groups.map(({ loopName, accounts: groupAccs }) => (
               <div key={loopName ?? "__none__"}>
-                {/* Cabeçalho do grupo */}
                 <div className="flex items-center gap-2 mb-3">
                   <Radio size={11} className={loopName ? "text-[var(--electric)]/60" : "text-white/20"} />
-                  <span className={cn(
-                    "text-[11px] font-bold uppercase tracking-widest",
-                    loopName ? "text-[var(--electric)]/70" : "text-white/25"
-                  )}>
+                  <span className={cn("text-[11px] font-bold uppercase tracking-widest",
+                    loopName ? "text-[var(--electric)]/70" : "text-white/25")}>
                     {loopName ?? "Sem loop"}
                   </span>
                   <span className="text-[10px] text-white/20">{groupAccs.length}</span>
@@ -560,15 +592,9 @@ export default function MonitorPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                   <AnimatePresence mode="popLayout">
                     {groupAccs.map((acc, i) => (
-                      <motion.div
-                        key={acc.id}
-                        layout
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        transition={{ delay: i * 0.03, duration: 0.2 }}
-                      >
-                        <AccountCard acc={acc} />
+                      <motion.div key={acc.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: i * 0.03, duration: 0.2 }}>
+                        <LoopAccountCard acc={acc} />
                       </motion.div>
                     ))}
                   </AnimatePresence>
@@ -577,26 +603,210 @@ export default function MonitorPage() {
             ))}
           </div>
         ) : (
-          /* ── Lista plana para filtros específicos, ordenada por recência ── */
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
             <AnimatePresence mode="popLayout">
               {sorted.map((acc, i) => (
-                <motion.div
-                  key={acc.id}
-                  layout
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ delay: i * 0.03, duration: 0.2 }}
-                >
-                  <AccountCard acc={acc} />
+                <motion.div key={acc.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: i * 0.03, duration: 0.2 }}>
+                  <LoopAccountCard acc={acc} />
                 </motion.div>
               ))}
             </AnimatePresence>
           </div>
         )}
       </div>
+    </div>
+  );
+}
 
+// ── Campaign View ──────────────────────────────────────────────────────────────
+
+function CampaignView() {
+  const [data, setData] = useState<CampaignMonitorData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [countdown, setCountdown] = useState(15);
+  const [filter, setFilter] = useState<CampaignFilter>("all");
+  const [updatedAt, setUpdatedAt] = useState("");
+
+  const fetchData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const res = await fetch("/api/campaigns/monitor");
+      if (!res.ok) return;
+      const d = await res.json() as CampaignMonitorData;
+      setData(d);
+      setCountdown(15);
+      setUpdatedAt(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    const r = setInterval(() => fetchData(true), 15_000);
+    const t = setInterval(() => setCountdown(c => c <= 1 ? 15 : c - 1), 1_000);
+    return () => { clearInterval(r); clearInterval(t); };
+  }, [fetchData]);
+
+  if (loading && !data) {
+    return <div className="flex items-center justify-center h-64"><Loader2 size={24} className="animate-spin text-[var(--electric)]" /></div>;
+  }
+
+  const m = data?.metrics ?? { total_published: 0, total_pending: 0, total_failed: 0, total_likes: 0, active_campaigns: 0, next_publish_in_ms: null };
+  const allAccounts = data?.accounts ?? [];
+
+  const CAMP_FILTERS = [
+    { key: "all" as const,       label: "Todas",      color: "text-white/60"          },
+    { key: "active" as const,    label: "Ativas",     color: "text-[var(--electric)]" },
+    { key: "completed" as const, label: "Concluídas", color: "text-[var(--matrix)]"   },
+  ];
+
+  const filtered = filter === "all" ? allAccounts
+    : filter === "active" ? allAccounts.filter(a => a.pending > 0)
+    : allAccounts.filter(a => a.pending === 0 && a.published > 0);
+
+  const counts = {
+    all:       allAccounts.length,
+    active:    allAccounts.filter(a => a.pending > 0).length,
+    completed: allAccounts.filter(a => a.pending === 0 && a.published > 0).length,
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Sub-header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--electric)] opacity-50" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--electric)]" />
+          </span>
+          <p className="text-xs text-white/35">
+            {updatedAt ? `Atualizado ${updatedAt}` : "Carregando..."}
+            {" · "}auto em <span className="tabular-nums text-white/50">{countdown}s</span>
+          </p>
+        </div>
+        <button onClick={() => fetchData(true)}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.07] bg-white/[0.03] text-xs text-white/40 hover:text-white/70 hover:border-white/15 transition-all">
+          <RefreshCw size={12} />Atualizar
+        </button>
+      </div>
+
+      {/* Metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <MetricCard label="Publicados" sub="em campanhas" value={m.total_published} color="green" icon={CheckCircle2} />
+        <MetricCard label="Na fila" sub="agendados" value={m.total_pending} color="cyan" icon={Clock} />
+        <MetricCard label="Falhas" sub="total" value={m.total_failed} color="red" icon={XCircle} />
+        <MetricCard label="Próxima postagem" sub="countdown" value="" color="amber" icon={TrendingUp}
+          extra={<p className="text-sm font-bold text-amber-400 tabular-nums"><Countdown ms={m.next_publish_in_ms} /></p>} />
+        <MetricCard label="Curtidas" sub="total publicado" value={fmtNum(m.total_likes)} color="pink" icon={Heart} />
+      </div>
+
+      {data && <Timeline published={data.timeline.published} upcoming={data.timeline.upcoming} />}
+
+      {/* Empty state */}
+      {allAccounts.length === 0 ? (
+        <div className="glass-card p-16 flex flex-col items-center justify-center text-center">
+          <Send size={28} className="text-white/10 mb-4" />
+          <p className="text-sm font-medium text-white/30 mb-1">Nenhuma campanha ativa</p>
+          <p className="text-xs text-white/20">Crie uma campanha na aba <span className="text-[var(--electric)]/50">Postar</span> para monitorar aqui</p>
+        </div>
+      ) : (
+        <div>
+          {/* Filter tabs */}
+          <div className="flex items-center gap-1 mb-4 overflow-x-auto no-scrollbar pb-1">
+            {CAMP_FILTERS.map(f => (
+              <button key={f.key} onClick={() => setFilter(f.key)}
+                className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap",
+                  filter === f.key ? "bg-white/[0.08] border border-white/15 text-white/80" : "text-white/30 hover:text-white/55 hover:bg-white/[0.04]")}>
+                <span className={f.color}>{f.label}</span>
+                {counts[f.key] > 0 && (
+                  <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full tabular-nums",
+                    filter === f.key ? "bg-white/10 text-white/60" : "bg-white/[0.05] text-white/25")}>
+                    {counts[f.key]}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="glass-card p-12 flex flex-col items-center justify-center text-center">
+              <BarChart2 size={22} className="text-white/15 mb-3" />
+              <p className="text-sm text-white/30">Nenhuma conta com este filtro</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+              <AnimatePresence mode="popLayout">
+                {filtered.map((acc, i) => (
+                  <motion.div key={acc.account_id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }} transition={{ delay: i * 0.03, duration: 0.2 }}>
+                    <CampaignAccountCard acc={acc} />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────────
+
+type MainTab = "loop" | "campanhas";
+
+export default function MonitorPage() {
+  const [tab, setTab] = useState<MainTab>("loop");
+
+  return (
+    <div className="space-y-6 max-w-full">
+      {/* Header */}
+      <div>
+        <h1 className="page-title">Monitor de Postagens</h1>
+        <p className="page-subtitle mt-1">Acompanhe loops e campanhas em tempo real</p>
+      </div>
+
+      {/* Main Tabs */}
+      <div className="flex items-center gap-1 p-1 rounded-2xl bg-white/[0.03] border border-white/[0.06] w-fit">
+        <button
+          onClick={() => setTab("loop")}
+          className={cn(
+            "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all",
+            tab === "loop"
+              ? "bg-white/[0.08] border border-white/15 text-white/90"
+              : "text-white/30 hover:text-white/60"
+          )}
+        >
+          <Radio size={14} className={tab === "loop" ? "text-violet-400" : "text-white/20"} />
+          Loop
+        </button>
+        <button
+          onClick={() => setTab("campanhas")}
+          className={cn(
+            "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all",
+            tab === "campanhas"
+              ? "bg-white/[0.08] border border-white/15 text-white/90"
+              : "text-white/30 hover:text-white/60"
+          )}
+        >
+          <Send size={14} className={tab === "campanhas" ? "text-[var(--electric)]" : "text-white/20"} />
+          Campanhas
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={tab}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.18 }}
+        >
+          {tab === "loop" ? <LoopView /> : <CampaignView />}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
