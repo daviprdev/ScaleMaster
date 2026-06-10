@@ -322,9 +322,18 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Feat — Detecção de contas sem campanha ativa na seleção (2026-06-10)** | Ao abrir a aba Postar, sistema busca `/api/campaigns` e extrai `account_ids` das campanhas em execução. Contas SEM campanha ativa: borda vermelha + dot vermelho no canto do card. Botão "Novas (N)" ao lado de Todas/Nenhuma seleciona automaticamente apenas essas contas. Só aparece quando há pelo menos uma campanha rodando. Commit `e5e26b7`. | ✅ Concluída |
 | **Chore — Remove aba Automatizar contas da Sidebar (2026-06-10)** | Link `/dashboard/automation` e ícone `Bot` removidos de `Sidebar.tsx`. Commit `8bacd05`. | ✅ Aplicado |
 | **Monitor de Campanhas (2026-06-10)** | Nova rota `GET /api/campaigns/monitor`: agrega `scheduled_posts` por conta (publicados, pendentes, falhas, likes via `insights_likes`, último/próximo post). Monitor page refatorado com tabs principais **Loop** \| **Campanhas** (AnimatePresence); `LoopView` isola o conteúdo anterior; `CampaignView` com 5 metric cards, linha do tempo, filtros Todas/Ativas/Concluídas e `CampaignAccountCard` com barra de progresso animada + grid 4-col (publicado/fila/falha/likes). Commit `a6657a1`. | ✅ Concluída |
+| **Refactor — Proxy fixo por conta (2026-06-10)** | Removido `PROXY_URL_TEMPLATE` (proxy rotativo). Modelo simplificado: 1 proxy estático dedicado por conta (`instagram_accounts.proxy_url` AES-256-GCM) ou IP Vercel. Badge âmbar "sem proxy" nos cards de conta. Sem fallback para IP Vercel quando proxy dedicado falha — skip/backoff no cron. | ✅ Aplicado |
+| **Feat — Warmup automático de contas novas no Loop (2026-06-10)** | Contas com < 30 posts publicam em lotes de 10 com pausa de 8h entre lotes. Após 30 posts via Loop, `is_warmed_up=true` → modo normal. Callback OAuth: `media_count` detectado no `/me`; marca `is_warmed_up=true` imediatamente se ≥ 30 posts. `process-loops` pula conta durante pausa. `publish-pending` incrementa `warmup_posts_done` após cada publish. UI: badge âmbar "warmup N/30" ou "pausa Xh". SQL: `supabase/warmup.sql`. Commit `0777bdf`. | ✅ Concluída |
 
 **SQL pendente (executar no Supabase):**
 ```sql
+-- Warmup de contas novas (supabase/warmup.sql) ← EXECUTAR
+ALTER TABLE public.instagram_accounts
+  ADD COLUMN IF NOT EXISTS is_warmed_up       boolean    NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS warmup_posts_done  integer    NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS warmup_paused_until timestamptz;
+UPDATE public.instagram_accounts SET is_warmed_up = true;
+
 -- Fase 43 — Failover (executar supabase/failover.sql)
 ALTER TABLE public.instagram_accounts
   ADD COLUMN IF NOT EXISTS health_status text NOT NULL DEFAULT 'online'
