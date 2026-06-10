@@ -2062,3 +2062,101 @@ Padrões tratados: "too many actions", "performing too many", "retry your reques
 
 #### Lição aprendida
 Cap diário (40 posts/dia) foi implementado e revertido na mesma sessão. Bloqueia contas por horas artificialmente — usuário quer postagem contínua 24/7. O skip silencioso é a abordagem correta: não acumula erros, não bloqueia outras contas, retoma sozinho. A Meta limita por janela temporal (horas), não por dia fixo.
+
+---
+
+### ✅ Sessão 2026-06-10 — Fixes críticos de pipeline + Redesign aba Postar + Crons 1 min
+**Commits:** `6c0e375`, `6e84e50`, `4a78ff2`, `f5907f8`, `e5e26b7`, `945bcd8`, `cfb063b`, `8bacd05`
+
+---
+
+#### Fix 1 — `isCriticalMetaError` muito amplo derrubava contas saudáveis
+
+**Problema:** O padrão `"access token"` em `isCriticalMetaError` (`process-loops`) é genérico demais. Qualquer mensagem de erro da Meta contendo "access token" (incluindo erros transitórios de rate-limit ou mensagens de serviço temporário) marcava a conta como `health_status='error'` de forma permanente. Resultado: contas caindo em massa sem motivo real.
+
+**Fix:** Padrão `"access token"` removido. Lista restrita a erros genuinamente permanentes:
+- `"oauthexception"`, `"invalid_token"`, `"token has expired"`, `"session has been invalidated"`
+- `"invalid oauth access token"`, `"cannot parse access token"`
+- `"account has been restricted"`, `"blocked"`, `"checkpoint"`
+- `"error code 190"`, `"error code 102"`, `"error code 104"`
+- `"unsupported request - method type: post"` (conta pessoal sem API)
+- `"not a confirmed user"`, `"sessions for the user are not allowed"`
+
+**Lição aprendida:** Nunca usar strings genéricas presentes em múltiplos contextos de erro para decisões permanentes (marcar conta como error). Preferir códigos de erro numéricos ou mensagens de erro únicas e inequívocas.
+
+---
+
+#### Fix 2 — `publish-pending` tratava todos os erros como permanentes
+
+**Problema:** O bloco `catch` único do `publish-pending` marcava qualquer erro como `status='error'` permanente (FAIL FAST). Erros de proxy (`fetch failed`), rate-limit (`too many actions`) e timeout eram tratados da mesma forma que tokens inválidos. Resultado: containers com `creation_id` válido eram descartados permanentemente → conta perdia o slot de postagem → intervalo efetivo dobrava.
+
+**Fix:** Detecção de erros transitórios:
+```typescript
+const isTransient = (
+  lower.includes("fetch failed") || lower.includes("smartproxy") ||
+  lower.includes("proxy") || lower.includes("timeout") ||
+  lower.includes("too many actions") || lower.includes("performing too many") ||
+  lower.includes("retry your request later") || lower.includes("please retry") ||
+  lower.includes("service temporarily unavailable") ||
+  lower.includes("an unexpected error has occurred")
+);
+// Transitório → status='pending', retry_after=+5min (não conta como erro)
+// Permanente → FAIL FAST como antes
+```
+
+---
+
+#### Fix 3 — Storage leak: temp/vfx_* nunca eram apagados
+
+**Problema:** `lib/video-effects.ts` faz upload de `temp/vfx_${uid}.mp4` para processar efeitos de vídeo mas nunca deleta o arquivo após uso. Com o tempo, o bucket acumulava centenas de arquivos temporários.
+
+**Fix:** Cleanup no início de cada run do `process-loops`: lista `temp/` do bucket, filtra arquivos `vfx_*` com mais de 2h, deleta em lote. Erro no cleanup é silencioso (não bloqueia o ciclo principal).
+
+---
+
+#### Crons: todos para 1 minuto
+
+Baseado em networking com outro operador de SaaS (contas estáveis, cron a cada 1 min). Todos os crons alterados para `* * * * *`:
+
+| Cron | Antes | Depois |
+|------|-------|--------|
+| `process-loops` | `*/15 * * * *` | `* * * * *` |
+| `publish-pending` | `*/2 * * * *` | `* * * * *` |
+| `publish-scheduled` | `*/5 * * * *` | `* * * * *` |
+
+`BATCH_SIZE` do `publish-scheduled` elevado de 5 → 10 (adequado ao ciclo de 1 min).
+
+---
+
+#### Redesign: aba "Postar" → "Distribuição de Conteúdo"
+
+**Motivação:** Baseado em aprendizado de networking — campanhas por pasta são mais robustas e anti-spam do que o loop contínuo. O novo modelo distribui um conjunto fixo de vídeos para múltiplas contas sem repetição (não é loop).
+
+**Novo fluxo (`POST /api/posts/distribute`):**
+1. Usuário seleciona **pasta de mídias** (contagem via `video_count` do `/api/library/folders`, não da API paginada)
+2. **Quantidade de vídeos** a usar: 10 / 20 / 50 / Todos
+3. **Posts por dia por conta**: botões 1, 2, 3, 4, 6, 8, 12, 24, 36, 48, 72 (cada um exibe o intervalo resultante em horas/minutos)
+4. **Data e hora de início**
+5. **Legendas dinâmicas** (rotativas)
+
+**Algoritmo:**
+```
+intervalMinutes = floor(1440 / posts_per_day)
+Para cada conta [i]:
+  accountVideos = fisherYates(baseVideos)  ← shuffle único por conta
+  Para cada vídeo [j]:
+    scheduledAt = startTime + j × intervalMinutes × 60000 + i × 5 × 60000 (stagger)
+    caption = validCaptions[random]
+```
+
+**Detecção de contas sem campanha:** Ao abrir a aba, busca `/api/campaigns` e extrai `account_ids` de campanhas em execução. Contas SEM campanha ativa: borda vermelha + dot vermelho no card. Botão "Novas (N)" seleciona automaticamente apenas essas.
+
+**Bug corrigido:** Validação original bloqueava `posts_per_day > 10` — campanhas com 12/24/36/48/72 posts/dia falhavam com erro 400 silencioso. Corrigido para aceitar 1–1440.
+
+**Bug corrigido:** `/api/library` tem `PAGE_SIZE=16` — contagem de vídeos da pasta mostrava 16 em vez do total real (ex: 247). Corrigido usando `folder.video_count` já carregado por `/api/library/folders` (usa `count: "exact"` do Supabase).
+
+---
+
+#### Chore: remoção da aba "Automatizar contas"
+
+Link `/dashboard/automation` e ícone `Bot` removidos de `Sidebar.tsx`. A funcionalidade foi descontinuada em favor do módulo Loop e da nova Distribuição de Conteúdo.
