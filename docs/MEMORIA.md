@@ -2160,3 +2160,52 @@ Para cada conta [i]:
 #### Chore: remoção da aba "Automatizar contas"
 
 Link `/dashboard/automation` e ícone `Bot` removidos de `Sidebar.tsx`. A funcionalidade foi descontinuada em favor do módulo Loop e da nova Distribuição de Conteúdo.
+
+---
+
+### ✅ Sessão 2026-06-10 — Monitor de Campanhas + Abas Loop/Campanhas
+
+**Commit:** `a6657a1` — feat(monitor): abas Loop / Campanhas com monitor por conta
+
+#### Motivação
+
+O Monitor de Postagens existente só cobria o pipeline de Loop (`pending_containers`). Campanhas criadas na aba Postar (`scheduled_posts`) não tinham visibilidade: sem saber quantos posts foram enviados por conta, quantos estão na fila, próximo agendado ou curtidas acumuladas.
+
+#### O que foi feito
+
+**Nova rota `GET /api/campaigns/monitor`**
+- Agrega `scheduled_posts` (com `campaign_id IS NOT NULL`) por conta do usuário
+- Retorna por conta: `published`, `pending`, `failed`, `last_published_at`, `next_scheduled_at`, `total_likes` (soma de `insights_likes`), lista de `campaign_ids`
+- Timeline: publicados nas últimas 6h + agendados nas próximas 3h
+- Métricas globais: total publicados, fila, falhas, curtidas, countdown para próxima postagem, contagem de campanhas únicas
+
+**Refatoração de `/dashboard/monitor/page.tsx`**
+- Duas abas principais no topo: **Loop** (Radio icon, violet) | **Campanhas** (Send icon, electric) com AnimatePresence
+- `LoopView` — conteúdo anterior extraído para componente isolado sem mudança de comportamento
+- `CampaignView` — nova view dedicada a campanhas:
+  - 5 metric cards: Publicados / Na fila / Falhas / Próxima postagem (countdown) / Curtidas totais (pink)
+  - Linha do tempo compartilhada (mesmo componente `Timeline`)
+  - Filtros: Todas / Ativas (pending > 0) / Concluídas
+  - Grid de `CampaignAccountCard` por conta com:
+    - Barra de progresso animada (`published / total`)
+    - Grid 4-col: ✓ publicados / ⏱ fila / ✗ falhas / ♥ likes
+    - Último post + próximo agendado
+    - Badge de quantas campanhas a conta participa
+  - Empty state quando não há campanhas
+
+#### Arquitetura da rota
+
+```
+GET /api/campaigns/monitor
+  → scheduled_posts WHERE campaign_id IS NOT NULL
+      AND (status IN (pending,publishing) OR published_at >= 24h atrás)
+  → agrupa por account_id em JS
+  → retorna: metrics + accounts[] + timeline { published, upcoming }
+```
+
+#### Componentes criados/alterados
+
+| Arquivo | Mudança |
+|---------|---------|
+| `app/api/campaigns/monitor/route.ts` | Novo — agrega scheduled_posts por conta |
+| `app/dashboard/monitor/page.tsx` | Refatorado — tabs Loop/Campanhas, LoopView, CampaignView, CampaignAccountCard |
