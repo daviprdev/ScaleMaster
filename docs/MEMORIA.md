@@ -2209,3 +2209,119 @@ GET /api/campaigns/monitor
 |---------|---------|
 | `app/api/campaigns/monitor/route.ts` | Novo — agrega scheduled_posts por conta |
 | `app/dashboard/monitor/page.tsx` | Refatorado — tabs Loop/Campanhas, LoopView, CampaignView, CampaignAccountCard |
+
+---
+
+### ✅ Sessão 2026-06-10 — Proxy Fixo por Conta + Warmup Automático
+
+**Commits:** `0777bdf` — feat(warmup) | docs: atualiza CLAUDE.md
+
+---
+
+#### Refactor: Proxy fixo por conta (remoção do PROXY_URL_TEMPLATE)
+
+**Motivação:** O proxy rotativo com `PROXY_URL_TEMPLATE` (life-720) tinha dois problemas:
+1. Para postar Stories é necessário entrar na conta — dois IPs diferentes (proxy na criação + IP real no login) levantam flags de segurança
+2. Mesmo com life-720, o IP muda a cada 12h, rompendo a consistência de IP por conta
+
+**Decisão:** Remover completamente o `PROXY_URL_TEMPLATE`. Cada conta tem **1 proxy estático dedicado** configurado manualmente via UI (menu ⋯ → "Configurar Proxy"). Contas sem proxy postam pelo IP da Vercel com badge âmbar de aviso.
+
+**Mudanças técnicas:**
+- `lib/proxy.ts`: removida função `sessionId`, removido branch do `PROXY_URL_TEMPLATE`; `getProxyForAccount` agora tem apenas 2 caminhos: proxy dedicado AES-256-GCM ou `null`
+- `process-loops` e `publish-pending`: removidas verificações de startup do `PROXY_URL_TEMPLATE`; "fetch failed" com proxy dedicado → skip silencioso sem container de erro
+- `app/api/debug/proxy-check-all/route.ts` e `proxy-check/route.ts`: removido branch `PROXY_URL_TEMPLATE` do campo `source`
+
+---
+
+#### Feat: Warmup automático de contas novas no Loop
+
+**Motivação:** Insight de networking — contas recém-conectadas que postam em ritmo normal imediatamente levam shadowban. O padrão seguro é: 10 posts → pausa 8h → 10 posts → pausa 8h → 10 posts → modo normal (30 posts total).
+
+**Escopo:** Aplica-se **exclusivamente ao pipeline de Loop** (`process-loops` + `publish-pending`). A aba **Postar** (distribuição de campanhas via `publish-scheduled`) posta normalmente, sem warmup.
+
+**Lógica de warmup:**
+- Conta com `is_warmed_up = false` e `posts_count < 30` no momento da conexão entra em warmup
+- A cada 10 posts via Loop: pausa de 8h (`warmup_paused_until = now + 8h`)
+- Ao atingir 30 posts: `is_warmed_up = true`, `warmup_paused_until = null` → modo normal
+- Durante a pausa: `process-loops` pula a conta com log `[warmup] @username em pausa Xh`
+- Contas existentes: todas marcadas `is_warmed_up = true` na migration (sem warmup retroativo)
+- Conta conectada com ≥ 30 posts no Instagram: callback OAuth detecta via `media_count` e marca `is_warmed_up = true` imediatamente
+
+**Novas colunas em `instagram_accounts`:**
+```sql
+is_warmed_up        boolean    NOT NULL DEFAULT false
+warmup_posts_done   integer    NOT NULL DEFAULT 0
+warmup_paused_until timestamptz
+```
+
+**Arquivos alterados:**
+
+| Arquivo | Mudança |
+|---------|---------|
+| `app/api/cron/process-loops/route.ts` | AccountRow + SELECT + bloco de skip se pausado |
+| `app/api/cron/publish-pending/route.ts` | AccountRow + SELECT + contador pós-publish |
+| `app/api/instagram/callback/route.ts` | Fetch `media_count` no `/me`; `is_warmed_up=true` se ≥ 30 |
+| `app/dashboard/accounts/page.tsx` | Interface + SELECT + badge âmbar "warmup N/30" / "pausa Xh" |
+| `supabase/warmup.sql` | Migration: 3 colunas + UPDATE SET is_warmed_up=true para existentes |
+
+**SQL a executar no Supabase:**
+```sql
+ALTER TABLE public.instagram_accounts
+  ADD COLUMN IF NOT EXISTS is_warmed_up       boolean    NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS warmup_posts_done  integer    NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS warmup_paused_until timestamptz;
+UPDATE public.instagram_accounts SET is_warmed_up = true;
+```
+
+---
+
+### ✅ Fix — publish-scheduled: timeout de processamento virava falha permanente
+**Data:** 11/06/2026
+**Commit:** `754e637`
+
+#### Problema
+
+A aba **Distribuição de Conteúdo (Postar)** criava posts corretamente no banco, mas nenhuma conta recebia o vídeo após o horário configurado.
+
+**Causa raiz:** `publishViaMetaAPI` em `lib/meta-publish.ts` faz o fluxo síncrono completo:
+1. `createMediaContainer` (~3s)
+2. `pollContainerStatus` — **6 tentativas × 8s = 5s + 5×8s = 45s máx**
+3. `publishContainer` (~2s)
+
+Quando a Meta demorava >43s para processar o Reel (situação comum), `pollContainerStatus` lançava `"Timeout: o vídeo não terminou de processar no tempo esperado."`. Esse erro **não batia em nenhum padrão de retry** em `RATE_LIMIT_PATTERNS` → post marcado como `status='failed'` permanente, sem possibilidade de retentativa.
+
+Com `BATCH_SIZE=10` e cron a cada 1 minuto, o primeiro ciclo falhava todos os posts, e eles ficavam presos em `failed` para sempre.
+
+#### Correções aplicadas
+
+**1. `app/api/cron/publish-scheduled/route.ts` — RATE_LIMIT_PATTERNS**
+
+Adicionados padrões de timeout de processamento como erros retryables (resetam para `pending`):
+```typescript
+"não terminou de processar",
+"did not finish processing",
+"timeout",
+```
+
+**2. `lib/meta-publish.ts` — `publishViaMetaAPI`**
+
+Poll reduzido de 6×8s → **4×6s = 23s máx** (5s inicial + 3×6s):
+```typescript
+await pollContainerStatus(creationId, metaAccessToken, 4, 6_000, proxy);
+```
+
+Resultado: se a Meta não processar em 23s, falha rápido com erro retryable e tenta de novo no próximo cron (1 min), em vez de consumir 45s e falhar permanentemente.
+
+**3. `app/api/cron/publish-scheduled/route.ts` — auto-healing**
+
+O cron agora reseta automaticamente posts `failed` por timeout nas últimas 48h de volta para `pending`:
+```typescript
+const { data: healed } = await admin
+  .from("scheduled_posts")
+  .update({ status: "pending", error_message: null })
+  .eq("status", "failed")
+  .gte("scheduled_at", healCutoff)  // últimas 48h
+  .or("error_message.ilike.%não terminou de processar%,error_message.ilike.%timeout%,...")
+```
+
+Isso garante que posts que já falharam com o bug antigo sejam recuperados automaticamente no próximo ciclo do cron após o deploy.
