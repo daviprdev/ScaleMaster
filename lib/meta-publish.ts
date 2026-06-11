@@ -268,7 +268,10 @@ export async function publishViaMetaAPI(
       metaAccessToken,
       proxy
     );
-    await pollContainerStatus(creationId, metaAccessToken, 6, 8_000, proxy);
+    // 4 tentativas × 6s = 5s inicial + 3×6s = 23s máx de espera.
+    // Se a Meta não processar em 23s, retorna erro "não terminou de processar"
+    // que o publish-scheduled trata como retryable (tenta de novo no próximo cron 1min).
+    await pollContainerStatus(creationId, metaAccessToken, 4, 6_000, proxy);
     const mediaId = await publishContainer(igBusinessAccountId, creationId, metaAccessToken, proxy);
     return { status: "ok", media_id: mediaId };
   } catch (err) {

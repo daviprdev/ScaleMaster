@@ -40,7 +40,7 @@ interface PostRow {
   videos_library: { public_url: string } | null;
 }
 
-// Erros de rate limit da Meta → resetar para "pending" (retentável no próximo ciclo).
+// Erros de rate limit / transitórios da Meta → resetar para "pending" (retentável no próximo ciclo).
 // Erros de token/credenciais → marcar como "failed" (permanente).
 const RATE_LIMIT_PATTERNS = [
   "too many actions",
@@ -51,6 +51,11 @@ const RATE_LIMIT_PATTERNS = [
   "internal server error",
   "fetch failed",
   "smartproxy",
+  // Timeout interno do pollContainerStatus — Meta ainda processando o vídeo.
+  // Retentável: vai tentar de novo no próximo ciclo (a cada 1 min).
+  "não terminou de processar",
+  "did not finish processing",
+  "timeout",
 ];
 
 function isRateLimitError(msg: string): boolean {
@@ -144,6 +149,26 @@ export async function GET(req: NextRequest) {
     console.error("[publish-scheduled] Erro ao desbloquear posts presos:", unblockErr.message);
   } else if (unblocked?.length) {
     console.log(`[publish-scheduled] ${unblocked.length} post(s) desbloqueados "publishing" → "pending" (presos > 10 min)`);
+  }
+
+  // ── Auto-healing: reseta falhas de timeout de processamento (retryable) ───
+  // Posts que falharam com "não terminou de processar" ou "[TIMEOUT]" são
+  // temporários — a Meta ainda estava processando o vídeo. Resetamos para
+  // "pending" para que o próximo ciclo tente novamente.
+  // Limitado a scheduled_at nas últimas 48h para não ressuscitar falhas antigas.
+  const healCutoff = new Date(Date.now() - 48 * 60 * 60_000).toISOString();
+  const { data: healed, error: healErr } = await admin
+    .from("scheduled_posts")
+    .update({ status: "pending", error_message: null })
+    .eq("status", "failed")
+    .gte("scheduled_at", healCutoff)
+    .or("error_message.ilike.%não terminou de processar%,error_message.ilike.%timeout%,error_message.ilike.%did not finish%")
+    .select("id");
+
+  if (healErr) {
+    console.error("[publish-scheduled] Erro no auto-healing de timeout:", healErr.message);
+  } else if (healed?.length) {
+    console.log(`[publish-scheduled] ${healed.length} post(s) de timeout resetados "failed" → "pending" (auto-healing)`);
   }
 
   // ── Busca posts elegíveis ─────────────────────────────────────────────────
