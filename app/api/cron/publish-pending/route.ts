@@ -201,11 +201,17 @@ export async function GET(req: NextRequest) {
       }
 
       if (pollStatus === "in_progress") {
+        // Throttle de poll: aguarda 2 min antes do próximo check.
+        // Sem isso, cada container IN_PROGRESS recebe 1 GET/min na Meta API.
+        // Com 10 containers aguardando = 10 calls/min = 600 calls/hora só de poll.
+        // A 2 min de intervalo: 5 calls/min por container = 300 calls/hora (−50%).
+        const pollAfter = new Date(Date.now() + 2 * 60_000).toISOString();
         await (admin as any)
           .from("pending_containers")
-          .update({ status: "pending" })
+          .update({ status: "pending", retry_after: pollAfter })
           .eq("id", container.id);
         summary.in_progress++;
+        console.log(`[publish-pending] ⏳ @${account?.username}: IN_PROGRESS — próximo poll em 2min.`);
         continue;
       }
 
