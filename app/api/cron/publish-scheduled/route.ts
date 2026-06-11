@@ -334,11 +334,12 @@ export async function GET(req: NextRequest) {
 
       if (isTransientError(msg)) {
         // Erro transitório (proxy, rate-limit, rede) → volta para pending (mantém creation_id).
-        // Próximo ciclo (1 min) vai tentar o poll ou publish novamente sem criar novo container.
-        console.warn(`[publish-scheduled] ⏸ @${account.username} (post ${post.id}): erro transitório — mantendo creation_id, retry no próximo ciclo. Motivo: ${msg.slice(0, 120)}`);
+        // Salva o erro em error_message para diagnóstico (prefixo [RETRY] indica que vai tentar de novo).
+        const retryMsg = `[RETRY] ${msg.slice(0, 300)}`;
+        console.warn(`[publish-scheduled] ⏸ @${account.username} (post ${post.id}): erro transitório — retry no próximo ciclo. Motivo: ${msg.slice(0, 120)}`);
         await admin
           .from("scheduled_posts")
-          .update({ status: "pending", error_message: null })
+          .update({ status: "pending", error_message: retryMsg })
           .eq("id", post.id);
         summary.skipped++;
       } else {
