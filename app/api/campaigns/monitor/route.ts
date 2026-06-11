@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export async function GET() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({
-      metrics: { total_published: 0, total_pending: 0, total_failed: 0, total_likes: 0, active_campaigns: 0 },
+      metrics: { total_published: 0, total_pending: 0, total_failed: 0, total_overdue: 0, total_likes: 0, active_campaigns: 0, next_publish_in_ms: null },
       accounts: [],
       timeline: { published: [], upcoming: [] },
       last_updated: new Date().toISOString(),
@@ -21,11 +21,11 @@ export async function GET() {
 
   const admin = getSupabaseAdmin() as any;
   const now = new Date();
+  const nowIso = now.toISOString();
   const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const since6h  = new Date(now.getTime() -  6 * 60 * 60 * 1000).toISOString();
   const next3h   = new Date(now.getTime() +  3 * 60 * 60 * 1000).toISOString();
 
-  // Fetch active accounts + recent scheduled posts with campaign_id
   const [accountsRes, postsRes] = await Promise.all([
     admin
       .from("instagram_accounts")
@@ -35,10 +35,11 @@ export async function GET() {
 
     admin
       .from("scheduled_posts")
-      .select("id, account_id, campaign_id, status, scheduled_at, published_at, media_id, insights_likes")
+      .select("id, account_id, campaign_id, status, scheduled_at, published_at, media_id, insights_likes, error_message")
       .eq("user_id", user.id)
       .not("campaign_id", "is", null)
-      .or(`status.in.(pending,publishing),published_at.gte.${since24h},scheduled_at.gte.${since24h}`)
+      // pending/publishing (any date), failed (recent), published (last 24h)
+      .or(`status.in.(pending,publishing,failed),published_at.gte.${since24h},scheduled_at.gte.${since24h}`)
       .order("scheduled_at", { ascending: true }),
   ]);
 
@@ -50,19 +51,20 @@ export async function GET() {
   const posts = (postsRes.data ?? []) as {
     id: string; account_id: string; campaign_id: string; status: string;
     scheduled_at: string; published_at: string | null; media_id: string | null;
-    insights_likes: number | null;
+    insights_likes: number | null; error_message: string | null;
   }[];
 
   const accountMap = new Map(accounts.map(a => [a.id, a]));
   const campaignIds = new Set(posts.map(p => p.campaign_id));
 
-  // Per-account aggregation
   const accountStatsMap = new Map<string, {
     account_id: string; username: string; display_name: string | null;
     avatar_url: string | null;
     total: number; published: number; pending: number; failed: number;
+    overdue_count: number;
     last_published_at: string | null; next_scheduled_at: string | null;
     total_likes: number; campaign_ids: string[];
+    last_error_message: string | null;
   }>();
 
   for (const post of posts) {
@@ -75,9 +77,10 @@ export async function GET() {
         username: acc.username,
         display_name: acc.display_name,
         avatar_url: acc.avatar_url,
-        total: 0, published: 0, pending: 0, failed: 0,
+        total: 0, published: 0, pending: 0, failed: 0, overdue_count: 0,
         last_published_at: null, next_scheduled_at: null,
         total_likes: 0, campaign_ids: [],
+        last_error_message: null,
       });
     }
 
@@ -91,19 +94,26 @@ export async function GET() {
       if (!s.last_published_at || pat > s.last_published_at) s.last_published_at = pat;
     } else if (post.status === "pending" || post.status === "publishing") {
       s.pending++;
+      // Overdue = past scheduled time but not yet published
+      if (post.scheduled_at < nowIso) s.overdue_count++;
       if (!s.next_scheduled_at || post.scheduled_at < s.next_scheduled_at)
         s.next_scheduled_at = post.scheduled_at;
-    } else if (post.status === "failed" || post.status === "cancelled") {
+    } else if (post.status === "failed") {
+      s.failed++;
+      // Keep the most recent error message (posts ordered by scheduled_at asc, so last wins = latest)
+      if (post.error_message) s.last_error_message = post.error_message;
+    } else if (post.status === "cancelled") {
       s.failed++;
     }
 
     if (!s.campaign_ids.includes(post.campaign_id)) s.campaign_ids.push(post.campaign_id);
   }
 
-  // Only include accounts that have campaign posts
   const accountList = Array.from(accountStatsMap.values())
     .sort((a, b) => {
-      // Sort: has pending first, then by last published desc
+      // Overdue first, then pending, then completed, then by recency
+      if (a.overdue_count > 0 && b.overdue_count === 0) return -1;
+      if (a.overdue_count === 0 && b.overdue_count > 0) return 1;
       if (a.pending > 0 && b.pending === 0) return -1;
       if (a.pending === 0 && b.pending > 0) return 1;
       if (a.last_published_at && b.last_published_at)
@@ -113,14 +123,13 @@ export async function GET() {
       return 0;
     });
 
-  // Metrics
-  const totalPublished    = accountList.reduce((s, a) => s + a.published, 0);
-  const totalPending      = accountList.reduce((s, a) => s + a.pending, 0);
-  const totalFailed       = accountList.reduce((s, a) => s + a.failed, 0);
-  const totalLikes        = accountList.reduce((s, a) => s + a.total_likes, 0);
-  const activeCampaigns   = campaignIds.size;
+  const totalPublished  = accountList.reduce((s, a) => s + a.published, 0);
+  const totalPending    = accountList.reduce((s, a) => s + a.pending, 0);
+  const totalFailed     = accountList.reduce((s, a) => s + a.failed, 0);
+  const totalOverdue    = accountList.reduce((s, a) => s + a.overdue_count, 0);
+  const totalLikes      = accountList.reduce((s, a) => s + a.total_likes, 0);
+  const activeCampaigns = campaignIds.size;
 
-  // Timeline: published in last 6h + upcoming posts in next 3h
   const publishedTimeline = posts
     .filter(p => p.status === "published" && p.published_at && p.published_at >= since6h)
     .map(p => ({
@@ -138,7 +147,6 @@ export async function GET() {
     }))
     .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
-  // Earliest upcoming publish
   const earliestNext = accountList
     .filter(a => a.next_scheduled_at)
     .map(a => new Date(a.next_scheduled_at!).getTime())
@@ -153,6 +161,7 @@ export async function GET() {
       total_published: totalPublished,
       total_pending: totalPending,
       total_failed: totalFailed,
+      total_overdue: totalOverdue,
       total_likes: totalLikes,
       active_campaigns: activeCampaigns,
       next_publish_in_ms,

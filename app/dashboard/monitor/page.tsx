@@ -41,14 +41,16 @@ interface LoopMonitorData {
 interface CampaignAccountStatus {
   account_id: string; username: string; display_name: string | null; avatar_url: string | null;
   total: number; published: number; pending: number; failed: number;
+  overdue_count: number;
   last_published_at: string | null; next_scheduled_at: string | null;
   total_likes: number; campaign_ids: string[];
+  last_error_message: string | null;
 }
 
 interface CampaignMonitorData {
   metrics: {
     total_published: number; total_pending: number; total_failed: number;
-    total_likes: number; active_campaigns: number; next_publish_in_ms: number | null;
+    total_overdue: number; total_likes: number; active_campaigns: number; next_publish_in_ms: number | null;
   };
   accounts: CampaignAccountStatus[];
   timeline: { published: TimelineEntry[]; upcoming: UpcomingEntry[] };
@@ -341,35 +343,71 @@ function LoopAccountCard({ acc }: { acc: AccountStatus }) {
 // ── Campaign Account Card ──────────────────────────────────────────────────────
 
 function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
-  const progress = acc.total > 0 ? (acc.published / acc.total) * 100 : 0;
-  const hasPending = acc.pending > 0;
-  const hasFailed  = acc.failed > 0;
+  const [expanded, setExpanded] = useState(false);
 
-  const borderColor = hasFailed && !hasPending
-    ? "border-red-500/20"
-    : hasPending
-      ? "border-[var(--electric)]/20"
-      : "border-[var(--matrix)]/20";
+  const progress    = acc.total > 0 ? (acc.published / acc.total) * 100 : 0;
+  const progressPct = Math.round(progress);
+  const hasPending  = acc.pending > 0;
+  const hasFailed   = acc.failed > 0;
+  const hasOverdue  = acc.overdue_count > 0;
+  const recentlyPublished = acc.last_published_at &&
+    (Date.now() - new Date(acc.last_published_at).getTime()) < 30 * 60_000;
+
+  // Derived status
+  let statusLabel: string;
+  let statusColor: string, statusBg: string, statusBorder: string;
+  let statusDot: string, statusDotAnim = false;
+  let cardBorder: string;
+
+  if (!hasPending && acc.published === 0 && !hasFailed) {
+    statusLabel = "Sem posts";
+    statusColor = "text-white/30"; statusBg = "bg-white/[0.03]"; statusBorder = "border-white/[0.06]";
+    statusDot = "bg-white/20"; cardBorder = "border-white/[0.08]";
+  } else if (!hasPending && hasFailed && acc.published === 0) {
+    statusLabel = "Falhou";
+    statusColor = "text-red-400"; statusBg = "bg-red-500/10"; statusBorder = "border-red-500/25";
+    statusDot = "bg-red-500"; cardBorder = "border-red-500/20";
+  } else if (!hasPending) {
+    statusLabel = "Concluída";
+    statusColor = "text-[var(--matrix)]"; statusBg = "bg-[var(--matrix)]/10"; statusBorder = "border-[var(--matrix)]/25";
+    statusDot = "bg-[var(--matrix)]"; cardBorder = "border-[var(--matrix)]/20";
+  } else if (hasOverdue) {
+    statusLabel = "Atrasada";
+    statusColor = "text-amber-400"; statusBg = "bg-amber-500/10"; statusBorder = "border-amber-500/25";
+    statusDot = "bg-amber-400"; statusDotAnim = true; cardBorder = "border-amber-500/20";
+  } else if (recentlyPublished) {
+    statusLabel = "Publicando";
+    statusColor = "text-[var(--matrix)]"; statusBg = "bg-[var(--matrix)]/10"; statusBorder = "border-[var(--matrix)]/25";
+    statusDot = "bg-[var(--matrix)]"; statusDotAnim = true; cardBorder = "border-[var(--matrix)]/20";
+  } else {
+    statusLabel = "Na Fila";
+    statusColor = "text-[var(--electric)]"; statusBg = "bg-[var(--electric)]/10"; statusBorder = "border-[var(--electric)]/25";
+    statusDot = "bg-[var(--electric)]"; cardBorder = "border-[var(--electric)]/20";
+  }
 
   return (
-    <motion.div layout className={cn("glass-card p-4 border flex flex-col gap-3 cursor-default", borderColor)}>
+    <motion.div layout className={cn("glass-card p-4 border flex flex-col gap-3 cursor-default", cardBorder)}>
       {/* Header */}
       <div className="flex items-start gap-3">
-        <div className="relative">
+        <div className="relative shrink-0">
           <Avatar username={acc.username} size="md" />
           <span className={cn(
             "absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-black",
-            hasPending ? "bg-[var(--electric)] animate-pulse" : hasFailed && !hasPending ? "bg-red-500" : "bg-[var(--matrix)]"
+            statusDot, statusDotAnim && "animate-pulse"
           )} />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-white/90 truncate">@{acc.username}</p>
           {acc.display_name && <p className="text-[10px] text-white/30 truncate">{acc.display_name}</p>}
         </div>
-        {/* Campaign count badge */}
-        <span className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border border-white/10 bg-white/[0.04] text-white/40">
-          <Layers size={9} />
-          {acc.campaign_ids.length} camp.
+        <span className={cn("shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border", statusColor, statusBg, statusBorder)}>
+          {statusLabel === "Concluída"  && <CheckCircle2 size={10} />}
+          {statusLabel === "Na Fila"    && <Clock size={10} />}
+          {statusLabel === "Publicando" && <Loader2 size={10} className="animate-spin" />}
+          {statusLabel === "Atrasada"   && <AlertTriangle size={10} />}
+          {statusLabel === "Falhou"     && <XCircle size={10} />}
+          {statusLabel === "Sem posts"  && <Zap size={10} />}
+          {statusLabel}
         </span>
       </div>
 
@@ -377,11 +415,18 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
       <div>
         <div className="flex items-center justify-between text-[10px] mb-1.5">
           <span className="text-white/30">Progresso</span>
-          <span className="text-white/50 tabular-nums">{acc.published}/{acc.total}</span>
+          <span className="tabular-nums">
+            <span className="text-white/60 font-medium">{acc.published}</span>
+            <span className="text-white/25">/{acc.total}</span>
+            <span className="text-white/30 ml-1">({progressPct}%)</span>
+          </span>
         </div>
         <div className="h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
           <motion.div
-            className="h-full rounded-full bg-gradient-to-r from-[var(--matrix)] to-[var(--electric)]"
+            className={cn("h-full rounded-full", hasFailed && !hasPending
+              ? "bg-red-500/50"
+              : "bg-gradient-to-r from-[var(--matrix)] to-[var(--electric)]"
+            )}
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
             transition={{ duration: 0.6, ease: "easeOut" }}
@@ -421,17 +466,51 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
             {timeAgo(acc.last_published_at)}
           </span>
         </div>
-        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+        <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border",
+          hasOverdue
+            ? "bg-amber-500/[0.04] border-amber-500/15"
+            : "bg-white/[0.03] border-white/[0.04]"
+        )}>
           <span className="text-white/30 text-[9px] uppercase tracking-wider">
-            {hasPending ? "Próximo" : "Concluído"}
+            {hasPending ? "Próximo" : "Situação"}
           </span>
           {hasPending ? (
-            <span className="font-medium text-[var(--electric)]">{timeIn(acc.next_scheduled_at)}</span>
+            <span className={cn("font-medium", hasOverdue ? "text-amber-400" : "text-[var(--electric)]")}>
+              {hasOverdue ? "⏱ " : ""}{timeIn(acc.next_scheduled_at)}
+            </span>
           ) : (
-            <span className="font-medium text-[var(--matrix)]/60 text-[10px]">✓ todos enviados</span>
+            <span className="font-medium text-[var(--matrix)]/60 text-[10px]">✓ concluído</span>
           )}
         </div>
       </div>
+
+      {/* Overdue warning */}
+      {hasOverdue && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/[0.05] border border-amber-500/15">
+          <AlertTriangle size={11} className="text-amber-400/80 shrink-0" />
+          <span className="text-[10px] text-amber-400/80">
+            {acc.overdue_count} post{acc.overdue_count > 1 ? "s" : ""} atrasado{acc.overdue_count > 1 ? "s" : ""} — aguardando o cron
+          </span>
+        </div>
+      )}
+
+      {/* Error detail (expandable) */}
+      {hasFailed && acc.last_error_message && (
+        <div
+          className="flex items-start gap-2 px-3 py-2 rounded-xl bg-red-500/[0.05] border border-red-500/15 cursor-pointer"
+          onClick={() => setExpanded(e => !e)}
+        >
+          <XCircle size={11} className="text-red-400 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className={cn("text-[10px] text-red-400/80 leading-relaxed break-all", !expanded && "line-clamp-1")}>
+              {acc.last_error_message}
+            </p>
+            {acc.last_error_message.length > 55 && (
+              <p className="text-[9px] text-red-500/50 mt-0.5">{expanded ? "▲ ocultar" : "▼ ver tudo"}</p>
+            )}
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -439,7 +518,7 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
 // ── Filter Tabs ────────────────────────────────────────────────────────────────
 
 type LoopFilter = "all" | "published" | "pending" | "error";
-type CampaignFilter = "all" | "active" | "completed";
+type CampaignFilter = "all" | "active" | "overdue" | "error" | "completed";
 
 // ── Loop View ──────────────────────────────────────────────────────────────────
 
@@ -652,22 +731,28 @@ function CampaignView() {
     return <div className="flex items-center justify-center h-64"><Loader2 size={24} className="animate-spin text-[var(--electric)]" /></div>;
   }
 
-  const m = data?.metrics ?? { total_published: 0, total_pending: 0, total_failed: 0, total_likes: 0, active_campaigns: 0, next_publish_in_ms: null };
+  const m = data?.metrics ?? { total_published: 0, total_pending: 0, total_failed: 0, total_overdue: 0, total_likes: 0, active_campaigns: 0, next_publish_in_ms: null };
   const allAccounts = data?.accounts ?? [];
 
   const CAMP_FILTERS = [
     { key: "all" as const,       label: "Todas",      color: "text-white/60"          },
-    { key: "active" as const,    label: "Ativas",     color: "text-[var(--electric)]" },
+    { key: "active" as const,    label: "Na Fila",    color: "text-[var(--electric)]" },
+    { key: "overdue" as const,   label: "Atrasadas",  color: "text-amber-400"         },
+    { key: "error" as const,     label: "Com Erros",  color: "text-red-400"           },
     { key: "completed" as const, label: "Concluídas", color: "text-[var(--matrix)]"   },
   ];
 
-  const filtered = filter === "all" ? allAccounts
-    : filter === "active" ? allAccounts.filter(a => a.pending > 0)
+  const filtered = filter === "all"       ? allAccounts
+    : filter === "active"    ? allAccounts.filter(a => a.pending > 0 && a.overdue_count === 0)
+    : filter === "overdue"   ? allAccounts.filter(a => a.overdue_count > 0)
+    : filter === "error"     ? allAccounts.filter(a => a.failed > 0)
     : allAccounts.filter(a => a.pending === 0 && a.published > 0);
 
   const counts = {
     all:       allAccounts.length,
-    active:    allAccounts.filter(a => a.pending > 0).length,
+    active:    allAccounts.filter(a => a.pending > 0 && a.overdue_count === 0).length,
+    overdue:   allAccounts.filter(a => a.overdue_count > 0).length,
+    error:     allAccounts.filter(a => a.failed > 0).length,
     completed: allAccounts.filter(a => a.pending === 0 && a.published > 0).length,
   };
 
@@ -695,10 +780,10 @@ function CampaignView() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <MetricCard label="Publicados" sub="em campanhas" value={m.total_published} color="green" icon={CheckCircle2} />
         <MetricCard label="Na fila" sub="agendados" value={m.total_pending} color="cyan" icon={Clock} />
+        <MetricCard label="Atrasados" sub="fora do prazo" value={m.total_overdue} color="amber" icon={AlertTriangle} />
         <MetricCard label="Falhas" sub="total" value={m.total_failed} color="red" icon={XCircle} />
         <MetricCard label="Próxima postagem" sub="countdown" value="" color="amber" icon={TrendingUp}
           extra={<p className="text-sm font-bold text-amber-400 tabular-nums"><Countdown ms={m.next_publish_in_ms} /></p>} />
-        <MetricCard label="Curtidas" sub="total publicado" value={fmtNum(m.total_likes)} color="pink" icon={Heart} />
       </div>
 
       {data && <Timeline published={data.timeline.published} upcoming={data.timeline.upcoming} />}
