@@ -43,9 +43,31 @@ interface Campaign {
   first_slot: string;
   last_slot: string;
   next_pending: string | null;
+  last_published_at: string | null;
+  last_error_message: string | null;
   account_ids: string[];
   campaign_status: "running" | "completed";
   created_at: string;
+}
+
+// ── Campaign helpers ────────────────────────────────────────────────────────
+
+function campTimeAgo(dateStr: string | null): string {
+  if (!dateStr) return "—";
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diff < 60) return `${diff}s atrás`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`;
+  return `${Math.floor(diff / 86400)}d atrás`;
+}
+
+function campTimeIn(dateStr: string | null): string {
+  if (!dateStr) return "—";
+  const diff = Math.floor((new Date(dateStr).getTime() - Date.now()) / 1000);
+  if (diff <= 0) return "aguardando cron";
+  if (diff < 60) return `em ${diff}s`;
+  if (diff < 3600) return `em ${Math.floor(diff / 60)}min`;
+  return `em ${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}min`;
 }
 
 const VIDEO_COUNT_PRESETS = [
@@ -489,25 +511,40 @@ function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: R
 function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreateNew: () => void }) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [expandedError, setExpandedError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
-  const fetchCampaigns = useCallback(async () => {
+  const fetchCampaigns = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
     try {
       const res = await fetch("/api/campaigns");
       const d = await res.json() as { campaigns: Campaign[] };
       setCampaigns(d.campaigns ?? []);
-    } catch {/* silent */} finally { setLoading(false); }
+    } catch {/* silent */} finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
   useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
 
+  // Auto-refresh every 15s when there are running campaigns
   useEffect(() => {
     const hasRunning = campaigns.some(c => c.campaign_status === "running");
     if (!hasRunning) return;
-    const interval = setInterval(fetchCampaigns, 15000);
+    const interval = setInterval(() => fetchCampaigns(true), 15_000);
     return () => clearInterval(interval);
   }, [campaigns, fetchCampaigns]);
+
+  // Tick every 10s so time displays stay fresh between API calls
+  useEffect(() => {
+    const t = setInterval(() => setTick(v => v + 1), 10_000);
+    return () => clearInterval(t);
+  }, []);
 
   const accountMap = useMemo(() => {
     const m = new Map<string, Account>();
@@ -525,7 +562,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
     setConfirmDelete(null);
     try {
       await fetch(`/api/campaigns?id=${encodeURIComponent(campaignId)}`, { method: "DELETE" });
-      await fetchCampaigns();
+      await fetchCampaigns(true);
     } finally { setDeletingId(null); }
   };
 
@@ -545,10 +582,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
         </div>
         <p className="text-white/30 text-sm mb-1">Nenhuma campanha encontrada</p>
         <p className="text-white/15 text-xs mb-5">Crie sua primeira distribuição</p>
-        <button
-          onClick={onCreateNew}
-          className="px-5 py-2.5 rounded-xl bg-[#00FF41]/10 text-[#00FF41] text-sm font-medium hover:bg-[#00FF41]/20 transition-all border border-[#00FF41]/20"
-        >
+        <button onClick={onCreateNew} className="px-5 py-2.5 rounded-xl bg-[#00FF41]/10 text-[#00FF41] text-sm font-medium hover:bg-[#00FF41]/20 transition-all border border-[#00FF41]/20">
           Nova Distribuição
         </button>
       </div>
@@ -557,8 +591,12 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
 
   const running = campaigns.filter(c => c.campaign_status === "running");
 
+  // Suppress lint warning — tick is read to force re-render for live time displays
+  void tick;
+
   return (
     <div className="max-w-3xl mx-auto">
+      {/* Header row */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-4 text-xs text-white/30">
           {running.length > 0 && (
@@ -567,24 +605,49 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
               <span className="text-[#00FF41]/70">{running.length} executando</span>
             </span>
           )}
-          <span>{campaigns.length} campanha{campaigns.length !== 1 ? "s" : ""} no total</span>
+          <span>{campaigns.length} campanha{campaigns.length !== 1 ? "s" : ""}</span>
         </div>
         <button
-          onClick={fetchCampaigns}
-          className="flex items-center gap-1.5 text-xs text-white/25 hover:text-[#00E5FF] transition-colors"
+          onClick={() => fetchCampaigns(true)}
+          disabled={refreshing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/[0.07] bg-white/[0.03] text-xs text-white/40 hover:text-[#00E5FF] hover:border-[#00E5FF]/20 transition-all disabled:opacity-40"
         >
-          <RefreshCw size={11} />
-          Atualizar
+          <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
+          {refreshing ? "Atualizando…" : "Atualizar"}
         </button>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {campaigns.map(campaign => {
-          const progress = campaign.total > 0 ? Math.round((campaign.published / campaign.total) * 100) : 0;
-          const isRunning = campaign.campaign_status === "running";
-          const isDeleting = deletingId === campaign.campaign_id;
+          const progress     = campaign.total > 0 ? Math.round((campaign.published / campaign.total) * 100) : 0;
+          const isRunning    = campaign.campaign_status === "running";
+          const isDeleting   = deletingId === campaign.campaign_id;
           const isConfirming = confirmDelete === campaign.campaign_id;
           const campAccounts = campaign.account_ids.map(id => accountMap.get(id)).filter(Boolean) as Account[];
+          const hasFailed    = campaign.failed > 0;
+          const isOverdue    = isRunning && campaign.next_pending != null && new Date(campaign.next_pending) < new Date();
+          const recentPub    = campaign.last_published_at && (Date.now() - new Date(campaign.last_published_at).getTime()) < 30 * 60_000;
+          const errExpanded  = expandedError === campaign.campaign_id;
+
+          // Dynamic status
+          let statusLabel: string, statusCls: string, statusBorder: string, dotCls: string, dotPulse = false;
+          if (!isRunning) {
+            statusLabel = "Concluída"; statusCls = "bg-[#00FF41]/10 text-[#00FF41]"; statusBorder = "border-[#00FF41]/20"; dotCls = "bg-[#00FF41]";
+          } else if (isOverdue) {
+            statusLabel = "Atrasada"; statusCls = "bg-amber-500/10 text-amber-400"; statusBorder = "border-amber-500/20"; dotCls = "bg-amber-400"; dotPulse = true;
+          } else if (recentPub) {
+            statusLabel = "Publicando"; statusCls = "bg-[#00FF41]/10 text-[#00FF41]"; statusBorder = "border-[#00FF41]/20"; dotCls = "bg-[#00FF41]"; dotPulse = true;
+          } else {
+            statusLabel = "Na Fila"; statusCls = "bg-[#00E5FF]/10 text-[#00E5FF]"; statusBorder = "border-[#00E5FF]/20"; dotCls = "bg-[#00E5FF]";
+          }
+
+          const cardBorder = isOverdue
+            ? "border-amber-500/15"
+            : hasFailed && !isRunning
+              ? "border-red-500/15"
+              : isRunning
+                ? "border-[#00E5FF]/10"
+                : "border-white/[0.08]";
 
           return (
             <motion.div
@@ -592,86 +655,137 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
-              className="glass-card rounded-2xl p-5 space-y-4"
+              className={cn("glass-card rounded-2xl p-5 space-y-4 border", cardBorder)}
             >
+              {/* ── Header ── */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className={cn("w-2 h-2 rounded-full flex-shrink-0 mt-0.5", isRunning ? "bg-[#00FF41] shadow-[0_0_6px_rgba(0,255,65,0.8)]" : "bg-white/15")} />
+                  <span className={cn("w-2 h-2 rounded-full shrink-0 mt-0.5", dotCls, dotPulse && "animate-pulse")} />
                   <div className="min-w-0">
                     <p className="text-white/60 font-mono text-xs tracking-wider">#{campaign.campaign_id.slice(0, 8).toUpperCase()}</p>
                     <p className="text-white/25 text-[10px] mt-0.5">Criada {formatDatetime(campaign.created_at)}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className={cn(
-                    "px-2.5 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wide border whitespace-nowrap",
-                    isRunning ? "bg-[#00FF41]/10 text-[#00FF41] border-[#00FF41]/20" : "bg-white/[0.04] text-white/25 border-white/[0.08]"
-                  )}>
-                    {isRunning ? "🟢 Executando" : "⚫ Concluída"}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold border whitespace-nowrap", statusCls, statusBorder)}>
+                    {statusLabel === "Concluída"  && <CheckCircle2 size={9} />}
+                    {statusLabel === "Na Fila"    && <Clock size={9} />}
+                    {statusLabel === "Publicando" && <Loader2 size={9} className="animate-spin" />}
+                    {statusLabel === "Atrasada"   && <AlertCircle size={9} />}
+                    {statusLabel}
                   </span>
                   <button
                     onClick={() => handleDelete(campaign.campaign_id)}
                     disabled={isDeleting}
                     className={cn(
-                      "w-7 h-7 rounded-lg border flex items-center justify-center transition-all text-xs",
-                      isConfirming ? "bg-red-500/15 border-red-500/40 text-red-400 font-bold" : "bg-white/[0.04] border-white/[0.08] text-white/25 hover:text-red-400 hover:border-red-400/25 hover:bg-red-400/8",
+                      "w-7 h-7 rounded-lg border flex items-center justify-center transition-all",
+                      isConfirming ? "bg-red-500/15 border-red-500/40 text-red-400" : "bg-white/[0.04] border-white/[0.08] text-white/25 hover:text-red-400 hover:border-red-400/25",
                       isDeleting && "opacity-40 cursor-not-allowed"
                     )}
                   >
-                    {isDeleting ? <Loader2 size={11} className="animate-spin" /> : isConfirming ? "?" : <Trash2 size={11} />}
+                    {isDeleting ? <Loader2 size={11} className="animate-spin" /> : isConfirming ? <Check size={11} /> : <Trash2 size={11} />}
                   </button>
                 </div>
               </div>
 
+              {/* ── Progress ── */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[10px]">
-                  <span className="text-white/40">{campaign.published} de {campaign.total} posts publicados</span>
-                  <span className={cn("font-mono font-bold", progress >= 100 ? "text-[#00FF41]" : isRunning ? "text-[#00E5FF]" : "text-white/30")}>{progress}%</span>
+                  <span className="text-white/40 tabular-nums">{campaign.published} de {campaign.total} posts publicados</span>
+                  <span className={cn("font-bold tabular-nums", progress >= 100 ? "text-[#00FF41]" : isRunning ? "text-[#00E5FF]" : "text-white/30")}>{progress}%</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
                     transition={{ duration: 0.7, ease: "easeOut" }}
-                    className={cn("h-full rounded-full", progress >= 100 ? "bg-[#00FF41]" : "bg-gradient-to-r from-[#00FF41]/70 to-[#00E5FF]/70")}
+                    className={cn("h-full rounded-full", hasFailed && !isRunning ? "bg-red-500/50" : "bg-gradient-to-r from-[#00FF41]/70 to-[#00E5FF]/70")}
                   />
                 </div>
-                {(campaign.failed > 0 || campaign.pending > 0) && (
-                  <div className="flex gap-3 text-[10px]">
-                    {campaign.pending > 0 && <span className="text-yellow-400/60">{campaign.pending} pendente{campaign.pending !== 1 ? "s" : ""}</span>}
-                    {campaign.failed > 0 && <span className="text-red-400/60">{campaign.failed} falha{campaign.failed !== 1 ? "s" : ""}</span>}
-                  </div>
-                )}
               </div>
 
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="flex -space-x-1.5">
-                    {campAccounts.slice(0, 5).map(acc => (
-                      acc.avatar_url ? (
-                        <img key={acc.id} src={acc.avatar_url} alt={acc.username} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-black object-cover" />
-                      ) : (
-                        <div key={acc.id} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-black bg-gradient-to-br from-[#00FF41]/30 to-[#00E5FF]/30" />
-                      )
-                    ))}
-                    {campAccounts.length === 0 && campaign.account_ids.slice(0, 5).map(id => (
-                      <div key={id} className="w-5 h-5 rounded-full border border-black bg-white/10" />
-                    ))}
-                    {campaign.account_ids.length > 5 && (
-                      <div className="w-5 h-5 rounded-full border border-black bg-white/10 flex items-center justify-center">
-                        <span className="text-[7px] text-white/40">+{campaign.account_ids.length - 5}</span>
-                      </div>
-                    )}
-                  </div>
-                  <span className="text-white/25 text-[10px]">{campaign.account_ids.length} conta{campaign.account_ids.length !== 1 ? "s" : ""}</span>
+              {/* ── Stats row ── */}
+              <div className="grid grid-cols-3 gap-2 text-[10px]">
+                <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+                  <span className="text-white/25 text-[9px] uppercase tracking-wider">Fila</span>
+                  <span className={cn("font-bold tabular-nums", campaign.pending > 0 ? "text-[#00E5FF]" : "text-white/20")}>{campaign.pending}</span>
                 </div>
-                <div className="text-right text-[10px] flex-shrink-0">
-                  {isRunning && campaign.next_pending ? (
-                    <span className="flex items-center gap-1 text-[#00E5FF]/60"><Clock size={9} />Próximo: {formatDatetime(campaign.next_pending)}</span>
+                <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border", hasFailed ? "bg-red-500/[0.04] border-red-500/15" : "bg-white/[0.03] border-white/[0.04]")}>
+                  <span className="text-white/25 text-[9px] uppercase tracking-wider">Falhas</span>
+                  <span className={cn("font-bold tabular-nums", hasFailed ? "text-red-400" : "text-white/20")}>{campaign.failed}</span>
+                </div>
+                <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+                  <span className="text-white/25 text-[9px] uppercase tracking-wider">Cancelados</span>
+                  <span className="font-bold tabular-nums text-white/25">{campaign.cancelled}</span>
+                </div>
+              </div>
+
+              {/* ── Timing row ── */}
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+                  <span className="text-white/25 text-[9px] uppercase tracking-wider">Último publicado</span>
+                  <span className={cn("font-medium", campaign.last_published_at ? "text-[#00FF41]" : "text-white/20")}>
+                    {campTimeAgo(campaign.last_published_at)}
+                  </span>
+                </div>
+                <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border", isOverdue ? "bg-amber-500/[0.04] border-amber-500/15" : "bg-white/[0.03] border-white/[0.04]")}>
+                  <span className="text-white/25 text-[9px] uppercase tracking-wider">
+                    {isRunning ? "Próximo" : "Encerrada em"}
+                  </span>
+                  {isRunning ? (
+                    <span className={cn("font-medium", isOverdue ? "text-amber-400" : "text-[#00E5FF]")}>
+                      {isOverdue ? "⏱ " : ""}{campTimeIn(campaign.next_pending)}
+                    </span>
                   ) : (
-                    <span className="text-white/20">Encerrada: {formatDatetime(campaign.last_slot)}</span>
+                    <span className="font-medium text-white/25 text-[10px]">{formatDatetime(campaign.last_slot)}</span>
                   )}
                 </div>
+              </div>
+
+              {/* ── Overdue warning ── */}
+              {isOverdue && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/[0.05] border border-amber-500/15">
+                  <AlertCircle size={11} className="text-amber-400/80 shrink-0" />
+                  <span className="text-[10px] text-amber-400/80">Post atrasado — o cron publicará na próxima execução (≤1 min)</span>
+                </div>
+              )}
+
+              {/* ── Error message ── */}
+              {hasFailed && campaign.last_error_message && (
+                <div
+                  className="flex items-start gap-2 px-3 py-2 rounded-xl bg-red-500/[0.05] border border-red-500/15 cursor-pointer"
+                  onClick={() => setExpandedError(errExpanded ? null : campaign.campaign_id)}
+                >
+                  <AlertCircle size={11} className="text-red-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className={cn("text-[10px] text-red-400/80 leading-relaxed break-all", !errExpanded && "line-clamp-1")}>
+                      {campaign.last_error_message}
+                    </p>
+                    {campaign.last_error_message.length > 55 && (
+                      <p className="text-[9px] text-red-500/50 mt-0.5">{errExpanded ? "▲ ocultar" : "▼ ver tudo"}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Footer: accounts ── */}
+              <div className="flex items-center gap-2 pt-1 border-t border-white/[0.04]">
+                <div className="flex -space-x-1.5">
+                  {campAccounts.slice(0, 6).map(acc => (
+                    acc.avatar_url
+                      ? <img key={acc.id} src={acc.avatar_url} alt={acc.username} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-black object-cover" />
+                      : <div key={acc.id} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-black bg-gradient-to-br from-[#00FF41]/30 to-[#00E5FF]/30 flex items-center justify-center"><span className="text-[7px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>
+                  ))}
+                  {campAccounts.length === 0 && campaign.account_ids.slice(0, 6).map(id => (
+                    <div key={id} className="w-5 h-5 rounded-full border border-black bg-white/10" />
+                  ))}
+                  {campaign.account_ids.length > 6 && (
+                    <div className="w-5 h-5 rounded-full border border-black bg-white/10 flex items-center justify-center">
+                      <span className="text-[7px] text-white/40">+{campaign.account_ids.length - 6}</span>
+                    </div>
+                  )}
+                </div>
+                <span className="text-white/25 text-[10px]">{campaign.account_ids.length} conta{campaign.account_ids.length !== 1 ? "s" : ""}</span>
               </div>
             </motion.div>
           );

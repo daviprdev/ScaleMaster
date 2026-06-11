@@ -9,6 +9,8 @@ interface PostRow {
   campaign_id: string;
   status: string;
   scheduled_at: string;
+  published_at: string | null;
+  error_message: string | null;
   account_id: string;
   created_at: string;
 }
@@ -23,6 +25,8 @@ interface CampaignSummary {
   first_slot: string;
   last_slot: string;
   next_pending: string | null;
+  last_published_at: string | null;
+  last_error_message: string | null;
   account_ids: string[];
   campaign_status: "running" | "completed";
   created_at: string;
@@ -41,7 +45,7 @@ export async function GET() {
 
   const { data, error } = await (admin as any)
     .from("scheduled_posts")
-    .select("campaign_id, status, scheduled_at, account_id, created_at")
+    .select("campaign_id, status, scheduled_at, published_at, error_message, account_id, created_at")
     .eq("user_id", user.id)
     .not("campaign_id", "is", null)
     .order("created_at", { ascending: false });
@@ -71,6 +75,8 @@ export async function GET() {
         first_slot: post.scheduled_at,
         last_slot: post.scheduled_at,
         next_pending: null,
+        last_published_at: null,
+        last_error_message: null,
         account_ids: [],
         campaign_status: "completed",
         created_at: post.created_at,
@@ -80,10 +86,19 @@ export async function GET() {
     const campaign = campaignsMap.get(post.campaign_id)!;
     campaign.total++;
 
-    if (post.status === "published") campaign.published++;
-    else if (post.status === "pending" || post.status === "publishing") campaign.pending++;
-    else if (post.status === "failed") campaign.failed++;
-    else if (post.status === "cancelled") campaign.cancelled++;
+    if (post.status === "published") {
+      campaign.published++;
+      const pat = post.published_at ?? post.scheduled_at;
+      if (!campaign.last_published_at || pat > campaign.last_published_at)
+        campaign.last_published_at = pat;
+    } else if (post.status === "pending" || post.status === "publishing") {
+      campaign.pending++;
+    } else if (post.status === "failed") {
+      campaign.failed++;
+      if (post.error_message) campaign.last_error_message = post.error_message;
+    } else if (post.status === "cancelled") {
+      campaign.cancelled++;
+    }
 
     // Track date range
     if (post.scheduled_at < campaign.first_slot) campaign.first_slot = post.scheduled_at;
