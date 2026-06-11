@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { publishViaMetaAPI } from "@/lib/meta-publish";
+import {
+  createMediaContainerOnly,
+  pollContainerStatusOnce,
+  publishReadyContainer,
+} from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount } from "@/lib/proxy";
-import type { MetaPublishResult } from "@/lib/meta-publish";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// ── Orçamento de tempo anti-timeout ───────────────────────────────────────────
-// Hobby plan: serverless Node.js → 60s real. maxDuration=300 é o plano ideal
-// (Pro), mas assumimos 60s como piso seguro.
-// Cada post pode esperar no máximo 50s (pollContainerStatus: 6×8s = 48s + overhead).
-// Com BATCH_SIZE=5 e RUN_BUDGET_MS=55s paramos de aceitar novos posts antes
-// do kill do servidor, garantindo que o status seja gravado no DB.
+// Orçamento de tempo — Hobby plan: 60s real.
+// Dois-fase: criar container (rápido) + poll uma vez (rápido) + publicar (rápido).
+// Nenhuma operação de poll com loop — sempre retorna e tenta de novo no próximo ciclo (1min).
 const BATCH_SIZE = 10;
-const RUN_BUDGET_MS = 55_000;   // para de clamar novos posts após 55s
-const PER_POST_TIMEOUT_MS = 50_000; // hard cap por post
+const RUN_BUDGET_MS = 55_000;
 
 interface AccountRow {
   id: string;
@@ -36,13 +35,16 @@ interface PostRow {
   caption: string | null;
   scheduled_at: string;
   account_id: string;
+  // Criado na primeira tentativa e reutilizado em polls subsequentes.
+  // NULL = ainda não criou container. Não-null = container já existe na Meta.
+  creation_id: string | null;
   instagram_accounts: AccountRow | null;
   videos_library: { public_url: string } | null;
 }
 
-// Erros de rate limit / transitórios da Meta → resetar para "pending" (retentável no próximo ciclo).
-// Erros de token/credenciais → marcar como "failed" (permanente).
-const RATE_LIMIT_PATTERNS = [
+// Erros transitórios da Meta ou de rede → manter creation_id, tentar de novo no próximo ciclo.
+// Erros de token/credenciais → marcar como "failed" permanente, limpar creation_id.
+const TRANSIENT_PATTERNS = [
   "too many actions",
   "an unexpected error has occurred",
   "retry your request later",
@@ -51,38 +53,16 @@ const RATE_LIMIT_PATTERNS = [
   "internal server error",
   "fetch failed",
   "smartproxy",
-  // Timeout interno do pollContainerStatus — Meta ainda processando o vídeo.
-  // Retentável: vai tentar de novo no próximo ciclo (a cada 1 min).
-  "não terminou de processar",
-  "did not finish processing",
+  "proxy",
   "timeout",
 ];
 
-function isRateLimitError(msg: string): boolean {
+function isTransientError(msg: string): boolean {
   const lower = msg.toLowerCase();
-  return RATE_LIMIT_PATTERNS.some(p => lower.includes(p));
+  return TRANSIENT_PATTERNS.some(p => lower.includes(p));
 }
 
-// Envolve publishViaMetaAPI num hard-timeout.
-// Se estourar: lança erro marcado com "[TIMEOUT]" para o catch saber que
-// deve resetar o status para "pending" (reprocessável) e não "failed".
-function publishWithTimeout(
-  igAccountId: string,
-  token: string,
-  videoUrl: string,
-  caption: string,
-  proxy: import("undici").ProxyAgent | null
-): Promise<MetaPublishResult> {
-  return Promise.race([
-    publishViaMetaAPI(igAccountId, token, videoUrl, caption, proxy),
-    new Promise<MetaPublishResult>((_, reject) =>
-      setTimeout(
-        () => reject(new Error("[TIMEOUT] Meta API não processou em 50s — será reprocessado.")),
-        PER_POST_TIMEOUT_MS
-      )
-    ),
-  ]);
-}
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export async function GET(req: NextRequest) {
   const runStart = Date.now();
@@ -104,7 +84,7 @@ export async function GET(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const now = new Date().toISOString();
 
-  console.log(`[publish-scheduled] ▶ Iniciando execução. now=${now} | batch_size=${BATCH_SIZE}`);
+  console.log(`[publish-scheduled] ▶ Iniciando execução (dois-fase). now=${now} | batch_size=${BATCH_SIZE}`);
 
   // ── Diagnóstico ───────────────────────────────────────────────────────────
   const [{ count: countPending }, { count: countPublishing }] = await Promise.all([
@@ -135,12 +115,13 @@ export async function GET(req: NextRequest) {
   );
 
   // ── Desbloqueio de posts presos em "publishing" ───────────────────────────
-  // Cutoff de 10 min: se o worker anterior morreu antes de atualizar o status,
-  // o post fica preso. Resetamos após 10 min para reprocessar na próxima execução.
+  // Com dois-fase, NÃO limpamos creation_id — próximo ciclo vai pollar o mesmo container.
+  // Apenas reseta o status para "pending" para que seja reprocessado.
   const stuckCutoff = new Date(Date.now() - 10 * 60_000).toISOString();
   const { data: unblocked, error: unblockErr } = await admin
     .from("scheduled_posts")
     .update({ status: "pending", error_message: null })
+    // NÃO inclui creation_id aqui — mantém o container existente para re-poll
     .eq("status", "publishing")
     .lte("scheduled_at", stuckCutoff)
     .select("id");
@@ -148,36 +129,15 @@ export async function GET(req: NextRequest) {
   if (unblockErr) {
     console.error("[publish-scheduled] Erro ao desbloquear posts presos:", unblockErr.message);
   } else if (unblocked?.length) {
-    console.log(`[publish-scheduled] ${unblocked.length} post(s) desbloqueados "publishing" → "pending" (presos > 10 min)`);
-  }
-
-  // ── Auto-healing: reseta falhas de timeout de processamento (retryable) ───
-  // Posts que falharam com "não terminou de processar" ou "[TIMEOUT]" são
-  // temporários — a Meta ainda estava processando o vídeo. Resetamos para
-  // "pending" para que o próximo ciclo tente novamente.
-  // Limitado a scheduled_at nas últimas 48h para não ressuscitar falhas antigas.
-  const healCutoff = new Date(Date.now() - 48 * 60 * 60_000).toISOString();
-  const { data: healed, error: healErr } = await admin
-    .from("scheduled_posts")
-    .update({ status: "pending", error_message: null })
-    .eq("status", "failed")
-    .gte("scheduled_at", healCutoff)
-    .or("error_message.ilike.%não terminou de processar%,error_message.ilike.%timeout%,error_message.ilike.%did not finish%")
-    .select("id");
-
-  if (healErr) {
-    console.error("[publish-scheduled] Erro no auto-healing de timeout:", healErr.message);
-  } else if (healed?.length) {
-    console.log(`[publish-scheduled] ${healed.length} post(s) de timeout resetados "failed" → "pending" (auto-healing)`);
+    console.log(`[publish-scheduled] ${unblocked.length} post(s) desbloqueados "publishing" → "pending" (creation_id preservado)`);
   }
 
   // ── Busca posts elegíveis ─────────────────────────────────────────────────
-  // BATCH_SIZE=5 para garantir que processamos dentro do orçamento de 60s.
-  // Os posts restantes serão processados nas próximas execuções do cron.
+  // Inclui creation_id — se não-null, o container já existe na Meta (não recriar).
   const { data: rows, error: fetchErr } = await admin
     .from("scheduled_posts")
     .select(
-      "id, video_id, video_url, caption, scheduled_at, account_id, " +
+      "id, video_id, video_url, creation_id, caption, scheduled_at, account_id, " +
       "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url), " +
       "videos_library(public_url)"
     )
@@ -197,15 +157,19 @@ export async function GET(req: NextRequest) {
   const summary = {
     total: posts.length,
     published: 0,
+    container_created: 0,
+    container_reused: 0,
+    in_progress: 0,
     failed: 0,
     skipped: 0,
-    timed_out: 0,
     unblocked: unblocked?.length ?? 0,
     queue_pending: countPending ?? 0,
     queue_eligible: countEligible ?? 0,
     queue_future: countFuture,
     queue_failed_total: countFailed ?? 0,
   };
+
+  let publishAttemptsInThisRun = 0;
 
   for (const post of posts) {
     // ── Budget global da execução ─────────────────────────────────────────
@@ -215,7 +179,12 @@ export async function GET(req: NextRequest) {
       break;
     }
 
-    console.log(`[publish-scheduled] Processando post ${post.id} | scheduled_at=${post.scheduled_at} | elapsed=${Math.round(elapsed / 1000)}s`);
+    console.log(
+      `[publish-scheduled] Processando post ${post.id} | ` +
+      `scheduled_at=${post.scheduled_at} | ` +
+      `creation_id=${post.creation_id ?? "null (novo)"} | ` +
+      `elapsed=${Math.round(elapsed / 1000)}s`
+    );
 
     // Claim atômico: evita dupla publicação em execuções concorrentes
     const { data: claimed } = await admin
@@ -279,53 +248,106 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      console.log(`[publish-scheduled] Publicando via Meta API para @${account.username} (ig_id=${account.ig_business_account_id}) | proxy=${proxy ? "sim" : "não"} | videoUrl=${videoUrl.slice(0, 80)}...`);
+      // ── FASE 1: Criar container (apenas se ainda não existe) ──────────────
+      // Se creation_id já existe, o container foi criado em ciclo anterior.
+      // Apenas pollamos — evita criação de novos containers a cada minuto (causa de rate-limit).
+      let creationId = post.creation_id;
 
-      const result = await publishWithTimeout(
+      if (!creationId) {
+        console.log(`[publish-scheduled] Criando container Meta para @${account.username} | proxy=${proxy ? "sim" : "não"} | videoUrl=${videoUrl.slice(0, 80)}...`);
+        creationId = await createMediaContainerOnly(
+          account.ig_business_account_id,
+          videoUrl,
+          caption,
+          tokenToUse,
+          proxy
+        );
+        // Persiste imediatamente para que falhas subsequentes não recriem o container.
+        await admin
+          .from("scheduled_posts")
+          .update({ creation_id: creationId })
+          .eq("id", post.id);
+        summary.container_created++;
+        console.log(`[publish-scheduled] ✓ Container criado: ${creationId} (@${account.username})`);
+      } else {
+        summary.container_reused++;
+        console.log(`[publish-scheduled] ↩ Reutilizando container ${creationId} para @${account.username}.`);
+      }
+
+      // ── FASE 2: Pollar status UMA vez ─────────────────────────────────────
+      // Sem loop de poll — retorna imediatamente e tenta de novo no próximo ciclo (1 min).
+      // Elimina o timeout de 24s que causava re-criação infinita de containers.
+      const pollStatus = await pollContainerStatusOnce(creationId, tokenToUse, proxy);
+
+      if (pollStatus === "in_progress") {
+        // Meta ainda processando o vídeo → volta para pending (mantém creation_id)
+        await admin
+          .from("scheduled_posts")
+          .update({ status: "pending", error_message: null })
+          .eq("id", post.id);
+        summary.in_progress++;
+        console.log(`[publish-scheduled] ⏳ @${account.username}: vídeo em processamento (IN_PROGRESS) — tentará de novo no próximo ciclo.`);
+        continue;
+      }
+
+      if (pollStatus === "error") {
+        // Meta rejeitou o vídeo (formato inválido, violação de política, etc.) — permanente.
+        // Limpa creation_id para que uma nova tentativa manual recrie o container.
+        await admin
+          .from("scheduled_posts")
+          .update({ status: "failed", error_message: "Meta retornou ERROR/EXPIRED durante o processamento do vídeo.", creation_id: null })
+          .eq("id", post.id);
+        console.error(`[publish-scheduled] ✗ @${account.username}: Meta ERROR/EXPIRED no container.`);
+        summary.failed++;
+        continue;
+      }
+
+      // FINISHED — publicar!
+      if (publishAttemptsInThisRun > 0) {
+        await sleep(8_000); // anti-burst: delay entre publishes consecutivos
+      }
+      publishAttemptsInThisRun++;
+
+      console.log(`[publish-scheduled] Publicando container ${creationId} para @${account.username}...`);
+      const mediaId = await publishReadyContainer(
         account.ig_business_account_id,
+        creationId,
         tokenToUse,
-        videoUrl,
-        caption,
         proxy
       );
-
-      if (result.status !== "ok") {
-        throw new Error(result.error ?? "Erro desconhecido na Meta API.");
-      }
 
       await admin
         .from("scheduled_posts")
         .update({
           status: "published",
           published_at: new Date().toISOString(),
-          media_id: result.media_id ?? null,
+          media_id: mediaId ?? null,
           error_message: null,
         })
         .eq("id", post.id);
 
       summary.published++;
-      console.log(`[publish-scheduled] ✓ @${account.username} → media_id: ${result.media_id} | elapsed total: ${Math.round((Date.now() - runStart) / 1000)}s`);
+      console.log(`[publish-scheduled] ✓ @${account.username} → media_id: ${mediaId} | elapsed total: ${Math.round((Date.now() - runStart) / 1000)}s`);
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      const isTimeout = msg.startsWith("[TIMEOUT]");
-      const isRateLimit = isRateLimitError(msg);
 
-      if (isTimeout || isRateLimit) {
-        // Erros transitórios → resetar para "pending" (retentável no próximo ciclo a cada 5 min).
-        const kind = isTimeout ? "timeout" : "rate-limit";
-        console.warn(`[publish-scheduled] ⏱ @${account.username} (post ${post.id}): ${kind} — resetando para pending.`);
+      if (isTransientError(msg)) {
+        // Erro transitório (proxy, rate-limit, rede) → volta para pending (mantém creation_id).
+        // Próximo ciclo (1 min) vai tentar o poll ou publish novamente sem criar novo container.
+        console.warn(`[publish-scheduled] ⏸ @${account.username} (post ${post.id}): erro transitório — mantendo creation_id, retry no próximo ciclo. Motivo: ${msg.slice(0, 120)}`);
         await admin
           .from("scheduled_posts")
           .update({ status: "pending", error_message: null })
           .eq("id", post.id);
-        if (isTimeout) summary.timed_out++; else summary.failed++;
+        summary.skipped++;
       } else {
-        // Erro permanente (credenciais inválidas, vídeo rejeitado pela Meta, etc.)
+        // Erro permanente (token inválido, container expirado, vídeo rejeitado)
+        // Limpa creation_id para forçar re-criação na próxima tentativa manual.
         console.error(`[publish-scheduled] ✗ @${account.username} (post ${post.id}):`, msg);
         await admin
           .from("scheduled_posts")
-          .update({ status: "failed", error_message: msg })
+          .update({ status: "failed", error_message: msg, creation_id: null })
           .eq("id", post.id);
         summary.failed++;
       }
