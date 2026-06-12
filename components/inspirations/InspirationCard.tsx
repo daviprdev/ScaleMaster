@@ -62,6 +62,9 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered }: Inspir
 
   const hasVideo = !!currentVideoUrl && currentVideoUrl !== "undefined";
 
+  const isUrlExpiredError = (msg: string) =>
+    msg.includes("expirada") || msg.includes("bloqueada") || msg.includes("403") || msg.includes("502");
+
   const handleProcess = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (processState !== "idle" && processState !== "error") return;
@@ -74,7 +77,8 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered }: Inspir
       setProcessState("done");
       setTimeout(() => setProcessState("idle"), 4000);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Erro no download");
+      const msg = err instanceof Error ? err.message : "Erro no download";
+      setErrorMsg(msg);
       setProcessState("error");
     }
   };
@@ -102,6 +106,8 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered }: Inspir
 
       setCurrentVideoUrl(data.videoUrl as string);
       setRefetchState("idle");
+      setProcessState("idle");
+      setErrorMsg("");
       onVideoUrlRecovered?.(reel.id, data.videoUrl as string);
     } catch (err) {
       setRefetchError(err instanceof Error ? err.message : "Erro ao buscar URL.");
@@ -350,50 +356,85 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered }: Inspir
                 </p>
               )}
 
-              <motion.button
-                onClick={handleProcess}
-                whileTap={busy ? {} : { scale: 0.96 }}
-                disabled={busy}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-200"
-                style={
-                  processState === "done" ? {
-                    background: "rgba(0,255,65,0.1)",
-                    border: "0.5px solid rgba(0,255,65,0.35)",
-                    color: "rgba(0,255,65,0.9)",
-                  } : processState === "error" ? {
-                    background: "rgba(255,59,48,0.08)",
-                    border: "0.5px solid rgba(255,59,48,0.3)",
-                    color: "rgba(255,100,90,0.9)",
-                  } : busy ? {
-                    background: "rgba(255,255,255,0.04)",
-                    border: "0.5px solid rgba(255,255,255,0.1)",
-                    color: "rgba(255,255,255,0.35)",
-                    cursor: "not-allowed",
-                  } : {
-                    background: "rgba(0,255,65,0.1)",
-                    border: "0.5px solid rgba(0,255,65,0.3)",
-                    color: "rgba(0,255,65,0.9)",
-                    boxShadow: "0 0 14px rgba(0,255,65,0.12)",
+              {/* URL expired/blocked → show Re-buscar instead of retry */}
+              {processState === "error" && isUrlExpiredError(errorMsg) ? (
+                <>
+                  {refetchState === "error" && (
+                    <p className="text-[10px] flex items-center gap-1" style={{ color: "rgba(255,160,60,0.9)" }}>
+                      <AlertCircle size={10} />{refetchError}
+                    </p>
+                  )}
+                  <motion.button
+                    onClick={handleRefetch}
+                    whileTap={refetchState === "loading" ? {} : { scale: 0.96 }}
+                    disabled={refetchState === "loading"}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-200"
+                    style={
+                      refetchState === "loading" ? {
+                        background: "rgba(255,180,0,0.06)",
+                        border: "0.5px solid rgba(255,180,0,0.2)",
+                        color: "rgba(255,180,0,0.4)",
+                        cursor: "not-allowed",
+                      } : {
+                        background: "rgba(255,180,0,0.1)",
+                        border: "0.5px solid rgba(255,180,0,0.35)",
+                        color: "rgba(255,200,60,0.9)",
+                        boxShadow: "0 0 14px rgba(255,150,0,0.1)",
+                      }
+                    }
+                  >
+                    {refetchState === "loading"
+                      ? <><Loader2 size={13} className="animate-spin" />Buscando nova URL...</>
+                      : <><RefreshCw size={13} />Re-buscar URL do vídeo</>
+                    }
+                  </motion.button>
+                </>
+              ) : (
+                <motion.button
+                  onClick={handleProcess}
+                  whileTap={busy ? {} : { scale: 0.96 }}
+                  disabled={busy}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-200"
+                  style={
+                    processState === "done" ? {
+                      background: "rgba(0,255,65,0.1)",
+                      border: "0.5px solid rgba(0,255,65,0.35)",
+                      color: "rgba(0,255,65,0.9)",
+                    } : processState === "error" ? {
+                      background: "rgba(255,59,48,0.08)",
+                      border: "0.5px solid rgba(255,59,48,0.3)",
+                      color: "rgba(255,100,90,0.9)",
+                    } : busy ? {
+                      background: "rgba(255,255,255,0.04)",
+                      border: "0.5px solid rgba(255,255,255,0.1)",
+                      color: "rgba(255,255,255,0.35)",
+                      cursor: "not-allowed",
+                    } : {
+                      background: "rgba(0,255,65,0.1)",
+                      border: "0.5px solid rgba(0,255,65,0.3)",
+                      color: "rgba(0,255,65,0.9)",
+                      boxShadow: "0 0 14px rgba(0,255,65,0.12)",
+                    }
                   }
-                }
-                onMouseEnter={(e) => {
-                  if (!busy && processState === "idle") {
-                    (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,255,65,0.18)";
-                    (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 22px rgba(0,255,65,0.22)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!busy && processState === "idle") {
-                    (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,255,65,0.1)";
-                    (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 14px rgba(0,255,65,0.12)";
-                  }
-                }}
-              >
-                {processState === "downloading" && <><Loader2 size={13} className="animate-spin" />Baixando...</>}
-                {processState === "done" && <><CheckCircle2 size={13} />Download concluído!</>}
-                {processState === "error" && <><Download size={13} />Tentar novamente</>}
-                {processState === "idle" && <><Download size={13} />Baixar vídeo</>}
-              </motion.button>
+                  onMouseEnter={(e) => {
+                    if (!busy && processState === "idle") {
+                      (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,255,65,0.18)";
+                      (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 22px rgba(0,255,65,0.22)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!busy && processState === "idle") {
+                      (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,255,65,0.1)";
+                      (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 14px rgba(0,255,65,0.12)";
+                    }
+                  }}
+                >
+                  {processState === "downloading" && <><Loader2 size={13} className="animate-spin" />Baixando...</>}
+                  {processState === "done" && <><CheckCircle2 size={13} />Download concluído!</>}
+                  {processState === "error" && <><Download size={13} />Tentar novamente</>}
+                  {processState === "idle" && <><Download size={13} />Baixar vídeo</>}
+                </motion.button>
+              )}
             </div>
           </motion.div>
         )}
