@@ -18,6 +18,8 @@ interface Account {
   display_name: string | null;
   avatar_url: string | null;
   is_active: boolean;
+  folder_id: string | null;
+  account_folders: { name: string } | null;
 }
 
 interface FolderItem {
@@ -804,6 +806,7 @@ export default function PostarPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [accountsWithCampaign, setAccountsWithCampaign] = useState<Set<string>>(new Set());
 
   // Folder
@@ -880,10 +883,47 @@ export default function PostarPage() {
   const selectedFolder = folders.find(f => f.id === selectedFolderId);
   const accountsWithoutCampaign = accounts.filter(a => !accountsWithCampaign.has(a.id));
 
+  // Agrupa contas por pasta — sem pasta fica no final
+  const accountsByFolder = useMemo(() => {
+    const folderMap = new Map<string, { name: string; accounts: Account[] }>();
+    const noFolder: Account[] = [];
+    for (const acc of accounts) {
+      if (acc.folder_id && acc.account_folders) {
+        if (!folderMap.has(acc.folder_id)) {
+          folderMap.set(acc.folder_id, { name: acc.account_folders.name, accounts: [] });
+        }
+        folderMap.get(acc.folder_id)!.accounts.push(acc);
+      } else {
+        noFolder.push(acc);
+      }
+    }
+    const groups = Array.from(folderMap.entries()).map(([id, val]) => ({ id, name: val.name, accounts: val.accounts }));
+    groups.sort((a, b) => a.name.localeCompare(b.name));
+    if (noFolder.length > 0) groups.push({ id: "__no_folder__", name: "Sem pasta", accounts: noFolder });
+    return groups;
+  }, [accounts]);
+
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const toggleAccount = (id: string) =>
     setSelectedAccountIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const toggleFolder = (folderAccounts: Account[]) => {
+    const ids = folderAccounts.map(a => a.id);
+    const allSelected = ids.every(id => selectedAccountIds.includes(id));
+    if (allSelected) {
+      setSelectedAccountIds(prev => prev.filter(id => !ids.includes(id)));
+    } else {
+      setSelectedAccountIds(prev => [...new Set([...prev, ...ids])]);
+    }
+  };
+
+  const toggleExpand = (folderId: string) =>
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId); else next.add(folderId);
+      return next;
+    });
 
   const handleSubmit = async () => {
     if (selectedAccountIds.length === 0) { setSubmitError("Selecione ao menos 1 conta."); return; }
@@ -1059,40 +1099,105 @@ export default function PostarPage() {
                   <a href="/dashboard/accounts" className="text-[#00E5FF] hover:underline">Conectar conta</a>
                 </p>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {accounts.map(acc => {
-                    const isSelected = selectedAccountIds.includes(acc.id);
-                    const hasCampaign = accountsWithCampaign.has(acc.id);
-                    const isNew = !hasCampaign && accountsWithCampaign.size > 0;
+                <div className="space-y-1.5">
+                  {accountsByFolder.map(group => {
+                    const groupIds = group.accounts.map(a => a.id);
+                    const allSelected = groupIds.length > 0 && groupIds.every(id => selectedAccountIds.includes(id));
+                    const someSelected = groupIds.some(id => selectedAccountIds.includes(id));
+                    const isExpanded = expandedFolders.has(group.id);
+                    const isNoFolder = group.id === "__no_folder__";
                     return (
-                      <button
-                        key={acc.id}
-                        onClick={() => toggleAccount(acc.id)}
-                        className={cn(
-                          "flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left relative",
-                          isSelected
-                            ? "border-[#00FF41]/40 bg-[#00FF41]/5"
-                            : isNew
-                              ? "border-red-500/35 bg-red-500/[0.05] hover:border-red-400/50"
-                              : "border-white/[0.07] bg-white/[0.02] hover:border-white/15"
-                        )}
-                      >
-                        {isNew && !isSelected && (
-                          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-400/70" />
-                        )}
-                        <div className={cn("w-4 h-4 rounded-[4px] border flex items-center justify-center flex-shrink-0 transition-all", isSelected ? "bg-[#00FF41] border-[#00FF41]" : "border-white/20")}>
-                          {isSelected && <Check size={9} className="text-black" strokeWidth={3} />}
+                      <div key={group.id}>
+                        {/* Folder header — clique expande/fecha */}
+                        <div
+                          className={cn(
+                            "flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all cursor-pointer group",
+                            isExpanded
+                              ? allSelected ? "border-[#00FF41]/30 bg-[#00FF41]/5" : someSelected ? "border-[#00E5FF]/20 bg-[#00E5FF]/3" : "border-white/12 bg-white/[0.03]"
+                              : allSelected ? "border-[#00FF41]/25 bg-[#00FF41]/4" : someSelected ? "border-[#00E5FF]/15 bg-[#00E5FF]/[0.02]" : "border-white/[0.07] bg-white/[0.02] hover:border-white/12"
+                          )}
+                          onClick={() => toggleExpand(group.id)}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <ChevronDown
+                              size={13}
+                              className={cn("flex-shrink-0 transition-transform duration-200 text-white/30", isExpanded && "rotate-180")}
+                            />
+                            <span className="text-sm leading-none">{isNoFolder ? "📂" : "📁"}</span>
+                            <span className={cn("text-sm font-medium truncate", allSelected ? "text-[#00FF41]" : someSelected ? "text-[#00E5FF]" : "text-white/60 group-hover:text-white/80")}>
+                              {group.name}
+                            </span>
+                            <span className="text-xs text-white/25 font-mono flex-shrink-0">({group.accounts.length})</span>
+                            {someSelected && (
+                              <span className="text-[10px] text-white/30 flex-shrink-0">
+                                · {groupIds.filter(id => selectedAccountIds.includes(id)).length} sel.
+                              </span>
+                            )}
+                          </div>
+                          {/* Botão selecionar pasta — stopPropagation para não fechar */}
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); toggleFolder(group.accounts); }}
+                            className={cn(
+                              "flex-shrink-0 text-[10px] px-2.5 py-1 rounded-lg border transition-all ml-2",
+                              allSelected
+                                ? "border-[#00FF41]/30 text-[#00FF41]/70 hover:bg-[#00FF41]/10"
+                                : "border-white/[0.08] text-white/30 hover:border-[#00FF41]/30 hover:text-[#00FF41]/60"
+                            )}
+                          >
+                            {allSelected ? "desmarcar" : "selecionar"}
+                          </button>
                         </div>
-                        {acc.avatar_url ? (
-                          <img src={acc.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
-                        ) : (
-                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#00FF41]/40 to-[#00E5FF]/40 flex-shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-sm text-white truncate">@{acc.username}</p>
-                          {acc.display_name && <p className="text-xs text-white/35 truncate">{acc.display_name}</p>}
-                        </div>
-                      </button>
+
+                        {/* Chips — visíveis só quando expandido */}
+                        <AnimatePresence initial={false}>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.18 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="flex flex-wrap gap-1.5 pt-2 pl-2 pb-1">
+                                {group.accounts.map(acc => {
+                                  const isSelected = selectedAccountIds.includes(acc.id);
+                                  const hasCampaign = accountsWithCampaign.has(acc.id);
+                                  const isNew = !hasCampaign && accountsWithCampaign.size > 0;
+                                  return (
+                                    <button
+                                      key={acc.id}
+                                      type="button"
+                                      onClick={() => toggleAccount(acc.id)}
+                                      className={cn(
+                                        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all relative",
+                                        isSelected
+                                          ? "border-[#00FF41]/40 bg-[#00FF41]/8 text-[#00FF41]"
+                                          : isNew
+                                            ? "border-red-500/30 bg-red-500/[0.05] text-white/70 hover:border-red-400/50"
+                                            : "border-white/[0.08] bg-white/[0.02] text-white/55 hover:border-white/20 hover:text-white/80"
+                                      )}
+                                    >
+                                      {isNew && !isSelected && (
+                                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-400/80" />
+                                      )}
+                                      {acc.avatar_url ? (
+                                        <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
+                                      ) : (
+                                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#00FF41]/40 to-[#00E5FF]/40 flex-shrink-0 flex items-center justify-center">
+                                          <span className="text-[8px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span>
+                                        </div>
+                                      )}
+                                      <span className="text-xs font-medium leading-none">@{acc.username}</span>
+                                      {isSelected && <Check size={9} className="text-[#00FF41] flex-shrink-0" strokeWidth={3} />}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
                     );
                   })}
                 </div>

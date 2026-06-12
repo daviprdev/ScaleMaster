@@ -2325,3 +2325,97 @@ const { data: healed } = await admin
 ```
 
 Isso garante que posts que já falharam com o bug antigo sejam recuperados automaticamente no próximo ciclo do cron após o deploy.
+
+---
+
+### ✅ Sessão 2026-06-11 — Fix constraint + redesign visual de Campanhas
+
+#### Bug crítico: CHECK constraint bloqueava CLAIM de scheduled_posts
+
+**Causa raiz:** A tabela `scheduled_posts` tinha `CHECK (status IN ('pending', 'published', 'failed', 'cancelled'))` — sem `'publishing'`. O CLAIM atômico `UPDATE status='publishing' WHERE status='pending'` retornava HTTP 400 para 100% dos posts. Resultado: nenhuma campanha/distribuição publicava jamais.
+
+**Fix:** Migration `supabase/scheduled_posts_publishing_status.sql`:
+```sql
+ALTER TABLE public.scheduled_posts
+  DROP CONSTRAINT IF EXISTS scheduled_posts_status_check;
+ALTER TABLE public.scheduled_posts
+  ADD CONSTRAINT scheduled_posts_status_check
+  CHECK (status IN ('pending', 'publishing', 'published', 'failed', 'cancelled'));
+NOTIFY pgrst, 'reload schema';
+```
+
+**Como diagnosticar:** Nos logs do Supabase API (`GET scheduled_posts` → 200, `PATCH scheduled_posts` → 400 repetindo a cada minuto). PostgREST 400 em UPDATE = constraint violation.
+
+#### Colunas adicionadas a scheduled_posts
+
+Via MCP Supabase (execute_sql) durante sessão:
+- `creation_id text` — reutiliza container Meta entre ciclos do cron (dois-fase)
+- `published_at timestamptz` — timestamp de publicação real
+- `media_id text` — ID da mídia publicada na Meta
+
+#### Redesign: publish-scheduled → dois-fase
+
+`publish-scheduled` foi reescrito de `publishViaMetaAPI` (poll inline, recriava container a cada minuto) para:
+1. **Fase 1:** `createMediaContainerOnly` → salva `creation_id` no banco
+2. **Fase 2:** `pollContainerStatusOnce` → se IN_PROGRESS, volta para pending (mesmo container); se ERROR, marca failed; se FINISHED, `publishReadyContainer`
+
+Elimina 120 criações/hora por post que causava rate-limit e queda de contas.
+
+`publish-pending` (Loop): throttle de 2 min para containers IN_PROGRESS via `retry_after`.
+
+#### Redesign visual: Campanhas Ativas (página Postar)
+
+`CampaignsList` em `app/dashboard/postar/page.tsx` completamente redesenhado:
+
+**Status dinâmico** (substituiu "🟢 Executando" estático):
+- **Na Fila** (cyan) — aguardando horário
+- **Publicando** (green pulse) — publicou nos últimos 30min
+- **Atrasada** (amber pulse) — `next_pending < now`
+- **Concluída** (green) — sem pendências
+
+**Novos detalhes:**
+- "Último publicado: Xmin atrás" — atualiza a cada 10s (tick state)
+- "Próximo: em Ymin" com cor âmbar quando atrasado
+- Banner âmbar "Post atrasado — cron publicará em <1min"
+- Erro expansível (último `error_message` de falha)
+- Grid Fila / Falhas / Cancelados com cores contextuais
+- Refresh button com spinner + label "Atualizando…" durante fetch
+
+**API `/api/campaigns`:** adicionados `published_at`, `error_message` ao select; track `last_published_at` e `last_error_message` por campanha.
+
+#### Redesign visual: aba Campanhas no Monitor
+
+`CampaignView` em `app/dashboard/monitor/page.tsx` e `CampaignAccountCard`:
+- Mesmos status dinâmicos + `overdue_count` por conta
+- 5 filtros: Todas / Na Fila / Atrasadas / Com Erros / Concluídas
+- Métrica "Atrasados" no topo (substituiu Curtidas)
+- API `/api/campaigns/monitor`: `total_overdue`, `overdue_count` por conta, `last_error_message`
+
+---
+
+### ✅ Feat — Seleção de contas por pasta na aba Postar (2026-06-12)
+
+**Arquivo:** `app/dashboard/postar/page.tsx`
+
+#### Problema
+A seleção de contas na aba "Distribuição de Conteúdo" exibia todas as contas em um grid 2-colunas plano. Com muitas contas (ex: 50+), a lista ficava enorme e difícil de navegar por cliente/pasta.
+
+#### Solução
+Interface `Account` estendida com `folder_id` e `account_folders.name` (já retornados pelo `/api/accounts/list`).
+
+**`accountsByFolder` (useMemo):** agrupa contas por `folder_id`. Contas sem pasta ficam em grupo "Sem pasta" no final. Grupos em ordem alfabética.
+
+**Accordion por pasta:**
+- `expandedFolders: Set<string>` — controla quais pastas estão abertas
+- `toggleExpand(folderId)` — abre/fecha o grupo sem afetar seleção
+- Clicar no header da pasta → expande/colapsa com `AnimatePresence` (height 0 → auto)
+- Chevron rotaciona 180° quando aberto
+
+**Seleção em massa:**
+- Botão "selecionar / desmarcar" no canto direito de cada header — `e.stopPropagation()` para não fechar o accordion
+- `toggleFolder(accounts)` seleciona/desmarca todos os IDs do grupo
+- Header muda de cor: verde (todos selecionados) / ciano (alguns) / cinza (nenhum)
+- Contador inline "· N sel." visível mesmo com accordion fechado
+
+#### Comportamento
+Por padrão todas as pastas ficam fechadas. Usuário abre apenas as pastas que quer usar. "Todas" / "Nenhuma" / "Novas (N)" continuam funcionando normalmente.
