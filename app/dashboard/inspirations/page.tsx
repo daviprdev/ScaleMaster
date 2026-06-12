@@ -376,8 +376,8 @@ export default function InspiracoesPage() {
       }
       if (!startData.runId) throw new Error((startData.error as string) || "Erro ao iniciar busca.");
 
-      let { runId, tokenIdx, limit, fallback } = startData as {
-        runId: string; tokenIdx: number; limit: number; fallback: boolean;
+      let { runId, limit, fallback } = startData as {
+        runId: string; limit: number; fallback: boolean;
       };
 
       // ── Step 2: poll every 5s until done (no Vercel timeout risk) ─
@@ -385,7 +385,7 @@ export default function InspiracoesPage() {
       for (let i = 0; i < MAX_POLLS; i++) {
         await new Promise<void>((r) => setTimeout(r, 5000));
 
-        const pollUrl = `/api/inspirations/scrape/poll?runId=${encodeURIComponent(runId)}&tokenIdx=${tokenIdx}&username=${encodeURIComponent(target)}&fallback=${fallback}&limit=${limit}`;
+        const pollUrl = `/api/inspirations/scrape/poll?runId=${encodeURIComponent(runId)}&username=${encodeURIComponent(target)}&fallback=${fallback}&limit=${limit}`;
         const pollText = await fetch(pollUrl).then((r) => r.text());
 
         let poll: Record<string, unknown>;
@@ -410,10 +410,8 @@ export default function InspiracoesPage() {
         }
 
         if (poll.status === "running") {
-          // poll may return a new runId when fallback kicks in
-          if (poll.runId)    runId    = poll.runId as string;
-          if (poll.tokenIdx !== undefined) tokenIdx = poll.tokenIdx as number;
-          if (poll.fallback  !== undefined) fallback = poll.fallback as boolean;
+          if (poll.runId)   runId   = poll.runId as string;
+          if (poll.fallback !== undefined) fallback = poll.fallback as boolean;
           continue;
         }
 

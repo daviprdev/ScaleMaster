@@ -90,33 +90,40 @@ async function saveToHistory(username: string, reels: object[], items: unknown[]
   }
 }
 
+async function findRunClient(runId: string): Promise<{ client: ApifyClient; run: NonNullable<unknown> } | null> {
+  // resolveApifyTokens shuffles on every call, so tokenIdx is unreliable across
+  // requests. Try every available token until one can access this run.
+  const tokens = resolveApifyTokens();
+  for (const token of tokens) {
+    try {
+      const client = new ApifyClient({ token });
+      const run = await client.run(runId).get();
+      if (run) return { client, run };
+    } catch {
+      // wrong token for this run — try next
+    }
+  }
+  return null;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const runId      = searchParams.get("runId");
-  const tokenIdxS  = searchParams.get("tokenIdx");
-  const username   = searchParams.get("username");
-  const fallback   = searchParams.get("fallback") === "true";
-  const limit      = parseInt(searchParams.get("limit") ?? "500", 10);
+  const runId    = searchParams.get("runId");
+  const username = searchParams.get("username");
+  const fallback = searchParams.get("fallback") === "true";
+  const limit    = parseInt(searchParams.get("limit") ?? "500", 10);
 
-  if (!runId || !tokenIdxS || !username) {
+  if (!runId || !username) {
     return NextResponse.json({ error: "Parâmetros inválidos." }, { status: 400 });
   }
 
-  const tokenIdx = parseInt(tokenIdxS, 10);
-  const tokens = resolveApifyTokens();
-
-  if (tokenIdx < 0 || tokenIdx >= tokens.length) {
-    return NextResponse.json({ error: "Token inválido." }, { status: 400 });
+  const found = await findRunClient(runId);
+  if (!found) {
+    return NextResponse.json({ error: "Run não encontrado ou token sem acesso." }, { status: 404 });
   }
 
-  const client = new ApifyClient({ token: tokens[tokenIdx] });
-
-  let run;
-  try {
-    run = await client.run(runId).get();
-  } catch (err) {
-    return NextResponse.json({ error: `Erro ao verificar run: ${err instanceof Error ? err.message : err}` }, { status: 500 });
-  }
+  const { client } = found as { client: ApifyClient };
+  const run = found.run as Record<string, unknown>;
 
   if (!run) {
     return NextResponse.json({ error: "Run não encontrado." }, { status: 404 });
@@ -127,7 +134,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (run.status === "SUCCEEDED") {
-    const { items } = await client.dataset(run.defaultDatasetId).listItems();
+    const { items } = await client.dataset(run.defaultDatasetId as string).listItems();
     const list = Array.isArray(items) ? items : [];
 
     // /reels/ returned nothing → start fallback with main profile URL
@@ -144,7 +151,6 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
           status: "running",
           runId: fallbackRun.id,
-          tokenIdx,
           username,
           limit,
           fallback: true,

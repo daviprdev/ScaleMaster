@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       const run = await client.actor("apify/instagram-scraper").start(
         ACTOR_INPUT(`https://www.instagram.com/${username}/reels/`, limit)
       );
-      return NextResponse.json({ runId: run.id, tokenIdx, username, limit, fallback: false });
+      return NextResponse.json({ runId: run.id, username, limit, fallback: false });
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
       console.warn(`[scrape/start] token ${tokenIdx} falhou: ${lastError}`);
