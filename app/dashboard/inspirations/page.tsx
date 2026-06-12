@@ -368,8 +368,16 @@ export default function InspiracoesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: target }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Erro ao buscar Reels.");
+      const text = await res.text();
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(
+          "A busca demorou muito e foi interrompida. Tente novamente — perfis grandes podem levar mais tempo."
+        );
+      }
+      if (!res.ok) throw new Error((data.error as string) ?? "Erro ao buscar Reels.");
 
       const fetchedReels = (data.reels ?? []) as InspirationReel[];
       // Defesa extra: API retornou 200 mas com lista vazia — tratar como bloqueio

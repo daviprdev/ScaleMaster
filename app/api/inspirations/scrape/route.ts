@@ -200,8 +200,14 @@ async function saveToHistory(
 
 // ── Handler ────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { username, limit = 300 } = body as { username: string; limit?: number };
+  let body: { username?: string; limit?: number };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
+  }
+
+  const { username, limit = 150 } = body;
 
   if (!username) {
     return NextResponse.json({ error: "O campo 'username' é obrigatório." }, { status: 400 });
