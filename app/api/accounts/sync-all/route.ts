@@ -6,13 +6,16 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const GRAPH = "https://graph.instagram.com/v21.0";
-const STALE_MS = 5 * 60 * 1000; // only re-sync if data is > 5 min old
+const STALE_MS = 5 * 60 * 1000;
 // Apenas tokens genuinamente mortos justificam marcar health_status='error'.
 // 190 = Invalid OAuth 2.0 Access Token (token expirado/revogado)
 // 102/104 = Session key invalid / Incorrect signature
-// Códigos de permissão (200, 10, 368) e rate limit (4, 17) NÃO marcam como error:
-// permissão pode ser temporária ou específica de campo; rate limit é transitório.
 const TOKEN_ERROR_CODES = new Set([190, 102, 104]);
+
+// Se >= essa fração das contas retornar erro de token no mesmo run, é queda em
+// cascata (App Meta desativado, secret rotacionado, outage da API) — não marcar
+// nenhuma como error para não destruir todo o painel.
+const CASCADE_THRESHOLD = 0.5;
 
 interface AccountRow {
   id: string;
@@ -23,8 +26,18 @@ interface AccountRow {
   profile_refreshed_at: string | null;
 }
 
-async function syncOne(acc: AccountRow): Promise<{ id: string; ok: boolean; tokenError?: boolean }> {
-  const admin = getSupabaseAdmin();
+interface SyncResult {
+  id: string;
+  user_id: string;
+  username: string;
+  ok: boolean;
+  tokenError?: boolean;
+  errorCode?: number;
+  errorMessage?: string;
+  update?: Record<string, unknown>;
+}
+
+async function syncOne(acc: AccountRow): Promise<SyncResult> {
   try {
     const profileUrl =
       `${GRAPH}/${acc.ig_business_account_id}` +
@@ -37,34 +50,10 @@ async function syncOne(acc: AccountRow): Promise<{ id: string; ok: boolean; toke
     if (data.error) {
       const err = data.error as { code: number; message: string };
       const tokenBad = TOKEN_ERROR_CODES.has(err.code);
-      if (tokenBad) {
-        // Marca como error + atualiza profile_refreshed_at para não re-sincronizar
-        // a cada abertura de página (conta com error fica "always stale" sem isso)
-        await admin
-          .from("instagram_accounts")
-          .update({ health_status: "error", profile_refreshed_at: new Date().toISOString() })
-          .eq("id", acc.id);
-        // Grava no failover_logs para o diagnóstico mostrar o motivo real
-        void (async () => {
-          try {
-            await admin.from("failover_logs").insert({
-              user_id: acc.user_id,
-              failed_account_id: acc.id,
-              backup_account_id: null,
-              error_reason: `[sync-all] code=${err.code} — ${err.message}`,
-            });
-          } catch { /* não crítico */ }
-        })();
-        console.warn(
-          `[sync-all] Token inválido para @${acc.username}: code=${err.code} — ${err.message}`
-        );
-      } else {
-        // Erro de permissão/rate-limit — não marca como error, só loga
-        console.warn(
-          `[sync-all] Erro não-fatal para @${acc.username}: code=${err.code} — ${err.message}`
-        );
+      if (!tokenBad) {
+        console.warn(`[sync-all] Erro não-fatal para @${acc.username}: code=${err.code} — ${err.message}`);
       }
-      return { id: acc.id, ok: false, tokenError: tokenBad };
+      return { id: acc.id, user_id: acc.user_id, username: acc.username, ok: false, tokenError: tokenBad, errorCode: err.code, errorMessage: err.message };
     }
 
     // Fetch last post timestamp (non-critical)
@@ -85,19 +74,15 @@ async function syncOne(acc: AccountRow): Promise<{ id: string; ok: boolean; toke
       followers_count: (data.followers_count as number) ?? 0,
       posts_count: (data.media_count as number) ?? 0,
       profile_refreshed_at: new Date().toISOString(),
-      // NÃO incluir health_status: "online" aqui — o cron pode ter marcado
-      // a conta como 'error' por motivo de API (não token), e o sync de
-      // perfil não deve desfazer essa marcação.
     };
     if (lastPostAt) update.last_post_at = lastPostAt;
     if (data.name) update.display_name = data.name as string;
     if (data.profile_picture_url) update.avatar_url = data.profile_picture_url as string;
 
-    await admin.from("instagram_accounts").update(update).eq("id", acc.id);
-    return { id: acc.id, ok: true };
+    return { id: acc.id, user_id: acc.user_id, username: acc.username, ok: true, update };
   } catch (err) {
     console.error(`[sync-all] Erro inesperado para @${acc.username}:`, err);
-    return { id: acc.id, ok: false };
+    return { id: acc.id, user_id: acc.user_id, username: acc.username, ok: false };
   }
 }
 
@@ -113,7 +98,7 @@ export async function POST() {
     .from("instagram_accounts")
     .select("id, username, user_id, ig_business_account_id, meta_access_token, profile_refreshed_at")
     .eq("user_id", user.id)
-    .neq("health_status", "error")   // contas já marcadas como error não precisam de sync
+    .neq("health_status", "error")
     .not("ig_business_account_id", "is", null)
     .not("meta_access_token", "is", null);
 
@@ -121,7 +106,6 @@ export async function POST() {
     return NextResponse.json({ synced: 0, errors: 0, token_errors: 0 });
   }
 
-  // Only sync accounts whose data is stale (never synced or older than STALE_MS)
   const stale = (accounts as unknown as AccountRow[]).filter((a) => {
     if (!a.profile_refreshed_at) return true;
     return Date.now() - new Date(a.profile_refreshed_at).getTime() > STALE_MS;
@@ -131,22 +115,61 @@ export async function POST() {
     return NextResponse.json({ synced: 0, errors: 0, token_errors: 0, message: "Dados recentes." });
   }
 
-  const results = await Promise.allSettled(stale.map(syncOne));
+  // Collect all results before writing — needed for cascade detection
+  const settled = await Promise.allSettled(stale.map(syncOne));
+  const results: SyncResult[] = settled.map((r) =>
+    r.status === "fulfilled" ? r.value : { id: "", user_id: "", username: "", ok: false }
+  );
 
+  const tokenErrorResults = results.filter((r) => r.tokenError);
+  const isCascade = tokenErrorResults.length >= Math.ceil(stale.length * CASCADE_THRESHOLD);
+
+  if (isCascade) {
+    // Queda em cascata: App Meta desativado, secret rotacionado ou outage da API.
+    // Não marcar nenhuma conta como error — evita destruir o painel inteiro por
+    // um evento externo temporário.
+    console.warn(
+      `[sync-all] CASCATA detectada: ${tokenErrorResults.length}/${stale.length} contas com code=${tokenErrorResults[0]?.errorCode} — "${tokenErrorResults[0]?.errorMessage}". Nenhuma conta marcada como error.`
+    );
+    return NextResponse.json({
+      synced: 0,
+      errors: tokenErrorResults.length,
+      token_errors: tokenErrorResults.length,
+      cascade: true,
+      cascade_message: `${tokenErrorResults.length} contas com token inválido ao mesmo tempo — possível queda do App Meta ou tokens expirados em lote. Reconecte as contas.`,
+    });
+  }
+
+  // Sem cascata: processa writes em paralelo
   let synced = 0;
   let errors = 0;
   let tokenErrors = 0;
-  for (const r of results) {
-    if (r.status === "fulfilled") {
-      if (r.value.ok) synced++;
-      else {
+
+  await Promise.all(
+    results.map(async (r) => {
+      if (r.ok && r.update) {
+        await admin.from("instagram_accounts").update(r.update).eq("id", r.id);
+        synced++;
+      } else if (r.tokenError) {
+        // Marca individualmente como error (sem cascata confirmado acima)
+        await admin
+          .from("instagram_accounts")
+          .update({ health_status: "error", profile_refreshed_at: new Date().toISOString() })
+          .eq("id", r.id);
+        void admin.from("failover_logs").insert({
+          user_id: r.user_id,
+          failed_account_id: r.id,
+          backup_account_id: null,
+          error_reason: `[sync-all] code=${r.errorCode} — ${r.errorMessage}`,
+        });
+        console.warn(`[sync-all] Token inválido para @${r.username}: code=${r.errorCode} — ${r.errorMessage}`);
         errors++;
-        if (r.value.tokenError) tokenErrors++;
+        tokenErrors++;
+      } else if (!r.ok) {
+        errors++;
       }
-    } else {
-      errors++;
-    }
-  }
+    })
+  );
 
   return NextResponse.json({ synced, errors, token_errors: tokenErrors });
 }
