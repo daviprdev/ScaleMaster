@@ -56,13 +56,9 @@ function processItems(items: unknown[], username: string) {
     });
 }
 
-async function saveToHistory(username: string, reels: object[], items: unknown[]) {
+async function saveToHistory(userId: string, username: string, reels: object[], items: unknown[]) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
     const first = (items[0] ?? {}) as Record<string, unknown>;
     const fullName = String(first.ownerFullName ?? first.ownerUsername ?? username);
     const ownerObj = (first.owner ?? {}) as Record<string, unknown>;
@@ -75,7 +71,7 @@ async function saveToHistory(username: string, reels: object[], items: unknown[]
     const admin = getSupabaseAdmin();
     await admin.from("scraped_profiles").upsert(
       {
-        user_id: user.id,
+        user_id: userId,
         username,
         full_name: fullName,
         profile_pic_url: profilePicUrl,
@@ -169,7 +165,16 @@ export async function GET(req: NextRequest) {
     }
 
     const reels = processItems(list, username);
-    saveToHistory(username, reels, list).catch(() => {});
+
+    // Resolve user_id while still in request context (cookies() is request-scoped in Next.js 15)
+    let userId: string | null = null;
+    try {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id ?? null;
+    } catch { /* auth opcional — não bloqueia a resposta */ }
+
+    if (userId) saveToHistory(userId, username, reels, list).catch(console.error);
     return NextResponse.json({ status: "done", reels });
   }
 
