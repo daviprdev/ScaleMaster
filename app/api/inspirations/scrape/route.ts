@@ -40,11 +40,17 @@ async function scrapeWithClient(
   username: string,
   limit: number
 ): Promise<{ reels: object[]; fullName: string; profilePicUrl: string | null }> {
+  // maxRequestsPerCrawl must be much larger than ceil(limit/12) because the
+  // actor spends many requests on overhead (profile load, session, pagination
+  // tokens). Coupling it to limit caused early cut-off (e.g. 71 of 141 reels).
+  // We give 3× headroom so resultsLimit — not this cap — is the real stopper.
+  const maxRequests = Math.max(200, Math.ceil(limit / 4));
+
   const run = await client.actor("apify/instagram-scraper").call({
     directUrls: [`https://www.instagram.com/${username}/reels/`],
     resultsType: "posts",
-    resultsLimit: Math.min(limit, 250),
-    maxRequestsPerCrawl: Math.ceil(limit / 12) + 10,
+    resultsLimit: limit,
+    maxRequestsPerCrawl: maxRequests,
   });
 
   if (run.status !== "SUCCEEDED") {
@@ -207,7 +213,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
   }
 
-  const { username, limit = 150 } = body;
+  const { username, limit = 500 } = body;
 
   if (!username) {
     return NextResponse.json({ error: "O campo 'username' é obrigatório." }, { status: 400 });
