@@ -19,6 +19,10 @@ async function fetchSingleReel(
     resultsType: "posts",
     resultsLimit: 1,
     maxRequestsPerCrawl: 30,
+    proxyConfiguration: {
+      useApifyProxy: true,
+      apifyProxyGroups: ["RESIDENTIAL"],
+    },
   });
 
   if (run.status !== "SUCCEEDED") {

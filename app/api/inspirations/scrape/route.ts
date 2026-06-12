@@ -40,17 +40,18 @@ async function scrapeWithClient(
   username: string,
   limit: number
 ): Promise<{ reels: object[]; fullName: string; profilePicUrl: string | null }> {
-  // maxRequestsPerCrawl must be much larger than ceil(limit/12) because the
-  // actor spends many requests on overhead (profile load, session, pagination
-  // tokens). Coupling it to limit caused early cut-off (e.g. 71 of 141 reels).
-  // We give 3× headroom so resultsLimit — not this cap — is the real stopper.
-  const maxRequests = Math.max(200, Math.ceil(limit / 4));
-
+  // Instagram blocks datacenter IPs after ~100 posts regardless of
+  // maxRequestsPerCrawl/resultsLimit. Residential proxies bypass this limit
+  // because Instagram treats them as real users.
   const run = await client.actor("apify/instagram-scraper").call({
     directUrls: [`https://www.instagram.com/${username}/reels/`],
     resultsType: "posts",
     resultsLimit: limit,
-    maxRequestsPerCrawl: maxRequests,
+    maxRequestsPerCrawl: Math.max(200, Math.ceil(limit / 4)),
+    proxyConfiguration: {
+      useApifyProxy: true,
+      apifyProxyGroups: ["RESIDENTIAL"],
+    },
   });
 
   if (run.status !== "SUCCEEDED") {
