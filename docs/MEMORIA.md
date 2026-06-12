@@ -2419,3 +2419,47 @@ Interface `Account` estendida com `folder_id` e `account_folders.name` (já reto
 
 #### Comportamento
 Por padrão todas as pastas ficam fechadas. Usuário abre apenas as pastas que quer usar. "Todas" / "Nenhuma" / "Novas (N)" continuam funcionando normalmente.
+
+---
+
+### ✅ Fix — Histórico de Inspirações não salvo (2026-06-12)
+
+**Arquivo:** `app/api/inspirations/scrape/poll/route.ts`
+
+#### Problema
+Após a refatoração para async polling (Fase 931c2ad), o `saveToHistory` passou a ser chamado como fire-and-forget:
+```ts
+saveToHistory(username, reels, list).catch(() => {});
+return NextResponse.json({ status: "done", reels });
+```
+
+O `saveToHistory` internamente chamava `createClient()` que usa `cookies()` do `next/headers`. No Next.js 15, `cookies()` é request-scoped — ao retornar a resposta, o framework finaliza o contexto de cookies. Quando `createClient()` executava dentro do fire-and-forget, `auth.getUser()` retornava `null` e o upsert em `scraped_profiles` era silenciosamente ignorado.
+
+#### Fix
+`auth.getUser()` resolvido **dentro do handler GET** (ainda no escopo da request), antes de retornar a resposta. O `user_id` é passado como parâmetro para `saveToHistory`, que não precisa mais de `createClient()`:
+
+```ts
+// Antes (quebrado)
+async function saveToHistory(username, reels, items) {
+  const supabase = await createClient(); // cookies() perdido aqui
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return; // sempre null no fire-and-forget
+  ...
+}
+
+// Depois (correto)
+async function saveToHistory(userId: string, username, reels, items) {
+  // userId já resolvido fora, sem depender de cookies()
+  const admin = getSupabaseAdmin();
+  await admin.from("scraped_profiles").upsert({ user_id: userId, ... });
+}
+
+// No handler GET, antes de retornar:
+const supabase = await createClient(); // ainda no contexto da request
+const { data: { user } } = await supabase.auth.getUser();
+if (user) saveToHistory(user.id, username, reels, list).catch(console.error);
+return NextResponse.json({ status: "done", reels });
+```
+
+#### Lição
+Em Next.js 15 App Router, **nunca chamar `cookies()` ou `headers()` dentro de callbacks async disparados após o retorno da resposta**. Resolver todos os dados request-scoped antes do `return NextResponse.json(...)` e passar como parâmetros para funções background.
