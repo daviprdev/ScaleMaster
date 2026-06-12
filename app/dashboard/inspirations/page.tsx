@@ -363,40 +363,65 @@ export default function InspiracoesPage() {
     setModalDone(false);
     setShowModal(true);
     try {
-      const res = await fetch("/api/inspirations/scrape", {
+      // ── Step 1: start the Apify run (returns in <2s) ──────────────
+      const startText = await fetch("/api/inspirations/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: target }),
-      });
-      const text = await res.text();
-      let data: Record<string, unknown>;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error(
-          "A busca demorou muito e foi interrompida. Tente novamente — perfis grandes podem levar mais tempo."
-        );
-      }
-      if (!res.ok) throw new Error((data.error as string) ?? "Erro ao buscar Reels.");
+      }).then((r) => r.text());
 
-      const fetchedReels = (data.reels ?? []) as InspirationReel[];
-      // Defesa extra: API retornou 200 mas com lista vazia — tratar como bloqueio
-      if (fetchedReels.length === 0) {
-        throw new Error(
-          `Nenhum Reel encontrado para @${target}. ` +
-          `O perfil pode ser privado, inexistente, não ter Reels ou ` +
-          `o Instagram está bloqueando temporariamente. Tente novamente.`
-        );
+      let startData: Record<string, unknown>;
+      try { startData = JSON.parse(startText); } catch {
+        throw new Error("Erro ao iniciar a busca. Tente novamente.");
+      }
+      if (!startData.runId) throw new Error((startData.error as string) || "Erro ao iniciar busca.");
+
+      let { runId, tokenIdx, limit, fallback } = startData as {
+        runId: string; tokenIdx: number; limit: number; fallback: boolean;
+      };
+
+      // ── Step 2: poll every 5s until done (no Vercel timeout risk) ─
+      const MAX_POLLS = 60; // 60 × 5s = 5 min max
+      for (let i = 0; i < MAX_POLLS; i++) {
+        await new Promise<void>((r) => setTimeout(r, 5000));
+
+        const pollUrl = `/api/inspirations/scrape/poll?runId=${encodeURIComponent(runId)}&tokenIdx=${tokenIdx}&username=${encodeURIComponent(target)}&fallback=${fallback}&limit=${limit}`;
+        const pollText = await fetch(pollUrl).then((r) => r.text());
+
+        let poll: Record<string, unknown>;
+        try { poll = JSON.parse(pollText); } catch {
+          throw new Error("Erro ao verificar progresso. Tente novamente.");
+        }
+
+        if (poll.status === "done") {
+          const fetchedReels = (poll.reels ?? []) as InspirationReel[];
+          if (fetchedReels.length === 0) {
+            throw new Error(`Nenhum Reel encontrado para @${target}.`);
+          }
+          setModalDone(true);
+          setTimeout(() => {
+            setShowModal(false);
+            setActiveUsername(target);
+            setReels(fetchedReels);
+            setView("grid");
+            refreshHistory();
+          }, 700);
+          return;
+        }
+
+        if (poll.status === "running") {
+          // poll may return a new runId when fallback kicks in
+          if (poll.runId)    runId    = poll.runId as string;
+          if (poll.tokenIdx !== undefined) tokenIdx = poll.tokenIdx as number;
+          if (poll.fallback  !== undefined) fallback = poll.fallback as boolean;
+          continue;
+        }
+
+        // non-running, non-done → error
+        throw new Error((poll.error as string) || "Erro desconhecido.");
       }
 
-      setModalDone(true);
-      setTimeout(() => {
-        setShowModal(false);
-        setActiveUsername(target);
-        setReels(fetchedReels);
-        setView("grid");
-        refreshHistory();
-      }, 700);
+      throw new Error("A busca demorou mais que o esperado. Tente novamente.");
     } catch (err) {
       setShowModal(false);
       setError(err instanceof Error ? err.message : "Erro desconhecido.");

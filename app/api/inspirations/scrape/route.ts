@@ -1,231 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
-import { createClient } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase";
-import {
-  withApifyTokenPool,
-  APIFY_RATE_LIMIT_MESSAGE,
-} from "@/lib/apify-token-pool";
+import { resolveApifyTokens } from "@/lib/apify-token-pool";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 30;
 
-const GRADIENTS = [
-  "from-violet-600 to-purple-800",
-  "from-cyan-500 to-blue-700",
-  "from-pink-500 to-rose-700",
-  "from-emerald-500 to-teal-700",
-  "from-amber-500 to-orange-700",
-  "from-indigo-500 to-violet-700",
-  "from-red-500 to-pink-700",
-  "from-teal-500 to-cyan-700",
-  "from-fuchsia-500 to-purple-700",
-  "from-lime-500 to-green-700",
-  "from-sky-500 to-indigo-700",
-  "from-orange-500 to-amber-700",
-];
+const ACTOR_INPUT = (url: string, limit: number) => ({
+  directUrls: [url],
+  resultsType: "posts",
+  resultsLimit: limit,
+  maxRequestsPerCrawl: Math.max(200, Math.ceil(limit / 4)),
+  proxyConfiguration: {
+    useApifyProxy: true,
+    apifyProxyGroups: ["RESIDENTIAL"],
+  },
+});
 
-function resolveVideoUrl(item: Record<string, unknown>): string {
-  return (
-    (item.videoUrl as string | undefined) ||
-    (item.video_url as string | undefined) ||
-    (item.videoPlayUrl as string | undefined) ||
-    (item.playVideoUrl as string | undefined) ||
-    ""
-  );
-}
-
-async function runScrape(
-  client: ApifyClient,
-  url: string,
-  limit: number
-) {
-  const run = await client.actor("apify/instagram-scraper").call({
-    directUrls: [url],
-    resultsType: "posts",
-    resultsLimit: limit,
-    maxRequestsPerCrawl: Math.max(200, Math.ceil(limit / 4)),
-    proxyConfiguration: {
-      useApifyProxy: true,
-      apifyProxyGroups: ["RESIDENTIAL"],
-    },
-  });
-
-  if (run.status !== "SUCCEEDED") {
-    throw new Error(`Falha no Apify. Status: ${run.status}`);
-  }
-
-  const { items } = await client.dataset(run.defaultDatasetId).listItems();
-  return Array.isArray(items) ? items : [];
-}
-
-async function scrapeWithClient(
-  client: ApifyClient,
-  username: string,
-  limit: number
-): Promise<{ reels: object[]; fullName: string; profilePicUrl: string | null }> {
-  // Try /reels/ tab first. Some accounts don't expose this URL — fall back to
-  // the main profile page and filter videos client-side.
-  let items = await runScrape(
-    client,
-    `https://www.instagram.com/${username}/reels/`,
-    limit
-  );
-
-  if (items.length === 0) {
-    console.log(`[inspirations/scrape] @${username} /reels/ returned 0 — retrying with profile URL`);
-    items = await runScrape(
-      client,
-      `https://www.instagram.com/${username}/`,
-      limit
-    );
-  }
-
-  if (items.length === 0) {
-    throw new Error(
-      `Nenhum conteúdo encontrado para @${username}. ` +
-        `O perfil pode ser privado, inexistente ou o Instagram está bloqueando temporariamente. ` +
-        `Tente novamente em alguns minutos.`
-    );
-  }
-
-  const first = items[0] as Record<string, unknown>;
-  const fullName = String(first.ownerFullName ?? first.ownerUsername ?? username);
-  const ownerObj = (first.owner ?? {}) as Record<string, unknown>;
-  const profilePicUrl: string | null =
-    (first.ownerProfilePicUrl as string | null | undefined) ||
-    (first.profilePicUrl as string | null | undefined) ||
-    (ownerObj.profilePicUrl as string | null | undefined) ||
-    (ownerObj.profile_pic_url as string | null | undefined) ||
-    null;
-
-  const reels = items
-    .filter((item) => item.type === "Video" || resolveVideoUrl(item as Record<string, unknown>))
-    .map((item, i) => {
-      const raw = item as Record<string, unknown>;
-      const videoUrl = resolveVideoUrl(raw);
-      if (i === 0) {
-        console.log(
-          `[inspirations/scrape] @${username} first videoUrl: ${
-            videoUrl ? `${videoUrl.slice(0, 70)}…` : "(empty)"
-          }`
-        );
-      }
-      return {
-        id: String(raw.id ?? raw.shortCode ?? i),
-        shortCode: String(raw.shortCode ?? ""),
-        thumbnailUrl: ((raw.displayUrl ?? raw.thumbnailUrl) as string) ?? null,
-        videoUrl,
-        caption: String(raw.caption ?? "").slice(0, 120),
-        views: Number(raw.videoViewCount ?? 0),
-        likes: Number(raw.likesCount ?? 0),
-        comments: Number(raw.commentsCount ?? 0),
-        duration: Number(raw.videoDuration ?? 0),
-        owner: String(raw.ownerUsername ?? username),
-        gradient: GRADIENTS[i % GRADIENTS.length],
-      };
-    });
-
-  return { reels, fullName, profilePicUrl };
-}
-
-// ── Persistir foto de perfil no Storage ───────────────────────
-async function uploadProfilePicToStorage(
-  admin: ReturnType<typeof getSupabaseAdmin>,
-  userId: string,
-  username: string,
-  cdnUrl: string
-): Promise<string | null> {
-  await admin.storage
-    .createBucket("avatars", { public: true, fileSizeLimit: 1_048_576 })
-    .catch(() => {});
-
-  try {
-    const imgRes = await fetch(cdnUrl, {
-      headers: {
-        Referer: "https://www.instagram.com/",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-      },
-    });
-    if (!imgRes.ok) return null;
-
-    const buffer = await imgRes.arrayBuffer();
-    const contentType = imgRes.headers.get("content-type") ?? "image/jpeg";
-    const ext = contentType.includes("png")
-      ? "png"
-      : contentType.includes("webp")
-      ? "webp"
-      : "jpg";
-    const path = `profile-pics/${userId}/${username}.${ext}`;
-
-    const { error } = await admin.storage
-      .from("avatars")
-      .upload(path, buffer, { contentType, upsert: true });
-
-    if (error) return null;
-
-    const {
-      data: { publicUrl },
-    } = admin.storage.from("avatars").getPublicUrl(path);
-    return publicUrl;
-  } catch {
-    return null;
-  }
-}
-
-// ── Salvar no histórico ───────────────────────────────────────
-async function saveToHistory(
-  username: string,
-  reels: object[],
-  fullName: string,
-  profilePicUrl: string | null
-) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return;
-
-  try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) return;
-
-    const admin = getSupabaseAdmin();
-
-    let finalProfilePicUrl = profilePicUrl;
-    if (profilePicUrl) {
-      const stored = await uploadProfilePicToStorage(admin, user.id, username, profilePicUrl);
-      if (stored) finalProfilePicUrl = stored;
-    }
-
-    const { error } = await admin.from("scraped_profiles").upsert(
-      {
-        user_id: user.id,
-        username,
-        full_name: fullName,
-        profile_pic_url: finalProfilePicUrl,
-        videos_data: reels,
-        video_count: reels.length,
-        scraped_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,username", ignoreDuplicates: false }
-    );
-
-    if (error) {
-      console.error(`[scraped_profiles] Upsert falhou: ${error.message}`);
-      if (error.code === "42P01") {
-        console.error("[scraped_profiles] Tabela não existe. Execute o SQL da Fase 22.");
-      }
-    }
-  } catch (err) {
-    console.error("[scraped_profiles] Exceção:", err);
-  }
-}
-
-// ── Handler ────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   let body: { username?: string; limit?: number };
   try {
@@ -240,21 +30,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "O campo 'username' é obrigatório." }, { status: 400 });
   }
 
-  try {
-    const { reels, fullName, profilePicUrl } = await withApifyTokenPool((client) =>
-      scrapeWithClient(client, username, limit)
-    );
-    await saveToHistory(username, reels, fullName, profilePicUrl);
-    return NextResponse.json({ reels });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-
-    if (msg.startsWith("NO_TOKENS:")) {
-      return NextResponse.json({ error: msg.replace("NO_TOKENS: ", "") }, { status: 503 });
-    }
-    if (msg.startsWith("ALL_TOKENS_FAILED:")) {
-      return NextResponse.json({ error: APIFY_RATE_LIMIT_MESSAGE }, { status: 429 });
-    }
-    return NextResponse.json({ error: msg }, { status: 500 });
+  const tokens = resolveApifyTokens();
+  if (tokens.length === 0) {
+    return NextResponse.json({
+      error: "APIFY_API_TOKEN não configurado. Adicione a variável de ambiente e faça um novo deploy.",
+    }, { status: 503 });
   }
+
+  let lastError = "Erro ao iniciar busca.";
+
+  for (let tokenIdx = 0; tokenIdx < tokens.length; tokenIdx++) {
+    try {
+      const client = new ApifyClient({ token: tokens[tokenIdx] });
+      const run = await client.actor("apify/instagram-scraper").start(
+        ACTOR_INPUT(`https://www.instagram.com/${username}/reels/`, limit)
+      );
+      return NextResponse.json({ runId: run.id, tokenIdx, username, limit, fallback: false });
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      console.warn(`[scrape/start] token ${tokenIdx} falhou: ${lastError}`);
+    }
+  }
+
+  return NextResponse.json({ error: lastError }, { status: 500 });
 }
