@@ -35,16 +35,13 @@ function resolveVideoUrl(item: Record<string, unknown>): string {
   );
 }
 
-async function scrapeWithClient(
+async function runScrape(
   client: ApifyClient,
-  username: string,
+  url: string,
   limit: number
-): Promise<{ reels: object[]; fullName: string; profilePicUrl: string | null }> {
-  // Instagram blocks datacenter IPs after ~100 posts regardless of
-  // maxRequestsPerCrawl/resultsLimit. Residential proxies bypass this limit
-  // because Instagram treats them as real users.
+) {
   const run = await client.actor("apify/instagram-scraper").call({
-    directUrls: [`https://www.instagram.com/${username}/reels/`],
+    directUrls: [url],
     resultsType: "posts",
     resultsLimit: limit,
     maxRequestsPerCrawl: Math.max(200, Math.ceil(limit / 4)),
@@ -59,12 +56,35 @@ async function scrapeWithClient(
   }
 
   const { items } = await client.dataset(run.defaultDatasetId).listItems();
+  return Array.isArray(items) ? items : [];
+}
 
-  if (!Array.isArray(items) || items.length === 0) {
+async function scrapeWithClient(
+  client: ApifyClient,
+  username: string,
+  limit: number
+): Promise<{ reels: object[]; fullName: string; profilePicUrl: string | null }> {
+  // Try /reels/ tab first. Some accounts don't expose this URL — fall back to
+  // the main profile page and filter videos client-side.
+  let items = await runScrape(
+    client,
+    `https://www.instagram.com/${username}/reels/`,
+    limit
+  );
+
+  if (items.length === 0) {
+    console.log(`[inspirations/scrape] @${username} /reels/ returned 0 — retrying with profile URL`);
+    items = await runScrape(
+      client,
+      `https://www.instagram.com/${username}/`,
+      limit
+    );
+  }
+
+  if (items.length === 0) {
     throw new Error(
-      `Nenhum Reel encontrado para @${username}. ` +
-        `O perfil pode ser privado, inexistente, não ter Reels ou ` +
-        `o Instagram está bloqueando temporariamente a coleta. ` +
+      `Nenhum conteúdo encontrado para @${username}. ` +
+        `O perfil pode ser privado, inexistente ou o Instagram está bloqueando temporariamente. ` +
         `Tente novamente em alguns minutos.`
     );
   }
