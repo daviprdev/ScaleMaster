@@ -48,6 +48,7 @@ export async function GET() {
     .select("campaign_id, status, scheduled_at, published_at, error_message, account_id, created_at")
     .eq("user_id", user.id)
     .not("campaign_id", "is", null)
+    .limit(100000)
     .order("created_at", { ascending: false });
 
   if (error) {
