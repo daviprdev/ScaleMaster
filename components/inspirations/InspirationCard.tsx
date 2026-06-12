@@ -13,6 +13,8 @@ import {
   Loader2,
   AlertCircle,
   Film,
+  Lock,
+  RefreshCw,
 } from "lucide-react";
 
 export interface InspirationReel {
@@ -30,10 +32,12 @@ export interface InspirationReel {
 }
 
 type ProcessState = "idle" | "downloading" | "done" | "error";
+type RefetchState = "idle" | "loading" | "error";
 
 interface InspirationCardProps {
   reel: InspirationReel;
   onProcess: (reel: InspirationReel) => Promise<void>;
+  onVideoUrlRecovered?: (id: string, videoUrl: string) => void;
 }
 
 function fmt(n: number): string {
@@ -47,11 +51,16 @@ function fmtDur(s: number): string {
   return `${m}:${(s % 60).toString().padStart(2, "0")}`;
 }
 
-export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
+export function InspirationCard({ reel, onProcess, onVideoUrlRecovered }: InspirationCardProps) {
   const [hovered, setHovered] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [processState, setProcessState] = useState<ProcessState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [refetchState, setRefetchState] = useState<RefetchState>("idle");
+  const [refetchError, setRefetchError] = useState("");
+  const [currentVideoUrl, setCurrentVideoUrl] = useState(reel.videoUrl);
+
+  const hasVideo = !!currentVideoUrl && currentVideoUrl !== "undefined";
 
   const handleProcess = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -61,12 +70,42 @@ export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
     setErrorMsg("");
 
     try {
-      await onProcess(reel);
+      await onProcess({ ...reel, videoUrl: currentVideoUrl });
       setProcessState("done");
       setTimeout(() => setProcessState("idle"), 4000);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Erro no download");
       setProcessState("error");
+    }
+  };
+
+  const handleRefetch = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (refetchState === "loading" || !reel.shortCode) return;
+
+    setRefetchState("loading");
+    setRefetchError("");
+
+    try {
+      const text = await fetch("/api/inspirations/refetch-reel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shortCode: reel.shortCode }),
+      }).then((r) => r.text());
+
+      let data: Record<string, unknown>;
+      try { data = JSON.parse(text); } catch {
+        throw new Error("Timeout ao re-buscar. Tente novamente.");
+      }
+
+      if (!data.videoUrl) throw new Error((data.error as string) || "URL não encontrada.");
+
+      setCurrentVideoUrl(data.videoUrl as string);
+      setRefetchState("idle");
+      onVideoUrlRecovered?.(reel.id, data.videoUrl as string);
+    } catch (err) {
+      setRefetchError(err instanceof Error ? err.message : "Erro ao buscar URL.");
+      setRefetchState("error");
     }
   };
 
@@ -86,11 +125,16 @@ export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
       className="relative rounded-2xl overflow-hidden cursor-pointer ticks"
       style={{
         aspectRatio: "9/16",
-        border: "0.5px solid rgba(255,255,255,0.08)",
+        border: hasVideo
+          ? "0.5px solid rgba(255,255,255,0.08)"
+          : "0.5px solid rgba(255,180,0,0.25)",
         transition: "border-color 0.3s, box-shadow 0.3s",
-        ...(hovered ? {
+        ...(hovered && hasVideo ? {
           borderColor: "rgba(0,255,65,0.35)",
           boxShadow: "0 0 0 0.5px rgba(0,229,255,0.12), 0 8px 32px rgba(0,255,65,0.14)",
+        } : hovered && !hasVideo ? {
+          borderColor: "rgba(255,200,0,0.45)",
+          boxShadow: "0 0 0 0.5px rgba(255,180,0,0.15), 0 8px 24px rgba(255,150,0,0.12)",
         } : {}),
       }}
     >
@@ -116,8 +160,19 @@ export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.3) 40%, rgba(0,0,0,0.18) 70%, transparent 100%)" }} />
 
+      {/* ── Lock badge (no video URL) ── */}
+      {!hasVideo && (
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center py-1.5 pointer-events-none"
+          style={{ background: "rgba(200,120,0,0.75)", backdropFilter: "blur(4px)" }}>
+          <Lock size={10} style={{ color: "rgba(255,220,100,0.95)" }} className="mr-1" />
+          <span className="text-[10px] font-semibold tracking-wide" style={{ color: "rgba(255,220,100,0.95)" }}>
+            URL não disponível
+          </span>
+        </div>
+      )}
+
       {/* ── Owner + Duration badges (top) ── */}
-      <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between z-10 pointer-events-none">
+      <div className={`absolute left-2.5 right-2.5 flex items-center justify-between z-10 pointer-events-none ${!hasVideo ? "top-8" : "top-2.5"}`}>
         <div className="px-2 py-0.5 rounded-full text-[10px] font-medium truncate max-w-[55%]"
           style={{ background: "rgba(0,0,0,0.70)", color: "rgba(255,255,255,0.6)", backdropFilter: "blur(4px)" }}>
           @{reel.owner}
@@ -172,7 +227,61 @@ export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
 
       {/* ── Hover overlay ── */}
       <AnimatePresence>
-        {hovered && (
+        {hovered && !hasVideo && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="absolute inset-0 flex flex-col justify-between p-3.5 z-20"
+            style={{ background: "rgba(0,0,0,0.88)", backdropFilter: "blur(4px)" }}
+          >
+            <div className="space-y-2">
+              <StatRow icon={Eye} value={fmt(reel.views)} label="Views" accent="electric" />
+              <StatRow icon={Heart} value={fmt(reel.likes)} label="Curtidas" accent="matrix" />
+              <StatRow icon={MessageCircle} value={fmt(reel.comments)} label="Comentários" accent="muted" />
+            </div>
+
+            <div className="space-y-2.5">
+              <p className="text-[11px] line-clamp-3 leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
+                {reel.caption || `Reel de @${reel.owner}`}
+              </p>
+
+              {refetchState === "error" && (
+                <p className="text-[10px] flex items-center gap-1" style={{ color: "rgba(255,160,60,0.9)" }}>
+                  <AlertCircle size={10} />{refetchError}
+                </p>
+              )}
+
+              <motion.button
+                onClick={handleRefetch}
+                whileTap={refetchState === "loading" ? {} : { scale: 0.96 }}
+                disabled={refetchState === "loading"}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-200"
+                style={
+                  refetchState === "loading" ? {
+                    background: "rgba(255,180,0,0.06)",
+                    border: "0.5px solid rgba(255,180,0,0.2)",
+                    color: "rgba(255,180,0,0.4)",
+                    cursor: "not-allowed",
+                  } : {
+                    background: "rgba(255,180,0,0.1)",
+                    border: "0.5px solid rgba(255,180,0,0.35)",
+                    color: "rgba(255,200,60,0.9)",
+                    boxShadow: "0 0 14px rgba(255,150,0,0.1)",
+                  }
+                }
+              >
+                {refetchState === "loading"
+                  ? <><Loader2 size={13} className="animate-spin" />Buscando URL...</>
+                  : <><RefreshCw size={13} />Re-buscar URL do vídeo</>
+                }
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+
+        {hovered && hasVideo && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -195,7 +304,7 @@ export function InspirationCard({ reel, onProcess }: InspirationCardProps) {
                 {reel.caption || `Reel de @${reel.owner}`}
               </p>
 
-              {/* Inline toast — shown immediately on click, before any async work */}
+              {/* Inline toast */}
               <AnimatePresence>
                 {busy && (
                   <motion.div

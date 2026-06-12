@@ -6,9 +6,10 @@ import { InspirationCard, type InspirationReel } from "./InspirationCard";
 interface InspirationGridProps {
   reels: InspirationReel[];
   onProcess: (reel: InspirationReel) => Promise<void>;
+  onVideoUrlRecovered?: (id: string, videoUrl: string) => void;
 }
 
-export function InspirationGrid({ reels, onProcess }: InspirationGridProps) {
+export function InspirationGrid({ reels, onProcess, onVideoUrlRecovered }: InspirationGridProps) {
   return (
     <AnimatePresence mode="popLayout">
       <motion.div
@@ -16,7 +17,12 @@ export function InspirationGrid({ reels, onProcess }: InspirationGridProps) {
         className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
       >
         {reels.map((reel) => (
-          <InspirationCard key={reel.id} reel={reel} onProcess={onProcess} />
+          <InspirationCard
+            key={reel.id}
+            reel={reel}
+            onProcess={onProcess}
+            onVideoUrlRecovered={onVideoUrlRecovered}
+          />
         ))}
       </motion.div>
     </AnimatePresence>

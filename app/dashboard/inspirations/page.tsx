@@ -745,7 +745,15 @@ export default function InspiracoesPage() {
             </AnimatePresence>
 
             {/* Reels grid */}
-            {reels.length > 0 && <InspirationGrid reels={sortedReels} onProcess={handleProcess} />}
+            {reels.length > 0 && (
+      <InspirationGrid
+        reels={sortedReels}
+        onProcess={handleProcess}
+        onVideoUrlRecovered={(id, videoUrl) =>
+          setReels((prev) => prev.map((r) => r.id === id ? { ...r, videoUrl } : r))
+        }
+      />
+    )}
             {reels.length === 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
