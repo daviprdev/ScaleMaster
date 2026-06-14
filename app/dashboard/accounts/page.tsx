@@ -29,6 +29,7 @@ import {
   Pencil,
   Settings2,
   Globe,
+  Upload,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -552,6 +553,12 @@ export default function AccountsPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
+  // CSV proxy import
+  const [showCsvImport, setShowCsvImport] = useState(false);
+  const [csvText, setCsvText] = useState("");
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvResults, setCsvResults] = useState<Array<{ username: string; status: string; error?: string }> | null>(null);
+
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -835,6 +842,34 @@ export default function AccountsPage() {
     setProxyAccount(account);
     setProxyInput("");
   }, []);
+
+  const handleCsvImport = useCallback(async () => {
+    const lines = csvText.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+    const rows = lines.map(line => {
+      const comma = line.indexOf(",");
+      if (comma === -1) return null;
+      const username = line.slice(0, comma).trim();
+      const proxy_url = line.slice(comma + 1).trim() || null;
+      return { username, proxy_url };
+    }).filter(Boolean) as Array<{ username: string; proxy_url: string | null }>;
+
+    if (rows.length === 0) return;
+    setCsvImporting(true);
+    try {
+      const res = await fetch("/api/accounts/bulk-proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows }),
+      });
+      const data = await res.json() as { results?: typeof csvResults; saved?: number; removed?: number; not_found?: number; errors?: number };
+      setCsvResults(data.results ?? null);
+      if ((data.saved ?? 0) > 0 || (data.removed ?? 0) > 0) {
+        await fetchAccounts();
+      }
+    } finally {
+      setCsvImporting(false);
+    }
+  }, [csvText, fetchAccounts]);
 
   const handleSaveProxy = useCallback(async (proxyUrl: string | null) => {
     if (!proxyAccount) return;
@@ -1479,6 +1514,129 @@ export default function AccountsPage() {
         )}
       </AnimatePresence>
 
+      {/* Modal: importar proxies via CSV */}
+      <AnimatePresence>
+        {showCsvImport && (
+          <>
+            <motion.div
+              key="csv-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => { if (!csvImporting) { setShowCsvImport(false); setCsvResults(null); setCsvText(""); } }}
+            />
+            <motion.div
+              key="csv-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
+            >
+              <div className="glass rounded-2xl neon-border w-full max-w-lg p-6 space-y-4 pointer-events-auto">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/20 flex items-center justify-center">
+                      <Upload size={13} className="text-blue-400" />
+                    </div>
+                    <h3 className="text-base font-bold text-white">Importar Proxies em Massa</h3>
+                  </div>
+                  <button
+                    onClick={() => { setShowCsvImport(false); setCsvResults(null); setCsvText(""); }}
+                    disabled={csvImporting}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+
+                {!csvResults ? (
+                  <>
+                    <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 space-y-1">
+                      <p className="text-[11px] text-white/40 font-mono">Formato: <span className="text-[#00FF41]/70">username,http://user:pass@ip:porta</span></p>
+                      <p className="text-[11px] text-white/25">Uma conta por linha. Para remover proxy: <span className="text-white/40 font-mono">username,</span></p>
+                      <p className="text-[11px] text-white/25">Linhas com # são ignoradas.</p>
+                    </div>
+                    <textarea
+                      value={csvText}
+                      onChange={e => setCsvText(e.target.value)}
+                      placeholder={"# Cole aqui — uma linha por conta\nconta1,http://user:pass@203.0.113.1:3128\nconta2,http://user:pass@198.51.100.5:3128\nconta3,"}
+                      rows={10}
+                      className="w-full rounded-xl bg-black/40 border border-white/[0.08] text-xs text-white/70 font-mono placeholder-white/15 px-3 py-2.5 focus:outline-none focus:border-[#00FF41]/40 resize-none"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setShowCsvImport(false); setCsvText(""); }}
+                        className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleCsvImport}
+                        disabled={!csvText.trim() || csvImporting}
+                        className="flex-1 py-2.5 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-300 text-xs font-semibold hover:bg-blue-600/30 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                      >
+                        {csvImporting ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                        Importar
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-1.5 max-h-80 overflow-y-auto">
+                      {csvResults.map((r, i) => (
+                        <div key={i} className={cn(
+                          "flex items-center justify-between px-3 py-2 rounded-lg text-xs",
+                          r.status === "saved" && "bg-[#00FF41]/[0.06] border border-[#00FF41]/15",
+                          r.status === "removed" && "bg-amber-500/[0.06] border border-amber-500/15",
+                          r.status === "not_found" && "bg-white/[0.03] border border-white/[0.06]",
+                          r.status === "error" && "bg-red-500/[0.06] border border-red-500/15",
+                        )}>
+                          <span className={cn(
+                            "font-mono",
+                            r.status === "saved" && "text-[#00FF41]/80",
+                            r.status === "removed" && "text-amber-400/80",
+                            r.status === "not_found" && "text-white/30",
+                            r.status === "error" && "text-red-400/80",
+                          )}>@{r.username.replace(/^@/, "")}</span>
+                          <span className={cn(
+                            "text-[10px] font-semibold",
+                            r.status === "saved" && "text-[#00FF41]/60",
+                            r.status === "removed" && "text-amber-400/60",
+                            r.status === "not_found" && "text-white/20",
+                            r.status === "error" && "text-red-400/60",
+                          )}>
+                            {r.status === "saved" && "✓ proxy salvo"}
+                            {r.status === "removed" && "proxy removido"}
+                            {r.status === "not_found" && "conta não encontrada"}
+                            {r.status === "error" && (r.error ?? "erro")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => { setCsvResults(null); }}
+                        className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                      >
+                        Importar mais
+                      </button>
+                      <button
+                        onClick={() => { setShowCsvImport(false); setCsvResults(null); setCsvText(""); }}
+                        className="flex-1 py-2.5 rounded-xl bg-[#00FF41]/15 border border-[#00FF41]/25 text-[#00FF41] text-xs font-semibold hover:bg-[#00FF41]/25 transition-all"
+                      >
+                        Fechar
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Banner de notificação OAuth */}
       <AnimatePresence>
         {notification && (
@@ -1528,6 +1686,13 @@ export default function AccountsPage() {
               >
                 <CheckCircle2 size={14} />
                 Selecionar
+              </button>
+              <button
+                onClick={() => { setShowCsvImport(true); setCsvResults(null); setCsvText(""); }}
+                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-blue-500/20 text-blue-400/70 hover:text-blue-300 hover:border-blue-500/40 hover:bg-blue-500/[0.06] transition-all"
+              >
+                <Upload size={14} />
+                Proxies
               </button>
               <motion.button
                 onClick={() => { handleConnectClick(); }}
