@@ -23,12 +23,13 @@ const META_INFRA_MESSAGES = [
   "could not decrypt",
 ];
 
-// Se >= essa fração das contas retornar erro de token no mesmo run, é queda em
-// cascata (App Meta desativado, secret rotacionado, outage da API) — não marcar
-// nenhuma como error para não destruir todo o painel.
-// 0.3 = 30%: limiar mais sensível que o anterior (50%) para detectar cascatas
-// parciais onde o erro da Meta é intermitente e afeta contas em batches diferentes.
-const CASCADE_THRESHOLD = 0.3;
+// Cascata real da Meta (outage, secret rotacionado, App desativado) afeta virtualmente
+// TODAS as contas ao mesmo tempo — tipicamente 90%+.
+// Usar 30% (anterior) era muito sensível: 15 contas ruins num batch de 50 disparavam
+// cascade protection e impediam que fossem marcadas como error.
+// Regra atual: cascade apenas se >= 70% E no mínimo 5 contas falharem.
+const CASCADE_THRESHOLD = 0.7;
+const MIN_CASCADE_COUNT = 5;
 
 interface AccountRow {
   id: string;
@@ -166,7 +167,9 @@ export async function POST() {
   // Erros de infra (ex: "Failed to decrypt") são excluídos da detecção de cascata:
   // já são tratados como non-fatal individualmente e nunca marcam como error.
   const tokenErrorResults = results.filter((r) => r.tokenError);
-  const isCascade = tokenErrorResults.length >= Math.ceil(stale.length * CASCADE_THRESHOLD);
+  const isCascade =
+    tokenErrorResults.length >= MIN_CASCADE_COUNT &&
+    tokenErrorResults.length >= Math.ceil(stale.length * CASCADE_THRESHOLD);
 
   if (isCascade) {
     // Queda em cascata: App Meta desativado, secret rotacionado ou outage da API.
