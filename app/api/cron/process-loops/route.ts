@@ -322,30 +322,33 @@ function isRateLimitError(msg: string): boolean {
 function isCriticalMetaError(msg: string): boolean {
   const lower = msg.toLowerCase();
   const patterns = [
-    // Token OAuth genuinamente morto (não corresponde a erros transitórios)
-    "oauthexception",
+    // Tokens genuinamente mortos — mensagens inequívocas da Meta Graph API:
     "invalid_token",
     "token has expired",
     "session has been invalidated",
-    "invalid oauth access token",
-    "cannot parse access token",
-    // Restrição de conta (permanente)
+    "invalid oauth access token",   // "The access token is invalid."
+    // Restrições permanentes de conta:
     "account has been restricted",
-    "blocked",
+    "this action is blocked",       // específico de ação bloqueada permanentemente
+    "has been blocked from",        // "your account has been blocked from"
+    "your account has been disabled",
     "checkpoint",
-    // Códigos de erro específicos da Meta (na mensagem legível)
+    // Códigos de erro explicitamente na mensagem legível (ex: "#190 Error..."):
     "error code 190",
     "error code 102",
     "error code 104",
-    // Conta pessoal sem suporte a reels via API
+    // Conta pessoal sem suporte a API de Reels:
     "unsupported request - method type: post",
-    // Token de conta não confirmada / sessão inválida
+    // Token de conta não confirmada / sessão inválida:
     "not a confirmed user",
     "sessions for the user are not allowed",
   ];
-  // NUNCA usar "access token" como padrão — é genérico demais e corresponde
-  // a erros transitórios da Meta (rate-limit temporário, instabilidade da API)
-  // marcando contas saudáveis como error de forma incorreta.
+  // Padrões REMOVIDOS intencionalmente:
+  //  - "oauthexception": campo type, não message — raro na mensagem e genérico demais
+  //  - "cannot parse access token": erro de INFRAESTRUTURA da Meta (transitório),
+  //    não token morto — já coberto por isRateLimitError() como skip silencioso
+  //  - "blocked": genérico demais — "Connection blocked by proxy",
+  //    "endpoint temporarily blocked" etc. marcavam contas saudáveis como error
   return patterns.some(p => lower.includes(p));
 }
 
@@ -879,6 +882,20 @@ async function processOneLoop(
     // → 28 chamadas em burst com 150ms entre elas → proxy rejeita tudo em cascata.
     let phase2bAttempts = 0;
 
+    // Fila de erros críticos — aplicados DEPOIS do loop para detecção de cascata.
+    // Se ≥ CASCADE_LOOP_THRESHOLD das contas do loop errarem com erros críticos
+    // no MESMO ciclo, trata como outage da Meta e não marca nenhuma como error.
+    // Isso espelha o comportamento do sync-all (CASCADE_THRESHOLD = 0.3) mas
+    // no nível do cron — que não tinha essa proteção antes.
+    const CASCADE_LOOP_THRESHOLD = 0.3; // 30% do loop
+    const criticalErrorQueue: Array<{
+      account: AccountRow;
+      errorMsg: string;
+      videoUrl: string;
+      caption: string;
+      videoId: string;
+    }> = [];
+
     for (let i = 0; i < prepSettled.length; i++) {
       const settled = prepSettled[i];
 
@@ -1019,33 +1036,67 @@ async function processOneLoop(
         );
 
         if (isCriticalMetaError(msg)) {
-          // Marca como error — o filtro validAccounts já a exclui do próximo ciclo.
-          // NÃO removemos de loop_accounts: o erro pode ser transitório e a conta
-          // pode ser restaurada manualmente em Failover sem precisar re-adicionar ao loop.
+          // Adia a marcação de error — processada em lote após o loop de contas.
+          // Permite detecção de cascata: se ≥30% das contas errarem criticamente
+          // no mesmo ciclo, trata como outage da Meta e não marca nenhuma.
+          criticalErrorQueue.push({
+            account,
+            errorMsg: msg,
+            videoUrl,
+            caption,
+            videoId: assignment.video.id,
+          });
+          console.warn(
+            `[loop-cron] ⏳ @${account.username}: erro crítico enfileirado para avaliação de cascata ` +
+            `(${criticalErrorQueue.length}/${validAccounts.length} até agora).`
+          );
+        }
+      }
+    }
+
+    // ── Processa fila de erros críticos com detecção de cascata ──────────────
+    // Threshold: 2+ contas E ≥30% do loop erraram criticamente = outage da Meta.
+    // Mínimo de 2 para não disparar com 1 conta em loop de conta única.
+    if (criticalErrorQueue.length > 0) {
+      const cascadeRatio = criticalErrorQueue.length / Math.max(validAccounts.length, 1);
+      const isCascade = criticalErrorQueue.length >= 2 && cascadeRatio >= CASCADE_LOOP_THRESHOLD;
+
+      if (isCascade) {
+        // Cascata detectada — não marcar nenhuma conta como error neste ciclo.
+        // Serão tentadas novamente no próximo ciclo (interval_minutes).
+        // Evita destruir o painel inteiro por um outage temporário da Meta.
+        console.warn(
+          `[CASCADE-LOOP] "${loop.name}": ${criticalErrorQueue.length}/${validAccounts.length} contas ` +
+          `(${(cascadeRatio * 100).toFixed(0)}%) com erro crítico no mesmo ciclo — ` +
+          `possível outage da Meta. Nenhuma conta marcada como error. ` +
+          `Contas: ${criticalErrorQueue.map(e => "@" + e.account.username).join(", ")}`
+        );
+      } else {
+        // Não é cascata — erros são individuais. Marcar e tentar failover.
+        for (const item of criticalErrorQueue) {
           try {
             await (admin as any)
               .from("instagram_accounts")
               .update({ health_status: "error" })
-              .eq("id", account.id);
+              .eq("id", item.account.id);
             console.warn(
-              `[loop-cron] ⚠️ @${account.username} marcada como health_status=error ` +
-              `(erro crítico Meta: "${msg.slice(0, 100)}"). ` +
-              `Restaure em Failover → botão Restaurar se o problema for resolvido.`
+              `[loop-cron] ⚠️ @${item.account.username} marcada como health_status=error ` +
+              `("${item.errorMsg.slice(0, 80)}"). Restaure em Failover se resolvido.`
             );
           } catch (markErr) {
-            console.warn(`[loop-cron] Falha ao marcar @${account.username} como error: ${markErr}`);
+            console.warn(`[loop-cron] Falha ao marcar @${item.account.username} como error: ${markErr}`);
           }
 
-          if (videoUrl) {
+          if (item.videoUrl) {
             try {
               const failoverOk = await attemptFailover(
-                admin, account, loop, videoUrl, caption, msg, windowStartIso,
-                assignment.video.id, newCyclesDone
+                admin, item.account, loop, item.videoUrl, item.caption, item.errorMsg,
+                windowStartIso, item.videoId, newCyclesDone
               );
               if (failoverOk) containersCreated++;
             } catch (failoverErr) {
               const failoverMsg = failoverErr instanceof Error ? failoverErr.message : String(failoverErr);
-              console.error(`[loop-cron] ✗ Failover falhou @${account.username}: ${failoverMsg}`);
+              console.error(`[loop-cron] ✗ Failover falhou @${item.account.username}: ${failoverMsg}`);
             }
           }
         }
