@@ -193,6 +193,9 @@ function AccountCard({
   deleting,
   tokenRefreshing,
   moving,
+  selectMode,
+  selected,
+  onSelect,
 }: {
   account: Account;
   storiesData?: AccountStoriesData;
@@ -207,6 +210,9 @@ function AccountCard({
   deleting: boolean;
   tokenRefreshing: boolean;
   moving: boolean;
+  selectMode?: boolean;
+  selected?: boolean;
+  onSelect?: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -233,13 +239,25 @@ function AccountCard({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.2 }}
-      // Eleva o card acima dos irmãos quando o menu está aberto, para que a
-      // dropdown não fique escondida atrás dos cards adjacentes. O Framer Motion
-      // layout cria um stacking context via transform, então z-index no próprio
-      // card é necessário para escapar do contexto dos cards vizinhos.
-      style={{ position: "relative", zIndex: menuOpen ? 10 : "auto" }}
-      className={cn("glass-card rounded-2xl", accountFell && "border border-red-500/25")}
+      onClick={selectMode ? onSelect : undefined}
+      style={{ position: "relative", zIndex: menuOpen ? 10 : "auto", cursor: selectMode ? "pointer" : undefined }}
+      className={cn(
+        "glass-card rounded-2xl transition-all",
+        accountFell && "border border-red-500/25",
+        selectMode && selected && "border border-[#00FF41]/50 ring-1 ring-[#00FF41]/20",
+        selectMode && !selected && "opacity-70",
+      )}
     >
+      {/* Overlay de seleção */}
+      {selectMode && (
+        <div className={cn(
+          "absolute top-3 left-3 z-20 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+          selected ? "border-[#00FF41] bg-[#00FF41]/20" : "border-white/30 bg-black/40"
+        )}>
+          {selected && <div className="w-2.5 h-2.5 rounded-full bg-[#00FF41]" />}
+        </div>
+      )}
+
       {/* Cabeçalho */}
       <div className="flex items-start gap-3 p-5 pb-4">
         <div className="relative flex-shrink-0">
@@ -528,6 +546,12 @@ export default function AccountsPage() {
   const [deletingFolder, setDeletingFolder] = useState(false);
   const [folderMenuPos, setFolderMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
+  // Bulk select
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -768,6 +792,39 @@ export default function AccountsPage() {
       setDeletingId(null);
     }
   };
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (!confirmBulkDelete) { setConfirmBulkDelete(true); return; }
+    setBulkDeleting(true);
+    try {
+      const ids = Array.from(selectedIds);
+      await supabase.from("instagram_accounts").delete().in("id", ids);
+      setAccounts(prev => prev.filter(a => !selectedIds.has(a.id)));
+      setNotification({
+        type: "success",
+        message: `${ids.length} conta${ids.length !== 1 ? "s" : ""} excluída${ids.length !== 1 ? "s" : ""} com sucesso.`,
+      });
+      setSelectedIds(new Set());
+      setSelectMode(false);
+      setConfirmBulkDelete(false);
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [confirmBulkDelete, selectedIds, supabase]);
+
+  const cancelSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setConfirmBulkDelete(false);
+  }, []);
 
   const handleMoveClick = useCallback((account: Account) => {
     setMoveAccount(account);
@@ -1462,14 +1519,58 @@ export default function AccountsPage() {
             {accounts.length} conectada{accounts.length !== 1 ? "s" : ""} · {active} ativa{active !== 1 ? "s" : ""}
           </p>
         </div>
-        <motion.button
-          onClick={() => { handleConnectClick(); }}
-          whileTap={{ scale: 0.97 }}
-          className="btn-primary flex items-center gap-2 text-sm px-4 py-2.5"
-        >
-          <Plus size={15} />
-          Conectar conta
-        </motion.button>
+        <div className="flex items-center gap-2">
+          {!selectMode ? (
+            <>
+              <button
+                onClick={() => setSelectMode(true)}
+                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 transition-all"
+              >
+                <CheckCircle2 size={14} />
+                Selecionar
+              </button>
+              <motion.button
+                onClick={() => { handleConnectClick(); }}
+                whileTap={{ scale: 0.97 }}
+                className="btn-primary flex items-center gap-2 text-sm px-4 py-2.5"
+              >
+                <Plus size={15} />
+                Conectar conta
+              </motion.button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={cancelSelectMode}
+                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 transition-all"
+              >
+                <X size={14} />
+                Cancelar
+              </button>
+              {selectedIds.size > 0 && (
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleting}
+                  className={cn(
+                    "flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all",
+                    confirmBulkDelete
+                      ? "bg-red-600 border border-red-500 text-white hover:bg-red-700"
+                      : "bg-red-600/15 border border-red-500/30 text-red-400 hover:bg-red-600/25"
+                  )}
+                >
+                  {bulkDeleting
+                    ? <Loader2 size={14} className="animate-spin" />
+                    : <Trash2 size={14} />
+                  }
+                  {confirmBulkDelete
+                    ? `Confirmar exclusão (${selectedIds.size})`
+                    : `Excluir selecionadas (${selectedIds.size})`
+                  }
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </motion.div>
 
       {/* ── Pasta tabs ─────────────────────────────────────────── */}
@@ -1653,6 +1754,9 @@ export default function AccountsPage() {
                 deleting={deletingId === account.id}
                 tokenRefreshing={tokenRefreshingId === account.id}
                 moving={movingAccountId === account.id}
+                selectMode={selectMode}
+                selected={selectedIds.has(account.id)}
+                onSelect={() => toggleSelect(account.id)}
               />
             ))}
           </AnimatePresence>

@@ -133,39 +133,7 @@ export async function POST() {
 
   const admin = getSupabaseAdmin();
 
-  // ── Auto-recovery: verifica contas em 'error' para restaurar as recuperadas ──
-  // Contas marcadas como error por erros transitórios (ex: "Failed to decrypt")
-  // nunca são verificadas novamente pelo sync-all normal (que as pula).
-  // Este bloco verifica até 8 por chamada: se o token responder OK → restaura.
-  let restored = 0;
-  {
-    const { data: errorAccs } = await admin
-      .from("instagram_accounts")
-      .select("id, username, user_id, ig_business_account_id, meta_access_token, profile_refreshed_at")
-      .eq("user_id", user.id)
-      .eq("health_status", "error")
-      .not("ig_business_account_id", "is", null)
-      .not("meta_access_token", "is", null)
-      .limit(8);
-
-    if (errorAccs?.length) {
-      const restoreSettled = await Promise.allSettled(
-        (errorAccs as unknown as AccountRow[]).map(syncOne)
-      );
-      await Promise.all(
-        restoreSettled.map(async (r) => {
-          if (r.status === "fulfilled" && r.value.ok && r.value.update) {
-            await admin
-              .from("instagram_accounts")
-              .update({ ...r.value.update, health_status: "online" })
-              .eq("id", r.value.id);
-            console.log(`[sync-all] ✓ @${r.value.username} restaurada para 'online' (token voltou a funcionar).`);
-            restored++;
-          }
-        })
-      );
-    }
-  }
+  const restored = 0;
 
   // ── Sync normal: contas online com dados desatualizados ───────────────────
   const { data: accounts } = await admin
