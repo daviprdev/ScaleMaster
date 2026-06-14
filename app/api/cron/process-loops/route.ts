@@ -310,7 +310,12 @@ function isRateLimitError(msg: string): boolean {
     lower.includes("performing too many") ||
     lower.includes("retry your request later") ||
     lower.includes("please retry") ||
-    lower.includes("service temporarily unavailable")
+    lower.includes("service temporarily unavailable") ||
+    // Erros de infraestrutura da Meta: servidor deles falhou ao processar o token —
+    // token válido, problema transitório. Trata como skip silencioso igual rate-limit.
+    lower.includes("failed to decrypt") ||
+    lower.includes("cannot parse access token") ||
+    lower.includes("malformed access token")
   );
 }
 

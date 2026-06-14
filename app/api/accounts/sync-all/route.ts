@@ -7,15 +7,28 @@ export const maxDuration = 60;
 
 const GRAPH = "https://graph.instagram.com/v21.0";
 const STALE_MS = 5 * 60 * 1000;
+
 // Apenas tokens genuinamente mortos justificam marcar health_status='error'.
 // 190 = Invalid OAuth 2.0 Access Token (token expirado/revogado)
 // 102/104 = Session key invalid / Incorrect signature
 const TOKEN_ERROR_CODES = new Set([190, 102, 104]);
 
+// Mensagens de code=190 que são erros de INFRAESTRUTURA da Meta (transitórios),
+// não tokens mortos. Ocorrem durante instabilidade dos servidores da Meta.
+// Tratar como non-fatal: nunca marcar conta como error por esses.
+const META_INFRA_MESSAGES = [
+  "failed to decrypt",
+  "cannot parse access token",
+  "malformed access token",
+  "could not decrypt",
+];
+
 // Se >= essa fração das contas retornar erro de token no mesmo run, é queda em
 // cascata (App Meta desativado, secret rotacionado, outage da API) — não marcar
 // nenhuma como error para não destruir todo o painel.
-const CASCADE_THRESHOLD = 0.5;
+// 0.3 = 30%: limiar mais sensível que o anterior (50%) para detectar cascatas
+// parciais onde o erro da Meta é intermitente e afeta contas em batches diferentes.
+const CASCADE_THRESHOLD = 0.3;
 
 interface AccountRow {
   id: string;
@@ -32,9 +45,16 @@ interface SyncResult {
   username: string;
   ok: boolean;
   tokenError?: boolean;
+  infraError?: boolean; // erro de infra da Meta — transitório, não marca como error
   errorCode?: number;
   errorMessage?: string;
   update?: Record<string, unknown>;
+}
+
+function isMetaInfraError(code: number, message: string): boolean {
+  if (code !== 190) return false;
+  const lower = message.toLowerCase();
+  return META_INFRA_MESSAGES.some(p => lower.includes(p));
 }
 
 async function syncOne(acc: AccountRow): Promise<SyncResult> {
@@ -49,11 +69,29 @@ async function syncOne(acc: AccountRow): Promise<SyncResult> {
 
     if (data.error) {
       const err = data.error as { code: number; message: string };
+
+      // "Failed to decrypt" e similares são falhas de infraestrutura da Meta —
+      // os servidores deles falharam internamente ao processar o token válido.
+      // NÃO indica token morto. Ocorre durante instabilidades/deploys da Meta.
+      if (isMetaInfraError(err.code, err.message)) {
+        console.warn(
+          `[sync-all] ⚠️  Meta infra error para @${acc.username} (code=${err.code}): ` +
+          `"${err.message}" — transitório, ignorando sem marcar como error.`
+        );
+        return {
+          id: acc.id, user_id: acc.user_id, username: acc.username,
+          ok: false, infraError: true, errorCode: err.code, errorMessage: err.message,
+        };
+      }
+
       const tokenBad = TOKEN_ERROR_CODES.has(err.code);
       if (!tokenBad) {
         console.warn(`[sync-all] Erro não-fatal para @${acc.username}: code=${err.code} — ${err.message}`);
       }
-      return { id: acc.id, user_id: acc.user_id, username: acc.username, ok: false, tokenError: tokenBad, errorCode: err.code, errorMessage: err.message };
+      return {
+        id: acc.id, user_id: acc.user_id, username: acc.username,
+        ok: false, tokenError: tokenBad, errorCode: err.code, errorMessage: err.message,
+      };
     }
 
     // Fetch last post timestamp (non-critical)
@@ -94,6 +132,42 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const admin = getSupabaseAdmin();
+
+  // ── Auto-recovery: verifica contas em 'error' para restaurar as recuperadas ──
+  // Contas marcadas como error por erros transitórios (ex: "Failed to decrypt")
+  // nunca são verificadas novamente pelo sync-all normal (que as pula).
+  // Este bloco verifica até 8 por chamada: se o token responder OK → restaura.
+  let restored = 0;
+  {
+    const { data: errorAccs } = await admin
+      .from("instagram_accounts")
+      .select("id, username, user_id, ig_business_account_id, meta_access_token, profile_refreshed_at")
+      .eq("user_id", user.id)
+      .eq("health_status", "error")
+      .not("ig_business_account_id", "is", null)
+      .not("meta_access_token", "is", null)
+      .limit(8);
+
+    if (errorAccs?.length) {
+      const restoreSettled = await Promise.allSettled(
+        (errorAccs as unknown as AccountRow[]).map(syncOne)
+      );
+      await Promise.all(
+        restoreSettled.map(async (r) => {
+          if (r.status === "fulfilled" && r.value.ok && r.value.update) {
+            await admin
+              .from("instagram_accounts")
+              .update({ ...r.value.update, health_status: "online" })
+              .eq("id", r.value.id);
+            console.log(`[sync-all] ✓ @${r.value.username} restaurada para 'online' (token voltou a funcionar).`);
+            restored++;
+          }
+        })
+      );
+    }
+  }
+
+  // ── Sync normal: contas online com dados desatualizados ───────────────────
   const { data: accounts } = await admin
     .from("instagram_accounts")
     .select("id, username, user_id, ig_business_account_id, meta_access_token, profile_refreshed_at")
@@ -103,7 +177,7 @@ export async function POST() {
     .not("meta_access_token", "is", null);
 
   if (!accounts || accounts.length === 0) {
-    return NextResponse.json({ synced: 0, errors: 0, token_errors: 0 });
+    return NextResponse.json({ synced: 0, errors: 0, token_errors: 0, restored });
   }
 
   const stale = (accounts as unknown as AccountRow[]).filter((a) => {
@@ -112,15 +186,17 @@ export async function POST() {
   });
 
   if (stale.length === 0) {
-    return NextResponse.json({ synced: 0, errors: 0, token_errors: 0, message: "Dados recentes." });
+    return NextResponse.json({ synced: 0, errors: 0, token_errors: 0, restored, message: "Dados recentes." });
   }
 
-  // Collect all results before writing — needed for cascade detection
+  // Coleta todos os resultados ANTES de escrever — necessário para cascade detection
   const settled = await Promise.allSettled(stale.map(syncOne));
   const results: SyncResult[] = settled.map((r) =>
     r.status === "fulfilled" ? r.value : { id: "", user_id: "", username: "", ok: false }
   );
 
+  // Erros de infra (ex: "Failed to decrypt") são excluídos da detecção de cascata:
+  // já são tratados como non-fatal individualmente e nunca marcam como error.
   const tokenErrorResults = results.filter((r) => r.tokenError);
   const isCascade = tokenErrorResults.length >= Math.ceil(stale.length * CASCADE_THRESHOLD);
 
@@ -129,14 +205,19 @@ export async function POST() {
     // Não marcar nenhuma conta como error — evita destruir o painel inteiro por
     // um evento externo temporário.
     console.warn(
-      `[sync-all] CASCATA detectada: ${tokenErrorResults.length}/${stale.length} contas com code=${tokenErrorResults[0]?.errorCode} — "${tokenErrorResults[0]?.errorMessage}". Nenhuma conta marcada como error.`
+      `[sync-all] CASCATA detectada: ${tokenErrorResults.length}/${stale.length} contas com ` +
+      `code=${tokenErrorResults[0]?.errorCode} — "${tokenErrorResults[0]?.errorMessage}". ` +
+      `Nenhuma conta marcada como error.`
     );
     return NextResponse.json({
       synced: 0,
       errors: tokenErrorResults.length,
       token_errors: tokenErrorResults.length,
+      restored,
       cascade: true,
-      cascade_message: `${tokenErrorResults.length} contas com token inválido ao mesmo tempo — possível queda do App Meta ou tokens expirados em lote. Reconecte as contas.`,
+      cascade_message:
+        `${tokenErrorResults.length} contas com token inválido ao mesmo tempo — ` +
+        `possível queda do App Meta ou tokens expirados em lote. Reconecte as contas.`,
     });
   }
 
@@ -150,8 +231,12 @@ export async function POST() {
       if (r.ok && r.update) {
         await admin.from("instagram_accounts").update(r.update).eq("id", r.id);
         synced++;
+      } else if (r.infraError) {
+        // Erro de infra da Meta: não marca como error, só loga.
+        // A conta tentará novamente no próximo sync.
+        errors++;
       } else if (r.tokenError) {
-        // Marca individualmente como error (sem cascata confirmado acima)
+        // Token genuinamente morto (código sem ambiguidade de mensagem)
         await admin
           .from("instagram_accounts")
           .update({ health_status: "error", profile_refreshed_at: new Date().toISOString() })
@@ -171,5 +256,5 @@ export async function POST() {
     })
   );
 
-  return NextResponse.json({ synced, errors, token_errors: tokenErrors });
+  return NextResponse.json({ synced, errors, token_errors: tokenErrors, restored });
 }

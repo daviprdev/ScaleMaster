@@ -120,7 +120,14 @@ export async function POST(req: NextRequest) {
 
   if (profile.error) {
     const code = profile.error.code;
-    const isTokenBad = TOKEN_ERROR_CODES.has(code);
+    const errMsgLower = (profile.error.message ?? "").toLowerCase();
+    // "Failed to decrypt" e similares são falhas de infraestrutura da Meta (transitórias).
+    const isMetaInfra = code === 190 && (
+      errMsgLower.includes("failed to decrypt") ||
+      errMsgLower.includes("cannot parse access token") ||
+      errMsgLower.includes("malformed access token")
+    );
+    const isTokenBad = TOKEN_ERROR_CODES.has(code) && !isMetaInfra;
 
     console.error(
       `[accounts/refresh] Meta API error for @${(account as Record<string, unknown>).username}: ` +

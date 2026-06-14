@@ -314,7 +314,12 @@ export async function GET(req: NextRequest) {
         lower.includes("retry your request later") ||
         lower.includes("please retry") ||
         lower.includes("service temporarily unavailable") ||
-        lower.includes("an unexpected error has occurred")
+        lower.includes("an unexpected error has occurred") ||
+        // Erros de infraestrutura da Meta: token válido mas servidor Meta falhou
+        // ao descriptografar internamente — transitório, retry em 5min.
+        lower.includes("failed to decrypt") ||
+        lower.includes("cannot parse access token") ||
+        lower.includes("malformed access token")
       );
 
       if (isTransient) {
