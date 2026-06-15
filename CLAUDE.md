@@ -338,15 +338,16 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Feat — Bulk proxy import CSV (2026-06-14)** | API `POST /api/accounts/bulk-proxy`: lê usernames, encripta e salva `proxy_url` em batch. UI: botão "Proxies" no cabeçalho de Contas → modal com textarea CSV. Formato: `username,http://user:pass@ip:porta`. Suporta remoção (linha sem URL). Commits `1bcb979`. | ✅ Concluída |
 | **Infra — PROXY_URL_TEMPLATE removida + proxies estáticos (2026-06-14)** | `PROXY_URL_TEMPLATE` com sticky session de 12h (life-720 Smartproxy) causava cascata quando todas as sessões rotacionavam ao mesmo tempo. Removida da Vercel. Substituída por 30 proxies ISP estáticos do gbproxies.com.br atribuídos por conta via CSV import. 13 ativos (pasta LEXY), 17 de reserva. | ✅ Aplicado |
 | **Fix — postFirstComment sem proxy (2026-06-14)** | `postFirstComment` em `posts/create/route.ts` usava `fetch` global (Next.js 15 patcha e descarta `dispatcher`) sem proxy da conta — primeiro comentário sempre saía pelo IP puro da Vercel. Migrado para `undiciFetch` + `proxyInit(proxy)` + `encodeURIComponent` no body + `AbortSignal.timeout(30s)`. | ✅ Aplicado |
+| **Fix — Loop travado: warmup bloqueava 13/14 contas da pasta LEXY (2026-06-15)** | Causa raiz: migração SQL `UPDATE instagram_accounts SET is_warmed_up = true` nunca foi executada. Contas LEXY com `warmup_posts_done=20` tinham `warmup_paused_until` no futuro (pausas de 8h após lote 2/3) → 13 contas puladas silenciosamente a cada ciclo; somente 1 conta (`ursulajessicaemanuela`, única com `is_warmed_up=true`) postava. Fix: SQL executado no Supabase (`UPDATE instagram_accounts SET is_warmed_up = true` → 21 contas atualizadas); guarda de auto-graduação adicionada em `process-loops` antes do warmup check: se `warmup_posts_done >= 30` e `is_warmed_up = false`, persiste a correção e prossegue (safety net futuro). Commit `00d5ffb`. | ✅ Aplicado |
 
 **SQL pendente (executar no Supabase):**
 ```sql
--- Warmup de contas novas (supabase/warmup.sql) ← EXECUTAR
-ALTER TABLE public.instagram_accounts
-  ADD COLUMN IF NOT EXISTS is_warmed_up       boolean    NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS warmup_posts_done  integer    NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS warmup_paused_until timestamptz;
-UPDATE public.instagram_accounts SET is_warmed_up = true;
+-- Warmup de contas novas (supabase/warmup.sql) — JÁ EXECUTADO 2026-06-15
+-- ALTER TABLE public.instagram_accounts
+--   ADD COLUMN IF NOT EXISTS is_warmed_up       boolean    NOT NULL DEFAULT false,
+--   ADD COLUMN IF NOT EXISTS warmup_posts_done  integer    NOT NULL DEFAULT 0,
+--   ADD COLUMN IF NOT EXISTS warmup_paused_until timestamptz;
+-- UPDATE public.instagram_accounts SET is_warmed_up = true;
 
 -- Fase 43 — Failover (executar supabase/failover.sql)
 ALTER TABLE public.instagram_accounts
