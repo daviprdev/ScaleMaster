@@ -2497,3 +2497,30 @@ Fix:
 - 19 contas com proxy ISP estático dedicado: 13 pasta LEXY + 6 novas movidas para LEXY
 - 11 proxies de reserva em `proxies_sobrando.csv` (C:\Users\davip\Downloads\)
 - Loop recomendado para contas novas: warmup automático (10 posts + pausa 8h × 3) exclusivo ao motor de Loop
+
+---
+
+### ✅ Fix — Loop travado + pool de vídeos independente (2026-06-15)
+**Commits:** `00d5ffb`, `d53887d`
+
+#### Problema 1 — Loop postando em somente 1 conta (warmup bloqueado)
+
+**Causa raiz:** migração SQL `UPDATE instagram_accounts SET is_warmed_up = true` nunca foi executada no Supabase, apesar de estar marcada como "← EXECUTAR" no CLAUDE.md.
+
+**Efeito:** 13 das 14 contas da pasta LEXY tinham `is_warmed_up = false` + `warmup_posts_done = 20` + `warmup_paused_until` no futuro (pausa de 8h após lote 2/3 do warmup). O `process-loops` pulava essas contas silenciosamente com `continue` no warmup check. Somente `ursulajessicaemanuela` (única com `is_warmed_up = true` manual) postava.
+
+**Fix:**
+- SQL executado no Supabase: `UPDATE instagram_accounts SET is_warmed_up = true` → 21 contas atualizadas
+- Guarda de auto-graduação adicionada em `process-loops` (FASE 2b, antes do warmup check): se `warmup_posts_done >= 30` e `is_warmed_up = false`, persiste a correção e prossegue — safety net para evitar reincidência se publish-pending falhar ao persistir a graduação no 30º post
+
+**Regra aprendida:** Toda migration que adiciona coluna booleana de feature-flag com `DEFAULT false` deve incluir `UPDATE` imediato para linhas existentes. O warmup só faz sentido para contas NOVAS adicionadas via OAuth após o deploy da feature.
+
+#### Problema 2 — 247 vídeos divididos entre contas em vez de 247 por conta
+
+**Causa raiz:** `assignVideosForLoop` em `process-loops` usava `locallyAssigned` — um Set que marcava o vídeo escolhido por uma conta como indisponível para as demais no mesmo ciclo.
+
+**Efeito:** Com 247 vídeos e 14 contas, cada ciclo distribuía 14 vídeos únicos (um por conta). Cada conta só completaria a rotação dos 247 vídeos após ~18 ciclos, compartilhando o pool global — em vez de cada conta ter seu próprio percurso independente pelos 247.
+
+**Comportamento correto:** 247 vídeos **por conta**; cada conta percorre o pool completo individualmente, independente das demais.
+
+**Fix:** Removido `locallyAssigned` do filtro de disponibilidade. Agora `available = allVideos.filter(v => !postedByAccount.has(v.id) && !globallyTaken.has(v.id))` — a única exclusão por conta é o histórico individual (`postedByAccount`). O mesmo vídeo pode ser atribuído a múltiplas contas no mesmo ciclo (normal e esperado).
