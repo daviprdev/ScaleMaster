@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
-import { getProxyForAccount } from "@/lib/proxy";
+import { getProxyForAccount, proxyInit } from "@/lib/proxy";
+import { fetch as undiciFetch, type ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -32,10 +33,23 @@ interface PostAccountResult {
 async function postFirstComment(
   mediaId: string,
   token: string,
-  comment: string
+  comment: string,
+  proxy: ProxyAgent | null = null
 ): Promise<void> {
-  const params = new URLSearchParams({ message: comment, access_token: token });
-  await fetch(`${GRAPH_IG}/${mediaId}/comments`, { method: "POST", body: params });
+  const formBody = [
+    `message=${encodeURIComponent(comment)}`,
+    `access_token=${encodeURIComponent(token)}`,
+  ].join("&");
+  const res = await undiciFetch(`${GRAPH_IG}/${mediaId}/comments`, proxyInit(proxy, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: formBody,
+    signal: AbortSignal.timeout(30_000),
+  }) as any);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -156,7 +170,7 @@ export async function POST(req: NextRequest) {
       // Post first comment if provided (non-critical)
       if (first_comment?.trim() && result.media_id) {
         try {
-          await postFirstComment(result.media_id, tokenToUse, first_comment.trim());
+          await postFirstComment(result.media_id, tokenToUse, first_comment.trim(), proxy);
         } catch {
           console.warn(`[posts/create] Falha ao postar primeiro comentário para @${account.username}.`);
         }
