@@ -2463,3 +2463,37 @@ return NextResponse.json({ status: "done", reels });
 
 #### Lição
 Em Next.js 15 App Router, **nunca chamar `cookies()` ou `headers()` dentro de callbacks async disparados após o retorno da resposta**. Resolver todos os dados request-scoped antes do `return NextResponse.json(...)` e passar como parâmetros para funções background.
+
+---
+
+### ✅ Sessão 2026-06-14 — Revisão geral + fix postFirstComment
+
+#### Bug encontrado e corrigido
+
+**`postFirstComment` em `app/api/posts/create/route.ts` (linhas 32–39)**
+
+A função usava `fetch` global (que o Next.js 15 patcha e descarta silenciosamente a propriedade `dispatcher`) e não recebia o proxy da conta. Resultado: primeiro comentário sempre enviado pelo IP puro da Vercel, independente do proxy configurado na conta — misturando tráfego proxied e direto para a mesma conta.
+
+Fix:
+- Migrado de `fetch` global para `undiciFetch` (undici nativo, lê `dispatcher` corretamente)
+- Adicionado parâmetro `proxy: ProxyAgent | null = null`
+- Body construído com `encodeURIComponent` + `Content-Type: application/x-www-form-urlencoded` explícito (consistente com `createMediaContainer`)
+- Timeout de 30s via `AbortSignal.timeout`
+- Caller (`posts/create`) passa o `proxy` da conta para a função
+
+#### Falsos positivos descartados durante a revisão
+
+| Item | Motivo |
+|------|--------|
+| Double-tap desativado em `publish-pending` | Intencional — documentado; endpoint `POST /{media-id}` limpava a legenda dos Reels silenciosamente |
+| `publishContainer` sem Content-Type explícito | undici trata `URLSearchParams` como body e auto-injeta o header correto |
+| Stagger 5min por conta no `distribute` | Comportamento por design — escalonamento entre contas |
+| `summary.skipped++` em erros transitórios (`publish-scheduled`) | Métrica cosmética — comportamento funcional correto (retry) |
+| `failover_logs` fire-and-forget em `sync-all` | Aceitável para log não-crítico; não afeta o fluxo principal |
+| Warmup counter stale (`publish-pending`) | Teoricamente possível mas impossível na prática: stagger dinâmico garante no máximo 1 container por conta por run |
+
+#### Contexto de proxies (sessão atual)
+
+- 19 contas com proxy ISP estático dedicado: 13 pasta LEXY + 6 novas movidas para LEXY
+- 11 proxies de reserva em `proxies_sobrando.csv` (C:\Users\davip\Downloads\)
+- Loop recomendado para contas novas: warmup automático (10 posts + pausa 8h × 3) exclusivo ao motor de Loop
