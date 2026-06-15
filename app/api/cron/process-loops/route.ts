@@ -487,8 +487,10 @@ async function assignVideosForLoop(
   );
 
   // Passagem síncrona: sem await entre as decisões — sem TOCTOU intra-run.
+  // Cada conta tem pool INDEPENDENTE de todos os vídeos da pasta.
+  // O mesmo vídeo pode ser atribuído a múltiplas contas no mesmo ciclo —
+  // a deduplicação é por conta (cada uma percorre os 247 vídeos individualmente).
   const assignments = new Map<string, VideoAssignment>();
-  const locallyAssigned = new Set<string>(); // reserva imediata para próximas contas desta passagem
 
   for (let i = 0; i < validAccounts.length; i++) {
     const account = validAccounts[i];
@@ -507,15 +509,15 @@ async function assignVideosForLoop(
       );
     }
 
-    // Exclusão combinada: postados por esta conta + tomados globalmente + atribuídos localmente
-    const alreadyUsed = new Set([...globallyTaken, ...locallyAssigned]);
-    let available = allVideos.filter(v => !postedByAccount.has(v.id) && !alreadyUsed.has(v.id));
+    // Pool individual: exclui apenas o que ESTA conta já postou.
+    // globallyTaken serve de guard para invocações concorrentes (raramente populado
+    // graças ao CLAIM atômico, mas mantido por segurança).
+    let available = allVideos.filter(v => !postedByAccount.has(v.id) && !globallyTaken.has(v.id));
 
     let isCycleReset = false;
     if (available.length === 0 && loop.is_infinite) {
-      // Ciclo completo para esta conta: limpa o histórico dela mas respeita o
-      // lock global — outros vídeos já atribuídos nesta rodada permanecem exclusos.
-      available = allVideos.filter(v => !alreadyUsed.has(v.id));
+      // Ciclo completo para esta conta: reinicia o histórico dela.
+      available = allVideos.filter(v => !globallyTaken.has(v.id));
       isCycleReset = available.length > 0;
       if (isCycleReset) {
         console.log(
@@ -527,20 +529,17 @@ async function assignVideosForLoop(
 
     if (available.length === 0) {
       if (allVideos.length > 0) {
-        // Fallback: mais contas que vídeos na pasta. Distribui usando wrap-around pelo
-        // índice da conta — sem adicionar ao locallyAssigned para que as demais contas
-        // overflow também consigam seus vídeos ciclados.
+        // Loop não-infinito que esgotou todos os vídeos: wrap-around pelo índice.
         const fallbackIdx = i % allVideos.length;
         const fallbackVideo = allVideos[fallbackIdx];
         console.log(
-          `[assign-phase] @${account.username}: wrap-around (${allVideos.length} vídeo(s) para ${validAccounts.length} conta(s)) ` +
+          `[assign-phase] @${account.username}: wrap-around (esgotou ${allVideos.length} vídeo(s)) ` +
           `→ vídeo[${fallbackIdx}] "${fallbackVideo.filename.slice(0, 24)}".`
         );
         assignments.set(account.id, { video: fallbackVideo, isCycleReset: true });
       } else {
         console.warn(
-          `[assign-phase] @${account.username}: sem vídeos na pasta ` +
-          `(global=${globallyTaken.size}, local=${locallyAssigned.size}).`
+          `[assign-phase] @${account.username}: sem vídeos na pasta (global=${globallyTaken.size}).`
         );
       }
       continue;
@@ -549,14 +548,13 @@ async function assignVideosForLoop(
     const randomIdx = Math.floor(Math.random() * available.length);
     const video = available[randomIdx];
     assignments.set(account.id, { video, isCycleReset });
-    locallyAssigned.add(video.id); // reserva imediata: próximas contas não verão este vídeo
   }
 
   const summary = [...assignments.entries()]
     .map(([, a]) => `${a.video.filename.slice(0, 20)}${a.isCycleReset ? "*" : ""}`)
     .join(", ");
   console.log(
-    `[assign-phase] "${loop.name}": ${assignments.size}/${validAccounts.length} conta(s) com vídeo único atribuído. ` +
+    `[assign-phase] "${loop.name}": ${assignments.size}/${validAccounts.length} conta(s) com vídeo atribuído (pool independente por conta). ` +
     `[${summary}]`
   );
 
