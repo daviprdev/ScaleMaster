@@ -927,6 +927,22 @@ async function processOneLoop(
 
       const { account, assignment, caption, videoUrl } = prep;
 
+      // ── Auto-graduação de warmup ─────────────────────────────────────────────
+      // Conta chegou a 30+ posts mas is_warmed_up=false ainda (publish-pending pode ter
+      // falhado ao persistir o flag no 30º post). Persiste a correção e prossegue.
+      if (!account.is_warmed_up && (account.warmup_posts_done ?? 0) >= 30) {
+        console.log(`[warmup] @${account.username}: auto-graduação (${account.warmup_posts_done}/30) — ativando modo normal.`);
+        try {
+          await (admin as any)
+            .from("instagram_accounts")
+            .update({ is_warmed_up: true, warmup_posts_done: 30, warmup_paused_until: null })
+            .eq("id", account.id);
+        } catch (e) {
+          console.warn(`[warmup] Falha ao persistir auto-graduação @${account.username}: ${String(e)}`);
+        }
+        account.is_warmed_up = true;
+      }
+
       // ── Warmup check ────────────────────────────────────────────────────────
       // Contas novas (is_warmed_up = false) postam em lotes de 10 com pausas de 8h.
       // A contagem e a pausa são gerenciadas pelo publish-pending após cada publish.
