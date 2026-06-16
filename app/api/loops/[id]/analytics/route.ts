@@ -100,7 +100,7 @@ export async function GET(
   // Carrega dados do loop
   const { data: loop } = await (admin as any)
     .from("loops")
-    .select("id, name, folder_id, cycles_done, media_limit, created_at, user_id")
+    .select("id, name, folder_id, account_folder_id, cycles_done, media_limit, created_at, user_id")
     .eq("id", loopId)
     .eq("user_id", user.id)
     .single();
@@ -119,13 +119,28 @@ export async function GET(
     videosInFolder = count ?? 0;
   }
 
-  // Conta contas vinculadas ao loop — o total real de um ciclo é vídeos × contas
-  const { count: accountCount } = await (admin as any)
-    .from("loop_accounts")
-    .select("account_id", { count: "exact", head: true })
-    .eq("loop_id", loopId);
+  // Conta contas vinculadas ao loop.
+  // Modo pasta (account_folder_id): busca dinamicamente de instagram_accounts.
+  // Modo específico: conta de loop_accounts (tabela estática N:N).
+  let accountCount: number;
+  if (loop.account_folder_id) {
+    const { count } = await (admin as any)
+      .from("instagram_accounts")
+      .select("id", { count: "exact", head: true })
+      .eq("folder_id", loop.account_folder_id)
+      .eq("user_id", user.id)
+      .eq("is_active", true)
+      .neq("health_status", "error");
+    accountCount = count ?? 0;
+  } else {
+    const { count } = await (admin as any)
+      .from("loop_accounts")
+      .select("account_id", { count: "exact", head: true })
+      .eq("loop_id", loopId);
+    accountCount = count ?? 0;
+  }
 
-  const totalTarget = videosInFolder * Math.max(1, accountCount ?? 1);
+  const totalTarget = videosInFolder * Math.max(1, accountCount);
 
   // Todos os containers deste loop com info das contas
   const { data: containers } = await (admin as any)
@@ -266,7 +281,7 @@ export async function GET(
       // total_videos = vídeos_na_pasta × contas — denominador correto de 1 ciclo completo
       total_videos: totalTarget,
       videos_in_folder: videosInFolder,
-      accounts_count: accountCount ?? 0,
+      accounts_count: accountCount,
       published,
       errors,
       pending,
