@@ -7,6 +7,7 @@ import {
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount } from "@/lib/proxy";
+import { applyVideoEffects } from "@/lib/video-effects";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -254,10 +255,27 @@ export async function GET(req: NextRequest) {
       let creationId = post.creation_id;
 
       if (!creationId) {
-        console.log(`[publish-scheduled] Criando container Meta para @${account.username} | proxy=${proxy ? "sim" : "não"} | videoUrl=${videoUrl.slice(0, 80)}...`);
+        // Aplica efeitos anti-fingerprint antes de criar o container.
+        // Fallback para URL original se FFmpeg falhar (sem interromper a postagem).
+        let effectiveVideoUrl = videoUrl;
+        try {
+          effectiveVideoUrl = await applyVideoEffects(videoUrl, {
+            mirror: false, invert: false, zoom: false,
+            blur: false, noise: false, antiAi: false,
+            accountId: account.id,
+          });
+          console.log(`[publish-scheduled] ✓ Efeitos aplicados para @${account.username}`);
+        } catch (fxErr) {
+          console.warn(
+            `[publish-scheduled] ⚠ Efeitos falharam para @${account.username}: ` +
+            `${fxErr instanceof Error ? fxErr.message : String(fxErr)} — usando URL original.`
+          );
+        }
+
+        console.log(`[publish-scheduled] Criando container Meta para @${account.username} | proxy=${proxy ? "sim" : "não"} | videoUrl=${effectiveVideoUrl.slice(0, 80)}...`);
         creationId = await createMediaContainerOnly(
           account.ig_business_account_id,
-          videoUrl,
+          effectiveVideoUrl,
           caption,
           tokenToUse,
           proxy
