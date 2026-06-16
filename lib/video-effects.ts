@@ -56,11 +56,13 @@ function fnv1a(s: string): number {
 /**
  * Parâmetros de BASE fingerprint: micro-variações imperceptíveis únicas por conta.
  *
- * speed:  0.998–1.002 (±0.2%) — muda todos os timestamps de frame e áudio
- * contrast: 1.004–1.012       — menos de 1.2% — imperceptível
- * brightness: 0.002–0.009     — menos de 1%   — imperceptível
- * saturation: 1.004–1.012     — menos de 1.2% — imperceptível
- * luma_noise: 1–3 (força do ruído de borda de bloco H.264)
+ * speed:      0.995–1.005 (±0.5%, 11 valores) — muda todos os timestamps de frame e áudio
+ * contrast:   1.004–1.016 (±1.6%)             — imperceptível ao olho humano
+ * brightness: 0.003–0.014 (±1.4%)             — imperceptível
+ * saturation: 1.004–1.016 (±1.6%)             — imperceptível
+ * lumaNoise:  2–5         (bloco H.264 luma)  — assinaturas de bloco mais variadas
+ * volume:     0.970–1.030 (±3%)               — quebra Chromaprint/AudioID da Meta
+ * hue:        -3 a +3 graus                   — rotação de matiz quebra pHash residual
  */
 function baseParams(accountId: string): {
   speed: number;
@@ -68,27 +70,46 @@ function baseParams(accountId: string): {
   brightness: number;
   saturation: number;
   lumaNoise: number;
+  volume: number;
+  hue: number;
 } {
   const h = fnv1a(accountId);
-  // speed: 0.998, 0.999, 1.000, 1.001, 1.002 (5 valores)
-  const speed      = 0.998 + (h % 5) * 0.001;
-  const contrast   = 1.004 + ((h >> 4) % 9) * 0.001;
-  const brightness = 0.002 + ((h >> 8) % 8) * 0.001;
-  const saturation = 1.004 + ((h >> 12) % 9) * 0.001;
-  const lumaNoise  = 1 + ((h >> 16) % 3);
-  return { speed, contrast, brightness, saturation, lumaNoise };
+  // speed: 0.995–1.005 (±0.5%, 11 valores — mais entropia temporal)
+  const speed      = 0.995 + (h % 11) * 0.001;
+  // contrast/brightness/saturation: ranges expandidos
+  const contrast   = 1.004 + ((h >> 4)  % 13) * 0.001;
+  const brightness = 0.003 + ((h >> 8)  % 12) * 0.001;
+  const saturation = 1.004 + ((h >> 12) % 13) * 0.001;
+  // lumaNoise: 2–5 (era 1–3 — assinatura de borda de bloco mais distinta)
+  const lumaNoise  = 2 + ((h >> 16) % 4);
+  // volume: 0.970–1.030 em 13 passos de 0.005 — quebra fingerprint de áudio
+  const volume     = 0.970 + ((h >> 20) % 13) * 0.005;
+  // hue: -3 a +3 graus em 7 passos — rotação de matiz quebra pHash residual
+  const hue        = -3 + ((h >> 24) % 7);
+  return { speed, contrast, brightness, saturation, lumaNoise, volume, hue };
 }
 
 /**
  * Parâmetros de efeito antiAi: variação maior que o base, ainda imperceptível.
  * Sobrepõe os parâmetros de base quando antiAi está ativo.
+ * Inclui hue e volume mais fortes para cobertura adicional de fingerprint.
  */
-function antiAiParams(accountId: string): { contrast: number; brightness: number; saturation: number } {
+function antiAiParams(accountId: string): {
+  contrast: number;
+  brightness: number;
+  saturation: number;
+  hue: number;
+  volume: number;
+} {
   const h = fnv1a(accountId + "_ai");
-  const contrast   = 1.005 + (h % 11) * 0.001;
-  const brightness = 0.002 + ((h >> 4) % 8) * 0.001;
-  const saturation = 1.005 + ((h >> 8) % 11) * 0.001;
-  return { contrast, brightness, saturation };
+  const contrast   = 1.006 + (h % 13) * 0.001;
+  const brightness = 0.004 + ((h >> 4) % 12) * 0.001;
+  const saturation = 1.006 + ((h >> 8) % 13) * 0.001;
+  // antiAi: hue ±5 graus (mais forte que base ±3)
+  const hue        = -5 + ((h >> 12) % 11);
+  // antiAi: volume 0.960–1.040 (mais forte que base 0.970–1.030)
+  const volume     = 0.960 + ((h >> 16) % 17) * 0.005;
+  return { contrast, brightness, saturation, hue, volume };
 }
 
 export async function applyVideoEffects(
@@ -115,8 +136,13 @@ export async function applyVideoEffects(
     if (!res.ok) throw new Error(`Download falhou: HTTP ${res.status}`);
     fs.writeFileSync(input, Buffer.from(await res.arrayBuffer()));
 
-    // ── 2. Calcula parâmetros ────────────────────────────────────────────────
+    // ── 2. Calcula parâmetros (uma vez, sem chamadas duplicadas) ────────────────
     const base = runBase ? baseParams(accountId) : null;
+    // Parâmetros de cor/hue/volume: antiAi usa variação maior, sobrepõe base.
+    const colorParams = base ? (antiAi ? antiAiParams(accountId) : base) : null;
+    const speed       = base?.speed ?? 1.0;
+    const audioVolume = colorParams?.volume ?? 1.0;
+    const activeHue   = colorParams?.hue ?? 0;
 
     // ── 3. Cadeia de filtros de vídeo ────────────────────────────────────────
     const vf: string[] = [];
@@ -133,39 +159,47 @@ export async function applyVideoEffects(
     if (blur) vf.push("smartblur=lr=1:ls=0.25:lt=0");
     if (noise) vf.push("noise=c0s=3:c0f=t+u");
 
-    // ── 3b. Base fingerprint: micro-cor ──────────────────────────────────────
-    // antiAi usa variação maior (sobrepõe base); se não ativo, usa base.
-    if (base) {
-      const { contrast, brightness, saturation } = antiAi
-        ? antiAiParams(accountId)
-        : base;
+    // ── 3b. Base fingerprint: micro-cor + matiz ──────────────────────────────
+    // hue=h=N rotação de matiz em graus: muda coordenadas Cb/Cr de todos os pixels
+    // → quebra pHash residual que sobrevive a variações sutis de eq.
+    if (colorParams) {
+      const { contrast, brightness, saturation } = colorParams;
       vf.push(
         `eq=contrast=${contrast.toFixed(4)}:brightness=${brightness.toFixed(4)}:saturation=${saturation.toFixed(4)}`
       );
+      // hue: rotação de matiz ±3° (base) ou ±5° (antiAi) — imperceptível, derrota pHash
+      vf.push(`hue=h=${activeHue}`);
     }
 
     // ── 3c. Base fingerprint: micro-velocidade de vídeo ──────────────────────
     // setpts altera todos os PTS (presentation timestamps) → fingerprint temporal
-    // único por conta. ±0.2% é completamente imperceptível ao olho humano.
-    const speed = base?.speed ?? 1.0;
+    // único por conta. ±0.5% é completamente imperceptível ao olho humano.
     if (base) {
       vf.push(`setpts=${speed.toFixed(4)}*PTS`);
     }
 
     // ── 3d. Base fingerprint: micro-ruído de luminância ──────────────────────
-    // Força 1-3/100 apenas em luma (c0s) — muda assinatura de bordas de bloco
+    // Força 2-5/100 apenas em luma (c0s) — muda assinatura de bordas de bloco
     // H.264 sem afetar a nitidez visual perceptível.
     if (base && !noise) {
       vf.push(`noise=c0s=${base.lumaNoise}:c0f=t+u:c1s=0:c2s=0`);
     }
 
-    // ── 4. Filtro de áudio: tempo matching ──────────────────────────────────
+    // ── 4. Filtros de áudio: volume + tempo matching ─────────────────────────
+    // volume=N varia amplitude do áudio por conta → quebra Chromaprint/AudioID
     // atempo mantém sync A/V após o speed shift do setpts.
-    // Variação de ±0.2% no pitch do áudio é imperceptível para humanos.
-    const audioFilters = base ? [`atempo=${speed.toFixed(4)}`] : [];
+    // Variações de ±3% em volume e ±0.5% em tempo são imperceptíveis para humanos.
+    const audioFilters = base
+      ? [`volume=${audioVolume.toFixed(3)}`, `atempo=${speed.toFixed(4)}`]
+      : [];
 
     // ── 5. Codificação com libx264 ultrafast ─────────────────────────────────
-    const outputOptions: string[] = [];
+    // -map 0:v:0 / 0:a:0? — seleção explícita de streams: descarta data streams,
+    // SEI custom atoms e tracks de telemetria do CDN que passariam pelo re-encode.
+    const outputOptions: string[] = [
+      "-map", "0:v:0",
+      "-map", "0:a:0?",
+    ];
     if (vf.length > 0) outputOptions.push("-vf", vf.join(","));
     if (audioFilters.length > 0) outputOptions.push("-af", audioFilters.join(","));
 
@@ -173,7 +207,7 @@ export async function applyVideoEffects(
       "-c:v", "libx264",
       "-preset", "ultrafast",
       "-crf",    "22",
-      "-c:a",    "aac",     // re-encode audio também (stream copy incompatível com atempo)
+      "-c:a",    "aac",     // re-encode audio (stream copy incompatível com atempo/volume)
       "-b:a",    "128k",
       "-map_metadata", "-1",
       "-map_chapters", "-1",
@@ -212,7 +246,12 @@ export async function applyVideoEffects(
       ...(blur     ? ["blur"]     : []),
       ...(noise    ? ["noise"]    : []),
       ...(antiAi   ? ["antiAi"]   : []),
-      ...(base     ? [`spd=${speed.toFixed(3)}`, `luma=${base.lumaNoise}`] : []),
+      ...(base     ? [
+        `spd=${speed.toFixed(3)}`,
+        `luma=${base.lumaNoise}`,
+        `vol=${audioVolume.toFixed(3)}`,
+        `hue=${activeHue}°`,
+      ] : []),
     ].join("+");
 
     console.log(
