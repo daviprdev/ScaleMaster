@@ -151,7 +151,7 @@ function isWithinHumanSchedule(
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------------------
-// Video effects — executado localmente via fluent-ffmpeg + @ffmpeg-installer
+// Video effects — executado localmente via fluent-ffmpeg + ffmpeg-static (FFmpeg 6.1.1)
 //
 // serverExternalPackages em next.config.ts garante que o binário nativo
 // não é empacotado pelo webpack e funciona corretamente no runtime Node.js da Vercel.
@@ -831,7 +831,7 @@ async function processOneLoop(
           return { kind: "skip", account, reason: "sem legendas no loop" };
         }
 
-        // Efeitos de vídeo — FFmpeg local (fluent-ffmpeg + @ffmpeg-installer).
+        // Efeitos de vídeo — FFmpeg local (fluent-ffmpeg + ffmpeg-static 6.1.1).
         // Roda em paralelo com as demais contas na FASE 2a; fallback para URL original se falhar.
         let videoUrl = assignment.video.public_url;
         try {
