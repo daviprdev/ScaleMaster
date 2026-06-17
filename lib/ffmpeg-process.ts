@@ -1,11 +1,11 @@
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegStatic from "ffmpeg-static";
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
 
-ffmpeg.setFfmpegPath(ffmpegStatic as string);
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 export interface ProcessResult {
   outputPath: string;

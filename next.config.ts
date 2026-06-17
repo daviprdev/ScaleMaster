@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
     ],
   },
   // Não empacotar ffmpeg — usa o binário nativo do Node.js diretamente
-  serverExternalPackages: ["fluent-ffmpeg", "ffmpeg-static", "@ffmpeg-installer/ffmpeg"],
+  serverExternalPackages: ["fluent-ffmpeg", "@ffmpeg-installer/ffmpeg"],
 };
 
 export default nextConfig;
