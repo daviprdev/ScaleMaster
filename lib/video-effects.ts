@@ -188,7 +188,7 @@ export async function applyVideoEffects(
       );
     }
     if (blur) vf.push("smartblur=lr=1:ls=0.25:lt=0");
-    if (noise) vf.push("noise=c0s=3:c0f=t+u");
+    if (noise) vf.push("noise=c0s=3");
 
     // ── 3b. Base fingerprint: micro-cor + matiz ──────────────────────────────
     // hue=h=N rotação de matiz em graus: muda coordenadas Cb/Cr de todos os pixels
@@ -217,7 +217,7 @@ export async function applyVideoEffects(
     // o base noise para não sobrepor.
     if (base && !noise) {
       vf.push(
-        `noise=c0s=${base.lumaNoise}:c0f=t+u:c1s=${base.chromaNoise}:c2s=${base.chromaNoise}`
+        `noise=c0s=${base.lumaNoise}:c1s=${base.chromaNoise}:c2s=${base.chromaNoise}`
       );
     }
 
