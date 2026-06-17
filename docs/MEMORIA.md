@@ -2524,3 +2524,107 @@ Fix:
 **Comportamento correto:** 247 vídeos **por conta**; cada conta percorre o pool completo individualmente, independente das demais.
 
 **Fix:** Removido `locallyAssigned` do filtro de disponibilidade. Agora `available = allVideos.filter(v => !postedByAccount.has(v.id) && !globallyTaken.has(v.id))` — a única exclusão por conta é o histórico individual (`postedByAccount`). O mesmo vídeo pode ser atribuído a múltiplas contas no mesmo ciclo (normal e esperado).
+
+---
+
+### ✅ Sessão 2026-06-16 — Anti-fingerprint v1 + FFmpeg 6.1.1 + efeitos em todos os fluxos
+
+#### Feat — Anti-fingerprint v1: 4 melhorias em `lib/video-effects.ts`
+**Commit:** `7944be5`
+
+Primeira rodada de reforço do base fingerprint gerado por `baseParams()`:
+
+1. **`-map 0:v:0 / -map 0:a:0?` explícito** — descarta data streams, SEI custom atoms e trilhas de telemetria dos CDNs que passavam pelo re-encode sem o map explícito. Antes o FFmpeg copiava todos os streams por padrão.
+
+2. **`volume=N` por conta (±3%)** via FNV-1a(accountId) — quebra Chromaprint/AudioID da Meta. Antes só `atempo` existia (mudava velocidade, mas amplitude do áudio era idêntica entre contas).
+
+3. **`hue=h=N` por conta (±3° base / ±5° antiAi)** — rotação de matiz nos canais Cb/Cr de todos os pixels. Quebra pHash residual que sobrevivia às variações sutis de `eq` (±1.2% contrast).
+
+4. **Ranges expandidos:** speed ±0.2% → ±0.5% (5 → 11 valores); lumaNoise 1–3 → 2–5; contrast/saturation ±1.2% → ±1.6%; brightness ±0.9% → ±1.4%.
+
+---
+
+#### Chore — Migração `@ffmpeg-installer` → `ffmpeg-static` (FFmpeg 4.1 → 6.1.1)
+**Commit:** `bd77cf8`
+
+`@ffmpeg-installer/ffmpeg` estava abandonado desde 2021 com FFmpeg 4.1 (novembro/2018). Substituído por `ffmpeg-static` com FFmpeg 6.1.1 (dezembro/2023).
+
+**Benefícios:**
+- libx264 mais moderno → NAL units com estrutura diferente por conta
+- Filtros `hue`, `noise`, `volume`, `eq` mais precisos e corretos no 6.x
+- Pacote mantido ativamente (último update 2024)
+
+**Arquivos alterados:** `lib/ffmpeg-process.ts`, `lib/video-effects.ts`, `utils/videoSanitizer.ts`, `next.config.ts` (serverExternalPackages).
+
+---
+
+#### Feat — `applyVideoEffects` em todos os fluxos de postagem
+**Commit:** `cdffe32`
+
+Anti-fingerprint existia **apenas** no fluxo Loop (`process-loops`). A aba Postar (`publish-scheduled` e `posts/create`) enviava vídeos 100% idênticos para todas as contas — fingerprint trivialmente detectável pela Meta.
+
+**Fix:**
+- `app/api/cron/publish-scheduled/route.ts`: aplica `applyVideoEffects` antes de criar container Meta, **apenas quando `!creationId`** (container novo) — evita re-processar containers já criados em ciclos anteriores.
+- `app/api/posts/create/route.ts`: aplica efeitos dentro do loop de publicação imediata, uma vez por conta com o `account.id` como seed.
+- Ambos com fallback gracioso: FFmpeg falha → usa URL original + log de aviso, sem interromper a postagem.
+
+---
+
+#### Fix — Loop analytics: conta contas do modo pasta
+**Commit:** `d21e473`
+
+**Problema:** `GET /api/loops/[id]/analytics` usava `loop_accounts` (join direto) para calcular `accountCount`. Em loops com `account_folder_id` (modo pasta dinâmico), `loop_accounts` fica **vazia** (nenhuma conta está vinculada diretamente). Resultado: `accountCount=0` → `total_videos = videos_count × 1` em vez de `× N_contas`.
+
+**Fix:** Detecta modo pasta via `loop.account_folder_id` e executa query separada em `instagram_accounts WHERE folder_id = account_folder_id AND is_active = true AND health_status != 'error'` para obter o count real de contas.
+
+---
+
+### ✅ Sessão 2026-06-17 — Anti-fingerprint v2: 6 melhorias para quebrar pHash da Meta
+
+**Commit:** `7b38bfd`
+
+#### Diagnóstico: por que os vídeos travavam em ~300 views
+
+O Instagram usa **pHash (perceptual hash)** de frames amostrados em 32×32 para detectar conteúdo duplicado entre contas. Os parâmetros da v1 eram sutis demais:
+
+| Parâmetro | v1 (antes) | v2 (depois) | Por quê importa |
+|---|---|---|---|
+| Speed | ±0.5% (11 val.) | **±1.5% (31 val.)** | Frame amostrado em t=5s muda ±0.225s — muda qual frame entra no pHash |
+| Hue | ±3° | **±8° base / ±12° antiAi** | ±3° não movia Cb/Cr o suficiente para flipar bits do hash colorimétrico |
+| Luma noise | c0s=2–5 | **c0s=6–18** | c0s=5/255≈2% — downsampling para 32×32 anulava o efeito |
+| Chroma noise | **c1s=0 (fixo!)** | **c1s/c2s=2–6** | Zero fixo = canais Cb/Cr idênticos entre contas → pHash colorimétrico passava |
+| CRF | **22 (fixo!)** | **18–24 por conta** | CRF igual = macroblocks quasi-idênticos = mesmo hash de bitstream |
+| Unsharp mask | ausente | **0.2–0.8 por conta** | Edge fingerprint (Canny/LoG) ficava idêntico entre contas |
+
+**O mais crítico:** `c1s=0:c2s=0` era hardcoded — os canais de cor Cb/Cr eram idênticos para todas as contas postando o mesmo vídeo.
+
+#### Arquitetura do `baseParams()` na v2
+
+Três entradas FNV-1a independentes para eliminar correlação entre dimensões:
+- `h0 = fnv1a(accountId)` → speed, contrast, brightness, saturation
+- `h1 = fnv1a(accountId + "\x01")` → lumaNoise, chromaNoise, volume
+- `h2 = fnv1a(accountId + "\x02")` → hue, crf, unsharp
+
+#### Cadeia de filtros FFmpeg final (por conta)
+
+```
+eq=contrast=X:brightness=Y:saturation=Z
+hue=h=N
+setpts=SPEED*PTS
+noise=c0s=LUMA:c0f=t+u:c1s=CHROMA:c2s=CHROMA:c1f=t+u:c2f=t+u
+unsharp=3:3:SHARP:3:3:0.0
+```
+
+Audio: `volume=VOL,atempo=SPEED`
+
+Encode: `-c:v libx264 -preset ultrafast -crf CRF -c:a aac -b:a 128k`
+
+#### Como verificar nos logs da Vercel
+
+Filtrar por `[video-effects]` — cada conta deve ter valores diferentes:
+```
+[video-effects] ✓ [spd=0.998+luma=12+chroma=4+vol=0.975+hue=-3°+crf=21+sharp=0.5] | 8.3 MB → temp/vfx_...
+[video-effects] ✓ [spd=1.003+luma=8+chroma=6+vol=1.020+hue=+5°+crf=24+sharp=0.3] | 9.1 MB → temp/vfx_...
+```
+
+Parâmetros diferentes + tamanhos diferentes (CRF variável) = fingerprint único por conta.
