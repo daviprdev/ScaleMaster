@@ -217,7 +217,7 @@ export async function applyVideoEffects(
     // o base noise para não sobrepor.
     if (base && !noise) {
       vf.push(
-        `noise=c0s=${base.lumaNoise}:c0f=t+u:c1s=${base.chromaNoise}:c2s=${base.chromaNoise}:c1f=t+u:c2f=t+u`
+        `noise=c0s=${base.lumaNoise}:c0f=t+u:c1s=${base.chromaNoise}:c2s=${base.chromaNoise}`
       );
     }
 
