@@ -5,12 +5,12 @@
  *
  * 1. BASE FINGERPRINT (sempre aplicado quando accountId presente)
  *    Objetivo: tornar cada vídeo único por conta para derrotar fingerprinting.
- *    - Velocidade ±1.5%: muda frames amostrados pelo pHash temporal (era ±0.5%)
- *    - Eq cor: contrast/brightness/saturation únicos por conta (±2.4%, eram ±1.6%)
- *    - Ruído luma 6–18 + chroma 3–9: muda assinaturas de bloco DCT + canais Cb/Cr
- *    - Unsharp mask 0.2–0.8: varia nitidez de borda por conta (novo)
- *    - CRF 18–24 por conta: quantização diferente = DCT artifacts únicos (era 22 fixo)
- *    - Audio volume ±4.5% + tempo ±1.5%: quebra Chromaprint/AudioID da Meta
+ *    - Velocidade ±4%: muda quais frames são amostrados pelo pHash temporal da Meta
+ *    - Eq cor: contrast/brightness/saturation únicos por conta (±2.4%)
+ *    - Ruído luma 20–45 + chroma 8–18: forte o suficiente para exceder o limiar do PDQ (32 bits)
+ *    - Unsharp mask 0.2–0.8: varia nitidez de borda por conta
+ *    - CRF 18–26 por conta: quantização diferente = DCT artifacts únicos
+ *    - Audio volume ±4.5% + tempo ±4%: quebra Chromaprint/AudioID da Meta
  *    Nota: todos os filtros do base fingerprint operam em yuv420p sem mudar
  *    dimensões nem colorspace — garantia de estabilidade no FFmpeg 4.1.
  *    Filtro `hue` REMOVIDO: apesar de constante, realiza rotação de matriz Cb/Cr
@@ -66,16 +66,16 @@ function fnv1a(s: string): number {
  * Cada parâmetro usa uma entrada de hash independente (accountId + salt distinto)
  * para evitar correlação entre dimensões.
  *
- * speed:        0.985–1.015 (±1.5%, 31 valores) — ±0.5% era insuficiente para mudar
- *               quais frames são amostrados pelo pHash temporal da Meta
- * contrast:     1.008–1.032 (±2.4%)             — era ±1.6% (insuficiente para o 32×32)
- * brightness:   0.005–0.025                      — era 0.003–0.014
- * saturation:   1.008–1.032 (±2.4%)             — era ±1.6%
- * lumaNoise:    6–18  (bloco H.264 luma)         — era 2–5 (muito fraco)
- * chromaNoise:  3–9   (canais Cb/Cr)             — era 2–6 (aumentado para compensar remoção do hue)
- * volume:       0.955–1.045 (±4.5%)             — era ±3%
- * crf:          18–24 por conta                  — era 22 fixo para todos
- * unsharp:      0.2–0.8                          — varia nitidez de borda por conta
+ * speed:        0.960–1.040 (±4%, 81 valores) — muda quais frames o PDQ da Meta amostra;
+ *               ±1.5% era insuficiente para sair do limiar de 32 bits do fingerprint temporal
+ * contrast:     1.008–1.032 (±2.4%)
+ * brightness:   0.005–0.025
+ * saturation:   1.008–1.032 (±2.4%)
+ * lumaNoise:    20–45 (bloco H.264 luma)  — forte o suficiente para alterar >32 bits do PDQ hash
+ * chromaNoise:  8–18  (canais Cb/Cr)      — perturba histograma de cor Cb/Cr por conta
+ * volume:       0.955–1.045 (±4.5%)
+ * crf:          18–26 por conta           — era 18–24 (range maior = maior diversidade de DCT)
+ * unsharp:      0.2–0.8
  */
 function baseParams(accountId: string): {
   speed: number;
@@ -93,22 +93,22 @@ function baseParams(accountId: string): {
   const h1 = fnv1a(accountId + "\x01");
   const h2 = fnv1a(accountId + "\x02");
 
-  // speed: 0.985–1.015 (±1.5%, 31 valores)
-  const speed       = 0.985 + (h0 % 31) * 0.001;
+  // speed: 0.960–1.040 (±4%, 81 valores) — muda quais frames o PDQ amostra
+  const speed       = 0.960 + (h0 % 81) * 0.001;
   // contrast: 1.008–1.032 (±2.4%, 25 valores)
-  const contrast    = 1.008 + ((h0 >> 5) % 25) * 0.001;
+  const contrast    = 1.008 + ((h0 >> 7) % 25) * 0.001;
   // brightness: 0.005–0.025 (21 valores)
-  const brightness  = 0.005 + ((h0 >> 10) % 21) * 0.001;
+  const brightness  = 0.005 + ((h0 >> 12) % 21) * 0.001;
   // saturation: 1.008–1.032 (±2.4%, 25 valores)
-  const saturation  = 1.008 + ((h0 >> 15) % 25) * 0.001;
-  // lumaNoise: 6–18 (13 valores) — muda assinatura de bloco DCT
-  const lumaNoise   = 6 + (h1 % 13);
-  // chromaNoise: 3–9 (7 valores) — ruído Cb/Cr aumentado para compensar remoção do hue
-  const chromaNoise = 3 + ((h1 >> 4) % 7);
+  const saturation  = 1.008 + ((h0 >> 17) % 25) * 0.001;
+  // lumaNoise: 20–45 (26 valores) — forte o suficiente para exceder limiar PDQ da Meta
+  const lumaNoise   = 20 + (h1 % 26);
+  // chromaNoise: 8–18 (11 valores) — perturba histograma Cb/Cr
+  const chromaNoise = 8 + ((h1 >> 5) % 11);
   // volume: 0.955–1.045 (±4.5%, 19 passos de 0.005)
-  const volume      = 0.955 + ((h1 >> 8) % 19) * 0.005;
-  // crf: 18–24 por conta (7 valores) — quantização diferente = DCT artifacts únicos
-  const crf         = 18 + ((h2 >> 5) % 7);
+  const volume      = 0.955 + ((h1 >> 10) % 19) * 0.005;
+  // crf: 18–26 por conta (9 valores) — diversidade maior de DCT artifacts
+  const crf         = 18 + ((h2 >> 5) % 9);
   // unsharp: 0.2–0.8 (7 valores) — nitidez de borda única por conta
   const unsharp     = 0.2 + ((h2 >> 10) % 7) * 0.1;
 
@@ -162,18 +162,6 @@ export async function applyVideoEffects(
     if (!res.ok) throw new Error(`Download falhou: HTTP ${res.status}`);
     fs.writeFileSync(input, Buffer.from(await res.arrayBuffer()));
 
-    // ── 1b. Limite de tamanho: arquivos grandes timeout no serverless ───────────
-    // libx264 ultrafast em vídeos >5 MB leva >80s; com 20+ contas em paralelo
-    // o timeout de 300s da Vercel é excedido. Posta sem efeito nesses casos.
-    const fileSizeBytes = fs.statSync(input).size;
-    if (fileSizeBytes > 5 * 1024 * 1024) {
-      console.warn(
-        `[video-effects] ⚠ @${accountId.slice(0, 8)} skip — arquivo muito grande` +
-        ` (${(fileSizeBytes / 1_048_576).toFixed(1)} MB > 5 MB), postando original.`
-      );
-      return videoUrl;
-    }
-
     // ── 2. Calcula parâmetros (uma vez, sem chamadas duplicadas) ────────────────
     const base = runBase ? baseParams(accountId) : null;
     // Parâmetros de cor/volume: antiAi usa variação maior, sobrepõe base.
@@ -217,15 +205,14 @@ export async function applyVideoEffects(
 
     // ── 3c. Base fingerprint: micro-velocidade de vídeo ──────────────────────
     // setpts altera todos os PTS (presentation timestamps) → fingerprint temporal
-    // único por conta. ±1.5% muda quais frames são amostrados pelo pHash da Meta.
+    // único por conta. ±4% muda quais frames são amostrados pelo PDQ da Meta.
     if (base) {
       vf.push(`setpts=${speed.toFixed(4)}*PTS`);
     }
 
     // ── 3d. Base fingerprint: ruído luma + chroma ────────────────────────────
-    // c0s: luma (Y) 6–18 — muda assinatura de bloco DCT
-    // c1s/c2s: chroma (Cb/Cr) 3–9 — aumentado (era 2–6) para compensar remoção do hue;
-    // derrota fingerprints baseados em histograma de cor e pHash colorimétrico.
+    // c0s: luma (Y) 20–45 — forte o suficiente para exceder o limiar de 32 bits do PDQ
+    // c1s/c2s: chroma (Cb/Cr) 8–18 — perturba histograma de cor por conta
     if (base && !noise) {
       vf.push(
         `noise=c0s=${base.lumaNoise}:c1s=${base.chromaNoise}:c2s=${base.chromaNoise}`
@@ -243,15 +230,14 @@ export async function applyVideoEffects(
     // ── 4. Filtros de áudio: volume + tempo matching ─────────────────────────
     // volume=N varia amplitude do áudio por conta → quebra Chromaprint/AudioID
     // atempo mantém sync A/V após o speed shift do setpts.
-    // Variações de ±4.5% em volume e ±1.5% em tempo — imperceptíveis ao ouvido.
+    // Variações de ±4.5% em volume e ±4% em tempo — imperceptíveis ao ouvido.
     const audioFilters = base
       ? [`volume=${audioVolume.toFixed(3)}`, `atempo=${speed.toFixed(4)}`]
       : [];
 
     // ── 5. Codificação com libx264 ultrafast + CRF dinâmico ──────────────────
-    // -crf activeCrf (18–24 por conta): quantização diferente por conta garante
+    // -crf activeCrf (18–26 por conta): quantização diferente por conta garante
     // DCT artifacts e padrões de macroblock distintos mesmo para o mesmo conteúdo.
-    // Era CRF 22 fixo para todos — DCT quase idêntico entre contas.
     // -map 0:v:0 / 0:a:0? — seleção explícita: descarta data streams, SEI atoms.
     const outputOptions: string[] = [
       "-map", "0:v:0",
@@ -272,13 +258,21 @@ export async function applyVideoEffects(
       "-f", "mp4",
     );
 
+    // Timeout de 20s por conta — previne que vídeos grandes travem a função serverless
+    // (300s Vercel). Se estourar, o caller captura o erro e posta o vídeo original.
+    const FFMPEG_TIMEOUT_MS = 20_000;
     await new Promise<void>((resolve, reject) => {
-      ffmpeg(input)
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const cmd = ffmpeg(input)
         .outputOptions(outputOptions)
         .output(output)
-        .on("end",   () => resolve())
-        .on("error", (err: Error) => reject(new Error(`FFmpeg: ${err.message}`)))
-        .run();
+        .on("end", () => { clearTimeout(timer); resolve(); })
+        .on("error", (err: Error) => { clearTimeout(timer); reject(new Error(`FFmpeg: ${err.message}`)); });
+      cmd.run();
+      timer = setTimeout(() => {
+        try { (cmd as any).kill("SIGKILL"); } catch { /* já terminou */ }
+        reject(new Error(`FFmpeg timeout (>${FFMPEG_TIMEOUT_MS / 1000}s) — vídeo muito grande`));
+      }, FFMPEG_TIMEOUT_MS);
     });
 
     // ── 6. Upload para Supabase Storage (temp/) ──────────────────────────────
