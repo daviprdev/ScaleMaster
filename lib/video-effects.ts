@@ -162,12 +162,10 @@ export async function applyVideoEffects(
     if (!res.ok) throw new Error(`Download falhou: HTTP ${res.status}`);
     fs.writeFileSync(input, Buffer.from(await res.arrayBuffer()));
 
-    // ── 2. Decide modo (pesado vs leve) baseado no tamanho do arquivo ──────────
-    // Vídeos grandes (>8 MB) levam mais tempo que o budget de CPU do Vercel
-    // serverless compartilhado com outros loops. Modo leve: só eq + speed + CRF —
-    // speed ±4% já é suficiente para derrotar o VPDQ temporal da Meta.
-    const HEAVY_MAX_BYTES = 8 * 1_048_576;
+    // ── 2. Tamanho do arquivo (para log + decisão de unsharp) ──────────────────
     const inputSizeBytes  = fs.statSync(input).size;
+    // Unsharp apenas para vídeos pequenos (≤8 MB): overhead leve mas não nulo.
+    const HEAVY_MAX_BYTES = 8 * 1_048_576;
     const useHeavyFilters = inputSizeBytes <= HEAVY_MAX_BYTES;
 
     // ── 3. Calcula parâmetros (uma vez, sem chamadas duplicadas) ────────────────
@@ -176,8 +174,7 @@ export async function applyVideoEffects(
     const colorParams = base ? (antiAi ? antiAiParams(accountId) : base) : null;
     const speed       = base?.speed ?? 1.0;
     const audioVolume = colorParams?.volume ?? 1.0;
-    // Modo leve: CRF +4 → encode ~30% mais rápido; diversidade DCT mantida
-    const activeCrf   = base ? (useHeavyFilters ? base.crf : Math.min(base.crf + 4, 30)) : 22;
+    const activeCrf   = base?.crf ?? 22;
     const activeUnsharp = base?.unsharp ?? 0;
 
     // ── 3. Cadeia de filtros de vídeo ────────────────────────────────────────
@@ -219,17 +216,11 @@ export async function applyVideoEffects(
       vf.push(`setpts=${speed.toFixed(4)}*PTS`);
     }
 
-    // ── 3d. Base fingerprint: ruído luma + chroma (modo pesado, ≤8 MB) ────────
-    // c0s: luma (Y) 8–16, c1s/c2s: chroma (Cb/Cr) 2–6
-    // Pulado em modo leve (>8 MB): speed ±4% + eq já derrota o VPDQ temporal da Meta.
-    if (base && !noise && useHeavyFilters) {
-      vf.push(
-        `noise=c0s=${base.lumaNoise}:c1s=${base.chromaNoise}:c2s=${base.chromaNoise}`
-      );
-    }
-
-    // ── 3e. Base fingerprint: unsharp mask (modo pesado, ≤8 MB) ─────────────
-    // Pulado em modo leve para reduzir carga de CPU.
+    // ── 3d. Base fingerprint: unsharp mask (modo pesado, ≤8 MB) ─────────────
+    // noise removido do base fingerprint: consome ~80% do tempo de encode no Vercel.
+    // speed ±4% + eq + re-encode em CRF variável já derrota o VPDQ temporal da Meta:
+    // setpts desloca quais frames são amostrados; CRF 22-28 produz DCT artifacts únicos.
+    // Unsharp mantido apenas em modo pesado (ligeiro overhead, contribui para variação de borda).
     if (base && activeUnsharp > 0 && useHeavyFilters) {
       vf.push(`unsharp=3:3:${activeUnsharp.toFixed(1)}:3:3:0.0`);
     }
@@ -314,10 +305,9 @@ export async function applyVideoEffects(
       ] : []),
     ].join("+");
 
-    const fxMode = useHeavyFilters ? "pesado" : "leve";
     console.log(
-      `[video-effects] ✓ [${fxMode}|${activeFx}] | ` +
-      `${(inputSizeBytes / 1_048_576).toFixed(1)} MB → ${(buf.length / 1_048_576).toFixed(1)} MB → ${storagePath}`
+      `[video-effects] ✓ [${activeFx}] | ` +
+      `${(inputSizeBytes / 1_048_576).toFixed(1)} MB in → ${(buf.length / 1_048_576).toFixed(1)} MB out → ${storagePath}`
     );
 
     return urlData.publicUrl;
