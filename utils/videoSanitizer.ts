@@ -5,13 +5,19 @@
  * all other data streams, hidden subtitles and telemetry tracks embedded by
  * source CDNs (Instagram, TikTok, etc.). Packages into a clean MP4.
  *
- *   -map 0:v:0          — first video track only; discards data streams / SEI atoms
- *   -map 0:a:0?         — first audio track only, if present (? = optional)
- *   -c:v copy -c:a copy — stream copy keeps 100% original H.264/AAC profile
- *   -map_metadata -1    — strips all global container metadata (EXIF, GPS, encoder)
- *   -map_chapters -1    — removes chapter markers
- *   -movflags +faststart — moov atom at front for progressive web playback
- *   -f mp4              — strict MP4 container (no non-standard atom types)
+ *   -map 0:v:0                      — first video track only; discards data streams
+ *   -map 0:a:0?                     — first audio track only (? = optional)
+ *   -c:v copy -c:a copy             — stream copy; zero re-encoding, 100% quality
+ *   -bsf:v filter_units=remove_types=6  — strips SEI NAL units (type 6) from the
+ *                                     H.264 bitstream: UUID tracking, creator ID and
+ *                                     CDN fingerprints embedded by Instagram/TikTok.
+ *                                     These survive -map_metadata because they live
+ *                                     inside the video bitstream, not in MP4 atoms.
+ *   -map_metadata -1                — strips all container-level metadata (EXIF, GPS,
+ *                                     encoder, creation_time in MP4 atoms)
+ *   -map_chapters -1                — removes chapter markers
+ *   -movflags +faststart            — moov atom at front for progressive web playback
+ *   -f mp4                          — strict MP4 container (no non-standard atom types)
  */
 
 import ffmpeg from "fluent-ffmpeg";
@@ -68,7 +74,7 @@ export async function sanitizeAndHashBust(
   const buffer = await response.arrayBuffer();
   fs.writeFileSync(inputPath, Buffer.from(buffer));
 
-  // ── 2. Stream copy + metadata strip + faststart ───────────────────────────
+  // ── 2. Stream copy + SEI strip + metadata strip + faststart ─────────────
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .outputOptions([
@@ -76,6 +82,7 @@ export async function sanitizeAndHashBust(
         "-map 0:a:0?",   // pure audio extraction — first track only (optional)
         "-c:v",          "copy",
         "-c:a",          "copy",
+        "-bsf:v",        "filter_units=remove_types=6",  // strip SEI NAL units (H.264 type 6): Instagram UUID tracking, creator ID, CDN fingerprints
         "-map_metadata", "-1",
         "-map_chapters", "-1",
         "-movflags",     "+faststart",
@@ -105,7 +112,7 @@ export async function sanitizeAndHashBust(
 /**
  * Single-pass sanitization used for local device downloads.
  *
- * Pipeline: download → stream copy + strip metadata + faststart
+ * Pipeline: download → stream copy + SEI strip + metadata strip + faststart
  *
  * Previously two passes; collapsed to one since the second pass only existed
  * to inject a UUID comment (now removed to avoid programmatic fingerprinting).
@@ -130,7 +137,7 @@ export async function sanitizeDoublePass(
   const buffer = await response.arrayBuffer();
   fs.writeFileSync(inputPath, Buffer.from(buffer));
 
-  // ── 2. Stream copy + metadata strip + faststart ───────────────────────────
+  // ── 2. Stream copy + SEI strip + metadata strip + faststart ─────────────
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .outputOptions([
@@ -138,6 +145,7 @@ export async function sanitizeDoublePass(
         "-map 0:a:0?",   // pure audio extraction — first track only (optional)
         "-c:v",          "copy",
         "-c:a",          "copy",
+        "-bsf:v",        "filter_units=remove_types=6",  // strip SEI NAL units (H.264 type 6): Instagram UUID tracking, creator ID, CDN fingerprints
         "-map_metadata", "-1",
         "-map_chapters", "-1",
         "-movflags",     "+faststart",

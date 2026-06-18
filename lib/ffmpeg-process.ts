@@ -17,17 +17,18 @@ export interface ProcessResult {
  * Downloads a video and re-packages it via pure stream extraction.
  *
  * Pipeline (Pure Extraction):
- *   -map 0:v:0          — extract ONLY the first video track; discards all data
- *                          streams, SEI custom atoms and telemetry tracks embedded
- *                          by source CDNs (Instagram, TikTok, etc.)
- *   -map 0:a:0?         — extract ONLY the first audio track (optional — ? flag
- *                          prevents failure when the source has no audio)
- *   -c:v copy -c:a copy — stream copy preserves 100% original codec profile
- *                          (H.264/AAC); required for Meta API integrity checks
- *   -map_metadata -1    — strips all global container metadata (EXIF, GPS, encoder)
- *   -map_chapters -1    — removes chapter markers
- *   -movflags +faststart — moves moov atom to front for progressive web playback
- *   -f mp4              — forces strict MP4 container (no non-standard atom types)
+ *   -map 0:v:0                      — first video track only; discards data streams
+ *   -map 0:a:0?                     — first audio track only (? = optional)
+ *   -c:v copy -c:a copy             — stream copy; zero re-encoding, 100% quality
+ *   -bsf:v filter_units=remove_types=6  — strips SEI NAL units (H.264 type 6):
+ *                                     UUID tracking, creator ID, CDN fingerprints
+ *                                     embedded by Instagram/TikTok inside the bitstream.
+ *                                     Survives -map_metadata because it lives inside
+ *                                     the video bitstream, not in MP4 container atoms.
+ *   -map_metadata -1                — strips container-level metadata (EXIF, GPS, encoder)
+ *   -map_chapters -1                — removes chapter markers
+ *   -movflags +faststart            — moov atom at front for progressive web playback
+ *   -f mp4                          — strict MP4 container (no non-standard atom types)
  */
 export async function downloadAndStripMetadata(
   videoUrl: string
@@ -53,6 +54,7 @@ export async function downloadAndStripMetadata(
         "-map 0:a:0?",   // pure audio extraction — first track only (optional)
         "-c:v",          "copy",
         "-c:a",          "copy",
+        "-bsf:v",        "filter_units=remove_types=6",  // strip SEI NAL units (H.264 type 6): Instagram UUID tracking, creator ID, CDN fingerprints
         "-map_metadata", "-1",
         "-map_chapters", "-1",
         "-movflags",     "+faststart",
