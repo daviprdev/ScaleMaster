@@ -2570,6 +2570,86 @@ Anti-fingerprint existia **apenas** no fluxo Loop (`process-loops`). A aba Posta
 
 ---
 
+### ✅ Sessão 2026-06-17 (cont.) — Fix ERANGE/EINVAL no FFmpeg 4.1: remoção de colorchannelmixer e crop+scale
+
+**Commits:** `0e1d7f6`, `437cb8f`, `191b2c8`
+
+#### Problema: ERANGE e EINVAL persistentes após anti-fingerprint v3
+
+Após adicionar `colorchannelmixer` e `crop+scale` ao pipeline de efeitos, múltiplas contas passaram a falhar com:
+
+```
+Error reinitializing filters!
+Failed to inject frame into filter network: Numerical result out of range   ← ERANGE
+Failed to inject frame into filter network: Invalid argument                ← EINVAL
+```
+
+O erro não era de configuração inicial — era **mid-stream**, durante o processamento de frames específicos.
+
+#### Causa raiz
+
+**Por que ocorre "Error REINITIALIZING filters":**
+Em FFmpeg 4.1, alguns streams H.264 do Instagram contêm mudanças de SPS/PPS mid-stream (parameter set change). Quando isso ocorre, o FFmpeg tenta reinicializar o grafo de filtros para os novos parâmetros. Filtros que dependem de colorspace conversion ou que mudam dimensões falham nessa reinicialização.
+
+**`colorchannelmixer` → ERANGE:**
+- Opera no colorspace RGB; FFmpeg insere automaticamente um filtro `format` (YUV→RGB) antes e outro (RGB→YUV) depois
+- O filtro `format` implícito não suporta reinicialização graceful no FFmpeg 4.1
+- Combinado com `setpts` (que modifica PTS), a reinicialização falha com ERANGE
+
+**`crop+scale` → EINVAL:**
+- `crop` reduz dimensões (ex: 1080×1920 → 1076×1916); `scale` restaura
+- Mudança de dimensões durante reinicialização do grafo de filtros → EINVAL
+- `pad+crop` tinha o mesmo problema (ERANGE); substituir por `crop+scale` não ajudou
+
+**Flags temporais `t+u` no noise → ERANGE (causa anterior):**
+- `c0f=t+u:c1f=t+u:c2f=t+u` usa o PTS como seed do noise
+- Combinado com `setpts`, os PTS modificados causavam ERANGE em streams com timing não-standard
+- Removidos primeiro (`0e1d7f6` + `437cb8f`), mas ERANGE persistia por causa do `colorchannelmixer`
+
+#### Filtros seguros no FFmpeg 4.1
+
+Todos os filtros do pipeline v2 operam em **yuv420p sem mudar colorspace ou dimensões**:
+
+| Filtro | Colorspace | Dimensão | Reinit safe? |
+|--------|------------|----------|--------------|
+| `eq` | yuv | inalterada | ✅ |
+| `hue` | yuv | inalterada | ✅ |
+| `setpts` | n/a | n/a | ✅ |
+| `noise=c0s:c1s:c2s` (sem flags) | yuv | inalterada | ✅ |
+| `unsharp` | yuv | inalterada | ✅ |
+| `colorchannelmixer` | **RGB** | inalterada | ❌ (ERANGE) |
+| `crop` + `scale` | yuv | **muda** | ❌ (EINVAL) |
+
+#### Fix aplicado
+
+Removidos `colorchannelmixer` (seção 3f) e `crop+scale` (seção 3g) de `lib/video-effects.ts`. Chain de filtros estabilizado:
+
+```
+eq=contrast=X:brightness=Y:saturation=Z
+hue=h=N
+setpts=SPEED*PTS
+noise=c0s=LUMA:c1s=CHROMA:c2s=CHROMA
+unsharp=3:3:SHARP:3:3:0.0
+```
+
+`h3 = fnv1a(accountId + "\x03")` e os campos `cropX`, `cropY`, `ccm` removidos de `baseParams()`. Hash agora usa apenas 3 entradas independentes (h0, h1, h2).
+
+#### Estado atual do pipeline de efeitos
+
+O baseline v2 já tem 10 dimensões de variação únicas por conta:
+- Speed ±1.5% (31 valores) — temporal
+- Contrast ±2.4% — luma
+- Brightness 0.5–2.5% — luma
+- Saturation ±2.4% — chroma
+- Luma noise 6–18 — DCT
+- Chroma noise 2–6 — colorimétrico
+- Volume ±4.5% — áudio
+- Hue ±8° — colorimétrico
+- CRF 18–24 — quantização DCT
+- Unsharp 0.2–0.8 — bordas
+
+---
+
 #### Fix — Loop analytics: conta contas do modo pasta
 **Commit:** `d21e473`
 
