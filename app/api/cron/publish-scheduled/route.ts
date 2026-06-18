@@ -261,7 +261,7 @@ export async function GET(req: NextRequest) {
         try {
           effectiveVideoUrl = await applyVideoEffects(videoUrl, {
             mirror: false, invert: false, zoom: false,
-            blur: false, noise: false, antiAi: false,
+            blur: false, noise: false, antiAi: true,
             accountId: account.id,
           });
           console.log(`[publish-scheduled] ✓ Efeitos aplicados para @${account.username}`);
