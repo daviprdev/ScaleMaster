@@ -236,7 +236,7 @@ export async function applyVideoEffects(
       : [];
 
     // ── 5. Codificação com libx264 ultrafast + CRF dinâmico ──────────────────
-    // -crf activeCrf (18–26 por conta): quantização diferente por conta garante
+    // -crf activeCrf (30–34 por conta): quantização diferente por conta garante
     // DCT artifacts e padrões de macroblock distintos mesmo para o mesmo conteúdo.
     // -map 0:v:0 / 0:a:0? — seleção explícita: descarta data streams, SEI atoms.
     const outputOptions: string[] = [
