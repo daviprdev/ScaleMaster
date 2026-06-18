@@ -1023,10 +1023,10 @@ async function processOneLoop(
         const jitter = staggerBaseSec * 0.3 * (Math.random() * 2 - 1);
         const rawDelayMinutes = Math.max(0, (newContainerIdx * staggerBaseSec + jitter)) / 60;
         // Cap: garante que nenhum container fique pending além da janela do próximo ciclo.
-        // Sem o cap, contas com índice alto (ex: conta[23] em 24 contas, 15min interval)
-        // recebiam retry_after > interval_minutes → containerAlreadyExists = true no próximo
-        // ciclo → conta pulava um ciclo → intervalo efetivo dobrava (~30 min em vez de 15).
-        const initialDelayMinutes = Math.min(rawDelayMinutes, Math.max(0, loop.interval_minutes - 3));
+        // 50% do interval dá a margem suficiente para o publish-pending processar o container
+        // antes de process-loops rodar de novo — evita containerAlreadyExists = true no ciclo
+        // seguinte e o intervalo efetivo dobrar (ex: 15 min virar 30 min).
+        const initialDelayMinutes = Math.min(rawDelayMinutes, Math.max(0, Math.floor(loop.interval_minutes * 0.5)));
 
         try {
           await createContainerForAccount(
