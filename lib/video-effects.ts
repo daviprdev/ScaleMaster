@@ -12,6 +12,8 @@
  *    - Unsharp mask 0.2–0.8: varia nitidez de borda por conta (novo)
  *    - CRF 18–24 por conta: quantização diferente = DCT artifacts únicos (era 22 fixo)
  *    - Audio volume ±4.5% + tempo ±1.5%: quebra Chromaprint/AudioID da Meta
+ *    Nota: todos os filtros do base fingerprint operam em yuv420p sem mudar
+ *    dimensões nem colorspace — garantia de estabilidade no FFmpeg 4.1.
  *
  * 2. EFEITOS CRIATIVOS (ativados pelo usuário no painel de Loop)
  *    Visualmente perceptíveis. Aplicados em cima do base fingerprint.
@@ -182,9 +184,14 @@ export async function applyVideoEffects(
     if (mirror) vf.push("hflip");
     if (invert) vf.push("negate");
     if (zoom) {
+      // Scale 115% = 23/20. Reverse crop uses 20/23.
+      // IMPORTANTE: usar 20/23 em vez de 100/115 — aritmética inteira do FFmpeg 4.1:
+      //   1242*100/115 = 1079 (ímpar!) → libx264 falha em yuv420p.
+      //   1242*20/23  = 1080 (par)    → correto.
+      // trunc(.../2)*2 garante dimensão par mesmo em vídeos com dimensões não-múltiplas de 20.
       vf.push(
-        "scale=iw*115/100:ih*115/100," +
-        "crop=iw*100/115:ih*100/115:(iw-iw*100/115)/2:(ih-ih*100/115)/2"
+        "scale=trunc(iw*23/40)*2:trunc(ih*23/40)*2," +
+        "crop=trunc(iw*20/46)*2:trunc(ih*20/46)*2:(iw-trunc(iw*20/46)*2)/2:(ih-trunc(ih*20/46)*2)/2"
       );
     }
     if (blur) vf.push("smartblur=lr=1:ls=0.25:lt=0");
