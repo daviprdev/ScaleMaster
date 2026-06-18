@@ -7,13 +7,16 @@
  *    Objetivo: tornar cada vídeo único por conta para derrotar fingerprinting.
  *    - Velocidade ±1.5%: muda frames amostrados pelo pHash temporal (era ±0.5%)
  *    - Eq cor: contrast/brightness/saturation únicos por conta (±2.4%, eram ±1.6%)
- *    - Hue ±8°: rotação de matiz Cb/Cr derrota pHash colorimétrico (era ±3°)
- *    - Ruído luma 6–18 + chroma 2–6: muda assinaturas de bloco DCT (era só luma 2–5)
+ *    - Ruído luma 6–18 + chroma 3–9: muda assinaturas de bloco DCT + canais Cb/Cr
  *    - Unsharp mask 0.2–0.8: varia nitidez de borda por conta (novo)
  *    - CRF 18–24 por conta: quantização diferente = DCT artifacts únicos (era 22 fixo)
  *    - Audio volume ±4.5% + tempo ±1.5%: quebra Chromaprint/AudioID da Meta
  *    Nota: todos os filtros do base fingerprint operam em yuv420p sem mudar
  *    dimensões nem colorspace — garantia de estabilidade no FFmpeg 4.1.
+ *    Filtro `hue` REMOVIDO: apesar de constante, realiza rotação de matriz Cb/Cr
+ *    internamente e falha com ERANGE em streams H.264 com SPS/PPS mid-stream
+ *    (mesma raiz do colorchannelmixer). Diversidade colorimétrica mantida via
+ *    eq saturation ±2.4% + chroma noise c1s/c2s 3–9 nos canais Cb/Cr.
  *
  * 2. EFEITOS CRIATIVOS (ativados pelo usuário no painel de Loop)
  *    Visualmente perceptíveis. Aplicados em cima do base fingerprint.
@@ -69,11 +72,10 @@ function fnv1a(s: string): number {
  * brightness:   0.005–0.025                      — era 0.003–0.014
  * saturation:   1.008–1.032 (±2.4%)             — era ±1.6%
  * lumaNoise:    6–18  (bloco H.264 luma)         — era 2–5 (muito fraco)
- * chromaNoise:  2–6   (canais Cb/Cr)             — era ZERO (c1s=0:c2s=0 fixo)
+ * chromaNoise:  3–9   (canais Cb/Cr)             — era 2–6 (aumentado para compensar remoção do hue)
  * volume:       0.955–1.045 (±4.5%)             — era ±3%
- * hue:          −8 a +8 graus                   — era ±3° (insuficiente)
  * crf:          18–24 por conta                  — era 22 fixo para todos
- * unsharp:      0.2–0.8                          — novo: varia nitidez de borda por conta
+ * unsharp:      0.2–0.8                          — varia nitidez de borda por conta
  */
 function baseParams(accountId: string): {
   speed: number;
@@ -83,7 +85,6 @@ function baseParams(accountId: string): {
   lumaNoise: number;
   chromaNoise: number;
   volume: number;
-  hue: number;
   crf: number;
   unsharp: number;
 } {
@@ -93,7 +94,6 @@ function baseParams(accountId: string): {
   const h2 = fnv1a(accountId + "\x02");
 
   // speed: 0.985–1.015 (±1.5%, 31 valores)
-  // — 3× mais entropia temporal: frames amostrados pelo pHash em momentos distintos
   const speed       = 0.985 + (h0 % 31) * 0.001;
   // contrast: 1.008–1.032 (±2.4%, 25 valores)
   const contrast    = 1.008 + ((h0 >> 5) % 25) * 0.001;
@@ -101,20 +101,18 @@ function baseParams(accountId: string): {
   const brightness  = 0.005 + ((h0 >> 10) % 21) * 0.001;
   // saturation: 1.008–1.032 (±2.4%, 25 valores)
   const saturation  = 1.008 + ((h0 >> 15) % 25) * 0.001;
-  // lumaNoise: 6–18 (13 valores) — 3× mais forte: muda assinatura de bloco DCT
+  // lumaNoise: 6–18 (13 valores) — muda assinatura de bloco DCT
   const lumaNoise   = 6 + (h1 % 13);
-  // chromaNoise: 2–6 (5 valores) — novo: ruído nos canais de cor Cb/Cr
-  const chromaNoise = 2 + ((h1 >> 4) % 5);
-  // volume: 0.955–1.045 (±4.5%, 19 passos de 0.005) — quebra Chromaprint/AudioID
+  // chromaNoise: 3–9 (7 valores) — ruído Cb/Cr aumentado para compensar remoção do hue
+  const chromaNoise = 3 + ((h1 >> 4) % 7);
+  // volume: 0.955–1.045 (±4.5%, 19 passos de 0.005)
   const volume      = 0.955 + ((h1 >> 8) % 19) * 0.005;
-  // hue: −8 a +8 graus (17 valores) — rotação de matiz derrota pHash colorimétrico
-  const hue         = -8 + (h2 % 17);
   // crf: 18–24 por conta (7 valores) — quantização diferente = DCT artifacts únicos
   const crf         = 18 + ((h2 >> 5) % 7);
   // unsharp: 0.2–0.8 (7 valores) — nitidez de borda única por conta
   const unsharp     = 0.2 + ((h2 >> 10) % 7) * 0.1;
 
-  return { speed, contrast, brightness, saturation, lumaNoise, chromaNoise, volume, hue, crf, unsharp };
+  return { speed, contrast, brightness, saturation, lumaNoise, chromaNoise, volume, crf, unsharp };
 }
 
 /**
@@ -125,7 +123,6 @@ function antiAiParams(accountId: string): {
   contrast: number;
   brightness: number;
   saturation: number;
-  hue: number;
   volume: number;
 } {
   const h0 = fnv1a(accountId + "_ai");
@@ -136,11 +133,9 @@ function antiAiParams(accountId: string): {
   const brightness = 0.008 + ((h0 >> 5) % 23) * 0.001;
   // saturation: 1.012–1.040
   const saturation = 1.012 + ((h0 >> 10) % 29) * 0.001;
-  // hue: ±12 graus (mais forte que base ±8)
-  const hue        = -12 + ((h1) % 25);
   // volume: 0.945–1.055 (±5.5% — mais forte que base ±4.5%)
   const volume     = 0.945 + ((h1 >> 5) % 23) * 0.005;
-  return { contrast, brightness, saturation, hue, volume };
+  return { contrast, brightness, saturation, volume };
 }
 
 export async function applyVideoEffects(
@@ -167,13 +162,24 @@ export async function applyVideoEffects(
     if (!res.ok) throw new Error(`Download falhou: HTTP ${res.status}`);
     fs.writeFileSync(input, Buffer.from(await res.arrayBuffer()));
 
+    // ── 1b. Limite de tamanho: arquivos grandes timeout no serverless ───────────
+    // libx264 ultrafast em vídeos >5 MB leva >80s; com 20+ contas em paralelo
+    // o timeout de 300s da Vercel é excedido. Posta sem efeito nesses casos.
+    const fileSizeBytes = fs.statSync(input).size;
+    if (fileSizeBytes > 5 * 1024 * 1024) {
+      console.warn(
+        `[video-effects] ⚠ @${accountId.slice(0, 8)} skip — arquivo muito grande` +
+        ` (${(fileSizeBytes / 1_048_576).toFixed(1)} MB > 5 MB), postando original.`
+      );
+      return videoUrl;
+    }
+
     // ── 2. Calcula parâmetros (uma vez, sem chamadas duplicadas) ────────────────
     const base = runBase ? baseParams(accountId) : null;
-    // Parâmetros de cor/hue/volume: antiAi usa variação maior, sobrepõe base.
+    // Parâmetros de cor/volume: antiAi usa variação maior, sobrepõe base.
     const colorParams = base ? (antiAi ? antiAiParams(accountId) : base) : null;
     const speed       = base?.speed ?? 1.0;
     const audioVolume = colorParams?.volume ?? 1.0;
-    const activeHue   = colorParams?.hue ?? 0;
     const activeCrf   = base?.crf ?? 22;
     const activeUnsharp = base?.unsharp ?? 0;
 
@@ -197,16 +203,16 @@ export async function applyVideoEffects(
     if (blur) vf.push("smartblur=lr=1:ls=0.25:lt=0");
     if (noise) vf.push("noise=c0s=3");
 
-    // ── 3b. Base fingerprint: micro-cor + matiz ──────────────────────────────
-    // hue=h=N rotação de matiz em graus: muda coordenadas Cb/Cr de todos os pixels
-    // → quebra pHash residual que sobrevive a variações sutis de eq.
+    // ── 3b. Base fingerprint: micro-cor ─────────────────────────────────────
+    // eq: contrast/brightness/saturation únicos por conta — derrota pHash colorimétrico.
+    // hue REMOVIDO: filtro `hue` causa ERANGE em FFmpeg 4.1 em streams H.264 com
+    // mudança de SPS/PPS mid-stream (mesma raiz do colorchannelmixer removido anteriormente).
+    // Diversidade colorimétrica mantida via eq saturation ±2.4% + chroma noise c1s/c2s.
     if (colorParams) {
       const { contrast, brightness, saturation } = colorParams;
       vf.push(
         `eq=contrast=${contrast.toFixed(4)}:brightness=${brightness.toFixed(4)}:saturation=${saturation.toFixed(4)}`
       );
-      // hue: ±8° (base) ou ±12° (antiAi) — 2-3× mais forte que antes
-      vf.push(`hue=h=${activeHue}`);
     }
 
     // ── 3c. Base fingerprint: micro-velocidade de vídeo ──────────────────────
@@ -217,11 +223,9 @@ export async function applyVideoEffects(
     }
 
     // ── 3d. Base fingerprint: ruído luma + chroma ────────────────────────────
-    // c0s: luma (Y) 6–18 — muda assinatura de bloco DCT; era 2–5 (muito fraco)
-    // c1s/c2s: chroma (Cb/Cr) 2–6 — novo: acrescenta ruído nos canais de cor,
-    // o que derrota fingerprints baseados em histograma de cor e pHash colorimétrico.
-    // Quando o efeito criativo "noise" está ativo usa c0s=3 genérico — ignoramos
-    // o base noise para não sobrepor.
+    // c0s: luma (Y) 6–18 — muda assinatura de bloco DCT
+    // c1s/c2s: chroma (Cb/Cr) 3–9 — aumentado (era 2–6) para compensar remoção do hue;
+    // derrota fingerprints baseados em histograma de cor e pHash colorimétrico.
     if (base && !noise) {
       vf.push(
         `noise=c0s=${base.lumaNoise}:c1s=${base.chromaNoise}:c2s=${base.chromaNoise}`
@@ -304,7 +308,6 @@ export async function applyVideoEffects(
         `luma=${base.lumaNoise}`,
         `chroma=${base.chromaNoise}`,
         `vol=${audioVolume.toFixed(3)}`,
-        `hue=${activeHue}°`,
         `crf=${activeCrf}`,
         `sharp=${activeUnsharp.toFixed(1)}`,
       ] : []),
