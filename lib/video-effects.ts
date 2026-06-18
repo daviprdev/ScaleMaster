@@ -71,10 +71,10 @@ function fnv1a(s: string): number {
  * contrast:     1.008–1.032 (±2.4%)
  * brightness:   0.005–0.025
  * saturation:   1.008–1.032 (±2.4%)
- * lumaNoise:    20–45 (bloco H.264 luma)  — forte o suficiente para alterar >32 bits do PDQ hash
- * chromaNoise:  8–18  (canais Cb/Cr)      — perturba histograma de cor Cb/Cr por conta
+ * lumaNoise:    8–16  (bloco H.264 luma)  — modo pesado (≤8 MB); speed±4% é o mecanismo primário
+ * chromaNoise:  2–6   (canais Cb/Cr)      — modo pesado; perturba histograma Cb/Cr por conta
  * volume:       0.955–1.045 (±4.5%)
- * crf:          18–26 por conta           — era 18–24 (range maior = maior diversidade de DCT)
+ * crf:          22–28 por conta           — range alto = encode mais rápido no Vercel serverless
  * unsharp:      0.2–0.8
  */
 function baseParams(accountId: string): {
@@ -101,14 +101,14 @@ function baseParams(accountId: string): {
   const brightness  = 0.005 + ((h0 >> 12) % 21) * 0.001;
   // saturation: 1.008–1.032 (±2.4%, 25 valores)
   const saturation  = 1.008 + ((h0 >> 17) % 25) * 0.001;
-  // lumaNoise: 20–45 (26 valores) — forte o suficiente para exceder limiar PDQ da Meta
-  const lumaNoise   = 20 + (h1 % 26);
-  // chromaNoise: 8–18 (11 valores) — perturba histograma Cb/Cr
-  const chromaNoise = 8 + ((h1 >> 5) % 11);
+  // lumaNoise: 8–16 (9 valores) — modo pesado (vídeos ≤8 MB); speed±4% é o mecanismo primário
+  const lumaNoise   = 8 + (h1 % 9);
+  // chromaNoise: 2–6 (5 valores) — modo pesado; perturba histograma Cb/Cr por conta
+  const chromaNoise = 2 + ((h1 >> 5) % 5);
   // volume: 0.955–1.045 (±4.5%, 19 passos de 0.005)
   const volume      = 0.955 + ((h1 >> 10) % 19) * 0.005;
-  // crf: 18–26 por conta (9 valores) — diversidade maior de DCT artifacts
-  const crf         = 18 + ((h2 >> 5) % 9);
+  // crf: 22–28 por conta (7 valores) — encode mais rápido no Vercel, ainda varia DCT artifacts
+  const crf         = 22 + ((h2 >> 5) % 7);
   // unsharp: 0.2–0.8 (7 valores) — nitidez de borda única por conta
   const unsharp     = 0.2 + ((h2 >> 10) % 7) * 0.1;
 
@@ -162,13 +162,22 @@ export async function applyVideoEffects(
     if (!res.ok) throw new Error(`Download falhou: HTTP ${res.status}`);
     fs.writeFileSync(input, Buffer.from(await res.arrayBuffer()));
 
-    // ── 2. Calcula parâmetros (uma vez, sem chamadas duplicadas) ────────────────
+    // ── 2. Decide modo (pesado vs leve) baseado no tamanho do arquivo ──────────
+    // Vídeos grandes (>8 MB) levam mais tempo que o budget de CPU do Vercel
+    // serverless compartilhado com outros loops. Modo leve: só eq + speed + CRF —
+    // speed ±4% já é suficiente para derrotar o VPDQ temporal da Meta.
+    const HEAVY_MAX_BYTES = 8 * 1_048_576;
+    const inputSizeBytes  = fs.statSync(input).size;
+    const useHeavyFilters = inputSizeBytes <= HEAVY_MAX_BYTES;
+
+    // ── 3. Calcula parâmetros (uma vez, sem chamadas duplicadas) ────────────────
     const base = runBase ? baseParams(accountId) : null;
     // Parâmetros de cor/volume: antiAi usa variação maior, sobrepõe base.
     const colorParams = base ? (antiAi ? antiAiParams(accountId) : base) : null;
     const speed       = base?.speed ?? 1.0;
     const audioVolume = colorParams?.volume ?? 1.0;
-    const activeCrf   = base?.crf ?? 22;
+    // Modo leve: CRF +4 → encode ~30% mais rápido; diversidade DCT mantida
+    const activeCrf   = base ? (useHeavyFilters ? base.crf : Math.min(base.crf + 4, 30)) : 22;
     const activeUnsharp = base?.unsharp ?? 0;
 
     // ── 3. Cadeia de filtros de vídeo ────────────────────────────────────────
@@ -210,20 +219,18 @@ export async function applyVideoEffects(
       vf.push(`setpts=${speed.toFixed(4)}*PTS`);
     }
 
-    // ── 3d. Base fingerprint: ruído luma + chroma ────────────────────────────
-    // c0s: luma (Y) 20–45 — forte o suficiente para exceder o limiar de 32 bits do PDQ
-    // c1s/c2s: chroma (Cb/Cr) 8–18 — perturba histograma de cor por conta
-    if (base && !noise) {
+    // ── 3d. Base fingerprint: ruído luma + chroma (modo pesado, ≤8 MB) ────────
+    // c0s: luma (Y) 8–16, c1s/c2s: chroma (Cb/Cr) 2–6
+    // Pulado em modo leve (>8 MB): speed ±4% + eq já derrota o VPDQ temporal da Meta.
+    if (base && !noise && useHeavyFilters) {
       vf.push(
         `noise=c0s=${base.lumaNoise}:c1s=${base.chromaNoise}:c2s=${base.chromaNoise}`
       );
     }
 
-    // ── 3e. Base fingerprint: unsharp mask (nitidez de borda) ────────────────
-    // Varia o realce de borda por conta (0.2–0.8): muda a aparência de contornos
-    // mesmo que o conteúdo seja idêntico — derrota fingerprints baseados em
-    // detecção de bordas (Canny/LoG). luma_msize=3, chroma=0 (afeta só Y).
-    if (base && activeUnsharp > 0) {
+    // ── 3e. Base fingerprint: unsharp mask (modo pesado, ≤8 MB) ─────────────
+    // Pulado em modo leve para reduzir carga de CPU.
+    if (base && activeUnsharp > 0 && useHeavyFilters) {
       vf.push(`unsharp=3:3:${activeUnsharp.toFixed(1)}:3:3:0.0`);
     }
 
@@ -258,9 +265,9 @@ export async function applyVideoEffects(
       "-f", "mp4",
     );
 
-    // Timeout de 20s por conta — previne que vídeos grandes travem a função serverless
-    // (300s Vercel). Se estourar, o caller captura o erro e posta o vídeo original.
-    const FFMPEG_TIMEOUT_MS = 20_000;
+    // Timeout de 45s por conta — pesado ≤8 MB: ~5–20s; leve >8 MB: ~8–20s.
+    // Se estourar, o caller captura o erro e posta o vídeo original.
+    const FFMPEG_TIMEOUT_MS = 45_000;
     await new Promise<void>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const cmd = ffmpeg(input)
@@ -307,9 +314,10 @@ export async function applyVideoEffects(
       ] : []),
     ].join("+");
 
+    const fxMode = useHeavyFilters ? "pesado" : "leve";
     console.log(
-      `[video-effects] ✓ [${activeFx}] | ` +
-      `${(buf.length / 1_048_576).toFixed(1)} MB → ${storagePath}`
+      `[video-effects] ✓ [${fxMode}|${activeFx}] | ` +
+      `${(inputSizeBytes / 1_048_576).toFixed(1)} MB → ${(buf.length / 1_048_576).toFixed(1)} MB → ${storagePath}`
     );
 
     return urlData.publicUrl;
