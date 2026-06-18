@@ -831,7 +831,7 @@ async function processOneLoop(
           return { kind: "skip", account, reason: "sem legendas no loop" };
         }
 
-        // Efeitos de vídeo — FFmpeg local (fluent-ffmpeg + ffmpeg-static 6.1.1).
+        // Efeitos de vídeo — FFmpeg local (fluent-ffmpeg + @ffmpeg-installer/ffmpeg 4.1).
         // Roda em paralelo com as demais contas na FASE 2a; fallback para URL original se falhar.
         let videoUrl = assignment.video.public_url;
         try {
