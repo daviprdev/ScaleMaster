@@ -772,7 +772,7 @@ async function processOneLoop(
           zoom:      loop.effect_zoom,
           blur:      loop.effect_blur,
           noise:     loop.effect_noise,
-          antiAi:    true,              // sempre ativo — fingerprint único por conta
+          antiAi:    loop.effect_anti_ai,
           accountId: account.id,
         });
         if (processed) videoUrl = processed;

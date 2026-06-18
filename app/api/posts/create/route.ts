@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
     try {
       effectiveMediaUrl = await applyVideoEffects(media_url, {
         mirror: false, invert: false, zoom: false,
-        blur: false, noise: false, antiAi: true,
+        blur: false, noise: false, antiAi: false,
         accountId: account.id,
       });
       console.log(`[posts/create] ✓ Efeitos aplicados para @${account.username}`);
