@@ -735,14 +735,50 @@ async function processOneLoop(
 
     // ── FASE 2: Dois sub-estágios para eliminar gargalo sequencial ───────────────
     //
-    // 2a) PARALELO — idempotency + caption + Railway FFmpeg para TODAS as contas
-    //     simultaneamente. Tempo total = max(1 vídeo), não N × (1 vídeo).
-    //     Sem chamadas à Meta API aqui.
+    // PRÉ-2a) SEQUENCIAL FFmpeg — processa vídeos um por um.
+    //   Em serverless (CPU compartilhado), rodar N FFmpeg em paralelo faz com que cada
+    //   processo receba ~1/N do CPU e todos estourem o timeout simultaneamente.
+    //   Sequencial: cada encode tem CPU completo → 3-8s por conta (vs. timeout em paralelo).
     //
-    // 2b) SEQUENCIAL — token refresh + criação de container na Meta com jitter 1–3s.
+    // 2a) PARALELO — idempotency + caption para TODAS as contas simultaneamente.
+    //     Sem FFmpeg nem Meta API aqui.
+    //
+    // 2b) SEQUENCIAL — token refresh + criação de container na Meta com jitter.
     //     Meta API é rate-sensitive: serialização mínima mantida.
-    //
-    // Speedup: 5 contas × 30s FFmpeg sequencial → 30s FFmpeg paralelo (invariante em N).
+
+    // ── PRÉ-FASE 2a: FFmpeg sequencial ───────────────────────────────────────────
+    // Cada conta recebe CPU completo → encode de 2 MB ≈ 3-8s; 23 contas ≈ 70-180s.
+    // Em paralelo com 23 processos: cada um recebia ~1/23 do CPU → todos timeout em 20s.
+    const tFxStart = Date.now();
+    const processedVideoUrls = new Map<string, string>(); // accountId → URL pós-efeito
+    for (const account of validAccounts) {
+      const assignment = videoAssignments.get(account.id);
+      if (!assignment) continue;
+      let videoUrl = assignment.video.public_url;
+      try {
+        const processed = await applyVideoEffects(assignment.video.public_url, {
+          mirror:    loop.effect_mirror,
+          invert:    loop.effect_invert,
+          zoom:      loop.effect_zoom,
+          blur:      loop.effect_blur,
+          noise:     loop.effect_noise,
+          antiAi:    loop.effect_anti_ai,
+          accountId: account.id,
+        });
+        if (processed) videoUrl = processed;
+      } catch (fxErr) {
+        const fxMsg = fxErr instanceof Error ? fxErr.message : String(fxErr);
+        console.error(
+          `[video-effects] ✗ @${account.username}: FFmpeg falhou, postando sem efeito. ` +
+          `Erro: ${fxMsg.slice(0, 200)}`
+        );
+      }
+      processedVideoUrls.set(account.id, videoUrl);
+    }
+    console.log(
+      `[loop-cron] "${loop.name}" — PRÉ-FASE FFmpeg concluída em ${Date.now() - tFxStart}ms ` +
+      `(${processedVideoUrls.size} conta(s) sequencial).`
+    );
 
     type AccountPrep =
       | { kind: "skip";       account: AccountRow; reason: string }
@@ -831,28 +867,8 @@ async function processOneLoop(
           return { kind: "skip", account, reason: "sem legendas no loop" };
         }
 
-        // Efeitos de vídeo — FFmpeg local (fluent-ffmpeg + @ffmpeg-installer/ffmpeg 4.1).
-        // Roda em paralelo com as demais contas na FASE 2a; fallback para URL original se falhar.
-        let videoUrl = assignment.video.public_url;
-        try {
-          const processed = await applyVideoEffects(assignment.video.public_url, {
-            mirror:    loop.effect_mirror,
-            invert:    loop.effect_invert,
-            zoom:      loop.effect_zoom,
-            blur:      loop.effect_blur,
-            noise:     loop.effect_noise,
-            antiAi:    loop.effect_anti_ai,
-            accountId: account.id,
-          });
-          if (processed) videoUrl = processed;
-        } catch (fxErr) {
-          const fxMsg = fxErr instanceof Error ? fxErr.message : String(fxErr);
-          console.error(
-            `[video-effects] ✗ @${account.username}: FFmpeg falhou, postando sem efeito. ` +
-            `Erro: ${fxMsg.slice(0, 200)}`
-          );
-          // videoUrl já está com a URL original — continua normalmente
-        }
+        // URL pré-processada pela PRÉ-FASE FFmpeg sequencial (antes do Promise.allSettled).
+        const videoUrl = processedVideoUrls.get(account.id) ?? assignment.video.public_url;
 
         return { kind: "ready", account, assignment, caption, videoUrl };
       })
