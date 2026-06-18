@@ -747,13 +747,23 @@ async function processOneLoop(
     //     Meta API é rate-sensitive: serialização mínima mantida.
 
     // ── PRÉ-FASE 2a: FFmpeg sequencial ───────────────────────────────────────────
-    // Cada conta recebe CPU completo → encode de 2 MB ≈ 3-8s; 23 contas ≈ 70-180s.
-    // Em paralelo com 23 processos: cada um recebia ~1/23 do CPU → todos timeout em 20s.
+    // Budget de 200s: garante pelo menos 100s para FASE 2b antes do limite Vercel (300s).
+    // Contas acima do budget postam sem efeito neste ciclo.
+    const FX_BUDGET_MS = 200_000;
     const tFxStart = Date.now();
     const processedVideoUrls = new Map<string, string>(); // accountId → URL pós-efeito
     for (const account of validAccounts) {
       const assignment = videoAssignments.get(account.id);
       if (!assignment) continue;
+      const elapsed = Date.now() - tFxStart;
+      if (elapsed > FX_BUDGET_MS) {
+        console.warn(
+          `[video-effects] ⏭ @${account.username}: budget ${FX_BUDGET_MS / 1000}s esgotado ` +
+          `(${Math.round(elapsed / 1000)}s passados), postando sem efeito.`
+        );
+        processedVideoUrls.set(account.id, assignment.video.public_url);
+        continue;
+      }
       let videoUrl = assignment.video.public_url;
       try {
         const processed = await applyVideoEffects(assignment.video.public_url, {

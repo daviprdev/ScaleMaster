@@ -107,8 +107,10 @@ function baseParams(accountId: string): {
   const chromaNoise = 2 + ((h1 >> 5) % 5);
   // volume: 0.955–1.045 (±4.5%, 19 passos de 0.005)
   const volume      = 0.955 + ((h1 >> 10) % 19) * 0.005;
-  // crf: 22–28 por conta (7 valores) — encode mais rápido no Vercel, ainda varia DCT artifacts
-  const crf         = 22 + ((h2 >> 5) % 7);
+  // crf: 30–34 por conta (5 valores) — equivalente ao nível de compressão do Instagram (~CRF 32).
+  // CRF < 28 re-encoda a um bitrate MAIOR que o original → arquivo 5-10x maior → upload lento.
+  // CRF 30-34 mantém arquivo ~1.5x o input. DCT artifacts ainda variam por conta.
+  const crf         = 30 + ((h2 >> 5) % 5);
   // unsharp: 0.2–0.8 (7 valores) — nitidez de borda única por conta
   const unsharp     = 0.2 + ((h2 >> 10) % 7) * 0.1;
 
