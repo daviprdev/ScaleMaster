@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, Users, Play, Heart, MessageCircle, TrendingUp,
   CheckCircle2, Copy, ChevronDown, ChevronRight, Eye,
-  Calendar, Zap, X, AlertCircle, Loader2, Sparkles,
+  Calendar, Zap, X, AlertCircle, Loader2, Sparkles, Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -374,19 +374,31 @@ export default function ClonePage() {
             {/* Profile card */}
             <div className="glass-card p-5 rounded-2xl ticks">
               <div className="flex items-start gap-4">
-                {/* Avatar */}
-                {profile.profilePicUrl ? (
-                  <img
-                    src={profile.profilePicUrl}
-                    alt={profile.username}
-                    className="w-16 h-16 rounded-full object-cover flex-shrink-0 border-2 border-matrix/30 shadow-[0_0_16px_rgba(0,255,65,0.2)]"
-                  />
-                ) : (
-                  <div className="w-16 h-16 rounded-full flex-shrink-0 flex items-center justify-center text-2xl font-bold"
-                    style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", color: "#000" }}>
-                    {profile.username.charAt(0).toUpperCase()}
-                  </div>
-                )}
+                {/* Avatar + download */}
+                <div className="relative flex-shrink-0 group">
+                  {profile.profilePicUrl ? (
+                    <img
+                      src={profile.profilePicUrl}
+                      alt={profile.username}
+                      className="w-16 h-16 rounded-full object-cover border-2 border-matrix/30 shadow-[0_0_16px_rgba(0,255,65,0.2)]"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold"
+                      style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", color: "#000" }}>
+                      {profile.username.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  {profile.profilePicUrl && (
+                    <a
+                      href={profile.profilePicUrl}
+                      download={`${profile.username}_foto.jpg`}
+                      title="Baixar foto de perfil"
+                      className="absolute inset-0 rounded-full flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Download size={16} className="text-white" />
+                    </a>
+                  )}
+                </div>
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
@@ -403,11 +415,11 @@ export default function ClonePage() {
               {/* Stats row */}
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
                 {[
-                  { label: "Seguidores",  value: fmt(profile.followersCount), icon: Users },
+                  { label: "Seguidores",  value: profile.followersCount > 0 ? fmt(profile.followersCount) : "—", icon: Users },
                   { label: "Reels",       value: String(stats.reelCount),     icon: Play },
                   { label: "Views (avg)", value: fmt(stats.avgViews),         icon: Eye },
                   { label: "Likes (avg)", value: fmt(stats.avgLikes),         icon: Heart },
-                  { label: "Engajamento", value: `${stats.engagementRate}%`,  icon: TrendingUp },
+                  { label: "Engajamento", value: stats.engagementRate > 0 ? `${stats.engagementRate}%` : "—", icon: TrendingUp },
                 ].map(({ label, value, icon: Icon }) => (
                   <div key={label} className="rounded-xl p-3 text-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <Icon size={14} className="mx-auto mb-1 text-white/25" />
@@ -667,49 +679,53 @@ export default function ClonePage() {
                 </div>
 
                 {/* Summary + Clone button */}
-                {selectedAccounts.size > 0 && usedCount > 0 && (
-                  <div className="glass-card p-4 rounded-2xl space-y-3">
-                    <p className="text-xs font-bold uppercase tracking-widest text-white/35">Resumo</p>
-                    <div className="space-y-1.5 text-sm">
-                      <div className="flex justify-between text-white/50">
-                        <span>Total de posts</span>
-                        <span className="text-white font-semibold">{totalPosts.toLocaleString()}</span>
+                <div className="glass-card p-4 rounded-2xl space-y-3">
+                  {selectedAccounts.size > 0 && usedCount > 0 && (
+                    <>
+                      <p className="text-xs font-bold uppercase tracking-widest text-white/35">Resumo</p>
+                      <div className="space-y-1.5 text-sm">
+                        <div className="flex justify-between text-white/50">
+                          <span>Total de posts</span>
+                          <span className="text-white font-semibold">{totalPosts.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-white/50">
+                          <span>Duração estimada</span>
+                          <span className="text-white font-semibold">
+                            {daysEst} dia{daysEst !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-white/50">
+                          <span>Contas</span>
+                          <span className="text-white font-semibold">{selectedAccounts.size}</span>
+                        </div>
+                        <div className="flex justify-between text-white/50">
+                          <span>Reels por conta</span>
+                          <span className="text-white font-semibold">{usedCount}</span>
+                        </div>
                       </div>
-                      <div className="flex justify-between text-white/50">
-                        <span>Duração estimada</span>
-                        <span className="text-white font-semibold">
-                          {daysEst} dia{daysEst !== 1 ? "s" : ""}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-white/50">
-                        <span>Contas</span>
-                        <span className="text-white font-semibold">{selectedAccounts.size}</span>
-                      </div>
-                      <div className="flex justify-between text-white/50">
-                        <span>Reels por conta</span>
-                        <span className="text-white font-semibold">{usedCount}</span>
-                      </div>
-                    </div>
+                    </>
+                  )}
 
-                    <button
-                      onClick={handleClone}
-                      disabled={submitting}
-                      className="btn-primary w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
-                    >
-                      {submitting ? (
-                        <><Loader2 size={15} className="animate-spin" /> Agendando…</>
-                      ) : (
-                        <><Zap size={15} /> Clonar Perfil</>
-                      )}
-                    </button>
-
-                    {submitError && (
-                      <p className="text-xs text-red-400 flex items-center gap-1.5">
-                        <AlertCircle size={12} /> {submitError}
-                      </p>
+                  <button
+                    onClick={handleClone}
+                    disabled={submitting || selectedAccounts.size === 0 || usedCount === 0}
+                    className="btn-primary w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+                  >
+                    {submitting ? (
+                      <><Loader2 size={15} className="animate-spin" /> Agendando…</>
+                    ) : selectedAccounts.size === 0 ? (
+                      <><Zap size={15} /> Selecione contas de destino</>
+                    ) : (
+                      <><Zap size={15} /> Clonar Perfil</>
                     )}
-                  </div>
-                )}
+                  </button>
+
+                  {submitError && (
+                    <p className="text-xs text-red-400 flex items-center gap-1.5">
+                      <AlertCircle size={12} /> {submitError}
+                    </p>
+                  )}
+                </div>
 
                 {/* Success */}
                 <AnimatePresence>

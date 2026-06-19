@@ -93,15 +93,23 @@ export async function GET(req: NextRequest) {
     // Extrai info do perfil do primeiro item
     const first = list[0] as Record<string, unknown>;
     const ownerObj = (first.owner ?? {}) as Record<string, unknown>;
+    const rawPicUrl: string | null =
+      (first.ownerProfilePicUrl as string | null) ||
+      (first.profilePicUrl as string | null) ||
+      (ownerObj.profilePicUrl as string | null) || null;
     const profile = {
       username,
       fullName:       String(first.ownerFullName ?? first.ownerUsername ?? username),
-      profilePicUrl:  (first.ownerProfilePicUrl as string | null) ||
-                      (first.profilePicUrl as string | null) ||
-                      (ownerObj.profilePicUrl as string | null) || null,
+      profilePicUrl:  rawPicUrl ? `/api/proxy-image?url=${encodeURIComponent(rawPicUrl)}` : null,
       bio:            (first.biography as string | null) ||
-                      (first.biography as string | null) || null,
-      followersCount: Number(first.followersCount ?? ownerObj.followersCount ?? 0),
+                      (first.ownerBio as string | null) || null,
+      followersCount: Number(
+        first.followersCount ??
+        first.ownerFollowersCount ??
+        ownerObj.followersCount ??
+        ownerObj.followersCount ??
+        0
+      ),
     };
 
     // Estatísticas agregadas
