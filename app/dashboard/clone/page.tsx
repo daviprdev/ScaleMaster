@@ -1,0 +1,740 @@
+"use client";
+
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Search, Users, Play, Heart, MessageCircle, TrendingUp,
+  CheckCircle2, Copy, ChevronDown, ChevronRight, Eye,
+  Calendar, Zap, X, AlertCircle, Loader2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface ReelItem {
+  id:           string;
+  shortCode:    string;
+  thumbnailUrl: string | null;
+  videoUrl:     string;
+  caption:      string;
+  views:        number;
+  likes:        number;
+  comments:     number;
+  duration:     number;
+}
+
+interface ProfileData {
+  username:       string;
+  fullName:       string;
+  profilePicUrl:  string | null;
+  bio:            string | null;
+  followersCount: number;
+}
+
+interface Stats {
+  reelCount:      number;
+  avgViews:       number;
+  avgLikes:       number;
+  avgComments:    number;
+  engagementRate: number;
+}
+
+interface AccountRow {
+  id:              string;
+  username:        string;
+  display_name:    string | null;
+  avatar_url:      string | null;
+  health_status:   string;
+  folder_id:       string | null;
+  account_folders: { name: string } | null;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmt(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+function localISOWithOffset(): string {
+  const now   = new Date();
+  const off   = -now.getTimezoneOffset();
+  const sign  = off >= 0 ? "+" : "-";
+  const hh    = String(Math.floor(Math.abs(off) / 60)).padStart(2, "0");
+  const mm    = String(Math.abs(off) % 60).padStart(2, "0");
+  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}T${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}${sign}${hh}:${mm}`;
+}
+
+const REEL_COUNT_OPTIONS = [
+  { label: "10",   value: 10 },
+  { label: "20",   value: 20 },
+  { label: "50",   value: 50 },
+  { label: "100",  value: 100 },
+  { label: "Todos", value: -1 },
+];
+
+const PPD_OPTIONS = [1, 2, 3, 4, 6, 8, 12, 24, 48];
+
+// ── Main Component ───────────────────────────────────────────────────────────
+
+export default function ClonePage() {
+  // Search
+  const [query, setQuery]               = useState("");
+  const [searchState, setSearchState]   = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [searchError, setSearchError]   = useState("");
+  const [runMeta, setRunMeta]           = useState<{ runId: string; username: string; fallback: boolean; limit: number } | null>(null);
+  const pollRef                         = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Results
+  const [profile, setProfile]   = useState<ProfileData | null>(null);
+  const [stats, setStats]       = useState<Stats | null>(null);
+  const [reels, setReels]       = useState<ReelItem[]>([]);
+
+  // Config
+  const [reelCount, setReelCount]     = useState<number>(20);
+  const [postsPerDay, setPostsPerDay] = useState<number>(3);
+  const [startAt, setStartAt]         = useState(localISOWithOffset().slice(0, 16));
+
+  // Accounts
+  const [accounts, setAccounts]           = useState<AccountRow[]>([]);
+  const [selectedAccounts, setSelected]   = useState<Set<string>>(new Set());
+  const [expandedFolders, setExpanded]    = useState<Set<string>>(new Set());
+
+  // Submit
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess]       = useState<{ total_posts: number; days: number; first_slot: string } | null>(null);
+  const [submitError, setSubmitError] = useState("");
+
+  // Load accounts on mount
+  useEffect(() => {
+    fetch("/api/accounts/list")
+      .then(r => r.json())
+      .then(d => {
+        const list: AccountRow[] = (d.accounts ?? []).filter((a: AccountRow) => a.health_status !== "error");
+        setAccounts(list);
+        // Auto-expand all folders
+        const folders = new Set(list.map(a => a.folder_id ?? "__none__"));
+        setExpanded(folders);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Grouped accounts
+  const accountsByFolder = useMemo(() => {
+    const map = new Map<string, { name: string; accounts: AccountRow[] }>();
+    for (const a of accounts) {
+      const key  = a.folder_id ?? "__none__";
+      const name = a.account_folders?.name ?? "Sem pasta";
+      if (!map.has(key)) map.set(key, { name, accounts: [] });
+      map.get(key)!.accounts.push(a);
+    }
+    return Array.from(map.entries())
+      .sort(([ka], [kb]) => (ka === "__none__" ? 1 : kb === "__none__" ? -1 : 0));
+  }, [accounts]);
+
+  const toggleFolder = (key: string) => {
+    setExpanded(prev => {
+      const s = new Set(prev);
+      s.has(key) ? s.delete(key) : s.add(key);
+      return s;
+    });
+  };
+
+  const toggleFolderSelect = (e: React.MouseEvent, folderAccounts: AccountRow[]) => {
+    e.stopPropagation();
+    const ids    = folderAccounts.map(a => a.id);
+    const allSel = ids.every(id => selectedAccounts.has(id));
+    setSelected(prev => {
+      const s = new Set(prev);
+      ids.forEach(id => allSel ? s.delete(id) : s.add(id));
+      return s;
+    });
+  };
+
+  const toggleAccount = (id: string) => {
+    setSelected(prev => {
+      const s = new Set(prev);
+      s.has(id) ? s.delete(id) : s.add(id);
+      return s;
+    });
+  };
+
+  // Poll Apify
+  const startPolling = useCallback((runId: string, username: string, fallback: boolean, limit: number) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+
+    pollRef.current = setInterval(async () => {
+      try {
+        const params = new URLSearchParams({ runId, username, fallback: String(fallback), limit: String(limit) });
+        const res  = await fetch(`/api/clone/search/poll?${params}`);
+        const data = await res.json();
+
+        if (data.status === "running") {
+          // If runId changed (fallback redirect), update meta
+          if (data.runId && data.runId !== runId) {
+            if (pollRef.current) clearInterval(pollRef.current);
+            setRunMeta({ runId: data.runId, username, fallback: true, limit });
+            startPolling(data.runId, username, true, limit);
+          }
+          return;
+        }
+
+        if (pollRef.current) clearInterval(pollRef.current);
+
+        if (data.status === "done") {
+          setProfile(data.profile);
+          setStats(data.stats);
+          setReels(data.reels);
+          setSearchState("done");
+        } else {
+          setSearchError(data.error ?? "Erro ao buscar perfil.");
+          setSearchState("error");
+        }
+      } catch {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setSearchError("Erro de rede ao buscar resultados.");
+        setSearchState("error");
+      }
+    }, 4000);
+  }, []);
+
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
+  const handleSearch = async () => {
+    const username = query.replace(/^@/, "").trim();
+    if (!username) return;
+
+    setSearchState("loading");
+    setSearchError("");
+    setProfile(null);
+    setStats(null);
+    setReels([]);
+    setSuccess(null);
+    setSubmitError("");
+
+    try {
+      const res  = await fetch("/api/clone/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, limit: 100 }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSearchError(data.error ?? "Erro ao iniciar busca.");
+        setSearchState("error");
+        return;
+      }
+      const meta = { runId: data.runId, username, fallback: false, limit: 100 };
+      setRunMeta(meta);
+      startPolling(meta.runId, meta.username, meta.fallback, meta.limit);
+    } catch {
+      setSearchError("Erro de rede.");
+      setSearchState("error");
+    }
+  };
+
+  const handleClone = async () => {
+    if (!reels.length || !selectedAccounts.size) return;
+    setSubmitting(true);
+    setSubmitError("");
+    setSuccess(null);
+
+    try {
+      const res  = await fetch("/api/clone/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account_ids:   Array.from(selectedAccounts),
+          reels:         reels.map(r => ({ videoUrl: r.videoUrl, caption: r.caption, thumbnailUrl: r.thumbnailUrl })),
+          reel_count:    reelCount,
+          posts_per_day: postsPerDay,
+          start_at:      startAt,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSubmitError(data.error ?? "Erro ao criar agendamentos.");
+      } else {
+        setSuccess({ total_posts: data.total_posts, days: data.days, first_slot: data.first_slot });
+      }
+    } catch {
+      setSubmitError("Erro de rede.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const usedCount   = reelCount === -1 ? reels.length : Math.min(reelCount, reels.length);
+  const totalPosts  = usedCount * selectedAccounts.size;
+  const daysEst     = postsPerDay > 0 ? Math.ceil(usedCount / postsPerDay) : 0;
+  const intervalMin = postsPerDay > 0 ? Math.floor(1440 / postsPerDay) : 0;
+
+  return (
+    <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto">
+
+      {/* Header */}
+      <div>
+        <h1 className="page-title flex items-center gap-2">
+          <Copy size={20} style={{ color: "var(--matrix)" }} />
+          Clonar Perfil
+        </h1>
+        <p className="page-subtitle">Puxe Reels de um perfil e agende direto para suas contas — sem precisar passar pela Biblioteca.</p>
+      </div>
+
+      {/* Search bar */}
+      <div className="glass-card p-4 rounded-2xl">
+        <div className="flex gap-3">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="@username ou nome do perfil..."
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleSearch()}
+              className="input-glass w-full pl-9 pr-4 py-3 text-sm rounded-xl"
+            />
+          </div>
+          <button
+            onClick={handleSearch}
+            disabled={searchState === "loading" || !query.trim()}
+            className="btn-primary px-6 py-3 rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-40"
+          >
+            {searchState === "loading" ? (
+              <><Loader2 size={15} className="animate-spin" /> Buscando…</>
+            ) : (
+              <><Search size={15} /> Pesquisar</>
+            )}
+          </button>
+        </div>
+
+        {/* Searching animation */}
+        <AnimatePresence>
+          {searchState === "loading" && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-3 overflow-hidden"
+            >
+              <div className="flex items-center gap-2 text-sm text-white/40">
+                <Loader2 size={14} className="animate-spin" style={{ color: "var(--matrix)" }} />
+                Raspando Reels de @{query.replace(/^@/, "").trim()}…
+              </div>
+              <div className="mt-2 h-1 rounded-full bg-white/[0.05] overflow-hidden">
+                <motion.div
+                  animate={{ x: ["-100%", "100%"] }}
+                  transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                  className="h-full w-1/3 rounded-full"
+                  style={{ background: "linear-gradient(90deg, transparent, var(--matrix), transparent)" }}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Error */}
+        <AnimatePresence>
+          {searchState === "error" && (
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="mt-3 flex items-center gap-2 text-sm text-red-400"
+            >
+              <AlertCircle size={14} className="flex-shrink-0" />
+              {searchError}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Results */}
+      <AnimatePresence>
+        {searchState === "done" && profile && stats && (
+
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+
+            {/* Profile card */}
+            <div className="glass-card p-5 rounded-2xl ticks">
+              <div className="flex items-start gap-4">
+                {/* Avatar */}
+                {profile.profilePicUrl ? (
+                  <img
+                    src={profile.profilePicUrl}
+                    alt={profile.username}
+                    className="w-16 h-16 rounded-full object-cover flex-shrink-0 border-2 border-matrix/30 shadow-[0_0_16px_rgba(0,255,65,0.2)]"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-full flex-shrink-0 flex items-center justify-center text-2xl font-bold"
+                    style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", color: "#000" }}>
+                    {profile.username.charAt(0).toUpperCase()}
+                  </div>
+                )}
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="font-bold text-white text-lg leading-tight">{profile.fullName}</h2>
+                    <span className="text-sm text-white/40">@{profile.username}</span>
+                  </div>
+                  {profile.bio && (
+                    <p className="text-sm text-white/50 mt-1 line-clamp-2">{profile.bio}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Stats row */}
+              <div className="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {[
+                  { label: "Seguidores",  value: fmt(profile.followersCount), icon: Users },
+                  { label: "Reels",       value: String(stats.reelCount),     icon: Play },
+                  { label: "Views (avg)", value: fmt(stats.avgViews),         icon: Eye },
+                  { label: "Likes (avg)", value: fmt(stats.avgLikes),         icon: Heart },
+                  { label: "Engajamento", value: `${stats.engagementRate}%`,  icon: TrendingUp },
+                ].map(({ label, value, icon: Icon }) => (
+                  <div key={label} className="rounded-xl p-3 text-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <Icon size={14} className="mx-auto mb-1 text-white/25" />
+                    <div className="font-bold text-base" style={{ color: "var(--electric)" }}>{value}</div>
+                    <div className="text-[10px] text-white/35 mt-0.5">{label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Config + Reels grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-5">
+
+              {/* Config panel */}
+              <div className="space-y-4">
+
+                {/* Quantidade de posts */}
+                <div className="glass-card p-4 rounded-2xl space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-white/35">Quantidade de posts</p>
+                  <div className="flex flex-wrap gap-2">
+                    {REEL_COUNT_OPTIONS.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setReelCount(opt.value)}
+                        className={cn(
+                          "px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all",
+                          reelCount === opt.value
+                            ? "border-matrix/60 text-matrix"
+                            : "border-white/[0.08] text-white/40 hover:text-white/70 hover:border-white/20"
+                        )}
+                        style={reelCount === opt.value ? { background: "rgba(0,255,65,0.08)" } : {}}
+                      >
+                        {opt.label}
+                        {opt.value !== -1 && opt.value > stats.reelCount && (
+                          <span className="ml-1 text-white/20">(máx {stats.reelCount})</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-white/30">
+                    {usedCount} reel{usedCount !== 1 ? "s" : ""} serão agendados por conta
+                  </p>
+                </div>
+
+                {/* Posts por dia */}
+                <div className="glass-card p-4 rounded-2xl space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-white/35">Posts por dia</p>
+                  <div className="flex flex-wrap gap-2">
+                    {PPD_OPTIONS.map(n => (
+                      <button
+                        key={n}
+                        onClick={() => setPostsPerDay(n)}
+                        className={cn(
+                          "px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all",
+                          postsPerDay === n
+                            ? "border-electric/60 text-electric"
+                            : "border-white/[0.08] text-white/40 hover:text-white/70 hover:border-white/20"
+                        )}
+                        style={postsPerDay === n ? { background: "rgba(0,229,255,0.08)" } : {}}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                  {intervalMin > 0 && (
+                    <p className="text-[11px] text-white/30">Intervalo: 1 post a cada {intervalMin} min</p>
+                  )}
+                </div>
+
+                {/* Data/hora início */}
+                <div className="glass-card p-4 rounded-2xl space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-white/35">Data e hora de início</p>
+                  <input
+                    type="datetime-local"
+                    value={startAt}
+                    onChange={e => setStartAt(e.target.value)}
+                    className="input-glass w-full px-3 py-2.5 text-sm rounded-xl"
+                  />
+                </div>
+
+                {/* Account selector */}
+                <div className="glass-card p-4 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold uppercase tracking-widest text-white/35">Contas de destino</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSelected(new Set(accounts.map(a => a.id)))}
+                        className="text-[10px] text-matrix/70 hover:text-matrix transition-colors"
+                      >
+                        Todas
+                      </button>
+                      <span className="text-white/20 text-[10px]">/</span>
+                      <button
+                        onClick={() => setSelected(new Set())}
+                        className="text-[10px] text-white/30 hover:text-white/60 transition-colors"
+                      >
+                        Nenhuma
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 max-h-64 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    {accountsByFolder.map(([key, { name, accounts: fas }]) => {
+                      const allSel = fas.every(a => selectedAccounts.has(a.id));
+                      const someSel = fas.some(a => selectedAccounts.has(a.id));
+                      const expanded = expandedFolders.has(key);
+
+                      return (
+                        <div key={key}>
+                          {/* Folder header */}
+                          <div
+                            onClick={() => toggleFolder(key)}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-white/[0.03] transition-colors group"
+                          >
+                            <ChevronRight
+                              size={12}
+                              className={cn("text-white/30 transition-transform flex-shrink-0", expanded && "rotate-90")}
+                            />
+                            <span className="text-xs font-semibold text-white/50 flex-1 truncate">{name}</span>
+                            <span className={cn("text-[10px]", someSel ? "text-matrix/70" : "text-white/20")}>
+                              {fas.filter(a => selectedAccounts.has(a.id)).length}/{fas.length}
+                            </span>
+                            <button
+                              onClick={e => toggleFolderSelect(e, fas)}
+                              className={cn(
+                                "text-[10px] px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-all",
+                                allSel
+                                  ? "text-matrix/70 bg-matrix/10"
+                                  : "text-white/40 bg-white/[0.05]"
+                              )}
+                            >
+                              {allSel ? "Desmarcar" : "Selecionar"}
+                            </button>
+                          </div>
+
+                          {/* Account chips */}
+                          <AnimatePresence>
+                            {expanded && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="overflow-hidden pl-5"
+                              >
+                                <div className="py-1 space-y-0.5">
+                                  {fas.map(acc => {
+                                    const sel = selectedAccounts.has(acc.id);
+                                    return (
+                                      <div
+                                        key={acc.id}
+                                        onClick={() => toggleAccount(acc.id)}
+                                        className={cn(
+                                          "flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all text-xs",
+                                          sel
+                                            ? "text-white"
+                                            : "text-white/40 hover:text-white/70"
+                                        )}
+                                        style={sel ? { background: "rgba(0,255,65,0.05)", border: "1px solid rgba(0,255,65,0.15)" } : { border: "1px solid transparent" }}
+                                      >
+                                        {acc.avatar_url ? (
+                                          <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
+                                        ) : (
+                                          <div className="w-5 h-5 rounded-full flex-shrink-0 text-[9px] font-bold flex items-center justify-center"
+                                            style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", color: "#000" }}>
+                                            {acc.username.charAt(0).toUpperCase()}
+                                          </div>
+                                        )}
+                                        <span className="truncate flex-1">@{acc.username}</span>
+                                        {sel && <CheckCircle2 size={12} style={{ color: "var(--matrix)", flexShrink: 0 }} />}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      );
+                    })}
+
+                    {accounts.length === 0 && (
+                      <p className="text-xs text-white/30 text-center py-4">Nenhuma conta conectada.</p>
+                    )}
+                  </div>
+
+                  {selectedAccounts.size > 0 && (
+                    <p className="text-[11px] text-white/40">
+                      {selectedAccounts.size} conta{selectedAccounts.size !== 1 ? "s" : ""} selecionada{selectedAccounts.size !== 1 ? "s" : ""}
+                    </p>
+                  )}
+                </div>
+
+                {/* Summary + Clone button */}
+                {selectedAccounts.size > 0 && usedCount > 0 && (
+                  <div className="glass-card p-4 rounded-2xl space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-widest text-white/35">Resumo</p>
+                    <div className="space-y-1.5 text-sm">
+                      <div className="flex justify-between text-white/50">
+                        <span>Total de posts</span>
+                        <span className="text-white font-semibold">{totalPosts.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-white/50">
+                        <span>Duração estimada</span>
+                        <span className="text-white font-semibold">
+                          {daysEst} dia{daysEst !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-white/50">
+                        <span>Contas</span>
+                        <span className="text-white font-semibold">{selectedAccounts.size}</span>
+                      </div>
+                      <div className="flex justify-between text-white/50">
+                        <span>Reels por conta</span>
+                        <span className="text-white font-semibold">{usedCount}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleClone}
+                      disabled={submitting}
+                      className="btn-primary w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+                    >
+                      {submitting ? (
+                        <><Loader2 size={15} className="animate-spin" /> Agendando…</>
+                      ) : (
+                        <><Zap size={15} /> Clonar Perfil</>
+                      )}
+                    </button>
+
+                    {submitError && (
+                      <p className="text-xs text-red-400 flex items-center gap-1.5">
+                        <AlertCircle size={12} /> {submitError}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Success */}
+                <AnimatePresence>
+                  {success && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.97 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.97 }}
+                      className="glass-card p-4 rounded-2xl border border-matrix/25 space-y-2"
+                      style={{ background: "rgba(0,255,65,0.04)" }}
+                    >
+                      <div className="flex items-center gap-2 text-matrix font-semibold text-sm">
+                        <CheckCircle2 size={16} />
+                        Agendamentos criados!
+                      </div>
+                      <p className="text-xs text-white/50">
+                        {success.total_posts.toLocaleString()} posts agendados ao longo de {success.days} dia{success.days !== 1 ? "s" : ""}. Primeiro disparo: {new Date(success.first_slot).toLocaleString("pt-BR")}.
+                      </p>
+                      <div className="flex gap-2 mt-1">
+                        <a href="/dashboard/monitor" className="text-xs text-electric underline">Ver Monitor</a>
+                        <span className="text-white/20">·</span>
+                        <button onClick={() => setSuccess(null)} className="text-xs text-white/30 hover:text-white/60">Fechar</button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Reels grid */}
+              <div className="glass-card p-4 rounded-2xl">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-xs font-bold uppercase tracking-widest text-white/35">
+                    Reels encontrados ({reels.length})
+                  </p>
+                  <p className="text-[11px] text-white/30">
+                    {usedCount} serão agendados
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2 max-h-[600px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                  {reels.map((reel, i) => {
+                    const used = reelCount === -1 || i < reelCount;
+                    return (
+                      <div
+                        key={reel.id}
+                        className={cn(
+                          "relative rounded-xl overflow-hidden aspect-[9/16] transition-all",
+                          !used && "opacity-30 grayscale"
+                        )}
+                        style={{ border: used ? "1px solid rgba(0,255,65,0.15)" : "1px solid rgba(255,255,255,0.05)" }}
+                      >
+                        {reel.thumbnailUrl ? (
+                          <img
+                            src={reel.thumbnailUrl}
+                            alt=""
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center"
+                            style={{ background: "rgba(255,255,255,0.03)" }}>
+                            <Play size={20} className="text-white/20" />
+                          </div>
+                        )}
+
+                        {/* Overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+
+                        {/* Stats */}
+                        <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center gap-1.5">
+                          <div className="flex items-center gap-0.5 text-[9px] text-white/70">
+                            <Eye size={8} />
+                            {fmt(reel.views)}
+                          </div>
+                          <div className="flex items-center gap-0.5 text-[9px] text-white/70">
+                            <Heart size={8} />
+                            {fmt(reel.likes)}
+                          </div>
+                        </div>
+
+                        {/* Index badge */}
+                        <div className="absolute top-1.5 right-1.5 text-[9px] font-bold rounded px-1 py-0.5"
+                          style={{ background: "rgba(0,0,0,0.6)", color: used ? "var(--matrix)" : "rgba(255,255,255,0.3)" }}>
+                          #{i + 1}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Empty state */}
+      {searchState === "idle" && (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+            style={{ background: "rgba(0,255,65,0.06)", border: "1px solid rgba(0,255,65,0.12)" }}>
+            <Copy size={28} style={{ color: "var(--matrix)" }} />
+          </div>
+          <h3 className="text-lg font-semibold text-white/60 mb-1">Busque um perfil para começar</h3>
+          <p className="text-sm text-white/30 max-w-sm">
+            Digite o username do perfil no campo acima. Os Reels serão analisados e você poderá agendá-los diretamente nas suas contas.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
