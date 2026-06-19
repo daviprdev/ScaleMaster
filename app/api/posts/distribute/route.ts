@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { getAutoCaption, getUniqueCaptions, type AutoCaptionType } from "@/lib/auto-captions";
 
 export const runtime = "nodejs";
 
@@ -17,10 +18,11 @@ function fisherYates<T>(arr: T[]): T[] {
 interface DistributeBody {
   account_ids: string[];
   folder_id: string;
-  video_count: number;     // -1 = todos, ou 10/20/50
-  posts_per_day: number;   // 1–10
-  start_at: string;        // ISO datetime
+  video_count: number;            // -1 = todos, ou 10/20/50
+  posts_per_day: number;          // 1–1440
+  start_at: string;               // ISO datetime
   captions: string[];
+  auto_caption_type?: string;     // se presente, ignora captions e gera automaticamente
 }
 
 export async function POST(req: NextRequest) {
@@ -33,7 +35,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const body = await req.json() as DistributeBody;
-  const { account_ids, folder_id, video_count, posts_per_day, start_at, captions } = body;
+  const { account_ids, folder_id, video_count, posts_per_day, start_at, captions, auto_caption_type } = body;
 
   if (!account_ids?.length)
     return NextResponse.json({ error: "Selecione ao menos 1 conta." }, { status: 400 });
@@ -44,9 +46,13 @@ export async function POST(req: NextRequest) {
   if (!start_at)
     return NextResponse.json({ error: "Informe a data e hora de início." }, { status: 400 });
 
-  const validCaptions = (captions ?? []).map(c => c.trim()).filter(Boolean);
-  if (!validCaptions.length)
+  const isAutoCaption = !!auto_caption_type;
+  const validCaptions = isAutoCaption ? [] : (captions ?? []).map(c => c.trim()).filter(Boolean);
+  if (!isAutoCaption && !validCaptions.length)
     return NextResponse.json({ error: "Adicione ao menos 1 legenda." }, { status: 400 });
+
+  // Pré-gera legendas automáticas únicas se necessário (1 por post total)
+  const autoType = (auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
 
   const admin = getSupabaseAdmin();
 
@@ -82,7 +88,9 @@ export async function POST(req: NextRequest) {
       const video = accountVideos[vi];
       const slotMs = vi * intervalMinutes * 60_000;
       const scheduledAt = new Date(startTime + slotMs + staggerMs).toISOString();
-      const caption = validCaptions[Math.floor(Math.random() * validCaptions.length)];
+      const caption = isAutoCaption
+        ? getAutoCaption(autoType)
+        : validCaptions[Math.floor(Math.random() * validCaptions.length)];
 
       rows.push({
         user_id: user.id,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
 
 export const runtime = "nodejs";
 
@@ -12,11 +13,12 @@ interface ReelItem {
 }
 
 interface CloneBody {
-  account_ids:   string[];
-  reels:         ReelItem[];
-  reel_count:    number;   // -1 = all
-  posts_per_day: number;
-  start_at:      string;   // ISO datetime
+  account_ids:       string[];
+  reels:             ReelItem[];
+  reel_count:        number;        // -1 = all
+  posts_per_day:     number;
+  start_at:          string;        // ISO datetime
+  auto_caption_type?: string;       // se presente, substitui captions originais
 }
 
 function fisherYates<T>(arr: T[]): T[] {
@@ -38,7 +40,9 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const body = await req.json() as CloneBody;
-  const { account_ids, reels, reel_count, posts_per_day, start_at } = body;
+  const { account_ids, reels, reel_count, posts_per_day, start_at, auto_caption_type } = body;
+  const isAutoCaption = !!auto_caption_type;
+  const autoType = (auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
 
   if (!account_ids?.length)
     return NextResponse.json({ error: "Selecione ao menos 1 conta de destino." }, { status: 400 });
@@ -75,9 +79,9 @@ export async function POST(req: NextRequest) {
       rows.push({
         user_id:      user.id,
         account_id:   accountId,
-        video_id:     null,           // vídeo não está na biblioteca
-        video_url:    reel.videoUrl,  // URL direto do Instagram CDN
-        caption:      reel.caption,
+        video_id:     null,
+        video_url:    reel.videoUrl,
+        caption:      isAutoCaption ? getAutoCaption(autoType) : reel.caption,
         scheduled_at: scheduledAt,
         status:       "pending",
         campaign_id:  campaignId,

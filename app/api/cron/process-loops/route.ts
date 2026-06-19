@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount } from "@/lib/proxy";
+import { getAutoCaption } from "@/lib/auto-captions";
 import type { ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
@@ -54,6 +55,8 @@ interface LoopRow {
   account_folder_id: string | null;
   last_posted_at: string | null;
   loop_accounts: LoopAccountRow[];
+  auto_caption_enabled?: boolean;
+  auto_caption_type?: string | null;
 }
 
 interface HumanScheduleRow {
@@ -634,16 +637,21 @@ async function processOneLoop(
   // ── Pré-flight: verificar legendas ANTES do CLAIM ─────────────────────────
   // Se não há legendas, pular sem avançar last_posted_at — o loop não perde
   // o intervalo e tenta novamente no próximo ciclo do cron.
-  const hasConfiguredCaptions = Array.isArray(loop.captions)
-    ? (loop.captions as unknown[]).some(c => typeof c === "string" && (c as string).trim().length > 0)
-    : typeof loop.captions === "string" && (loop.captions as string).trim().length > 0;
+  // Se legendas automáticas estão ativas, não precisa de legendas manuais configuradas.
+  const isAutoCaption = loop.auto_caption_enabled === true && !!loop.auto_caption_type;
 
-  if (!hasConfiguredCaptions) {
-    console.warn(
-      `[loop-cron] "${loop.name}" sem legendas configuradas — pulando sem avançar last_posted_at. ` +
-      `Configure legendas no painel para ativar as postagens.`
-    );
-    return "skipped";
+  if (!isAutoCaption) {
+    const hasConfiguredCaptions = Array.isArray(loop.captions)
+      ? (loop.captions as unknown[]).some(c => typeof c === "string" && (c as string).trim().length > 0)
+      : typeof loop.captions === "string" && (loop.captions as string).trim().length > 0;
+
+    if (!hasConfiguredCaptions) {
+      console.warn(
+        `[loop-cron] "${loop.name}" sem legendas configuradas — pulando sem avançar last_posted_at. ` +
+        `Configure legendas no painel ou ative Legendas Automáticas.`
+      );
+      return "skipped";
+    }
   }
 
   let loopClaimMade = false;
@@ -910,9 +918,17 @@ async function processOneLoop(
           `vídeo: "${assignment.video.filename}" (${fileSizeMB}) | cicloReset: ${assignment.isCycleReset}`
         );
 
-        let caption = selectDynamicCaption(loopCaptionsRaw);
-
-        {
+        let caption: string;
+        if (isAutoCaption) {
+          caption = getAutoCaption(
+            (loop.auto_caption_type ?? "curiosidades-gerais") as import("@/lib/auto-captions").AutoCaptionType
+          );
+          console.log(
+            `[auto-caption] @${account.username} | tipo: ${loop.auto_caption_type} | ` +
+            `"${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}"`
+          );
+        } else {
+          caption = selectDynamicCaption(loopCaptionsRaw);
           const xStatus = caption
             ? `"${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}"`
             : "VAZIA!!!";
@@ -923,7 +939,6 @@ async function processOneLoop(
         }
 
         if (!caption) {
-          // Não deve acontecer após o pré-flight check, mas é uma segunda linha de defesa.
           console.warn(`[loop-cron] SEM LEGENDA | @${account.username} | loop="${loop.name}" — pulando conta`);
           return { kind: "skip", account, reason: "sem legendas no loop" };
         }
@@ -1317,6 +1332,7 @@ export async function GET(req: NextRequest) {
       id, user_id, name, folder_id, account_folder_id, is_infinite, cycles, cycles_done, current_cycle,
       interval_minutes, media_limit, captions, effect_mirror, effect_invert,
       effect_zoom, effect_blur, effect_noise, effect_anti_ai,
+      auto_caption_enabled, auto_caption_type,
       last_posted_at,
       loop_accounts (
         account_id,

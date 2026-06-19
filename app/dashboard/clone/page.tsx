@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, Users, Play, Heart, MessageCircle, TrendingUp,
   CheckCircle2, Copy, ChevronDown, ChevronRight, Eye,
-  Calendar, Zap, X, AlertCircle, Loader2,
+  Calendar, Zap, X, AlertCircle, Loader2, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -76,6 +76,18 @@ const REEL_COUNT_OPTIONS = [
 
 const PPD_OPTIONS = [1, 2, 3, 4, 6, 8, 12, 24, 48];
 
+const AUTO_CAPTION_TYPES_CLONE = [
+  { id: "curiosidades-gerais", label: "Curiosidades Gerais", emoji: "💡", desc: "Fatos do dia a dia" },
+  { id: "curiosidades-tops",   label: "Curiosidades Tops",   emoji: "🏆", desc: "Fatos virais" },
+  { id: "fatos-complexos",     label: "Fatos Complexos",     emoji: "🔬", desc: "Ciência acessível" },
+] as const;
+
+const AUTO_CAPTION_PREVIEWS_CLONE: Record<string, string> = {
+  "curiosidades-gerais": "🍯 O mel nunca estraga. Arqueólogos encontraram potes com mais de 3.000 anos nas pirâmides do Egito — e ainda estavam comestíveis!",
+  "curiosidades-tops":   "🤯 INACREDITÁVEL: Você existe porque TODOS os seus ancestrais sobreviveram e tiveram filhos desde o início da vida na Terra!",
+  "fatos-complexos":     "🧠 A memória humana não funciona como um HD. Cada vez que você se lembra de algo, reconstrói a memória do zero — e a modifica.",
+};
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function ClonePage() {
@@ -100,6 +112,10 @@ export default function ClonePage() {
   const [accounts, setAccounts]           = useState<AccountRow[]>([]);
   const [selectedAccounts, setSelected]   = useState<Set<string>>(new Set());
   const [expandedFolders, setExpanded]    = useState<Set<string>>(new Set());
+
+  // Auto captions
+  const [autoCaptionEnabled, setAutoCaptionEnabled] = useState(false);
+  const [autoCaptionType, setAutoCaptionType]       = useState("curiosidades-gerais");
 
   // Submit
   const [submitting, setSubmitting] = useState(false);
@@ -245,11 +261,12 @@ export default function ClonePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          account_ids:   Array.from(selectedAccounts),
-          reels:         reels.map(r => ({ videoUrl: r.videoUrl, caption: r.caption, thumbnailUrl: r.thumbnailUrl })),
-          reel_count:    reelCount,
-          posts_per_day: postsPerDay,
-          start_at:      startAt,
+          account_ids:       Array.from(selectedAccounts),
+          reels:             reels.map(r => ({ videoUrl: r.videoUrl, caption: r.caption, thumbnailUrl: r.thumbnailUrl })),
+          reel_count:        reelCount,
+          posts_per_day:     postsPerDay,
+          start_at:          startAt,
+          auto_caption_type: autoCaptionEnabled ? autoCaptionType : undefined,
         }),
       });
       const data = await res.json();
@@ -458,6 +475,71 @@ export default function ClonePage() {
                   {intervalMin > 0 && (
                     <p className="text-[11px] text-white/30">Intervalo: 1 post a cada {intervalMin} min</p>
                   )}
+                </div>
+
+                {/* Legendas Automáticas */}
+                <div className="glass-card p-4 rounded-2xl space-y-0">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={13} style={{ color: "var(--matrix)" }} />
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-widest text-white/50">Legendas Automáticas</p>
+                        <p className="text-[10px] text-white/30 mt-0.5">Substitui as legendas originais por curiosidades PT-BR</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAutoCaptionEnabled(v => !v)}
+                      className={cn(
+                        "relative w-9 h-5 rounded-full transition-colors flex-shrink-0",
+                        autoCaptionEnabled ? "bg-[#00FF41]/80" : "bg-white/10"
+                      )}
+                    >
+                      <span className={cn(
+                        "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform",
+                        autoCaptionEnabled ? "translate-x-4" : "translate-x-0.5"
+                      )} />
+                    </button>
+                  </div>
+                  <AnimatePresence>
+                    {autoCaptionEnabled && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="grid grid-cols-3 gap-2 mt-3">
+                          {AUTO_CAPTION_TYPES_CLONE.map(t => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => setAutoCaptionType(t.id)}
+                              className={cn(
+                                "p-2.5 rounded-xl border text-left transition-all",
+                                autoCaptionType === t.id
+                                  ? "border-[#00FF41]/40 bg-[#00FF41]/[0.06]"
+                                  : "border-white/[0.07] hover:border-white/20"
+                              )}
+                            >
+                              <span className="text-sm">{t.emoji}</span>
+                              <p className="text-[10px] font-medium text-white/80 mt-1 leading-tight">{t.label}</p>
+                              <p className="text-[9px] text-white/35 mt-0.5 leading-tight">{t.desc}</p>
+                            </button>
+                          ))}
+                        </div>
+                        {autoCaptionType && (
+                          <div className="mt-2.5 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                            <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Preview</p>
+                            <p className="text-[10px] text-white/50 leading-relaxed italic">
+                              {AUTO_CAPTION_PREVIEWS_CLONE[autoCaptionType]}
+                            </p>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 {/* Data/hora início */}

@@ -27,6 +27,7 @@ export async function GET() {
       id, user_id, folder_id, account_folder_id, name, is_infinite, cycles, interval_minutes,
       media_limit, captions, cover_image_url,
       effect_mirror, effect_invert, effect_zoom, effect_blur, effect_noise, effect_anti_ai,
+      auto_caption_enabled, auto_caption_type,
       status, created_at,
       loop_accounts ( account_id, instagram_accounts ( id, username, display_name, avatar_url ) ),
       library_folders ( id, name )
@@ -61,6 +62,8 @@ export async function POST(req: NextRequest) {
     effect_blur: boolean;
     effect_noise: boolean;
     effect_anti_ai: boolean;
+    auto_caption_enabled?: boolean;
+    auto_caption_type?: string | null;
     account_ids: string[];
   };
 
@@ -70,14 +73,16 @@ export async function POST(req: NextRequest) {
 
   const anyAdmin = getSupabaseAdmin() as any;
 
-  // Filtra legendas em branco antes de salvar — valor vem do formulário do usuário,
-  // nunca dos metadados do vídeo (que são NULL na tabela videos_library).
   const captionsToSave = (body.captions ?? []).map((c: string) => c.trim()).filter(Boolean);
-  if (captionsToSave.length === 0) {
+  const autoEnabled = body.auto_caption_enabled ?? false;
+
+  if (!autoEnabled && captionsToSave.length === 0) {
     console.warn(
       `[loops-api] Loop "${body.name?.trim() ?? "?"}" criado SEM legendas configuradas. ` +
-      `Posts deste loop irão para a Meta API sem legenda até o usuário editar o loop e adicionar legendas.`
+      `Posts irão sem legenda até o usuário editar o loop.`
     );
+  } else if (autoEnabled) {
+    console.log(`[loops-api] Loop "${body.name?.trim() ?? "?"}" — legendas automáticas ativadas (${body.auto_caption_type ?? "curiosidades-gerais"}).`);
   } else {
     console.log(`[loops-api] Loop "${body.name?.trim() ?? "?"}" — ${captionsToSave.length} legenda(s) salva(s): ${JSON.stringify(captionsToSave.slice(0, 3))}`);
   }
@@ -101,6 +106,8 @@ export async function POST(req: NextRequest) {
       effect_blur:     body.effect_blur    ?? false,
       effect_noise:    body.effect_noise   ?? false,
       effect_anti_ai:  body.effect_anti_ai ?? false,
+      auto_caption_enabled: autoEnabled,
+      auto_caption_type:    autoEnabled ? (body.auto_caption_type ?? "curiosidades-gerais") : null,
       status: "active",
     })
     .select()

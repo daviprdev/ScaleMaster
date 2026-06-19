@@ -9,7 +9,7 @@ import {
   Loader2, AlertCircle, ChevronDown, Info, Film, AlertTriangle,
   BarChart2, Heart, MessageCircle, Eye, Crown, TrendingUp, ChevronUp,
   Save, Library, BookMarked, Shuffle, CheckCircle2,
-  ZoomIn, Waves, Droplets, Shield,
+  ZoomIn, Waves, Droplets, Shield, Sparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -56,6 +56,8 @@ interface Loop {
   cover_image_url: string | null;
   effect_mirror:   boolean;
   effect_invert:   boolean;
+  auto_caption_enabled?: boolean;
+  auto_caption_type?: string | null;
   effect_zoom:     boolean;
   effect_blur:     boolean;
   effect_noise:    boolean;
@@ -85,6 +87,8 @@ interface FormData {
   effectBlur:    boolean;
   effectNoise:   boolean;
   effectAntiAi:  boolean;
+  autoCaptionEnabled: boolean;
+  autoCaptionType: string;
 }
 
 interface SavedCaption {
@@ -93,6 +97,18 @@ interface SavedCaption {
   content: string;
   created_at: string;
 }
+
+const AUTO_CAPTION_TYPES = [
+  { id: "curiosidades-gerais", label: "Curiosidades Gerais", emoji: "💡", desc: "Fatos do dia a dia" },
+  { id: "curiosidades-tops",   label: "Curiosidades Tops",   emoji: "🏆", desc: "Fatos virais e surpreendentes" },
+  { id: "fatos-complexos",     label: "Fatos Complexos",     emoji: "🔬", desc: "Ciência acessível" },
+] as const;
+
+const AUTO_CAPTION_PREVIEWS: Record<string, string> = {
+  "curiosidades-gerais": "🍯 O mel nunca estraga. Arqueólogos encontraram potes com mais de 3.000 anos nas pirâmides do Egito — e ainda estavam comestíveis!",
+  "curiosidades-tops":   "🤯 INACREDITÁVEL: Você existe porque TODOS os seus ancestrais sobreviveram e tiveram filhos desde o início da vida na Terra. Você é um milagre de bilhões de anos!",
+  "fatos-complexos":     "🧠 A memória humana não funciona como um HD. Cada vez que você se lembra de algo, reconstrói a memória do zero — e a modifica sutilmente.",
+};
 
 const DEFAULT_FORM: FormData = {
   name: "",
@@ -113,6 +129,8 @@ const DEFAULT_FORM: FormData = {
   effectBlur:   false,
   effectNoise:  false,
   effectAntiAi: false,
+  autoCaptionEnabled: false,
+  autoCaptionType: "curiosidades-gerais",
 };
 
 // ── Analytics types ───────────────────────────────────────────
@@ -1205,6 +1223,8 @@ function LoopFormModal({
         effectBlur:   editingLoop.effect_blur   ?? false,
         effectNoise:  editingLoop.effect_noise  ?? false,
         effectAntiAi: editingLoop.effect_anti_ai ?? false,
+        autoCaptionEnabled: editingLoop.auto_caption_enabled ?? false,
+        autoCaptionType: editingLoop.auto_caption_type ?? "curiosidades-gerais",
       };
     }
     return DEFAULT_FORM;
@@ -1233,7 +1253,8 @@ function LoopFormModal({
     if (form.accountMode === "folder" && !form.accountFolderId) { setError("Selecione uma pasta de contas."); return; }
     if (form.accountMode === "specific" && form.accountIds.length === 0) { setError("Selecione pelo menos uma conta."); return; }
     if (!form.folderId) { setError("Selecione uma pasta da biblioteca."); return; }
-    if (!form.captions.some(c => c.trim())) { setError("Adicione pelo menos uma legenda para o loop."); return; }
+    if (form.autoCaptionEnabled && !form.autoCaptionType) { setError("Selecione um tipo de legenda automática."); return; }
+    if (!form.autoCaptionEnabled && !form.captions.some(c => c.trim())) { setError("Adicione pelo menos uma legenda para o loop."); return; }
     setError(null);
     setSaving(true);
     try {
@@ -1464,14 +1485,73 @@ function LoopFormModal({
           {/* Legendas */}
           <div>
             <SectionLabel icon={Type} label="Legendas Dinâmicas" />
-            <LoopCaptionEditor
-              captions={form.captions}
-              onChange={caps => update("captions", caps)}
-            />
-            <p className="text-[11px] text-white/25 flex items-start gap-1.5 mt-2">
-              <Info size={10} className="flex-shrink-0 mt-0.5" />
-              O sistema sorteará uma legenda por post para evitar padrões de spam.
-            </p>
+
+            {/* Toggle Legendas Automáticas */}
+            <div className="mb-3 p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02]">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Sparkles size={13} style={{ color: "var(--matrix)" }} />
+                  <div>
+                    <p className="text-sm font-medium text-white/80">Legendas Automáticas</p>
+                    <p className="text-[10px] text-white/35">Curiosidades únicas em PT-BR por post</p>
+                  </div>
+                </div>
+                <Toggle checked={form.autoCaptionEnabled} onChange={v => update("autoCaptionEnabled", v)} />
+              </div>
+              <AnimatePresence>
+                {form.autoCaptionEnabled && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="grid grid-cols-3 gap-2 mt-3">
+                      {AUTO_CAPTION_TYPES.map(t => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => update("autoCaptionType", t.id)}
+                          className={cn(
+                            "p-2.5 rounded-xl border text-left transition-all",
+                            form.autoCaptionType === t.id
+                              ? "border-[#00FF41]/40 bg-[#00FF41]/[0.06]"
+                              : "border-white/[0.07] hover:border-white/20"
+                          )}
+                        >
+                          <span className="text-sm">{t.emoji}</span>
+                          <p className="text-[10px] font-medium text-white/80 mt-1 leading-tight">{t.label}</p>
+                          <p className="text-[9px] text-white/35 mt-0.5 leading-tight">{t.desc}</p>
+                        </button>
+                      ))}
+                    </div>
+                    {form.autoCaptionType && (
+                      <div className="mt-2.5 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                        <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Preview</p>
+                        <p className="text-[10px] text-white/50 leading-relaxed italic">
+                          {AUTO_CAPTION_PREVIEWS[form.autoCaptionType]}
+                        </p>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Editor manual — oculto quando auto está ativo */}
+            {!form.autoCaptionEnabled && (
+              <>
+                <LoopCaptionEditor
+                  captions={form.captions}
+                  onChange={caps => update("captions", caps)}
+                />
+                <p className="text-[11px] text-white/25 flex items-start gap-1.5 mt-2">
+                  <Info size={10} className="flex-shrink-0 mt-0.5" />
+                  O sistema sorteará uma legenda por post para evitar padrões de spam.
+                </p>
+              </>
+            )}
           </div>
 
           {/* Capa */}
@@ -1708,6 +1788,8 @@ export default function LoopPage() {
       effect_blur:    form.effectBlur,
       effect_noise:   form.effectNoise,
       effect_anti_ai: form.effectAntiAi,
+      auto_caption_enabled: form.autoCaptionEnabled,
+      auto_caption_type: form.autoCaptionEnabled ? form.autoCaptionType : null,
       account_ids: form.accountMode === "folder" ? [] : form.accountIds,
     };
 

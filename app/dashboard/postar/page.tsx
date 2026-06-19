@@ -6,7 +6,7 @@ import {
   Users, Film, CalendarDays, Send, FolderOpen, X, Check,
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
   Shuffle, Zap, List, Library, Save, BookMarked, BarChart2,
-  RefreshCw, ChevronDown,
+  RefreshCw, ChevronDown, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -82,6 +82,18 @@ const VIDEO_COUNT_PRESETS = [
 const POSTS_PER_DAY_OPTIONS = [1, 2, 3, 4, 6, 8, 12, 24, 36, 48, 72];
 
 const MAX_CAPTION_CHARS = 2200;
+
+const AUTO_CAPTION_TYPES_POSTAR = [
+  { id: "curiosidades-gerais", label: "Curiosidades Gerais", emoji: "💡", desc: "Fatos do dia a dia" },
+  { id: "curiosidades-tops",   label: "Curiosidades Tops",   emoji: "🏆", desc: "Fatos virais e surpreendentes" },
+  { id: "fatos-complexos",     label: "Fatos Complexos",     emoji: "🔬", desc: "Ciência acessível" },
+] as const;
+
+const AUTO_CAPTION_PREVIEWS_POSTAR: Record<string, string> = {
+  "curiosidades-gerais": "🍯 O mel nunca estraga. Arqueólogos encontraram potes com mais de 3.000 anos nas pirâmides do Egito — e ainda estavam comestíveis!",
+  "curiosidades-tops":   "🤯 INACREDITÁVEL: Você existe porque TODOS os seus ancestrais sobreviveram e tiveram filhos desde o início da vida na Terra. Você é um milagre de bilhões de anos!",
+  "fatos-complexos":     "🧠 A memória humana não funciona como um HD. Cada vez que você se lembra de algo, reconstrói a memória do zero — e a modifica sutilmente.",
+};
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -823,6 +835,8 @@ export default function PostarPage() {
 
   // Captions
   const [captions, setCaptions] = useState<string[]>(["", ""]);
+  const [autoCaptionEnabled, setAutoCaptionEnabled] = useState(false);
+  const [autoCaptionType, setAutoCaptionType] = useState("curiosidades-gerais");
 
   // Submit
   const [submitting, setSubmitting] = useState(false);
@@ -929,7 +943,7 @@ export default function PostarPage() {
     if (selectedAccountIds.length === 0) { setSubmitError("Selecione ao menos 1 conta."); return; }
     if (!selectedFolderId) { setSubmitError("Selecione uma pasta de mídia."); return; }
     if (folderVideoCount === 0) { setSubmitError("A pasta selecionada está vazia."); return; }
-    if (validCaptions.length === 0) { setSubmitError("Adicione ao menos 1 legenda."); return; }
+    if (!autoCaptionEnabled && validCaptions.length === 0) { setSubmitError("Adicione ao menos 1 legenda."); return; }
     if (!startDatetime) { setSubmitError("Defina a data e hora de início."); return; }
 
     setSubmitError(null);
@@ -945,7 +959,8 @@ export default function PostarPage() {
           video_count: videoCount,
           posts_per_day: postsPerDay,
           start_at: new Date(startDatetime).toISOString(),
-          captions: validCaptions,
+          captions: autoCaptionEnabled ? [] : validCaptions,
+          auto_caption_type: autoCaptionEnabled ? autoCaptionType : undefined,
         }),
       });
 
@@ -1377,7 +1392,75 @@ export default function PostarPage() {
             {/* 4. Legendas */}
             <SectionCard>
               <SectionLabel Icon={List}>Legendas Dinâmicas</SectionLabel>
-              <CaptionEditor captions={captions} onChange={setCaptions} />
+
+              {/* Toggle Legendas Automáticas */}
+              <div className="mb-3 p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Sparkles size={13} style={{ color: "var(--matrix)" }} />
+                    <div>
+                      <p className="text-sm font-medium text-white/80">Legendas Automáticas</p>
+                      <p className="text-[10px] text-white/35">Curiosidades únicas em PT-BR por post</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAutoCaptionEnabled(v => !v)}
+                    className={cn(
+                      "relative w-9 h-5 rounded-full transition-colors flex-shrink-0",
+                      autoCaptionEnabled ? "bg-[#00FF41]/80" : "bg-white/10"
+                    )}
+                  >
+                    <span className={cn(
+                      "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform",
+                      autoCaptionEnabled ? "translate-x-4" : "translate-x-0.5"
+                    )} />
+                  </button>
+                </div>
+                <AnimatePresence>
+                  {autoCaptionEnabled && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="grid grid-cols-3 gap-2 mt-3">
+                        {AUTO_CAPTION_TYPES_POSTAR.map(t => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => setAutoCaptionType(t.id)}
+                            className={cn(
+                              "p-2.5 rounded-xl border text-left transition-all",
+                              autoCaptionType === t.id
+                                ? "border-[#00FF41]/40 bg-[#00FF41]/[0.06]"
+                                : "border-white/[0.07] hover:border-white/20"
+                            )}
+                          >
+                            <span className="text-sm">{t.emoji}</span>
+                            <p className="text-[10px] font-medium text-white/80 mt-1 leading-tight">{t.label}</p>
+                            <p className="text-[9px] text-white/35 mt-0.5 leading-tight">{t.desc}</p>
+                          </button>
+                        ))}
+                      </div>
+                      {autoCaptionType && (
+                        <div className="mt-2.5 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                          <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Preview</p>
+                          <p className="text-[10px] text-white/50 leading-relaxed italic">
+                            {AUTO_CAPTION_PREVIEWS_POSTAR[autoCaptionType]}
+                          </p>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {!autoCaptionEnabled && (
+                <CaptionEditor captions={captions} onChange={setCaptions} />
+              )}
             </SectionCard>
 
             {/* Error */}
