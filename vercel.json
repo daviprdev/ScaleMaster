@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/process-videos",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/process-loops",
       "schedule": "* * * * *"
     },

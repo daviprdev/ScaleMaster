@@ -1,23 +1,16 @@
 /**
- * video-effects.ts — Efeitos criativos de vídeo via FFmpeg
+ * video-effects.ts — Pipeline de processamento de vídeo anti-fingerprint
  *
- * O FFmpeg SÓ é executado quando o usuário ativa pelo menos um efeito no
- * painel do Loop. Sem efeitos ativos, o vídeo original é postado diretamente
- * (zero re-encoding, qualidade máxima, sem degradação generacional).
+ * Todo vídeo postado passa por processVideoForAccount() antes de ir para a Meta.
+ * O FFmpeg roda na fila process-videos (não no cron de postagem) para não bloquear.
  *
- * Efeitos disponíveis (toggles no painel):
- *   - hflip:     inversão horizontal
- *   - negate:    inversão de cores
- *   - zoom:      scale 115% + crop centrado
- *   - smartblur: desfoque leve de luminância
- *   - noise:     ruído frame-a-frame
- *   - antiAi:    micro-ajuste de cor único por conta (derrota detecção de IA)
- *
- * Parâmetros de encode quando algum efeito está ativo:
- *   - libx264 preset ultrafast, CRF 22 (alta qualidade)
- *   - -map 0:v:0 / 0:a:0? — extração pura de tracks
- *   - -map_metadata -1 / -map_chapters -1 — limpa metadados
- *   - -movflags +faststart — moov atom na frente
+ * O que o pipeline faz por conta (parâmetros determinísticos via FNV-1a do account_id):
+ *   - eq contrast/brightness/saturation ±2%   → quebra pHash colorimétrico
+ *   - noise luma c0s=2–4                      → quebra pHash espacial
+ *   - asetrate pitch ±1%                      → quebra Chromaprint/AudID
+ *   - libx264 CRF 19 ultrafast                → novo bitstream limpo
+ *   - -map_metadata -1 + creation_time fake   → remove rastreio + parece captura original
+ *   - efeitos criativos do usuário (opcionais): hflip, negate, zoom, blur, noise+, antiAi
  */
 
 import ffmpeg from "fluent-ffmpeg";
@@ -31,16 +24,16 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 export interface VideoEffectOptions {
-  mirror:   boolean;
-  invert:   boolean;
-  zoom:     boolean;
-  blur:     boolean;
-  noise:    boolean;
-  antiAi:   boolean;
+  mirror:     boolean;
+  invert:     boolean;
+  zoom:       boolean;
+  blur:       boolean;
+  noise:      boolean;
+  antiAi:     boolean;
   accountId?: string;
 }
 
-// ── FNV-1a — hash determinístico por accountId para o efeito antiAi ─────────
+// ── FNV-1a — hash determinístico por accountId ───────────────────────────────
 
 function fnv1a(s: string): number {
   let h = 0x811c9dc5;
@@ -51,137 +44,220 @@ function fnv1a(s: string): number {
   return h;
 }
 
-/**
- * Parâmetros do efeito antiAi: ajuste de cor único por conta.
- * Usado APENAS quando o usuário ativa o toggle antiAi no painel.
- * Range ±3% — imperceptível ao espectador mas muda o pHash colorimétrico.
- */
-function antiAiColorParams(accountId: string): {
-  contrast: number;
-  brightness: number;
-  saturation: number;
-} {
-  const h0 = fnv1a(accountId + "_ai");
-  const contrast   = 0.975 + (h0 % 51) * 0.001;            // 0.975–1.025
-  const brightness = -0.012 + ((h0 >> 8) % 25) * 0.001;    // -0.012–+0.012
-  const saturation = 0.975 + ((h0 >> 16) % 51) * 0.001;    // 0.975–1.025
-  return { contrast, brightness, saturation };
+// ── Parâmetros base únicos por conta ─────────────────────────────────────────
+
+interface BaseFingerprint {
+  contrast:    number;
+  brightness:  number;
+  saturation:  number;
+  noiseLevel:  number;
+  pitchFactor: number;
 }
 
-export async function applyVideoEffects(
+function getBaseFingerprint(accountId: string): BaseFingerprint {
+  const h0 = fnv1a(accountId + "_eq");
+  const h1 = fnv1a(accountId + "_noise");
+  const h2 = fnv1a(accountId + "_pitch");
+  return {
+    contrast:    0.978 + (h0 % 45) * 0.001,          // 0.978–1.022  (±2.2%)
+    brightness:  -0.011 + ((h0 >> 8) % 23) * 0.001,  // -0.011–+0.011
+    saturation:  0.978 + ((h0 >> 16) % 45) * 0.001,  // 0.978–1.022
+    noiseLevel:  2 + (h1 % 3),                        // 2, 3 ou 4
+    pitchFactor: 0.990 + (h2 % 21) * 0.001,          // 0.990–1.010  (±1%)
+  };
+}
+
+// Parâmetros do efeito antiAi: camada adicional de cor única por conta.
+function antiAiColorParams(accountId: string): { contrast: number; brightness: number; saturation: number } {
+  const h0 = fnv1a(accountId + "_ai");
+  return {
+    contrast:   0.975 + (h0 % 51) * 0.001,           // 0.975–1.025
+    brightness: -0.012 + ((h0 >> 8) % 25) * 0.001,   // -0.012–+0.012
+    saturation: 0.975 + ((h0 >> 16) % 51) * 0.001,   // 0.975–1.025
+  };
+}
+
+// ── Data de criação fake (parece captura original) ────────────────────────────
+// Ausência de creation_time é sinal de "arquivo baixado". Injeta data realista.
+
+function randomCreationTime(): string {
+  const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+  const ts = Date.now() - Math.floor(Math.random() * ninetyDaysMs);
+  return new Date(ts).toISOString();
+}
+
+// ── Upload para Supabase Storage (temp/) ─────────────────────────────────────
+
+async function uploadToTemp(filePath: string, uid: string): Promise<string> {
+  const buf = fs.readFileSync(filePath);
+  const storagePath = `temp/vpf_${uid}.mp4`;
+  const admin = getSupabaseAdmin();
+
+  const { error } = await admin.storage
+    .from("videos-library")
+    .upload(storagePath, buf, { contentType: "video/mp4", upsert: false });
+
+  if (error) throw new Error(`Upload temp: ${error.message}`);
+
+  const { data } = admin.storage.from("videos-library").getPublicUrl(storagePath);
+  return data.publicUrl;
+}
+
+// ── Pipeline principal ────────────────────────────────────────────────────────
+
+/**
+ * Processa um vídeo com fingerprint único por conta.
+ * Sempre re-encoda — nunca retorna URL original.
+ *
+ * Base (sempre ativo, parâmetros via FNV-1a do accountId):
+ *   eq + noise luma + pitch shift de áudio + CRF 19 + fake creation_time
+ *
+ * Efeitos criativos (opcionais, ativados no painel do Loop):
+ *   mirror, invert, zoom, blur, noise+, antiAi
+ */
+export async function processVideoForAccount(
   videoUrl: string,
-  opts: VideoEffectOptions
+  accountId: string,
+  userEffects: {
+    mirror?: boolean;
+    invert?: boolean;
+    zoom?:   boolean;
+    blur?:   boolean;
+    noise?:  boolean;
+    antiAi?: boolean;
+  } = {}
 ): Promise<string> {
-  const { mirror, invert, zoom, blur, noise, antiAi, accountId = "" } = opts;
-
-  // Sem efeito ativo → retorna original sem nenhum processamento.
-  // Zero re-encoding = zero degradação de qualidade = máximo potencial de views.
-  const anyEffect = mirror || invert || zoom || blur || noise || antiAi;
-  if (!anyEffect) return videoUrl;
-
   const tmpDir = os.tmpdir();
   const uid    = crypto.randomUUID();
-  const input  = path.join(tmpDir, `vfx_in_${uid}.mp4`);
-  const output = path.join(tmpDir, `vfx_out_${uid}.mp4`);
+  const input  = path.join(tmpDir, `vpf_in_${uid}.mp4`);
+  const output = path.join(tmpDir, `vpf_out_${uid}.mp4`);
 
   try {
     // ── 1. Download ──────────────────────────────────────────────────────────
-    const res = await fetch(videoUrl, { signal: AbortSignal.timeout(45_000) });
+    const res = await fetch(videoUrl, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) throw new Error(`Download falhou: HTTP ${res.status}`);
     const inputBuf = Buffer.from(await res.arrayBuffer());
     fs.writeFileSync(input, inputBuf);
     const inputSizeMB = (inputBuf.length / 1_048_576).toFixed(1);
 
-    // ── 2. Cadeia de filtros de vídeo ────────────────────────────────────────
+    // ── 2. Parâmetros base únicos por conta ──────────────────────────────────
+    const seed = accountId || uid; // fallback para downloads sem accountId
+    const { contrast, brightness, saturation, noiseLevel, pitchFactor } =
+      getBaseFingerprint(seed);
+
+    // ── 3. Cadeia de filtros de vídeo ────────────────────────────────────────
     const vf: string[] = [];
 
-    if (mirror) vf.push("hflip");
-    if (invert) vf.push("negate");
-    if (zoom) {
+    // Efeitos criativos que vêm ANTES da correção de cor
+    if (userEffects.mirror) vf.push("hflip");
+    if (userEffects.invert) vf.push("negate");
+    if (userEffects.zoom) {
       // Aritmética 20/23 garante dimensão par no FFmpeg 4.1 (yuv420p).
       vf.push(
         "scale=trunc(iw*23/40)*2:trunc(ih*23/40)*2," +
         "crop=trunc(iw*20/46)*2:trunc(ih*20/46)*2:(iw-trunc(iw*20/46)*2)/2:(ih-trunc(ih*20/46)*2)/2"
       );
     }
-    if (blur)  vf.push("smartblur=lr=1:ls=0.25:lt=0");
-    if (noise) vf.push("noise=c0s=3");
+    if (userEffects.blur) vf.push("smartblur=lr=1:ls=0.25:lt=0");
 
-    // antiAi: micro-ajuste de cor único por conta — derrota detecção por pHash.
-    // hue REMOVIDO: ERANGE no FFmpeg 4.1 em streams H.264 com SPS/PPS mid-stream.
-    if (antiAi && accountId) {
-      const { contrast, brightness, saturation } = antiAiColorParams(accountId);
+    // Base anti-fingerprint: cor única por conta (quebra pHash colorimétrico)
+    vf.push(
+      `eq=contrast=${contrast.toFixed(4)}:brightness=${brightness.toFixed(4)}:saturation=${saturation.toFixed(4)}`
+    );
+
+    // Efeito antiAi: segunda camada de cor única (mais agressiva)
+    if (userEffects.antiAi && accountId) {
+      const ai = antiAiColorParams(accountId);
       vf.push(
-        `eq=contrast=${contrast.toFixed(4)}:brightness=${brightness.toFixed(4)}:saturation=${saturation.toFixed(4)}`
+        `eq=contrast=${ai.contrast.toFixed(4)}:brightness=${ai.brightness.toFixed(4)}:saturation=${ai.saturation.toFixed(4)}`
       );
     }
 
-    // ── 3. Encode ────────────────────────────────────────────────────────────
-    const outputOptions: string[] = [
-      "-map", "0:v:0",
-      "-map", "0:a:0?",
-    ];
-    if (vf.length > 0) outputOptions.push("-vf", vf.join(","));
+    // Base anti-fingerprint: noise luma único por conta (quebra pHash espacial)
+    // c0f=u: seed fixo por frame — estável no FFmpeg 4.1 (flags temporais causam ERANGE)
+    const noiseLuma = userEffects.noise ? noiseLevel + 2 : noiseLevel; // noise ativo = mais intenso
+    vf.push(`noise=c0s=${noiseLuma}:c0f=u`);
 
-    outputOptions.push(
-      "-c:v", "libx264",
-      "-preset", "ultrafast",
-      "-crf", "22",
-      "-c:a", "copy",          // áudio em stream copy — sem re-encode desnecessário
-      "-map_metadata", "-1",
+    // ── 4. Filtro de áudio: pitch único por conta (quebra Chromaprint/AudID) ─
+    const newSampleRate = Math.round(44100 * pitchFactor);
+
+    // ── 5. Fake creation_time (parece captura original, não download) ─────────
+    const creationTime = randomCreationTime();
+
+    // ── 6. Encode ────────────────────────────────────────────────────────────
+    const outputOptions: string[] = [
+      "-map",      "0:v:0",           // extrai apenas a trilha de vídeo principal
+      "-map",      "0:a:0?",          // extrai apenas a trilha de áudio principal (opcional)
+      "-vf",       vf.join(","),
+      "-af",       `asetrate=${newSampleRate},aresample=44100`,
+      "-c:v",      "libx264",
+      "-preset",   "ultrafast",
+      "-crf",      "19",              // CRF 19 = melhor que fonte (~CRF 23), sem double-compression
+      "-c:a",      "aac",
+      "-b:a",      "128k",
+      "-map_metadata", "-1",          // remove todos os metadados do container
+      "-metadata", `creation_time=${creationTime}`, // injeta data realista
       "-map_chapters", "-1",
       "-movflags", "+faststart",
-      "-f", "mp4",
-    );
+      "-f",        "mp4",
+    ];
 
     await new Promise<void>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const cmd = ffmpeg(input)
         .outputOptions(outputOptions)
         .output(output)
-        .on("end", () => { clearTimeout(timer); resolve(); })
+        .on("end",   () => { clearTimeout(timer); resolve(); })
         .on("error", (err: Error) => { clearTimeout(timer); reject(new Error(`FFmpeg: ${err.message}`)); });
       cmd.run();
       timer = setTimeout(() => {
-        try { (cmd as any).kill("SIGKILL"); } catch { /* já terminou */ }
-        reject(new Error(`FFmpeg timeout (>45s)`));
+        try { (cmd as any).kill("SIGKILL"); } catch { /* ok */ }
+        reject(new Error("FFmpeg timeout (>45s)"));
       }, 45_000);
     });
 
-    // ── 4. Upload para Supabase Storage (temp/) ──────────────────────────────
-    const buf          = fs.readFileSync(output);
-    const outputSizeMB = (buf.length / 1_048_576).toFixed(1);
-    const storagePath  = `temp/vfx_${uid}.mp4`;
-    const admin        = getSupabaseAdmin();
-
-    const { error: upErr } = await admin.storage
-      .from("videos-library")
-      .upload(storagePath, buf, { contentType: "video/mp4", upsert: false });
-
-    if (upErr) throw new Error(`Upload temp: ${upErr.message}`);
-
-    const { data: urlData } = admin.storage
-      .from("videos-library")
-      .getPublicUrl(storagePath);
+    // ── 7. Upload para Supabase Storage ──────────────────────────────────────
+    const outputSizeMB = (fs.statSync(output).size / 1_048_576).toFixed(1);
+    const publicUrl = await uploadToTemp(output, uid);
 
     const activeFx = [
-      mirror  ? "mirror"  : "",
-      invert  ? "invert"  : "",
-      zoom    ? "zoom"    : "",
-      blur    ? "blur"    : "",
-      noise   ? "noise"   : "",
-      antiAi  ? "antiAi"  : "",
-    ].filter(Boolean).join("+");
+      userEffects.mirror  ? "mirror"  : "",
+      userEffects.invert  ? "invert"  : "",
+      userEffects.zoom    ? "zoom"    : "",
+      userEffects.blur    ? "blur"    : "",
+      userEffects.noise   ? "noise+"  : "",
+      userEffects.antiAi  ? "antiAi"  : "",
+    ].filter(Boolean).join("+") || "base";
 
     console.log(
-      `[video-effects] ✓ [${activeFx}] | ${inputSizeMB} MB in → ${outputSizeMB} MB out → ${storagePath}`
+      `[process-videos] ✓ @${seed.slice(0, 8)} [${activeFx}] ` +
+      `| ${inputSizeMB}MB → ${outputSizeMB}MB ` +
+      `| pitch=${pitchFactor.toFixed(4)} noise=${noiseLuma} crf=19`
     );
 
-    return urlData.publicUrl;
+    return publicUrl;
 
   } finally {
     for (const p of [input, output]) {
       try { fs.unlinkSync(p); } catch { /* ok */ }
     }
   }
+}
+
+// ── applyVideoEffects — wrapper de compatibilidade ───────────────────────────
+// Chamado por publish-scheduled e posts/create.
+// Delega para processVideoForAccount (sempre re-encoda).
+
+export async function applyVideoEffects(
+  videoUrl: string,
+  opts: VideoEffectOptions
+): Promise<string> {
+  return processVideoForAccount(videoUrl, opts.accountId ?? "", {
+    mirror: opts.mirror,
+    invert: opts.invert,
+    zoom:   opts.zoom,
+    blur:   opts.blur,
+    noise:  opts.noise,
+    antiAi: opts.antiAi,
+  });
 }

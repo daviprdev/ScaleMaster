@@ -17,18 +17,18 @@ export interface ProcessResult {
  * Downloads a video and re-packages it via pure stream extraction.
  *
  * Pipeline (Pure Extraction):
- *   -map 0:v:0                      — first video track only; discards data streams
- *   -map 0:a:0?                     — first audio track only (? = optional)
- *   -c:v copy -c:a copy             — stream copy; zero re-encoding, 100% quality
- *   -bsf:v filter_units=remove_types=6  — strips SEI NAL units (H.264 type 6):
- *                                     UUID tracking, creator ID, CDN fingerprints
- *                                     embedded by Instagram/TikTok inside the bitstream.
- *                                     Survives -map_metadata because it lives inside
- *                                     the video bitstream, not in MP4 container atoms.
- *   -map_metadata -1                — strips container-level metadata (EXIF, GPS, encoder)
- *   -map_chapters -1                — removes chapter markers
- *   -movflags +faststart            — moov atom at front for progressive web playback
- *   -f mp4                          — strict MP4 container (no non-standard atom types)
+ *   -map 0:v:0                           — first video track only; discards data streams
+ *   -map 0:a:0?                          — first audio track only (? = optional)
+ *   -c:v copy -c:a copy                  — stream copy; zero re-encoding, 100% quality
+ *   -bsf:v filter_units=remove_types=5+6 — strips SEI NAL units from H.264 bitstream:
+ *                                          type 5 (user_data_unregistered): CDN tracking UUIDs
+ *                                          type 6 (user_data_registered):   Instagram/TikTok fingerprints
+ *                                          Both survive -map_metadata because they live inside
+ *                                          the video bitstream, not in MP4 container atoms.
+ *   -map_metadata -1                     — strips container-level metadata (EXIF, GPS, encoder)
+ *   -map_chapters -1                     — removes chapter markers
+ *   -movflags +faststart                 — moov atom at front for progressive web playback
+ *   -f mp4                               — strict MP4 container
  */
 export async function downloadAndStripMetadata(
   videoUrl: string
@@ -50,11 +50,11 @@ export async function downloadAndStripMetadata(
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
       .outputOptions([
-        "-map 0:v:0",    // pure video extraction — first track only, no data streams
-        "-map 0:a:0?",   // pure audio extraction — first track only (optional)
+        "-map 0:v:0",
+        "-map 0:a:0?",
         "-c:v",          "copy",
         "-c:a",          "copy",
-        "-bsf:v",        "filter_units=remove_types=6",  // strip SEI NAL units (H.264 type 6): Instagram UUID tracking, creator ID, CDN fingerprints
+        "-bsf:v",        "filter_units=remove_types=5+6",
         "-map_metadata", "-1",
         "-map_chapters", "-1",
         "-movflags",     "+faststart",

@@ -2707,4 +2707,64 @@ Filtrar por `[video-effects]` — cada conta deve ter valores diferentes:
 [video-effects] ✓ [spd=1.003+luma=8+chroma=6+vol=1.020+hue=+5°+crf=24+sharp=0.3] | 9.1 MB → temp/vfx_...
 ```
 
+---
+
+## Sessão 2026-06-18 — stagger cap + video-effects refactoring + SEI stripping
+
+### Fix — stagger cap 50% do interval (commit `8e9a4ce`)
+
+**Problema:** Contas com índice alto no loop recebiam `retry_after = now + (interval_minutes - 3)`. Margem de 3 min era insuficiente — `publish-pending` poderia não ter processado o container antes do próximo `process-loops`. Resultado: `containerAlreadyExists = true` → conta pulava o ciclo → intervalo efetivo dobrava.
+
+**Fix:** `initialDelayMinutes = Math.min(rawDelay, Math.floor(interval_minutes * 0.5))`
+
+Com 50% do intervalo como cap, todos os containers da janela anterior são publicados com folga antes do próximo ciclo.
+
+---
+
+### Fix — video-effects: zero re-encoding automático (commits `03aa175`, `5b553eb`)
+
+**Problema:** Base fingerprint automático (speed ±4%, eq, CRF variável) foi adicionado para derrotar VPDQ da Meta. Views caíram de normal para **4–8 por vídeo**.
+
+**Linha do tempo do base fingerprint:**
+| Commit | Speed | CRF | Resultado |
+|---|---|---|---|
+| `1835f38` — primeiro base | ±0.2% | 22 fixo | ✅ ok |
+| `7944be5` | ±0.5% | 22 fixo | ✅ ok |
+| `7b38bfd` | ±1.5% | 18–24 | ⚠️ arquivos grandes |
+| `c5f3237` | **±4%** | 18–26 | ❌ speed perceptível |
+| `ac323c3` | ±4% | **30–34** | ❌ dupla compressão |
+
+**Causa raiz dupla:**
+1. Speed ±4% é perceptível ao espectador → queda de retenção → algoritmo suprime
+2. CRF 30–34 + fonte Instagram ~CRF 32 = dupla compressão lossy → qualidade degradada → Instagram re-transcodifica de fonte ruim → menos views
+
+**Decisão:** FFmpeg NÃO é executado automaticamente. Só roda quando usuário ativa efeito criativo (hflip/negate/zoom/blur/noise/antiAi) no painel do Loop. Sem efeito ativo → URL original postada diretamente (zero re-encoding, qualidade máxima).
+
+**Lição:** Re-encoding automático para "derrotar fingerprint" causa mais dano (qualidade) do que o fingerprinting em si. Prioridade: qualidade do vídeo > derrota de VPDQ.
+
+---
+
+### Fix — SEI NAL units stripping (commit `0e32c69`)
+
+**Problema:** `-map_metadata -1` limpa apenas metadados do container MP4. SEI NAL units (H.264 tipo 6) ficam embutidos no bitstream de vídeo e sobrevivem ao stream copy com `-c:v copy`. Contêm:
+- UUID de rastreamento do CDN Instagram
+- Creator ID
+- Fingerprint de conteúdo
+
+**Fix:** `-bsf:v filter_units=remove_types=6` adicionado nos três pipelines de entrada de vídeo:
+- `utils/videoSanitizer.ts` → `sanitizeAndHashBust` (salvar Inspiração na Biblioteca)
+- `utils/videoSanitizer.ts` → `sanitizeDoublePass` (download local)
+- `lib/ffmpeg-process.ts` → `downloadAndStripMetadata`
+
+**Pipeline de limpeza completo por camada:**
+```
+-map 0:v:0 -map 0:a:0?          → descarta data streams, tracks extras
+-bsf:v filter_units=remove_types=6  → remove SEI NAL type 6 do bitstream H.264
+-map_metadata -1                 → remove metadados container MP4
+-map_chapters -1                 → remove chapter markers
+-f mp4                           → strict container, sem atoms não-padrão
+```
+
+**Nota:** Strip ocorre UMA VEZ quando o vídeo entra na Biblioteca. Pipeline de postagem não precisa repetir — vídeo já está limpo no Supabase.
+
 Parâmetros diferentes + tamanhos diferentes (CRF variável) = fingerprint único por conta.

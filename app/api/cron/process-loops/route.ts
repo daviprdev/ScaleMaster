@@ -3,7 +3,6 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount } from "@/lib/proxy";
-import { applyVideoEffects } from "@/lib/video-effects";
 import type { ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
@@ -149,13 +148,6 @@ function isWithinHumanSchedule(
 // ---------------------------------------------------------------------------
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-// ---------------------------------------------------------------------------
-// Video effects — executado localmente via fluent-ffmpeg + ffmpeg-static (FFmpeg 6.1.1)
-//
-// serverExternalPackages em next.config.ts garante que o binário nativo
-// não é empacotado pelo webpack e funciona corretamente no runtime Node.js da Vercel.
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Idempotency — evita dupla submissão enquanto há container em voo.
@@ -733,61 +725,120 @@ async function processOneLoop(
       return "skipped";
     }
 
-    // ── FASE 2: Dois sub-estágios para eliminar gargalo sequencial ───────────────
+    // ── FASE 2: Dois sub-estágios ─────────────────────────────────────────────
     //
-    // PRÉ-2a) SEQUENCIAL FFmpeg — processa vídeos um por um.
-    //   Em serverless (CPU compartilhado), rodar N FFmpeg em paralelo faz com que cada
-    //   processo receba ~1/N do CPU e todos estourem o timeout simultaneamente.
-    //   Sequencial: cada encode tem CPU completo → 3-8s por conta (vs. timeout em paralelo).
+    // PRÉ-2a) FILA DE PROCESSAMENTO — O FFmpeg NÃO roda aqui.
+    //   Cada conta tem um job em video_processing_jobs processado pelo cron
+    //   process-videos (separado). Este cron apenas verifica se o job está pronto
+    //   (status='done') e usa a URL processada. Se não está pronto, enfileira o
+    //   job e pula a conta neste ciclo.
     //
-    // 2a) PARALELO — idempotency + caption para TODAS as contas simultaneamente.
-    //     Sem FFmpeg nem Meta API aqui.
-    //
-    // 2b) SEQUENCIAL — token refresh + criação de container na Meta com jitter.
-    //     Meta API é rate-sensitive: serialização mínima mantida.
+    // 2a) PARALELO — idempotency + caption para contas com job done.
+    // 2b) SEQUENCIAL — token refresh + criação de container Meta com jitter.
 
-    // ── PRÉ-FASE 2a: FFmpeg sequencial ───────────────────────────────────────────
-    // Budget de 200s: garante pelo menos 100s para FASE 2b antes do limite Vercel (300s).
-    // Contas acima do budget postam sem efeito neste ciclo.
-    const FX_BUDGET_MS = 200_000;
-    const tFxStart = Date.now();
-    const processedVideoUrls = new Map<string, string>(); // accountId → URL pós-efeito
-    for (const account of validAccounts) {
-      const assignment = videoAssignments.get(account.id);
-      if (!assignment) continue;
-      const elapsed = Date.now() - tFxStart;
-      if (elapsed > FX_BUDGET_MS) {
-        console.warn(
-          `[video-effects] ⏭ @${account.username}: budget ${FX_BUDGET_MS / 1000}s esgotado ` +
-          `(${Math.round(elapsed / 1000)}s passados), postando sem efeito.`
-        );
-        processedVideoUrls.set(account.id, assignment.video.public_url);
-        continue;
+    // ── PRÉ-FASE 2a: Check da fila de processamento ──────────────────────────
+    // Busca jobs existentes (queued/processing/done) para todas as contas do loop.
+    const { data: existingJobRows } = await (admin as any)
+      .from("video_processing_jobs")
+      .select("id, account_id, status, output_url, video_id")
+      .eq("loop_id", loop.id)
+      .in("account_id", validAccounts.map(a => a.id))
+      .in("status", ["queued", "processing", "done"])
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false });
+
+    // Um job por conta (o mais recente)
+    const existingJobsMap = new Map<string, { id: string; status: string; output_url: string | null; video_id: string }>();
+    for (const job of (existingJobRows ?? [])) {
+      if (!existingJobsMap.has(job.account_id)) {
+        existingJobsMap.set(job.account_id, job);
       }
-      let videoUrl = assignment.video.public_url;
-      try {
-        const processed = await applyVideoEffects(assignment.video.public_url, {
-          mirror:    loop.effect_mirror,
-          invert:    loop.effect_invert,
-          zoom:      loop.effect_zoom,
-          blur:      loop.effect_blur,
-          noise:     loop.effect_noise,
-          antiAi:    loop.effect_anti_ai,
-          accountId: account.id,
-        });
-        if (processed) videoUrl = processed;
-      } catch (fxErr) {
-        const fxMsg = fxErr instanceof Error ? fxErr.message : String(fxErr);
-        console.error(
-          `[video-effects] ✗ @${account.username}: FFmpeg falhou, postando sem efeito. ` +
-          `Erro: ${fxMsg.slice(0, 200)}`
-        );
-      }
-      processedVideoUrls.set(account.id, videoUrl);
     }
+
+    // Expiry do job: max(2h, interval + 90min) — garante que o job sobrevive até o próximo ciclo.
+    // process-videos NÃO sobrescreve expires_at para não reduzir esse valor.
+    const jobExpiresMs = Math.max(2 * 60 * 60_000, (loop.interval_minutes + 90) * 60_000);
+
+    // Determina quais contas têm job done e quais precisam de novo job
+    const processedVideoUrls = new Map<string, string>(); // accountId → URL processada
+    const doneJobVideoIds    = new Map<string, string>(); // accountId → video_id do job done
+    const jobsToInsert: Record<string, unknown>[] = [];
+    let firstTimeInserts = 0;
+    let pipelineInserts  = 0;
+    let waitingAccounts  = 0; // contas com job queued/processing — aguardando process-videos
+
+    const effectsPayload = {
+      mirror: loop.effect_mirror,
+      invert: loop.effect_invert,
+      zoom:   loop.effect_zoom,
+      blur:   loop.effect_blur,
+      noise:  loop.effect_noise,
+      antiAi: loop.effect_anti_ai,
+    };
+
+    for (const account of validAccounts) {
+      const assignment  = videoAssignments.get(account.id);
+      if (!assignment) continue;
+
+      const existingJob = existingJobsMap.get(account.id);
+
+      if (existingJob?.status === "done" && existingJob.output_url) {
+        // Job do ciclo anterior concluído: usa URL processada com fingerprint único por conta.
+        // Pipeline: também enfileira o vídeo DO CICLO ATUAL para o próximo ciclo usar,
+        // evitando que o mesmo job done seja reutilizado indefinidamente em ciclos futuros.
+        processedVideoUrls.set(account.id, existingJob.output_url);
+        doneJobVideoIds.set(account.id, existingJob.video_id);
+        jobsToInsert.push({
+          user_id:    loop.user_id,
+          loop_id:    loop.id,
+          account_id: account.id,
+          video_id:   assignment.video.id,
+          source_url: assignment.video.public_url,
+          effects:    effectsPayload,
+          expires_at: new Date(Date.now() + jobExpiresMs).toISOString(),
+        });
+        pipelineInserts++;
+
+      } else if (!existingJob) {
+        // Sem job: enfileira para o process-videos processar (primeiro ciclo desta conta)
+        jobsToInsert.push({
+          user_id:    loop.user_id,
+          loop_id:    loop.id,
+          account_id: account.id,
+          video_id:   assignment.video.id,
+          source_url: assignment.video.public_url,
+          effects:    effectsPayload,
+          expires_at: new Date(Date.now() + jobExpiresMs).toISOString(),
+        });
+        firstTimeInserts++;
+        // processedVideoUrls não preenchida → conta pulada na FASE 2a
+
+      } else {
+        // Job queued ou processing — process-videos ainda processando
+        waitingAccounts++;
+      }
+    }
+
+    if (jobsToInsert.length > 0) {
+      const { error: insertErr } = await (admin as any)
+        .from("video_processing_jobs")
+        .insert(jobsToInsert);
+      if (insertErr) {
+        console.warn(`[loop-cron] Falha ao enfileirar jobs de vídeo: ${insertErr.message}`);
+      } else {
+        if (firstTimeInserts > 0) {
+          console.log(`[loop-cron] "${loop.name}": ${firstTimeInserts} job(s) novos enfileirados para process-videos.`);
+        }
+        if (pipelineInserts > 0) {
+          console.log(`[loop-cron] "${loop.name}": ${pipelineInserts} job(s) pipeline (próximo ciclo) enfileirados.`);
+        }
+      }
+    }
+
+    const doneCount = processedVideoUrls.size;
     console.log(
-      `[loop-cron] "${loop.name}" — PRÉ-FASE FFmpeg concluída em ${Date.now() - tFxStart}ms ` +
-      `(${processedVideoUrls.size} conta(s) sequencial).`
+      `[loop-cron] "${loop.name}" — fila: ${doneCount} pronto(s), ` +
+      `${firstTimeInserts} novo(s), ${waitingAccounts} aguardando process-videos.`
     );
 
     type AccountPrep =
@@ -877,8 +928,12 @@ async function processOneLoop(
           return { kind: "skip", account, reason: "sem legendas no loop" };
         }
 
-        // URL pré-processada pela PRÉ-FASE FFmpeg sequencial (antes do Promise.allSettled).
-        const videoUrl = processedVideoUrls.get(account.id) ?? assignment.video.public_url;
+        // URL processada pelo process-videos (fingerprint único por conta).
+        // Se não está pronta, a conta foi pulada antes — este ponto nunca é atingido sem URL.
+        const videoUrl = processedVideoUrls.get(account.id);
+        if (!videoUrl) {
+          return { kind: "skip", account, reason: "vídeo em processamento (aguardando fila)" };
+        }
 
         return { kind: "ready", account, assignment, caption, videoUrl };
       })
@@ -1028,10 +1083,13 @@ async function processOneLoop(
         // seguinte e o intervalo efetivo dobrar (ex: 15 min virar 30 min).
         const initialDelayMinutes = Math.min(rawDelayMinutes, Math.max(0, Math.floor(loop.interval_minutes * 0.5)));
 
+        // Usa o video_id do job done (pode ser diferente da atribuição aleatória atual)
+        const videoIdToUse = doneJobVideoIds.get(account.id) ?? assignment.video.id;
+
         try {
           await createContainerForAccount(
             admin, account, loop, videoUrl, caption, tokenToUse,
-            assignment.video.id, newCyclesDone,
+            videoIdToUse, newCyclesDone,
             initialDelayMinutes,
             proxy
           );
@@ -1070,9 +1128,12 @@ async function processOneLoop(
 
         console.error(`[loop-cron] ✗ @${account.username}: ${msg}`);
 
+        // Usa o video_id do job done (vídeo realmente tentado), não o da atribuição atual.
+        const errorVideoId = doneJobVideoIds.get(account.id) ?? assignment.video.id;
+
         await recordContainerError(
           admin, account, loop, caption, msg,
-          assignment.video.id, newCyclesDone
+          errorVideoId, newCyclesDone
         );
 
         if (isCriticalMetaError(msg)) {
@@ -1084,7 +1145,7 @@ async function processOneLoop(
             errorMsg: msg,
             videoUrl,
             caption,
-            videoId: assignment.video.id,
+            videoId: errorVideoId,
           });
           console.warn(
             `[loop-cron] ⏳ @${account.username}: erro crítico enfileirado para avaliação de cascata ` +
@@ -1207,7 +1268,7 @@ export async function GET(req: NextRequest) {
         .list("temp", { limit: 100, sortBy: { column: "created_at", order: "asc" } });
 
       const toDelete = (tempFiles ?? [])
-        .filter(f => f.name.startsWith("vfx_") && f.created_at && f.created_at < cleanupCutoff)
+        .filter(f => (f.name.startsWith("vfx_") || f.name.startsWith("vpf_")) && f.created_at && f.created_at < cleanupCutoff)
         .map(f => `temp/${f.name}`);
 
       if (toDelete.length > 0) {

@@ -1,23 +1,28 @@
 /**
- * videoSanitizer.ts — Pure Extraction pipeline for Instagram Reels
+ * videoSanitizer.ts — Pipeline de limpeza para downloads de Inspirações
  *
- * Extracts STRICTLY the primary video and primary audio tracks, discarding
- * all other data streams, hidden subtitles and telemetry tracks embedded by
- * source CDNs (Instagram, TikTok, etc.). Packages into a clean MP4.
+ * Usado em dois contextos:
+ *   - sanitizeForLibrary:  salvar Inspiração na Biblioteca (upload Supabase)
+ *   - sanitizeForDownload: baixar Inspiração no dispositivo do usuário
  *
- *   -map 0:v:0                      — first video track only; discards data streams
- *   -map 0:a:0?                     — first audio track only (? = optional)
- *   -c:v copy -c:a copy             — stream copy; zero re-encoding, 100% quality
- *   -bsf:v filter_units=remove_types=6  — strips SEI NAL units (type 6) from the
- *                                     H.264 bitstream: UUID tracking, creator ID and
- *                                     CDN fingerprints embedded by Instagram/TikTok.
- *                                     These survive -map_metadata because they live
- *                                     inside the video bitstream, not in MP4 atoms.
- *   -map_metadata -1                — strips all container-level metadata (EXIF, GPS,
- *                                     encoder, creation_time in MP4 atoms)
- *   -map_chapters -1                — removes chapter markers
- *   -movflags +faststart            — moov atom at front for progressive web playback
- *   -f mp4                          — strict MP4 container (no non-standard atom types)
+ * Pipeline (stream copy + limpeza completa):
+ *   -map 0:v:0                           — primeira trilha de vídeo; descarta data streams
+ *   -map 0:a:0?                          — primeira trilha de áudio (opcional)
+ *   -c:v copy -c:a copy                  — stream copy; zero re-encode, qualidade máxima
+ *   -bsf:v filter_units=remove_types=5+6 — remove SEI NAL units do bitstream H.264:
+ *                                          tipo 5 (user_data_unregistered): UUIDs de rastreio CDN
+ *                                          tipo 6 (user_data_registered):   fingerprint Instagram/TikTok
+ *                                          Sobrevivem ao -map_metadata pois estão no bitstream,
+ *                                          não nos átomos do container MP4.
+ *   -map_metadata -1                     — remove metadados do container (EXIF, GPS, encoder)
+ *   -metadata creation_time=...          — injeta data realista (parece captura original)
+ *   -map_chapters -1                     — remove chapter markers
+ *   -movflags +faststart                 — moov atom na frente para playback progressivo
+ *   -f mp4                               — container MP4 limpo
+ *
+ * Nota: SEI tipo 5 foi adicionado (antes apenas tipo 6). Tipo 5 contém
+ * user_data_unregistered — UUIDs proprietários usados pelos CDNs do Instagram
+ * e TikTok para rastrear a origem dos vídeos baixados.
  */
 
 import ffmpeg from "fluent-ffmpeg";
@@ -30,79 +35,93 @@ import * as crypto from "crypto";
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 export interface SanitizeResult {
-  /** Absolute path to the processed output file in /tmp */
-  outputPath: string;
-  /** Relative storage path to use when uploading to Supabase Storage */
+  outputPath:  string;
   storagePath: string;
-  /** File size in bytes of the processed output */
-  fileSize: number;
-  /** Call this after uploading to remove all temp files */
-  cleanup: () => void;
+  fileSize:    number;
+  cleanup:     () => void;
 }
 
 const DOWNLOAD_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
-  Referer: "https://www.instagram.com/",
-  Origin: "https://www.instagram.com",
-  Accept: "video/mp4,video/webm,*/*;q=0.8",
+  Referer:    "https://www.instagram.com/",
+  Origin:     "https://www.instagram.com",
+  Accept:     "video/mp4,video/webm,*/*;q=0.8",
   Connection: "keep-alive",
 };
 
-/**
- * Vanilla sanitization used when saving Inspirations to the Library.
- *
- * Pipeline: download → stream copy + strip metadata + faststart
- */
-export async function sanitizeAndHashBust(
-  videoUrl: string,
-  baseName: string
-): Promise<SanitizeResult> {
-  const tmpDir = os.tmpdir();
-  const uid = crypto.randomUUID();
-  const inputPath  = path.join(tmpDir, `asc_in_${uid}.mp4`);
-  const outputPath = path.join(tmpDir, `asc_out_${uid}.mp4`);
+// Data de criação fake: parece captura original, não download.
+// Ausência de creation_time é sinal detectável de "arquivo baixado".
+function randomCreationTime(): string {
+  const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+  const ts = Date.now() - Math.floor(Math.random() * ninetyDaysMs);
+  return new Date(ts).toISOString();
+}
 
-  // ── 1. Download ───────────────────────────────────────────────────────────
+// Opções FFmpeg comuns a todos os pipelines de sanitização
+function buildSanitizeOptions(): string[] {
+  return [
+    "-map 0:v:0",
+    "-map 0:a:0?",
+    "-c:v",          "copy",
+    "-c:a",          "copy",
+    "-bsf:v",        "filter_units=remove_types=5+6",
+    "-map_metadata", "-1",
+    "-metadata",     `creation_time=${randomCreationTime()}`,
+    "-map_chapters", "-1",
+    "-movflags",     "+faststart",
+    "-f",            "mp4",
+  ];
+}
+
+async function downloadVideo(videoUrl: string, destPath: string): Promise<void> {
   const response = await fetch(videoUrl, {
     headers: DOWNLOAD_HEADERS,
-    signal: AbortSignal.timeout(60_000),
+    signal:  AbortSignal.timeout(60_000),
   });
   if (!response.ok) {
     throw new Error(`Download falhou: HTTP ${response.status} — ${videoUrl}`);
   }
-  const buffer = await response.arrayBuffer();
-  fs.writeFileSync(inputPath, Buffer.from(buffer));
+  fs.writeFileSync(destPath, Buffer.from(await response.arrayBuffer()));
+}
 
-  // ── 2. Stream copy + SEI strip + metadata strip + faststart ─────────────
+async function runSanitize(inputPath: string, outputPath: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
-      .outputOptions([
-        "-map 0:v:0",    // pure video extraction — first track only, no data streams
-        "-map 0:a:0?",   // pure audio extraction — first track only (optional)
-        "-c:v",          "copy",
-        "-c:a",          "copy",
-        "-bsf:v",        "filter_units=remove_types=6",  // strip SEI NAL units (H.264 type 6): Instagram UUID tracking, creator ID, CDN fingerprints
-        "-map_metadata", "-1",
-        "-map_chapters", "-1",
-        "-movflags",     "+faststart",
-        "-f",            "mp4",
-      ])
+      .outputOptions(buildSanitizeOptions())
       .output(outputPath)
-      .on("end", () => resolve())
+      .on("end",   () => resolve())
       .on("error", (err: Error) => reject(new Error(`FFmpeg: ${err.message}`)))
       .run();
   });
+}
 
-  // ── 3. Build storage path ─────────────────────────────────────────────────
-  const stats = fs.statSync(outputPath);
-  const timestamp = Date.now();
+function buildStoragePath(baseName: string, uid: string): string {
   const safe = baseName.replace(/[^a-z0-9_-]/gi, "_").slice(0, 60);
-  const storagePath = `videos/${safe}_${timestamp}_${uid.slice(0, 8)}.mp4`;
+  return `videos/${safe}_${Date.now()}_${uid.slice(0, 8)}.mp4`;
+}
 
-  const cleanup = () => {
+/**
+ * Sanitiza vídeo para salvar na Biblioteca.
+ * Equivalente ao antigo sanitizeAndHashBust.
+ */
+export async function sanitizeForLibrary(
+  videoUrl: string,
+  baseName: string
+): Promise<SanitizeResult> {
+  const tmpDir      = os.tmpdir();
+  const uid         = crypto.randomUUID();
+  const inputPath   = path.join(tmpDir, `asc_in_${uid}.mp4`);
+  const outputPath  = path.join(tmpDir, `asc_out_${uid}.mp4`);
+
+  await downloadVideo(videoUrl, inputPath);
+  await runSanitize(inputPath, outputPath);
+
+  const stats       = fs.statSync(outputPath);
+  const storagePath = buildStoragePath(baseName, uid);
+  const cleanup     = () => {
     for (const p of [inputPath, outputPath]) {
-      try { fs.unlinkSync(p); } catch { /* already removed or never created */ }
+      try { fs.unlinkSync(p); } catch { /* ok */ }
     }
   };
 
@@ -110,64 +129,16 @@ export async function sanitizeAndHashBust(
 }
 
 /**
- * Single-pass sanitization used for local device downloads.
- *
- * Pipeline: download → stream copy + SEI strip + metadata strip + faststart
- *
- * Previously two passes; collapsed to one since the second pass only existed
- * to inject a UUID comment (now removed to avoid programmatic fingerprinting).
+ * Sanitiza vídeo para download local no dispositivo do usuário.
+ * Equivalente ao antigo sanitizeDoublePass (agora single-pass idêntico ao de Library).
  */
-export async function sanitizeDoublePass(
+export async function sanitizeForDownload(
   videoUrl: string,
   baseName: string
 ): Promise<SanitizeResult> {
-  const tmpDir = os.tmpdir();
-  const uid = crypto.randomUUID();
-  const inputPath  = path.join(tmpDir, `asc_in_${uid}.mp4`);
-  const outputPath = path.join(tmpDir, `asc_out_${uid}.mp4`);
-
-  // ── 1. Download ───────────────────────────────────────────────────────────
-  const response = await fetch(videoUrl, {
-    headers: DOWNLOAD_HEADERS,
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!response.ok) {
-    throw new Error(`Download falhou: HTTP ${response.status} — ${videoUrl}`);
-  }
-  const buffer = await response.arrayBuffer();
-  fs.writeFileSync(inputPath, Buffer.from(buffer));
-
-  // ── 2. Stream copy + SEI strip + metadata strip + faststart ─────────────
-  await new Promise<void>((resolve, reject) => {
-    ffmpeg(inputPath)
-      .outputOptions([
-        "-map 0:v:0",    // pure video extraction — first track only, no data streams
-        "-map 0:a:0?",   // pure audio extraction — first track only (optional)
-        "-c:v",          "copy",
-        "-c:a",          "copy",
-        "-bsf:v",        "filter_units=remove_types=6",  // strip SEI NAL units (H.264 type 6): Instagram UUID tracking, creator ID, CDN fingerprints
-        "-map_metadata", "-1",
-        "-map_chapters", "-1",
-        "-movflags",     "+faststart",
-        "-f",            "mp4",
-      ])
-      .output(outputPath)
-      .on("end", () => resolve())
-      .on("error", (err: Error) => reject(new Error(`FFmpeg: ${err.message}`)))
-      .run();
-  });
-
-  // ── 3. Build storage path ─────────────────────────────────────────────────
-  const stats = fs.statSync(outputPath);
-  const timestamp = Date.now();
-  const safe = baseName.replace(/[^a-z0-9_-]/gi, "_").slice(0, 60);
-  const storagePath = `videos/${safe}_${timestamp}_${uid.slice(0, 8)}.mp4`;
-
-  const cleanup = () => {
-    for (const p of [inputPath, outputPath]) {
-      try { fs.unlinkSync(p); } catch { /* already removed */ }
-    }
-  };
-
-  return { outputPath, storagePath, fileSize: stats.size, cleanup };
+  return sanitizeForLibrary(videoUrl, baseName);
 }
+
+// ── Aliases para compatibilidade com imports existentes ──────────────────────
+export const sanitizeAndHashBust  = sanitizeForLibrary;
+export const sanitizeDoublePass   = sanitizeForDownload;
