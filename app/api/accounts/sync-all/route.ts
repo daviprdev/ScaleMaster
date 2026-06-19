@@ -262,12 +262,15 @@ export async function POST() {
           .from("instagram_accounts")
           .update({ health_status: "error", profile_refreshed_at: new Date().toISOString() })
           .eq("id", r.id);
-        void admin.from("failover_logs").insert({
+        // IMPORTANTE: deve ser awaited — funções serverless da Vercel terminam ao enviar
+        // a response, cancelando qualquer promise fire-and-forget (void) em voo.
+        const { error: logErr } = await admin.from("failover_logs").insert({
           user_id: r.user_id,
           failed_account_id: r.id,
           backup_account_id: null,
           error_reason: `[sync-all] code=${r.errorCode} — ${r.errorMessage}`,
         });
+        if (logErr) console.error(`[sync-all] Falha ao gravar failover_log para @${r.username}:`, logErr.message);
         console.warn(`[sync-all] Token inválido para @${r.username}: code=${r.errorCode} — ${r.errorMessage}`);
         errors++;
         tokenErrors++;
