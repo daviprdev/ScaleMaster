@@ -58,6 +58,7 @@ const navGroups: NavGroup[] = [
       { label: "Logins", href: "/dashboard/logins", icon: Lock },
       { label: "Postar", href: "/dashboard/postar", icon: Send },
       { label: "Loop", href: "/dashboard/loop", icon: Repeat2 },
+      { label: "Clonar Perfil", href: "/dashboard/clone", icon: Copy },
       { label: "Monitor", href: "/dashboard/monitor", icon: Activity },
     ],
   },
@@ -65,7 +66,6 @@ const navGroups: NavGroup[] = [
     label: "CONTEÚDOS",
     items: [
       { label: "Inspirações",   href: "/dashboard/inspirations", icon: Sparkles },
-      { label: "Clonar Perfil", href: "/dashboard/clone",        icon: Copy },
       { label: "Biblioteca",    href: "/dashboard/library",      icon: FolderOpen },
     ],
   },
