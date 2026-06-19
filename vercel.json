@@ -19,6 +19,10 @@
     {
       "path": "/api/analytics/sync",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-tokens",
+      "schedule": "0 */12 * * *"
     }
   ]
 }

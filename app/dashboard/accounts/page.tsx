@@ -682,7 +682,7 @@ export default function AccountsPage() {
       _autoRefreshDone.current = true;
 
       const expiring = fetched.filter(
-        (a) => a.ig_business_account_id && (daysUntilExpiry(a.token_expires_at) ?? 99) <= 7
+        (a) => a.ig_business_account_id && (daysUntilExpiry(a.token_expires_at) ?? 99) <= 14
       );
       if (expiring.length === 0) return;
 

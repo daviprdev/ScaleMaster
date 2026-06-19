@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { refreshMetaToken } from "@/lib/meta-refresh";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -37,6 +38,7 @@ interface AccountRow {
   user_id: string;
   ig_business_account_id: string;
   meta_access_token: string;
+  fb_page_id: string | null;
   profile_refreshed_at: string | null;
 }
 
@@ -47,6 +49,7 @@ interface SyncResult {
   ok: boolean;
   tokenError?: boolean;
   infraError?: boolean; // erro de infra da Meta — transitório, não marca como error
+  tokenRefreshed?: boolean; // token foi renovado com sucesso durante o sync
   errorCode?: number;
   errorMessage?: string;
   update?: Record<string, unknown>;
@@ -58,15 +61,20 @@ function isMetaInfraError(code: number, message: string): boolean {
   return META_INFRA_MESSAGES.some(p => lower.includes(p));
 }
 
-async function syncOne(acc: AccountRow): Promise<SyncResult> {
-  try {
+async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmin>): Promise<SyncResult> {
+  let activeToken = acc.meta_access_token;
+
+  const fetchProfile = async (token: string) => {
     const profileUrl =
       `${GRAPH}/${acc.ig_business_account_id}` +
       `?fields=followers_count,media_count,name,profile_picture_url` +
-      `&access_token=${encodeURIComponent(acc.meta_access_token)}`;
-
+      `&access_token=${encodeURIComponent(token)}`;
     const res = await fetch(profileUrl, { cache: "no-store" });
-    const data = (await res.json()) as Record<string, unknown>;
+    return (await res.json()) as Record<string, unknown>;
+  };
+
+  try {
+    let data = await fetchProfile(activeToken);
 
     if (data.error) {
       const err = data.error as { code: number; message: string };
@@ -86,13 +94,55 @@ async function syncOne(acc: AccountRow): Promise<SyncResult> {
       }
 
       const tokenBad = TOKEN_ERROR_CODES.has(err.code);
-      if (!tokenBad) {
+
+      if (tokenBad) {
+        // Antes de marcar como error, tenta renovar o token automaticamente.
+        // Contas ociosas têm tokens expirados (60d) — um refresh pode salvar sem interação do usuário.
+        console.warn(`[sync-all] code=${err.code} para @${acc.username} — tentando renovar token antes de marcar como error…`);
+        try {
+          const { token: newToken, expiresAt } = await refreshMetaToken(
+            activeToken,
+            acc.fb_page_id,
+            null
+          );
+          // Persiste o token renovado imediatamente
+          await admin
+            .from("instagram_accounts")
+            .update({ meta_access_token: newToken, token_expires_at: expiresAt.toISOString() })
+            .eq("id", acc.id);
+
+          activeToken = newToken;
+          // Retry com o token novo
+          data = await fetchProfile(newToken);
+          console.log(`[sync-all] ✓ Token renovado para @${acc.username}, expiry: ${expiresAt.toISOString().slice(0, 10)}`);
+
+          if (data.error) {
+            // Mesmo com token novo o perfil falhou — agora sim, erro real
+            const err2 = data.error as { code: number; message: string };
+            console.warn(`[sync-all] Retry após renovação ainda falhou para @${acc.username}: code=${err2.code}`);
+            return {
+              id: acc.id, user_id: acc.user_id, username: acc.username,
+              ok: false, tokenError: TOKEN_ERROR_CODES.has(err2.code),
+              errorCode: err2.code, errorMessage: err2.message,
+            };
+          }
+          // Refresh + retry bem-sucedido — continua abaixo com `data` atualizado
+        } catch (refreshErr) {
+          // Refresh falhou (token genuinamente morto ou revogado)
+          const refreshMsg = refreshErr instanceof Error ? refreshErr.message : String(refreshErr);
+          console.warn(`[sync-all] Renovação falhou para @${acc.username}: ${refreshMsg.slice(0, 120)}`);
+          return {
+            id: acc.id, user_id: acc.user_id, username: acc.username,
+            ok: false, tokenError: true, errorCode: err.code, errorMessage: err.message,
+          };
+        }
+      } else {
         console.warn(`[sync-all] Erro não-fatal para @${acc.username}: code=${err.code} — ${err.message}`);
+        return {
+          id: acc.id, user_id: acc.user_id, username: acc.username,
+          ok: false, tokenError: false, errorCode: err.code, errorMessage: err.message,
+        };
       }
-      return {
-        id: acc.id, user_id: acc.user_id, username: acc.username,
-        ok: false, tokenError: tokenBad, errorCode: err.code, errorMessage: err.message,
-      };
     }
 
     // Fetch last post timestamp (non-critical)
@@ -139,7 +189,7 @@ export async function POST() {
   // ── Sync normal: contas online com dados desatualizados ───────────────────
   const { data: accounts } = await admin
     .from("instagram_accounts")
-    .select("id, username, user_id, ig_business_account_id, meta_access_token, profile_refreshed_at")
+    .select("id, username, user_id, ig_business_account_id, meta_access_token, fb_page_id, profile_refreshed_at")
     .eq("user_id", user.id)
     .neq("health_status", "error")
     .not("ig_business_account_id", "is", null)
@@ -159,7 +209,7 @@ export async function POST() {
   }
 
   // Coleta todos os resultados ANTES de escrever — necessário para cascade detection
-  const settled = await Promise.allSettled(stale.map(syncOne));
+  const settled = await Promise.allSettled(stale.map(acc => syncOne(acc, admin)));
   const results: SyncResult[] = settled.map((r) =>
     r.status === "fulfilled" ? r.value : { id: "", user_id: "", username: "", ok: false }
   );
