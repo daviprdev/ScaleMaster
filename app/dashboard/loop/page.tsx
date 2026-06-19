@@ -1254,7 +1254,6 @@ function LoopFormModal({
     if (form.accountMode === "specific" && form.accountIds.length === 0) { setError("Selecione pelo menos uma conta."); return; }
     if (!form.folderId) { setError("Selecione uma pasta da biblioteca."); return; }
     if (form.autoCaptionEnabled && !form.autoCaptionType) { setError("Selecione um tipo de legenda automática."); return; }
-    if (!form.autoCaptionEnabled && !form.captions.some(c => c.trim())) { setError("Adicione pelo menos uma legenda para o loop."); return; }
     setError(null);
     setSaving(true);
     try {

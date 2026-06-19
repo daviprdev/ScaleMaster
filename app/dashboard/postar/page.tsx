@@ -943,7 +943,6 @@ export default function PostarPage() {
     if (selectedAccountIds.length === 0) { setSubmitError("Selecione ao menos 1 conta."); return; }
     if (!selectedFolderId) { setSubmitError("Selecione uma pasta de mídia."); return; }
     if (folderVideoCount === 0) { setSubmitError("A pasta selecionada está vazia."); return; }
-    if (!autoCaptionEnabled && validCaptions.length === 0) { setSubmitError("Adicione ao menos 1 legenda."); return; }
     if (!startDatetime) { setSubmitError("Defina a data e hora de início."); return; }
 
     setSubmitError(null);

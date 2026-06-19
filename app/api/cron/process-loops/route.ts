@@ -634,25 +634,7 @@ async function processOneLoop(
 
   const allVideos = allVideoRows as VideoRow[];
 
-  // ── Pré-flight: verificar legendas ANTES do CLAIM ─────────────────────────
-  // Se não há legendas, pular sem avançar last_posted_at — o loop não perde
-  // o intervalo e tenta novamente no próximo ciclo do cron.
-  // Se legendas automáticas estão ativas, não precisa de legendas manuais configuradas.
   const isAutoCaption = loop.auto_caption_enabled === true && !!loop.auto_caption_type;
-
-  if (!isAutoCaption) {
-    const hasConfiguredCaptions = Array.isArray(loop.captions)
-      ? (loop.captions as unknown[]).some(c => typeof c === "string" && (c as string).trim().length > 0)
-      : typeof loop.captions === "string" && (loop.captions as string).trim().length > 0;
-
-    if (!hasConfiguredCaptions) {
-      console.warn(
-        `[loop-cron] "${loop.name}" sem legendas configuradas — pulando sem avançar last_posted_at. ` +
-        `Configure legendas no painel ou ative Legendas Automáticas.`
-      );
-      return "skipped";
-    }
-  }
 
   let loopClaimMade = false;
   let loopContainersCreated = 0;
@@ -936,11 +918,6 @@ async function processOneLoop(
             `[RAIO-X] @${account.username} | Pool: ${loopCaptionsRaw.length} variação(ões) | ` +
             `Sorteada: ${xStatus} | CicloReset: ${assignment.isCycleReset}`
           );
-        }
-
-        if (!caption) {
-          console.warn(`[loop-cron] SEM LEGENDA | @${account.username} | loop="${loop.name}" — pulando conta`);
-          return { kind: "skip", account, reason: "sem legendas no loop" };
         }
 
         // URL processada pelo process-videos (fingerprint único por conta).

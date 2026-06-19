@@ -48,8 +48,6 @@ export async function POST(req: NextRequest) {
 
   const isAutoCaption = !!auto_caption_type;
   const validCaptions = isAutoCaption ? [] : (captions ?? []).map(c => c.trim()).filter(Boolean);
-  if (!isAutoCaption && !validCaptions.length)
-    return NextResponse.json({ error: "Adicione ao menos 1 legenda." }, { status: 400 });
 
   // Pré-gera legendas automáticas únicas se necessário (1 por post total)
   const autoType = (auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
@@ -90,7 +88,9 @@ export async function POST(req: NextRequest) {
       const scheduledAt = new Date(startTime + slotMs + staggerMs).toISOString();
       const caption = isAutoCaption
         ? getAutoCaption(autoType)
-        : validCaptions[Math.floor(Math.random() * validCaptions.length)];
+        : validCaptions.length > 0
+          ? validCaptions[Math.floor(Math.random() * validCaptions.length)]
+          : "";
 
       rows.push({
         user_id: user.id,
