@@ -3,8 +3,8 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search, Users, Play, Heart, Eye, TrendingUp,
-  CheckCircle2, Copy, ChevronRight, Calendar, Zap, X,
+  Search, Users, Play, Eye, TrendingUp,
+  CheckCircle2, Copy, ChevronRight, Zap,
   AlertCircle, Loader2, Sparkles, Download, Clock, Trash2,
   BarChart2,
 } from "lucide-react";
@@ -553,52 +553,6 @@ export default function ClonePage() {
                   </div>
                 </div>
 
-                {/* Reels grid */}
-                <div className="glass-card p-4 rounded-2xl">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-xs font-bold uppercase tracking-widest text-white/35">
-                      Reels encontrados ({reels.length})
-                    </p>
-                    <p className="text-[11px] text-white/30">{usedCount} serão agendados</p>
-                  </div>
-
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 xl:grid-cols-6 gap-2 max-h-[560px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                    {reels.map((reel, i) => {
-                      const used = reelCount === -1 || i < reelCount;
-                      return (
-                        <div
-                          key={reel.id}
-                          className={cn(
-                            "relative rounded-xl overflow-hidden aspect-[9/16] transition-all",
-                            !used && "opacity-30 grayscale"
-                          )}
-                          style={{ border: used ? "1px solid rgba(0,255,65,0.15)" : "1px solid rgba(255,255,255,0.05)" }}
-                        >
-                          {reel.thumbnailUrl ? (
-                            <img src={reel.thumbnailUrl} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.03)" }}>
-                              <Play size={20} className="text-white/20" />
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-                          <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center gap-1.5">
-                            <div className="flex items-center gap-0.5 text-[9px] text-white/70">
-                              <Eye size={8} />{fmt(reel.views)}
-                            </div>
-                            <div className="flex items-center gap-0.5 text-[9px] text-white/70">
-                              <Eye size={8} />{fmt(reel.likes)}
-                            </div>
-                          </div>
-                          <div className="absolute top-1.5 right-1.5 text-[9px] font-bold rounded px-1 py-0.5"
-                            style={{ background: "rgba(0,0,0,0.6)", color: used ? "var(--matrix)" : "rgba(255,255,255,0.3)" }}>
-                            #{i + 1}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
 
               </motion.div>
             ) : (
