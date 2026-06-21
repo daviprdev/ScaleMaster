@@ -7,18 +7,17 @@ import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
 export const runtime = "nodejs";
 
 interface ReelItem {
-  videoUrl:     string;
-  caption:      string;
-  thumbnailUrl?: string | null;
+  shortCode: string;
+  caption:   string;
 }
 
 interface CloneBody {
-  account_ids:       string[];
-  reels:             ReelItem[];
-  reel_count:        number;        // -1 = all
-  posts_per_day:     number;
-  start_at:          string;        // ISO datetime
-  auto_caption_type?: string;       // se presente, substitui captions originais
+  account_ids:        string[];
+  reels:              ReelItem[];
+  reel_count:         number;   // -1 = all
+  posts_per_day:      number;
+  start_at:           string;   // ISO datetime
+  auto_caption_type?: string;   // se presente, substitui captions originais
 }
 
 function fisherYates<T>(arr: T[]): T[] {
@@ -54,11 +53,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Informe a data e hora de início." }, { status: 400 });
 
   // Seleciona quantidade de reels
-  const maxReels   = reel_count === -1 ? reels.length : Math.min(reel_count, reels.length);
-  const baseReels  = reels.slice(0, maxReels).filter(r => r.videoUrl);
+  const maxReels  = reel_count === -1 ? reels.length : Math.min(reel_count, reels.length);
+  const baseReels = reels.slice(0, maxReels).filter(r => r.shortCode);
 
   if (!baseReels.length)
-    return NextResponse.json({ error: "Nenhum Reel com URL de vídeo válida." }, { status: 400 });
+    return NextResponse.json({ error: "Nenhum Reel com shortCode válido." }, { status: 400 });
 
   const admin       = getSupabaseAdmin();
   const campaignId  = randomUUID();
@@ -76,11 +75,13 @@ export async function POST(req: NextRequest) {
       const reel       = shuffled[ri];
       const scheduledAt = new Date(startTime + ri * intervalMs + staggerMs).toISOString();
 
+      // Guarda a URL permanente da página do reel (nunca expira).
+      // publish-scheduled faz scrape Apify em tempo real para obter a URL do CDN fresca.
       rows.push({
         user_id:      user.id,
         account_id:   accountId,
         video_id:     null,
-        video_url:    reel.videoUrl,
+        video_url:    `https://www.instagram.com/reel/${reel.shortCode}/`,
         caption:      isAutoCaption ? getAutoCaption(autoType) : reel.caption,
         scheduled_at: scheduledAt,
         status:       "pending",

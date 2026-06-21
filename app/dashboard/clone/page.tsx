@@ -334,7 +334,7 @@ export default function ClonePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           account_ids:       Array.from(selectedAccounts),
-          reels:             reels.map(r => ({ videoUrl: r.videoUrl, caption: r.caption, thumbnailUrl: r.thumbnailUrl })),
+          reels:             reels.map(r => ({ shortCode: r.shortCode, caption: r.caption })),
           reel_count:        reelCount,
           posts_per_day:     postsPerDay,
           start_at:          startAt,

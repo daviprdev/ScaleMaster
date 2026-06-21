@@ -8,6 +8,7 @@ import {
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount } from "@/lib/proxy";
 import { applyVideoEffects } from "@/lib/video-effects";
+import { withApifyTokenPool } from "@/lib/apify-token-pool";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -56,7 +57,49 @@ const TRANSIENT_PATTERNS = [
   "smartproxy",
   "proxy",
   "timeout",
+  "apify",
+  "não terminou em",
 ];
+
+// ── Clone: detecta URL de página do Instagram e busca CDN fresco via Apify ────
+
+function isCloneUrl(url: string): boolean {
+  return url.includes("instagram.com/reel/") || url.includes("instagram.com/p/");
+}
+
+async function fetchFreshReelUrl(instagramUrl: string): Promise<string> {
+  return withApifyTokenPool(async (client) => {
+    const run = await client.actor("apify/instagram-scraper").start({
+      directUrls: [instagramUrl],
+      resultsType: "posts",
+      resultsLimit: 1,
+      maxRequestsPerCrawl: 5,
+      proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
+    });
+
+    // Poll até 15 × 3s = 45s
+    for (let i = 0; i < 15; i++) {
+      await new Promise<void>(r => setTimeout(r, 3_000));
+      const status = await client.run(run.id).get();
+      if (!status) break;
+      if (["FAILED", "TIMED-OUT", "ABORTED"].includes(status.status as string)) {
+        throw new Error(`Apify run ${status.status} para ${instagramUrl}`);
+      }
+      if (status.status === "SUCCEEDED") {
+        const { items } = await client.dataset(run.defaultDatasetId as string).listItems();
+        const item = (items as Record<string, unknown>[])[0];
+        if (!item) throw new Error("Reel não retornado pelo Apify.");
+        const videoUrl =
+          (item.videoUrl as string | undefined) ||
+          (item.video_url as string | undefined) ||
+          (item.videoPlayUrl as string | undefined) || "";
+        if (!videoUrl) throw new Error("Campo videoUrl ausente no item Apify.");
+        return videoUrl;
+      }
+    }
+    throw new Error(`Apify não terminou em 45s para ${instagramUrl}`);
+  });
+}
 
 function isTransientError(msg: string): boolean {
   const lower = msg.toLowerCase();
@@ -171,6 +214,8 @@ export async function GET(req: NextRequest) {
   };
 
   let publishAttemptsInThisRun = 0;
+  // Limita a 1 scrape Apify por ciclo (cada scrape leva ~20-45s, orçamento de 55s)
+  let cloneFetchCount = 0;
 
   for (const post of posts) {
     // ── Budget global da execução ─────────────────────────────────────────
@@ -270,6 +315,21 @@ export async function GET(req: NextRequest) {
             `[publish-scheduled] ⚠ Efeitos falharam para @${account.username}: ` +
             `${fxErr instanceof Error ? fxErr.message : String(fxErr)} — usando URL original.`
           );
+        }
+
+        // ── Clone: se for URL de página do Instagram, busca CDN fresco via Apify ─
+        if (isCloneUrl(effectiveVideoUrl)) {
+          if (cloneFetchCount >= 1) {
+            // Orçamento ocupado por outro scrape neste ciclo — adia para o próximo
+            console.log(`[publish-scheduled] ⏭ Clone post @${account.username} adiado — scrape Apify já em uso neste ciclo.`);
+            await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
+            summary.skipped++;
+            continue;
+          }
+          console.log(`[publish-scheduled] 🔄 Clone post @${account.username} — buscando CDN fresco: ${effectiveVideoUrl}`);
+          cloneFetchCount++;
+          effectiveVideoUrl = await fetchFreshReelUrl(effectiveVideoUrl);
+          console.log(`[publish-scheduled] ✓ CDN fresco obtido: ${effectiveVideoUrl.slice(0, 80)}…`);
         }
 
         console.log(`[publish-scheduled] Criando container Meta para @${account.username} | proxy=${proxy ? "sim" : "não"} | videoUrl=${effectiveVideoUrl.slice(0, 80)}...`);
