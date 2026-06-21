@@ -246,12 +246,18 @@ export async function processVideoForAccount(
 
 // ── applyVideoEffects — wrapper de compatibilidade ───────────────────────────
 // Chamado por publish-scheduled e posts/create.
-// Delega para processVideoForAccount (sempre re-encoda).
+// Se nenhum efeito criativo estiver ativo, retorna URL original sem re-encode.
 
 export async function applyVideoEffects(
   videoUrl: string,
   opts: VideoEffectOptions
 ): Promise<string> {
+  const hasActiveEffect =
+    opts.mirror || opts.invert || opts.zoom ||
+    opts.blur   || opts.noise  || opts.antiAi;
+
+  if (!hasActiveEffect) return videoUrl;
+
   return processVideoForAccount(videoUrl, opts.accountId ?? "", {
     mirror: opts.mirror,
     invert: opts.invert,
