@@ -2768,3 +2768,91 @@ Com 50% do intervalo como cap, todos os containers da janela anterior são publi
 **Nota:** Strip ocorre UMA VEZ quando o vídeo entra na Biblioteca. Pipeline de postagem não precisa repetir — vídeo já está limpo no Supabase.
 
 Parâmetros diferentes + tamanhos diferentes (CRF variável) = fingerprint único por conta.
+
+---
+
+## Sessão 2026-06-22
+
+### Diagnóstico — Loop LEXY sem postagens (pasta de mídia vazia)
+
+**Problema:** Loop LEXY criado às 10:44 UTC. Após 5h: `last_posted_at=NULL`, `cycles_done=0`, zero containers em `pending_containers`.
+
+**Root cause:** A pasta de mídia "LEXY" em `videos_library` tinha **0 vídeos**. O `process-loops` tenta `SELECT * FROM videos_library WHERE folder_id = loop.folder_id`, encontra array vazio, e executa `continue` silenciosamente para cada conta — sem criar container, sem log de erro, sem atualizar `last_posted_at`.
+
+**Diagnóstico via SQL:**
+```sql
+SELECT lf.name, COUNT(vl.id) FROM library_folders lf
+LEFT JOIN videos_library vl ON vl.folder_id = lf.id
+GROUP BY lf.name;
+-- LEXY: 0 | JENI: 320 | VICK: 175
+```
+
+**Solução:** Adicionar vídeos à pasta correta na Biblioteca ou redirecionar o loop para pasta existente.
+
+**Lição:** Quando um loop tem `last_posted_at=NULL` e `cycles_done=0` após horas, verificar PRIMEIRO se a pasta de mídia tem vídeos. É a causa mais comum de loop "fantasma".
+
+---
+
+### Fix — Clone: scrape limitado retornando menos reels que o esperado (commit `881a1d2`)
+
+**Problema:** Conta com 140 reels mostrava apenas 40 no painel de Clone.
+
+**Root cause:** `handleSearch` em `clone/page.tsx` passava `limit: 100` hardcoded para a API, independente de qualquer configuração do usuário. O Apify com `resultsLimit: 100` e `maxRequestsPerCrawl: Math.max(200, 25) = 200` retornou 40 reels (o Apify/Instagram limitou a paginação).
+
+**Fix:**
+- Frontend: `limit: 100` → `limit: 300`
+- API (search + poll): `maxRequestsPerCrawl: Math.max(500, limit*3)` → `Math.max(300, limit*2) = 600`
+- A seleção "10/20/50/100/Todos" na UI continua controlando apenas quantos **agendar** — o scrape sempre tenta buscar o máximo
+
+---
+
+### Fix — Revisão completa aba Clonar Perfil (commit `a1b1634`)
+
+10 bugs corrigidos em 6 arquivos após revisão sistemática:
+
+#### Segurança
+- **Auth ausente:** `POST /api/clone/search` e `GET /api/clone/search/poll` não verificavam autenticação. Qualquer pessoa podia disparar scrapes Apify e ler resultados (perfil, stats, URLs de vídeos de outros usuários).
+- **Sem validação de ownership:** `clone/create` inseria posts com qualquer `account_id` sem verificar se pertence ao usuário. Fix: query via supabase client (RLS) antes de inserir.
+
+#### Scraping
+- **Filtro duplo excludente:** poll/route.ts tinha `.filter(item => item.type === "Video" || resolveVideoUrl(item))` ANTES do `.filter(r => r.videoUrl)` final. O primeiro filtro excluía reels com type diferente de "Video" mesmo que tivessem videoUrl válido. Removido; só o filtro final permanece.
+- **Fallback usa token errado:** ao fazer fallback para URL principal do perfil, usava `client` do run original. Fix: usa o pool de tokens.
+- **try/catch ausente em req.json():** body inválido causava HTTP 500 em vez de 400.
+
+#### Publicação (maior impacto)
+- **downloadAndHostForMeta com fetch global:** Next.js 15 patcha o `fetch` global e descarta o `dispatcher` (proxy) silenciosamente. Downloads do CDN do Instagram saíam pelo IP puro da Vercel. Migrado para `undiciFetch` da undici com proxy.
+- **cloneFetchCount bloqueava múltiplos posts:** após 1 scrape Apify, todos os outros posts clone do mesmo batch eram adiados. Fix: cache em memória `cloneUrlCache` — reels com a mesma URL instagram.com (mesma conta, múltiplas contas postando mesmo reel) compartilham 1 scrape sem re-scraper.
+- **Re-scrape em ciclos futuros:** quando Supabase URL era gerada, só o post atual era atualizado. Fix: batch-update atualiza TODOS os `scheduled_posts pending` com a mesma URL instagram.com original.
+- **Stuck posts:** threshold de desbloqueio `publishing` reduzido de 10 min para 5 min.
+
+#### Stagger
+- **Stagger fixo de 5 min/conta ignorava o intervalo:** com 20 contas e 48 ppd (intervalo=30min), última conta recebia stagger de +100 min — mais de 3 ciclos de atraso. Fix: `perAccountStaggerMs = min(5min, interval / accounts / 2)`.
+
+#### Frontend/Campanhas
+- **Sort de campanhas por `created_at` inexistente:** campo `created_at` não é retornado pela RPC `get_campaign_summaries`. `new Date(undefined)` = NaN → ordem aleatória. Corrigido para `first_slot`.
+- **loadCampaigns sem useCallback:** potencial para múltiplos `setInterval` em re-renders frequentes.
+- **Payload excessivo:** selecionando "10 reels", o frontend enviava os 300 raspados ao backend e deixava o backend cortar. Agora pré-corta antes de serializar.
+- **isCancelled impreciso:** não cobria cancelamentos parciais (alguns publicados + alguns cancelados).
+- **pct=null quando total=0:** era retornado como 100 (barra cheia enganosa).
+
+#### Arquitetura do cache de clone
+```
+Ciclo cron:
+  Post A (instagram.com/reel/XYZ, conta 1):
+    → Apify scrape → CDN URL
+    → undiciFetch download (com proxy)
+    → Supabase upload temp/clone_{id}.mp4
+    → cloneUrlCache["instagram.com/reel/XYZ"] = "supabase.co/..."
+    → UPDATE scheduled_posts SET video_url=supabase_url WHERE video_url="instagram.com/reel/XYZ"
+    → Cria container Meta
+
+  Post B (instagram.com/reel/XYZ, conta 2) [mesmo ciclo]:
+    → cloneUrlCache.has("instagram.com/reel/XYZ") = TRUE
+    → usa supabase URL direto → não precisa scraper
+    → Cria container Meta
+
+  Post C (instagram.com/reel/ABC, conta 1) [ciclo seguinte]:
+    → video_url no banco já é supabase URL (batch-update do ciclo anterior)
+    → isCloneUrl() = FALSE → não entra no bloco clone
+    → Cria container Meta diretamente
+```
