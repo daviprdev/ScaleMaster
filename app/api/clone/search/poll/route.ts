@@ -97,16 +97,28 @@ export async function GET(req: NextRequest) {
       (first.ownerProfilePicUrl as string | null) ||
       (first.profilePicUrl as string | null) ||
       (ownerObj.profilePicUrl as string | null) || null;
+
+    // Resolve o display name com fallback em cascata e aplica title case
+    // quando o Apify devolve o nome todo em minúsculas
+    const rawFullName: string =
+      (first.ownerFullName as string | null) ||
+      (ownerObj.fullName as string | null) ||
+      (first.ownerUsername as string | null) ||
+      (ownerObj.username as string | null) ||
+      username;
+    const fullName = rawFullName === rawFullName.toLowerCase()
+      ? rawFullName.replace(/(?:^|\s)\S/g, ch => ch.toUpperCase())
+      : rawFullName;
+
     const profile = {
       username,
-      fullName:       String(first.ownerFullName ?? first.ownerUsername ?? username),
+      fullName,
       profilePicUrl:  rawPicUrl ? `/api/proxy-image?url=${encodeURIComponent(rawPicUrl)}` : null,
       bio:            (first.biography as string | null) ||
                       (first.ownerBio as string | null) || null,
       followersCount: Number(
         first.followersCount ??
         first.ownerFollowersCount ??
-        ownerObj.followersCount ??
         ownerObj.followersCount ??
         0
       ),
