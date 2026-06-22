@@ -59,16 +59,18 @@ interface CloneRecord {
 }
 
 interface CampaignData {
-  campaign_id:       string;
-  total:             number;
-  published:         number;
-  pending:           number;
-  failed:            number;
-  cancelled:         number;
-  first_slot:        string;
-  last_slot:         string;
-  next_pending:      string | null;
-  account_ids:       string[];
+  campaign_id:          string;
+  total:                number;
+  published:            number;
+  pending:              number;
+  failed:               number;
+  cancelled:            number;
+  first_slot:           string;
+  last_slot:            string;
+  next_pending:         string | null;
+  account_ids:          string[];
+  clone_source_profile: string | null;
+  is_clone:             boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -339,6 +341,7 @@ export default function ClonePage() {
           posts_per_day:     postsPerDay,
           start_at:          startAt,
           auto_caption_type: autoCaptionEnabled ? autoCaptionType : undefined,
+          profile_username:  profile?.username ?? query.replace(/^@/, "").trim(),
         }),
       });
       const data = await res.json();
@@ -382,7 +385,7 @@ export default function ClonePage() {
     setConfirmCancel(null);
     setCancellingId(campaignId);
     try {
-      await fetch(`/api/campaigns?campaign_id=${campaignId}`, { method: "DELETE" });
+      await fetch(`/api/campaigns?id=${campaignId}`, { method: "DELETE" });
       await loadCampaigns();
     } catch {}
     setCancellingId(null);
@@ -395,15 +398,30 @@ export default function ClonePage() {
   const daysEst     = postsPerDay > 0 ? Math.ceil(usedCount / postsPerDay) : 0;
   const intervalMin = postsPerDay > 0 ? Math.floor(1440 / postsPerDay) : 0;
 
-  // Merge localStorage records with live campaign data
+  // Constrói histórico usando o banco como fonte de verdade.
+  // localStorage serve apenas para enriquecer com profile_pic_url.
+  const localRecordMap = useMemo(() => {
+    const m = new Map<string, CloneRecord>();
+    cloneRecords.forEach(r => m.set(r.campaign_id, r));
+    return m;
+  }, [cloneRecords]);
+
   const historyItems = useMemo(() => {
-    return cloneRecords
-      .map(record => ({
-        record,
-        campaign: campaigns.find(c => c.campaign_id === record.campaign_id) ?? null,
-      }))
-      .filter(item => item.campaign !== null || true); // show all; null = completed
-  }, [cloneRecords, campaigns]);
+    // Mostra todos os clone campaigns do banco, com fallback para localStorage
+    return campaigns
+      .filter(c => c.is_clone)
+      .map(campaign => {
+        const local = localRecordMap.get(campaign.campaign_id);
+        const record: CloneRecord = local ?? {
+          campaign_id:      campaign.campaign_id,
+          profile_username: campaign.clone_source_profile ?? "perfil desconhecido",
+          profile_pic_url:  null,
+          account_ids:      campaign.account_ids,
+          created_at:       campaign.first_slot,
+        };
+        return { record, campaign };
+      });
+  }, [campaigns, localRecordMap]);
 
   // Map account_id → AccountRow
   const accountMap = useMemo(() => {

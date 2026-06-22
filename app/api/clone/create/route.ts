@@ -18,6 +18,7 @@ interface CloneBody {
   posts_per_day:      number;
   start_at:           string;   // ISO datetime
   auto_caption_type?: string;   // se presente, substitui captions originais
+  profile_username?:  string;   // username do perfil clonado (para histórico)
 }
 
 function fisherYates<T>(arr: T[]): T[] {
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const body = await req.json() as CloneBody;
-  const { account_ids, reels, reel_count, posts_per_day, start_at, auto_caption_type } = body;
+  const { account_ids, reels, reel_count, posts_per_day, start_at, auto_caption_type, profile_username } = body;
   const isAutoCaption = !!auto_caption_type;
   const autoType = (auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
 
@@ -78,14 +79,15 @@ export async function POST(req: NextRequest) {
       // Guarda a URL permanente da página do reel (nunca expira).
       // publish-scheduled faz scrape Apify em tempo real para obter a URL do CDN fresca.
       rows.push({
-        user_id:      user.id,
-        account_id:   accountId,
-        video_id:     null,
-        video_url:    `https://www.instagram.com/reel/${reel.shortCode}/`,
-        caption:      isAutoCaption ? getAutoCaption(autoType) : reel.caption,
-        scheduled_at: scheduledAt,
-        status:       "pending",
-        campaign_id:  campaignId,
+        user_id:               user.id,
+        account_id:            accountId,
+        video_id:              null,
+        video_url:             `https://www.instagram.com/reel/${reel.shortCode}/`,
+        caption:               isAutoCaption ? getAutoCaption(autoType) : reel.caption,
+        scheduled_at:          scheduledAt,
+        status:                "pending",
+        campaign_id:           campaignId,
+        clone_source_profile:  profile_username ?? null,
       });
     }
   }
