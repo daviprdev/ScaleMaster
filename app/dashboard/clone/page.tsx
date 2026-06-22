@@ -293,6 +293,9 @@ export default function ClonePage() {
     const username = query.replace(/^@/, "").trim();
     if (!username) return;
 
+    // Clear any running poll before starting a new search
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+
     setSearchState("loading");
     setSearchError("");
     setProfile(null);
@@ -331,6 +334,10 @@ export default function ClonePage() {
     setSuccess(null);
 
     try {
+      // Append timezone offset so the Vercel server (UTC) interprets the time correctly
+      const tzOffset   = localISOWithOffset().slice(16); // "+03:00" or "-03:00"
+      const startAtISO = `${startAt}:00${tzOffset}`;    // "2026-06-22T10:30:00-03:00"
+
       const res  = await fetch("/api/clone/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -339,7 +346,7 @@ export default function ClonePage() {
           reels:             reels.map(r => ({ shortCode: r.shortCode, caption: r.caption })),
           reel_count:        reelCount,
           posts_per_day:     postsPerDay,
-          start_at:          startAt,
+          start_at:          startAtISO,
           auto_caption_type: autoCaptionEnabled ? autoCaptionType : undefined,
           profile_username:  profile?.username ?? query.replace(/^@/, "").trim(),
         }),
@@ -571,7 +578,18 @@ export default function ClonePage() {
                   </div>
                 </div>
 
-
+              </motion.div>
+            ) : searchState === "loading" ? (
+              <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                className="flex flex-col items-center justify-center py-20 text-center glass-card rounded-2xl">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+                  style={{ background: "rgba(0,255,65,0.06)", border: "1px solid rgba(0,255,65,0.12)" }}>
+                  <Loader2 size={28} className="animate-spin" style={{ color: "var(--matrix)" }} />
+                </div>
+                <h3 className="text-lg font-semibold text-white/60 mb-1">
+                  Buscando reels de @{query.replace(/^@/, "").trim()}…
+                </h3>
+                <p className="text-sm text-white/30 max-w-sm">Isso pode levar 30–60 segundos.</p>
               </motion.div>
             ) : (
               <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -844,11 +862,13 @@ export default function ClonePage() {
 
             <button
               onClick={handleClone}
-              disabled={submitting || selectedAccounts.size === 0 || usedCount === 0 || !reels.length}
+              disabled={submitting || selectedAccounts.size === 0 || usedCount === 0 || !reels.length || searchState === "loading"}
               className="btn-primary w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
             >
               {submitting ? (
                 <><Loader2 size={15} className="animate-spin" /> Agendando…</>
+              ) : searchState === "loading" ? (
+                <><Loader2 size={15} className="animate-spin" /> Buscando reels…</>
               ) : !reels.length ? (
                 <><Search size={15} /> Busque um perfil primeiro</>
               ) : selectedAccounts.size === 0 ? (
@@ -908,8 +928,7 @@ export default function ClonePage() {
 
           <div className="space-y-3">
             {historyItems.map(({ record, campaign }) => {
-              const pct       = campaign && campaign.total > 0 ? Math.round((campaign.published / campaign.total) * 100) : (campaign ? 100 : null);
-              const isDone    = !campaign || (campaign.pending === 0 && campaign.cancelled === 0);
+              const pct         = campaign && campaign.total > 0 ? Math.round((campaign.published / campaign.total) * 100) : (campaign ? 100 : null);
               const isCancelled = campaign && campaign.cancelled > 0 && campaign.pending === 0 && campaign.published === 0;
               const accRows   = record.account_ids.map(id => accountMap.get(id)).filter(Boolean) as AccountRow[];
 
