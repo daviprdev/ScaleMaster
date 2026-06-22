@@ -59,6 +59,8 @@ const TRANSIENT_PATTERNS = [
   "timeout",
   "apify",
   "não terminou em",
+  "download cdn",
+  "upload supabase",
 ];
 
 // ── Clone: detecta URL de página do Instagram e busca CDN fresco via Apify ────
@@ -104,6 +106,36 @@ async function fetchFreshReelUrl(instagramUrl: string): Promise<string> {
 function isTransientError(msg: string): boolean {
   const lower = msg.toLowerCase();
   return TRANSIENT_PATTERNS.some(p => lower.includes(p));
+}
+
+// ── Clone: baixa vídeo do CDN e hospeda no Supabase Storage ───────────────────
+// A Meta não consegue baixar URLs signed do CDN do Instagram (fbcdn.net) diretamente
+// a partir dos seus próprios servidores de processamento. É necessário hospedar o
+// vídeo num storage público antes de criar o container Meta.
+async function downloadAndHostForMeta(cdnUrl: string, postId: string): Promise<string> {
+  const admin = getSupabaseAdmin();
+
+  const res = await fetch(cdnUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+    },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`download cdn falhou: HTTP ${res.status} para ${cdnUrl.slice(0, 80)}`);
+
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length < 50_000) throw new Error(`download cdn retornou arquivo muito pequeno (${buf.length} bytes) — possível erro de auth na CDN`);
+
+  const storagePath = `temp/clone_${postId}.mp4`;
+  const { error } = await admin.storage
+    .from("videos-library")
+    .upload(storagePath, buf, { contentType: "video/mp4", upsert: true });
+
+  if (error) throw new Error(`upload supabase falhou: ${error.message}`);
+
+  const { data } = admin.storage.from("videos-library").getPublicUrl(storagePath);
+  console.log(`[publish-scheduled] ✓ Clone hospedado em Supabase: ${(buf.length / 1_048_576).toFixed(1)}MB | ${data.publicUrl.slice(0, 80)}…`);
+  return data.publicUrl;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -328,8 +360,18 @@ export async function GET(req: NextRequest) {
           }
           console.log(`[publish-scheduled] 🔄 Clone post @${account.username} — buscando CDN fresco: ${effectiveVideoUrl}`);
           cloneFetchCount++;
-          effectiveVideoUrl = await fetchFreshReelUrl(effectiveVideoUrl);
-          console.log(`[publish-scheduled] ✓ CDN fresco obtido: ${effectiveVideoUrl.slice(0, 80)}…`);
+          const cdnUrl = await fetchFreshReelUrl(effectiveVideoUrl);
+          console.log(`[publish-scheduled] ✓ CDN fresco obtido: ${cdnUrl.slice(0, 80)}…`);
+
+          // Hospeda no Supabase antes de passar para a Meta — CDN do Instagram
+          // não é acessível pelos servidores de processamento da Meta API.
+          effectiveVideoUrl = await downloadAndHostForMeta(cdnUrl, post.id);
+          // Persiste a URL hospedada no banco para que retentativas futuras não
+          // precisem re-escraper o Apify (a URL do Supabase não expira).
+          await admin
+            .from("scheduled_posts")
+            .update({ video_url: effectiveVideoUrl })
+            .eq("id", post.id);
         }
 
         console.log(`[publish-scheduled] Criando container Meta para @${account.username} | proxy=${proxy ? "sim" : "não"} | videoUrl=${effectiveVideoUrl.slice(0, 80)}...`);
