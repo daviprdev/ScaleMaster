@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
         directUrls: [`https://www.instagram.com/${username}/reels/`],
         resultsType: "posts",
         resultsLimit: limit,
-        maxRequestsPerCrawl: Math.max(200, Math.ceil(limit / 4)),
+        maxRequestsPerCrawl: Math.max(500, limit * 3),
         proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
       });
       return NextResponse.json({ runId: run.id, username, limit, fallback: false });

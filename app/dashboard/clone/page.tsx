@@ -308,7 +308,7 @@ export default function ClonePage() {
       const res  = await fetch("/api/clone/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, limit: 100 }),
+        body: JSON.stringify({ username, limit: 300 }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -316,7 +316,7 @@ export default function ClonePage() {
         setSearchState("error");
         return;
       }
-      const meta = { runId: data.runId, username, fallback: false, limit: 100 };
+      const meta = { runId: data.runId, username, fallback: false, limit: 300 };
       setRunMeta(meta);
       startPolling(meta.runId, meta.username, meta.fallback, meta.limit);
     } catch {
