@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
 import { resolveApifyTokens } from "@/lib/apify-token-pool";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  }
+
   let body: { username?: string; limit?: number };
   try {
     body = await req.json();
@@ -13,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Corpo inválido." }, { status: 400 });
   }
 
-  const { username, limit = 100 } = body;
+  const { username, limit = 300 } = body;
   if (!username) {
     return NextResponse.json({ error: "O campo 'username' é obrigatório." }, { status: 400 });
   }
@@ -32,7 +39,7 @@ export async function POST(req: NextRequest) {
         directUrls: [`https://www.instagram.com/${username}/reels/`],
         resultsType: "posts",
         resultsLimit: limit,
-        maxRequestsPerCrawl: Math.max(500, limit * 3),
+        maxRequestsPerCrawl: Math.max(300, limit * 2),
         proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
       });
       return NextResponse.json({ runId: run.id, username, limit, fallback: false });

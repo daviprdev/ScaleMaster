@@ -197,7 +197,7 @@ export default function ClonePage() {
     return () => { if (historyRefTimer.current) clearInterval(historyRefTimer.current); };
   }, [campaigns]);
 
-  const loadCampaigns = async () => {
+  const loadCampaigns = useCallback(async () => {
     try {
       const res = await fetch("/api/campaigns");
       if (res.ok) {
@@ -205,7 +205,7 @@ export default function ClonePage() {
         setCampaigns(data.campaigns ?? []);
       }
     } catch {}
-  };
+  }, []);
 
   // ── Account grouping ─────────────────────────────────────────────────────────
 
@@ -338,12 +338,16 @@ export default function ClonePage() {
       const tzOffset   = localISOWithOffset().slice(16); // "+03:00" or "-03:00"
       const startAtISO = `${startAt}:00${tzOffset}`;    // "2026-06-22T10:30:00-03:00"
 
+      // Pré-corta os reels para não enviar os 300 raspados quando apenas N são necessários
+      const reelsToSend = (reelCount === -1 ? reels : reels.slice(0, reelCount))
+        .map(r => ({ shortCode: r.shortCode, caption: r.caption }));
+
       const res  = await fetch("/api/clone/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           account_ids:       Array.from(selectedAccounts),
-          reels:             reels.map(r => ({ shortCode: r.shortCode, caption: r.caption })),
+          reels:             reelsToSend,
           reel_count:        reelCount,
           posts_per_day:     postsPerDay,
           start_at:          startAtISO,
@@ -928,8 +932,11 @@ export default function ClonePage() {
 
           <div className="space-y-3">
             {historyItems.map(({ record, campaign }) => {
-              const pct         = campaign && campaign.total > 0 ? Math.round((campaign.published / campaign.total) * 100) : (campaign ? 100 : null);
-              const isCancelled = campaign && campaign.cancelled > 0 && campaign.pending === 0 && campaign.published === 0;
+              const pct = campaign && campaign.total > 0
+                ? Math.round((campaign.published / campaign.total) * 100)
+                : null;
+              // Cancelado: todos os posts foram cancelados (nenhum publicado nem pendente)
+              const isCancelled = campaign && campaign.cancelled > 0 && campaign.pending === 0 && campaign.published === 0 && campaign.failed === 0;
               const accRows   = record.account_ids.map(id => accountMap.get(id)).filter(Boolean) as AccountRow[];
 
               return (

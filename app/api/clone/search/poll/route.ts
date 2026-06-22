@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
 import { resolveApifyTokens } from "@/lib/apify-token-pool";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -27,11 +28,17 @@ function resolveVideoUrl(item: Record<string, unknown>): string {
 }
 
 export async function GET(req: NextRequest) {
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const runId    = searchParams.get("runId");
   const username = searchParams.get("username");
   const fallback = searchParams.get("fallback") === "true";
-  const limit    = parseInt(searchParams.get("limit") ?? "100", 10);
+  const limit    = parseInt(searchParams.get("limit") ?? "300", 10);
 
   if (!runId || !username) {
     return NextResponse.json({ error: "Parâmetros inválidos." }, { status: 400 });
@@ -53,11 +60,13 @@ export async function GET(req: NextRequest) {
     // /reels/ returned nothing → fallback to main profile URL
     if (list.length === 0 && !fallback) {
       try {
-        const fallbackRun = await client.actor("apify/instagram-scraper").start({
+        const tokens = resolveApifyTokens();
+        const fallbackClient = new ApifyClient({ token: tokens[0] });
+        const fallbackRun = await fallbackClient.actor("apify/instagram-scraper").start({
           directUrls: [`https://www.instagram.com/${username}/`],
           resultsType: "posts",
           resultsLimit: limit,
-          maxRequestsPerCrawl: Math.max(500, limit * 3),
+          maxRequestsPerCrawl: Math.max(300, limit * 2),
           proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
         });
         return NextResponse.json({ status: "running", runId: fallbackRun.id, username, limit, fallback: true });
@@ -70,9 +79,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: `Nenhum conteúdo encontrado para @${username}. O perfil pode ser privado.` }, { status: 404 });
     }
 
-    // Extrai reels com video URL
+    // Extrai reels com video URL (filtra só no .filter final — mais inclusivo)
     const reels = (list as Record<string, unknown>[])
-      .filter(item => item.type === "Video" || resolveVideoUrl(item))
       .map((item, i) => ({
         id:           String(item.id ?? item.shortCode ?? i),
         shortCode:    String(item.shortCode ?? ""),
@@ -84,7 +92,7 @@ export async function GET(req: NextRequest) {
         comments:     Number(item.commentsCount ?? 0),
         duration:     Number(item.videoDuration ?? 0),
       }))
-      .filter(r => r.videoUrl);
+      .filter(r => r.videoUrl && r.shortCode); // precisa de ambos para funcionar
 
     if (!reels.length) {
       return NextResponse.json({ error: `Nenhum Reel com URL de vídeo encontrado para @${username}.` }, { status: 404 });
@@ -98,8 +106,6 @@ export async function GET(req: NextRequest) {
       (first.profilePicUrl as string | null) ||
       (ownerObj.profilePicUrl as string | null) || null;
 
-    // Resolve o display name com fallback em cascata e aplica title case
-    // quando o Apify devolve o nome todo em minúsculas
     const rawFullName: string =
       (first.ownerFullName as string | null) ||
       (ownerObj.fullName as string | null) ||

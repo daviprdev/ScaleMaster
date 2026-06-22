@@ -63,7 +63,7 @@ export async function GET() {
     if (a.campaign_status !== b.campaign_status) {
       return a.campaign_status === "running" ? -1 : 1;
     }
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    return new Date(b.first_slot ?? b.last_slot ?? 0).getTime() - new Date(a.first_slot ?? a.last_slot ?? 0).getTime();
   });
 
   return NextResponse.json({ campaigns });

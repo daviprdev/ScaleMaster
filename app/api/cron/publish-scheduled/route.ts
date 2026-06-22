@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetch as undiciFetch } from "undici";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   createMediaContainerOnly,
@@ -112,15 +113,24 @@ function isTransientError(msg: string): boolean {
 // A Meta não consegue baixar URLs signed do CDN do Instagram (fbcdn.net) diretamente
 // a partir dos seus próprios servidores de processamento. É necessário hospedar o
 // vídeo num storage público antes de criar o container Meta.
-async function downloadAndHostForMeta(cdnUrl: string, postId: string): Promise<string> {
+// Usa undiciFetch (não o fetch global patchado pelo Next.js 15) para que o
+// dispatcher (proxy) seja respeitado corretamente.
+async function downloadAndHostForMeta(
+  cdnUrl: string,
+  postId: string,
+  proxy: ReturnType<typeof getProxyForAccount>,
+): Promise<string> {
   const admin = getSupabaseAdmin();
 
-  const res = await fetch(cdnUrl, {
+  const fetchInit: Parameters<typeof undiciFetch>[1] = {
     headers: {
       "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
     },
-    signal: AbortSignal.timeout(20_000),
-  });
+    signal: AbortSignal.timeout(30_000),
+    ...((proxy) ? { dispatcher: proxy } : {}),
+  };
+
+  const res = await undiciFetch(cdnUrl, fetchInit);
   if (!res.ok) throw new Error(`download cdn falhou: HTTP ${res.status} para ${cdnUrl.slice(0, 80)}`);
 
   const buf = Buffer.from(await res.arrayBuffer());
@@ -193,7 +203,7 @@ export async function GET(req: NextRequest) {
   // ── Desbloqueio de posts presos em "publishing" ───────────────────────────
   // Com dois-fase, NÃO limpamos creation_id — próximo ciclo vai pollar o mesmo container.
   // Apenas reseta o status para "pending" para que seja reprocessado.
-  const stuckCutoff = new Date(Date.now() - 10 * 60_000).toISOString();
+  const stuckCutoff = new Date(Date.now() - 5 * 60_000).toISOString();
   const { data: unblocked, error: unblockErr } = await admin
     .from("scheduled_posts")
     .update({ status: "pending", error_message: null })
@@ -246,8 +256,11 @@ export async function GET(req: NextRequest) {
   };
 
   let publishAttemptsInThisRun = 0;
-  // Limita a 1 scrape Apify por ciclo (cada scrape leva ~20-45s, orçamento de 55s)
+  // Limita a 1 scrape Apify por ciclo (cada scrape leva ~20-45s, orçamento de 55s).
+  // Cache em memória: instagram URL → Supabase URL (reels com mesma URL não precisam
+  // de novo scrape — todos os posts da mesma conta / mesmo slot são servidos do cache).
   let cloneFetchCount = 0;
+  const cloneUrlCache = new Map<string, string>();
 
   for (const post of posts) {
     // ── Budget global da execução ─────────────────────────────────────────
@@ -351,27 +364,42 @@ export async function GET(req: NextRequest) {
 
         // ── Clone: se for URL de página do Instagram, busca CDN fresco via Apify ─
         if (isCloneUrl(effectiveVideoUrl)) {
-          if (cloneFetchCount >= 1) {
+          const originalInstagramUrl = effectiveVideoUrl;
+
+          // 1. Verifica cache em memória (reels com mesma URL no mesmo batch)
+          if (cloneUrlCache.has(originalInstagramUrl)) {
+            effectiveVideoUrl = cloneUrlCache.get(originalInstagramUrl)!;
+            console.log(`[publish-scheduled] ✓ Clone @${account.username} servido do cache em memória.`);
+          } else if (cloneFetchCount >= 1) {
             // Orçamento ocupado por outro scrape neste ciclo — adia para o próximo
             console.log(`[publish-scheduled] ⏭ Clone post @${account.username} adiado — scrape Apify já em uso neste ciclo.`);
-            await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
+            await admin.from("scheduled_posts").update({ status: "pending", error_message: null }).eq("id", post.id);
             summary.skipped++;
             continue;
-          }
-          console.log(`[publish-scheduled] 🔄 Clone post @${account.username} — buscando CDN fresco: ${effectiveVideoUrl}`);
-          cloneFetchCount++;
-          const cdnUrl = await fetchFreshReelUrl(effectiveVideoUrl);
-          console.log(`[publish-scheduled] ✓ CDN fresco obtido: ${cdnUrl.slice(0, 80)}…`);
+          } else {
+            // 2. Scrape Apify para obter CDN fresco
+            console.log(`[publish-scheduled] 🔄 Clone post @${account.username} — buscando CDN fresco: ${effectiveVideoUrl}`);
+            cloneFetchCount++;
+            const cdnUrl = await fetchFreshReelUrl(effectiveVideoUrl);
+            console.log(`[publish-scheduled] ✓ CDN fresco obtido: ${cdnUrl.slice(0, 80)}…`);
 
-          // Hospeda no Supabase antes de passar para a Meta — CDN do Instagram
-          // não é acessível pelos servidores de processamento da Meta API.
-          effectiveVideoUrl = await downloadAndHostForMeta(cdnUrl, post.id);
-          // Persiste a URL hospedada no banco para que retentativas futuras não
-          // precisem re-escraper o Apify (a URL do Supabase não expira).
-          await admin
-            .from("scheduled_posts")
-            .update({ video_url: effectiveVideoUrl })
-            .eq("id", post.id);
+            // Hospeda no Supabase — CDN do Instagram não é acessível pelos
+            // servidores de processamento da Meta API.
+            effectiveVideoUrl = await downloadAndHostForMeta(cdnUrl, post.id, proxy);
+
+            // Salva no cache em memória para reutilização neste ciclo
+            cloneUrlCache.set(originalInstagramUrl, effectiveVideoUrl);
+
+            // Persiste a URL Supabase em TODOS os posts pendentes com a mesma
+            // URL de origem — evita re-scrape em ciclos futuros para outros posts
+            // do mesmo reel (ex: múltiplas contas postando o mesmo shortCode).
+            await admin
+              .from("scheduled_posts")
+              .update({ video_url: effectiveVideoUrl })
+              .eq("video_url", originalInstagramUrl)
+              .in("status", ["pending"]);
+            console.log(`[publish-scheduled] ✓ URL Supabase propagada para todos os posts com o mesmo reel.`);
+          }
         }
 
         console.log(`[publish-scheduled] Criando container Meta para @${account.username} | proxy=${proxy ? "sim" : "não"} | videoUrl=${effectiveVideoUrl.slice(0, 80)}...`);
