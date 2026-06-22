@@ -20,11 +20,11 @@ interface RpcRow {
   created_at: string;
   account_ids: string[];
   clone_source_profile: string | null;
+  is_clone: boolean;
 }
 
 interface CampaignSummary extends RpcRow {
   campaign_status: "running" | "completed";
-  is_clone: boolean;
 }
 
 export async function GET() {
@@ -59,7 +59,6 @@ export async function GET() {
     cancelled: Number(row.cancelled),
     account_ids: row.account_ids ?? [],
     campaign_status: (Number(row.pending) > 0 ? "running" : "completed") as "running" | "completed",
-    is_clone: !!row.clone_source_profile,
   })).sort((a, b) => {
     if (a.campaign_status !== b.campaign_status) {
       return a.campaign_status === "running" ? -1 : 1;
