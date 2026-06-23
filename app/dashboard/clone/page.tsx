@@ -610,10 +610,7 @@ export default function ClonePage() {
               className="glass-card rounded-2xl p-6 text-center"
             >
               <Bookmark size={22} className="mx-auto mb-2 text-white/15" />
-              <p className="text-sm font-semibold text-white/30">Perfis Salvos</p>
-              <p className="text-xs text-white/20 mt-1 max-w-xs mx-auto">
-                Busque um perfil e clique em Salvar para guardar a análise aqui.
-              </p>
+              <p className="text-xs text-white/25">Busque um perfil e clique em Salvar para guardar a análise aqui.</p>
             </motion.div>
           ) : (
             <motion.div
