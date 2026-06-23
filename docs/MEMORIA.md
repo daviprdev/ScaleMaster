@@ -2856,3 +2856,31 @@ Ciclo cron:
     → isCloneUrl() = FALSE → não entra no bloco clone
     → Cria container Meta diretamente
 ```
+
+---
+
+### ✅ Fix Urgente — Clone: zero posts publicados após 2h (2026-06-23)
+**Commit:** `fbd6534`
+
+#### Problema
+Campanha de clone criada às 11:37 local (14:37 UTC), 2 horas depois zero posts publicados. Diagnóstico via SQL direto no Supabase.
+
+#### 3 causas em cascata
+
+**1. Post bloqueante com [RETRY] na fila**
+Um post de campanha anterior (`reel/DYFD7f8t9ba/`, 12:45 UTC) tinha `error_message: "[RETRY] Campo videoUrl ausente no item Apify."`. Como a query de elegíveis ordena por `scheduled_at ASC`, esse post era SEMPRE o primeiro do batch. A cada ciclo de 1 minuto ele consumia o único slot de scrape Apify (`cloneFetchCount=1`), e os outros 9 posts do batch eram pulados. Os 392 posts da nova campanha (14:50 UTC) nunca eram alcançados.
+
+**Fix:** SQL imediato — `UPDATE scheduled_posts SET status='failed' WHERE error_message LIKE '%[RETRY]%videoUrl ausente%'`.
+
+**2. Campo `playVideoUrl` faltando em `fetchFreshReelUrl`**
+O Apify retorna o URL do vídeo de reels em campos variados dependendo do item. O `poll/route.ts` tinha `playVideoUrl` na resolução, mas o `publish-scheduled` não. Reels que usam esse campo falhavam com "videoUrl ausente".
+
+**Fix:** Adicionado `(item.playVideoUrl as string | undefined)` ao resolver em `fetchFreshReelUrl`.
+
+**3. Erro tratado como transitório → retry eterno**
+A mensagem de erro anterior "Campo videoUrl ausente no item **Apify**." continha "apify", que está na lista `TRANSIENT_PATTERNS`. `isTransientError()` retornava `true` → post voltava para `pending` com prefixo `[RETRY]` → retry infinito em vez de falhar permanentemente.
+
+**Fix:** Nova mensagem "Reel sem URL de vídeo — conteúdo indisponível ou post de foto." sem a palavra "apify" → `isTransientError()` retorna `false` → post marcado como `failed` permanente na primeira ocorrência.
+
+#### Lição
+O `cloneFetchCount >= 1` (limite de 1 scrape Apify por ciclo) é correto dada a restrição de 55s de budget. O problema foi que um post "tóxico" consumia esse slot todo ciclo sem nunca avançar. Qualquer erro de Apify que não seja de rede/timeout deve ser permanente, não transitório.
