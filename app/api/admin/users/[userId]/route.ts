@@ -51,10 +51,23 @@ export async function PATCH(
     if (!["user", "admin", "banned"].includes(role)) {
       return NextResponse.json({ error: "Role inválida" }, { status: 400 });
     }
-    const { error } = await admin
+
+    const { data: updated, error: updateErr } = await admin
       .from("user_roles")
-      .upsert({ user_id: userId, role }, { onConflict: "user_id" });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      .update({ role } as never)
+      .eq("user_id", userId)
+      .select("user_id");
+
+    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+
+    // Row não existe ainda — cria
+    if (!updated || updated.length === 0) {
+      const { error: insertErr } = await admin
+        .from("user_roles")
+        .insert({ user_id: userId, role } as never);
+      if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });
+    }
+
     if (role === "banned") {
       await logAudit({ action: "user_banned", actorId: user.id, actorEmail: user.email, targetId: userId, targetEmail });
     }
@@ -68,11 +81,21 @@ export async function PATCH(
       return NextResponse.json({ error: "Status inválido" }, { status: 400 });
     }
 
-    const { error: upsertError } = await admin
+    const { data: updated, error: updateErr } = await admin
       .from("user_roles")
-      .upsert({ user_id: userId, account_status } as never, { onConflict: "user_id" });
+      .update({ account_status } as never)
+      .eq("user_id", userId)
+      .select("user_id");
 
-    if (upsertError) return NextResponse.json({ error: upsertError.message }, { status: 500 });
+    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+
+    // Row não existe ainda — cria com role padrão
+    if (!updated || updated.length === 0) {
+      const { error: insertErr } = await admin
+        .from("user_roles")
+        .insert({ user_id: userId, role: "user", account_status } as never);
+      if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });
+    }
 
     if (account_status === "approved") {
       await logAudit({ action: "user_approved", actorId: user.id, actorEmail: user.email, targetId: userId, targetEmail });
