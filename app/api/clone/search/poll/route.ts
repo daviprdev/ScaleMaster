@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
 import { resolveApifyTokens } from "@/lib/apify-token-pool";
 import { createClient } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -66,8 +67,8 @@ export async function GET(req: NextRequest) {
           directUrls: [`https://www.instagram.com/${username}/`],
           resultsType: "posts",
           resultsLimit: limit,
-          maxRequestsPerCrawl: Math.max(300, limit * 2),
-          proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
+          maxRequestsPerCrawl: Math.ceil(limit / 8) + 40,
+          proxyConfiguration: { useApifyProxy: true },
         });
         return NextResponse.json({ status: "running", runId: fallbackRun.id, username, limit, fallback: true });
       } catch (err) {
@@ -116,10 +117,47 @@ export async function GET(req: NextRequest) {
       ? rawFullName.replace(/(?:^|\s)\S/g, ch => ch.toUpperCase())
       : rawFullName;
 
+    // Persiste a foto de perfil no Supabase Storage para URL permanente (não expira)
+    let profilePicUrl: string | null = null;
+    if (rawPicUrl) {
+      try {
+        const picRes = await fetch(rawPicUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            "Referer": "https://www.instagram.com/",
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+          },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (picRes.ok) {
+          const buffer = await picRes.arrayBuffer();
+          const contentType = picRes.headers.get("content-type") ?? "image/jpeg";
+          const admin = getSupabaseAdmin();
+          const safeName = username.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+          const storagePath = `profile_pics/${safeName}.jpg`;
+          const { error: uploadErr } = await admin.storage
+            .from("videos-library")
+            .upload(storagePath, buffer, { contentType, upsert: true });
+          if (!uploadErr) {
+            const { data: urlData } = admin.storage
+              .from("videos-library")
+              .getPublicUrl(storagePath);
+            profilePicUrl = urlData.publicUrl;
+          }
+        }
+      } catch (e) {
+        console.warn("[clone/poll] profile pic upload falhou:", e instanceof Error ? e.message : e);
+      }
+      // fallback: proxy se upload falhou
+      if (!profilePicUrl) {
+        profilePicUrl = `/api/proxy-image?url=${encodeURIComponent(rawPicUrl)}`;
+      }
+    }
+
     const profile = {
       username,
       fullName,
-      profilePicUrl:  rawPicUrl ? `/api/proxy-image?url=${encodeURIComponent(rawPicUrl)}` : null,
+      profilePicUrl,
       bio:            (first.biography as string | null) ||
                       (first.ownerBio as string | null) || null,
       followersCount: Number(

@@ -6,7 +6,7 @@ import {
   Search, Users, Play, Eye, TrendingUp,
   CheckCircle2, Copy, ChevronRight, Zap,
   AlertCircle, Loader2, Sparkles, Download, Clock, Trash2,
-  BarChart2,
+  BarChart2, Bookmark,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +56,15 @@ interface CloneRecord {
   profile_pic_url:  string | null;
   account_ids:      string[];
   created_at:       string;
+}
+
+interface SavedProfile {
+  username:       string;
+  fullName:       string;
+  profilePicUrl:  string | null;
+  followersCount: number;
+  reelCount:      number;
+  savedAt:        string;
 }
 
 interface CampaignData {
@@ -123,6 +132,7 @@ const AUTO_CAPTION_PREVIEWS_CLONE: Record<string, string> = {
 };
 
 const HISTORY_KEY = "clone_history_v1";
+const SAVED_PROFILES_KEY = "clone_saved_profiles_v1";
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -165,6 +175,10 @@ export default function ClonePage() {
   const [cancellingId, setCancellingId]   = useState<string | null>(null);
   const historyRefTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Saved profiles
+  const [savedProfiles, setSavedProfiles]   = useState<SavedProfile[]>([]);
+  const [profileSaved,  setProfileSaved]    = useState(false);
+
   // ── Load accounts & history on mount ────────────────────────────────────────
 
   useEffect(() => {
@@ -184,8 +198,21 @@ export default function ClonePage() {
       if (raw) setCloneRecords(JSON.parse(raw));
     } catch {}
 
+    try {
+      const rawSaved = localStorage.getItem(SAVED_PROFILES_KEY);
+      if (rawSaved) setSavedProfiles(JSON.parse(rawSaved));
+    } catch {}
+
     loadCampaigns();
   }, []);
+
+  useEffect(() => {
+    if (!profile) { setProfileSaved(false); return; }
+    const saved: SavedProfile[] = (() => {
+      try { return JSON.parse(localStorage.getItem(SAVED_PROFILES_KEY) ?? "[]"); } catch { return []; }
+    })();
+    setProfileSaved(saved.some(p => p.username === profile.username));
+  }, [profile]);
 
   // Auto-refresh history every 30s when there are active clones
   useEffect(() => {
@@ -308,7 +335,7 @@ export default function ClonePage() {
       const res  = await fetch("/api/clone/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, limit: 300 }),
+        body: JSON.stringify({ username, limit: 500 }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -316,7 +343,7 @@ export default function ClonePage() {
         setSearchState("error");
         return;
       }
-      const meta = { runId: data.runId, username, fallback: false, limit: 300 };
+      const meta = { runId: data.runId, username, fallback: false, limit: 500 };
       setRunMeta(meta);
       startPolling(meta.runId, meta.username, meta.fallback, meta.limit);
     } catch {
@@ -400,6 +427,55 @@ export default function ClonePage() {
       await loadCampaigns();
     } catch {}
     setCancellingId(null);
+  };
+
+  // ── Saved profiles handlers ───────────────────────────────────────────────────
+
+  const handleSaveProfile = () => {
+    if (!profile || !stats) return;
+    const entry: SavedProfile = {
+      username:       profile.username,
+      fullName:       profile.fullName,
+      profilePicUrl:  profile.profilePicUrl,
+      followersCount: profile.followersCount,
+      reelCount:      stats.reelCount,
+      savedAt:        new Date().toISOString(),
+    };
+    const existing: SavedProfile[] = (() => {
+      try { return JSON.parse(localStorage.getItem(SAVED_PROFILES_KEY) ?? "[]"); } catch { return []; }
+    })();
+    const updated = [entry, ...existing.filter(p => p.username !== profile.username)].slice(0, 20);
+    localStorage.setItem(SAVED_PROFILES_KEY, JSON.stringify(updated));
+    setSavedProfiles(updated);
+    setProfileSaved(true);
+  };
+
+  const handleUnsaveProfile = (uname: string) => {
+    const updated = savedProfiles.filter(p => p.username !== uname);
+    localStorage.setItem(SAVED_PROFILES_KEY, JSON.stringify(updated));
+    setSavedProfiles(updated);
+    if (profile?.username === uname) setProfileSaved(false);
+  };
+
+  const handleLoadSavedProfile = (sp: SavedProfile) => {
+    setProfile({
+      username:       sp.username,
+      fullName:       sp.fullName,
+      profilePicUrl:  sp.profilePicUrl,
+      bio:            null,
+      followersCount: sp.followersCount,
+    });
+    setStats({
+      reelCount:      sp.reelCount,
+      avgViews:       0,
+      avgLikes:       0,
+      avgComments:    0,
+      engagementRate: 0,
+    });
+    setReels([]);
+    setSearchState("done");
+    setQuery(sp.username);
+    setProfileSaved(true);
   };
 
   // ── Computed ──────────────────────────────────────────────────────────────────
@@ -519,6 +595,76 @@ export default function ClonePage() {
         </AnimatePresence>
       </div>
 
+      {/* ── Perfis Salvos ─────────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Bookmark size={14} style={{ color: "var(--electric)" }} />
+          <h2 className="text-sm font-bold uppercase tracking-widest text-white/50">Perfis Salvos</h2>
+        </div>
+
+        <AnimatePresence mode="wait">
+          {savedProfiles.length === 0 ? (
+            <motion.div
+              key="empty-saved"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="glass-card rounded-2xl p-6 text-center"
+            >
+              <Bookmark size={22} className="mx-auto mb-2 text-white/15" />
+              <p className="text-sm font-semibold text-white/30">Perfis Salvos</p>
+              <p className="text-xs text-white/20 mt-1 max-w-xs mx-auto">
+                Busque um perfil e clique em Salvar para guardar a análise aqui.
+              </p>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="saved-list"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="flex flex-wrap gap-3"
+            >
+              {savedProfiles.map(sp => (
+                <motion.div
+                  key={sp.username}
+                  layout
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  onClick={() => handleLoadSavedProfile(sp)}
+                  className={cn(
+                    "glass-card rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:border-matrix/20 transition-all group relative",
+                    "min-w-[180px] max-w-[220px]"
+                  )}
+                  style={profile?.username === sp.username ? { border: "1px solid rgba(0,255,65,0.25)" } : {}}
+                >
+                  {/* Avatar */}
+                  {sp.profilePicUrl ? (
+                    <img src={sp.profilePicUrl} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-white/10" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                      style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", color: "#000" }}>
+                      {sp.username.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-white truncate">@{sp.username}</p>
+                    <p className="text-[10px] text-white/35 mt-0.5">
+                      {fmt(sp.followersCount)} seguidores · {sp.reelCount} reels
+                    </p>
+                  </div>
+                  {/* Remove button */}
+                  <button
+                    onClick={e => { e.stopPropagation(); handleUnsaveProfile(sp.username); }}
+                    className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center text-white/20 hover:text-white/60 hover:bg-white/10 transition-all opacity-0 group-hover:opacity-100"
+                  >
+                    ×
+                  </button>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
       {/* Main layout: results (left) + config (right, always visible) */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5 items-start">
 
@@ -548,16 +694,34 @@ export default function ClonePage() {
                         <a
                           href={profile.profilePicUrl}
                           download={`${profile.username}_foto.jpg`}
-                          className="absolute inset-0 rounded-full flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="absolute inset-0 rounded-full flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Baixar foto de perfil"
                         >
-                          <Download size={16} className="text-white" />
+                          <Download size={18} className="text-white drop-shadow" />
                         </a>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h2 className="font-bold text-white text-lg leading-tight">{profile.fullName}</h2>
-                        <span className="text-sm text-white/40">@{profile.username}</span>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="font-bold text-white text-lg leading-tight">{profile.fullName}</h2>
+                          <span className="text-sm text-white/40">@{profile.username}</span>
+                        </div>
+                        <button
+                          onClick={profileSaved ? () => handleUnsaveProfile(profile.username) : handleSaveProfile}
+                          title={profileSaved ? "Remover dos salvos" : "Salvar perfil"}
+                          className={cn(
+                            "flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
+                            profileSaved
+                              ? "border-matrix/40 text-matrix bg-matrix/10"
+                              : "border-white/10 text-white/40 hover:text-matrix hover:border-matrix/30"
+                          )}
+                        >
+                          <Bookmark size={12} className={profileSaved ? "fill-current" : ""} />
+                          {profileSaved ? "Salvo" : "Salvar"}
+                        </button>
                       </div>
                       {profile.bio && (
                         <p className="text-sm text-white/50 mt-1 line-clamp-2">{profile.bio}</p>

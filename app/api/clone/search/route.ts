@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Corpo inválido." }, { status: 400 });
   }
 
-  const { username, limit = 300 } = body;
+  const { username, limit = 500 } = body;
   if (!username) {
     return NextResponse.json({ error: "O campo 'username' é obrigatório." }, { status: 400 });
   }
@@ -39,8 +39,8 @@ export async function POST(req: NextRequest) {
         directUrls: [`https://www.instagram.com/${username}/reels/`],
         resultsType: "posts",
         resultsLimit: limit,
-        maxRequestsPerCrawl: Math.max(300, limit * 2),
-        proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
+        maxRequestsPerCrawl: Math.ceil(limit / 8) + 40,
+        proxyConfiguration: { useApifyProxy: true },
       });
       return NextResponse.json({ runId: run.id, username, limit, fallback: false });
     } catch (err) {
