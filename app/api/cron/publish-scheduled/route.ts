@@ -95,8 +95,11 @@ async function fetchFreshReelUrl(instagramUrl: string): Promise<string> {
         const videoUrl =
           (item.videoUrl as string | undefined) ||
           (item.video_url as string | undefined) ||
-          (item.videoPlayUrl as string | undefined) || "";
-        if (!videoUrl) throw new Error("Campo videoUrl ausente no item Apify.");
+          (item.videoPlayUrl as string | undefined) ||
+          (item.playVideoUrl as string | undefined) || "";
+        // Erro permanente: reel sem URL de vídeo (deletado, privado ou post de foto)
+        // Não usar "apify" no texto para que isTransientError() não faça retry eterno.
+        if (!videoUrl) throw new Error("Reel sem URL de vídeo — conteúdo indisponível ou post de foto.");
         return videoUrl;
       }
     }
