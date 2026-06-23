@@ -1007,30 +1007,37 @@ export default function ClonePage() {
                         </div>
                       )}
 
-                      {/* Account mini-avatars */}
+                      {/* Account chips */}
                       {accRows.length > 0 && (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[10px] text-white/25">Contas:</span>
-                          <div className="flex items-center">
-                            {accRows.slice(0, 8).map((acc, i) => (
+                        <div className="space-y-1.5">
+                          <span className="text-[10px] text-white/25 uppercase tracking-wider">
+                            {accRows.length} conta{accRows.length !== 1 ? "s" : ""}
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {accRows.slice(0, 6).map(acc => (
                               <div
                                 key={acc.id}
-                                title={`@${acc.username}`}
-                                className="w-5 h-5 rounded-full border border-black/50 flex-shrink-0 -ml-1 first:ml-0"
-                                style={{ zIndex: 10 - i }}
+                                className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] text-white/60 flex-shrink-0"
+                                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
                               >
                                 {acc.avatar_url ? (
-                                  <img src={acc.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
+                                  <img src={acc.avatar_url} alt="" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
                                 ) : (
-                                  <div className="w-full h-full rounded-full flex items-center justify-center text-[7px] font-bold"
+                                  <div className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold flex-shrink-0"
                                     style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", color: "#000" }}>
                                     {acc.username.charAt(0).toUpperCase()}
                                   </div>
                                 )}
+                                <span className="truncate max-w-[100px]">@{acc.username}</span>
                               </div>
                             ))}
-                            {accRows.length > 8 && (
-                              <span className="text-[10px] text-white/30 ml-1.5">+{accRows.length - 8}</span>
+                            {accRows.length > 6 && (
+                              <div
+                                className="flex items-center px-2 py-1 rounded-lg text-[11px] text-white/35 flex-shrink-0"
+                                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+                              >
+                                +{accRows.length - 6} mais
+                              </div>
                             )}
                           </div>
                         </div>
