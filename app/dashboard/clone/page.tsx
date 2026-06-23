@@ -173,6 +173,8 @@ export default function ClonePage() {
   const [campaigns, setCampaigns]       = useState<CampaignData[]>([]);
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
   const [cancellingId, setCancellingId]   = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deletingId,    setDeletingId]    = useState<string | null>(null);
   const historyRefTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Saved profiles
@@ -410,6 +412,25 @@ export default function ClonePage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // ── Delete history entry (inactive campaigns) ─────────────────────────────────
+
+  const handleDeleteHistory = async (campaignId: string) => {
+    setDeletingId(campaignId);
+    try {
+      await fetch(`/api/campaigns?id=${campaignId}`, { method: "DELETE" });
+      // Remove from local state immediately
+      setCampaigns(prev => prev.filter(c => c.campaign_id !== campaignId));
+      // Remove from localStorage clone records
+      const updated: CloneRecord[] = (() => {
+        try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]"); } catch { return []; }
+      })().filter((r: CloneRecord) => r.campaign_id !== campaignId);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+      setCloneRecords(updated);
+    } catch {}
+    setDeletingId(null);
+    setConfirmDelete(null);
   };
 
   // ── Cancel campaign ────────────────────────────────────────────────────────────
@@ -1248,6 +1269,50 @@ export default function ClonePage() {
                           )}
                           {confirmCancel === record.campaign_id ? "Confirmar cancelamento" : "Cancelar"}
                         </button>
+                      )}
+
+                      {/* Delete button — only if inactive */}
+                      {(!campaign || campaign.pending === 0) && (
+                        <AnimatePresence mode="wait">
+                          {confirmDelete === record.campaign_id ? (
+                            <motion.div
+                              key="confirm"
+                              initial={{ opacity: 0, scale: 0.95 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.95 }}
+                              className="flex items-center gap-1.5"
+                            >
+                              <span className="text-[11px] text-white/40">Tem certeza?</span>
+                              <button
+                                onClick={() => handleDeleteHistory(record.campaign_id)}
+                                disabled={deletingId === record.campaign_id}
+                                className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg border border-red-500/50 text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-all"
+                              >
+                                {deletingId === record.campaign_id
+                                  ? <Loader2 size={11} className="animate-spin" />
+                                  : "Sim"}
+                              </button>
+                              <button
+                                onClick={() => setConfirmDelete(null)}
+                                className="text-[11px] px-2.5 py-1.5 rounded-lg border border-white/10 text-white/30 hover:text-white/60 transition-all"
+                              >
+                                Não
+                              </button>
+                            </motion.div>
+                          ) : (
+                            <motion.button
+                              key="delete-btn"
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              onClick={() => setConfirmDelete(record.campaign_id)}
+                              className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg border border-white/10 text-white/25 hover:text-red-400 hover:border-red-500/30 transition-all"
+                            >
+                              <Trash2 size={11} />
+                              Excluir
+                            </motion.button>
+                          )}
+                        </AnimatePresence>
                       )}
                     </div>
                   </div>
