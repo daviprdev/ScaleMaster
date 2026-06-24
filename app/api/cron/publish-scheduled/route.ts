@@ -15,8 +15,9 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 // Orçamento de tempo — Hobby plan: 60s real.
-// Dois-fase: criar container (rápido) + poll uma vez (rápido) + publicar (rápido).
-// Nenhuma operação de poll com loop — sempre retorna e tenta de novo no próximo ciclo (1min).
+// Com a nova arquitetura (claim APÓS Apify), o pior caso é:
+//   Apify ~30s + download ~10s + upload ~5s + claim + container + poll ~5s = ~50s
+// Dentro do limite de 60s.
 const BATCH_SIZE = 10;
 const RUN_BUDGET_MS = 55_000;
 
@@ -38,15 +39,13 @@ interface PostRow {
   caption: string | null;
   scheduled_at: string;
   account_id: string;
-  // Criado na primeira tentativa e reutilizado em polls subsequentes.
-  // NULL = ainda não criou container. Não-null = container já existe na Meta.
   creation_id: string | null;
   instagram_accounts: AccountRow | null;
   videos_library: { public_url: string } | null;
 }
 
-// Erros transitórios da Meta ou de rede → manter creation_id, tentar de novo no próximo ciclo.
-// Erros de token/credenciais → marcar como "failed" permanente, limpar creation_id.
+// Erros transitórios da Meta ou de rede → manter creation_id, tentar de novo.
+// Erros de token/credenciais → marcar como "failed" permanente.
 const TRANSIENT_PATTERNS = [
   "too many actions",
   "an unexpected error has occurred",
@@ -64,7 +63,7 @@ const TRANSIENT_PATTERNS = [
   "upload supabase",
 ];
 
-// ── Clone: detecta URL de página do Instagram e busca CDN fresco via Apify ────
+// ── Clone: detecta URL de página do Instagram ────────────────────────────────
 
 function isCloneUrl(url: string): boolean {
   return url.includes("instagram.com/reel/") || url.includes("instagram.com/p/");
@@ -80,8 +79,8 @@ async function fetchFreshReelUrl(instagramUrl: string): Promise<string> {
       proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
     });
 
-    // Poll até 15 × 3s = 45s
-    for (let i = 0; i < 15; i++) {
+    // Poll até 10 × 3s = 30s (reduzido de 15×3=45s para caber no budget Hobby)
+    for (let i = 0; i < 10; i++) {
       await new Promise<void>(r => setTimeout(r, 3_000));
       const status = await client.run(run.id).get();
       if (!status) break;
@@ -97,13 +96,11 @@ async function fetchFreshReelUrl(instagramUrl: string): Promise<string> {
           (item.video_url as string | undefined) ||
           (item.videoPlayUrl as string | undefined) ||
           (item.playVideoUrl as string | undefined) || "";
-        // Erro permanente: reel sem URL de vídeo (deletado, privado ou post de foto)
-        // Não usar "apify" no texto para que isTransientError() não faça retry eterno.
         if (!videoUrl) throw new Error("Reel sem URL de vídeo — conteúdo indisponível ou post de foto.");
         return videoUrl;
       }
     }
-    throw new Error(`Apify não terminou em 45s para ${instagramUrl}`);
+    throw new Error(`Apify não terminou em 30s para ${instagramUrl}`);
   });
 }
 
@@ -112,12 +109,9 @@ function isTransientError(msg: string): boolean {
   return TRANSIENT_PATTERNS.some(p => lower.includes(p));
 }
 
-// ── Clone: baixa vídeo do CDN e hospeda no Supabase Storage ───────────────────
-// A Meta não consegue baixar URLs signed do CDN do Instagram (fbcdn.net) diretamente
-// a partir dos seus próprios servidores de processamento. É necessário hospedar o
-// vídeo num storage público antes de criar o container Meta.
-// Usa undiciFetch (não o fetch global patchado pelo Next.js 15) para que o
-// dispatcher (proxy) seja respeitado corretamente.
+// ── Clone: baixa vídeo do CDN e hospeda no Supabase Storage ──────────────────
+// A Meta não consegue baixar URLs signed do CDN do Instagram (fbcdn.net).
+// Hospedamos no Storage público antes de criar o container Meta.
 async function downloadAndHostForMeta(
   cdnUrl: string,
   postId: string,
@@ -135,6 +129,12 @@ async function downloadAndHostForMeta(
 
   const res = await undiciFetch(cdnUrl, fetchInit);
   if (!res.ok) throw new Error(`download cdn falhou: HTTP ${res.status} para ${cdnUrl.slice(0, 80)}`);
+
+  // Valida Content-Type para não subir HTML de erro como se fosse vídeo
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType && !contentType.includes("video/") && !contentType.includes("octet-stream") && !contentType.includes("binary/")) {
+    throw new Error(`download cdn retornou conteúdo não-vídeo (${contentType.slice(0, 60)}) — CDN pode ter retornado página de erro`);
+  }
 
   const buf = Buffer.from(await res.arrayBuffer());
   if (buf.length < 50_000) throw new Error(`download cdn retornou arquivo muito pequeno (${buf.length} bytes) — possível erro de auth na CDN`);
@@ -173,7 +173,7 @@ export async function GET(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const now = new Date().toISOString();
 
-  console.log(`[publish-scheduled] ▶ Iniciando execução (dois-fase). now=${now} | batch_size=${BATCH_SIZE}`);
+  console.log(`[publish-scheduled] ▶ Iniciando execução. now=${now} | batch_size=${BATCH_SIZE}`);
 
   // ── Diagnóstico ───────────────────────────────────────────────────────────
   const [{ count: countPending }, { count: countPublishing }] = await Promise.all([
@@ -197,32 +197,43 @@ export async function GET(req: NextRequest) {
   console.log(
     `[publish-scheduled] Diagnóstico da fila:\n` +
     `  ├─ pending total:     ${countPending ?? 0}\n` +
-    `  ├─ elegíveis agora:   ${countEligible ?? 0}  (scheduled_at ≤ ${now})\n` +
-    `  ├─ data futura:       ${countFuture}  (aguardando horário agendado)\n` +
+    `  ├─ elegíveis agora:   ${countEligible ?? 0}\n` +
+    `  ├─ data futura:       ${countFuture}\n` +
     `  ├─ em publicação:     ${countPublishing ?? 0}\n` +
     `  └─ falhas acumuladas: ${countFailed ?? 0}`
   );
 
-  // ── Desbloqueio de posts presos em "publishing" ───────────────────────────
-  // Com dois-fase, NÃO limpamos creation_id — próximo ciclo vai pollar o mesmo container.
-  // Apenas reseta o status para "pending" para que seja reprocessado.
+  // ── Auto-heal 1: posts presos em "publishing" ─────────────────────────────
+  // Com a nova arquitetura (claim após Apify), posts não devem ficar presos.
+  // Mas mantemos como segurança para posts de runs anteriores.
   const stuckCutoff = new Date(Date.now() - 5 * 60_000).toISOString();
-  const { data: unblocked, error: unblockErr } = await admin
+  const { data: unblocked } = await admin
     .from("scheduled_posts")
     .update({ status: "pending", error_message: null })
-    // NÃO inclui creation_id aqui — mantém o container existente para re-poll
     .eq("status", "publishing")
     .lte("scheduled_at", stuckCutoff)
     .select("id");
 
-  if (unblockErr) {
-    console.error("[publish-scheduled] Erro ao desbloquear posts presos:", unblockErr.message);
-  } else if (unblocked?.length) {
-    console.log(`[publish-scheduled] ${unblocked.length} post(s) desbloqueados "publishing" → "pending" (creation_id preservado)`);
+  if (unblocked?.length) {
+    console.log(`[publish-scheduled] ${unblocked.length} post(s) desbloqueados "publishing" → "pending"`);
+  }
+
+  // ── Auto-heal 2: posts failed por ERROR/EXPIRED recebem nova tentativa ────
+  // Containers Meta com ERROR/EXPIRED são transitórios (CDN expira, Meta instável).
+  // Resetamos para pending com creation_id limpo para recriar o container.
+  const { data: healedError } = await admin
+    .from("scheduled_posts")
+    .update({ status: "pending", error_message: null, creation_id: null })
+    .eq("status", "failed")
+    .ilike("error_message", "%ERROR/EXPIRED%")
+    .lte("scheduled_at", now)
+    .select("id");
+
+  if (healedError?.length) {
+    console.log(`[publish-scheduled] ♻ ${healedError.length} post(s) ERROR/EXPIRED resetados para retry.`);
   }
 
   // ── Busca posts elegíveis ─────────────────────────────────────────────────
-  // Inclui creation_id — se não-null, o container já existe na Meta (não recriar).
   const { data: rows, error: fetchErr } = await admin
     .from("scheduled_posts")
     .select(
@@ -252,6 +263,7 @@ export async function GET(req: NextRequest) {
     failed: 0,
     skipped: 0,
     unblocked: unblocked?.length ?? 0,
+    healed_error: healedError?.length ?? 0,
     queue_pending: countPending ?? 0,
     queue_eligible: countEligible ?? 0,
     queue_future: countFuture,
@@ -259,9 +271,8 @@ export async function GET(req: NextRequest) {
   };
 
   let publishAttemptsInThisRun = 0;
-  // Limita a 1 scrape Apify por ciclo (cada scrape leva ~20-45s, orçamento de 55s).
-  // Cache em memória: instagram URL → Supabase URL (reels com mesma URL não precisam
-  // de novo scrape — todos os posts da mesma conta / mesmo slot são servidos do cache).
+  // 1 scrape Apify por run — cada scrape leva ~30s, dentro do budget Hobby 60s.
+  // Cache em memória: instagram URL → Supabase URL (reutilizado pelo mesmo batch).
   let cloneFetchCount = 0;
   const cloneUrlCache = new Map<string, string>();
 
@@ -269,18 +280,98 @@ export async function GET(req: NextRequest) {
     // ── Budget global da execução ─────────────────────────────────────────
     const elapsed = Date.now() - runStart;
     if (elapsed > RUN_BUDGET_MS) {
-      console.log(`[publish-scheduled] ⏱ Budget esgotado (${Math.round(elapsed / 1000)}s). Posts restantes serão processados na próxima execução.`);
+      console.log(`[publish-scheduled] ⏱ Budget esgotado (${Math.round(elapsed / 1000)}s). Próximos posts no próximo ciclo.`);
       break;
     }
 
+    // ── Extrai dados ANTES do claim para poder falhar sem travar o post ───
+    const account = post.instagram_accounts;
+    const rawVideoUrl = post.video_url ?? post.videos_library?.public_url ?? null;
+    const caption = post.caption ?? "";
+
+    // ── Validações rápidas SEM claim ──────────────────────────────────────
+    if (!account || !account.is_active) {
+      await admin.from("scheduled_posts").update({ status: "failed", error_message: "Conta não encontrada ou inativa." }).eq("id", post.id);
+      summary.failed++;
+      continue;
+    }
+    if (!rawVideoUrl) {
+      await admin.from("scheduled_posts").update({ status: "failed", error_message: "URL do vídeo não encontrada." }).eq("id", post.id);
+      summary.failed++;
+      continue;
+    }
+    if (!account.meta_access_token || !account.ig_business_account_id) {
+      await admin.from("scheduled_posts").update({ status: "failed", error_message: "Conta sem credenciais Meta. Reconecte a conta em Contas." }).eq("id", post.id);
+      summary.failed++;
+      continue;
+    }
+
+    const proxy = getProxyForAccount(account.id, account.proxy_url ?? null);
+
     console.log(
       `[publish-scheduled] Processando post ${post.id} | ` +
-      `scheduled_at=${post.scheduled_at} | ` +
+      `@${account.username} | ` +
       `creation_id=${post.creation_id ?? "null (novo)"} | ` +
-      `elapsed=${Math.round(elapsed / 1000)}s`
+      `elapsed=${Math.round((Date.now() - runStart) / 1000)}s`
     );
 
-    // Claim atômico: evita dupla publicação em execuções concorrentes
+    // ── PRÉ-PROCESSAMENTO: resolve clone URL ANTES do claim ───────────────
+    // Crítico: não claimar o post durante o Apify (pode levar 30s+).
+    // Se a função Vercel for morta durante o Apify, o post fica em "pending"
+    // (não em "publishing"), evitando o ciclo de travamento 5 minutos.
+    let videoUrl = rawVideoUrl;
+
+    if (!post.creation_id && isCloneUrl(rawVideoUrl)) {
+      const originalInstagramUrl = rawVideoUrl;
+
+      if (cloneUrlCache.has(originalInstagramUrl)) {
+        // Cache hit: mesmo reel já foi resolvido neste batch
+        videoUrl = cloneUrlCache.get(originalInstagramUrl)!;
+        console.log(`[publish-scheduled] ✓ @${account.username} — clone URL do cache em memória.`);
+      } else if (cloneFetchCount >= 1) {
+        // Só 1 scrape Apify por run (protege o budget de 55s)
+        console.log(`[publish-scheduled] ⏭ @${account.username} — scrape Apify já usado neste ciclo, adiado.`);
+        summary.skipped++;
+        continue;
+      } else if ((Date.now() - runStart) > RUN_BUDGET_MS - 20_000) {
+        // Menos de 20s no budget — não há tempo para Apify (30s mín)
+        console.log(`[publish-scheduled] ⏭ @${account.username} — budget insuficiente para scrape, adiado.`);
+        summary.skipped++;
+        continue;
+      } else {
+        // Scrape Apify — SEM CLAIM (post permanece em "pending" durante o scrape)
+        cloneFetchCount++;
+        console.log(`[publish-scheduled] 🔄 @${account.username} — buscando CDN fresco via Apify: ${originalInstagramUrl}`);
+        try {
+          const cdnUrl = await fetchFreshReelUrl(originalInstagramUrl);
+          console.log(`[publish-scheduled] ✓ CDN obtido: ${cdnUrl.slice(0, 80)}…`);
+
+          videoUrl = await downloadAndHostForMeta(cdnUrl, post.id, proxy);
+          cloneUrlCache.set(originalInstagramUrl, videoUrl);
+
+          // Propaga URL Supabase para TODOS os posts com este reel (todas as contas)
+          await admin
+            .from("scheduled_posts")
+            .update({ video_url: videoUrl })
+            .eq("video_url", originalInstagramUrl)
+            .in("status", ["pending"]);
+          console.log(`[publish-scheduled] ✓ URL Supabase propagada para todos os posts com o mesmo reel.`);
+        } catch (cloneErr) {
+          const msg = cloneErr instanceof Error ? cloneErr.message : String(cloneErr);
+          console.warn(`[publish-scheduled] ⚠ @${account.username} — resolução clone falhou: ${msg.slice(0, 120)}`);
+          if (!isTransientError(msg)) {
+            // Erro permanente (reel privado, deletado, sem vídeo)
+            await admin.from("scheduled_posts").update({ status: "failed", error_message: msg }).eq("id", post.id);
+            summary.failed++;
+          } else {
+            summary.skipped++;
+          }
+          continue;
+        }
+      }
+    }
+
+    // ── CLAIM atômico: agora temos a URL resolvida, podemos claimar ────────
     const { data: claimed } = await admin
       .from("scheduled_posts")
       .update({ status: "publishing" })
@@ -293,36 +384,6 @@ export async function GET(req: NextRequest) {
       summary.skipped++;
       continue;
     }
-
-    const account = post.instagram_accounts;
-    const videoUrl = post.video_url ?? post.videos_library?.public_url ?? null;
-
-    if (!account || !account.is_active) {
-      const reason = "Conta não encontrada ou inativa.";
-      console.error(`[publish-scheduled] ✗ Post ${post.id}: ${reason}`);
-      await admin.from("scheduled_posts").update({ status: "failed", error_message: reason }).eq("id", post.id);
-      summary.failed++;
-      continue;
-    }
-
-    if (!videoUrl) {
-      const reason = "URL do vídeo não encontrada.";
-      console.error(`[publish-scheduled] ✗ Post ${post.id} (@${account.username}): ${reason}`);
-      await admin.from("scheduled_posts").update({ status: "failed", error_message: reason }).eq("id", post.id);
-      summary.failed++;
-      continue;
-    }
-
-    if (!account.meta_access_token || !account.ig_business_account_id) {
-      const reason = "Conta sem credenciais Meta. Reconecte a conta em Contas.";
-      console.error(`[publish-scheduled] ✗ Post ${post.id} (@${account.username}): ${reason}`);
-      await admin.from("scheduled_posts").update({ status: "failed", error_message: reason }).eq("id", post.id);
-      summary.failed++;
-      continue;
-    }
-
-    const caption = post.caption ?? "";
-    const proxy = getProxyForAccount(account.id, account.proxy_url ?? null);
 
     try {
       let tokenToUse = account.meta_access_token;
@@ -343,13 +404,10 @@ export async function GET(req: NextRequest) {
       }
 
       // ── FASE 1: Criar container (apenas se ainda não existe) ──────────────
-      // Se creation_id já existe, o container foi criado em ciclo anterior.
-      // Apenas pollamos — evita criação de novos containers a cada minuto (causa de rate-limit).
       let creationId = post.creation_id;
 
       if (!creationId) {
-        // Aplica efeitos anti-fingerprint antes de criar o container.
-        // Fallback para URL original se FFmpeg falhar (sem interromper a postagem).
+        // Aplica efeitos anti-fingerprint (no-op se todos desativados)
         let effectiveVideoUrl = videoUrl;
         try {
           effectiveVideoUrl = await applyVideoEffects(videoUrl, {
@@ -357,7 +415,6 @@ export async function GET(req: NextRequest) {
             blur: false, noise: false, antiAi: false,
             accountId: account.id,
           });
-          console.log(`[publish-scheduled] ✓ Efeitos aplicados para @${account.username}`);
         } catch (fxErr) {
           console.warn(
             `[publish-scheduled] ⚠ Efeitos falharam para @${account.username}: ` +
@@ -365,47 +422,15 @@ export async function GET(req: NextRequest) {
           );
         }
 
-        // ── Clone: se for URL de página do Instagram, busca CDN fresco via Apify ─
+        // Guarda de segurança: se ainda for URL do Instagram, adia (não deve acontecer)
         if (isCloneUrl(effectiveVideoUrl)) {
-          const originalInstagramUrl = effectiveVideoUrl;
-
-          // 1. Verifica cache em memória (reels com mesma URL no mesmo batch)
-          if (cloneUrlCache.has(originalInstagramUrl)) {
-            effectiveVideoUrl = cloneUrlCache.get(originalInstagramUrl)!;
-            console.log(`[publish-scheduled] ✓ Clone @${account.username} servido do cache em memória.`);
-          } else if (cloneFetchCount >= 1) {
-            // Orçamento ocupado por outro scrape neste ciclo — adia para o próximo
-            console.log(`[publish-scheduled] ⏭ Clone post @${account.username} adiado — scrape Apify já em uso neste ciclo.`);
-            await admin.from("scheduled_posts").update({ status: "pending", error_message: null }).eq("id", post.id);
-            summary.skipped++;
-            continue;
-          } else {
-            // 2. Scrape Apify para obter CDN fresco
-            console.log(`[publish-scheduled] 🔄 Clone post @${account.username} — buscando CDN fresco: ${effectiveVideoUrl}`);
-            cloneFetchCount++;
-            const cdnUrl = await fetchFreshReelUrl(effectiveVideoUrl);
-            console.log(`[publish-scheduled] ✓ CDN fresco obtido: ${cdnUrl.slice(0, 80)}…`);
-
-            // Hospeda no Supabase — CDN do Instagram não é acessível pelos
-            // servidores de processamento da Meta API.
-            effectiveVideoUrl = await downloadAndHostForMeta(cdnUrl, post.id, proxy);
-
-            // Salva no cache em memória para reutilização neste ciclo
-            cloneUrlCache.set(originalInstagramUrl, effectiveVideoUrl);
-
-            // Persiste a URL Supabase em TODOS os posts pendentes com a mesma
-            // URL de origem — evita re-scrape em ciclos futuros para outros posts
-            // do mesmo reel (ex: múltiplas contas postando o mesmo shortCode).
-            await admin
-              .from("scheduled_posts")
-              .update({ video_url: effectiveVideoUrl })
-              .eq("video_url", originalInstagramUrl)
-              .in("status", ["pending"]);
-            console.log(`[publish-scheduled] ✓ URL Supabase propagada para todos os posts com o mesmo reel.`);
-          }
+          console.warn(`[publish-scheduled] ⚠ @${account.username} — clone URL ainda não resolvida, adiando.`);
+          await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
+          summary.skipped++;
+          continue;
         }
 
-        console.log(`[publish-scheduled] Criando container Meta para @${account.username} | proxy=${proxy ? "sim" : "não"} | videoUrl=${effectiveVideoUrl.slice(0, 80)}...`);
+        console.log(`[publish-scheduled] Criando container Meta para @${account.username} | proxy=${proxy ? "sim" : "não"} | url=${effectiveVideoUrl.slice(0, 80)}…`);
         creationId = await createMediaContainerOnly(
           account.ig_business_account_id,
           effectiveVideoUrl,
@@ -413,7 +438,7 @@ export async function GET(req: NextRequest) {
           tokenToUse,
           proxy
         );
-        // Persiste imediatamente para que falhas subsequentes não recriem o container.
+        // Persiste imediatamente — falhas subsequentes não recriam o container
         await admin
           .from("scheduled_posts")
           .update({ creation_id: creationId })
@@ -426,30 +451,33 @@ export async function GET(req: NextRequest) {
       }
 
       // ── FASE 2: Pollar status UMA vez ─────────────────────────────────────
-      // Sem loop de poll — retorna imediatamente e tenta de novo no próximo ciclo (1 min).
-      // Elimina o timeout de 24s que causava re-criação infinita de containers.
       const pollStatus = await pollContainerStatusOnce(creationId, tokenToUse, proxy);
 
       if (pollStatus === "in_progress") {
-        // Meta ainda processando o vídeo → volta para pending (mantém creation_id)
         await admin
           .from("scheduled_posts")
           .update({ status: "pending", error_message: null })
           .eq("id", post.id);
         summary.in_progress++;
-        console.log(`[publish-scheduled] ⏳ @${account.username}: vídeo em processamento (IN_PROGRESS) — tentará de novo no próximo ciclo.`);
+        console.log(`[publish-scheduled] ⏳ @${account.username}: vídeo em processamento (IN_PROGRESS).`);
         continue;
       }
 
       if (pollStatus === "error") {
-        // Meta rejeitou o vídeo (formato inválido, violação de política, etc.) — permanente.
-        // Limpa creation_id para que uma nova tentativa manual recrie o container.
+        // Container ERROR/EXPIRED é transitório (CDN do Supabase pode ter expirado,
+        // Meta instável, vídeo ainda sendo processado). Limpa creation_id e retenta
+        // na próxima execução com um container novo.
+        // NÃO marca como "failed" permanente — evita posts perdidos para sempre.
         await admin
           .from("scheduled_posts")
-          .update({ status: "failed", error_message: "Meta retornou ERROR/EXPIRED durante o processamento do vídeo.", creation_id: null })
+          .update({
+            status: "pending",
+            error_message: "[RETRY] Container Meta ERROR/EXPIRED — recriando container na próxima execução.",
+            creation_id: null,
+          })
           .eq("id", post.id);
-        console.error(`[publish-scheduled] ✗ @${account.username}: Meta ERROR/EXPIRED no container.`);
-        summary.failed++;
+        summary.skipped++;
+        console.warn(`[publish-scheduled] ⚠ @${account.username}: container ERROR/EXPIRED — será reprocessado.`);
         continue;
       }
 
@@ -478,14 +506,12 @@ export async function GET(req: NextRequest) {
         .eq("id", post.id);
 
       summary.published++;
-      console.log(`[publish-scheduled] ✓ @${account.username} → media_id: ${mediaId} | elapsed total: ${Math.round((Date.now() - runStart) / 1000)}s`);
+      console.log(`[publish-scheduled] ✓ @${account.username} → media_id: ${mediaId} | elapsed: ${Math.round((Date.now() - runStart) / 1000)}s`);
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
 
       if (isTransientError(msg)) {
-        // Erro transitório (proxy, rate-limit, rede) → volta para pending (mantém creation_id).
-        // Salva o erro em error_message para diagnóstico (prefixo [RETRY] indica que vai tentar de novo).
         const retryMsg = `[RETRY] ${msg.slice(0, 300)}`;
         console.warn(`[publish-scheduled] ⏸ @${account.username} (post ${post.id}): erro transitório — retry no próximo ciclo. Motivo: ${msg.slice(0, 120)}`);
         await admin
@@ -494,8 +520,6 @@ export async function GET(req: NextRequest) {
           .eq("id", post.id);
         summary.skipped++;
       } else {
-        // Erro permanente (token inválido, container expirado, vídeo rejeitado)
-        // Limpa creation_id para forçar re-criação na próxima tentativa manual.
         console.error(`[publish-scheduled] ✗ @${account.username} (post ${post.id}):`, msg);
         await admin
           .from("scheduled_posts")
