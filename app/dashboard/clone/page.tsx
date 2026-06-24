@@ -1210,7 +1210,7 @@ export default function ClonePage() {
                                     {acc.username.charAt(0).toUpperCase()}
                                   </div>
                                 )}
-                                <span className="truncate max-w-[100px]">@{acc.username}</span>
+                                <span>@{acc.username}</span>
                               </div>
                             ))}
                             {accRows.length > 6 && (
