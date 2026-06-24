@@ -575,6 +575,11 @@ export default function AccountsPage() {
   const [proxyInput, setProxyInput] = useState("");
   const [savingProxy, setSavingProxy] = useState(false);
 
+  // Drag-and-drop reorder de pastas
+  const [draggingFolderId, setDraggingFolderId] = useState<string | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const [folderOrder, setFolderOrder] = useState<string[]>([]);
+
   const supabase = useMemo(() => createClient(), []);
   const _togglingRef = useRef<string | null>(null);
   const _deletingRef = useRef<string | null>(null);
@@ -611,6 +616,10 @@ export default function AccountsPage() {
       if (!res.ok) return;
       const data = await res.json() as { folders?: AccountFolder[] };
       setFolders(data.folders ?? []);
+      try {
+        const saved = localStorage.getItem("folder_order");
+        if (saved) setFolderOrder(JSON.parse(saved));
+      } catch {}
     } catch { /* silent */ }
   }, []);
 
@@ -996,6 +1005,48 @@ export default function AccountsPage() {
     if (activeFolderId === null) return accounts.filter(a => a.folder_id === null);
     return accounts.filter(a => a.folder_id === activeFolderId);
   }, [accounts, activeFolderId]);
+
+  const sortedFolders = useMemo(() => {
+    if (!folderOrder.length) return folders;
+    return [...folders].sort((a, b) => {
+      const ia = folderOrder.indexOf(a.id);
+      const ib = folderOrder.indexOf(b.id);
+      if (ia === -1 && ib === -1) return 0;
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+  }, [folders, folderOrder]);
+
+  const handleFolderDragStart = (folderId: string) => setDraggingFolderId(folderId);
+
+  const handleFolderDragOver = (e: React.DragEvent, folderId: string) => {
+    e.preventDefault();
+    if (folderId !== draggingFolderId) setDragOverFolderId(folderId);
+  };
+
+  const handleFolderDrop = (e: React.DragEvent, targetFolderId: string) => {
+    e.preventDefault();
+    if (!draggingFolderId || draggingFolderId === targetFolderId) {
+      setDraggingFolderId(null);
+      setDragOverFolderId(null);
+      return;
+    }
+    const order = sortedFolders.map(f => f.id);
+    const fromIdx = order.indexOf(draggingFolderId);
+    const toIdx = order.indexOf(targetFolderId);
+    order.splice(fromIdx, 1);
+    order.splice(toIdx, 0, draggingFolderId);
+    setFolderOrder(order);
+    try { localStorage.setItem("folder_order", JSON.stringify(order)); } catch {}
+    setDraggingFolderId(null);
+    setDragOverFolderId(null);
+  };
+
+  const handleFolderDragEnd = () => {
+    setDraggingFolderId(null);
+    setDragOverFolderId(null);
+  };
 
   const active = accounts.filter(a => a.is_active).length;
   const unassigned = accounts.filter(a => a.folder_id === null).length;
@@ -1755,11 +1806,29 @@ export default function AccountsPage() {
         </button>
 
         {/* Tabs por pasta */}
-        {folders.map(folder => {
+        {sortedFolders.map(folder => {
           const isActive = activeFolderId === folder.id;
           const menuOpen = openFolderMenuId === folder.id;
+          const isDragging = draggingFolderId === folder.id;
+          const isOver = dragOverFolderId === folder.id;
           return (
-            <div key={folder.id} className="relative flex items-center flex-shrink-0" data-folder-menu>
+            <div
+              key={folder.id}
+              className="relative flex items-center flex-shrink-0"
+              data-folder-menu
+              draggable
+              onDragStart={() => handleFolderDragStart(folder.id)}
+              onDragOver={e => handleFolderDragOver(e, folder.id)}
+              onDrop={e => handleFolderDrop(e, folder.id)}
+              onDragEnd={handleFolderDragEnd}
+              style={{
+                opacity: isDragging ? 0.4 : 1,
+                cursor: "grab",
+                outline: isOver ? "1px solid rgba(139,92,246,0.5)" : undefined,
+                borderRadius: isOver ? "8px" : undefined,
+                transition: "opacity 0.15s, outline 0.1s",
+              }}
+            >
               <button
                 onClick={() => setActiveFolderId(folder.id)}
                 className={cn(
