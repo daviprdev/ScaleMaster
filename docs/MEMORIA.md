@@ -37,6 +37,28 @@ O repositório `Saas` estava inicializado na pasta home do usuário, não na pas
 
 ---
 
+### ✅ Sessão 2026-06-24 — Fix histórico Clone + Style + Drag-and-drop Pastas
+
+#### Fix — Excluir histórico Clone não persistia
+- **Raiz:** `DELETE /api/campaigns` só executava `UPDATE status='cancelled'`. Em campanhas inativas (pending=0), zero rows eram afetadas → registro continuava no banco → voltava no reload.
+- **Fix:** Novo query param `?hard=true` executa `.delete()` real de todas as linhas da campanha. `handleDeleteHistory` no frontend passa `?hard=true`. Fluxo de cancelar campanha ativa continua sem o parâmetro.
+- Commits: `ea97e9c`
+
+#### Style — Nome completo das contas no histórico Clone
+- Chips de conta tinham `truncate max-w-[100px]` cortando usernames longos.
+- Removidas as duas classes do `span` em `app/dashboard/clone/page.tsx:1213`.
+- Commit: `9e8f1da`
+
+#### Feat — Drag-and-drop para reordenar abas de pastas em Contas
+- HTML5 DnD nativo (`draggable` + `onDragStart/Over/Drop/End`) — zero dependências novas.
+- Ordem salva em `localStorage("folder_order")` como array de IDs. Persiste entre reloads.
+- `sortedFolders` useMemo aplica a ordem ao renderizar (nova pastas sem ordem vão pro final).
+- `fetchFolders` carrega a ordem do localStorage ao buscar pastas da API.
+- Visual: tab arrastada fica `opacity: 0.4`; tab destino recebe `outline violeta`.
+- Commit: `46a0640`
+
+---
+
 ### ✅ Fase 1 — Setup Inicial + Landing Page + Auth UI
 **Data:** 10/05/2026
 **Commit:** `feat: Fase 1 — setup inicial, landing page e telas de auth`
