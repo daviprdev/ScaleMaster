@@ -575,7 +575,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
     setDeletingId(campaignId);
     setConfirmDelete(null);
     try {
-      await fetch(`/api/campaigns?id=${encodeURIComponent(campaignId)}`, { method: "DELETE" });
+      await fetch(`/api/campaigns?id=${encodeURIComponent(campaignId)}&hard=true`, { method: "DELETE" });
       await fetchCampaigns(true);
     } finally { setDeletingId(null); }
   };
