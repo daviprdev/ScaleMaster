@@ -80,6 +80,7 @@ export async function DELETE(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const campaignId = searchParams.get("id");
+  const hardDelete = searchParams.get("hard") === "true";
 
   if (!campaignId) {
     return NextResponse.json({ error: "Parâmetro id obrigatório." }, { status: 400 });
@@ -87,15 +88,29 @@ export async function DELETE(req: NextRequest) {
 
   const admin = getSupabaseAdmin() as ReturnType<typeof getSupabaseAdmin>;
 
-  const { error } = await (admin as any)
-    .from("scheduled_posts")
-    .update({ status: "cancelled" })
-    .eq("campaign_id", campaignId)
-    .eq("user_id", user.id)
-    .in("status", ["pending", "publishing"]);
+  if (hardDelete) {
+    // Remove todas as linhas da campanha do banco (excluir histórico)
+    const { error } = await (admin as any)
+      .from("scheduled_posts")
+      .delete()
+      .eq("campaign_id", campaignId)
+      .eq("user_id", user.id);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  } else {
+    // Apenas cancela os posts pendentes (cancelar campanha ativa)
+    const { error } = await (admin as any)
+      .from("scheduled_posts")
+      .update({ status: "cancelled" })
+      .eq("campaign_id", campaignId)
+      .eq("user_id", user.id)
+      .in("status", ["pending", "publishing"]);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ success: true });

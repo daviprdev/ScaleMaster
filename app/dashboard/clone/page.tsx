@@ -419,7 +419,7 @@ export default function ClonePage() {
   const handleDeleteHistory = async (campaignId: string) => {
     setDeletingId(campaignId);
     try {
-      await fetch(`/api/campaigns?id=${campaignId}`, { method: "DELETE" });
+      await fetch(`/api/campaigns?id=${campaignId}&hard=true`, { method: "DELETE" });
       // Remove from local state immediately
       setCampaigns(prev => prev.filter(c => c.campaign_id !== campaignId));
       // Remove from localStorage clone records
