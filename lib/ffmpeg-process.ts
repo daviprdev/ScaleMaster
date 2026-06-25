@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
+import { fetch as undiciFetch } from "undici";
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
@@ -38,13 +39,19 @@ export async function downloadAndStripMetadata(
   const inputPath = path.join(tmpDir, `nexus_in_${uid}.mp4`);
   const outputPath = path.join(tmpDir, `nexus_out_${uid}.mp4`);
 
-  const response = await fetch(videoUrl, {
+  // undici bypasses Next.js 15's patched global fetch (which strips dispatcher
+  // and can corrupt binary responses from Supabase Storage CDN redirects).
+  const response = await undiciFetch(videoUrl, {
     signal: AbortSignal.timeout(60_000),
   });
   if (!response.ok) {
     throw new Error(`Falha ao baixar vídeo: HTTP ${response.status}`);
   }
   const buffer = await response.arrayBuffer();
+  if (buffer.byteLength < 1024) {
+    throw new Error(`Arquivo muito pequeno para ser um vídeo válido: ${buffer.byteLength} bytes`);
+  }
+  console.log(`[ffmpeg-process] Download OK: ${(buffer.byteLength / 1024).toFixed(0)} KB de ${videoUrl.split("/").pop()}`);
   fs.writeFileSync(inputPath, Buffer.from(buffer));
 
   await new Promise<void>((resolve, reject) => {

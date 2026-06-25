@@ -19,6 +19,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
+import { fetch as undiciFetch } from "undici";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
@@ -134,7 +135,9 @@ export async function processVideoForAccount(
 
   try {
     // ── 1. Download ──────────────────────────────────────────────────────────
-    const res = await fetch(videoUrl, { signal: AbortSignal.timeout(60_000) });
+    // undici bypasses Next.js 15's patched global fetch (strips dispatcher,
+    // may corrupt binary responses from Supabase Storage CDN redirects).
+    const res = await undiciFetch(videoUrl, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) throw new Error(`Download falhou: HTTP ${res.status}`);
     const inputBuf = Buffer.from(await res.arrayBuffer());
     fs.writeFileSync(input, inputBuf);
