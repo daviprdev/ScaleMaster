@@ -14,9 +14,7 @@ import { downloadAndStripMetadata } from "@/lib/ffmpeg-process";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Budget conservador — Vercel Hobby corta em 60s real.
-// Sem Apify, cada post leva ~5s → 10 posts/run é confortável.
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 20;
 const RUN_BUDGET_MS = 55_000;
 
 // Reserva de tempo para o strip pipeline por vídeo (download + FFmpeg + upload ≈ 20s)
@@ -397,7 +395,7 @@ export async function GET(req: NextRequest) {
 
       // FINISHED → publicar
       if (publishAttemptsInThisRun > 0) {
-        await sleep(8_000);
+        await sleep(2_000); // era 8s — cada conta tem proxy/token próprio, anti-burst leve suficiente
       }
       publishAttemptsInThisRun++;
 

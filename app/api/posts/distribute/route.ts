@@ -77,9 +77,17 @@ export async function POST(req: NextRequest) {
 
   const rows: object[] = [];
 
+  // Distribui contas dentro da primeira janela de intervalo.
+  // Com muitas contas e 5 min fixo, a última conta esperaria N×5 min antes do 1º post
+  // (ex: 72 contas × 5 min = 360 min = 6h de espera). Fix: stagger proporcional ao intervalo,
+  // garantindo que TODAS as contas tenham o 1º post dentro da 1ª janela.
+  const maxStaggerPerAccountMs = account_ids.length > 1
+    ? Math.min(5 * 60_000, Math.floor((intervalMinutes * 60_000 * 0.9) / (account_ids.length - 1)))
+    : 0;
+
   for (let ai = 0; ai < account_ids.length; ai++) {
     const accountId = account_ids[ai];
-    const staggerMs = ai * 5 * 60_000; // 5 min de stagger por conta
+    const staggerMs = ai * maxStaggerPerAccountMs;
     const accountVideos = fisherYates(baseVideos); // embaralhamento único por conta
 
     for (let vi = 0; vi < accountVideos.length; vi++) {
