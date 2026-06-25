@@ -142,7 +142,7 @@ export async function GET(req: NextRequest) {
           resultsType: "posts",
           resultsLimit: limit,
           maxRequestsPerCrawl: Math.max(600, limit * 2),
-          proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ["RESIDENTIAL"] },
+          proxyConfiguration: { useApifyProxy: true },
         });
         return NextResponse.json({
           status: "running",
