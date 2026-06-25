@@ -159,6 +159,9 @@ export async function GET(req: NextRequest) {
     )
     .eq("status", "pending")
     .lte("scheduled_at", now)
+    // Exclui posts com URL do Instagram ainda não resolvida pelo prefetch-clone-urls.
+    // Essas URLs bloqueiam slots do batch mas nunca publicam nesta rota.
+    .not("video_url", "ilike", "%instagram.com%")
     .order("scheduled_at", { ascending: true })
     .limit(BATCH_SIZE);
 
@@ -318,10 +321,10 @@ export async function GET(req: NextRequest) {
             }
           }
         } else if (needsStrip(rawVideoUrl)) {
-          console.warn(`[publish-scheduled] ⏱ Budget insuficiente para strip @${account.username} — adiando para próximo ciclo.`);
-          await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
-          summary.skipped++;
-          continue;
+          // Budget insuficiente para strip — prossegue com URL original.
+          // Melhor tentar do que pular: se Meta aceitar, publica; se rejeitar (SEI),
+          // retenta com strip na próxima execução (creation_id=null após ERROR).
+          console.warn(`[publish-scheduled] ⏱ Budget insuficiente para strip @${account.username} — prosseguindo com URL original.`);
         }
 
         try {

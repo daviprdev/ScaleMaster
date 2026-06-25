@@ -42,7 +42,7 @@ export async function downloadAndStripMetadata(
   // undici bypasses Next.js 15's patched global fetch (which strips dispatcher
   // and can corrupt binary responses from Supabase Storage CDN redirects).
   const response = await undiciFetch(videoUrl, {
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(20_000),
   });
   if (!response.ok) {
     throw new Error(`Falha ao baixar vídeo: HTTP ${response.status}`);
@@ -55,7 +55,8 @@ export async function downloadAndStripMetadata(
   fs.writeFileSync(inputPath, Buffer.from(buffer));
 
   await new Promise<void>((resolve, reject) => {
-    ffmpeg(inputPath)
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cmd = ffmpeg(inputPath)
       .outputOptions([
         "-map 0:v:0",
         "-map 0:a:0?",
@@ -68,9 +69,13 @@ export async function downloadAndStripMetadata(
         "-f",            "mp4",
       ])
       .output(outputPath)
-      .on("end", () => resolve())
-      .on("error", (err: Error) => reject(new Error(`FFmpeg: ${err.message}`)))
-      .run();
+      .on("end",   () => { clearTimeout(timer); resolve(); })
+      .on("error", (err: Error) => { clearTimeout(timer); reject(new Error(`FFmpeg: ${err.message}`)); });
+    cmd.run();
+    timer = setTimeout(() => {
+      try { (cmd as any).kill("SIGKILL"); } catch { /* ok */ }
+      reject(new Error("FFmpeg strip timeout (>15s)"));
+    }, 15_000);
   });
 
   const stats = fs.statSync(outputPath);
