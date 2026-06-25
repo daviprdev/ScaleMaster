@@ -18,18 +18,20 @@ export interface ProcessResult {
  * Downloads a video and re-packages it via pure stream extraction.
  *
  * Pipeline (Pure Extraction):
- *   -map 0:v:0                           — first video track only; discards data streams
- *   -map 0:a:0?                          — first audio track only (? = optional)
- *   -c:v copy -c:a copy                  — stream copy; zero re-encoding, 100% quality
- *   -bsf:v filter_units=remove_types=5+6 — strips SEI NAL units from H.264 bitstream:
- *                                          type 5 (user_data_unregistered): CDN tracking UUIDs
- *                                          type 6 (user_data_registered):   Instagram/TikTok fingerprints
- *                                          Both survive -map_metadata because they live inside
- *                                          the video bitstream, not in MP4 container atoms.
- *   -map_metadata -1                     — strips container-level metadata (EXIF, GPS, encoder)
- *   -map_chapters -1                     — removes chapter markers
- *   -movflags +faststart                 — moov atom at front for progressive web playback
- *   -f mp4                               — strict MP4 container
+ *   -map 0:v:0                         — first video track only; discards data streams
+ *   -map 0:a:0?                        — first audio track only (? = optional)
+ *   -c:v copy -c:a copy                — stream copy; zero re-encoding, 100% quality
+ *   -bsf:v filter_units=remove_types=6 — strips all SEI NAL units (H.264 NAL unit type 6).
+ *                                        SEI NAL units carry SEI payload types:
+ *                                          payload 5 (user_data_unregistered): CDN tracking UUIDs
+ *                                          payload 4 (user_data_registered):   Instagram/TikTok fingerprints
+ *                                        NAL unit type 5 = IDR keyframes — must NOT be removed.
+ *                                        These survive -map_metadata because they are in the
+ *                                        video bitstream, not in MP4 container atoms.
+ *   -map_metadata -1                   — strips container-level metadata (EXIF, GPS, encoder)
+ *   -map_chapters -1                   — removes chapter markers
+ *   -movflags +faststart               — moov atom at front for progressive web playback
+ *   -f mp4                             — strict MP4 container
  */
 export async function downloadAndStripMetadata(
   videoUrl: string
@@ -62,7 +64,7 @@ export async function downloadAndStripMetadata(
         "-map 0:a:0?",
         "-c:v",          "copy",
         "-c:a",          "copy",
-        "-bsf:v",        "filter_units=remove_types=5+6",
+        "-bsf:v",        "filter_units=remove_types=6",
         "-map_metadata", "-1",
         "-map_chapters", "-1",
         "-movflags",     "+faststart",

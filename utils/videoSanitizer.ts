@@ -6,23 +6,21 @@
  *   - sanitizeForDownload: baixar Inspiração no dispositivo do usuário
  *
  * Pipeline (stream copy + limpeza completa):
- *   -map 0:v:0                           — primeira trilha de vídeo; descarta data streams
- *   -map 0:a:0?                          — primeira trilha de áudio (opcional)
- *   -c:v copy -c:a copy                  — stream copy; zero re-encode, qualidade máxima
- *   -bsf:v filter_units=remove_types=5+6 — remove SEI NAL units do bitstream H.264:
- *                                          tipo 5 (user_data_unregistered): UUIDs de rastreio CDN
- *                                          tipo 6 (user_data_registered):   fingerprint Instagram/TikTok
- *                                          Sobrevivem ao -map_metadata pois estão no bitstream,
- *                                          não nos átomos do container MP4.
- *   -map_metadata -1                     — remove metadados do container (EXIF, GPS, encoder)
- *   -metadata creation_time=...          — injeta data realista (parece captura original)
- *   -map_chapters -1                     — remove chapter markers
- *   -movflags +faststart                 — moov atom na frente para playback progressivo
- *   -f mp4                               — container MP4 limpo
- *
- * Nota: SEI tipo 5 foi adicionado (antes apenas tipo 6). Tipo 5 contém
- * user_data_unregistered — UUIDs proprietários usados pelos CDNs do Instagram
- * e TikTok para rastrear a origem dos vídeos baixados.
+ *   -map 0:v:0                         — primeira trilha de vídeo; descarta data streams
+ *   -map 0:a:0?                        — primeira trilha de áudio (opcional)
+ *   -c:v copy -c:a copy                — stream copy; zero re-encode, qualidade máxima
+ *   -bsf:v filter_units=remove_types=6 — remove TODAS as SEI NAL units (tipo 6 H.264).
+ *                                        SEI NAL units carregam SEI payload types:
+ *                                          payload 5 (user_data_unregistered): UUIDs CDN
+ *                                          payload 4 (user_data_registered):   fingerprint Instagram/TikTok
+ *                                        NAL unit tipo 5 = IDR keyframes — NÃO deve ser removido.
+ *                                        Sobrevivem ao -map_metadata pois estão no bitstream,
+ *                                        não nos átomos do container MP4.
+ *   -map_metadata -1                   — remove metadados do container (EXIF, GPS, encoder)
+ *   -metadata creation_time=...        — injeta data realista (parece captura original)
+ *   -map_chapters -1                   — remove chapter markers
+ *   -movflags +faststart               — moov atom na frente para playback progressivo
+ *   -f mp4                             — container MP4 limpo
  */
 
 import ffmpeg from "fluent-ffmpeg";
@@ -66,7 +64,7 @@ function buildSanitizeOptions(): string[] {
     "-map 0:a:0?",
     "-c:v",          "copy",
     "-c:a",          "copy",
-    "-bsf:v",        "filter_units=remove_types=5+6",
+    "-bsf:v",        "filter_units=remove_types=6",
     "-map_metadata", "-1",
     "-metadata",     `creation_time=${randomCreationTime()}`,
     "-map_chapters", "-1",
