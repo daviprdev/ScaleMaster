@@ -363,7 +363,7 @@ export default function InspiracoesPage() {
     setModalDone(false);
     setShowModal(true);
     try {
-      // ── Step 1: start the Apify run (returns in <2s) ──────────────
+      // ── Step 1: start N Apify runs (one per token) in parallel ───
       const startText = await fetch("/api/inspirations/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -374,19 +374,29 @@ export default function InspiracoesPage() {
       try { startData = JSON.parse(startText); } catch {
         throw new Error("Erro ao iniciar a busca. Tente novamente.");
       }
-      if (!startData.runId) throw new Error((startData.error as string) || "Erro ao iniciar busca.");
+      if (!startData.runIds && !startData.runId) {
+        throw new Error((startData.error as string) || "Erro ao iniciar busca.");
+      }
 
-      let { runId, limit, fallback } = startData as {
-        runId: string; limit: number; fallback: boolean;
-      };
+      // Support both new (runIds[]) and legacy (runId) response format
+      let runIds: string = Array.isArray(startData.runIds)
+        ? (startData.runIds as string[]).join(",")
+        : String(startData.runId ?? "");
+      let fallbackStarted = "";
+      const limit = Number(startData.limit ?? 500);
 
-      // ── Step 2: poll every 5s until done (no Vercel timeout risk) ─
+      // ── Step 2: poll every 5s until all runs finish ───────────────
       const MAX_POLLS = 60; // 60 × 5s = 5 min max
       for (let i = 0; i < MAX_POLLS; i++) {
         await new Promise<void>((r) => setTimeout(r, 5000));
 
-        const pollUrl = `/api/inspirations/scrape/poll?runId=${encodeURIComponent(runId)}&username=${encodeURIComponent(target)}&fallback=${fallback}&limit=${limit}`;
-        const pollText = await fetch(pollUrl).then((r) => r.text());
+        const params = new URLSearchParams({
+          runIds,
+          username: target,
+          limit: String(limit),
+          ...(fallbackStarted ? { fallbackStarted } : {}),
+        });
+        const pollText = await fetch(`/api/inspirations/scrape/poll?${params}`).then((r) => r.text());
 
         let poll: Record<string, unknown>;
         try { poll = JSON.parse(pollText); } catch {
@@ -410,8 +420,8 @@ export default function InspiracoesPage() {
         }
 
         if (poll.status === "running") {
-          if (poll.runId)   runId   = poll.runId as string;
-          if (poll.fallback !== undefined) fallback = poll.fallback as boolean;
+          if (poll.runIds)         runIds         = poll.runIds as string;
+          if (poll.fallbackStarted) fallbackStarted = poll.fallbackStarted as string;
           continue;
         }
 

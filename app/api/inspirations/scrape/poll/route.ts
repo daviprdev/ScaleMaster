@@ -32,7 +32,7 @@ function resolveVideoUrl(item: Record<string, unknown>): string {
   );
 }
 
-function processItems(items: unknown[], username: string) {
+function processItems(items: unknown[], username: string, offset = 0) {
   return (items as Record<string, unknown>[])
     .filter((item) => item.type === "Video" || resolveVideoUrl(item))
     .map((item, i) => {
@@ -51,7 +51,7 @@ function processItems(items: unknown[], username: string) {
         comments: Number(item.commentsCount ?? 0),
         duration: Number(item.videoDuration ?? 0),
         owner: String(item.ownerUsername ?? username),
-        gradient: GRADIENTS[i % GRADIENTS.length],
+        gradient: GRADIENTS[(i + offset) % GRADIENTS.length],
       };
     });
 }
@@ -86,17 +86,26 @@ async function saveToHistory(userId: string, username: string, reels: object[], 
   }
 }
 
-async function findRunClient(runId: string): Promise<{ client: ApifyClient; run: NonNullable<unknown> } | null> {
-  // resolveApifyTokens shuffles on every call, so tokenIdx is unreliable across
-  // requests. Try every available token until one can access this run.
-  const tokens = resolveApifyTokens();
+async function checkRun(runId: string, tokens: string[]): Promise<{
+  status: string;
+  items: unknown[];
+  datasetId: string;
+  client: ApifyClient;
+} | null> {
   for (const token of tokens) {
     try {
       const client = new ApifyClient({ token });
-      const run = await client.run(runId).get();
-      if (run) return { client, run };
+      const run = await client.run(runId).get() as Record<string, unknown> | undefined;
+      if (run) {
+        return {
+          status: run.status as string,
+          items: [],
+          datasetId: run.defaultDatasetId as string,
+          client,
+        };
+      }
     } catch {
-      // wrong token for this run — try next
+      // wrong token — try next
     }
   }
   return null;
@@ -104,81 +113,103 @@ async function findRunClient(runId: string): Promise<{ client: ApifyClient; run:
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const runId    = searchParams.get("runId");
-  const username = searchParams.get("username");
-  const fallback = searchParams.get("fallback") === "true";
+  const username = searchParams.get("username") ?? "";
   const limit    = parseInt(searchParams.get("limit") ?? "500", 10);
 
-  if (!runId || !username) {
+  // Support both multi-run (runIds) and legacy single-run (runId)
+  const runIdsParam = searchParams.get("runIds") ?? searchParams.get("runId") ?? "";
+  const fallbackStarted = new Set((searchParams.get("fallbackStarted") ?? "").split(",").filter(Boolean));
+
+  const runIds = runIdsParam.split(",").filter(Boolean);
+  if (runIds.length === 0 || !username) {
     return NextResponse.json({ error: "Parâmetros inválidos." }, { status: 400 });
   }
 
-  const found = await findRunClient(runId);
-  if (!found) {
-    return NextResponse.json({ error: "Run não encontrado ou token sem acesso." }, { status: 404 });
-  }
+  const tokens = resolveApifyTokens();
+  const pendingRunIds: string[] = [];
+  const newFallbackStarted: string[] = [...fallbackStarted];
+  const allItems: unknown[] = [];
+  const seenShortCodes = new Set<string>();
 
-  const { client } = found as { client: ApifyClient };
-  const run = found.run as Record<string, unknown>;
+  for (const runId of runIds) {
+    const found = await checkRun(runId, tokens);
 
-  if (!run) {
-    return NextResponse.json({ error: "Run não encontrado." }, { status: 404 });
-  }
+    if (!found) {
+      console.warn(`[poll] runId ${runId} não encontrado em nenhum token — ignorando`);
+      continue;
+    }
 
-  if (run.status === "RUNNING" || run.status === "READY") {
-    return NextResponse.json({ status: "running" });
-  }
+    const { status, datasetId, client } = found;
 
-  if (run.status === "SUCCEEDED") {
-    const { items } = await client.dataset(run.defaultDatasetId as string).listItems();
-    const list = Array.isArray(items) ? items : [];
+    if (status === "RUNNING" || status === "READY") {
+      pendingRunIds.push(runId);
+      continue;
+    }
 
-    // /reels/ returned nothing → start fallback with main profile URL
-    if (list.length === 0 && !fallback) {
-      console.log(`[poll] @${username} /reels/ succeeded with 0 — starting fallback`);
-      try {
-        const fallbackRun = await client.actor("apify/instagram-scraper").start({
-          directUrls: [`https://www.instagram.com/${username}/`],
-          resultsType: "posts",
-          resultsLimit: limit,
-          maxRequestsPerCrawl: Math.max(600, limit * 2),
-          proxyConfiguration: { useApifyProxy: true },
-        });
-        return NextResponse.json({
-          status: "running",
-          runId: fallbackRun.id,
-          username,
-          limit,
-          fallback: true,
-        });
-      } catch (err) {
-        return NextResponse.json({
-          error: `Nenhum Reel encontrado para @${username} e o fallback falhou: ${err instanceof Error ? err.message : err}`,
-        }, { status: 500 });
+    if (status === "SUCCEEDED") {
+      const { items } = await client.dataset(datasetId).listItems();
+      const list = Array.isArray(items) ? items : [];
+
+      if (list.length === 0 && !fallbackStarted.has(runId)) {
+        // Start fallback with main profile URL (same token)
+        console.log(`[poll] run ${runId} retornou 0 — iniciando fallback @${username}`);
+        try {
+          const fallbackRun = await client.actor("apify/instagram-scraper").start({
+            directUrls: [`https://www.instagram.com/${username}/`],
+            resultsType: "posts",
+            resultsLimit: limit,
+            maxRequestsPerCrawl: Math.max(600, limit * 2),
+            proxyConfiguration: { useApifyProxy: true },
+          });
+          pendingRunIds.push(fallbackRun.id);
+          newFallbackStarted.push(fallbackRun.id);
+        } catch (err) {
+          console.warn(`[poll] fallback falhou: ${err}`);
+        }
+        continue;
       }
+
+      // Deduplicate across runs by shortCode
+      for (const item of list) {
+        const sc = String((item as Record<string, unknown>).shortCode ?? "");
+        if (!sc || !seenShortCodes.has(sc)) {
+          if (sc) seenShortCodes.add(sc);
+          allItems.push(item);
+        }
+      }
+      continue;
     }
 
-    if (list.length === 0 && fallback) {
-      return NextResponse.json({
-        error: `Nenhum conteúdo encontrado para @${username}. O perfil pode ser privado ou inexistente.`,
-      }, { status: 404 });
-    }
-
-    const reels = processItems(list, username);
-
-    // Resolve user_id while still in request context (cookies() is request-scoped in Next.js 15)
-    let userId: string | null = null;
-    try {
-      const supabase = await createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      userId = user?.id ?? null;
-    } catch { /* auth opcional — não bloqueia a resposta */ }
-
-    if (userId) saveToHistory(userId, username, reels, list).catch(console.error);
-    return NextResponse.json({ status: "done", reels });
+    // FAILED / ABORTED / TIMED-OUT — skip silently
+    console.warn(`[poll] run ${runId} terminou com status ${status}`);
   }
 
-  return NextResponse.json({
-    error: `Busca encerrada com status ${run.status}. Tente novamente.`,
-  }, { status: 500 });
+  // Still waiting for some runs
+  if (pendingRunIds.length > 0) {
+    return NextResponse.json({
+      status: "running",
+      runIds: pendingRunIds.join(","),
+      fallbackStarted: newFallbackStarted.join(","),
+    });
+  }
+
+  // All runs finished — no results
+  if (allItems.length === 0) {
+    return NextResponse.json({
+      error: `Nenhum conteúdo encontrado para @${username}. O perfil pode ser privado ou inexistente.`,
+    }, { status: 404 });
+  }
+
+  const reels = processItems(allItems, username);
+  console.log(`[poll] @${username} — ${reels.length} reels únicos de ${runIds.length} runs`);
+
+  let userId: string | null = null;
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    userId = user?.id ?? null;
+  } catch { /* auth opcional */ }
+
+  if (userId) saveToHistory(userId, username, reels, allItems).catch(console.error);
+  return NextResponse.json({ status: "done", reels });
 }

@@ -34,20 +34,27 @@ export async function POST(req: NextRequest) {
     }, { status: 503 });
   }
 
-  let lastError = "Erro ao iniciar busca.";
+  // Inicia um run por token em paralelo — cada run coleta ~100 reels de IPs diferentes.
+  // Com N tokens: N × ~100 = N × 100 reels únicos após deduplicação.
+  const url = `https://www.instagram.com/${username}/reels/`;
+  const starts = await Promise.allSettled(
+    tokens.map(async (token) => {
+      const client = new ApifyClient({ token });
+      const run = await client.actor("apify/instagram-scraper").start(ACTOR_INPUT(url, limit));
+      return run.id;
+    })
+  );
 
-  for (let tokenIdx = 0; tokenIdx < tokens.length; tokenIdx++) {
-    try {
-      const client = new ApifyClient({ token: tokens[tokenIdx] });
-      const run = await client.actor("apify/instagram-scraper").start(
-        ACTOR_INPUT(`https://www.instagram.com/${username}/reels/`, limit)
-      );
-      return NextResponse.json({ runId: run.id, username, limit, fallback: false });
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-      console.warn(`[scrape/start] token ${tokenIdx} falhou: ${lastError}`);
-    }
+  const runIds = starts
+    .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
+    .map((r) => r.value);
+
+  if (runIds.length === 0) {
+    const firstErr = starts.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+    const msg = firstErr?.reason instanceof Error ? firstErr.reason.message : "Erro ao iniciar busca.";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 
-  return NextResponse.json({ error: lastError }, { status: 500 });
+  console.log(`[scrape] @${username} — ${runIds.length}/${tokens.length} runs iniciados`);
+  return NextResponse.json({ runIds, limit });
 }
