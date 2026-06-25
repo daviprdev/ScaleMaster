@@ -10,10 +10,7 @@ const ACTOR_INPUT = (url: string, limit: number) => ({
   resultsType: "posts",
   resultsLimit: limit,
   maxRequestsPerCrawl: Math.max(600, limit * 2),
-  proxyConfiguration: {
-    useApifyProxy: true,
-    apifyProxyGroups: ["RESIDENTIAL"],
-  },
+  proxyConfiguration: { useApifyProxy: true },
 });
 
 export async function POST(req: NextRequest) {
