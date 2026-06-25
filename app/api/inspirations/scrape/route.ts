@@ -9,7 +9,7 @@ const ACTOR_INPUT = (url: string, limit: number) => ({
   directUrls: [url],
   resultsType: "posts",
   resultsLimit: limit,
-  maxRequestsPerCrawl: Math.max(200, Math.ceil(limit / 4)),
+  maxRequestsPerCrawl: Math.max(600, limit * 2),
   proxyConfiguration: {
     useApifyProxy: true,
     apifyProxyGroups: ["RESIDENTIAL"],
