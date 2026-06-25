@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as fs from "fs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   createMediaContainerOnly,
@@ -8,6 +9,7 @@ import {
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount } from "@/lib/proxy";
 import { applyVideoEffects } from "@/lib/video-effects";
+import { downloadAndStripMetadata } from "@/lib/ffmpeg-process";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -16,6 +18,15 @@ export const maxDuration = 300;
 // Sem Apify, cada post leva ~5s → 10 posts/run é confortável.
 const BATCH_SIZE = 10;
 const RUN_BUDGET_MS = 55_000;
+
+// Reserva de tempo para o strip pipeline por vídeo (download + FFmpeg + upload ≈ 20s)
+const STRIP_RESERVE_MS = 22_000;
+
+// Vídeos com esse padrão foram upados direto pelo browser (sem FFmpeg strip).
+// Contêm SEI NAL units tipo 5+6 que a Meta API rejeita → ERROR/EXPIRED.
+function needsStrip(url: string): boolean {
+  return url.includes("/videos/upload_");
+}
 
 interface AccountRow {
   id: string;
@@ -264,8 +275,57 @@ export async function GET(req: NextRequest) {
 
       if (!creationId) {
         let effectiveVideoUrl = rawVideoUrl;
+
+        // ── Strip de metadados para vídeos sem processamento FFmpeg ──────
+        // Vídeos upados via browser (/videos/upload_*) contêm SEI NAL units
+        // tipo 5+6 (fingerprints Instagram/TikTok) que a Meta API rejeita →
+        // status_code=ERROR durante processamento do container.
+        // Solução: download + stream copy + strip antes de criar o container.
+        if (needsStrip(rawVideoUrl) && Date.now() - runStart < RUN_BUDGET_MS - STRIP_RESERVE_MS) {
+          const strippedPath = `temp/strip_${post.id}.mp4`;
+          // Tenta reusar versão já stripada (caso de retry)
+          const { data: existing } = await admin.storage
+            .from("videos-library")
+            .list("temp", { search: `strip_${post.id}` });
+          const alreadyExists = existing?.some(f => f.name === `strip_${post.id}.mp4`);
+
+          if (alreadyExists) {
+            const { data: urlData } = admin.storage.from("videos-library").getPublicUrl(strippedPath);
+            effectiveVideoUrl = urlData.publicUrl;
+            console.log(`[publish-scheduled] ♻ Strip reutilizado @${account.username}`);
+          } else {
+            try {
+              console.log(`[publish-scheduled] ✂ Stripping @${account.username} — ${rawVideoUrl.slice(-40)}`);
+              const result = await downloadAndStripMetadata(rawVideoUrl);
+              const buf = fs.readFileSync(result.outputPath);
+              result.cleanup();
+              const { error: upErr } = await admin.storage
+                .from("videos-library")
+                .upload(strippedPath, buf, { contentType: "video/mp4", upsert: true });
+              if (!upErr) {
+                const { data: urlData } = admin.storage.from("videos-library").getPublicUrl(strippedPath);
+                effectiveVideoUrl = urlData.publicUrl;
+                // Persiste URL limpa para que retentativas não precisem re-strip
+                await admin.from("scheduled_posts")
+                  .update({ video_url: effectiveVideoUrl })
+                  .eq("id", post.id);
+                console.log(`[publish-scheduled] ✅ Strip concluído @${account.username} → ${effectiveVideoUrl.slice(-40)}`);
+              } else {
+                console.warn(`[publish-scheduled] ⚠ Upload strip falhou @${account.username}: ${upErr.message} — usando URL original.`);
+              }
+            } catch (stripErr) {
+              console.warn(`[publish-scheduled] ⚠ Strip falhou @${account.username}: ${stripErr instanceof Error ? stripErr.message : stripErr} — usando URL original.`);
+            }
+          }
+        } else if (needsStrip(rawVideoUrl)) {
+          console.warn(`[publish-scheduled] ⏱ Budget insuficiente para strip @${account.username} — adiando para próximo ciclo.`);
+          await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
+          summary.skipped++;
+          continue;
+        }
+
         try {
-          effectiveVideoUrl = await applyVideoEffects(rawVideoUrl, {
+          effectiveVideoUrl = await applyVideoEffects(effectiveVideoUrl, {
             mirror: false, invert: false, zoom: false,
             blur: false, noise: false, antiAi: false,
             accountId: account.id,
