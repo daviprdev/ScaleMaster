@@ -31,6 +31,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
+import { fetch as undiciFetch } from "undici";
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
@@ -75,14 +76,21 @@ function buildSanitizeOptions(): string[] {
 }
 
 async function downloadVideo(videoUrl: string, destPath: string): Promise<void> {
-  const response = await fetch(videoUrl, {
+  // undici bypasses Next.js 15's patched global fetch (which strips dispatcher
+  // and can corrupt binary responses from Instagram CDN — causing audio-only downloads).
+  const response = await undiciFetch(videoUrl, {
     headers: DOWNLOAD_HEADERS,
     signal:  AbortSignal.timeout(60_000),
   });
   if (!response.ok) {
     throw new Error(`Download falhou: HTTP ${response.status} — ${videoUrl}`);
   }
-  fs.writeFileSync(destPath, Buffer.from(await response.arrayBuffer()));
+  const buf = Buffer.from(await response.arrayBuffer());
+  if (buf.byteLength < 1024) {
+    throw new Error(`Arquivo muito pequeno para ser um vídeo válido: ${buf.byteLength} bytes`);
+  }
+  console.log(`[videoSanitizer] download OK: ${(buf.byteLength / 1024).toFixed(0)} KB`);
+  fs.writeFileSync(destPath, buf);
 }
 
 async function runSanitize(inputPath: string, outputPath: string): Promise<void> {
