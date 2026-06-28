@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { fetch as undiciFetch } from "undici";
+import { getProxyForAccount, proxyInit } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -34,14 +36,15 @@ interface GraphStoriesEdge {
 
 async function fetchMetaProfile(
   igId: string,
-  token: string
+  token: string,
+  proxy: ReturnType<typeof getProxyForAccount>
 ): Promise<{ profile: GraphProfile; lastPostAt: string | null; activeStoriesCount: number }> {
   const profileUrl =
     `${GRAPH}/${igId}` +
     `?fields=followers_count,media_count,name,profile_picture_url,username` +
     `&access_token=${encodeURIComponent(token)}`;
 
-  const profileRes = await fetch(profileUrl, { cache: "no-store" });
+  const profileRes = await undiciFetch(profileUrl, proxyInit(proxy) as any);
   const profile = (await profileRes.json()) as GraphProfile;
 
   if (profile.error) return { profile, lastPostAt: null, activeStoriesCount: 0 };
@@ -57,7 +60,7 @@ async function fetchMetaProfile(
         `${GRAPH}/${igId}/media` +
         `?fields=timestamp&limit=1` +
         `&access_token=${encodeURIComponent(token)}`;
-      const mediaRes = await fetch(mediaUrl, { cache: "no-store" });
+      const mediaRes = await undiciFetch(mediaUrl, proxyInit(proxy) as any);
       const mediaData = (await mediaRes.json()) as GraphMediaEdge;
       lastPostAt = mediaData.data?.[0]?.timestamp ?? null;
     })(),
@@ -68,7 +71,7 @@ async function fetchMetaProfile(
         `${GRAPH}/${igId}/stories` +
         `?fields=id` +
         `&access_token=${encodeURIComponent(token)}`;
-      const storiesRes = await fetch(storiesUrl, { cache: "no-store" });
+      const storiesRes = await undiciFetch(storiesUrl, proxyInit(proxy) as any);
       if (!storiesRes.ok) return;
       const storiesData = (await storiesRes.json()) as GraphStoriesEdge;
       if (!storiesData.error && Array.isArray(storiesData.data)) {
@@ -97,7 +100,7 @@ export async function POST(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const { data: account } = await admin
     .from("instagram_accounts")
-    .select("id, username, user_id, ig_business_account_id, meta_access_token")
+    .select("id, username, user_id, ig_business_account_id, meta_access_token, proxy_url")
     .eq("id", accountId)
     .eq("user_id", user.id)
     .single();
@@ -116,7 +119,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { profile, lastPostAt, activeStoriesCount } = await fetchMetaProfile(igId, token);
+  const encryptedProxy = (account as Record<string, unknown>).proxy_url as string | null;
+  const proxy = getProxyForAccount(accountId, encryptedProxy);
+  const { profile, lastPostAt, activeStoriesCount } = await fetchMetaProfile(igId, token, proxy);
 
   if (profile.error) {
     const code = profile.error.code;

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { refreshMetaToken } from "@/lib/meta-refresh";
+import { fetch as undiciFetch } from "undici";
+import { getProxyForAccount, proxyInit } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -40,6 +42,7 @@ interface AccountRow {
   meta_access_token: string;
   fb_page_id: string | null;
   profile_refreshed_at: string | null;
+  proxy_url?: string | null;
 }
 
 interface SyncResult {
@@ -63,13 +66,14 @@ function isMetaInfraError(code: number, message: string): boolean {
 
 async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmin>): Promise<SyncResult> {
   let activeToken = acc.meta_access_token;
+  const proxy = getProxyForAccount(acc.id, acc.proxy_url ?? null);
 
   const fetchProfile = async (token: string) => {
     const profileUrl =
       `${GRAPH}/${acc.ig_business_account_id}` +
       `?fields=followers_count,media_count,name,profile_picture_url` +
       `&access_token=${encodeURIComponent(token)}`;
-    const res = await fetch(profileUrl, { cache: "no-store" });
+    const res = await undiciFetch(profileUrl, proxyInit(proxy) as any);
     return (await res.json()) as Record<string, unknown>;
   };
 
@@ -103,7 +107,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
           const { token: newToken, expiresAt } = await refreshMetaToken(
             activeToken,
             acc.fb_page_id,
-            null
+            proxy
           );
           // Persiste o token renovado imediatamente
           await admin
@@ -145,14 +149,14 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       }
     }
 
-    // Fetch last post timestamp (non-critical)
+    // Fetch last post timestamp (non-critical) — usa activeToken (pode ter sido renovado acima)
     let lastPostAt: string | null = null;
     try {
       const mediaUrl =
         `${GRAPH}/${acc.ig_business_account_id}/media` +
         `?fields=timestamp&limit=1` +
-        `&access_token=${encodeURIComponent(acc.meta_access_token)}`;
-      const mediaRes = await fetch(mediaUrl, { cache: "no-store" });
+        `&access_token=${encodeURIComponent(activeToken)}`;
+      const mediaRes = await undiciFetch(mediaUrl, proxyInit(proxy) as any);
       const mediaData = (await mediaRes.json()) as { data?: Array<{ timestamp: string }> };
       lastPostAt = mediaData.data?.[0]?.timestamp ?? null;
     } catch {
@@ -189,7 +193,7 @@ export async function POST() {
   // ── Sync normal: contas online com dados desatualizados ───────────────────
   const { data: accounts } = await admin
     .from("instagram_accounts")
-    .select("id, username, user_id, ig_business_account_id, meta_access_token, fb_page_id, profile_refreshed_at")
+    .select("id, username, user_id, ig_business_account_id, meta_access_token, fb_page_id, profile_refreshed_at, proxy_url")
     .eq("user_id", user.id)
     .neq("health_status", "error")
     .not("ig_business_account_id", "is", null)
