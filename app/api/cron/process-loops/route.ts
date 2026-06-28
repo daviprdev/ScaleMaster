@@ -24,9 +24,6 @@ interface AccountRow {
   health_status?: string;
   failover_priority?: number;
   proxy_url?: string | null;
-  is_warmed_up?: boolean;
-  warmup_posts_done?: number;
-  warmup_paused_until?: string | null;
 }
 
 interface LoopAccountRow {
@@ -593,7 +590,7 @@ async function processOneLoop(
   if (loop.account_folder_id) {
     const { data: folderAccounts } = await (admin as any)
       .from("instagram_accounts")
-      .select("id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, health_status, failover_priority, proxy_url, is_warmed_up, warmup_posts_done, warmup_paused_until")
+      .select("id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, health_status, failover_priority, proxy_url")
       .eq("folder_id", loop.account_folder_id)
       .eq("user_id", loop.user_id)
       .eq("is_active", true)
@@ -998,36 +995,6 @@ async function processOneLoop(
 
       const { account, assignment, caption, videoUrl } = prep;
 
-      // ── Auto-graduação de warmup ─────────────────────────────────────────────
-      // Conta chegou a 30+ posts mas is_warmed_up=false ainda (publish-pending pode ter
-      // falhado ao persistir o flag no 30º post). Persiste a correção e prossegue.
-      if (!account.is_warmed_up && (account.warmup_posts_done ?? 0) >= 30) {
-        console.log(`[warmup] @${account.username}: auto-graduação (${account.warmup_posts_done}/30) — ativando modo normal.`);
-        try {
-          await (admin as any)
-            .from("instagram_accounts")
-            .update({ is_warmed_up: true, warmup_posts_done: 30, warmup_paused_until: null })
-            .eq("id", account.id);
-        } catch (e) {
-          console.warn(`[warmup] Falha ao persistir auto-graduação @${account.username}: ${String(e)}`);
-        }
-        account.is_warmed_up = true;
-      }
-
-      // ── Warmup check ────────────────────────────────────────────────────────
-      // Contas novas (is_warmed_up = false) postam em lotes de 10 com pausas de 8h.
-      // A contagem e a pausa são gerenciadas pelo publish-pending após cada publish.
-      if (!account.is_warmed_up) {
-        const pausedUntil = account.warmup_paused_until ? new Date(account.warmup_paused_until) : null;
-        if (pausedUntil && pausedUntil > now) {
-          const mins = Math.ceil((pausedUntil.getTime() - now.getTime()) / 60_000);
-          const hm = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}min` : `${mins}min`;
-          console.log(`[warmup] @${account.username} em pausa de aquecimento — ${hm} restantes. Pulando.`);
-          continue;
-        }
-        console.log(`[warmup] @${account.username} modo aquecimento — ${account.warmup_posts_done ?? 0}/30 posts publicados.`);
-      }
-
       // Jitter 1–3s anti-burst a partir da segunda conta TENTADA (independe de sucesso).
       // Bug anterior: condicionava em containersCreated > 0 — quando todos falham
       // o contador nunca sobe e nenhum sleep ocorre → burst de 28 chamadas em 3s.
@@ -1317,7 +1284,6 @@ export async function GET(req: NextRequest) {
           id, username, is_active, meta_access_token,
           ig_business_account_id, token_expires_at, fb_page_id,
           health_status, failover_priority, proxy_url,
-          is_warmed_up, warmup_posts_done, warmup_paused_until
         )
       )
     `)

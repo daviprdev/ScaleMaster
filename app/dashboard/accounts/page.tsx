@@ -31,6 +31,7 @@ import {
   Globe,
   Upload,
 } from "lucide-react";
+import MagicLinkModal from "@/components/dashboard/MagicLinkModal";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -67,9 +68,6 @@ interface Account {
   has_proxy: boolean;
   meta_app_id: string | null;
   meta_app_name: string | null;
-  is_warmed_up: boolean;
-  warmup_posts_done: number;
-  warmup_paused_until: string | null;
 }
 
 interface AccountStoriesData {
@@ -469,16 +467,6 @@ function AccountCard({
             blue={account.has_proxy}
             amber={!account.has_proxy}
           />
-          {!account.is_warmed_up && (() => {
-            const paused = account.warmup_paused_until ? new Date(account.warmup_paused_until) : null;
-            const isPaused = paused !== null && paused > new Date();
-            if (isPaused) {
-              const mins = Math.ceil((paused.getTime() - Date.now()) / 60_000);
-              const label = mins >= 60 ? `pausa ${Math.floor(mins / 60)}h` : `pausa ${mins}min`;
-              return <Metric icon={<span className="text-amber-400">⏸</span>} label={label} amber />;
-            }
-            return <Metric icon={<span className="text-amber-400">🔥</span>} label={`warmup ${account.warmup_posts_done}/30`} amber />;
-          })()}
           {account.meta_app_name && (
             <Metric
               icon={<KeyRound size={11} />}
@@ -526,6 +514,7 @@ export default function AccountsPage() {
 
   const [userApps, setUserApps] = useState<UserMetaApp[]>([]);
   const [appPickerOpen, setAppPickerOpen] = useState(false);
+  const [magicLinkOpen, setMagicLinkOpen] = useState(false);
 
   // Folder state
   const [folders, setFolders] = useState<AccountFolder[]>([]);
@@ -565,6 +554,7 @@ export default function AccountsPage() {
   const [tokenRefreshingId, setTokenRefreshingId] = useState<string | null>(null);
   const [movingAccountId, setMovingAccountId] = useState<string | null>(null);
   const [storiesMap, setStoriesMap] = useState<Record<string, AccountStoriesData>>({});
+  const [sortMode, setSortMode] = useState<"none" | "followers_desc" | "followers_asc" | "story_expiring">("none");
 
   // Move-to-folder modal (page-level, outside motion transforms)
   const [moveAccount, setMoveAccount] = useState<Account | null>(null);
@@ -657,7 +647,7 @@ export default function AccountsPage() {
       const { data } = await supabase
         .from("instagram_accounts")
         .select(
-          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url, meta_app_id, is_warmed_up, warmup_posts_done, warmup_paused_until, user_meta_apps(app_name)"
+          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url, meta_app_id, user_meta_apps(app_name)"
         )
         .order("connected_at", { ascending: false });
       const fetched = ((data ?? []) as unknown as (Account & { proxy_url: string | null; user_meta_apps: { app_name: string } | null })[]).map(
@@ -1002,9 +992,28 @@ export default function AccountsPage() {
   };
 
   const filteredAccounts = useMemo(() => {
-    if (activeFolderId === null) return accounts.filter(a => a.folder_id === null);
-    return accounts.filter(a => a.folder_id === activeFolderId);
-  }, [accounts, activeFolderId]);
+    const base = activeFolderId === null
+      ? accounts.filter(a => a.folder_id === null)
+      : accounts.filter(a => a.folder_id === activeFolderId);
+
+    if (sortMode === "followers_desc") {
+      return [...base].sort((a, b) => (b.followers_count ?? -1) - (a.followers_count ?? -1));
+    }
+    if (sortMode === "followers_asc") {
+      return [...base].sort((a, b) => (a.followers_count ?? Infinity) - (b.followers_count ?? Infinity));
+    }
+    if (sortMode === "story_expiring") {
+      return [...base].sort((a, b) => {
+        const ta = storiesMap[a.id]?.expiring_first_at ?? null;
+        const tb = storiesMap[b.id]?.expiring_first_at ?? null;
+        if (!ta && !tb) return 0;
+        if (!ta) return 1;
+        if (!tb) return -1;
+        return new Date(ta).getTime() - new Date(tb).getTime();
+      });
+    }
+    return base;
+  }, [accounts, activeFolderId, sortMode, storiesMap]);
 
   const sortedFolders = useMemo(() => {
     if (!folderOrder.length) return folders;
@@ -1053,6 +1062,9 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-6">
+
+      {/* Magic Link modal */}
+      <MagicLinkModal open={magicLinkOpen} onClose={() => setMagicLinkOpen(false)} />
 
       {/* App picker modal */}
       <AnimatePresence>
@@ -1745,6 +1757,13 @@ export default function AccountsPage() {
                 <Upload size={14} />
                 Proxies
               </button>
+              <button
+                onClick={() => setMagicLinkOpen(true)}
+                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-[#00FF41]/20 text-[#00FF41]/70 hover:text-[#00FF41] hover:border-[#00FF41]/40 hover:bg-[#00FF41]/[0.06] transition-all"
+              >
+                <LinkIcon size={14} />
+                Link
+              </button>
               <motion.button
                 onClick={() => { handleConnectClick(); }}
                 whileTap={{ scale: 0.97 }}
@@ -1793,7 +1812,7 @@ export default function AccountsPage() {
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
         {/* Tab: Sem Pasta */}
         <button
-          onClick={() => setActiveFolderId(null)}
+          onClick={() => { setActiveFolderId(null); setSortMode("none"); }}
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all",
             activeFolderId === null
@@ -1830,7 +1849,7 @@ export default function AccountsPage() {
               }}
             >
               <button
-                onClick={() => setActiveFolderId(folder.id)}
+                onClick={() => { setActiveFolderId(folder.id); setSortMode("none"); }}
                 className={cn(
                   "flex items-center gap-1.5 pl-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all rounded-l-lg",
                   isActive ? "pr-1" : "pr-3 rounded-r-lg",
@@ -1911,6 +1930,38 @@ export default function AccountsPage() {
           Nova Pasta
         </button>
       </div>
+
+      {/* Filtros de ordenação — visíveis quando há contas */}
+      {!loading && filteredAccounts.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-white/25 text-[11px] uppercase tracking-wider font-medium mr-1">Ordenar</span>
+          {(
+            [
+              { key: "followers_desc", label: "Mais seguidores" },
+              { key: "followers_asc",  label: "Menos seguidores" },
+              { key: "story_expiring", label: "Story expirando" },
+            ] as const
+          ).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setSortMode(prev => prev === key ? "none" : key)}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all",
+                sortMode === key
+                  ? key === "story_expiring"
+                    ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                    : "bg-[#00E5FF]/10 border-[#00E5FF]/30 text-[#00E5FF]"
+                  : "bg-white/[0.03] border-white/[0.07] text-white/35 hover:text-white/60 hover:border-white/15"
+              )}
+            >
+              {key === "followers_desc" && <span className="text-[10px]">↓</span>}
+              {key === "followers_asc"  && <span className="text-[10px]">↑</span>}
+              {key === "story_expiring" && <span className="text-[10px]">⏱</span>}
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Grid de contas */}
       {loading ? (

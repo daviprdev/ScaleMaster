@@ -17,12 +17,16 @@ const APP_URL =
 function clearOAuthCookies(res: NextResponse) {
   res.cookies.set("ig_oauth_state", "", { maxAge: 0, path: "/" });
   res.cookies.set("ig_oauth_app_id", "", { maxAge: 0, path: "/" });
+  res.cookies.set("ig_oauth_magic_user_id", "", { maxAge: 0, path: "/" });
 }
 
-function redirectWithError(code: string, detail?: string): NextResponse {
+function redirectWithError(code: string, detail?: string, isMagicLink = false): NextResponse {
   const params = new URLSearchParams({ error: code });
   if (detail) params.set("detail", detail.slice(0, 500));
-  const res = NextResponse.redirect(`${APP_URL}/dashboard/accounts?${params}`);
+  const target = isMagicLink
+    ? `${APP_URL}/add/error?reason=${code}`
+    : `${APP_URL}/dashboard/accounts?${params}`;
+  const res = NextResponse.redirect(target);
   clearOAuthCookies(res);
   return res;
 }
@@ -346,14 +350,24 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get("code");
   if (!code) return redirectWithError("no_code");
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(`${APP_URL}/auth/login`);
+  // Magic link: user_id vem do cookie em vez de sessão autenticada
+  const magicUserId = req.cookies.get("ig_oauth_magic_user_id")?.value ?? "";
+  const isMagicLink = !!magicUserId;
 
-  const credentials = await resolveCredentials(req, user.id);
+  let userId: string;
+  if (isMagicLink) {
+    userId = magicUserId;
+  } else {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.redirect(`${APP_URL}/auth/login`);
+    userId = user.id;
+  }
+
+  const credentials = await resolveCredentials(req, userId);
   if (!credentials) {
     console.error("[ig/callback] Credenciais do app não encontradas.");
-    return redirectWithError("server_error", "Credenciais do app não encontradas. Tente novamente.");
+    return redirectWithError("server_error", "Credenciais do app não encontradas. Tente novamente.", isMagicLink);
   }
 
   const admin = getSupabaseAdmin();
@@ -363,27 +377,23 @@ export async function GET(req: NextRequest) {
     const { token: longToken, expiresAt } = await getLongLivedToken(shortToken, credentials.appSecret);
     const profile = await getIGProfile(longToken);
 
-    console.log(`[ig/callback] @${profile.username} (id:${profile.id}) → user ${user.id}`);
+    console.log(`[ig/callback] @${profile.username} (id:${profile.id}) → user ${userId}${isMagicLink ? " [magic-link]" : ""}`);
 
-    await upsertAccount(admin, user.id, profile, longToken, expiresAt, credentials.metaAppId);
+    await upsertAccount(admin, userId, profile, longToken, expiresAt, credentials.metaAppId);
 
-    // Se a conta já tem >= 30 posts no Instagram, marca como aquecida imediatamente.
-    // Contas com < 30 posts entram em warmup automático no Loop (is_warmed_up = false por padrão).
-    if (profile.media_count !== null && profile.media_count >= 30) {
-      await admin
-        .from("instagram_accounts")
-        .update({ is_warmed_up: true, posts_count: profile.media_count })
-        .eq("user_id", user.id)
-        .eq("ig_business_account_id", profile.id);
-    } else if (profile.media_count !== null) {
+    if (profile.media_count !== null) {
       await admin
         .from("instagram_accounts")
         .update({ posts_count: profile.media_count })
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .eq("ig_business_account_id", profile.id);
     }
 
-    const response = NextResponse.redirect(`${APP_URL}/dashboard/accounts?connected=1`);
+    const successUrl = isMagicLink
+      ? `${APP_URL}/add/success`
+      : `${APP_URL}/dashboard/accounts?connected=1`;
+
+    const response = NextResponse.redirect(successUrl);
     clearOAuthCookies(response);
     return response;
 
@@ -393,8 +403,8 @@ export async function GET(req: NextRequest) {
     const isRateLimit = (err as { isRateLimit?: boolean }).isRateLimit === true;
     console.error("[ig/callback] Erro capturado:", msg);
 
-    if (isRateLimit) return redirectWithError("rate_limit", msg);
-    if (isPersonal) return redirectWithError("personal_account", msg);
-    return redirectWithError("server_error", msg);
+    if (isRateLimit) return redirectWithError("rate_limit", msg, isMagicLink);
+    if (isPersonal) return redirectWithError("personal_account", msg, isMagicLink);
+    return redirectWithError("server_error", msg, isMagicLink);
   }
 }
