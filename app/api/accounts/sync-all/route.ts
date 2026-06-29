@@ -34,6 +34,10 @@ const META_INFRA_MESSAGES = [
 const CASCADE_THRESHOLD = 0.7;
 const MIN_CASCADE_COUNT = 5;
 
+// Tempo mínimo após conexão antes de tentar sync — dá margem para a Meta
+// ativar o token em todos os seus servidores e evita marcar contas novas como error.
+const NEW_ACCOUNT_GRACE_MS = 10 * 60 * 1_000; // 10 minutos
+
 interface AccountRow {
   id: string;
   username: string;
@@ -42,6 +46,7 @@ interface AccountRow {
   meta_access_token: string;
   fb_page_id: string | null;
   profile_refreshed_at: string | null;
+  connected_at?: string | null;
   proxy_url?: string | null;
 }
 
@@ -132,12 +137,31 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
           }
           // Refresh + retry bem-sucedido — continua abaixo com `data` atualizado
         } catch (refreshErr) {
-          // Refresh falhou (token genuinamente morto ou revogado)
-          const refreshMsg = refreshErr instanceof Error ? refreshErr.message : String(refreshErr);
-          console.warn(`[sync-all] Renovação falhou para @${acc.username}: ${refreshMsg.slice(0, 120)}`);
+          const refreshMsg = (refreshErr instanceof Error ? refreshErr.message : String(refreshErr)).toLowerCase();
+          // Erros de REDE ou PROXY (não de API da Meta) não confirmam que o token
+          // está morto — são falhas transitórias de infraestrutura. Nesses casos,
+          // NÃO marcamos como error: a conta tentará novamente no próximo sync.
+          const isNetworkError =
+            refreshMsg.includes("fetch failed") ||
+            refreshMsg.includes("econnreset") ||
+            refreshMsg.includes("econnrefused") ||
+            refreshMsg.includes("etimedout") ||
+            refreshMsg.includes("socket") ||
+            refreshMsg.includes("timeout") ||
+            refreshMsg.includes("[proxy]") ||
+            refreshMsg.includes("network") ||
+            refreshMsg.includes("connection reset") ||
+            refreshMsg.includes("smartproxy");
+          console.warn(
+            `[sync-all] Renovação falhou para @${acc.username}` +
+            (isNetworkError ? " [erro de rede — não é token morto, não marcando como error]" : " [token morto]") +
+            `: ${refreshMsg.slice(0, 120)}`
+          );
           return {
             id: acc.id, user_id: acc.user_id, username: acc.username,
-            ok: false, tokenError: true, errorCode: err.code, errorMessage: err.message,
+            ok: false,
+            tokenError: !isNetworkError, // erro de rede ≠ token morto
+            errorCode: err.code, errorMessage: err.message,
           };
         }
       } else {
@@ -193,7 +217,7 @@ export async function POST() {
   // ── Sync normal: contas online com dados desatualizados ───────────────────
   const { data: accounts } = await admin
     .from("instagram_accounts")
-    .select("id, username, user_id, ig_business_account_id, meta_access_token, fb_page_id, profile_refreshed_at, proxy_url")
+    .select("id, username, user_id, ig_business_account_id, meta_access_token, fb_page_id, profile_refreshed_at, connected_at, proxy_url")
     .eq("user_id", user.id)
     .neq("health_status", "error")
     .not("ig_business_account_id", "is", null)
@@ -204,7 +228,24 @@ export async function POST() {
   }
 
   const stale = (accounts as unknown as AccountRow[]).filter((a) => {
-    if (!a.profile_refreshed_at) return true;
+    if (!a.profile_refreshed_at) {
+      // Conta sem sync anterior: verificar se é nova demais.
+      // Contas recém-conectadas (< 10 min) recebem grace period — a Meta precisa
+      // de tempo para ativar o token em todos os seus servidores. Sem o grace period,
+      // qualquer falha transitória nesse momento marcaria a conta como error
+      // logo após a conexão, antes mesmo de ela postar qualquer coisa.
+      if (a.connected_at) {
+        const ageMs = Date.now() - new Date(a.connected_at).getTime();
+        if (ageMs < NEW_ACCOUNT_GRACE_MS) {
+          console.log(
+            `[sync-all] @${a.username} conectada há ${Math.round(ageMs / 60_000)}min ` +
+            `— grace period ativo, pulando sync.`
+          );
+          return false;
+        }
+      }
+      return true;
+    }
     return Date.now() - new Date(a.profile_refreshed_at).getTime() > STALE_MS;
   });
 
