@@ -767,74 +767,88 @@ async function processOneLoop(
       antiAi: loop.effect_anti_ai,
     };
 
-    for (const account of validAccounts) {
-      const assignment  = videoAssignments.get(account.id);
-      if (!assignment) continue;
+    // Se nenhum efeito criativo está ativo, pula o pipeline FFmpeg completamente:
+    // usa a URL original de cada vídeo diretamente, sem passar pelo process-videos.
+    // Isso evita dependência da tabela video_processing_jobs e do FFmpeg para o
+    // caso padrão (sem efeitos), eliminando o travamento silencioso que impedia
+    // todos os posts quando a tabela não existe ou o FFmpeg falha.
+    const hasActiveEffects =
+      loop.effect_mirror || loop.effect_invert || loop.effect_zoom ||
+      loop.effect_blur   || loop.effect_noise  || loop.effect_anti_ai;
 
-      const existingJob = existingJobsMap.get(account.id);
-
-      if (existingJob?.status === "done" && existingJob.output_url) {
-        // Job do ciclo anterior concluído: usa URL processada com fingerprint único por conta.
-        // Pipeline: também enfileira o vídeo DO CICLO ATUAL para o próximo ciclo usar,
-        // evitando que o mesmo job done seja reutilizado indefinidamente em ciclos futuros.
-        processedVideoUrls.set(account.id, existingJob.output_url);
-        doneJobVideoIds.set(account.id, existingJob.video_id);
-        jobsToInsert.push({
-          user_id:    loop.user_id,
-          loop_id:    loop.id,
-          account_id: account.id,
-          video_id:   assignment.video.id,
-          source_url: assignment.video.public_url,
-          effects:    effectsPayload,
-          expires_at: new Date(Date.now() + jobExpiresMs).toISOString(),
-        });
-        pipelineInserts++;
-
-      } else if (!existingJob) {
-        // Sem job: enfileira para o process-videos processar (primeiro ciclo desta conta)
-        jobsToInsert.push({
-          user_id:    loop.user_id,
-          loop_id:    loop.id,
-          account_id: account.id,
-          video_id:   assignment.video.id,
-          source_url: assignment.video.public_url,
-          effects:    effectsPayload,
-          expires_at: new Date(Date.now() + jobExpiresMs).toISOString(),
-        });
-        firstTimeInserts++;
-        // processedVideoUrls não preenchida → conta pulada na FASE 2a
-
-      } else {
-        // Job queued ou processing — process-videos ainda processando
-        waitingAccounts++;
+    if (!hasActiveEffects) {
+      // Caminho direto: sem FFmpeg, sem fila, sem espera de ciclo extra.
+      for (const account of validAccounts) {
+        const assignment = videoAssignments.get(account.id);
+        if (assignment) processedVideoUrls.set(account.id, assignment.video.public_url);
       }
-    }
+      console.log(
+        `[loop-cron] "${loop.name}": sem efeitos ativos — ${processedVideoUrls.size} URL(s) originais usadas diretamente.`
+      );
+    } else {
+      // Caminho FFmpeg: usa a fila video_processing_jobs (requer tabela no banco).
+      for (const account of validAccounts) {
+        const assignment  = videoAssignments.get(account.id);
+        if (!assignment) continue;
 
-    if (jobsToInsert.length > 0) {
-      const { error: insertErr } = await (admin as any)
-        .from("video_processing_jobs")
-        .insert(jobsToInsert);
-      if (insertErr) {
-        console.warn(`[loop-cron] Falha ao enfileirar jobs de vídeo: ${insertErr.message}`);
-      } else {
-        if (firstTimeInserts > 0) {
-          console.log(`[loop-cron] "${loop.name}": ${firstTimeInserts} job(s) novos enfileirados para process-videos.`);
-        }
-        if (pipelineInserts > 0) {
-          console.log(`[loop-cron] "${loop.name}": ${pipelineInserts} job(s) pipeline (próximo ciclo) enfileirados.`);
+        const existingJob = existingJobsMap.get(account.id);
+
+        if (existingJob?.status === "done" && existingJob.output_url) {
+          processedVideoUrls.set(account.id, existingJob.output_url);
+          doneJobVideoIds.set(account.id, existingJob.video_id);
+          jobsToInsert.push({
+            user_id:    loop.user_id,
+            loop_id:    loop.id,
+            account_id: account.id,
+            video_id:   assignment.video.id,
+            source_url: assignment.video.public_url,
+            effects:    effectsPayload,
+            expires_at: new Date(Date.now() + jobExpiresMs).toISOString(),
+          });
+          pipelineInserts++;
+
+        } else if (!existingJob) {
+          jobsToInsert.push({
+            user_id:    loop.user_id,
+            loop_id:    loop.id,
+            account_id: account.id,
+            video_id:   assignment.video.id,
+            source_url: assignment.video.public_url,
+            effects:    effectsPayload,
+            expires_at: new Date(Date.now() + jobExpiresMs).toISOString(),
+          });
+          firstTimeInserts++;
+
+        } else {
+          waitingAccounts++;
         }
       }
+
+      if (jobsToInsert.length > 0) {
+        const { error: insertErr } = await (admin as any)
+          .from("video_processing_jobs")
+          .insert(jobsToInsert);
+        if (insertErr) {
+          console.warn(`[loop-cron] Falha ao enfileirar jobs de vídeo: ${insertErr.message}`);
+        } else {
+          if (firstTimeInserts > 0) {
+            console.log(`[loop-cron] "${loop.name}": ${firstTimeInserts} job(s) novos enfileirados para process-videos.`);
+          }
+          if (pipelineInserts > 0) {
+            console.log(`[loop-cron] "${loop.name}": ${pipelineInserts} job(s) pipeline (próximo ciclo) enfileirados.`);
+          }
+        }
+      }
+
+      loopPipelineActive = firstTimeInserts > 0 || waitingAccounts > 0;
     }
 
     const doneCount = processedVideoUrls.size;
-    // Pipeline ativo = há jobs novos enfileirados OU contas aguardando process-videos.
-    // Nesse caso o CLAIM NÃO deve ser revertido mesmo que 0 containers sejam criados
-    // neste ciclo — os containers virão no próximo ciclo quando os jobs ficarem 'done'.
-    loopPipelineActive = firstTimeInserts > 0 || waitingAccounts > 0;
     console.log(
-      `[loop-cron] "${loop.name}" — fila: ${doneCount} pronto(s), ` +
-      `${firstTimeInserts} novo(s), ${waitingAccounts} aguardando process-videos. ` +
-      `pipelineActive=${loopPipelineActive}`
+      `[loop-cron] "${loop.name}" — ${doneCount} conta(s) com URL pronta. ` +
+      (hasActiveEffects
+        ? `fila: ${firstTimeInserts} novo(s), ${waitingAccounts} aguardando. pipelineActive=${loopPipelineActive}`
+        : `modo direto (sem efeitos).`)
     );
 
     type AccountPrep =
