@@ -262,12 +262,12 @@ export async function POST() {
     return NextResponse.json({ synced: 0, errors: 0, token_errors: 0, restored, message: "Dados recentes." });
   }
 
-  // Stagger das chamadas à API: processa em lotes de 4 com 600ms entre lotes.
+  // Stagger das chamadas à API: processa em lotes de 2 com 3s entre lotes.
   // Chamadas simultâneas para todas as contas de uma vez fazem o Instagram ver
   // múltiplas requisições do mesmo App ID no mesmo instante → checkpoint em cascata.
-  // Com stagger: cada conta recebe sua requisição em momentos diferentes → comportamento humano.
-  const BATCH_SIZE = 4;
-  const BATCH_DELAY_MS = 600;
+  // Lotes menores + delay maior = ritmo humano mais convincente.
+  const BATCH_SIZE = 2;
+  const BATCH_DELAY_MS = 3_000;
   const allSettled: PromiseSettledResult<SyncResult>[] = [];
   for (let i = 0; i < stale.length; i += BATCH_SIZE) {
     const batch = stale.slice(i, i + BATCH_SIZE);

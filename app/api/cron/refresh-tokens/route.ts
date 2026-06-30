@@ -72,13 +72,17 @@ export async function GET(req: NextRequest) {
   let renewed = 0;
   let failed  = 0;
 
-  // Processa em paralelo com limite de 5 simultâneos para não sobrecarregar
+  // Processa em lotes de 2 com 5s entre lotes — tokens de múltiplas contas renovados
+  // simultaneamente pelo mesmo App ID podem disparar checkpoint em cascata.
+  const CHUNK_SIZE = 2;
+  const CHUNK_DELAY_MS = 5_000;
   const chunks: AccountRow[][] = [];
-  for (let i = 0; i < (accounts as AccountRow[]).length; i += 5) {
-    chunks.push((accounts as AccountRow[]).slice(i, i + 5));
+  for (let i = 0; i < (accounts as AccountRow[]).length; i += CHUNK_SIZE) {
+    chunks.push((accounts as AccountRow[]).slice(i, i + CHUNK_SIZE));
   }
 
-  for (const chunk of chunks) {
+  for (const [chunkIdx, chunk] of chunks.entries()) {
+    if (chunkIdx > 0) await new Promise(r => setTimeout(r, CHUNK_DELAY_MS));
     await Promise.allSettled(
       chunk.map(async (acc) => {
         try {
