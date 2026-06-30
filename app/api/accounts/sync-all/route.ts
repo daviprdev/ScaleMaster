@@ -34,13 +34,14 @@ const META_INFRA_MESSAGES = [
   "log in to www.instagram.com and follow the instructions",
 ];
 
-// Cascata real da Meta (outage, secret rotacionado, App desativado) afeta virtualmente
-// TODAS as contas ao mesmo tempo — tipicamente 90%+.
-// Usar 30% (anterior) era muito sensível: 15 contas ruins num batch de 50 disparavam
-// cascade protection e impediam que fossem marcadas como error.
-// Regra atual: cascade apenas se >= 70% E no mínimo 5 contas falharem.
-const CASCADE_THRESHOLD = 0.7;
-const MIN_CASCADE_COUNT = 5;
+// Threshold de cascata: se >= 50% das contas falharem ao mesmo tempo, é provável
+// que seja um problema no nível do App ou do Instagram (checkpoint em massa, outage,
+// secret rotacionado) — não falhas individuais de token.
+// 50% é o equilíbrio: sensível o suficiente para capturar checkpoints em lote (12/17=70%)
+// mas sem disparar por falhas isoladas (ex: 2 de 10 = 20%).
+// MIN_CASCADE_COUNT=4 evita falso positivo em loops com poucas contas (ex: 2/2=100%).
+const CASCADE_THRESHOLD = 0.5;
+const MIN_CASCADE_COUNT = 4;
 
 // Tempo mínimo após conexão antes de tentar sync — dá margem para a Meta
 // ativar o token em todos os seus servidores e evita marcar contas novas como error.
@@ -261,8 +262,23 @@ export async function POST() {
     return NextResponse.json({ synced: 0, errors: 0, token_errors: 0, restored, message: "Dados recentes." });
   }
 
+  // Stagger das chamadas à API: processa em lotes de 4 com 600ms entre lotes.
+  // Chamadas simultâneas para todas as contas de uma vez fazem o Instagram ver
+  // múltiplas requisições do mesmo App ID no mesmo instante → checkpoint em cascata.
+  // Com stagger: cada conta recebe sua requisição em momentos diferentes → comportamento humano.
+  const BATCH_SIZE = 4;
+  const BATCH_DELAY_MS = 600;
+  const allSettled: PromiseSettledResult<SyncResult>[] = [];
+  for (let i = 0; i < stale.length; i += BATCH_SIZE) {
+    const batch = stale.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.allSettled(batch.map(acc => syncOne(acc, admin)));
+    allSettled.push(...batchResults);
+    if (i + BATCH_SIZE < stale.length) {
+      await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+    }
+  }
   // Coleta todos os resultados ANTES de escrever — necessário para cascade detection
-  const settled = await Promise.allSettled(stale.map(acc => syncOne(acc, admin)));
+  const settled = allSettled;
   const results: SyncResult[] = settled.map((r) =>
     r.status === "fulfilled" ? r.value : { id: "", user_id: "", username: "", ok: false }
   );
