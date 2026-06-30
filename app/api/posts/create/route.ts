@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount, proxyInit } from "@/lib/proxy";
-import { applyVideoEffects } from "@/lib/video-effects";
+import { processVideoForAccount } from "@/lib/video-effects";
 import { fetch as undiciFetch, type ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
@@ -157,19 +157,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Aplica efeitos anti-fingerprint por conta antes de publicar.
-    // Fallback para URL original se FFmpeg falhar.
+    // Fingerprint único por conta antes de publicar.
+    // Impede que o Instagram detecte o mesmo vídeo em múltiplas contas.
     let effectiveMediaUrl = media_url;
     try {
-      effectiveMediaUrl = await applyVideoEffects(media_url, {
-        mirror: false, invert: false, zoom: false,
-        blur: false, noise: false, antiAi: false,
-        accountId: account.id,
-      });
-      console.log(`[posts/create] ✓ Efeitos aplicados para @${account.username}`);
+      effectiveMediaUrl = await processVideoForAccount(media_url, account.id);
+      console.log(`[posts/create] 🔐 Fingerprint aplicado para @${account.username}`);
     } catch (fxErr) {
       console.warn(
-        `[posts/create] ⚠ Efeitos falharam para @${account.username}: ` +
+        `[posts/create] ⚠ Fingerprint falhou para @${account.username}: ` +
         `${fxErr instanceof Error ? fxErr.message : String(fxErr)} — usando URL original.`
       );
     }

@@ -8,7 +8,7 @@ import {
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount } from "@/lib/proxy";
-import { applyVideoEffects } from "@/lib/video-effects";
+import { processVideoForAccount } from "@/lib/video-effects";
 import { downloadAndStripMetadata } from "@/lib/ffmpeg-process";
 
 export const runtime = "nodejs";
@@ -19,6 +19,11 @@ const RUN_BUDGET_MS = 55_000;
 
 // Reserva de tempo para o strip pipeline por vídeo (download + FFmpeg + upload ≈ 20s)
 const STRIP_RESERVE_MS = 22_000;
+
+// Reserva de tempo para fingerprint único por conta (download + FFmpeg ultrafast + upload ≈ 28s).
+// Sem fingerprint, o mesmo vídeo byte-a-byte vai para todas as contas →
+// Instagram detecta coordinated inauthentic behavior → contas caem.
+const FINGERPRINT_RESERVE_MS = 30_000;
 
 // Vídeos com esse padrão foram upados direto pelo browser (sem FFmpeg strip).
 // Contêm SEI NAL units tipo 5+6 que a Meta API rejeita → ERROR/EXPIRED.
@@ -325,16 +330,25 @@ export async function GET(req: NextRequest) {
           console.warn(`[publish-scheduled] ⏱ Budget insuficiente para strip @${account.username} — prosseguindo com URL original.`);
         }
 
+        // Fingerprint único por conta: impede o Instagram de detectar o mesmo
+        // vídeo sendo postado em múltiplas contas simultaneamente.
+        // Aplica eq ±2%, noise luma leve e pitch ±1% — imperceptível ao espectador.
+        if (Date.now() - runStart > RUN_BUDGET_MS - FINGERPRINT_RESERVE_MS) {
+          console.warn(`[publish-scheduled] ⏱ Budget insuficiente para fingerprint @${account.username} — adiando para próximo ciclo.`);
+          await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
+          summary.skipped++;
+          continue;
+        }
         try {
-          effectiveVideoUrl = await applyVideoEffects(effectiveVideoUrl, {
-            mirror: false, invert: false, zoom: false,
-            blur: false, noise: false, antiAi: false,
-            accountId: account.id,
-          });
+          effectiveVideoUrl = await processVideoForAccount(effectiveVideoUrl, account.id);
+          console.log(`[publish-scheduled] 🔐 Fingerprint aplicado @${account.username}`);
         } catch (fxErr) {
           console.warn(
-            `[publish-scheduled] ⚠ Efeitos falharam @${account.username}: ${fxErr instanceof Error ? fxErr.message : fxErr} — usando URL original.`
+            `[publish-scheduled] ⚠ Fingerprint falhou @${account.username}: ${fxErr instanceof Error ? fxErr.message : fxErr} — adiando.`
           );
+          await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
+          summary.skipped++;
+          continue;
         }
 
         // Guarda de segurança: não deve acontecer com a nova arquitetura
