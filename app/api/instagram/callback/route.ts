@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt } from "@/lib/encrypt";
+import { fetch as undiciFetch } from "undici";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -81,24 +82,23 @@ async function resolveCredentials(
   return { appId, appSecret, metaAppId: null };
 }
 
-// Wrapper de fetch com AbortController para prevenir hangs
+// Wrapper de fetch com timeout — usa undiciFetch para evitar caching do Next.js 15
 async function fetchWithTimeout(
   url: string,
   options?: RequestInit,
   timeoutMs = FETCH_TIMEOUT_MS
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await undiciFetch(url, {
+      ...options,
+      signal: AbortSignal.timeout(timeoutMs),
+    } as any) as unknown as Response;
   } catch (err) {
     const name = (err as Error).name;
     if (name === "AbortError" || name === "TimeoutError") {
       throw new Error(`Timeout (${timeoutMs / 1000}s) ao contactar a Meta API. Tente novamente.`);
     }
     throw err;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
