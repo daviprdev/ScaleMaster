@@ -16,14 +16,22 @@ const STALE_MS = 5 * 60 * 1000;
 // 102/104 = Session key invalid / Incorrect signature
 const TOKEN_ERROR_CODES = new Set([190, 102, 104]);
 
-// Mensagens de code=190 que são erros de INFRAESTRUTURA da Meta (transitórios),
-// não tokens mortos. Ocorrem durante instabilidade dos servidores da Meta.
+// Mensagens de code=190 que são erros de INFRAESTRUTURA ou CHECKPOINT — transitórios,
+// não tokens mortos. Ocorrem durante instabilidade dos servidores da Meta OU quando
+// o Instagram aciona verificação manual (checkpoint anti-automação).
 // Tratar como non-fatal: nunca marcar conta como error por esses.
+// Checkpoint ("you cannot access the app"): o token é válido, mas o Instagram exige
+// que o usuário faça login via browser para liberar. A conta pode ser restaurada e
+// tentará novamente no próximo ciclo — NÃO deve ser excluída permanentemente do loop.
 const META_INFRA_MESSAGES = [
   "failed to decrypt",
   "cannot parse access token",
   "malformed access token",
   "could not decrypt",
+  // Checkpoint do Instagram: verificação de segurança anti-automação.
+  // Mensagem exata retornada quando o Instagram exige login via browser.
+  "you cannot access the app till you log in",
+  "log in to www.instagram.com and follow the instructions",
 ];
 
 // Cascata real da Meta (outage, secret rotacionado, App desativado) afeta virtualmente

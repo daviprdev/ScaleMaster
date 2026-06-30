@@ -290,7 +290,11 @@ export async function GET(req: NextRequest) {
         // ao descriptografar internamente — transitório, retry em 5min.
         lower.includes("failed to decrypt") ||
         lower.includes("cannot parse access token") ||
-        lower.includes("malformed access token")
+        lower.includes("malformed access token") ||
+        // Checkpoint do Instagram: exige login via browser — token válido, não é erro permanente.
+        // Retry em 5min; a conta pode sair do checkpoint sem ação adicional no código.
+        lower.includes("you cannot access the app till you log in") ||
+        lower.includes("log in to www.instagram.com and follow the instructions")
       );
 
       if (isTransient) {

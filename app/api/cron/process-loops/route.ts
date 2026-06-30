@@ -307,7 +307,11 @@ function isRateLimitError(msg: string): boolean {
     // token válido, problema transitório. Trata como skip silencioso igual rate-limit.
     lower.includes("failed to decrypt") ||
     lower.includes("cannot parse access token") ||
-    lower.includes("malformed access token")
+    lower.includes("malformed access token") ||
+    // Checkpoint do Instagram: exige login via browser — token válido, conta não morta.
+    // Skip silencioso neste ciclo; a conta tentará novamente no próximo interval.
+    lower.includes("you cannot access the app till you log in") ||
+    lower.includes("log in to www.instagram.com and follow the instructions")
   );
 }
 
