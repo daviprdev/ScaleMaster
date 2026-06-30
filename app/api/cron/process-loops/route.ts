@@ -638,6 +638,10 @@ async function processOneLoop(
   // Hoisted: newCyclesDone e isComplete precisam ser acessíveis no finally para revert do CLAIM.
   let newCyclesDone = loop.cycles_done + 1;
   let isComplete = false;
+  // Pipeline ativo: jobs enfileirados ou aguardando process-videos.
+  // Se true, NÃO reverter o CLAIM mesmo com 0 containers —
+  // os containers serão criados no próximo ciclo quando os jobs ficarem 'done'.
+  let loopPipelineActive = false;
 
   try {
     console.log(
@@ -823,9 +827,14 @@ async function processOneLoop(
     }
 
     const doneCount = processedVideoUrls.size;
+    // Pipeline ativo = há jobs novos enfileirados OU contas aguardando process-videos.
+    // Nesse caso o CLAIM NÃO deve ser revertido mesmo que 0 containers sejam criados
+    // neste ciclo — os containers virão no próximo ciclo quando os jobs ficarem 'done'.
+    loopPipelineActive = firstTimeInserts > 0 || waitingAccounts > 0;
     console.log(
       `[loop-cron] "${loop.name}" — fila: ${doneCount} pronto(s), ` +
-      `${firstTimeInserts} novo(s), ${waitingAccounts} aguardando process-videos.`
+      `${firstTimeInserts} novo(s), ${waitingAccounts} aguardando process-videos. ` +
+      `pipelineActive=${loopPipelineActive}`
     );
 
     type AccountPrep =
@@ -1171,12 +1180,14 @@ async function processOneLoop(
     console.error(`[loop-cron] ✗ Erro inesperado no loop "${loop.name}": ${loopErrMsg}`);
     return "error";
   } finally {
-    if (loopClaimMade && loopContainersCreated === 0) {
-      // Nenhum container foi criado com sucesso — reverter o CLAIM para que o
-      // intervalo não seja consumido em vão. O loop será elegível novamente no
-      // próximo ciclo do cron (em vez de só após interval_minutes desde o CLAIM).
+    if (loopClaimMade && loopContainersCreated === 0 && !loopPipelineActive) {
+      // Nenhum container criado E nenhum job ativo na fila de processamento —
+      // reverte o CLAIM para que o loop seja elegível novamente no próximo ciclo
+      // (em vez de aguardar interval_minutes desde o CLAIM sem motivo).
+      // NÃO reverte quando loopPipelineActive=true: significa que jobs estão
+      // enfileirados no process-videos e os containers virão no próximo ciclo.
       console.warn(
-        `[AUTO-HEALING] Loop "${loop.name}" (${loop.id}): CLAIM revertido — 0 containers criados.`
+        `[AUTO-HEALING] Loop "${loop.name}" (${loop.id}): CLAIM revertido — 0 containers e pipeline inativo.`
       );
       try {
         const revertPayload: Record<string, unknown> = {
@@ -1191,8 +1202,9 @@ async function processOneLoop(
         console.error(`[AUTO-HEALING] Falha ao reverter CLAIM de "${loop.name}": ${revertMsg}`);
       }
     } else if (loopClaimMade) {
+      const pipelineNote = loopPipelineActive ? ` | pipeline ativo (aguardando process-videos)` : "";
       console.log(
-        `[loop-cron] [FINALLY] "${loop.name}": ${loopContainersCreated} container(s) — OK.`
+        `[loop-cron] [FINALLY] "${loop.name}": ${loopContainersCreated} container(s)${pipelineNote} — OK.`
       );
     }
   }
