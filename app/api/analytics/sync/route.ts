@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { fetch as undiciFetch } from "undici";
+import { getProxyForAccount, proxyInit } from "@/lib/proxy";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const GRAPH_API = "https://graph.instagram.com/v21.0";
 
@@ -15,16 +17,18 @@ interface AccountRow {
   posts_count: number | null;
   meta_access_token: string | null;
   ig_business_account_id: string | null;
+  proxy_url?: string | null;
 }
 
 async function fetchProfileFromAPI(
   igId: string,
-  token: string
+  token: string,
+  proxy: ReturnType<typeof getProxyForAccount>
 ): Promise<{ followers_count: number | null; posts_count: number | null }> {
   try {
-    const res = await fetch(
-      `${GRAPH_API}/${igId}?fields=followers_count,media_count&access_token=${token}`,
-      { signal: AbortSignal.timeout(10_000) }
+    const res = await undiciFetch(
+      `${GRAPH_API}/${igId}?fields=followers_count,media_count&access_token=${encodeURIComponent(token)}`,
+      { ...proxyInit(proxy), signal: AbortSignal.timeout(15_000) } as any
     );
     const data = (await res.json()) as {
       followers_count?: number;
@@ -76,8 +80,8 @@ export async function POST(req: NextRequest) {
   // Fetch accounts
   let query = admin
     .from("instagram_accounts")
-    .select("id, user_id, username, followers_count, posts_count, meta_access_token, ig_business_account_id")
-    .eq("is_active", true);
+    .select("id, user_id, username, followers_count, posts_count, meta_access_token, ig_business_account_id, proxy_url")
+    .neq("health_status", "error");
 
   if (!isCronCall && userId) query = query.eq("user_id", userId);
 
@@ -87,16 +91,22 @@ export async function POST(req: NextRequest) {
   const rows = (accounts ?? []) as AccountRow[];
   const summary = { total: rows.length, synced: 0, api_refreshed: 0, skipped: 0, errors: 0 };
 
-  for (const account of rows) {
+  for (const [idx, account] of rows.entries()) {
+    // Stagger de 2s entre contas — chamadas sequenciais sem delay ao mesmo App ID
+    // às 2h da manhã eram identificadas como automação pelo Instagram.
+    if (idx > 0) await new Promise(r => setTimeout(r, 2_000));
+
     try {
       let followersCount = account.followers_count ?? 0;
       let postsCount = account.posts_count ?? null;
 
       // Get fresh data from Meta API if credentials exist
       if (account.meta_access_token && account.ig_business_account_id) {
+        const proxy = getProxyForAccount(account.id, account.proxy_url ?? null);
         const fresh = await fetchProfileFromAPI(
           account.ig_business_account_id,
-          account.meta_access_token
+          account.meta_access_token,
+          proxy
         );
         if (fresh.followers_count !== null) {
           followersCount = fresh.followers_count;
