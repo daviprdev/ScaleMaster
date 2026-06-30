@@ -1191,21 +1191,23 @@ async function processOneLoop(
     }
 
     loopContainersCreated = containersCreated;
-    return containersCreated > 0 ? "processed" : "error";
+    return containersCreated > 0 ? "processed" : loopPipelineActive ? "skipped" : "error";
 
   } catch (loopErr) {
     const loopErrMsg = loopErr instanceof Error ? loopErr.message : String(loopErr);
     console.error(`[loop-cron] ✗ Erro inesperado no loop "${loop.name}": ${loopErrMsg}`);
     return "error";
   } finally {
-    if (loopClaimMade && loopContainersCreated === 0 && !loopPipelineActive) {
-      // Nenhum container criado E nenhum job ativo na fila de processamento —
-      // reverte o CLAIM para que o loop seja elegível novamente no próximo ciclo
-      // (em vez de aguardar interval_minutes desde o CLAIM sem motivo).
-      // NÃO reverte quando loopPipelineActive=true: significa que jobs estão
-      // enfileirados no process-videos e os containers virão no próximo ciclo.
+    if (loopClaimMade && loopContainersCreated === 0) {
+      // Nenhum container criado — reverte o CLAIM para que o loop seja elegível
+      // novamente no próximo minuto.
+      // - Se pipelineActive=true (jobs FFmpeg enfileirados): verifica a cada minuto
+      //   se process-videos terminou, em vez de esperar o intervalo inteiro (bug anterior).
+      // - Se pipelineActive=false (sem jobs ativos): mantém o comportamento original
+      //   de retry imediato.
+      const reason = loopPipelineActive ? "aguardando process-videos" : "pipeline inativo";
       console.warn(
-        `[AUTO-HEALING] Loop "${loop.name}" (${loop.id}): CLAIM revertido — 0 containers e pipeline inativo.`
+        `[AUTO-HEALING] Loop "${loop.name}" (${loop.id}): CLAIM revertido — 0 containers (${reason}).`
       );
       try {
         const revertPayload: Record<string, unknown> = {
