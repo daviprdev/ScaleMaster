@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { fetch as undiciFetch } from "undici";
+import { getProxyForAccount, proxyInit } from "@/lib/proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +12,12 @@ interface PostWithAccount {
   id: string;
   media_id: string | null;
   account_id: string;
-  instagram_accounts: { meta_access_token: string | null; ig_business_account_id: string | null } | null;
+  instagram_accounts: {
+    id: string;
+    meta_access_token: string | null;
+    ig_business_account_id: string | null;
+    proxy_url?: string | null;
+  } | null;
 }
 
 interface InsightsResult {
@@ -24,10 +31,12 @@ interface InsightsResult {
 
 async function fetchBasicMetrics(
   mediaId: string,
-  token: string
+  token: string,
+  proxy: ReturnType<typeof getProxyForAccount>
 ): Promise<{ likes: number | null; comments: number | null }> {
-  const res = await fetch(
-    `${GRAPH_API}/${mediaId}?fields=like_count,comments_count&access_token=${token}`
+  const res = await undiciFetch(
+    `${GRAPH_API}/${mediaId}?fields=like_count,comments_count&access_token=${encodeURIComponent(token)}`,
+    proxyInit(proxy) as any
   );
   const data = (await res.json()) as {
     like_count?: number;
@@ -43,11 +52,13 @@ async function fetchBasicMetrics(
 
 async function fetchInsightsMetrics(
   mediaId: string,
-  token: string
+  token: string,
+  proxy: ReturnType<typeof getProxyForAccount>
 ): Promise<{ reach: number | null; plays: number | null; shares: number | null; saved: number | null }> {
   const metrics = ["reach", "plays", "shares", "saved"].join(",");
-  const res = await fetch(
-    `${GRAPH_API}/${mediaId}/insights?metric=${metrics}&period=lifetime&access_token=${token}`
+  const res = await undiciFetch(
+    `${GRAPH_API}/${mediaId}/insights?metric=${metrics}&period=lifetime&access_token=${encodeURIComponent(token)}`,
+    proxyInit(proxy) as any
   );
   const data = (await res.json()) as {
     data?: Array<{ name: string; values: Array<{ value: number }> }>;
@@ -81,7 +92,7 @@ export async function POST(req: NextRequest) {
     .from("scheduled_posts")
     .select(
       "id, media_id, account_id, " +
-      "instagram_accounts(meta_access_token, ig_business_account_id)"
+      "instagram_accounts(id, meta_access_token, ig_business_account_id, proxy_url)"
     )
     .eq("id", body.post_id)
     .eq("status", "published")
@@ -100,9 +111,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Token ou media_id indisponível." }, { status: 422 });
   }
 
+  const proxy = getProxyForAccount(account.id, account.proxy_url ?? null);
+
   const [basic, advanced] = await Promise.all([
-    fetchBasicMetrics(post.media_id, account.meta_access_token),
-    fetchInsightsMetrics(post.media_id, account.meta_access_token),
+    fetchBasicMetrics(post.media_id, account.meta_access_token, proxy),
+    fetchInsightsMetrics(post.media_id, account.meta_access_token, proxy),
   ]);
 
   const metrics: InsightsResult = {

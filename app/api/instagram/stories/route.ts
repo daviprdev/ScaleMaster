@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { fetch as undiciFetch } from "undici";
+import { getProxyForAccount, proxyInit } from "@/lib/proxy";
 
 export const dynamic = "force-dynamic";
 
 interface AccountToken {
+  id: string;
   ig_business_account_id: string;
   meta_access_token: string;
+  proxy_url?: string | null;
 }
 
 interface StoryItem {
@@ -16,18 +20,19 @@ interface StoryItem {
 
 async function fetchStoriesForAccount(acc: AccountToken): Promise<StoryItem[]> {
   try {
+    const proxy = getProxyForAccount(acc.id, acc.proxy_url ?? null);
     const url =
       `https://graph.instagram.com/v21.0/${acc.ig_business_account_id}/stories` +
       `?fields=id,timestamp` +
       `&access_token=${encodeURIComponent(acc.meta_access_token)}`;
 
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await undiciFetch(url, { ...proxyInit(proxy), signal: AbortSignal.timeout(10_000) } as any);
     if (!res.ok) return [];
 
-    const json = await res.json();
-    if (json.error || !Array.isArray(json.data)) return [];
+    const json = await res.json() as Record<string, unknown>;
+    if ((json as any).error || !Array.isArray((json as any).data)) return [];
 
-    return json.data as StoryItem[];
+    return (json as any).data as StoryItem[];
   } catch {
     return [];
   }
@@ -47,9 +52,9 @@ export async function GET() {
 
   const { data: accounts } = await admin
     .from("instagram_accounts")
-    .select("ig_business_account_id, meta_access_token")
+    .select("id, ig_business_account_id, meta_access_token, proxy_url")
     .eq("user_id", user.id)
-    .eq("is_active", true)
+    .neq("health_status", "error")
     .not("ig_business_account_id", "is", null)
     .not("meta_access_token", "is", null) as unknown as {
       data: AccountToken[] | null;

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { fetch as undiciFetch } from "undici";
+import { getProxyForAccount, proxyInit } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -31,6 +33,7 @@ interface ContainerRow {
     avatar_url: string | null;
     followers_count: number | null;
     meta_access_token: string | null;
+    proxy_url?: string | null;
   } | null;
 }
 
@@ -47,14 +50,14 @@ interface InsightValues {
 
 async function fetchMediaInsights(
   mediaId: string,
-  token: string
+  token: string,
+  proxy: ReturnType<typeof getProxyForAccount>
 ): Promise<InsightValues> {
   let likes = 0, comments = 0, plays = 0, reach = 0;
 
-  // Métricas básicas do objeto de mídia
   try {
     const url = `${GRAPH}/${mediaId}?fields=like_count,comments_count&access_token=${encodeURIComponent(token)}`;
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await undiciFetch(url, proxyInit(proxy) as any);
     const data = (await res.json()) as Record<string, unknown>;
     if (!data.error) {
       likes = (data.like_count as number) ?? 0;
@@ -62,10 +65,9 @@ async function fetchMediaInsights(
     }
   } catch { /* non-critical */ }
 
-  // Métricas avançadas via edge /insights (plays, reach — disponível para Business/Creator)
   try {
     const url = `${GRAPH}/${mediaId}/insights?metric=plays,reach,impressions&access_token=${encodeURIComponent(token)}`;
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await undiciFetch(url, proxyInit(proxy) as any);
     const data = (await res.json()) as {
       data?: Array<{ name: string; values?: Array<{ value: number }>; value?: number }>;
     };
@@ -150,7 +152,7 @@ export async function GET(
       insights_likes, insights_comments, insights_plays, insights_reach,
       insights_fetched_at, created_at,
       instagram_accounts (
-        id, username, avatar_url, followers_count, meta_access_token
+        id, username, avatar_url, followers_count, meta_access_token, proxy_url
       )
     `)
     .eq("loop_id", loopId)
@@ -174,9 +176,14 @@ export async function GET(
     const batch = needsInsights.slice(0, 10);
     await Promise.allSettled(
       batch.map(async (c) => {
+        const proxy = getProxyForAccount(
+          c.instagram_accounts!.id,
+          c.instagram_accounts!.proxy_url ?? null
+        );
         const ins = await fetchMediaInsights(
           c.media_id!,
-          c.instagram_accounts!.meta_access_token!
+          c.instagram_accounts!.meta_access_token!,
+          proxy
         );
         await (admin as any)
           .from("pending_containers")
