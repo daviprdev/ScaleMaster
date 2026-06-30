@@ -1313,7 +1313,7 @@ export async function GET(req: NextRequest) {
         instagram_accounts (
           id, username, is_active, meta_access_token,
           ig_business_account_id, token_expires_at, fb_page_id,
-          health_status, failover_priority, proxy_url,
+          health_status, failover_priority, proxy_url
         )
       )
     `)
