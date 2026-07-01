@@ -144,17 +144,19 @@ export async function POST(req: NextRequest) {
         .from("instagram_accounts")
         .update({ health_status: "error" })
         .eq("id", accountId);
-      // Grava no failover_logs para o diagnóstico mostrar o motivo real
-      void (async () => {
-        try {
-          await (admin as any).from("failover_logs").insert({
-            user_id: user.id,
-            failed_account_id: accountId,
-            backup_account_id: null,
-            error_reason: `[refresh] code=${code} — ${profile.error?.message ?? ""}`,
-          });
-        } catch { /* não crítico */ }
-      })();
+      // Grava no failover_logs para o diagnóstico mostrar o motivo real.
+      // IMPORTANTE: deve ser awaited — funções serverless da Vercel terminam ao enviar
+      // a response, cancelando qualquer promise fire-and-forget (void) em voo.
+      try {
+        await (admin as any).from("failover_logs").insert({
+          user_id: user.id,
+          failed_account_id: accountId,
+          backup_account_id: null,
+          error_reason: `[refresh] code=${code} — ${profile.error?.message ?? ""}`,
+        });
+      } catch (logErr) {
+        console.warn("[accounts/refresh] failover_log insert falhou:", (logErr as Error).message);
+      }
     }
 
     return NextResponse.json(

@@ -3,6 +3,7 @@ import { ApifyClient } from "apify-client";
 import { resolveApifyTokens } from "@/lib/apify-token-pool";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { fetch as undiciFetch } from "undici";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -121,14 +122,14 @@ export async function GET(req: NextRequest) {
     let profilePicUrl: string | null = null;
     if (rawPicUrl) {
       try {
-        const picRes = await fetch(rawPicUrl, {
+        const picRes = await undiciFetch(rawPicUrl, {
           headers: {
             "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
             "Referer": "https://www.instagram.com/",
             "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
           },
           signal: AbortSignal.timeout(10_000),
-        });
+        } as any);
         if (picRes.ok) {
           const buffer = await picRes.arrayBuffer();
           const contentType = picRes.headers.get("content-type") ?? "image/jpeg";

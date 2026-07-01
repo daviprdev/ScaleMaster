@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt } from "@/lib/encrypt";
-import { fetch as undiciFetch } from "undici";
+import { fetch as undiciFetch, type ProxyAgent } from "undici";
+import { getProxyForAccount, proxyInit } from "@/lib/proxy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -82,16 +83,18 @@ async function resolveCredentials(
   return { appId, appSecret, metaAppId: null };
 }
 
-// Wrapper de fetch com timeout — usa undiciFetch para evitar caching do Next.js 15
+// Wrapper de fetch com timeout e proxy opcional — usa undiciFetch para evitar caching do Next.js 15
 async function fetchWithTimeout(
   url: string,
   options?: RequestInit,
-  timeoutMs = FETCH_TIMEOUT_MS
+  timeoutMs = FETCH_TIMEOUT_MS,
+  proxy?: ProxyAgent | null
 ): Promise<Response> {
   try {
     return await undiciFetch(url, {
       ...options,
       signal: AbortSignal.timeout(timeoutMs),
+      ...(proxy ? { dispatcher: proxy } : {}),
     } as any) as unknown as Response;
   } catch (err) {
     const name = (err as Error).name;
@@ -112,7 +115,12 @@ function detectRateLimit(res: Response): void {
   }
 }
 
-async function exchangeCode(code: string, appId: string, appSecret: string): Promise<string> {
+async function exchangeCode(
+  code: string,
+  appId: string,
+  appSecret: string,
+  proxy?: ProxyAgent | null
+): Promise<{ token: string; igUserId: string }> {
   const body = new URLSearchParams({
     client_id: appId,
     client_secret: appSecret,
@@ -125,12 +133,13 @@ async function exchangeCode(code: string, appId: string, appSecret: string): Pro
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
-  });
+  }, FETCH_TIMEOUT_MS, proxy);
 
   detectRateLimit(res);
 
   const data = (await res.json()) as {
     access_token?: string;
+    user_id?: string | number;
     error_type?: string;
     error_message?: string;
     code?: number;
@@ -158,12 +167,13 @@ async function exchangeCode(code: string, appId: string, appSecret: string): Pro
     throw new Error(ecDetail);
   }
 
-  return data.access_token;
+  return { token: data.access_token, igUserId: String(data.user_id ?? "") };
 }
 
 async function getLongLivedToken(
   shortToken: string,
-  appSecret: string
+  appSecret: string,
+  proxy?: ProxyAgent | null
 ): Promise<{ token: string; expiresAt: Date }> {
   const params = new URLSearchParams({
     grant_type: "ig_exchange_token",
@@ -171,7 +181,7 @@ async function getLongLivedToken(
     access_token: shortToken,
   });
 
-  const res = await fetchWithTimeout(`${GRAPH_IG}/access_token?${params.toString()}`);
+  const res = await fetchWithTimeout(`${GRAPH_IG}/access_token?${params.toString()}`, undefined, FETCH_TIMEOUT_MS, proxy);
 
   detectRateLimit(res);
 
@@ -200,9 +210,12 @@ async function getLongLivedToken(
   };
 }
 
-async function getIGProfile(token: string) {
+async function getIGProfile(token: string, proxy?: ProxyAgent | null) {
   const res = await fetchWithTimeout(
-    `${GRAPH_IG}/me?fields=id,username,name,profile_picture_url,media_count&access_token=${token}`
+    `${GRAPH_IG}/me?fields=id,username,name,profile_picture_url,media_count&access_token=${token}`,
+    undefined,
+    FETCH_TIMEOUT_MS,
+    proxy
   );
 
   detectRateLimit(res);
@@ -372,10 +385,59 @@ export async function GET(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
 
+  // Busca um proxy bootstrap (qualquer conta do usuário com proxy configurado).
+  // Isso roteia as chamadas de troca de token pela infra de proxy já em uso,
+  // evitando que o IP da Vercel seja exposto à Meta durante o onboarding da conta.
+  // Para usuários sem contas ainda (primeira conexão), cai no IP da Vercel —
+  // aceitável pois é um evento único de setup, não recorrente de postagem.
+  let bootstrapProxy: ProxyAgent | null = null;
   try {
-    const shortToken = await exchangeCode(code, credentials.appId, credentials.appSecret);
-    const { token: longToken, expiresAt } = await getLongLivedToken(shortToken, credentials.appSecret);
-    const profile = await getIGProfile(longToken);
+    const { data: proxyAcct } = await (admin as any)
+      .from("instagram_accounts")
+      .select("id, proxy_url")
+      .eq("user_id", userId)
+      .not("proxy_url", "is", null)
+      .limit(1)
+      .maybeSingle();
+    if (proxyAcct?.id && proxyAcct.proxy_url) {
+      bootstrapProxy = getProxyForAccount(proxyAcct.id, proxyAcct.proxy_url);
+      console.log(`[ig/callback] proxy bootstrap obtido de conta ${(proxyAcct.id as string).slice(0, 8)}…`);
+    } else {
+      console.log("[ig/callback] sem proxy bootstrap disponível — usando IP Vercel para exchange de token.");
+    }
+  } catch (e) {
+    console.warn("[ig/callback] falha ao buscar proxy bootstrap:", (e as Error).message);
+  }
+
+  try {
+    const { token: shortToken, igUserId } = await exchangeCode(code, credentials.appId, credentials.appSecret, bootstrapProxy);
+
+    // Tenta obter o proxy específico da conta sendo (re)conectada.
+    // Se o ig_user_id retornar e a conta já existir no banco com proxy próprio,
+    // usamos esse proxy para as chamadas seguintes — mais preciso que o bootstrap.
+    let accountProxy: ProxyAgent | null = bootstrapProxy;
+    if (igUserId) {
+      try {
+        const { data: existingAcct } = await (admin as any)
+          .from("instagram_accounts")
+          .select("id, proxy_url")
+          .eq("user_id", userId)
+          .eq("ig_business_account_id", igUserId)
+          .maybeSingle();
+        if (existingAcct?.id && existingAcct.proxy_url) {
+          const specificProxy = getProxyForAccount(existingAcct.id, existingAcct.proxy_url);
+          if (specificProxy) {
+            accountProxy = specificProxy;
+            console.log(`[ig/callback] proxy específico da conta @ig_id=${igUserId} encontrado.`);
+          }
+        }
+      } catch {
+        // Mantém bootstrap proxy
+      }
+    }
+
+    const { token: longToken, expiresAt } = await getLongLivedToken(shortToken, credentials.appSecret, accountProxy);
+    const profile = await getIGProfile(longToken, accountProxy);
 
     console.log(`[ig/callback] @${profile.username} (id:${profile.id}) → user ${userId}${isMagicLink ? " [magic-link]" : ""}`);
 
