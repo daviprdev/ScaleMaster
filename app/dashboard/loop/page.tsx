@@ -128,7 +128,7 @@ const DEFAULT_FORM: FormData = {
   effectZoom:   false,
   effectBlur:   false,
   effectNoise:  false,
-  effectAntiAi: false,
+  effectAntiAi: true,
   autoCaptionEnabled: false,
   autoCaptionType: "curiosidades-gerais",
 };
@@ -1222,7 +1222,7 @@ function LoopFormModal({
         effectZoom:   editingLoop.effect_zoom   ?? false,
         effectBlur:   editingLoop.effect_blur   ?? false,
         effectNoise:  editingLoop.effect_noise  ?? false,
-        effectAntiAi: editingLoop.effect_anti_ai ?? false,
+        effectAntiAi: editingLoop.effect_anti_ai ?? true,
         autoCaptionEnabled: editingLoop.auto_caption_enabled ?? false,
         autoCaptionType: editingLoop.auto_caption_type ?? "curiosidades-gerais",
       };
