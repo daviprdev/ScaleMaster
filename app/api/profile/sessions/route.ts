@@ -125,8 +125,10 @@ export async function GET() {
 }
 
 // DELETE — Desconecta sessões
-// ?scope=others  → revoga todos exceto a sessão atual (currentId obrigatório)
-// ?scope=all     → revoga todos incluindo a sessão atual
+//
+// ?ids=id1,id2,id3          → revoga sessões específicas (remove do DB + signOut others)
+// ?scope=others&currentId=X → revoga todos exceto a sessão atual
+// ?scope=all                → revoga todos incluindo a sessão atual
 export async function DELETE(req: NextRequest) {
   const supabase = await createClient();
   const {
@@ -137,11 +139,29 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const scope     = searchParams.get("scope") ?? "others";
   const currentId = searchParams.get("currentId");
+  const idsParam  = searchParams.get("ids");
 
   const admin = getSupabaseAdmin();
 
+  // Revogação seletiva: IDs específicos fornecidos
+  if (idsParam) {
+    const ids = idsParam.split(",").map(s => s.trim()).filter(Boolean);
+    if (ids.length > 0) {
+      await (admin as any)
+        .from("user_sessions")
+        .delete()
+        .eq("user_id", user.id)
+        .in("id", ids);
+    }
+    // Invalida todas as sessões Supabase exceto a atual —
+    // o SDK não suporta revogação por sessão individual, então
+    // usamos "others" como melhor aproximação (sempre seguro por excesso).
+    await supabase.auth.signOut({ scope: "others" });
+    return NextResponse.json({ ok: true });
+  }
+
   if (scope === "all") {
-    // Remove todos os registros do banco e invalida todas as sessões Supabase
+    // Remove todos os registros e invalida todas as sessões Supabase
     await (admin as any)
       .from("user_sessions")
       .delete()

@@ -161,8 +161,12 @@ export default function SettingsPage() {
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [revokingOthers, setRevokingOthers] = useState(false);
   const [loggingOutAll, setLoggingOutAll] = useState(false);
+  const [revokingSelected, setRevokingSelected] = useState(false);
   const [sessionError, setSessionError] = useState("");
-  const [revokeConfirm, setRevokeConfirm] = useState<"others" | "all" | null>(null);
+  const [revokeConfirm, setRevokeConfirm] = useState<"others" | "all" | "selected" | null>(null);
+  // Modo de seleção de sessões
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -197,6 +201,51 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setRevokeConfirm(null);
+  };
+
+  const toggleSelectId = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  // Seleciona/desmarca todos os não-atuais
+  const toggleSelectAll = () => {
+    const others = sessions.filter(s => s.id !== currentSessionId).map(s => s.id);
+    if (selectedIds.size === others.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(others));
+    }
+  };
+
+  const handleRevokeSelected = async () => {
+    if (revokingSelected || selectedIds.size === 0) return;
+    setRevokingSelected(true);
+    setSessionError("");
+    setRevokeConfirm(null);
+    try {
+      const ids = [...selectedIds].join(",");
+      const res = await fetch(
+        `/api/profile/sessions?ids=${ids}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error("Erro ao revogar sessões.");
+      exitSelectMode();
+      await loadSessions();
+    } catch (err) {
+      setSessionError(err instanceof Error ? err.message : "Erro ao revogar.");
+    } finally {
+      setRevokingSelected(false);
+    }
+  };
 
   const handleRevokeOthers = async () => {
     if (revokingOthers) return;
@@ -578,9 +627,43 @@ export default function SettingsPage() {
       {/* ── Dispositivos e Sessões ─────────────────────────── */}
       <Section icon={<Wifi size={15} />} title="Dispositivos e Sessões">
         <div className="space-y-3">
-          <p className="text-xs text-white/30">
-            Dispositivos que acessaram sua conta. Revogue sessões suspeitas para manter sua conta segura.
-          </p>
+
+          {/* Header */}
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-white/30">
+              Dispositivos que acessaram sua conta. Selecione e revogue sessões suspeitas.
+            </p>
+            {/* Botão Selecionar — só aparece quando há outros dispositivos */}
+            {!loadingSessions && sessions.filter(s => s.id !== currentSessionId).length > 0 && (
+              selectMode ? (
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={toggleSelectAll}
+                    className="text-[11px] text-white/40 hover:text-white/70 transition-colors whitespace-nowrap"
+                  >
+                    {selectedIds.size === sessions.filter(s => s.id !== currentSessionId).length
+                      ? "Desmarcar todos"
+                      : "Selecionar todos"}
+                  </button>
+                  <button
+                    onClick={exitSelectMode}
+                    className="text-[11px] text-white/35 hover:text-white/60 transition-colors"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setSelectMode(true); setRevokeConfirm(null); }}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-medium
+                    bg-white/[0.05] border border-white/[0.08] text-white/45
+                    hover:bg-white/[0.08] hover:text-white/70 transition-all"
+                >
+                  Selecionar
+                </button>
+              )
+            )}
+          </div>
 
           {/* Lista de sessões */}
           {loadingSessions ? (
@@ -596,30 +679,53 @@ export default function SettingsPage() {
             <div className="space-y-2">
               {sessions.map((s) => {
                 const isCurrent = s.id === currentSessionId;
+                const isSelected = selectedIds.has(s.id);
+                const isSelectable = selectMode && !isCurrent;
+
                 return (
                   <div
                     key={s.id}
+                    onClick={() => isSelectable && toggleSelectId(s.id)}
                     className={cn(
-                      "flex items-start gap-3 px-4 py-3.5 rounded-xl border transition-colors",
+                      "flex items-start gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150",
                       isCurrent
                         ? "bg-[#00FF41]/[0.04] border-[#00FF41]/20"
+                        : isSelected
+                        ? "bg-red-500/[0.07] border-red-500/30 cursor-pointer"
+                        : isSelectable
+                        ? "bg-white/[0.02] border-white/[0.06] cursor-pointer hover:bg-white/[0.05] hover:border-white/[0.10]"
                         : "bg-white/[0.02] border-white/[0.06]"
                     )}
                   >
-                    {/* Ícone do dispositivo */}
-                    <div
-                      className={cn(
+                    {/* Checkbox (modo seleção) ou ícone do dispositivo */}
+                    {isSelectable ? (
+                      <div className={cn(
+                        "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 border-2 transition-all",
+                        isSelected
+                          ? "bg-red-500/20 border-red-500/60"
+                          : "bg-white/[0.04] border-white/[0.12]"
+                      )}>
+                        {isSelected
+                          ? <Check size={14} className="text-red-400" />
+                          : <DeviceIcon type={s.device_type} size={14} />
+                        }
+                      </div>
+                    ) : (
+                      <div className={cn(
                         "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5",
                         isCurrent ? "bg-[#00FF41]/10" : "bg-white/[0.05]"
-                      )}
-                    >
-                      <DeviceIcon type={s.device_type} />
-                    </div>
+                      )}>
+                        <DeviceIcon type={s.device_type} />
+                      </div>
+                    )}
 
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium text-white/80">
+                        <span className={cn(
+                          "text-sm font-medium",
+                          isSelected ? "text-red-300" : "text-white/80"
+                        )}>
                           {s.browser} · {s.os}
                         </span>
                         {isCurrent && (
@@ -627,10 +733,14 @@ export default function SettingsPage() {
                             ESTA SESSÃO
                           </span>
                         )}
+                        {isSelected && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider bg-red-500/10 border border-red-500/25 text-red-400">
+                            SELECIONADA
+                          </span>
+                        )}
                       </div>
 
                       <div className="mt-1 space-y-0.5">
-                        {/* Local */}
                         {(s.city || s.country) && (
                           <div className="flex items-center gap-1.5 text-xs text-white/35">
                             <MapPin size={10} className="flex-shrink-0" />
@@ -640,13 +750,11 @@ export default function SettingsPage() {
                             </span>
                           </div>
                         )}
-                        {/* IP */}
                         {s.ip_address && (
                           <p className="text-[11px] text-white/25 font-mono pl-4">
                             {s.ip_address}
                           </p>
                         )}
-                        {/* Última atividade */}
                         <div className="flex items-center gap-1.5 text-[11px] text-white/25">
                           <Clock size={10} className="flex-shrink-0" />
                           <span>Visto por último {timeAgo(s.last_seen_at)}</span>
@@ -661,6 +769,57 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {/* Barra de ação do modo de seleção */}
+          {selectMode && (
+            <div className={cn(
+              "rounded-xl border px-4 py-3 flex items-center gap-3 transition-all",
+              selectedIds.size > 0
+                ? "bg-red-500/[0.07] border-red-500/25"
+                : "bg-white/[0.03] border-white/[0.07]"
+            )}>
+              <span className={cn(
+                "text-sm font-medium flex-1",
+                selectedIds.size > 0 ? "text-red-300" : "text-white/35"
+              )}>
+                {selectedIds.size === 0
+                  ? "Nenhuma sessão selecionada"
+                  : `${selectedIds.size} sessão(ões) selecionada(s)`}
+              </span>
+
+              {selectedIds.size > 0 && (
+                revokeConfirm === "selected" ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-red-400">Deslogar {selectedIds.size} dispositivo(s)?</span>
+                    <button
+                      onClick={handleRevokeSelected}
+                      disabled={revokingSelected}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {revokingSelected && <Loader2 size={11} className="animate-spin" />}
+                      Confirmar
+                    </button>
+                    <button
+                      onClick={() => setRevokeConfirm(null)}
+                      className="px-3 py-1.5 rounded-lg text-xs text-white/35 hover:text-white/60 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setRevokeConfirm("selected")}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold
+                      bg-red-500/15 border border-red-500/30 text-red-400
+                      hover:bg-red-500/25 transition-colors"
+                  >
+                    <LogOut size={12} />
+                    Deslogar selecionados
+                  </button>
+                )
+              )}
+            </div>
+          )}
+
           {/* Erro */}
           {sessionError && (
             <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
@@ -672,9 +831,9 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* Ações */}
-          {!loadingSessions && sessions.length > 0 && (
-            <div className="pt-1 border-t border-white/[0.06] flex flex-col sm:flex-row gap-2 mt-3">
+          {/* Ações globais — só quando NÃO está em modo seleção */}
+          {!selectMode && !loadingSessions && sessions.length > 0 && (
+            <div className="pt-1 border-t border-white/[0.06] flex flex-col sm:flex-row gap-2 mt-1">
               {/* Revogar outros */}
               {sessions.length > 1 && (
                 revokeConfirm === "others" ? (
@@ -685,9 +844,10 @@ export default function SettingsPage() {
                     <button
                       onClick={handleRevokeOthers}
                       disabled={revokingOthers}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50 flex items-center gap-1.5"
                     >
-                      {revokingOthers ? <Loader2 size={11} className="animate-spin" /> : "Confirmar"}
+                      {revokingOthers && <Loader2 size={11} className="animate-spin" />}
+                      Confirmar
                     </button>
                     <button
                       onClick={() => setRevokeConfirm(null)}
@@ -705,7 +865,7 @@ export default function SettingsPage() {
                       transition-all duration-150"
                   >
                     <LogOut size={14} />
-                    Revogar outros dispositivos
+                    Revogar todos os outros
                   </button>
                 )
               )}
@@ -713,15 +873,14 @@ export default function SettingsPage() {
               {/* Deslogar de tudo */}
               {revokeConfirm === "all" ? (
                 <div className="flex items-center gap-2 flex-1">
-                  <span className="text-xs text-red-400 flex-1">
-                    Você será deslogado agora. Continuar?
-                  </span>
+                  <span className="text-xs text-red-400 flex-1">Você será deslogado agora. Continuar?</span>
                   <button
                     onClick={handleLogoutAll}
                     disabled={loggingOutAll}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50 flex items-center gap-1.5"
                   >
-                    {loggingOutAll ? <Loader2 size={11} className="animate-spin" /> : "Confirmar"}
+                    {loggingOutAll && <Loader2 size={11} className="animate-spin" />}
+                    Confirmar
                   </button>
                   <button
                     onClick={() => setRevokeConfirm(null)}
@@ -739,7 +898,7 @@ export default function SettingsPage() {
                     transition-all duration-150"
                 >
                   <LogOut size={14} />
-                  Deslogar de todos os dispositivos
+                  Deslogar de todos
                 </button>
               )}
             </div>
