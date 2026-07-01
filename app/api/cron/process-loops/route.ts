@@ -50,6 +50,7 @@ interface LoopRow {
   effect_noise: boolean;
   effect_anti_ai: boolean;
   account_folder_id: string | null;
+  account_stagger_seconds: number | null;
   last_posted_at: string | null;
   loop_accounts: LoopAccountRow[];
   auto_caption_enabled?: boolean;
@@ -966,10 +967,11 @@ async function processOneLoop(
     // intervalo configurado + ruído aleatório de ±30% por conta para que a Meta
     // não detecte um padrão periódico fixo no timing de postagem.
     // Ex: 48 contas × 15 min → base 18.75s ± ~5s de jitter por conta.
-    const staggerBaseSec = Math.max(
+    const autoStaggerSec = Math.max(
       5,
       (loop.interval_minutes * 60) / Math.max(validAccounts.length, 1)
     );
+    const staggerBaseSec = loop.account_stagger_seconds ?? autoStaggerSec;
     let newContainerIdx = 0;
     // Contador separado para o sleep anti-burst: DEVE ser incrementado por conta
     // tentada, não por container criado com sucesso. Sem isso, quando todos os
@@ -1306,7 +1308,7 @@ export async function GET(req: NextRequest) {
     .from("loops")
     .select(`
       id, user_id, name, folder_id, account_folder_id, is_infinite, cycles, cycles_done, current_cycle,
-      interval_minutes, media_limit, captions, effect_mirror, effect_invert,
+      interval_minutes, account_stagger_seconds, media_limit, captions, effect_mirror, effect_invert,
       effect_zoom, effect_blur, effect_noise, effect_anti_ai,
       auto_caption_enabled, auto_caption_type,
       last_posted_at,

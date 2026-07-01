@@ -24,7 +24,7 @@ export async function PATCH(
   const scalars = ["status", "name", "folder_id", "account_folder_id", "is_infinite", "cycles",
     "interval_minutes", "media_limit", "captions", "cover_image_url",
     "effect_mirror", "effect_invert", "effect_zoom", "effect_blur", "effect_noise", "effect_anti_ai",
-    "auto_caption_enabled", "auto_caption_type"];
+    "auto_caption_enabled", "auto_caption_type", "account_stagger_seconds"];
   for (const key of scalars) {
     if (!(key in body)) continue;
 

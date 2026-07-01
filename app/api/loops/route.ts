@@ -25,7 +25,7 @@ export async function GET() {
   })("loops")
     .select(`
       id, user_id, folder_id, account_folder_id, name, is_infinite, cycles, interval_minutes,
-      media_limit, captions, cover_image_url,
+      account_stagger_seconds, media_limit, captions, cover_image_url,
       effect_mirror, effect_invert, effect_zoom, effect_blur, effect_noise, effect_anti_ai,
       auto_caption_enabled, auto_caption_type,
       status, created_at,
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
     effect_anti_ai: boolean;
     auto_caption_enabled?: boolean;
     auto_caption_type?: string | null;
+    account_stagger_seconds?: number | null;
     account_ids: string[];
   };
 
@@ -108,6 +109,7 @@ export async function POST(req: NextRequest) {
       effect_anti_ai:  body.effect_anti_ai ?? false,
       auto_caption_enabled: autoEnabled,
       auto_caption_type:    autoEnabled ? (body.auto_caption_type ?? "curiosidades-gerais") : null,
+      account_stagger_seconds: body.account_stagger_seconds ?? null,
       status: "active",
     })
     .select()

@@ -89,6 +89,7 @@ interface FormData {
   effectAntiAi:  boolean;
   autoCaptionEnabled: boolean;
   autoCaptionType: string;
+  accountStaggerSeconds: number | null;
 }
 
 interface SavedCaption {
@@ -131,6 +132,7 @@ const DEFAULT_FORM: FormData = {
   effectAntiAi: true,
   autoCaptionEnabled: false,
   autoCaptionType: "curiosidades-gerais",
+  accountStaggerSeconds: null,
 };
 
 // ── Analytics types ───────────────────────────────────────────
@@ -1225,6 +1227,7 @@ function LoopFormModal({
         effectAntiAi: editingLoop.effect_anti_ai ?? true,
         autoCaptionEnabled: editingLoop.auto_caption_enabled ?? false,
         autoCaptionType: editingLoop.auto_caption_type ?? "curiosidades-gerais",
+        accountStaggerSeconds: (editingLoop as any).account_stagger_seconds ?? null,
       };
     }
     return DEFAULT_FORM;
@@ -1478,6 +1481,49 @@ function LoopFormModal({
                 <AlertCircle size={10} />
                 Mínimo 10 minutos para evitar bloqueios automáticos do Instagram.
               </p>
+            </div>
+          </div>
+
+          {/* Stagger entre contas */}
+          <div>
+            <SectionLabel icon={Clock} label="Intervalo entre contas" />
+            <div className="p-4 rounded-xl border border-white/[0.07] bg-white/[0.03] space-y-3">
+              <p className="text-[11px] text-white/40">
+                Tempo mínimo em segundos entre cada conta ao postar num ciclo. Deixe vazio para cálculo automático.
+              </p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={5}
+                  max={3600}
+                  placeholder="Auto"
+                  value={form.accountStaggerSeconds ?? ""}
+                  onChange={e => {
+                    const v = e.target.value;
+                    update("accountStaggerSeconds", v === "" ? null : Math.max(5, Number(v)));
+                  }}
+                  className="input-glass w-28 text-center text-sm"
+                />
+                <span className="text-xs text-white/40">segundos por conta</span>
+                {form.accountStaggerSeconds !== null && (
+                  <button
+                    type="button"
+                    onClick={() => update("accountStaggerSeconds", null)}
+                    className="text-[11px] text-white/30 hover:text-white/60 transition-colors"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+              {form.accountStaggerSeconds === null ? (
+                <p className="text-[11px] text-white/30 italic">
+                  Auto: {form.intervalMinutes * 60} s ÷ nº contas (ajustado no ciclo)
+                </p>
+              ) : (
+                <p className="text-[11px]" style={{ color: "var(--matrix)" }}>
+                  {form.accountStaggerSeconds}s entre cada conta — {Math.round(form.accountStaggerSeconds / 60 * 10) / 10} min de espaçamento
+                </p>
+              )}
             </div>
           </div>
 
@@ -1789,6 +1835,7 @@ export default function LoopPage() {
       effect_anti_ai: form.effectAntiAi,
       auto_caption_enabled: form.autoCaptionEnabled,
       auto_caption_type: form.autoCaptionEnabled ? form.autoCaptionType : null,
+      account_stagger_seconds: form.accountStaggerSeconds,
       account_ids: form.accountMode === "folder" ? [] : form.accountIds,
     };
 
