@@ -1062,14 +1062,20 @@ async function processOneLoop(
           }
         }
 
-        // Jitter ±30% sobre o stagger base — timing humano, não robótico
-        const jitter = staggerBaseSec * 0.3 * (Math.random() * 2 - 1);
-        const rawDelayMinutes = Math.max(0, (newContainerIdx * staggerBaseSec + jitter)) / 60;
-        // Cap: garante que nenhum container fique pending além da janela do próximo ciclo.
-        // 50% do interval dá a margem suficiente para o publish-pending processar o container
-        // antes de process-loops rodar de novo — evita containerAlreadyExists = true no ciclo
-        // seguinte e o intervalo efetivo dobrar (ex: 15 min virar 30 min).
-        const initialDelayMinutes = Math.min(rawDelayMinutes, Math.max(0, Math.floor(loop.interval_minutes * 0.5)));
+        let initialDelayMinutes: number;
+        if (loop.account_stagger_seconds) {
+          // Stagger customizado: distribuição exata sem jitter.
+          // Cap em (interval - 1 min) para garantir que o último container
+          // seja publicado antes do próximo ciclo de process-loops.
+          const rawDelaySec = newContainerIdx * staggerBaseSec;
+          const maxDelaySec = Math.max(0, (loop.interval_minutes - 1) * 60);
+          initialDelayMinutes = Math.min(rawDelaySec, maxDelaySec) / 60;
+        } else {
+          // Auto: jitter ±30% + cap em 50% do interval
+          const jitter = staggerBaseSec * 0.3 * (Math.random() * 2 - 1);
+          const rawDelayMinutes = Math.max(0, (newContainerIdx * staggerBaseSec + jitter)) / 60;
+          initialDelayMinutes = Math.min(rawDelayMinutes, Math.max(0, Math.floor(loop.interval_minutes * 0.5)));
+        }
 
         // Usa o video_id do job done (pode ser diferente da atribuição aleatória atual)
         const videoIdToUse = doneJobVideoIds.get(account.id) ?? assignment.video.id;

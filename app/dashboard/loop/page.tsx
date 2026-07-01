@@ -1487,41 +1487,41 @@ function LoopFormModal({
           {/* Stagger entre contas */}
           <div>
             <SectionLabel icon={Clock} label="Intervalo entre contas" />
-            <div className="p-4 rounded-xl border border-white/[0.07] bg-white/[0.03] space-y-3">
-              <p className="text-[11px] text-white/40">
-                Tempo mínimo em segundos entre cada conta ao postar num ciclo. Deixe vazio para cálculo automático.
-              </p>
-              <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  min={5}
-                  max={3600}
-                  placeholder="Auto"
-                  value={form.accountStaggerSeconds ?? ""}
-                  onChange={e => {
-                    const v = e.target.value;
-                    update("accountStaggerSeconds", v === "" ? null : Math.max(5, Number(v)));
-                  }}
-                  className="input-glass w-28 text-center text-sm"
-                />
-                <span className="text-xs text-white/40">segundos por conta</span>
-                {form.accountStaggerSeconds !== null && (
-                  <button
-                    type="button"
-                    onClick={() => update("accountStaggerSeconds", null)}
-                    className="text-[11px] text-white/30 hover:text-white/60 transition-colors"
-                  >
-                    Limpar
-                  </button>
-                )}
+            <div className="space-y-3 p-4 rounded-xl border border-white/[0.07] bg-white/[0.03]">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-white/40">Auto</span>
+                <span className={cn(
+                  "text-base font-bold",
+                  form.accountStaggerSeconds ? "text-green-400" : "text-white/30"
+                )}>
+                  {form.accountStaggerSeconds ? `${form.accountStaggerSeconds}s` : "Automático"}
+                </span>
+                <span className="text-xs text-white/40">5 min</span>
               </div>
-              {form.accountStaggerSeconds === null ? (
-                <p className="text-[11px] text-white/30 italic">
-                  Auto: {form.intervalMinutes * 60} s ÷ nº contas (ajustado no ciclo)
+              <input
+                type="range"
+                min={0}
+                max={300}
+                step={5}
+                value={form.accountStaggerSeconds ?? 0}
+                onChange={e => {
+                  const v = Number(e.target.value);
+                  update("accountStaggerSeconds", v === 0 ? null : v);
+                }}
+                className="range-slider"
+                style={{
+                  background: form.accountStaggerSeconds
+                    ? `linear-gradient(to right, var(--matrix) 0%, var(--matrix) ${(form.accountStaggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) ${(form.accountStaggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) 100%)`
+                    : `linear-gradient(to right, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.08) 100%)`
+                }}
+              />
+              {form.accountStaggerSeconds ? (
+                <p className="text-[11px]" style={{ color: "var(--matrix)" }}>
+                  {form.accountStaggerSeconds}s por conta — arraste até o início para voltar ao automático
                 </p>
               ) : (
-                <p className="text-[11px]" style={{ color: "var(--matrix)" }}>
-                  {form.accountStaggerSeconds}s entre cada conta — {Math.round(form.accountStaggerSeconds / 60 * 10) / 10} min de espaçamento
+                <p className="text-[11px] text-white/30 italic">
+                  Proporcional ao intervalo ÷ número de contas (recomendado)
                 </p>
               )}
             </div>
