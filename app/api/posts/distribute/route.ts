@@ -23,6 +23,7 @@ interface DistributeBody {
   start_at: string;               // ISO datetime
   captions: string[];
   auto_caption_type?: string;     // se presente, ignora captions e gera automaticamente
+  account_stagger_seconds?: number | null; // null = cálculo automático
 }
 
 export async function POST(req: NextRequest) {
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const body = await req.json() as DistributeBody;
-  const { account_ids, folder_id, video_count, posts_per_day, start_at, captions, auto_caption_type } = body;
+  const { account_ids, folder_id, video_count, posts_per_day, start_at, captions, auto_caption_type, account_stagger_seconds } = body;
 
   if (!account_ids?.length)
     return NextResponse.json({ error: "Selecione ao menos 1 conta." }, { status: 400 });
@@ -77,17 +78,18 @@ export async function POST(req: NextRequest) {
 
   const rows: object[] = [];
 
-  // Distribui contas dentro da primeira janela de intervalo.
-  // Com muitas contas e 5 min fixo, a última conta esperaria N×5 min antes do 1º post
-  // (ex: 72 contas × 5 min = 360 min = 6h de espera). Fix: stagger proporcional ao intervalo,
-  // garantindo que TODAS as contas tenham o 1º post dentro da 1ª janela.
-  const maxStaggerPerAccountMs = account_ids.length > 1
+  // Stagger entre contas: customizável ou proporcional ao intervalo (máx. 5 min).
+  // Custom: exato, sem jitter — conta[i] posta em i × stagger_s segundos.
+  // Auto: proporcional ao intervalo garantindo que todas as contas postem dentro da 1ª janela.
+  const autoStaggerPerAccountMs = account_ids.length > 1
     ? Math.min(5 * 60_000, Math.floor((intervalMinutes * 60_000 * 0.9) / (account_ids.length - 1)))
     : 0;
 
   for (let ai = 0; ai < account_ids.length; ai++) {
     const accountId = account_ids[ai];
-    const staggerMs = ai * maxStaggerPerAccountMs;
+    const staggerMs = account_stagger_seconds
+      ? ai * account_stagger_seconds * 1_000
+      : ai * autoStaggerPerAccountMs;
     const accountVideos = fisherYates(baseVideos); // embaralhamento único por conta
 
     for (let vi = 0; vi < accountVideos.length; vi++) {

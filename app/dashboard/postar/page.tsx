@@ -832,6 +832,7 @@ export default function PostarPage() {
   const [videoCount, setVideoCount] = useState<number>(20);      // -1 = todos
   const [postsPerDay, setPostsPerDay] = useState<number>(2);
   const [startDatetime, setStartDatetime] = useState("");
+  const [accountStaggerSeconds, setAccountStaggerSeconds] = useState<number | null>(null);
 
   // Captions
   const [captions, setCaptions] = useState<string[]>(["", ""]);
@@ -960,6 +961,7 @@ export default function PostarPage() {
           start_at: new Date(startDatetime).toISOString(),
           captions: autoCaptionEnabled ? [] : validCaptions,
           auto_caption_type: autoCaptionEnabled ? autoCaptionType : undefined,
+          account_stagger_seconds: accountStaggerSeconds,
         }),
       });
 
@@ -981,6 +983,7 @@ export default function PostarPage() {
       setVideoCount(20);
       setPostsPerDay(2);
       setCaptions(["", ""]);
+      setAccountStaggerSeconds(null);
 
       setSuccess({
         total_posts: data.total_posts ?? 0,
@@ -1008,6 +1011,7 @@ export default function PostarPage() {
     setVideoCount(20);
     setPostsPerDay(2);
     setCaptions(["", ""]);
+    setAccountStaggerSeconds(null);
     setActiveTab("create");
   };
 
@@ -1360,6 +1364,49 @@ export default function PostarPage() {
                 />
               </div>
 
+              {/* Stagger entre contas */}
+              <div className="mt-5">
+                <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Intervalo entre contas</p>
+                <div className="space-y-3 p-4 rounded-xl border border-white/[0.07] bg-white/[0.03]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-white/40">Auto</span>
+                    <span className={cn(
+                      "text-base font-bold",
+                      accountStaggerSeconds ? "text-[#00FF41]" : "text-white/30"
+                    )}>
+                      {accountStaggerSeconds ? `${accountStaggerSeconds}s` : "Automático"}
+                    </span>
+                    <span className="text-xs text-white/40">5 min</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={300}
+                    step={5}
+                    value={accountStaggerSeconds ?? 0}
+                    onChange={e => {
+                      const v = Number(e.target.value);
+                      setAccountStaggerSeconds(v === 0 ? null : v);
+                    }}
+                    className="range-slider"
+                    style={{
+                      background: accountStaggerSeconds
+                        ? `linear-gradient(to right, var(--matrix) 0%, var(--matrix) ${(accountStaggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) ${(accountStaggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) 100%)`
+                        : `linear-gradient(to right, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.08) 100%)`
+                    }}
+                  />
+                  {accountStaggerSeconds ? (
+                    <p className="text-[11px]" style={{ color: "var(--matrix)" }}>
+                      {accountStaggerSeconds}s entre cada conta — arraste até o início para automático
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-white/30 italic">
+                      Proporcional ao intervalo ÷ número de contas (máx. 5 min)
+                    </p>
+                  )}
+                </div>
+              </div>
+
               {/* Summary */}
               <AnimatePresence>
                 {videosPerAccount > 0 && startDatetime && selectedAccountIds.length > 0 && (
@@ -1516,7 +1563,7 @@ export default function PostarPage() {
               {[
                 { icon: Shuffle, text: "Cada conta recebe os vídeos em uma ordem aleatória diferente" },
                 { icon: CalendarDays, text: "Posts distribuídos uniformemente ao longo do dia" },
-                { icon: Clock, text: "5 min de stagger entre contas — sem burst simultâneo" },
+                { icon: Clock, text: accountStaggerSeconds ? `${accountStaggerSeconds}s de stagger entre contas` : "Stagger automático entre contas — sem burst simultâneo" },
               ].map(({ icon: Icon, text }) => (
                 <div key={text} className="flex items-start gap-2">
                   <Icon size={10} className="text-[#00FF41]/50 mt-0.5 flex-shrink-0" />
