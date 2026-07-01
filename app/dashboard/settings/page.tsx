@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   User,
   Shield,
@@ -15,9 +16,54 @@ import {
   Eye,
   EyeOff,
   X,
+  Monitor,
+  Smartphone,
+  Tablet,
+  Wifi,
+  LogOut,
+  MapPin,
+  Clock,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+
+interface SessionRow {
+  id: string;
+  device_type: "desktop" | "mobile" | "tablet";
+  browser: string;
+  os: string;
+  ip_address: string | null;
+  country: string | null;
+  city: string | null;
+  created_at: string;
+  last_seen_at: string;
+}
+
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "Agora mesmo";
+  if (mins < 60) return `${mins}min atrás`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h atrás`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d atrás`;
+  return new Date(dateStr).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+}
+
+function countryFlag(code: string | null): string {
+  if (!code || code.length !== 2) return "";
+  const pts = [...code.toUpperCase()].map((c) => 0x1f1e6 - 65 + c.charCodeAt(0));
+  return String.fromCodePoint(...pts);
+}
+
+function DeviceIcon({ type, size = 15 }: { type: string; size?: number }) {
+  if (type === "mobile") return <Smartphone size={size} className="text-[#00E5FF]" />;
+  if (type === "tablet") return <Tablet size={size} className="text-[#00E5FF]" />;
+  return <Monitor size={size} className="text-[#00E5FF]" />;
+}
 
 // ── Password strength ──────────────────────────────────────────────────────
 function PasswordStrength({ password }: { password: string }) {
@@ -74,6 +120,7 @@ function Section({
 // ── Page ──────────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
 
   // Profile
   const [email, setEmail] = useState("");
@@ -108,6 +155,15 @@ export default function SettingsPage() {
   const [applyingCoupon, setApplyingCoupon] = useState(false);
   const _couponRef = useRef(false);
 
+  // Sessions / Devices
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [loadingSessions, setLoadingSessions] = useState(true);
+  const [revokingOthers, setRevokingOthers] = useState(false);
+  const [loggingOutAll, setLoggingOutAll] = useState(false);
+  const [sessionError, setSessionError] = useState("");
+  const [revokeConfirm, setRevokeConfirm] = useState<"others" | "all" | null>(null);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
@@ -120,6 +176,60 @@ export default function SettingsPage() {
       setLoadingUser(false);
     });
   }, [supabase]);
+
+  const loadSessions = useCallback(async () => {
+    setLoadingSessions(true);
+    try {
+      // Registra sessão atual e obtém seu ID
+      const postRes = await fetch("/api/profile/sessions", { method: "POST" });
+      const postData = (await postRes.json()) as { id: string | null; migration_pending?: boolean };
+      if (postData.id) setCurrentSessionId(postData.id);
+
+      // Lista todas as sessões
+      const getRes = await fetch("/api/profile/sessions");
+      const getData = (await getRes.json()) as { sessions: SessionRow[]; migration_pending?: boolean };
+      setSessions(getData.sessions ?? []);
+    } catch {
+      // silencioso — sessões são non-critical
+    } finally {
+      setLoadingSessions(false);
+    }
+  }, []);
+
+  useEffect(() => { loadSessions(); }, [loadSessions]);
+
+  const handleRevokeOthers = async () => {
+    if (revokingOthers) return;
+    setRevokingOthers(true);
+    setSessionError("");
+    setRevokeConfirm(null);
+    try {
+      const res = await fetch(
+        `/api/profile/sessions?scope=others&currentId=${currentSessionId ?? ""}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error("Erro ao revogar sessões.");
+      await loadSessions();
+    } catch (err) {
+      setSessionError(err instanceof Error ? err.message : "Erro ao revogar.");
+    } finally {
+      setRevokingOthers(false);
+    }
+  };
+
+  const handleLogoutAll = async () => {
+    if (loggingOutAll) return;
+    setLoggingOutAll(true);
+    setSessionError("");
+    setRevokeConfirm(null);
+    try {
+      await fetch("/api/profile/sessions?scope=all", { method: "DELETE" });
+      router.push("/auth/login");
+    } catch {
+      setLoggingOutAll(false);
+      setSessionError("Erro ao deslogar de todos os dispositivos.");
+    }
+  };
 
   // ── Avatar upload ──────────────────────────────────────────
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -463,6 +573,178 @@ export default function SettingsPage() {
             </button>
           </div>
         </form>
+      </Section>
+
+      {/* ── Dispositivos e Sessões ─────────────────────────── */}
+      <Section icon={<Wifi size={15} />} title="Dispositivos e Sessões">
+        <div className="space-y-3">
+          <p className="text-xs text-white/30">
+            Dispositivos que acessaram sua conta. Revogue sessões suspeitas para manter sua conta segura.
+          </p>
+
+          {/* Lista de sessões */}
+          {loadingSessions ? (
+            <div className="flex items-center gap-2 py-4 text-white/30 text-sm">
+              <Loader2 size={14} className="animate-spin" />
+              Carregando dispositivos...
+            </div>
+          ) : sessions.length === 0 ? (
+            <div className="text-center py-6 text-white/25 text-sm">
+              Nenhum dispositivo registrado ainda.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {sessions.map((s) => {
+                const isCurrent = s.id === currentSessionId;
+                return (
+                  <div
+                    key={s.id}
+                    className={cn(
+                      "flex items-start gap-3 px-4 py-3.5 rounded-xl border transition-colors",
+                      isCurrent
+                        ? "bg-[#00FF41]/[0.04] border-[#00FF41]/20"
+                        : "bg-white/[0.02] border-white/[0.06]"
+                    )}
+                  >
+                    {/* Ícone do dispositivo */}
+                    <div
+                      className={cn(
+                        "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5",
+                        isCurrent ? "bg-[#00FF41]/10" : "bg-white/[0.05]"
+                      )}
+                    >
+                      <DeviceIcon type={s.device_type} />
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-white/80">
+                          {s.browser} · {s.os}
+                        </span>
+                        {isCurrent && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider bg-[#00FF41]/10 border border-[#00FF41]/25 text-[#00FF41]">
+                            ESTA SESSÃO
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-1 space-y-0.5">
+                        {/* Local */}
+                        {(s.city || s.country) && (
+                          <div className="flex items-center gap-1.5 text-xs text-white/35">
+                            <MapPin size={10} className="flex-shrink-0" />
+                            <span>
+                              {countryFlag(s.country)}{" "}
+                              {[s.city, s.country].filter(Boolean).join(", ")}
+                            </span>
+                          </div>
+                        )}
+                        {/* IP */}
+                        {s.ip_address && (
+                          <p className="text-[11px] text-white/25 font-mono pl-4">
+                            {s.ip_address}
+                          </p>
+                        )}
+                        {/* Última atividade */}
+                        <div className="flex items-center gap-1.5 text-[11px] text-white/25">
+                          <Clock size={10} className="flex-shrink-0" />
+                          <span>Visto por último {timeAgo(s.last_seen_at)}</span>
+                          <span className="text-white/15">·</span>
+                          <span>Desde {new Date(s.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Erro */}
+          {sessionError && (
+            <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+              <AlertCircle size={13} className="flex-shrink-0" />
+              {sessionError}
+              <button className="ml-auto" onClick={() => setSessionError("")}>
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
+          {/* Ações */}
+          {!loadingSessions && sessions.length > 0 && (
+            <div className="pt-1 border-t border-white/[0.06] flex flex-col sm:flex-row gap-2 mt-3">
+              {/* Revogar outros */}
+              {sessions.length > 1 && (
+                revokeConfirm === "others" ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <span className="text-xs text-amber-400 flex-1">
+                      Deslogar de {sessions.length - 1} outro(s) dispositivo(s)?
+                    </span>
+                    <button
+                      onClick={handleRevokeOthers}
+                      disabled={revokingOthers}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                    >
+                      {revokingOthers ? <Loader2 size={11} className="animate-spin" /> : "Confirmar"}
+                    </button>
+                    <button
+                      onClick={() => setRevokeConfirm(null)}
+                      className="px-3 py-1.5 rounded-lg text-xs text-white/35 hover:text-white/60 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setRevokeConfirm("others")}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold flex-1 justify-center
+                      bg-white/[0.04] border border-white/[0.08] text-white/50
+                      hover:bg-white/[0.07] hover:text-white/75 hover:border-white/[0.12]
+                      transition-all duration-150"
+                  >
+                    <LogOut size={14} />
+                    Revogar outros dispositivos
+                  </button>
+                )
+              )}
+
+              {/* Deslogar de tudo */}
+              {revokeConfirm === "all" ? (
+                <div className="flex items-center gap-2 flex-1">
+                  <span className="text-xs text-red-400 flex-1">
+                    Você será deslogado agora. Continuar?
+                  </span>
+                  <button
+                    onClick={handleLogoutAll}
+                    disabled={loggingOutAll}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                  >
+                    {loggingOutAll ? <Loader2 size={11} className="animate-spin" /> : "Confirmar"}
+                  </button>
+                  <button
+                    onClick={() => setRevokeConfirm(null)}
+                    className="px-3 py-1.5 rounded-lg text-xs text-white/35 hover:text-white/60 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setRevokeConfirm("all")}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold flex-1 justify-center
+                    bg-red-500/[0.06] border border-red-500/20 text-red-400
+                    hover:bg-red-500/[0.10] hover:border-red-500/30
+                    transition-all duration-150"
+                >
+                  <LogOut size={14} />
+                  Deslogar de todos os dispositivos
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </Section>
 
       {/* ── Assinatura ─────────────────────────────────────── */}
