@@ -75,6 +75,12 @@ function isCloneUrl(url: string): boolean {
   return url.includes("instagram.com/reel/") || url.includes("instagram.com/p/");
 }
 
+// Imagens de story não passam por FFmpeg — detecta pela extensão da URL.
+function isImageMedia(url: string): boolean {
+  const clean = url.toLowerCase().split("?")[0];
+  return clean.endsWith(".jpg") || clean.endsWith(".jpeg") || clean.endsWith(".png");
+}
+
 function isTransientError(msg: string): boolean {
   const lower = msg.toLowerCase();
   return TRANSIENT_PATTERNS.some((p) => lower.includes(p));
@@ -283,12 +289,17 @@ export async function GET(req: NextRequest) {
       if (!creationId) {
         let effectiveVideoUrl = rawVideoUrl;
 
+        // Imagens de story não precisam de FFmpeg (nem strip nem fingerprint).
+        if (isImageMedia(rawVideoUrl)) {
+          console.log(`[publish-scheduled] 🖼 Imagem de story @${account.username} — pulando FFmpeg.`);
+        }
+
         // ── Strip de metadados para vídeos sem processamento FFmpeg ──────
         // Vídeos upados via browser (/videos/upload_*) contêm SEI NAL units
         // tipo 5+6 (fingerprints Instagram/TikTok) que a Meta API rejeita →
         // status_code=ERROR durante processamento do container.
         // Solução: download + stream copy + strip antes de criar o container.
-        if (needsStrip(rawVideoUrl) && Date.now() - runStart < RUN_BUDGET_MS - STRIP_RESERVE_MS) {
+        if (!isImageMedia(rawVideoUrl) && needsStrip(rawVideoUrl) && Date.now() - runStart < RUN_BUDGET_MS - STRIP_RESERVE_MS) {
           const strippedPath = `temp/strip_${post.id}.mp4`;
           // Tenta reusar versão já stripada (caso de retry)
           const { data: existing } = await admin.storage
@@ -324,7 +335,7 @@ export async function GET(req: NextRequest) {
               console.warn(`[publish-scheduled] ⚠ Strip falhou @${account.username}: ${stripErr instanceof Error ? stripErr.message : stripErr} — usando URL original.`);
             }
           }
-        } else if (needsStrip(rawVideoUrl)) {
+        } else if (!isImageMedia(rawVideoUrl) && needsStrip(rawVideoUrl)) {
           // Budget insuficiente para strip — prossegue com URL original.
           // Melhor tentar do que pular: se Meta aceitar, publica; se rejeitar (SEI),
           // retenta com strip na próxima execução (creation_id=null após ERROR).
@@ -333,23 +344,25 @@ export async function GET(req: NextRequest) {
 
         // Fingerprint único por conta: impede o Instagram de detectar o mesmo
         // vídeo sendo postado em múltiplas contas simultaneamente.
-        // Aplica eq ±2%, noise luma leve e pitch ±1% — imperceptível ao espectador.
-        if (Date.now() - runStart > RUN_BUDGET_MS - FINGERPRINT_RESERVE_MS) {
-          console.warn(`[publish-scheduled] ⏱ Budget insuficiente para fingerprint @${account.username} — adiando para próximo ciclo.`);
-          await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
-          summary.skipped++;
-          continue;
-        }
-        try {
-          effectiveVideoUrl = await processVideoForAccount(effectiveVideoUrl, account.id);
-          console.log(`[publish-scheduled] 🔐 Fingerprint aplicado @${account.username}`);
-        } catch (fxErr) {
-          console.warn(
-            `[publish-scheduled] ⚠ Fingerprint falhou @${account.username}: ${fxErr instanceof Error ? fxErr.message : fxErr} — adiando.`
-          );
-          await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
-          summary.skipped++;
-          continue;
+        // Imagens de story não passam por FFmpeg — não há fingerprint a aplicar.
+        if (!isImageMedia(rawVideoUrl)) {
+          if (Date.now() - runStart > RUN_BUDGET_MS - FINGERPRINT_RESERVE_MS) {
+            console.warn(`[publish-scheduled] ⏱ Budget insuficiente para fingerprint @${account.username} — adiando para próximo ciclo.`);
+            await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
+            summary.skipped++;
+            continue;
+          }
+          try {
+            effectiveVideoUrl = await processVideoForAccount(effectiveVideoUrl, account.id);
+            console.log(`[publish-scheduled] 🔐 Fingerprint aplicado @${account.username}`);
+          } catch (fxErr) {
+            console.warn(
+              `[publish-scheduled] ⚠ Fingerprint falhou @${account.username}: ${fxErr instanceof Error ? fxErr.message : fxErr} — adiando.`
+            );
+            await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
+            summary.skipped++;
+            continue;
+          }
         }
 
         // Guarda de segurança: não deve acontecer com a nova arquitetura

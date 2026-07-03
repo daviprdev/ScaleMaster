@@ -49,9 +49,14 @@ async function createMediaContainer(
   // encodeURIComponent (RFC 3986) garante %20 para espaços, %0A para \n, %F0%9F… para emojis.
   // caption omitida do payload quando vazia — evita `caption=` que a Meta pode rejeitar.
   // Stories não suportam caption pela API — omitida quando mediaType=STORIES.
+  // Para Stories: detecta image_url vs video_url pela extensão da URL.
+  // Reels sempre usam video_url.
+  const isImageStory = mediaType === "STORIES" && /\.(jpg|jpeg|png)(\?|$)/i.test(videoUrl);
+  const mediaUrlKey = isImageStory ? "image_url" : "video_url";
+
   const formParts = [
     `media_type=${mediaType}`,
-    `video_url=${encodeURIComponent(videoUrl)}`,
+    `${mediaUrlKey}=${encodeURIComponent(videoUrl)}`,
     ...(captionFinal && mediaType !== "STORIES" ? [`caption=${encodeURIComponent(captionFinal)}`] : []),
     `access_token=${encodeURIComponent(token)}`,
   ];

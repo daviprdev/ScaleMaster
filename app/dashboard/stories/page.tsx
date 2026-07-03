@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Users, CalendarDays, Send, FolderOpen, X, Check,
+  Users, CalendarDays, Send, X, Check,
   Loader2, AlertCircle, CheckCircle2, Clock, Shuffle,
   Zap, ChevronDown, ImagePlay, BarChart2, RefreshCw, Trash2,
+  Upload, Image, Film, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,10 +22,16 @@ interface Account {
   account_folders: { name: string } | null;
 }
 
-interface FolderItem {
-  id: string;
-  name: string;
-  video_count: number;
+interface UploadedMedia {
+  id: string;               // local UUID para key React
+  file: File;
+  previewUrl: string;       // object URL para preview local
+  url: string | null;       // URL Supabase após upload
+  media_type: "image" | "video";
+  storage_path: string | null;
+  status: "uploading" | "done" | "error";
+  error?: string;
+  duration?: number;        // segundos (apenas vídeos)
 }
 
 interface Campaign {
@@ -73,14 +80,22 @@ function campTimeIn(dateStr: string | null): string {
   return `em ${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}min`;
 }
 
-const VIDEO_COUNT_PRESETS = [
-  { label: "10", value: 10 },
-  { label: "20", value: 20 },
-  { label: "50", value: 50 },
-  { label: "Todos", value: -1 },
-];
-
 const POSTS_PER_DAY_OPTIONS = [1, 2, 3, 4, 6, 8, 12, 24, 36, 48, 72];
+const ACCEPTED_TYPES = ["image/jpeg", "image/jpg", "image/png", "video/mp4", "video/quicktime"];
+const MAX_VIDEO_DURATION = 60; // segundos
+
+async function getVideoDuration(file: File): Promise<number> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(video.src);
+      resolve(video.duration);
+    };
+    video.onerror = () => resolve(0);
+    video.src = URL.createObjectURL(file);
+  });
+}
 
 // ── SectionCard / SectionLabel ─────────────────────────────────────────────
 
@@ -97,33 +112,245 @@ function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: R
   );
 }
 
+// ── MediaPreviewCard ───────────────────────────────────────────────────────
+
+function MediaPreviewCard({ item, onRemove }: { item: UploadedMedia; onRemove: () => void }) {
+  const isVideo = item.media_type === "video";
+  const sizeLabel = item.file.size < 1024 * 1024
+    ? `${(item.file.size / 1024).toFixed(0)} KB`
+    : `${(item.file.size / 1024 / 1024).toFixed(1)} MB`;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.92 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.88 }}
+      transition={{ duration: 0.15 }}
+      className="relative group rounded-xl overflow-hidden border border-white/10 bg-black/30"
+      style={{ aspectRatio: "9/16" }}
+    >
+      {/* Thumbnail */}
+      {isVideo ? (
+        <video
+          src={item.previewUrl}
+          className="w-full h-full object-cover"
+          muted
+          playsInline
+          preload="metadata"
+        />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={item.previewUrl}
+          alt={item.file.name}
+          className="w-full h-full object-cover"
+        />
+      )}
+
+      {/* Overlay on hover */}
+      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity" />
+
+      {/* Top badges */}
+      <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
+        <span className={cn(
+          "flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold",
+          isVideo ? "bg-[#00E5FF]/20 text-[#00E5FF]" : "bg-[#00FF41]/20 text-[#00FF41]"
+        )}>
+          {isVideo ? <Film size={8} /> : <Image size={8} />}
+          {isVideo ? "MP4" : item.file.name.split(".").pop()?.toUpperCase()}
+        </span>
+        {isVideo && item.duration && (
+          <span className="px-1.5 py-0.5 rounded-md text-[9px] bg-black/60 text-white/60">
+            {Math.round(item.duration)}s
+          </span>
+        )}
+      </div>
+
+      {/* Status overlay */}
+      {item.status === "uploading" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+          <div className="flex flex-col items-center gap-1.5">
+            <Loader2 size={18} className="animate-spin text-[#00E5FF]" />
+            <span className="text-[9px] text-white/60">Enviando…</span>
+          </div>
+        </div>
+      )}
+      {item.status === "error" && (
+        <div className="absolute inset-0 flex items-center justify-center bg-red-900/60">
+          <div className="flex flex-col items-center gap-1 px-2 text-center">
+            <XCircle size={18} className="text-red-400" />
+            <span className="text-[9px] text-red-300 leading-tight">{item.error ?? "Falha"}</span>
+          </div>
+        </div>
+      )}
+      {item.status === "done" && (
+        <div className="absolute top-1.5 right-1.5">
+          <div className="w-5 h-5 rounded-full bg-[#00FF41]/20 border border-[#00FF41]/40 flex items-center justify-center">
+            <Check size={10} className="text-[#00FF41]" strokeWidth={3} />
+          </div>
+        </div>
+      )}
+
+      {/* Remove button */}
+      <button
+        onClick={onRemove}
+        className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 w-6 h-6 rounded-lg bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400 hover:bg-red-500/30 transition-all"
+      >
+        <Trash2 size={10} />
+      </button>
+
+      {/* Bottom filename */}
+      <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1"
+        style={{ background: "linear-gradient(transparent, rgba(0,0,0,0.75))" }}>
+        <p className="text-[9px] text-white/50 truncate">{sizeLabel}</p>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── UploadZone ─────────────────────────────────────────────────────────────
+
+function UploadZone({
+  mediaItems,
+  onAdd,
+  onRemove,
+}: {
+  mediaItems: UploadedMedia[];
+  onAdd: (files: File[]) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dragCounter = useRef(0);
+
+  const handleFiles = useCallback((files: FileList | File[]) => {
+    const arr = Array.from(files).filter(f => ACCEPTED_TYPES.includes(f.type));
+    if (arr.length) onAdd(arr);
+  }, [onAdd]);
+
+  const onDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current++;
+    setDragging(true);
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current === 0) setDragging(false);
+  };
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setDragging(false);
+    handleFiles(e.dataTransfer.files);
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Drop zone */}
+      <div
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onClick={() => inputRef.current?.click()}
+        className={cn(
+          "relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed cursor-pointer transition-all select-none",
+          "py-10 px-6",
+          dragging
+            ? "border-[#00E5FF]/60 bg-[#00E5FF]/5 scale-[1.01]"
+            : "border-white/15 bg-white/[0.02] hover:border-[#00E5FF]/40 hover:bg-[#00E5FF]/[0.03]"
+        )}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".jpg,.jpeg,.png,.mp4"
+          multiple
+          className="hidden"
+          onChange={e => e.target.files && handleFiles(e.target.files)}
+        />
+
+        <div className={cn(
+          "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
+          dragging ? "bg-[#00E5FF]/20" : "bg-white/[0.06]"
+        )}>
+          <Upload size={22} className={dragging ? "text-[#00E5FF]" : "text-white/30"} />
+        </div>
+
+        <div className="text-center">
+          <p className={cn("text-sm font-medium transition-colors", dragging ? "text-[#00E5FF]" : "text-white/60")}>
+            {dragging ? "Solte aqui para adicionar" : "Clique ou arraste para escolher"}
+          </p>
+          <p className="text-xs text-white/25 mt-1">JPG, PNG, MP4 (máx. 60s)</p>
+        </div>
+
+        {dragging && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="absolute inset-0 rounded-2xl pointer-events-none"
+            style={{ boxShadow: "inset 0 0 0 2px rgba(0,229,255,0.4)" }}
+          />
+        )}
+      </div>
+
+      {/* Preview grid */}
+      <AnimatePresence>
+        {mediaItems.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-white/40">
+                <span className="text-[#00E5FF] font-semibold">{mediaItems.filter(m => m.status === "done").length}</span>
+                /{mediaItems.length} pronto{mediaItems.length !== 1 ? "s" : ""}
+              </span>
+              {mediaItems.length > 1 && (
+                <button
+                  onClick={() => mediaItems.forEach(m => onRemove(m.id))}
+                  className="text-[10px] text-white/25 hover:text-red-400 transition-colors"
+                >
+                  Remover todos
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
+              <AnimatePresence>
+                {mediaItems.map(item => (
+                  <MediaPreviewCard key={item.id} item={item} onRemove={() => onRemove(item.id)} />
+                ))}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // ── StoriesPreview ─────────────────────────────────────────────────────────
 
 function StoriesPreview({
-  videosPerAccount,
+  itemCount,
   totalAccounts,
   postsPerDay,
   startDatetime,
 }: {
-  videosPerAccount: number;
+  itemCount: number;
   totalAccounts: number;
   postsPerDay: number;
   startDatetime: string;
 }) {
   const intervalMinutes = Math.floor((24 * 60) / Math.max(1, postsPerDay));
-  const days = videosPerAccount > 0 ? Math.ceil(videosPerAccount / Math.max(1, postsPerDay)) : 0;
-  const totalPosts = videosPerAccount * Math.max(1, totalAccounts);
-
-  const lastSlotIso = useMemo(() => {
-    if (!startDatetime || videosPerAccount === 0) return null;
-    try {
-      const lastAccountStagger = (Math.max(1, totalAccounts) - 1) * 5 * 60_000;
-      const lastVideoSlot = (videosPerAccount - 1) * intervalMinutes * 60_000;
-      return new Date(new Date(startDatetime).getTime() + lastVideoSlot + lastAccountStagger).toISOString();
-    } catch { return null; }
-  }, [startDatetime, videosPerAccount, totalAccounts, intervalMinutes]);
-
-  const isReady = videosPerAccount > 0 && totalAccounts > 0 && startDatetime;
+  const days = itemCount > 0 ? Math.ceil(itemCount / Math.max(1, postsPerDay)) : 0;
+  const totalPosts = itemCount * Math.max(1, totalAccounts);
+  const isReady = itemCount > 0 && totalAccounts > 0 && startDatetime;
 
   return (
     <div className="glass-card rounded-2xl p-5 space-y-5">
@@ -133,18 +360,16 @@ function StoriesPreview({
       </div>
 
       {!isReady ? (
-        <p className="text-white/20 text-xs text-center py-4">
-          Preencha os campos para ver o resumo
-        </p>
+        <p className="text-white/20 text-xs text-center py-4">Preencha os campos para ver o resumo</p>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: "Stories/conta", value: videosPerAccount, color: "text-[#00FF41]" },
-              { label: "Contas", value: totalAccounts, color: "text-[#00E5FF]" },
-              { label: "Total de stories", value: totalPosts, color: "text-white" },
+              { label: "Mídias/conta", value: itemCount, color: "text-[#00E5FF]" },
+              { label: "Contas", value: totalAccounts, color: "text-[#00FF41]" },
+              { label: "Total stories", value: totalPosts, color: "text-white" },
               { label: "Duração", value: `${days}d`, color: "text-white" },
-              { label: "Por dia/conta", value: postsPerDay, color: "text-white/60" },
+              { label: "Por dia", value: postsPerDay, color: "text-white/60" },
               { label: "Intervalo", value: intervalMinutes >= 60 ? `${Math.floor(intervalMinutes / 60)}h` : `${intervalMinutes}min`, color: "text-white/60" },
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/[0.06]">
@@ -154,63 +379,38 @@ function StoriesPreview({
             ))}
           </div>
 
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-[10px]">
-              <span className="text-white/30 uppercase tracking-wider">Início</span>
-              <span className="text-[#00FF41] font-mono">{formatDatetime(startDatetime)}</span>
-            </div>
-            {lastSlotIso && (
-              <div className="flex justify-between text-[10px]">
-                <span className="text-white/30 uppercase tracking-wider">Fim estimado</span>
-                <span className="text-[#00E5FF] font-mono">{formatDatetime(lastSlotIso)}</span>
-              </div>
-            )}
+          <div className="flex justify-between text-[10px]">
+            <span className="text-white/30 uppercase tracking-wider">Início</span>
+            <span className="text-[#00FF41] font-mono">{formatDatetime(startDatetime)}</span>
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#00FF41]/5 border border-[#00FF41]/20">
-            <Shuffle size={12} className="text-[#00FF41] flex-shrink-0" />
-            <p className="text-[10px] text-[#00FF41]/80">
-              Cada conta recebe os vídeos em ordem aleatória única
-            </p>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#00E5FF]/5 border border-[#00E5FF]/20">
+            <Shuffle size={12} className="text-[#00E5FF] flex-shrink-0" />
+            <p className="text-[10px] text-[#00E5FF]/80">Ordem aleatória única por conta</p>
           </div>
         </>
       )}
 
       {/* Phone mockup */}
-      <div className="flex justify-center pt-2">
-        <div className="relative w-[90px] h-[160px] rounded-[18px] border-2 border-white/15 bg-black/60 overflow-hidden flex flex-col">
-          {/* Status bar */}
+      <div className="flex justify-center pt-1">
+        <div className="relative w-[80px] h-[142px] rounded-[16px] border-2 border-white/15 bg-black/60 overflow-hidden flex flex-col">
           <div className="flex items-center justify-between px-2 pt-1.5 pb-1">
-            <div className="w-6 h-1 rounded-full bg-white/20" />
+            <div className="w-5 h-1 rounded-full bg-white/20" />
             <div className="flex gap-0.5">
-              <div className="w-1 h-1 rounded-full bg-white/30" />
-              <div className="w-1 h-1 rounded-full bg-white/30" />
-              <div className="w-1 h-1 rounded-full bg-white/30" />
+              {[0,1,2].map(i => <div key={i} className="w-1 h-1 rounded-full bg-white/25" />)}
             </div>
           </div>
-          {/* Story area */}
           <div className="flex-1 mx-1 mb-1 rounded-[10px] overflow-hidden relative"
-            style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)" }}>
-            {/* Story progress bars */}
+            style={{ background: "linear-gradient(135deg,#0f0c29,#302b63,#24243e)" }}>
             <div className="absolute top-1 left-1 right-1 flex gap-0.5">
-              {[1,2,3].map(i => (
-                <div key={i} className="flex-1 h-0.5 rounded-full bg-white/30 overflow-hidden">
-                  <div className={cn(
-                    "h-full rounded-full",
-                    i === 1 ? "bg-white w-full" : "w-0"
-                  )} />
+              {[1,2,3,4].map(i => (
+                <div key={i} className="flex-1 h-[3px] rounded-full bg-white/25 overflow-hidden">
+                  <div className={cn("h-full rounded-full bg-white", i === 1 ? "w-2/3" : "w-0")} />
                 </div>
               ))}
             </div>
-            {/* Center icon */}
             <div className="absolute inset-0 flex items-center justify-center">
-              <ImagePlay size={22} className="text-white/20" />
-            </div>
-            {/* Bottom overlay */}
-            <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1"
-              style={{ background: "linear-gradient(transparent, rgba(0,0,0,0.6))" }}>
-              <div className="w-8 h-1 rounded-full bg-white/20 mb-0.5" />
-              <div className="w-12 h-0.5 rounded-full bg-white/10" />
+              <ImagePlay size={20} className="text-white/20" />
             </div>
           </div>
         </div>
@@ -230,39 +430,25 @@ function StoriesCampaignsList({ accounts, onCreateNew }: { accounts: Account[]; 
   const [tick, setTick] = useState(0);
 
   const fetchCampaigns = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    else setRefreshing(true);
+    if (!silent) setLoading(true); else setRefreshing(true);
     try {
       const res = await fetch("/api/campaigns?post_type=story");
       const d = await res.json() as { campaigns: Campaign[] };
       setCampaigns(d.campaigns ?? []);
-    } catch {/* silent */} finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+    } catch {/* silent */} finally { setLoading(false); setRefreshing(false); }
   }, []);
 
   useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
-
   useEffect(() => {
     const hasRunning = campaigns.some(c => c.campaign_status === "running");
     if (!hasRunning) return;
-    const interval = setInterval(() => fetchCampaigns(true), 15_000);
-    return () => clearInterval(interval);
-  }, [campaigns, fetchCampaigns]);
-
-  useEffect(() => {
-    const t = setInterval(() => setTick(v => v + 1), 10_000);
+    const t = setInterval(() => fetchCampaigns(true), 15_000);
     return () => clearInterval(t);
-  }, []);
-
+  }, [campaigns, fetchCampaigns]);
+  useEffect(() => { const t = setInterval(() => setTick(v => v + 1), 10_000); return () => clearInterval(t); }, []);
   void tick;
 
-  const accountMap = useMemo(() => {
-    const m = new Map<string, Account>();
-    accounts.forEach(a => m.set(a.id, a));
-    return m;
-  }, [accounts]);
+  const accountMap = useMemo(() => { const m = new Map<string, Account>(); accounts.forEach(a => m.set(a.id, a)); return m; }, [accounts]);
 
   const handleDelete = async (campaignId: string) => {
     if (confirmDelete !== campaignId) {
@@ -270,197 +456,135 @@ function StoriesCampaignsList({ accounts, onCreateNew }: { accounts: Account[]; 
       setTimeout(() => setConfirmDelete(c => c === campaignId ? null : c), 3000);
       return;
     }
-    setDeletingId(campaignId);
-    setConfirmDelete(null);
-    try {
-      await fetch(`/api/campaigns?id=${encodeURIComponent(campaignId)}&hard=true`, { method: "DELETE" });
-      await fetchCampaigns(true);
-    } finally { setDeletingId(null); }
+    setDeletingId(campaignId); setConfirmDelete(null);
+    try { await fetch(`/api/campaigns?id=${encodeURIComponent(campaignId)}&hard=true`, { method: "DELETE" }); await fetchCampaigns(true); }
+    finally { setDeletingId(null); }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 size={24} className="animate-spin text-[#00FF41]" />
-      </div>
-    );
-  }
+  if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={24} className="animate-spin text-[#00E5FF]" /></div>;
 
-  if (campaigns.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center mb-4">
-          <ImagePlay size={24} className="text-white/15" />
-        </div>
-        <p className="text-white/30 text-sm mb-1">Nenhuma campanha de stories</p>
-        <p className="text-white/15 text-xs mb-5">Crie sua primeira distribuição</p>
-        <button onClick={onCreateNew} className="px-5 py-2.5 rounded-xl bg-[#00FF41]/10 text-[#00FF41] text-sm font-medium hover:bg-[#00FF41]/20 transition-all border border-[#00FF41]/20">
-          Nova Distribuição
-        </button>
+  if (campaigns.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center mb-4">
+        <ImagePlay size={24} className="text-white/15" />
       </div>
-    );
-  }
-
-  const running = campaigns.filter(c => c.campaign_status === "running");
+      <p className="text-white/30 text-sm mb-1">Nenhuma campanha de stories</p>
+      <p className="text-white/15 text-xs mb-5">Crie sua primeira distribuição</p>
+      <button onClick={onCreateNew} className="px-5 py-2.5 rounded-xl bg-[#00E5FF]/10 text-[#00E5FF] text-sm font-medium hover:bg-[#00E5FF]/20 transition-all border border-[#00E5FF]/20">
+        Nova Distribuição
+      </button>
+    </div>
+  );
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-4 text-xs text-white/30">
-          {running.length > 0 && (
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00FF41] shadow-[0_0_4px_#00FF41] animate-pulse" />
-              <span className="text-[#00FF41]/70">{running.length} executando</span>
-            </span>
-          )}
-          <span>{campaigns.length} campanha{campaigns.length !== 1 ? "s" : ""}</span>
-        </div>
-        <button
-          onClick={() => fetchCampaigns(true)}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/[0.07] bg-white/[0.03] text-xs text-white/40 hover:text-[#00E5FF] hover:border-[#00E5FF]/20 transition-all disabled:opacity-40"
-        >
+    <div className="max-w-3xl mx-auto space-y-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs text-white/30">{campaigns.length} campanha{campaigns.length !== 1 ? "s" : ""}</span>
+        <button onClick={() => fetchCampaigns(true)} disabled={refreshing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/[0.07] text-xs text-white/40 hover:text-[#00E5FF] transition-all disabled:opacity-40">
           <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
-          {refreshing ? "Atualizando…" : "Atualizar"}
+          Atualizar
         </button>
       </div>
+      {campaigns.map(campaign => {
+        const progress = campaign.total > 0 ? Math.round((campaign.published / campaign.total) * 100) : 0;
+        const isRunning = campaign.campaign_status === "running";
+        const isDeleting = deletingId === campaign.campaign_id;
+        const isConfirming = confirmDelete === campaign.campaign_id;
+        const campAccounts = campaign.account_ids.map(id => accountMap.get(id)).filter(Boolean) as Account[];
+        const hasFailed = campaign.failed > 0;
+        const isOverdue = isRunning && campaign.next_pending != null && new Date(campaign.next_pending) < new Date();
 
-      <div className="space-y-4">
-        {campaigns.map(campaign => {
-          const progress = campaign.total > 0 ? Math.round((campaign.published / campaign.total) * 100) : 0;
-          const isRunning = campaign.campaign_status === "running";
-          const isDeleting = deletingId === campaign.campaign_id;
-          const isConfirming = confirmDelete === campaign.campaign_id;
-          const campAccounts = campaign.account_ids.map(id => accountMap.get(id)).filter(Boolean) as Account[];
-          const hasFailed = campaign.failed > 0;
-          const isOverdue = isRunning && campaign.next_pending != null && new Date(campaign.next_pending) < new Date();
-          const recentPub = campaign.last_published_at && (Date.now() - new Date(campaign.last_published_at).getTime()) < 30 * 60_000;
+        let statusLabel: string, statusCls: string, statusBorder: string, dotCls: string, dotPulse = false;
+        if (!isRunning) { statusLabel = "Concluída"; statusCls = "bg-[#00FF41]/10 text-[#00FF41]"; statusBorder = "border-[#00FF41]/20"; dotCls = "bg-[#00FF41]"; }
+        else if (isOverdue) { statusLabel = "Atrasada"; statusCls = "bg-amber-500/10 text-amber-400"; statusBorder = "border-amber-500/20"; dotCls = "bg-amber-400"; dotPulse = true; }
+        else { statusLabel = "Na Fila"; statusCls = "bg-[#00E5FF]/10 text-[#00E5FF]"; statusBorder = "border-[#00E5FF]/20"; dotCls = "bg-[#00E5FF]"; }
 
-          let statusLabel: string, statusCls: string, statusBorder: string, dotCls: string, dotPulse = false;
-          if (!isRunning) {
-            statusLabel = "Concluída"; statusCls = "bg-[#00FF41]/10 text-[#00FF41]"; statusBorder = "border-[#00FF41]/20"; dotCls = "bg-[#00FF41]";
-          } else if (isOverdue) {
-            statusLabel = "Atrasada"; statusCls = "bg-amber-500/10 text-amber-400"; statusBorder = "border-amber-500/20"; dotCls = "bg-amber-400"; dotPulse = true;
-          } else if (recentPub) {
-            statusLabel = "Publicando"; statusCls = "bg-[#00FF41]/10 text-[#00FF41]"; statusBorder = "border-[#00FF41]/20"; dotCls = "bg-[#00FF41]"; dotPulse = true;
-          } else {
-            statusLabel = "Na Fila"; statusCls = "bg-[#00E5FF]/10 text-[#00E5FF]"; statusBorder = "border-[#00E5FF]/20"; dotCls = "bg-[#00E5FF]";
-          }
-
-          return (
-            <motion.div
-              key={campaign.campaign_id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-              className={cn(
-                "glass-card rounded-2xl p-5 space-y-4 border",
-                isOverdue ? "border-amber-500/15" : hasFailed && !isRunning ? "border-red-500/15" : isRunning ? "border-[#00E5FF]/10" : "border-white/[0.08]"
-              )}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className={cn("w-2 h-2 rounded-full shrink-0 mt-0.5", dotCls, dotPulse && "animate-pulse")} />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-white/60 font-mono text-xs tracking-wider">#{campaign.campaign_id.slice(0, 8).toUpperCase()}</p>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#00E5FF]/10 text-[#00E5FF]/70 border border-[#00E5FF]/15">STORY</span>
-                    </div>
-                    <p className="text-white/25 text-[10px] mt-0.5">Criada {formatDatetime(campaign.created_at)}</p>
+        return (
+          <motion.div key={campaign.campaign_id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}
+            className={cn("glass-card rounded-2xl p-5 space-y-4 border", isOverdue ? "border-amber-500/15" : hasFailed && !isRunning ? "border-red-500/15" : isRunning ? "border-[#00E5FF]/10" : "border-white/[0.08]")}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className={cn("w-2 h-2 rounded-full shrink-0", dotCls, dotPulse && "animate-pulse")} />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-white/60 font-mono text-xs">#{campaign.campaign_id.slice(0, 8).toUpperCase()}</p>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#00E5FF]/10 text-[#00E5FF]/70 border border-[#00E5FF]/15">STORY</span>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold border whitespace-nowrap", statusCls, statusBorder)}>
-                    {statusLabel === "Concluída" && <CheckCircle2 size={9} />}
-                    {statusLabel === "Na Fila" && <Clock size={9} />}
-                    {statusLabel === "Publicando" && <Loader2 size={9} className="animate-spin" />}
-                    {statusLabel === "Atrasada" && <AlertCircle size={9} />}
-                    {statusLabel}
-                  </span>
-                  <button
-                    onClick={() => handleDelete(campaign.campaign_id)}
-                    disabled={isDeleting}
-                    className={cn(
-                      "w-7 h-7 rounded-lg border flex items-center justify-center transition-all",
-                      isConfirming ? "bg-red-500/15 border-red-500/40 text-red-400" : "bg-white/[0.04] border-white/[0.08] text-white/25 hover:text-red-400 hover:border-red-400/25",
-                      isDeleting && "opacity-40 cursor-not-allowed"
-                    )}
-                  >
-                    {isDeleting ? <Loader2 size={11} className="animate-spin" /> : isConfirming ? <Check size={11} /> : <Trash2 size={11} />}
-                  </button>
+                  <p className="text-white/25 text-[10px]">Criada {formatDatetime(campaign.created_at)}</p>
                 </div>
               </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold border", statusCls, statusBorder)}>
+                  {statusLabel === "Concluída" && <CheckCircle2 size={9} />}
+                  {statusLabel === "Na Fila" && <Clock size={9} />}
+                  {statusLabel === "Atrasada" && <AlertCircle size={9} />}
+                  {statusLabel}
+                </span>
+                <button onClick={() => handleDelete(campaign.campaign_id)} disabled={isDeleting}
+                  className={cn("w-7 h-7 rounded-lg border flex items-center justify-center transition-all",
+                    isConfirming ? "bg-red-500/15 border-red-500/40 text-red-400" : "bg-white/[0.04] border-white/[0.08] text-white/25 hover:text-red-400",
+                    isDeleting && "opacity-40 cursor-not-allowed")}>
+                  {isDeleting ? <Loader2 size={11} className="animate-spin" /> : isConfirming ? <Check size={11} /> : <Trash2 size={11} />}
+                </button>
+              </div>
+            </div>
 
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[10px]">
-                  <span className="text-white/40 tabular-nums">{campaign.published} de {campaign.total} stories publicados</span>
-                  <span className={cn("font-bold tabular-nums", progress >= 100 ? "text-[#00FF41]" : isRunning ? "text-[#00E5FF]" : "text-white/30")}>{progress}%</span>
-                </div>
-                <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${progress}%` }}
-                    transition={{ duration: 0.7, ease: "easeOut" }}
-                    className={cn("h-full rounded-full", hasFailed && !isRunning ? "bg-red-500/50" : "bg-gradient-to-r from-[#00FF41]/70 to-[#00E5FF]/70")}
-                  />
-                </div>
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-[10px]">
+                <span className="text-white/40">{campaign.published} de {campaign.total} stories</span>
+                <span className={cn("font-bold", progress >= 100 ? "text-[#00FF41]" : "text-[#00E5FF]")}>{progress}%</span>
               </div>
+              <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                <motion.div initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.7, ease: "easeOut" }}
+                  className="h-full rounded-full bg-gradient-to-r from-[#00E5FF]/70 to-[#00FF41]/70" />
+              </div>
+            </div>
 
-              <div className="grid grid-cols-3 gap-2 text-[10px]">
-                <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-                  <span className="text-white/25 text-[9px] uppercase tracking-wider">Fila</span>
-                  <span className={cn("font-bold tabular-nums", campaign.pending > 0 ? "text-[#00E5FF]" : "text-white/20")}>{campaign.pending}</span>
+            <div className="grid grid-cols-3 gap-2 text-[10px]">
+              {[
+                { label: "Fila", value: campaign.pending, cls: campaign.pending > 0 ? "text-[#00E5FF]" : "text-white/20" },
+                { label: "Falhas", value: campaign.failed, cls: hasFailed ? "text-red-400" : "text-white/20" },
+                { label: "Cancelados", value: campaign.cancelled, cls: "text-white/25" },
+              ].map(({ label, value, cls }) => (
+                <div key={label} className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+                  <span className="text-white/25 text-[9px] uppercase tracking-wider">{label}</span>
+                  <span className={cn("font-bold tabular-nums", cls)}>{value}</span>
                 </div>
-                <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border", hasFailed ? "bg-red-500/[0.04] border-red-500/15" : "bg-white/[0.03] border-white/[0.04]")}>
-                  <span className="text-white/25 text-[9px] uppercase tracking-wider">Falhas</span>
-                  <span className={cn("font-bold tabular-nums", hasFailed ? "text-red-400" : "text-white/20")}>{campaign.failed}</span>
-                </div>
-                <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-                  <span className="text-white/25 text-[9px] uppercase tracking-wider">Cancelados</span>
-                  <span className="font-bold tabular-nums text-white/25">{campaign.cancelled}</span>
-                </div>
-              </div>
+              ))}
+            </div>
 
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-                  <span className="text-white/25 text-[9px] uppercase tracking-wider">Último publicado</span>
-                  <span className={cn("font-medium", campaign.last_published_at ? "text-[#00FF41]" : "text-white/20")}>
-                    {campTimeAgo(campaign.last_published_at)}
-                  </span>
-                </div>
-                <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border", isOverdue ? "bg-amber-500/[0.04] border-amber-500/15" : "bg-white/[0.03] border-white/[0.04]")}>
-                  <span className="text-white/25 text-[9px] uppercase tracking-wider">
-                    {isRunning ? "Próximo" : "Encerrada em"}
-                  </span>
-                  {isRunning ? (
-                    <span className={cn("font-medium", isOverdue ? "text-amber-400" : "text-[#00E5FF]")}>
-                      {isOverdue ? "⏱ " : ""}{campTimeIn(campaign.next_pending)}
-                    </span>
-                  ) : (
-                    <span className="font-medium text-white/25 text-[10px]">{formatDatetime(campaign.last_slot)}</span>
-                  )}
-                </div>
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+                <span className="text-white/25 text-[9px] uppercase tracking-wider">Último</span>
+                <span className={cn("font-medium", campaign.last_published_at ? "text-[#00FF41]" : "text-white/20")}>{campTimeAgo(campaign.last_published_at)}</span>
               </div>
+              <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border", isOverdue ? "bg-amber-500/[0.04] border-amber-500/15" : "bg-white/[0.03] border-white/[0.04]")}>
+                <span className="text-white/25 text-[9px] uppercase tracking-wider">{isRunning ? "Próximo" : "Fim"}</span>
+                {isRunning
+                  ? <span className={cn("font-medium", isOverdue ? "text-amber-400" : "text-[#00E5FF]")}>{campTimeIn(campaign.next_pending)}</span>
+                  : <span className="font-medium text-white/25 text-[10px]">{formatDatetime(campaign.last_slot)}</span>}
+              </div>
+            </div>
 
-              <div className="flex items-center gap-2 pt-1 border-t border-white/[0.04]">
-                <div className="flex -space-x-1.5">
-                  {campAccounts.slice(0, 6).map(acc => (
-                    acc.avatar_url
-                      ? <img key={acc.id} src={acc.avatar_url} alt={acc.username} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-black object-cover" />
-                      : <div key={acc.id} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-black bg-gradient-to-br from-[#00FF41]/30 to-[#00E5FF]/30 flex items-center justify-center"><span className="text-[7px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>
-                  ))}
-                  {campaign.account_ids.length > 6 && (
-                    <div className="w-5 h-5 rounded-full border border-black bg-white/10 flex items-center justify-center">
-                      <span className="text-[7px] text-white/40">+{campaign.account_ids.length - 6}</span>
-                    </div>
-                  )}
-                </div>
-                <span className="text-white/25 text-[10px]">{campaign.account_ids.length} conta{campaign.account_ids.length !== 1 ? "s" : ""}</span>
+            <div className="flex items-center gap-2 pt-1 border-t border-white/[0.04]">
+              <div className="flex -space-x-1.5">
+                {campAccounts.slice(0, 6).map(acc => (
+                  acc.avatar_url
+                    ? <img key={acc.id} src={acc.avatar_url} alt={acc.username} className="w-5 h-5 rounded-full border border-black object-cover" />
+                    : <div key={acc.id} className="w-5 h-5 rounded-full border border-black bg-gradient-to-br from-[#00E5FF]/30 to-[#00FF41]/30 flex items-center justify-center"><span className="text-[7px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>
+                ))}
+                {campaign.account_ids.length > 6 && (
+                  <div className="w-5 h-5 rounded-full border border-black bg-white/10 flex items-center justify-center">
+                    <span className="text-[7px] text-white/40">+{campaign.account_ids.length - 6}</span>
+                  </div>
+                )}
               </div>
-            </motion.div>
-          );
-        })}
-      </div>
+              <span className="text-white/25 text-[10px]">{campaign.account_ids.length} conta{campaign.account_ids.length !== 1 ? "s" : ""}</span>
+            </div>
+          </motion.div>
+        );
+      })}
     </div>
   );
 }
@@ -470,21 +594,16 @@ function StoriesCampaignsList({ accounts, onCreateNew }: { accounts: Account[]; 
 export default function StoriesPage() {
   const [activeTab, setActiveTab] = useState<"create" | "campaigns">("create");
 
+  // Media upload
+  const [mediaItems, setMediaItems] = useState<UploadedMedia[]>([]);
+
   // Accounts
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
-  // Folder
-  const [folders, setFolders] = useState<FolderItem[]>([]);
-  const [loadingFolders, setLoadingFolders] = useState(false);
-  const [selectedFolderId, setSelectedFolderId] = useState<string>("");
-  const [folderVideoCount, setFolderVideoCount] = useState<number>(0);
-  const [folderOpen, setFolderOpen] = useState(false);
-
   // Distribution
-  const [videoCount, setVideoCount] = useState<number>(20);
   const [postsPerDay, setPostsPerDay] = useState<number>(3);
   const [startDatetime, setStartDatetime] = useState("");
   const [accountStaggerSeconds, setAccountStaggerSeconds] = useState<number | null>(null);
@@ -493,8 +612,7 @@ export default function StoriesPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{
-    total_posts: number; videos_per_account: number; days: number;
-    accounts: number; first_slot: string;
+    total_posts: number; items_per_account: number; days: number; accounts: number; first_slot: string;
   } | null>(null);
 
   const minDatetime = new Date(Date.now() + 5 * 60_000).toISOString().slice(0, 16);
@@ -512,39 +630,100 @@ export default function StoriesPage() {
 
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
 
-  useEffect(() => {
-    setLoadingFolders(true);
-    fetch("/api/library/folders")
-      .then(r => r.json() as Promise<{ folders: FolderItem[] }>)
-      .then(d => setFolders(d.folders ?? []))
-      .finally(() => setLoadingFolders(false));
+  // ── Upload handler ─────────────────────────────────────────────────────────
+
+  const handleAddFiles = useCallback(async (files: File[]) => {
+    const newItems: UploadedMedia[] = [];
+
+    for (const file of files) {
+      const isVideo = file.type.startsWith("video/");
+      const previewUrl = URL.createObjectURL(file);
+      let duration: number | undefined;
+
+      if (isVideo) {
+        duration = await getVideoDuration(file);
+        if (duration > MAX_VIDEO_DURATION) {
+          // Mostra item com erro de duração mas não faz upload
+          const errItem: UploadedMedia = {
+            id: crypto.randomUUID(),
+            file,
+            previewUrl,
+            url: null,
+            media_type: "video",
+            storage_path: null,
+            status: "error",
+            error: `Vídeo muito longo (${Math.round(duration)}s). Máx. 60s.`,
+            duration,
+          };
+          newItems.push(errItem);
+          continue;
+        }
+      }
+
+      const item: UploadedMedia = {
+        id: crypto.randomUUID(),
+        file,
+        previewUrl,
+        url: null,
+        media_type: isVideo ? "video" : "image",
+        storage_path: null,
+        status: "uploading",
+        duration,
+      };
+      newItems.push(item);
+    }
+
+    setMediaItems(prev => [...prev, ...newItems]);
+
+    // Upload em paralelo para todos os itens válidos
+    for (const item of newItems.filter(i => i.status === "uploading")) {
+      const formData = new FormData();
+      formData.append("file", item.file);
+
+      try {
+        const res = await fetch("/api/stories/upload", { method: "POST", body: formData });
+        const data = await res.json() as { url?: string; media_type?: string; storage_path?: string; error?: string };
+        if (!res.ok || data.error) {
+          setMediaItems(prev => prev.map(m => m.id === item.id
+            ? { ...m, status: "error", error: data.error ?? "Falha no upload" }
+            : m
+          ));
+        } else {
+          setMediaItems(prev => prev.map(m => m.id === item.id
+            ? { ...m, url: data.url!, storage_path: data.storage_path!, status: "done" }
+            : m
+          ));
+        }
+      } catch {
+        setMediaItems(prev => prev.map(m => m.id === item.id
+          ? { ...m, status: "error", error: "Erro de conexão" }
+          : m
+        ));
+      }
+    }
   }, []);
 
-  useEffect(() => {
-    const folder = folders.find(f => f.id === selectedFolderId);
-    setFolderVideoCount(folder?.video_count ?? 0);
-  }, [selectedFolderId, folders]);
+  const handleRemoveMedia = useCallback((id: string) => {
+    setMediaItems(prev => {
+      const item = prev.find(m => m.id === id);
+      if (item) URL.revokeObjectURL(item.previewUrl);
+      return prev.filter(m => m.id !== id);
+    });
+  }, []);
 
   // ── Computed ───────────────────────────────────────────────────────────────
 
-  const videosPerAccount = videoCount === -1
-    ? folderVideoCount
-    : Math.min(videoCount, folderVideoCount);
-
-  const selectedFolder = folders.find(f => f.id === selectedFolderId);
+  const readyItems = mediaItems.filter(m => m.status === "done");
+  const hasUploading = mediaItems.some(m => m.status === "uploading");
 
   const accountsByFolder = useMemo(() => {
     const folderMap = new Map<string, { name: string; accounts: Account[] }>();
     const noFolder: Account[] = [];
     for (const acc of accounts) {
       if (acc.folder_id && acc.account_folders) {
-        if (!folderMap.has(acc.folder_id)) {
-          folderMap.set(acc.folder_id, { name: acc.account_folders.name, accounts: [] });
-        }
+        if (!folderMap.has(acc.folder_id)) folderMap.set(acc.folder_id, { name: acc.account_folders.name, accounts: [] });
         folderMap.get(acc.folder_id)!.accounts.push(acc);
-      } else {
-        noFolder.push(acc);
-      }
+      } else { noFolder.push(acc); }
     }
     const groups = Array.from(folderMap.entries()).map(([id, val]) => ({ id, name: val.name, accounts: val.accounts }));
     groups.sort((a, b) => a.name.localeCompare(b.name));
@@ -560,24 +739,16 @@ export default function StoriesPage() {
   const toggleFolder = (folderAccounts: Account[]) => {
     const ids = folderAccounts.map(a => a.id);
     const allSelected = ids.every(id => selectedAccountIds.includes(id));
-    if (allSelected) {
-      setSelectedAccountIds(prev => prev.filter(id => !ids.includes(id)));
-    } else {
-      setSelectedAccountIds(prev => [...new Set([...prev, ...ids])]);
-    }
+    setSelectedAccountIds(prev => allSelected ? prev.filter(id => !ids.includes(id)) : [...new Set([...prev, ...ids])]);
   };
 
   const toggleExpand = (folderId: string) =>
-    setExpandedFolders(prev => {
-      const next = new Set(prev);
-      if (next.has(folderId)) next.delete(folderId); else next.add(folderId);
-      return next;
-    });
+    setExpandedFolders(prev => { const next = new Set(prev); if (next.has(folderId)) next.delete(folderId); else next.add(folderId); return next; });
 
   const handleSubmit = async () => {
+    if (readyItems.length === 0) { setSubmitError("Adicione ao menos 1 mídia."); return; }
+    if (hasUploading) { setSubmitError("Aguarde o upload terminar."); return; }
     if (selectedAccountIds.length === 0) { setSubmitError("Selecione ao menos 1 conta."); return; }
-    if (!selectedFolderId) { setSubmitError("Selecione uma pasta de mídia."); return; }
-    if (folderVideoCount === 0) { setSubmitError("A pasta selecionada está vazia."); return; }
     if (!startDatetime) { setSubmitError("Defina a data e hora de início."); return; }
 
     setSubmitError(null);
@@ -589,8 +760,7 @@ export default function StoriesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           account_ids: selectedAccountIds,
-          folder_id: selectedFolderId,
-          video_count: videoCount,
+          media_items: readyItems.map(m => ({ url: m.url!, media_type: m.media_type, storage_path: m.storage_path })),
           posts_per_day: postsPerDay,
           start_at: new Date(startDatetime).toISOString(),
           account_stagger_seconds: accountStaggerSeconds,
@@ -599,26 +769,23 @@ export default function StoriesPage() {
 
       const data = await res.json() as {
         success?: boolean; error?: string;
-        total_posts?: number; videos_per_account?: number;
+        total_posts?: number; items_per_account?: number;
         days?: number; accounts?: number; first_slot?: string;
       };
 
-      if (!res.ok || data.error) {
-        setSubmitError(data.error ?? "Erro ao criar distribuição.");
-        return;
-      }
+      if (!res.ok || data.error) { setSubmitError(data.error ?? "Erro ao criar distribuição."); return; }
 
+      // Limpa mídia
+      mediaItems.forEach(m => URL.revokeObjectURL(m.previewUrl));
+      setMediaItems([]);
       setSelectedAccountIds([]);
-      setSelectedFolderId("");
-      setFolderVideoCount(0);
       setStartDatetime("");
-      setVideoCount(20);
       setPostsPerDay(3);
       setAccountStaggerSeconds(null);
 
       setSuccess({
         total_posts: data.total_posts ?? 0,
-        videos_per_account: data.videos_per_account ?? 0,
+        items_per_account: data.items_per_account ?? 0,
         days: data.days ?? 0,
         accounts: data.accounts ?? 0,
         first_slot: data.first_slot ?? "",
@@ -634,11 +801,10 @@ export default function StoriesPage() {
   const handleReset = () => {
     setSuccess(null);
     setSubmitError(null);
+    mediaItems.forEach(m => URL.revokeObjectURL(m.previewUrl));
+    setMediaItems([]);
     setSelectedAccountIds([]);
-    setSelectedFolderId("");
-    setFolderVideoCount(0);
     setStartDatetime("");
-    setVideoCount(20);
     setPostsPerDay(3);
     setAccountStaggerSeconds(null);
     setActiveTab("create");
@@ -655,7 +821,7 @@ export default function StoriesPage() {
             STORIES
           </span>
         </div>
-        <p className="page-subtitle">Distribua vídeos como Stories do Instagram para múltiplas contas — expira em 24h</p>
+        <p className="page-subtitle">Suba fotos e vídeos e distribua como Stories para múltiplas contas — expira em 24h</p>
       </div>
 
       {/* Tabs */}
@@ -664,14 +830,10 @@ export default function StoriesPage() {
           { id: "create", label: "Nova Distribuição", Icon: ImagePlay },
           { id: "campaigns", label: "Campanhas Ativas", Icon: BarChart2 },
         ] as const).map(({ id, label, Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={cn(
-              "flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all border-b-2 -mb-px",
+          <button key={id} onClick={() => setActiveTab(id)}
+            className={cn("flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all border-b-2 -mb-px",
               activeTab === id ? "border-[#00E5FF] text-[#00E5FF]" : "border-transparent text-white/35 hover:text-white/60"
-            )}
-          >
+            )}>
             <Icon size={13} />
             {label}
           </button>
@@ -681,21 +843,16 @@ export default function StoriesPage() {
       {/* Success banner */}
       <AnimatePresence>
         {success && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
-            className="mb-5 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#00E5FF]/10 border border-[#00E5FF]/20"
-          >
+          <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            className="mb-5 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#00E5FF]/10 border border-[#00E5FF]/20">
             <CheckCircle2 size={14} className="text-[#00E5FF] flex-shrink-0" />
             <p className="text-sm text-[#00E5FF] flex-1">
               <span className="font-semibold">{success.total_posts} stories</span> criados —{" "}
-              <span className="font-semibold">{success.videos_per_account} vídeos</span> por conta em{" "}
+              <span className="font-semibold">{success.items_per_account} mídias</span> por conta em{" "}
               <span className="font-semibold">{success.days} dia{success.days !== 1 ? "s" : ""}</span>
               {" · "}Início: {formatDatetime(success.first_slot)}
             </p>
-            <button onClick={() => setSuccess(null)} className="text-[#00E5FF]/40 hover:text-[#00E5FF] transition-colors flex-shrink-0">
+            <button onClick={() => setSuccess(null)} className="text-[#00E5FF]/40 hover:text-[#00E5FF] transition-colors">
               <X size={13} />
             </button>
           </motion.div>
@@ -710,94 +867,10 @@ export default function StoriesPage() {
           {/* Form */}
           <div className="flex-1 min-w-0 space-y-4">
 
-            {/* 1. Pasta de Mídia */}
+            {/* 1. Mídia */}
             <SectionCard>
-              <SectionLabel Icon={FolderOpen}>Pasta de Mídia</SectionLabel>
-
-              {loadingFolders ? (
-                <div className="flex items-center gap-2 text-white/30 text-sm py-2">
-                  <Loader2 size={14} className="animate-spin" /> Carregando pastas...
-                </div>
-              ) : folders.length === 0 ? (
-                <p className="text-white/25 text-sm py-4 text-center">
-                  Nenhuma pasta criada.{" "}
-                  <a href="/dashboard/library" className="text-[#00E5FF] hover:underline">Criar pasta</a>
-                </p>
-              ) : (
-                <div className="relative mb-4">
-                  <button
-                    onClick={() => setFolderOpen(v => !v)}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 hover:border-white/20 transition-colors"
-                  >
-                    <span className={cn("text-sm", selectedFolder ? "text-white" : "text-white/30")}>
-                      {selectedFolder
-                        ? `📁 ${selectedFolder.name} · ${folderVideoCount} vídeos`
-                        : "Selecionar pasta..."}
-                    </span>
-                    <ChevronDown size={14} className={cn("text-white/30 transition-transform", folderOpen && "rotate-180")} />
-                  </button>
-
-                  <AnimatePresence>
-                    {folderOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        transition={{ duration: 0.12 }}
-                        className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#0d111b] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
-                      >
-                        {folders.map(f => (
-                          <button
-                            key={f.id}
-                            onClick={() => { setSelectedFolderId(f.id); setFolderOpen(false); }}
-                            className={cn(
-                              "w-full flex items-center justify-between px-4 py-3 text-sm text-left hover:bg-white/[0.05] transition-colors",
-                              selectedFolderId === f.id && "bg-[#00E5FF]/5 text-[#00E5FF]"
-                            )}
-                          >
-                            <span className="text-white">📁 {f.name}</span>
-                            <span className="text-white/30 text-xs">{f.video_count} vídeos</span>
-                          </button>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
-
-              {/* Quantidade */}
-              <div>
-                <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Quantos vídeos usar</p>
-                <div className="flex gap-2">
-                  {VIDEO_COUNT_PRESETS.map(({ label, value }) => {
-                    const isDisabled = value !== -1 && value > folderVideoCount && folderVideoCount > 0;
-                    return (
-                      <button
-                        key={value}
-                        onClick={() => !isDisabled && setVideoCount(value)}
-                        disabled={isDisabled}
-                        className={cn(
-                          "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all border",
-                          videoCount === value
-                            ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
-                            : isDisabled
-                              ? "bg-white/[0.02] text-white/15 border-white/[0.05] cursor-not-allowed"
-                              : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
-                        )}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {selectedFolderId && folderVideoCount > 0 && (
-                  <p className="mt-2 text-[11px] text-white/30">
-                    {videosPerAccount === folderVideoCount
-                      ? `Todos os ${folderVideoCount} vídeos da pasta serão usados`
-                      : `${videosPerAccount} de ${folderVideoCount} vídeos serão usados`}
-                  </p>
-                )}
-              </div>
+              <SectionLabel Icon={Upload}>Mídia</SectionLabel>
+              <UploadZone mediaItems={mediaItems} onAdd={handleAddFiles} onRemove={handleRemoveMedia} />
             </SectionCard>
 
             {/* 2. Contas */}
@@ -809,25 +882,18 @@ export default function StoriesPage() {
                 </div>
                 {accounts.length > 0 && (
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setSelectedAccountIds(accounts.map(a => a.id))} className="text-xs text-[#00FF41]/70 hover:text-[#00FF41] transition-colors">
-                      Todas
-                    </button>
+                    <button onClick={() => setSelectedAccountIds(accounts.map(a => a.id))} className="text-xs text-[#00FF41]/70 hover:text-[#00FF41] transition-colors">Todas</button>
                     <span className="text-white/15 text-xs">·</span>
-                    <button onClick={() => setSelectedAccountIds([])} className="text-xs text-white/30 hover:text-white/60 transition-colors">
-                      Nenhuma
-                    </button>
+                    <button onClick={() => setSelectedAccountIds([])} className="text-xs text-white/30 hover:text-white/60 transition-colors">Nenhuma</button>
                   </div>
                 )}
               </div>
 
               {loadingAccounts ? (
-                <div className="flex items-center gap-2 text-white/30 text-sm py-2">
-                  <Loader2 size={14} className="animate-spin" /> Carregando contas...
-                </div>
+                <div className="flex items-center gap-2 text-white/30 text-sm py-2"><Loader2 size={14} className="animate-spin" /> Carregando...</div>
               ) : accounts.length === 0 ? (
                 <p className="text-white/25 text-sm py-4 text-center">
-                  Nenhuma conta conectada.{" "}
-                  <a href="/dashboard/accounts" className="text-[#00E5FF] hover:underline">Conectar conta</a>
+                  Nenhuma conta conectada. <a href="/dashboard/accounts" className="text-[#00E5FF] hover:underline">Conectar conta</a>
                 </p>
               ) : (
                 <div className="space-y-1.5">
@@ -840,75 +906,46 @@ export default function StoriesPage() {
                     return (
                       <div key={group.id}>
                         <div
-                          className={cn(
-                            "flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all cursor-pointer group",
+                          className={cn("flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all cursor-pointer group",
                             isExpanded
                               ? allSelected ? "border-[#00E5FF]/30 bg-[#00E5FF]/5" : someSelected ? "border-[#00E5FF]/20 bg-[#00E5FF]/3" : "border-white/12 bg-white/[0.03]"
-                              : allSelected ? "border-[#00E5FF]/25 bg-[#00E5FF]/4" : someSelected ? "border-[#00E5FF]/15 bg-[#00E5FF]/[0.02]" : "border-white/[0.07] bg-white/[0.02] hover:border-white/12"
+                              : allSelected ? "border-[#00E5FF]/25 bg-[#00E5FF]/4" : someSelected ? "border-[#00E5FF]/15" : "border-white/[0.07] bg-white/[0.02] hover:border-white/12"
                           )}
                           onClick={() => toggleExpand(group.id)}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <ChevronDown
-                              size={13}
-                              className={cn("flex-shrink-0 transition-transform duration-200 text-white/30", isExpanded && "rotate-180")}
-                            />
-                            <span className="text-sm leading-none">{isNoFolder ? "📂" : "📁"}</span>
+                            <ChevronDown size={13} className={cn("flex-shrink-0 transition-transform duration-200 text-white/30", isExpanded && "rotate-180")} />
+                            <span className="text-sm">{isNoFolder ? "📂" : "📁"}</span>
                             <span className={cn("text-sm font-medium truncate", allSelected ? "text-[#00E5FF]" : someSelected ? "text-[#00E5FF]/70" : "text-white/60 group-hover:text-white/80")}>
                               {group.name}
                             </span>
                             <span className="text-xs text-white/25 font-mono flex-shrink-0">({group.accounts.length})</span>
                             {someSelected && (
-                              <span className="text-[10px] text-white/30 flex-shrink-0">
-                                · {groupIds.filter(id => selectedAccountIds.includes(id)).length} sel.
-                              </span>
+                              <span className="text-[10px] text-white/30 flex-shrink-0">· {groupIds.filter(id => selectedAccountIds.includes(id)).length} sel.</span>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); toggleFolder(group.accounts); }}
-                            className={cn(
-                              "flex-shrink-0 text-[10px] px-2.5 py-1 rounded-lg border transition-all ml-2",
-                              allSelected
-                                ? "border-[#00E5FF]/30 text-[#00E5FF]/70 hover:bg-[#00E5FF]/10"
-                                : "border-white/[0.08] text-white/30 hover:border-[#00E5FF]/30 hover:text-[#00E5FF]/60"
-                            )}
-                          >
+                          <button type="button" onClick={e => { e.stopPropagation(); toggleFolder(group.accounts); }}
+                            className={cn("flex-shrink-0 text-[10px] px-2.5 py-1 rounded-lg border transition-all ml-2",
+                              allSelected ? "border-[#00E5FF]/30 text-[#00E5FF]/70" : "border-white/[0.08] text-white/30 hover:border-[#00E5FF]/30 hover:text-[#00E5FF]/60"
+                            )}>
                             {allSelected ? "desmarcar" : "selecionar"}
                           </button>
                         </div>
-
                         <AnimatePresence initial={false}>
                           {isExpanded && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: "auto" }}
-                              exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.18 }}
-                              className="overflow-hidden"
-                            >
+                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
                               <div className="flex flex-wrap gap-1.5 pt-2 pl-2 pb-1">
                                 {group.accounts.map(acc => {
                                   const isSelected = selectedAccountIds.includes(acc.id);
                                   return (
-                                    <button
-                                      key={acc.id}
-                                      type="button"
-                                      onClick={() => toggleAccount(acc.id)}
-                                      className={cn(
-                                        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all",
-                                        isSelected
-                                          ? "border-[#00E5FF]/40 bg-[#00E5FF]/8 text-[#00E5FF]"
-                                          : "border-white/[0.08] bg-white/[0.02] text-white/55 hover:border-white/20 hover:text-white/80"
-                                      )}
-                                    >
-                                      {acc.avatar_url ? (
-                                        <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
-                                      ) : (
-                                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#00E5FF]/40 to-[#00FF41]/40 flex-shrink-0 flex items-center justify-center">
-                                          <span className="text-[8px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span>
-                                        </div>
-                                      )}
+                                    <button key={acc.id} type="button" onClick={() => toggleAccount(acc.id)}
+                                      className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all",
+                                        isSelected ? "border-[#00E5FF]/40 bg-[#00E5FF]/8 text-[#00E5FF]" : "border-white/[0.08] text-white/55 hover:border-white/20"
+                                      )}>
+                                      {acc.avatar_url
+                                        ? <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
+                                        : <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#00E5FF]/40 to-[#00FF41]/40 flex-shrink-0 flex items-center justify-center"><span className="text-[8px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>
+                                      }
                                       <span className="text-xs font-medium leading-none">@{acc.username}</span>
                                       {isSelected && <Check size={9} className="text-[#00E5FF] flex-shrink-0" strokeWidth={3} />}
                                     </button>
@@ -923,7 +960,6 @@ export default function StoriesPage() {
                   })}
                 </div>
               )}
-
               {selectedAccountIds.length > 0 && (
                 <p className="mt-3 text-xs text-[#00E5FF]/60 font-mono">
                   {selectedAccountIds.length} conta{selectedAccountIds.length !== 1 ? "s" : ""} selecionada{selectedAccountIds.length !== 1 ? "s" : ""}
@@ -942,17 +978,10 @@ export default function StoriesPage() {
                     const mins = Math.floor((24 * 60) / n);
                     const hint = mins >= 60 ? `${Math.floor(mins / 60)}h` : `${mins}min`;
                     return (
-                      <button
-                        key={n}
-                        onClick={() => setPostsPerDay(n)}
-                        title={`Intervalo: ~${hint} entre stories`}
-                        className={cn(
-                          "flex flex-col items-center px-3.5 py-2 rounded-xl border transition-all",
-                          postsPerDay === n
-                            ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
-                            : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
-                        )}
-                      >
+                      <button key={n} onClick={() => setPostsPerDay(n)} title={`Intervalo: ~${hint}`}
+                        className={cn("flex flex-col items-center px-3.5 py-2 rounded-xl border transition-all",
+                          postsPerDay === n ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30" : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                        )}>
                         <span className="text-sm font-bold leading-none">{n}</span>
                         <span className="text-[9px] opacity-50 mt-0.5 leading-none">{hint}</span>
                       </button>
@@ -963,16 +992,10 @@ export default function StoriesPage() {
 
               <div>
                 <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Data e hora do primeiro story</p>
-                <input
-                  type="datetime-local"
-                  value={startDatetime}
-                  min={minDatetime}
-                  onChange={e => setStartDatetime(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-[#00E5FF]/40 focus:ring-1 focus:ring-[#00E5FF]/20 transition-all [color-scheme:dark]"
-                />
+                <input type="datetime-local" value={startDatetime} min={minDatetime} onChange={e => setStartDatetime(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-[#00E5FF]/40 focus:ring-1 focus:ring-[#00E5FF]/20 transition-all [color-scheme:dark]" />
               </div>
 
-              {/* Stagger */}
               <div className="mt-5">
                 <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Intervalo entre contas</p>
                 <div className="space-y-3 p-4 rounded-xl border border-white/[0.07] bg-white/[0.03]">
@@ -983,55 +1006,32 @@ export default function StoriesPage() {
                     </span>
                     <span className="text-xs text-white/40">5 min</span>
                   </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={300}
-                    step={5}
-                    value={accountStaggerSeconds ?? 0}
-                    onChange={e => {
-                      const v = Number(e.target.value);
-                      setAccountStaggerSeconds(v === 0 ? null : v);
-                    }}
+                  <input type="range" min={0} max={300} step={5} value={accountStaggerSeconds ?? 0}
+                    onChange={e => { const v = Number(e.target.value); setAccountStaggerSeconds(v === 0 ? null : v); }}
                     className="range-slider"
-                    style={{
-                      background: accountStaggerSeconds
-                        ? `linear-gradient(to right, #00E5FF 0%, #00E5FF ${(accountStaggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) ${(accountStaggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) 100%)`
-                        : `linear-gradient(to right, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.08) 100%)`
-                    }}
-                  />
-                  {accountStaggerSeconds ? (
-                    <p className="text-[11px] text-[#00E5FF]">
-                      {accountStaggerSeconds}s entre cada conta — arraste até o início para automático
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-white/30 italic">
-                      Proporcional ao intervalo ÷ número de contas (máx. 5 min)
-                    </p>
-                  )}
+                    style={{ background: accountStaggerSeconds
+                      ? `linear-gradient(to right, #00E5FF 0%, #00E5FF ${(accountStaggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) ${(accountStaggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) 100%)`
+                      : `linear-gradient(to right, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.08) 100%)` }} />
+                  <p className="text-[11px] text-white/30 italic">
+                    {accountStaggerSeconds ? `${accountStaggerSeconds}s entre cada conta` : "Proporcional ao intervalo (máx. 5 min)"}
+                  </p>
                 </div>
               </div>
 
-              {/* Summary */}
               <AnimatePresence>
-                {videosPerAccount > 0 && startDatetime && selectedAccountIds.length > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.2 }}
-                    className="mt-5 p-4 rounded-xl bg-white/[0.03] border border-white/[0.07]"
-                  >
+                {readyItems.length > 0 && startDatetime && selectedAccountIds.length > 0 && (
+                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}
+                    className="mt-5 p-4 rounded-xl bg-white/[0.03] border border-white/[0.07]">
                     {(() => {
-                      const days = Math.ceil(videosPerAccount / postsPerDay);
-                      const totalPosts = videosPerAccount * selectedAccountIds.length;
+                      const days = Math.ceil(readyItems.length / postsPerDay);
+                      const totalPosts = readyItems.length * selectedAccountIds.length;
                       return (
                         <p className="text-xs text-white/55 leading-relaxed">
-                          <span className="text-[#00E5FF] font-semibold">{videosPerAccount}</span> vídeos ×{" "}
+                          <span className="text-[#00E5FF] font-semibold">{readyItems.length}</span> mídias ×{" "}
                           <span className="text-[#00FF41] font-semibold">{selectedAccountIds.length}</span> conta{selectedAccountIds.length !== 1 ? "s" : ""} ={" "}
-                          <span className="text-white font-semibold">{totalPosts}</span> stories ao longo de{" "}
+                          <span className="text-white font-semibold">{totalPosts}</span> stories em{" "}
                           <span className="text-white font-semibold">{days}</span> dia{days !== 1 ? "s" : ""}.
-                          {" "}Cada story expira automaticamente em 24h.
+                          {" "}Cada story expira em 24h.
                         </p>
                       );
                     })()}
@@ -1040,23 +1040,20 @@ export default function StoriesPage() {
               </AnimatePresence>
             </SectionCard>
 
-            {/* Info card: Stories sem legenda */}
+            {/* Nota */}
             <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-[#00E5FF]/[0.04] border border-[#00E5FF]/15">
               <ImagePlay size={14} className="text-[#00E5FF]/60 mt-0.5 flex-shrink-0" />
               <p className="text-xs text-white/40 leading-relaxed">
-                <span className="text-[#00E5FF]/70 font-medium">Stories não suportam legendas</span> pela API do Instagram. Cada story expira em 24 horas automaticamente.
+                <span className="text-[#00E5FF]/70 font-medium">Stories não suportam legendas</span> pela API do Instagram.
+                Cada story expira automaticamente em 24 horas.
               </p>
             </div>
 
             {/* Error */}
             <AnimatePresence>
               {submitError && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
-                >
+                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
                   <AlertCircle size={14} className="flex-shrink-0" />
                   {submitError}
                 </motion.div>
@@ -1064,23 +1061,18 @@ export default function StoriesPage() {
             </AnimatePresence>
 
             {/* Submit */}
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={submitting}
-              className={cn(
-                "w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-black text-sm transition-all",
-                submitting ? "bg-[#00E5FF]/50 cursor-not-allowed" : "bg-[#00E5FF] hover:bg-[#00E5FF]/90 hover:shadow-[0_0_28px_rgba(0,229,255,0.35)]"
-              )}
-            >
+            <button type="button" onClick={handleSubmit} disabled={submitting || hasUploading}
+              className={cn("w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-black text-sm transition-all",
+                submitting || hasUploading ? "bg-[#00E5FF]/40 cursor-not-allowed" : "bg-[#00E5FF] hover:bg-[#00E5FF]/90 hover:shadow-[0_0_28px_rgba(0,229,255,0.35)]"
+              )}>
               {submitting ? (
                 <><Loader2 size={16} className="animate-spin text-black/70" /> Criando distribuição...</>
+              ) : hasUploading ? (
+                <><Loader2 size={16} className="animate-spin text-black/70" /> Aguardando uploads...</>
               ) : (
                 <><Send size={16} /> Criar Distribuição de Stories
-                  {videosPerAccount > 0 && selectedAccountIds.length > 0 && (
-                    <span className="ml-1 opacity-70">
-                      ({videosPerAccount * selectedAccountIds.length} stories · {selectedAccountIds.length} conta{selectedAccountIds.length !== 1 ? "s" : ""})
-                    </span>
+                  {readyItems.length > 0 && selectedAccountIds.length > 0 && (
+                    <span className="ml-1 opacity-70">({readyItems.length * selectedAccountIds.length} stories)</span>
                   )}
                 </>
               )}
@@ -1090,18 +1082,17 @@ export default function StoriesPage() {
           {/* Preview */}
           <div className="w-full lg:w-72 lg:sticky lg:top-8 flex-shrink-0">
             <StoriesPreview
-              videosPerAccount={videosPerAccount}
+              itemCount={readyItems.length}
               totalAccounts={selectedAccountIds.length}
               postsPerDay={postsPerDay}
               startDatetime={startDatetime}
             />
-
             <div className="mt-4 glass-card rounded-2xl p-4 space-y-2.5">
               <p className="text-[10px] text-white/25 uppercase tracking-wider">Como funciona</p>
               {[
-                { icon: Shuffle, text: "Cada conta recebe os vídeos em uma ordem aleatória diferente" },
+                { icon: Upload, text: "Suba JPG, PNG ou MP4 (máx. 60s) direto do seu computador" },
+                { icon: Shuffle, text: "Cada conta recebe as mídias em ordem aleatória única" },
                 { icon: CalendarDays, text: "Stories distribuídos uniformemente ao longo do dia" },
-                { icon: Clock, text: accountStaggerSeconds ? `${accountStaggerSeconds}s de stagger entre contas` : "Stagger automático — sem burst simultâneo" },
                 { icon: ImagePlay, text: "Publicado como Story via Meta API — expira em 24h" },
               ].map(({ icon: Icon, text }) => (
                 <div key={text} className="flex items-start gap-2">
