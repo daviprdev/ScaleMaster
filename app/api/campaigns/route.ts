@@ -27,7 +27,7 @@ interface CampaignSummary extends RpcRow {
   campaign_status: "running" | "completed";
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ campaigns: [] });
   }
@@ -35,6 +35,9 @@ export async function GET() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const postTypeFilter = searchParams.get("post_type"); // "reel" | "story" | null (todos)
 
   const admin = getSupabaseAdmin() as ReturnType<typeof getSupabaseAdmin>;
 
@@ -50,7 +53,7 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const campaigns: CampaignSummary[] = ((data as RpcRow[]) ?? []).map(row => ({
+  let campaigns: CampaignSummary[] = ((data as RpcRow[]) ?? []).map(row => ({
     ...row,
     total: Number(row.total),
     published: Number(row.published),
@@ -65,6 +68,20 @@ export async function GET() {
     }
     return new Date(b.first_slot ?? b.last_slot ?? 0).getTime() - new Date(a.first_slot ?? a.last_slot ?? 0).getTime();
   });
+
+  // Filtra por post_type se solicitado — consulta quais campaign_ids têm o tipo indicado
+  if (postTypeFilter && campaigns.length > 0) {
+    const campaignIds = campaigns.map(c => c.campaign_id);
+    const { data: typedRows } = await (admin as any)
+      .from("scheduled_posts")
+      .select("campaign_id")
+      .eq("user_id", user.id)
+      .eq("post_type", postTypeFilter)
+      .in("campaign_id", campaignIds)
+      .limit(campaignIds.length * 2);
+    const storyIds = new Set<string>((typedRows ?? []).map((r: { campaign_id: string }) => r.campaign_id));
+    campaigns = campaigns.filter(c => storyIds.has(c.campaign_id));
+  }
 
   return NextResponse.json({ campaigns });
 }

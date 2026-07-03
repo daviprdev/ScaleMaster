@@ -35,7 +35,8 @@ async function createMediaContainer(
   videoUrl: string,
   caption: string,
   token: string,
-  proxy: ProxyAgent | null = null
+  proxy: ProxyAgent | null = null,
+  mediaType: "REELS" | "STORIES" = "REELS"
 ): Promise<string> {
   // Sanitiza + normaliza: escopo LOCAL à chamada — nunca compartilhado entre contas.
   // Nunca envia undefined/"undefined" — causaria posts sem legenda de forma silenciosa.
@@ -47,10 +48,11 @@ async function createMediaContainer(
   // (200 OK + id válido) mas ignora os campos não reconhecidos no formato JSON.
   // encodeURIComponent (RFC 3986) garante %20 para espaços, %0A para \n, %F0%9F… para emojis.
   // caption omitida do payload quando vazia — evita `caption=` que a Meta pode rejeitar.
+  // Stories não suportam caption pela API — omitida quando mediaType=STORIES.
   const formParts = [
-    `media_type=REELS`,
+    `media_type=${mediaType}`,
     `video_url=${encodeURIComponent(videoUrl)}`,
-    ...(captionFinal ? [`caption=${encodeURIComponent(captionFinal)}`] : []),
+    ...(captionFinal && mediaType !== "STORIES" ? [`caption=${encodeURIComponent(captionFinal)}`] : []),
     `access_token=${encodeURIComponent(token)}`,
   ];
   const formBody = formParts.join("&");
@@ -204,9 +206,10 @@ export async function createMediaContainerOnly(
   videoUrl: string,
   caption: string,
   token: string,
-  proxy: ProxyAgent | null = null
+  proxy: ProxyAgent | null = null,
+  mediaType: "REELS" | "STORIES" = "REELS"
 ): Promise<string> {
-  return createMediaContainer(igAccountId, videoUrl, caption, token, proxy);
+  return createMediaContainer(igAccountId, videoUrl, caption, token, proxy, mediaType);
 }
 
 export type ContainerPollStatus = "finished" | "in_progress" | "error";

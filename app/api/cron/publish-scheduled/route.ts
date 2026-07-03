@@ -50,6 +50,7 @@ interface PostRow {
   scheduled_at: string;
   account_id: string;
   creation_id: string | null;
+  post_type: string | null;
   instagram_accounts: AccountRow | null;
   videos_library: { public_url: string } | null;
 }
@@ -156,7 +157,7 @@ export async function GET(req: NextRequest) {
   const { data: rows, error: fetchErr } = await admin
     .from("scheduled_posts")
     .select(
-      "id, video_id, video_url, creation_id, caption, scheduled_at, account_id, " +
+      "id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, " +
         "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url), " +
         "videos_library(public_url)"
     )
@@ -362,12 +363,14 @@ export async function GET(req: NextRequest) {
         console.log(
           `[publish-scheduled] Criando container @${account.username} | proxy=${proxy ? "sim" : "não"} | ${effectiveVideoUrl.slice(0, 70)}…`
         );
+        const mediaType = post.post_type === "story" ? "STORIES" : "REELS";
         creationId = await createMediaContainerOnly(
           account.ig_business_account_id,
           effectiveVideoUrl,
           caption,
           tokenToUse,
-          proxy
+          proxy,
+          mediaType
         );
         await admin
           .from("scheduled_posts")

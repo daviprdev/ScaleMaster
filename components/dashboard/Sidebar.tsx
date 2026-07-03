@@ -27,6 +27,7 @@ import {
   TrendingUp,
   Globe,
   Copy,
+  ImagePlay,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -57,6 +58,7 @@ const navGroups: NavGroup[] = [
       { label: "Contas", href: "/dashboard/accounts", icon: Users },
       { label: "Logins", href: "/dashboard/logins", icon: Lock },
       { label: "Postar", href: "/dashboard/postar", icon: Send },
+      { label: "Stories", href: "/dashboard/stories", icon: ImagePlay },
       { label: "Loop", href: "/dashboard/loop", icon: Repeat2 },
       { label: "Clonar Perfil", href: "/dashboard/clone", icon: Copy },
       { label: "Monitor", href: "/dashboard/monitor", icon: Activity },
