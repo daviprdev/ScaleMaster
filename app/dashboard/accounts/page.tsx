@@ -536,6 +536,8 @@ export default function AccountsPage() {
   const [deletingFolder, setDeletingFolder] = useState(false);
   const [folderMenuPos, setFolderMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
+  const [syncingAll, setSyncingAll] = useState(false);
+
   // Bulk select
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -722,6 +724,24 @@ export default function AccountsPage() {
       })
       .catch(() => {/* silent */});
   }, [fetchAccounts, fetchStories]);
+
+  const handleSyncAll = useCallback(async () => {
+    if (syncingAll) return;
+    setSyncingAll(true);
+    try {
+      const res = await fetch("/api/accounts/sync-all", { method: "POST" });
+      const data = (await res.json()) as { synced?: number; errors?: number; token_errors?: number };
+      await Promise.all([fetchAccounts(), fetchStories()]);
+      setNotification({
+        type: "success",
+        message: `Sincronização concluída: ${data.synced ?? 0} conta${(data.synced ?? 0) !== 1 ? "s" : ""} atualizada${(data.synced ?? 0) !== 1 ? "s" : ""}.`,
+      });
+    } catch {
+      setNotification({ type: "error", message: "Falha ao sincronizar contas." });
+    } finally {
+      setSyncingAll(false);
+    }
+  }, [syncingAll, fetchAccounts, fetchStories]);
 
   const handleRefresh = useCallback(async (id: string) => {
     if (_refreshingRef.current) return;
@@ -1743,6 +1763,14 @@ export default function AccountsPage() {
         <div className="flex items-center gap-2">
           {!selectMode ? (
             <>
+              <button
+                onClick={handleSyncAll}
+                disabled={syncingAll}
+                title="Sincronizar todas as contas"
+                className="flex items-center justify-center p-2.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 transition-all disabled:opacity-50"
+              >
+                <RefreshCw size={14} className={cn(syncingAll && "animate-spin")} />
+              </button>
               <button
                 onClick={() => setSelectMode(true)}
                 className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 transition-all"
