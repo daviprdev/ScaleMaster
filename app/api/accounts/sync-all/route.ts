@@ -220,6 +220,14 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
 
 export async function POST(request: Request) {
   const force = new URL(request.url).searchParams.get("force") === "true";
+  // IDs já processados em chamadas anteriores desta mesma sessão de sync manual
+  // (o botão "sincronizar todas" chama este endpoint repetidas vezes até esgotar
+  // a fila). Sem isso, force=true faria toda chamada reprocessar as mesmas
+  // primeiras contas do array, nunca avançando para as demais.
+  const body = await request.json().catch(() => ({}));
+  const excludeIds: string[] = Array.isArray((body as { excludeIds?: unknown }).excludeIds)
+    ? (body as { excludeIds: string[] }).excludeIds
+    : [];
   const supabase = await createClient();
   const {
     data: { user },
@@ -244,6 +252,7 @@ export async function POST(request: Request) {
   }
 
   const stale = (accounts as unknown as AccountRow[]).filter((a) => {
+    if (excludeIds.includes(a.id)) return false;
     // Contas recém-conectadas (< 10 min) recebem grace period — a Meta precisa
     // de tempo para ativar o token em todos os seus servidores. Sem o grace period,
     // qualquer falha transitória nesse momento marcaria a conta como error
@@ -291,6 +300,7 @@ export async function POST(request: Request) {
     }
   }
   const remaining = stale.length - allSettled.length;
+  const processedIds = stale.slice(0, allSettled.length).map((a) => a.id);
   // Coleta todos os resultados ANTES de escrever — necessário para cascade detection
   const settled = allSettled;
   const results: SyncResult[] = settled.map((r) =>
@@ -319,6 +329,8 @@ export async function POST(request: Request) {
       token_errors: tokenErrorResults.length,
       restored,
       remaining,
+      processed: allSettled.length,
+      processedIds,
       cascade: true,
       cascade_message:
         `${tokenErrorResults.length} contas com token inválido ao mesmo tempo — ` +
@@ -364,5 +376,13 @@ export async function POST(request: Request) {
     })
   );
 
-  return NextResponse.json({ synced, errors, token_errors: tokenErrors, restored, remaining });
+  return NextResponse.json({
+    synced,
+    errors,
+    token_errors: tokenErrors,
+    restored,
+    remaining,
+    processed: allSettled.length,
+    processedIds,
+  });
 }

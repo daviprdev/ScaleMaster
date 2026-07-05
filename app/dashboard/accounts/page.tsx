@@ -537,6 +537,7 @@ export default function AccountsPage() {
   const [folderMenuPos, setFolderMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   const [syncingAll, setSyncingAll] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null);
 
   // Bulk select
   const [selectMode, setSelectMode] = useState(false);
@@ -728,25 +729,44 @@ export default function AccountsPage() {
   const handleSyncAll = useCallback(async () => {
     if (syncingAll) return;
     setSyncingAll(true);
+    // Estimativa imediata a partir da lista já carregada no client, para o contador
+    // aparecer como "0/N" assim que o botão é clicado (o total exato do servidor só
+    // chega na primeira resposta, alguns segundos depois).
+    let total = accounts.filter((a) => a.health_status !== "error").length;
+    setSyncProgress({ done: 0, total });
     let totalSynced = 0;
     let totalErrors = 0;
+    let doneCount = 0;
+    const excludeIds: string[] = [];
     try {
       // O endpoint processa em lotes com timeout próprio por chamada e devolve
       // `remaining` quando o orçamento de tempo da função serverless acaba antes
-      // de esgotar a fila — nesse caso, chamamos de novo até zerar (com um teto
-      // de segurança para nunca girar para sempre em caso de bug).
+      // de esgotar a fila — nesse caso, chamamos de novo (excluindo as contas já
+      // processadas via excludeIds) até zerar, com um teto de segurança para
+      // nunca girar para sempre em caso de bug.
       for (let i = 0; i < 15; i++) {
-        const res = await fetch("/api/accounts/sync-all?force=true", { method: "POST" });
+        const res = await fetch("/api/accounts/sync-all?force=true", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ excludeIds }),
+        });
         const data = (await res.json()) as {
           synced?: number;
           errors?: number;
           token_errors?: number;
           remaining?: number;
+          processed?: number;
+          processedIds?: string[];
           cascade?: boolean;
           cascade_message?: string;
         };
+        const processedThisCall = data.processed ?? 0;
+        doneCount += processedThisCall;
         totalSynced += data.synced ?? 0;
         totalErrors += data.errors ?? 0;
+        if (i === 0) total = processedThisCall + (data.remaining ?? 0);
+        excludeIds.push(...(data.processedIds ?? []));
+        setSyncProgress({ done: doneCount, total });
         if (data.cascade) {
           setNotification({ type: "error", message: data.cascade_message ?? "Falha em cascata detectada." });
           break;
@@ -768,6 +788,7 @@ export default function AccountsPage() {
       setNotification({ type: "error", message: "Falha ao sincronizar contas." });
     } finally {
       setSyncingAll(false);
+      setSyncProgress(null);
     }
   }, [syncingAll, fetchAccounts, fetchStories]);
 
@@ -1795,9 +1816,14 @@ export default function AccountsPage() {
                 onClick={handleSyncAll}
                 disabled={syncingAll}
                 title="Sincronizar todas as contas"
-                className="flex items-center justify-center p-2.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 transition-all disabled:opacity-50"
+                className="flex items-center gap-1.5 justify-center p-2.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 transition-all disabled:opacity-50"
               >
                 <RefreshCw size={14} className={cn(syncingAll && "animate-spin")} />
+                {syncProgress && (
+                  <span className="text-xs font-mono tabular-nums text-white/50">
+                    {syncProgress.done}/{syncProgress.total}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setSelectMode(true)}
