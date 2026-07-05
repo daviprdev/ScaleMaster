@@ -87,7 +87,10 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       `${GRAPH}/${acc.ig_business_account_id}` +
       `?fields=followers_count,media_count,name,profile_picture_url` +
       `&access_token=${encodeURIComponent(token)}`;
-    const res = await undiciFetch(profileUrl, proxyInit(proxy) as any);
+    const res = await undiciFetch(
+      profileUrl,
+      proxyInit(proxy, { signal: AbortSignal.timeout(15_000) }) as any
+    );
     return (await res.json()) as Record<string, unknown>;
   };
 
@@ -189,7 +192,10 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
         `${GRAPH}/${acc.ig_business_account_id}/media` +
         `?fields=timestamp&limit=1` +
         `&access_token=${encodeURIComponent(activeToken)}`;
-      const mediaRes = await undiciFetch(mediaUrl, proxyInit(proxy) as any);
+      const mediaRes = await undiciFetch(
+        mediaUrl,
+        proxyInit(proxy, { signal: AbortSignal.timeout(15_000) }) as any
+      );
       const mediaData = (await mediaRes.json()) as { data?: Array<{ timestamp: string }> };
       lastPostAt = mediaData.data?.[0]?.timestamp ?? null;
     } catch {
@@ -212,7 +218,8 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  const force = new URL(request.url).searchParams.get("force") === "true";
   const supabase = await createClient();
   const {
     data: { user },
@@ -237,24 +244,23 @@ export async function POST() {
   }
 
   const stale = (accounts as unknown as AccountRow[]).filter((a) => {
-    if (!a.profile_refreshed_at) {
-      // Conta sem sync anterior: verificar se é nova demais.
-      // Contas recém-conectadas (< 10 min) recebem grace period — a Meta precisa
-      // de tempo para ativar o token em todos os seus servidores. Sem o grace period,
-      // qualquer falha transitória nesse momento marcaria a conta como error
-      // logo após a conexão, antes mesmo de ela postar qualquer coisa.
-      if (a.connected_at) {
-        const ageMs = Date.now() - new Date(a.connected_at).getTime();
-        if (ageMs < NEW_ACCOUNT_GRACE_MS) {
-          console.log(
-            `[sync-all] @${a.username} conectada há ${Math.round(ageMs / 60_000)}min ` +
-            `— grace period ativo, pulando sync.`
-          );
-          return false;
-        }
+    // Contas recém-conectadas (< 10 min) recebem grace period — a Meta precisa
+    // de tempo para ativar o token em todos os seus servidores. Sem o grace period,
+    // qualquer falha transitória nesse momento marcaria a conta como error
+    // logo após a conexão, antes mesmo de ela postar qualquer coisa.
+    // Vale mesmo em sync forçado pelo botão manual.
+    if (a.connected_at) {
+      const ageMs = Date.now() - new Date(a.connected_at).getTime();
+      if (ageMs < NEW_ACCOUNT_GRACE_MS) {
+        console.log(
+          `[sync-all] @${a.username} conectada há ${Math.round(ageMs / 60_000)}min ` +
+          `— grace period ativo, pulando sync.`
+        );
+        return false;
       }
-      return true;
     }
+    if (force) return true;
+    if (!a.profile_refreshed_at) return true;
     return Date.now() - new Date(a.profile_refreshed_at).getTime() > STALE_MS;
   });
 
@@ -268,8 +274,15 @@ export async function POST() {
   // Lotes menores + delay maior = ritmo humano mais convincente.
   const BATCH_SIZE = 2;
   const BATCH_DELAY_MS = 3_000;
+  // Deixa margem de segurança do maxDuration=60 — cada syncOne agora tem timeout de
+  // 15s por chamada, então um lote nunca deveria travar além disso, mas o corte de
+  // orçamento garante que a função sempre responda antes da Vercel matá-la à força
+  // (o que deixaria o fetch do frontend pendurado sem resposta alguma).
+  const TIME_BUDGET_MS = 45_000;
+  const startedAt = Date.now();
   const allSettled: PromiseSettledResult<SyncResult>[] = [];
   for (let i = 0; i < stale.length; i += BATCH_SIZE) {
+    if (Date.now() - startedAt > TIME_BUDGET_MS) break;
     const batch = stale.slice(i, i + BATCH_SIZE);
     const batchResults = await Promise.allSettled(batch.map(acc => syncOne(acc, admin)));
     allSettled.push(...batchResults);
@@ -277,6 +290,7 @@ export async function POST() {
       await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
     }
   }
+  const remaining = stale.length - allSettled.length;
   // Coleta todos os resultados ANTES de escrever — necessário para cascade detection
   const settled = allSettled;
   const results: SyncResult[] = settled.map((r) =>
@@ -304,6 +318,7 @@ export async function POST() {
       errors: tokenErrorResults.length,
       token_errors: tokenErrorResults.length,
       restored,
+      remaining,
       cascade: true,
       cascade_message:
         `${tokenErrorResults.length} contas com token inválido ao mesmo tempo — ` +
@@ -349,5 +364,5 @@ export async function POST() {
     })
   );
 
-  return NextResponse.json({ synced, errors, token_errors: tokenErrors, restored });
+  return NextResponse.json({ synced, errors, token_errors: tokenErrors, restored, remaining });
 }

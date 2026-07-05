@@ -728,14 +728,42 @@ export default function AccountsPage() {
   const handleSyncAll = useCallback(async () => {
     if (syncingAll) return;
     setSyncingAll(true);
+    let totalSynced = 0;
+    let totalErrors = 0;
     try {
-      const res = await fetch("/api/accounts/sync-all", { method: "POST" });
-      const data = (await res.json()) as { synced?: number; errors?: number; token_errors?: number };
+      // O endpoint processa em lotes com timeout próprio por chamada e devolve
+      // `remaining` quando o orçamento de tempo da função serverless acaba antes
+      // de esgotar a fila — nesse caso, chamamos de novo até zerar (com um teto
+      // de segurança para nunca girar para sempre em caso de bug).
+      for (let i = 0; i < 15; i++) {
+        const res = await fetch("/api/accounts/sync-all?force=true", { method: "POST" });
+        const data = (await res.json()) as {
+          synced?: number;
+          errors?: number;
+          token_errors?: number;
+          remaining?: number;
+          cascade?: boolean;
+          cascade_message?: string;
+        };
+        totalSynced += data.synced ?? 0;
+        totalErrors += data.errors ?? 0;
+        if (data.cascade) {
+          setNotification({ type: "error", message: data.cascade_message ?? "Falha em cascata detectada." });
+          break;
+        }
+        if (!data.remaining || data.remaining <= 0) break;
+      }
       await Promise.all([fetchAccounts(), fetchStories()]);
-      setNotification({
-        type: "success",
-        message: `Sincronização concluída: ${data.synced ?? 0} conta${(data.synced ?? 0) !== 1 ? "s" : ""} atualizada${(data.synced ?? 0) !== 1 ? "s" : ""}.`,
-      });
+      setNotification((prev) =>
+        prev?.type === "error"
+          ? prev
+          : {
+              type: "success",
+              message:
+                `Sincronização concluída: ${totalSynced} conta${totalSynced !== 1 ? "s" : ""} atualizada${totalSynced !== 1 ? "s" : ""}` +
+                (totalErrors > 0 ? `, ${totalErrors} com erro.` : "."),
+            }
+      );
     } catch {
       setNotification({ type: "error", message: "Falha ao sincronizar contas." });
     } finally {
