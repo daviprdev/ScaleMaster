@@ -14,6 +14,10 @@ import {
   AlertCircle,
   RefreshCw,
   Trash2,
+  Search,
+  FolderOpen,
+  CalendarPlus,
+  UserPlus,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -60,18 +64,12 @@ function nextPostIn(dateStr: string | null): string {
 function formatScheduled(dateStr: string): { label: string; time: string } {
   const d = new Date(dateStr);
   const now = new Date();
-  const time = d.toLocaleTimeString("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const time = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   if (d.toDateString() === now.toDateString()) return { label: "Hoje", time };
   const tmr = new Date(now);
   tmr.setDate(now.getDate() + 1);
   if (d.toDateString() === tmr.toDateString()) return { label: "Amanhã", time };
-  return {
-    label: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
-    time,
-  };
+  return { label: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), time };
 }
 
 // ── Animation variants ───────────────────────────────────────────
@@ -79,21 +77,16 @@ const fadeUp = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
 };
-
-const stagger = {
-  show: { transition: { staggerChildren: 0.08 } },
-};
+const stagger = { show: { transition: { staggerChildren: 0.08 } } };
 
 // ── Skeleton ─────────────────────────────────────────────────────
 function StatSkeleton() {
   return (
     <div className="glass-card p-5 animate-pulse">
-      <div className="flex items-start justify-between mb-4">
-        <div className="w-10 h-10 rounded-xl bg-white/10" />
-      </div>
-      <div className="h-7 w-14 rounded-lg bg-white/10 mb-2" />
-      <div className="h-3 w-28 rounded bg-white/10 mb-1.5" />
-      <div className="h-2.5 w-20 rounded bg-white/[0.06]" />
+      <div className="w-10 h-10 rounded-xl bg-white/[0.06] mb-4" />
+      <div className="h-7 w-14 rounded-lg bg-white/[0.08] mb-2" />
+      <div className="h-3 w-28 rounded bg-white/[0.05] mb-1.5" />
+      <div className="h-2.5 w-20 rounded bg-white/[0.03]" />
     </div>
   );
 }
@@ -120,7 +113,6 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // Initial fetch + auto-refresh every 60 s
   useEffect(() => {
     loadStats();
     const id = setInterval(() => loadStats(true), 60_000);
@@ -144,128 +136,124 @@ export default function DashboardPage() {
     }
   }, [clearConfirm, loadStats]);
 
-  // Build stat cards from fetched data
   const statCards = stats
     ? [
         {
           label: "Contas Conectadas",
           value: String(stats.accounts.total),
-          change:
-            stats.accounts.this_month > 0
-              ? `+${stats.accounts.this_month} este mês`
-              : "Nenhuma este mês",
-          up: stats.accounts.this_month > 0 ? true : null,
+          change: stats.accounts.this_month > 0 ? `+${stats.accounts.this_month} este mês` : "Nenhuma este mês",
+          up: stats.accounts.this_month > 0,
           icon: Instagram,
-          color: "from-pink-500 to-rose-600",
-          glow: "rgba(244,63,94,0.3)",
+          iconColor: "#00FF41",
+          glow: "rgba(0,255,65,0.18)",
+          accent: "rgba(0,255,65,0.08)",
         },
         {
           label: "Vídeos Baixados",
           value: String(stats.videos.total),
-          change:
-            stats.videos.this_week > 0
-              ? `+${stats.videos.this_week} esta semana`
-              : "Nenhum esta semana",
-          up: stats.videos.this_week > 0 ? true : null,
+          change: stats.videos.this_week > 0 ? `+${stats.videos.this_week} esta semana` : "Nenhum esta semana",
+          up: stats.videos.this_week > 0,
           icon: Download,
-          color: "from-violet-500 to-purple-600",
-          glow: "rgba(139,92,246,0.3)",
+          iconColor: "#00E5FF",
+          glow: "rgba(0,229,255,0.18)",
+          accent: "rgba(0,229,255,0.08)",
         },
         {
           label: "Postagens Agendadas",
           value: String(stats.scheduled.pending),
           change: nextPostIn(stats.scheduled.next_at),
-          up: null,
+          up: false,
           icon: CalendarCheck,
-          color: "from-cyan-500 to-blue-600",
-          glow: "rgba(6,182,212,0.3)",
+          iconColor: "#00FF41",
+          glow: "rgba(0,255,65,0.18)",
+          accent: "rgba(0,255,65,0.08)",
         },
         {
           label: "Posts Publicados",
           value: String(stats.published.total),
-          change:
-            stats.published.total > 0 ? "Total publicado" : "Nenhum ainda",
-          up: stats.published.total > 0 ? true : null,
+          change: stats.published.total > 0 ? "Total publicado" : "Nenhum ainda",
+          up: stats.published.total > 0,
           icon: TrendingUp,
-          color: "from-emerald-500 to-teal-600",
-          glow: "rgba(16,185,129,0.3)",
+          iconColor: "#00E5FF",
+          glow: "rgba(0,229,255,0.18)",
+          accent: "rgba(0,229,255,0.08)",
         },
       ]
     : null;
 
   return (
-    <motion.div
-      variants={stagger}
-      initial="hidden"
-      animate="show"
-      className="space-y-6 max-w-7xl"
-    >
-      {/* Refresh bar */}
+    <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6 max-w-7xl">
+
+      {/* Refresh */}
       <motion.div variants={fadeUp} className="flex items-center justify-end">
         <button
           onClick={() => loadStats(true)}
           disabled={loading || refreshing}
-          className="flex items-center gap-1.5 text-[11px] text-white/30 hover:text-white/60 transition-colors disabled:opacity-40"
+          className="flex items-center gap-1.5 text-[11px] text-white/25 hover:text-[#00FF41] transition-colors disabled:opacity-40"
         >
           <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
           {refreshing ? "Atualizando…" : "Atualizar"}
         </button>
       </motion.div>
 
-      {/* Stats grid — 4 main cards */}
-      <motion.div
-        variants={stagger}
-        className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4"
-      >
+      {/* Stat cards */}
+      <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {loading || !statCards
           ? Array.from({ length: 4 }).map((_, i) => (
-              <motion.div key={i} variants={fadeUp}>
-                <StatSkeleton />
-              </motion.div>
+              <motion.div key={i} variants={fadeUp}><StatSkeleton /></motion.div>
             ))
           : statCards.map((stat, i) => (
               <motion.div
                 key={i}
                 variants={fadeUp}
-                className="glass-card p-5 group hover:border-white/20 transition-all duration-300 relative overflow-hidden"
-                style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.07)" }}
+                className="glass-card ticks p-5 group relative overflow-hidden"
               >
+                {/* Background accent */}
                 <div
-                  className="absolute -top-6 -right-6 w-24 h-24 rounded-full opacity-10 blur-2xl"
-                  style={{ background: stat.glow }}
+                  className="absolute -top-8 -right-8 w-28 h-28 rounded-full blur-3xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                  style={{ background: stat.accent }}
                 />
-                <div className="flex items-start justify-between mb-4">
+
+                <div className="flex items-start justify-between mb-4 relative z-10">
+                  {/* Glass icon */}
                   <div
-                    className={`w-10 h-10 rounded-xl bg-gradient-to-br ${stat.color} flex items-center justify-center group-hover:scale-110 transition-transform`}
+                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: "rgba(255,255,255,0.04)",
+                      border: `0.5px solid ${stat.iconColor}33`,
+                      boxShadow: `0 0 14px ${stat.glow}`,
+                    }}
                   >
-                    <stat.icon className="w-4.5 h-4.5 text-white" size={18} />
+                    <stat.icon size={18} style={{ color: stat.iconColor }} strokeWidth={1.5} />
                   </div>
-                  {stat.up !== null && (
-                    <span className="flex items-center gap-0.5 text-xs font-medium text-emerald-400">
-                      <ArrowUpRight size={12} />
+
+                  {stat.up && (
+                    <span className="flex items-center gap-0.5 text-[10px] font-medium text-emerald-400">
+                      <ArrowUpRight size={11} />
                     </span>
                   )}
                 </div>
-                <div className="text-2xl font-black text-white mb-0.5">
+
+                <div
+                  className="text-2xl font-black mb-0.5 relative z-10"
+                  style={{ color: stat.iconColor, textShadow: `0 0 20px ${stat.glow}` }}
+                >
                   {stat.value}
                 </div>
-                <div className="text-xs text-white/40 font-medium">
-                  {stat.label}
-                </div>
-                <div className="text-[10px] text-white/25 mt-1">
-                  {stat.change}
-                </div>
+                <div className="text-xs text-white/50 font-medium relative z-10">{stat.label}</div>
+                <div className="text-[10px] text-white/25 mt-1 relative z-10">{stat.change}</div>
               </motion.div>
             ))}
       </motion.div>
 
       {/* Two-column grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Activity */}
+
+        {/* Atividade Recente */}
         <motion.div variants={fadeUp} className="lg:col-span-2 glass-card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-white/90">Atividade Recente</h2>
-            <button className="text-xs text-violet-400 hover:text-violet-300 transition-colors">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-sm font-semibold text-white/80 tracking-wide uppercase">Atividade Recente</h2>
+            <button className="text-[11px] text-[#00FF41]/60 hover:text-[#00FF41] transition-colors">
               Ver tudo
             </button>
           </div>
@@ -273,49 +261,43 @@ export default function DashboardPage() {
           {loading ? (
             <div className="space-y-3 animate-pulse">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0"
-                >
-                  <div className="w-7 h-7 rounded-lg bg-white/10 flex-shrink-0" />
-                  <div className="flex-1 h-3.5 rounded bg-white/10" />
-                  <div className="w-14 h-3 rounded bg-white/[0.06] flex-shrink-0" />
+                <div key={i} className="flex items-center gap-3 py-2.5 border-b border-white/[0.04] last:border-0">
+                  <div className="w-7 h-7 rounded-lg bg-white/[0.06] flex-shrink-0" />
+                  <div className="flex-1 h-3 rounded bg-white/[0.06]" />
+                  <div className="w-12 h-2.5 rounded bg-white/[0.04] flex-shrink-0" />
                 </div>
               ))}
             </div>
           ) : !stats || stats.recent_activity.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-white/25">
-              <Clock size={28} className="mb-2 opacity-40" />
+            <div className="flex flex-col items-center justify-center py-10 text-white/20">
+              <Clock size={28} className="mb-2" />
               <p className="text-sm">Nenhuma atividade recente</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-0">
               {stats.recent_activity.map((item, i) => (
                 <motion.div
                   key={i}
-                  initial={{ opacity: 0, x: -10 }}
+                  initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.1 + i * 0.05 }}
-                  className="flex items-center gap-3 py-2.5 border-b border-white/5 last:border-0"
+                  transition={{ delay: 0.05 + i * 0.04 }}
+                  className="flex items-center gap-3 py-2.5 border-b border-white/[0.04] last:border-0"
                 >
                   <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                      item.status === "success"
-                        ? "bg-emerald-500/15"
-                        : "bg-red-500/15"
-                    }`}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: item.status === "success" ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
+                      border: `0.5px solid ${item.status === "success" ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)"}`,
+                    }}
                   >
-                    {item.status === "success" ? (
-                      <CheckCircle2 size={14} className="text-emerald-400" />
-                    ) : (
-                      <AlertCircle size={14} className="text-red-400" />
-                    )}
+                    {item.status === "success"
+                      ? <CheckCircle2 size={13} className="text-emerald-400" />
+                      : <AlertCircle size={13} className="text-red-400" />
+                    }
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white/70 truncate">{item.text}</p>
-                  </div>
-                  <div className="flex items-center gap-1 text-[10px] text-white/25 flex-shrink-0">
-                    <Clock size={10} />
+                  <p className="flex-1 text-sm text-white/55 truncate">{item.text}</p>
+                  <div className="flex items-center gap-1 text-[10px] text-white/20 flex-shrink-0">
+                    <Clock size={9} />
                     {timeAgo(item.created_at)}
                   </div>
                 </motion.div>
@@ -324,42 +306,39 @@ export default function DashboardPage() {
           )}
         </motion.div>
 
-        {/* Upcoming Posts */}
+        {/* Próximas Postagens */}
         <motion.div variants={fadeUp} className="glass-card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-white/90">Próximas Postagens</h2>
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-sm font-semibold text-white/80 tracking-wide uppercase">Próximas Postagens</h2>
             <div className="flex items-center gap-2">
-              {!loading && stats && stats.scheduled.pending > 0 && (
-                <>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/20">
-                    {stats.scheduled.pending} agendadas
-                  </span>
-                  <button
-                    onClick={handleClearQueue}
-                    disabled={clearing}
-                    className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-all ${
-                      clearConfirm
-                        ? "bg-red-500/20 border-red-500/40 text-red-400"
-                        : "bg-white/[0.04] border-white/10 text-white/30 hover:border-red-500/30 hover:text-red-400"
-                    }`}
-                    title="Apaga todos os posts pendentes e reinicia a fila"
-                  >
-                    {clearing ? (
-                      <RefreshCw size={9} className="animate-spin" />
-                    ) : (
-                      <Trash2 size={9} />
-                    )}
-                    {clearConfirm ? "Confirmar?" : "Limpar Fila"}
-                  </button>
-                </>
-              )}
-              {!loading && stats && stats.scheduled.pending === 0 && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/20">
-                  0 agendadas
+              {loading && <div className="w-14 h-4 rounded-full bg-white/[0.06] animate-pulse" />}
+
+              {!loading && stats && (
+                <span
+                  className="text-[10px] px-2 py-0.5 rounded-full"
+                  style={{
+                    background: "rgba(0,255,65,0.08)",
+                    border: "0.5px solid rgba(0,255,65,0.2)",
+                    color: "#00FF41",
+                  }}
+                >
+                  {stats.scheduled.pending} agendadas
                 </span>
               )}
-              {loading && (
-                <div className="w-16 h-4 rounded-full bg-white/10 animate-pulse" />
+
+              {!loading && stats && stats.scheduled.pending > 0 && (
+                <button
+                  onClick={handleClearQueue}
+                  disabled={clearing}
+                  className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-all ${
+                    clearConfirm
+                      ? "bg-red-500/15 border-red-500/30 text-red-400"
+                      : "bg-white/[0.03] border-white/[0.08] text-white/25 hover:border-red-500/25 hover:text-red-400"
+                  }`}
+                >
+                  {clearing ? <RefreshCw size={9} className="animate-spin" /> : <Trash2 size={9} />}
+                  {clearConfirm ? "Confirmar?" : "Limpar"}
+                </button>
               )}
             </div>
           </div>
@@ -367,49 +346,51 @@ export default function DashboardPage() {
           {loading ? (
             <div className="space-y-3 animate-pulse">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 p-2.5 rounded-xl"
-                >
-                  <div className="w-10 h-10 rounded-lg bg-white/10 flex-shrink-0" />
+                <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl">
+                  <div className="w-9 h-9 rounded-lg bg-white/[0.06] flex-shrink-0" />
                   <div className="flex-1 space-y-1.5">
-                    <div className="h-3 w-24 rounded bg-white/10" />
-                    <div className="h-2.5 w-16 rounded bg-white/[0.06]" />
+                    <div className="h-3 w-20 rounded bg-white/[0.06]" />
+                    <div className="h-2.5 w-14 rounded bg-white/[0.04]" />
                   </div>
                 </div>
               ))}
             </div>
           ) : !stats || stats.upcoming_posts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-white/25">
-              <CalendarCheck size={28} className="mb-2 opacity-40" />
-              <p className="text-sm">Nenhuma postagem agendada</p>
+            <div className="flex flex-col items-center justify-center py-10 text-white/20">
+              <CalendarCheck size={28} className="mb-2" />
+              <p className="text-sm">Nenhuma agendada</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-1">
               {stats.upcoming_posts.map((post, i) => {
                 const { label, time } = formatScheduled(post.scheduled_at);
                 return (
                   <motion.div
                     key={i}
-                    initial={{ opacity: 0, x: 10 }}
+                    initial={{ opacity: 0, x: 8 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.1 + i * 0.06 }}
-                    className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
+                    transition={{ delay: 0.05 + i * 0.05 }}
+                    className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.03] transition-colors cursor-pointer group/post"
                   >
                     <div
-                      className={`w-10 h-10 rounded-lg bg-gradient-to-br ${post.gradient} flex items-center justify-center flex-shrink-0`}
+                      className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background: "rgba(255,255,255,0.04)",
+                        border: "0.5px solid rgba(0,229,255,0.2)",
+                      }}
                     >
-                      <Play size={14} className="text-white" />
+                      <Play size={13} style={{ color: "#00E5FF" }} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-white/80 truncate">
+                      <p className="text-xs font-medium text-white/70 truncate group-hover/post:text-white/90 transition-colors">
                         @{post.account_username}
                       </p>
-                      <p className="text-[10px] text-white/30">
-                        {label} às {time}
-                      </p>
+                      <p className="text-[10px] text-white/25">{label} às {time}</p>
                     </div>
-                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 flex-shrink-0" />
+                    <div
+                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      style={{ background: "#00FF41", boxShadow: "0 0 6px rgba(0,255,65,0.8)" }}
+                    />
                   </motion.div>
                 );
               })}
@@ -418,54 +399,53 @@ export default function DashboardPage() {
         </motion.div>
       </div>
 
-      {/* Quick actions */}
+      {/* Ações Rápidas */}
       <motion.div variants={fadeUp} className="glass-card p-5">
-        <h2 className="font-semibold text-white/90 mb-4">Ações Rápidas</h2>
+        <h2 className="text-sm font-semibold text-white/80 tracking-wide uppercase mb-4">Ações Rápidas</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            {
-              label: "Pesquisar Reels",
-              href: "/dashboard/search",
-              icon: "🔍",
-              desc: "Scraping de perfil",
-            },
-            {
-              label: "Ver Biblioteca",
-              href: "/dashboard/library",
-              icon: "📁",
-              desc: "Seus vídeos",
-            },
-            {
-              label: "Agendar Post",
-              href: "/dashboard/schedule",
-              icon: "📅",
-              desc: "Múltiplas contas",
-            },
-            {
-              label: "Adicionar Conta",
-              href: "/dashboard/accounts",
-              icon: "➕",
-              desc: "Conectar Instagram",
-            },
+            { label: "Pesquisar Reels", href: "/dashboard/inspirations", icon: Search, desc: "Scraping de perfil", color: "#00FF41" },
+            { label: "Ver Biblioteca", href: "/dashboard/library", icon: FolderOpen, desc: "Seus vídeos", color: "#00E5FF" },
+            { label: "Agendar Post", href: "/dashboard/postar", icon: CalendarPlus, desc: "Múltiplas contas", color: "#00FF41" },
+            { label: "Adicionar Conta", href: "/dashboard/accounts", icon: UserPlus, desc: "Conectar Instagram", color: "#00E5FF" },
           ].map((action, i) => (
             <motion.a
               key={i}
               href={action.href}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
-              className="flex flex-col items-center gap-2 p-4 rounded-xl bg-white/[0.03] border border-white/[0.07] hover:border-violet-500/30 hover:bg-violet-600/5 transition-all cursor-pointer text-center"
+              className="flex flex-col items-center gap-3 p-4 rounded-xl cursor-pointer text-center group/action transition-all duration-300"
+              style={{
+                background: "rgba(255,255,255,0.02)",
+                border: "0.5px solid rgba(255,255,255,0.07)",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.border = `0.5px solid ${action.color}33`;
+                (e.currentTarget as HTMLAnchorElement).style.background = `${action.color}06`;
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLAnchorElement).style.border = "0.5px solid rgba(255,255,255,0.07)";
+                (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.02)";
+              }}
             >
-              <span className="text-2xl">{action.icon}</span>
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{
+                  background: "rgba(255,255,255,0.04)",
+                  border: `0.5px solid ${action.color}22`,
+                }}
+              >
+                <action.icon size={18} style={{ color: action.color }} strokeWidth={1.5} />
+              </div>
               <div>
-                <p className="text-xs font-medium text-white/80">
-                  {action.label}
-                </p>
-                <p className="text-[10px] text-white/30">{action.desc}</p>
+                <p className="text-xs font-medium text-white/70">{action.label}</p>
+                <p className="text-[10px] text-white/30 mt-0.5">{action.desc}</p>
               </div>
             </motion.a>
           ))}
         </div>
       </motion.div>
+
     </motion.div>
   );
 }
