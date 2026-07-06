@@ -30,6 +30,7 @@ import {
   Settings2,
   Globe,
   Upload,
+  ListX,
 } from "lucide-react";
 import MagicLinkModal from "@/components/dashboard/MagicLinkModal";
 import { useRouter } from "next/navigation";
@@ -187,6 +188,7 @@ function AccountCard({
   onRefreshToken,
   onMoveClick,
   onProxyClick,
+  onClearQueueClick,
   refreshing,
   toggling,
   deleting,
@@ -204,6 +206,7 @@ function AccountCard({
   onRefreshToken: (id: string) => void;
   onMoveClick: (account: Account) => void;
   onProxyClick: (account: Account) => void;
+  onClearQueueClick: (account: Account) => void;
   refreshing: boolean;
   toggling: boolean;
   deleting: boolean;
@@ -393,6 +396,13 @@ function AccountCard({
                   {account.has_proxy ? "Editar Proxy" : "Configurar Proxy"}
                 </button>
 
+                <button
+                  onClick={() => { onClearQueueClick(account); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-amber-400/70 hover:bg-amber-500/[0.08] hover:text-amber-400 transition-colors"
+                >
+                  <ListX size={12} /> Excluir Vídeos Pendentes
+                </button>
+
                 <div className="h-px bg-white/[0.06]" />
                 <button
                   onClick={() => { onDelete(account.id); setMenuOpen(false); }}
@@ -538,6 +548,10 @@ export default function AccountsPage() {
 
   const [syncingAll, setSyncingAll] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ done: number; total: number } | null>(null);
+
+  // Limpar fila pendente de uma conta
+  const [clearQueueDialog, setClearQueueDialog] = useState<{ id: string; username: string } | null>(null);
+  const [clearingQueue, setClearingQueue] = useState(false);
 
   // Bulk select
   const [selectMode, setSelectMode] = useState(false);
@@ -871,6 +885,33 @@ export default function AccountsPage() {
       setDeletingId(null);
     }
   };
+
+  const handleClearQueue = useCallback(async () => {
+    if (!clearQueueDialog || clearingQueue) return;
+    setClearingQueue(true);
+    try {
+      const res = await fetch(`/api/accounts/${clearQueueDialog.id}/clear-queue`, { method: "POST" });
+      const data = (await res.json()) as {
+        success?: boolean;
+        error?: string;
+        deleted?: { scheduled_posts: number; pending_containers: number };
+      };
+      if (!res.ok || !data.success) {
+        setNotification({ type: "error", message: data.error ?? "Falha ao limpar a fila." });
+      } else {
+        const total = (data.deleted?.scheduled_posts ?? 0) + (data.deleted?.pending_containers ?? 0);
+        setNotification({
+          type: "success",
+          message: `Fila de @${clearQueueDialog.username} limpa: ${total} item${total !== 1 ? "s" : ""} removido${total !== 1 ? "s" : ""}.`,
+        });
+      }
+      setClearQueueDialog(null);
+    } catch {
+      setNotification({ type: "error", message: "Falha ao limpar a fila." });
+    } finally {
+      setClearingQueue(false);
+    }
+  }, [clearQueueDialog, clearingQueue]);
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => {
@@ -1425,6 +1466,61 @@ export default function AccountsPage() {
                     className="flex-1 py-2.5 rounded-xl bg-red-600/20 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-600/30 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
                   >
                     {deletingFolder ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                    Excluir
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Limpar fila pendente de uma conta */}
+      <AnimatePresence>
+        {clearQueueDialog && (
+          <>
+            <motion.div
+              key="clear-queue-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => !clearingQueue && setClearQueueDialog(null)}
+            />
+            <motion.div
+              key="clear-queue-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
+            >
+              <div className="glass rounded-2xl border border-amber-500/20 w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ListX size={15} className="text-amber-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Excluir vídeos pendentes de @{clearQueueDialog.username}?</h3>
+                    <p className="text-xs text-white/40 mt-1 leading-relaxed">
+                      Remove todos os posts e containers aguardando publicação na fila desta conta (Loop, Postar, Clonar). Posts já publicados no Instagram não são afetados. Esta ação não pode ser desfeita.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setClearQueueDialog(null)}
+                    disabled={clearingQueue}
+                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleClearQueue}
+                    disabled={clearingQueue}
+                    className="flex-1 py-2.5 rounded-xl bg-amber-600/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-600/30 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    {clearingQueue ? <Loader2 size={12} className="animate-spin" /> : <ListX size={12} />}
                     Excluir
                   </button>
                 </div>
@@ -2120,6 +2216,7 @@ export default function AccountsPage() {
                 onRefreshToken={handleRefreshToken}
                 onMoveClick={handleMoveClick}
                 onProxyClick={handleProxyClick}
+                onClearQueueClick={(acc) => setClearQueueDialog({ id: acc.id, username: acc.username })}
                 refreshing={refreshingId === account.id}
                 toggling={togglingId === account.id}
                 deleting={deletingId === account.id}
