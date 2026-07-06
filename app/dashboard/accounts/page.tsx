@@ -358,7 +358,7 @@ function AccountCard({
                   onClick={() => { onRefresh(account.id); setMenuOpen(false); }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
                 >
-                  <RefreshCw size={12} className="text-cyan-400" /> Atualizar Dados
+                  <RefreshCw size={12} className="text-cyan-400" /> Sincronizar
                 </button>
                 <button
                   onClick={() => { onToggle(account); setMenuOpen(false); }}
