@@ -160,28 +160,54 @@ export async function GET(req: NextRequest) {
   // ── Busca posts elegíveis ─────────────────────────────────────────────────
   // IMPORTANTE: não buscamos posts com instagram.com URLs — esses são tratados
   // pelo prefetch-clone-urls que resolve as URLs para Supabase antes de publicar.
-  const { data: rows, error: fetchErr } = await admin
+  const SELECT_FIELDS =
+    "id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, " +
+    "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url), " +
+    "videos_library(public_url)";
+
+  // Stories furam a fila: usuário espera publicação quase imediata ("Postar agora"),
+  // diferente de campanhas em massa (Postar/Clone/Loop) que já são agendadas de
+  // propósito ao longo de dias. Busca stories elegíveis primeiro; só preenche o
+  // restante do lote com os demais posts se sobrar espaço.
+  const { data: storyRows, error: storyErr } = await admin
     .from("scheduled_posts")
-    .select(
-      "id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, " +
-        "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url), " +
-        "videos_library(public_url)"
-    )
+    .select(SELECT_FIELDS)
     .eq("status", "pending")
+    .eq("post_type", "story")
     .lte("scheduled_at", now)
-    // Exclui posts com URL do Instagram ainda não resolvida pelo prefetch-clone-urls.
-    // Essas URLs bloqueiam slots do batch mas nunca publicam nesta rota.
     .not("video_url", "ilike", "%instagram.com%")
     .order("scheduled_at", { ascending: true })
     .limit(BATCH_SIZE);
 
-  if (fetchErr) {
-    console.error("[publish-scheduled] Erro ao buscar posts:", fetchErr.message);
-    return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+  if (storyErr) {
+    console.error("[publish-scheduled] Erro ao buscar stories:", storyErr.message);
+    return NextResponse.json({ error: storyErr.message }, { status: 500 });
   }
 
-  const posts = (rows ?? []) as unknown as PostRow[];
-  console.log(`[publish-scheduled] ${posts.length} post(s) a processar.`);
+  const remainingSlots = BATCH_SIZE - (storyRows?.length ?? 0);
+  let otherRows: unknown[] = [];
+  if (remainingSlots > 0) {
+    const { data, error: fetchErr } = await admin
+      .from("scheduled_posts")
+      .select(SELECT_FIELDS)
+      .eq("status", "pending")
+      .neq("post_type", "story")
+      .lte("scheduled_at", now)
+      .not("video_url", "ilike", "%instagram.com%")
+      .order("scheduled_at", { ascending: true })
+      .limit(remainingSlots);
+
+    if (fetchErr) {
+      console.error("[publish-scheduled] Erro ao buscar posts:", fetchErr.message);
+      return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+    }
+    otherRows = data ?? [];
+  }
+
+  const posts = [...(storyRows ?? []), ...otherRows] as unknown as PostRow[];
+  console.log(
+    `[publish-scheduled] ${posts.length} post(s) a processar (${storyRows?.length ?? 0} stories priorizados).`
+  );
 
   const summary = {
     total: posts.length,
