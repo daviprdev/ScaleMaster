@@ -28,6 +28,7 @@ import {
   Globe,
   Copy,
   ImagePlay,
+  Bot,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -60,6 +61,7 @@ const navGroups: NavGroup[] = [
       { label: "Postar", href: "/dashboard/postar", icon: Send },
       { label: "Stories", href: "/dashboard/stories", icon: ImagePlay },
       { label: "Loop", href: "/dashboard/loop", icon: Repeat2 },
+      { label: "Automatizar", href: "/dashboard/automatizar", icon: Bot },
       { label: "Clonar Perfil", href: "/dashboard/clone", icon: Copy },
       { label: "Monitor", href: "/dashboard/monitor", icon: Activity },
     ],

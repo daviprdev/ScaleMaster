@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/story-templates",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/process-automations",
+      "schedule": "* * * * *"
     }
   ]
 }
