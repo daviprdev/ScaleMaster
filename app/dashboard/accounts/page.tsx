@@ -2390,13 +2390,6 @@ export default function AccountsPage() {
                 )}
               </button>
               <button
-                onClick={() => setSelectMode(true)}
-                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 transition-all"
-              >
-                <CheckCircle2 size={14} />
-                Selecionar
-              </button>
-              <button
                 onClick={() => { setShowCsvImport(true); setCsvResults(null); setCsvText(""); }}
                 className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-blue-500/20 text-blue-400/70 hover:text-blue-300 hover:border-blue-500/40 hover:bg-blue-500/[0.06] transition-all"
               >
@@ -2421,13 +2414,6 @@ export default function AccountsPage() {
             </>
           ) : (
             <>
-              <button
-                onClick={cancelSelectMode}
-                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 transition-all"
-              >
-                <X size={14} />
-                Cancelar
-              </button>
               {selectedIds.size > 0 && (
                 <button
                   onClick={handleBulkDelete}
@@ -2577,7 +2563,7 @@ export default function AccountsPage() {
         </button>
       </div>
 
-      {/* Filtros de ordenação — visíveis quando há contas */}
+      {/* Filtros de ordenação + seleção — visíveis quando há contas */}
       {!loading && filteredAccounts.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-white/25 text-[11px] uppercase tracking-wider font-medium mr-1">Ordenar</span>
@@ -2606,6 +2592,25 @@ export default function AccountsPage() {
               {label}
             </button>
           ))}
+          {/* Divisor */}
+          <div className="w-px h-4 bg-white/10 mx-1" />
+          {!selectMode ? (
+            <button
+              onClick={() => setSelectMode(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-white/[0.03] border-white/[0.07] text-white/35 hover:text-white/60 hover:border-white/15 transition-all"
+            >
+              <CheckCircle2 size={11} />
+              Selecionar
+            </button>
+          ) : (
+            <button
+              onClick={cancelSelectMode}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-white/[0.03] border-white/[0.07] text-white/35 hover:text-white/60 hover:border-white/15 transition-all"
+            >
+              <X size={11} />
+              Cancelar
+            </button>
+          )}
         </div>
       )}
 
