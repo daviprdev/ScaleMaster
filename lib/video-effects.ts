@@ -195,7 +195,9 @@ export async function processVideoForAccount(
       "-af",       `asetrate=${newSampleRate},aresample=44100`,
       "-c:v",      "libx264",
       "-preset",   "ultrafast",
-      "-crf",      "19",              // CRF 19 = melhor que fonte (~CRF 23), sem double-compression
+      "-crf",      "22",
+      "-maxrate",  "4M",             // cap de bitrate: reels até 90s ficam < 45 MB (50 MB = limite upload Supabase)
+      "-bufsize",  "8M",
       "-c:a",      "aac",
       "-b:a",      "128k",
       "-map_metadata", "-1",          // remove todos os metadados do container

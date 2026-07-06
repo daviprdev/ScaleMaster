@@ -394,25 +394,15 @@ export async function GET(req: NextRequest) {
             console.log(`[publish-scheduled] 🔐 Fingerprint aplicado @${account.username}`);
           } catch (fxErr) {
             const fxMsg = fxErr instanceof Error ? fxErr.message : String(fxErr);
-            const isSizeError = fxMsg.toLowerCase().includes("exceeded the maximum allowed size") ||
-                                fxMsg.toLowerCase().includes("payload too large") ||
-                                fxMsg.toLowerCase().includes("413");
-            if (isSizeError) {
-              // Vídeo grande demais para o Storage — não tem retry que resolva.
-              // Posta o vídeo original sem fingerprint em vez de travar a fila.
-              console.warn(`[publish-scheduled] ⚠ Fingerprint ignorado @${account.username}: vídeo grande demais (${fxMsg.slice(0, 80)}) — postando sem fingerprint.`);
-              // effectiveVideoUrl permanece a URL original, continua abaixo normalmente
-            } else {
-              console.warn(
-                `[publish-scheduled] ⚠ Fingerprint falhou @${account.username}: ${fxMsg} — adiando ${FINGERPRINT_RETRY_DELAY_MS / 60_000}min.`
-              );
-              await admin.from("scheduled_posts").update({
-                status: "pending",
-                scheduled_at: new Date(Date.now() + FINGERPRINT_RETRY_DELAY_MS).toISOString(),
-              }).eq("id", post.id);
-              summary.skipped++;
-              continue;
-            }
+            console.warn(
+              `[publish-scheduled] ⚠ Fingerprint falhou @${account.username}: ${fxMsg} — adiando ${FINGERPRINT_RETRY_DELAY_MS / 60_000}min.`
+            );
+            await admin.from("scheduled_posts").update({
+              status: "pending",
+              scheduled_at: new Date(Date.now() + FINGERPRINT_RETRY_DELAY_MS).toISOString(),
+            }).eq("id", post.id);
+            summary.skipped++;
+            continue;
           }
         }
 
