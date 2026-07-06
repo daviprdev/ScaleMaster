@@ -2906,3 +2906,71 @@ A mensagem de erro anterior "Campo videoUrl ausente no item **Apify**." continha
 
 #### Lição
 O `cloneFetchCount >= 1` (limite de 1 scrape Apify por ciclo) é correto dada a restrição de 55s de budget. O problema foi que um post "tóxico" consumia esse slot todo ciclo sem nunca avançar. Qualquer erro de Apify que não seja de rede/timeout deve ser permanente, não transitório.
+
+---
+
+### ✅ Feat — Sincronizar Todas as Contas + Excluir Vídeos Pendentes (2026-07-05)
+
+#### Contexto
+Pedido do usuário: botão único (ícone de duas setas em círculo) na aba Contas para sincronizar todas as contas de uma vez, e um botão no menu ⋯ de cada conta para excluir vídeos pendentes na fila (inspirado num SaaS concorrente que o usuário usa como referência).
+
+#### Sincronizar Todas as Contas — 3 bugs ao longo da implementação
+1. **Endpoint sem timeout/orçamento:** `/api/accounts/sync-all` processa em lotes de 2 com 3s de delay (anti-cascata Meta). Com 59 contas (nenhuma sincronizada há mais de 5min), o processamento facilmente estourava os 60s de `maxDuration` da Vercel — a função era matada no meio sem responder, e o fetch do frontend ficava pendurado pra sempre (botão girando infinitamente). Fix: `AbortSignal.timeout(15s)` por chamada undici + `Promise.race` por lote contra um orçamento total de ~40-45s, garantindo resposta sempre a tempo.
+2. **Stale closure no frontend:** `handleSyncAll` (`useCallback`) não tinha `accounts` no array de dependências — fechava sobre o array vazio (`[]`) do estado inicial pra sempre, travando a estimativa de total exibida (`0/0`) mesmo com 59 contas reais.
+3. **Reprocessamento infinito:** o parâmetro `force=true` (pra ignorar o cache de 5min) fazia CADA chamada de continuação reprocessar as mesmas primeiras contas do array, nunca avançando pro resto — porque `force` bypassa o filtro de staleness inteiro, incluindo contas já sincronizadas nesta mesma sessão. Fix: endpoint aceita `excludeIds` no body; frontend acumula os IDs já processados entre chamadas.
+
+Resultado final: botão com contador `X/Y` ao lado, atualizando em tempo real conforme o backend processa lotes, sempre se recuperando de erros de rede.
+
+#### Excluir Vídeos Pendentes por conta
+Antes de implementar, o usuário pediu para "excluir todos os vídeos" de uma conta — investigação revelou que a Meta Graph API só suporta `DELETE /{media-id}` para contas conectadas via **Facebook Login for Business** (`graph.facebook.com`), não via **Instagram Login API** (`graph.instagram.com`) que este projeto usa exclusivamente (0 de 59 contas têm `fb_page_id`). Não existe forma programática de apagar um post real do Instagram neste projeto. Escopo reduzido, com acordo do usuário, para limpar apenas a fila interna: `POST /api/accounts/[id]/clear-queue` remove `scheduled_posts` e `pending_containers` (pending/publishing/error) daquela conta específica.
+
+#### Lição
+Antes de prometer qualquer feature de "deletar/gerenciar mídia do Instagram" via API, verificar primeiro se o tipo de login/token da conta suporta a operação — Facebook Login e Instagram Login API têm superfícies de API bem diferentes apesar de ambos serem "Graph API".
+
+---
+
+### ✅ Feat — Reconstrução da aba Stories (2026-07-05)
+
+#### Contexto
+Usuário mostrou print da aba de Stories de outro SaaS e pediu pra reconstruir a equivalente aqui, com as funcionalidades realmente funcionando. A implementação anterior (`app/dashboard/stories/page.tsx`, 1109 linhas) era uma campanha de distribuição em massa por vários dias — nunca usada de verdade em produção (confirmado: zero linhas com `post_type='story'` em `scheduled_posts` antes da reconstrução), então a substituição não teve nenhum risco de migração de dados.
+
+#### Descobertas técnicas que guiaram o design
+- **Sticker de link automático não existe na API da Meta** para nenhum tipo de login — usuário confirmou que pode ignorar essa parte do print de referência.
+- **A feature de Stories já em produção usa `scheduled_posts` + o cron `publish-scheduled`**, não a tabela `single_posts` (Fase 40) — que está órfã e, pior, depende de `publishViaMetaAPI` hardcoded para `mediaType="REELS"` (postaria Stories como Reel se reativada).
+
+#### Implementação
+- `POST /api/posts/stories/post-now`: insere 1 linha por conta em `scheduled_posts` com `scheduled_at = now+5s`, reaproveitando 100% do pipeline de publicação já testado (`publish-scheduled`).
+- `GET/DELETE /api/posts/stories/history`: painel "Histórico" com contadores e delete por item/tudo — remove só o log interno, nunca o post real do Instagram (mesma limitação de API do tópico anterior).
+- **Templates de Story**: `POST /api/stories/templates/import` busca o story ativo de uma conta via Graph API com `fields=id,media_type,media_url,timestamp` — as rotas existentes de contagem de stories (`accounts/stories`, `instagram/stories`) só pediam `id,timestamp`, nunca `media_url`. Baixa a mídia e re-hospeda no Supabase Storage (mesmo padrão de `downloadAndHost()` do `prefetch-clone-urls`) porque a URL do CDN da Meta é efêmera — não serve pra repostar dias depois. Novo cron `app/api/cron/story-templates` (a cada 30 min) replica o padrão de elegibilidade + claim atômico do `process-loops`, mas bem mais simples (1 mídia fixa, sem pool/shuffle).
+- Modelo (pasta de contas) vira seleção única obrigatória na UI, renomeando o conceito de `account_folders` já existente — evita postar na conta errada.
+- Novas tabelas: `story_templates` + `story_template_accounts` (RLS). Rota antiga `app/api/posts/stories/route.ts` deletada.
+
+#### Bug descoberto durante o teste real: bucket Storage não aceitava imagem
+Usuário testou subir uma foto (PNG, depois JPG de 922KB) e ambos falharam com 500. Investigação: `storage.buckets.allowed_mime_types` do bucket `videos-library` tinha só `video/mp4`, `video/quicktime`, `video/webm` — nunca incluiu tipos de imagem, apesar do código da rota de upload já validar/aceitar `image/jpeg`/`image/png` há tempos. A allowlist do bucket é uma camada independente da validação da rota, invisível sem checar direto no Postgres (`select allowed_mime_types from storage.buckets`). Corrigido via `UPDATE storage.buckets` direto no Supabase + `supabase/storage.sql` atualizado.
+
+#### Lição
+Ao dar suporte a um novo tipo de arquivo em qualquer rota de upload deste projeto, sempre conferir a allowlist do bucket no Supabase Storage — a validação client/route-level não é suficiente, o bucket tem sua própria allowlist que rejeita silenciosamente (500 sem detalhe) tudo fora dela.
+
+---
+
+### ✅ Fix Urgente — publish-scheduled: fila de campanha travada, zero publicações (2026-07-05)
+
+#### Problema
+Usuário reportou (com bastante frustração, "sempre trava") que a campanha ativa não estava postando nada. Análise de ~50 execuções recentes do cron `publish-scheduled` via Vercel MCP: 22 timeouts de fingerprint FFmpeg, 16 execuções com o lote inteiro (20 posts) adiado por falta de orçamento de tempo, `queue_eligible` travado em 21-23 sem nunca cair. **Zero publicações reais** em todas as execuções amostradas.
+
+#### Causa raiz dupla
+1. **Starvation:** quando o fingerprint FFmpeg falhava/estourava timeout (`catch (fxErr)`), o post voltava para `status='pending'` mantendo o MESMO `scheduled_at` antigo. Como a query de elegíveis ordena por `scheduled_at ASC`, esse mesmo post continuava sendo sempre o primeiro da fila — re-tentado e re-falhando no mesmo posto todo ciclo de 1 minuto, travando os 20+ posts atrás dele para sempre. **Este é exatamente o mesmo padrão de bug já documentado em "Fix Urgente — Clone: zero posts publicados após 2h" (2026-06-23)**, só que lá era o scrape Apify consumindo o slot, aqui é o fingerprint FFmpeg.
+2. **Orçamento de tempo baixo demais:** `RUN_BUDGET_MS = 55_000` quando a função já tinha `maxDuration = 300` liberado pela Vercel. O timeout interno do FFmpeg (45s) sozinho quase esgotava todo o orçamento de 55s na primeira conta tentada, sobrando budget insuficiente para as outras 19 do lote (que eram adiadas sem sequer tentar).
+
+#### Fix
+- Ao falhar o fingerprint, empurra `scheduled_at` +3min antes de voltar para `pending` (nova constante `FINGERPRINT_RETRY_DELAY_MS`), dando chance a outros posts na próxima execução.
+- `RUN_BUDGET_MS` 55s→250s — confirmado seguro porque o claim atômico por post (`status: pending→publishing` condicionado) já protege contra processamento duplicado mesmo com invocações do cron se sobrepondo (o cron roda a cada 1 min, mas cada post só é processado por quem vencer o UPDATE condicional).
+- `FINGERPRINT_RESERVE_MS` 30s→100s, `STRIP_RESERVE_MS` 22s→30s.
+- Timeout interno do FFmpeg (`lib/video-effects.ts`) 45s→90s, dando mais chance de terminar em vez de ser morto no meio.
+
+Commit `cdcc0b8`. Resultado confirmado nos logs pós-deploy: múltiplas publicações reais com `media_id` retornado pela Meta em poucos minutos, fila (`pending`) caindo de forma mensurável pela primeira vez.
+
+Junto com esse fix, `publish-scheduled` também passou a **priorizar posts de Stories** (`post_type='story'`) na frente de posts de campanha em massa (commit `3f1b55d`) — Stories esperam publicação quase imediata via "Postar agora", e antes competiam igualmente com uma fila de ~1.263 posts de campanha.
+
+#### Lição
+Todo catch-block que reseta um job de fila para retry DEVE avançar o timestamp de ordenação (nunca deixar como estava) — é o segundo incidente de starvation por esse exato padrão neste projeto (Apify em junho, FFmpeg em julho). Vale revisar outros crons (`process-loops`, `publish-pending`) em busca do mesmo anti-padrão antes que vire um terceiro incidente.
