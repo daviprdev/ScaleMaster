@@ -30,11 +30,9 @@ function resolveVideoUrl(item: Record<string, unknown>): string {
 }
 
 export async function GET(req: NextRequest) {
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  }
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const runId    = searchParams.get("runId");

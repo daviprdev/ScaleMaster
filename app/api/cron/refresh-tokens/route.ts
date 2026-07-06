@@ -1,4 +1,4 @@
-/**
+﻿/**
  * /api/cron/refresh-tokens
  *
  * Renova proativamente tokens Meta de TODAS as contas antes que expirem.
@@ -38,7 +38,9 @@ interface AccountRow {
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
-  if (cronSecret && auth !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    console.warn("[cron] AVISO: CRON_SECRET nao configurado.");
+  } else if (auth !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -118,3 +120,4 @@ export async function GET(req: NextRequest) {
   console.log(`[refresh-tokens] ■ Renovados: ${renewed}, Falhas: ${failed}`);
   return NextResponse.json({ ok: true, renewed, failed, total: accounts.length });
 }
+

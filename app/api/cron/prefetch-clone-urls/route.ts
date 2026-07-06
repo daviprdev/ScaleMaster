@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
 import { fetch as undiciFetch } from "undici";
 import { resolveApifyTokens } from "@/lib/apify-token-pool";
@@ -100,7 +100,9 @@ export async function GET(req: NextRequest) {
 
   const cronSecret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
-  if (cronSecret && auth !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    console.warn("[cron] AVISO: CRON_SECRET nao configurado.");
+  } else if (auth !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -296,3 +298,4 @@ export async function GET(req: NextRequest) {
   console.log(`[prefetch] ■ Resumo (${sec}s):`, summary);
   return NextResponse.json({ ok: true, elapsed_seconds: sec, ...summary });
 }
+

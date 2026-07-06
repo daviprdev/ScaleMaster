@@ -1,4 +1,4 @@
-/**
+﻿/**
  * /api/cron/process-videos
  *
  * Processa jobs da fila video_processing_jobs em batches de BATCH_SIZE.
@@ -42,7 +42,9 @@ interface JobRow {
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
-  if (cronSecret && auth !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    console.warn("[cron] AVISO: CRON_SECRET nao configurado.");
+  } else if (auth !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -173,3 +175,4 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ ok: true, processed, errors, remaining });
 }
+

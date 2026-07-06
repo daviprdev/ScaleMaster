@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
@@ -1245,7 +1245,9 @@ async function processOneLoop(
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
-  if (cronSecret && auth !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    console.warn("[cron] AVISO: CRON_SECRET nao configurado.");
+  } else if (auth !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -1386,3 +1388,4 @@ export async function GET(req: NextRequest) {
   console.log("[loop-cron] ■ Resumo final:", summary);
   return NextResponse.json({ ok: true, ...summary });
 }
+
