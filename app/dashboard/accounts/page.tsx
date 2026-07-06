@@ -592,47 +592,46 @@ function AccountCard({
                 className="rounded-xl p-3 mb-2"
                 style={{ background: "rgba(255,255,255,0.03)", border: "0.5px solid rgba(255,255,255,0.08)" }}
               >
-                <p className="text-[9px] font-bold uppercase tracking-widest text-white/30 mb-2">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-white/30 mb-2.5">
                   Nova etiqueta para @{account.username}
                 </p>
-                <div className="flex items-center gap-2">
-                  {/* Input */}
+                {/* Input + OK */}
+                <div className="flex items-center gap-2 mb-3">
                   <input
                     ref={labelInputRef}
                     value={labelText}
                     onChange={e => setLabelText(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter") handleAddLabel(); if (e.key === "Escape") setLabelFormOpen(false); }}
                     placeholder="Ex: Lote junho"
-                    maxLength={24}
-                    className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-xs text-white placeholder-white/20 outline-none"
-                    style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.1)" }}
+                    maxLength={32}
+                    className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm text-white placeholder-white/20 outline-none"
+                    style={{ background: "rgba(255,255,255,0.06)", border: `0.5px solid ${labelColor}50` }}
                   />
-                  {/* Seletor de cor */}
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    {LABEL_COLORS.map(c => (
-                      <button
-                        key={c}
-                        onClick={() => setLabelColor(c)}
-                        className="w-4 h-4 rounded-full flex-shrink-0 transition-transform hover:scale-110"
-                        style={{
-                          background: c,
-                          outline: labelColor === c ? `2px solid ${c}` : "none",
-                          outlineOffset: "1px",
-                          boxShadow: labelColor === c ? `0 0 8px ${c}80` : "none",
-                        }}
-                      />
-                    ))}
-                  </div>
-                  {/* OK */}
                   <button
                     onClick={handleAddLabel}
                     disabled={!labelText.trim() || savingLabel}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-black disabled:opacity-40 flex-shrink-0 transition-opacity"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-black disabled:opacity-40 flex-shrink-0 transition-opacity"
                     style={{ background: labelColor }}
                   >
-                    {savingLabel ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
+                    {savingLabel ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
                     OK
                   </button>
+                </div>
+                {/* Cores embaixo */}
+                <div className="flex items-center gap-2">
+                  {LABEL_COLORS.map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setLabelColor(c)}
+                      className="w-5 h-5 rounded-full flex-shrink-0 transition-transform hover:scale-110"
+                      style={{
+                        background: c,
+                        outline: labelColor === c ? `2px solid ${c}` : "none",
+                        outlineOffset: "2px",
+                        boxShadow: labelColor === c ? `0 0 10px ${c}90` : "none",
+                      }}
+                    />
+                  ))}
                 </div>
               </div>
             </motion.div>
