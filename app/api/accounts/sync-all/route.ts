@@ -283,18 +283,29 @@ export async function POST(request: Request) {
   // Lotes menores + delay maior = ritmo humano mais convincente.
   const BATCH_SIZE = 2;
   const BATCH_DELAY_MS = 3_000;
-  // Deixa margem de segurança do maxDuration=60 — cada syncOne agora tem timeout de
-  // 15s por chamada, então um lote nunca deveria travar além disso, mas o corte de
-  // orçamento garante que a função sempre responda antes da Vercel matá-la à força
-  // (o que deixaria o fetch do frontend pendurado sem resposta alguma).
-  const TIME_BUDGET_MS = 45_000;
+  // Orçamento de tempo do handler inteiro — deixa margem de ~20s abaixo do
+  // maxDuration=60 para sempre conseguir responder. Um `Promise.race` por lote
+  // (não só um check ENTRE lotes) garante que, mesmo se um lote individual travar
+  // além do esperado (proxy lento, retry de token), a função corta a espera e
+  // responde com o que já tem — em vez de deixar a Vercel matá-la à força no meio,
+  // o que deixaria o fetch do frontend pendurado sem resposta alguma para sempre.
+  const HARD_DEADLINE_MS = 40_000;
   const startedAt = Date.now();
   const allSettled: PromiseSettledResult<SyncResult>[] = [];
   for (let i = 0; i < stale.length; i += BATCH_SIZE) {
-    if (Date.now() - startedAt > TIME_BUDGET_MS) break;
+    const elapsed = Date.now() - startedAt;
+    if (elapsed > HARD_DEADLINE_MS) break;
     const batch = stale.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.allSettled(batch.map(acc => syncOne(acc, admin)));
-    allSettled.push(...batchResults);
+    const batchPromise = Promise.allSettled(batch.map(acc => syncOne(acc, admin)));
+    const timedOut = Symbol("timeout");
+    const raceResult = await Promise.race([
+      batchPromise,
+      new Promise<typeof timedOut>((resolve) =>
+        setTimeout(() => resolve(timedOut), HARD_DEADLINE_MS - elapsed)
+      ),
+    ]);
+    if (raceResult === timedOut) break;
+    allSettled.push(...raceResult);
     if (i + BATCH_SIZE < stale.length) {
       await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
     }

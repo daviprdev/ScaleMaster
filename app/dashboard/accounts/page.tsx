@@ -749,6 +749,10 @@ export default function AccountsPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ excludeIds }),
+          // Nunca deixa o botão girando para sempre caso o servidor não responda
+          // dentro do esperado — o handler tem seu próprio orçamento interno (~40s),
+          // então 55s aqui dá margem e ainda garante que o cliente sempre se recupera.
+          signal: AbortSignal.timeout(55_000),
         });
         const data = (await res.json()) as {
           synced?: number;
@@ -790,7 +794,7 @@ export default function AccountsPage() {
       setSyncingAll(false);
       setSyncProgress(null);
     }
-  }, [syncingAll, fetchAccounts, fetchStories]);
+  }, [syncingAll, accounts, fetchAccounts, fetchStories]);
 
   const handleRefresh = useCallback(async (id: string) => {
     if (_refreshingRef.current) return;
