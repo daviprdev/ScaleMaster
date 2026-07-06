@@ -14,9 +14,18 @@ values (
   'videos-library',
   true,                                    -- URLs públicas sem autenticação
   524288000,                               -- 500 MB por arquivo
-  array['video/mp4', 'video/quicktime', 'video/webm']
+  array['video/mp4', 'video/quicktime', 'video/webm', 'image/jpeg', 'image/png']
 )
 on conflict (id) do nothing;
+
+-- Fix 2026-07-06: bucket criado só com mime types de vídeo, mas a feature de
+-- Stories (imagem ou vídeo) sempre esperou aceitar image/jpeg e image/png.
+-- Toda tentativa de subir foto (PNG ou JPG, qualquer tamanho) falhava com 500
+-- no upload ao Supabase Storage, silenciosamente, desde que a feature existe.
+-- Já aplicado direto no projeto — mantido aqui para reprovisionamento.
+update storage.buckets
+  set allowed_mime_types = array['video/mp4', 'video/quicktime', 'video/webm', 'image/jpeg', 'image/png']
+  where id = 'videos-library';
 
 
 -- ──────────────────────────────────────────────────────────────
