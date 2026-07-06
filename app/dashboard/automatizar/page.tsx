@@ -34,7 +34,23 @@ interface Automation {
   account_folders: { id: string; name: string }[];
   video_folders: { id: string; name: string }[];
   pending_posts: number;
+  published_today: number;
+  next_post_at: string | null;
   created_at: string;
+}
+
+function formatNextPost(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = d.getTime() - now.getTime();
+  if (diffMs < 0) return "em breve";
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "em breve";
+  if (diffMin < 60) return `em ${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  const rem = diffMin % 60;
+  return `em ${diffH}h${rem > 0 ? ` ${rem}min` : ""}`;
 }
 
 const DEFAULT_FORM = {
@@ -488,7 +504,7 @@ function AutomationCard({
       </div>
 
       {/* Pastas */}
-      <div className="space-y-2">
+      <div className="space-y-2 mb-4">
         {automation.account_folders.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
             <Folder size={11} className="text-white/30 flex-shrink-0" />
@@ -509,6 +525,44 @@ function AutomationCard({
             ))}
           </div>
         )}
+      </div>
+
+      {/* Progresso diário */}
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-2.5">
+        {/* Barra de progresso */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] text-white/40">Progresso hoje</span>
+            <span className="text-[10px] font-semibold text-white/60">
+              {automation.published_today} / {automation.posts_per_day} posts
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.min(100, (automation.published_today / automation.posts_per_day) * 100)}%` }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              className="h-full rounded-full"
+              style={{ background: "linear-gradient(90deg, #00FF41, #00E5FF)" }}
+            />
+          </div>
+        </div>
+
+        {/* Stats linha */}
+        <div className="grid grid-cols-3 gap-2 pt-0.5">
+          <div className="text-center">
+            <p className="text-[11px] font-bold text-[#00FF41]">{automation.published_today}</p>
+            <p className="text-[9px] text-white/30 mt-0.5">publicados</p>
+          </div>
+          <div className="text-center border-x border-white/[0.06]">
+            <p className="text-[11px] font-bold text-white/60">{automation.pending_posts}</p>
+            <p className="text-[9px] text-white/30 mt-0.5">na fila</p>
+          </div>
+          <div className="text-center">
+            <p className="text-[11px] font-bold text-[#00E5FF] truncate">{formatNextPost(automation.next_post_at)}</p>
+            <p className="text-[9px] text-white/30 mt-0.5">próximo</p>
+          </div>
+        </div>
       </div>
     </motion.div>
   );

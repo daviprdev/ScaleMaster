@@ -47,16 +47,28 @@ export async function GET() {
     vfMap[row.automation_id].push({ id: f.id, name: f.name });
   }
 
-  // Conta posts pendentes por automação
+  // Conta posts pendentes, publicados hoje e próximo agendamento por automação
   const pendingCounts: Record<string, number> = {};
+  const publishedToday: Record<string, number> = {};
+  const nextPostAt: Record<string, string> = {};
+
   if (ids.length) {
-    const { data: counts } = await admin
-      .from("scheduled_posts")
-      .select("campaign_id")
-      .in("campaign_id", ids)
-      .in("status", ["pending", "publishing"]);
-    for (const row of (counts ?? [])) {
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const [pendingRes, publishedRes, nextRes] = await Promise.all([
+      admin.from("scheduled_posts").select("campaign_id").in("campaign_id", ids).in("status", ["pending", "publishing"]),
+      admin.from("scheduled_posts").select("campaign_id").in("campaign_id", ids).eq("status", "published").gte("scheduled_at", since24h),
+      admin.from("scheduled_posts").select("campaign_id, scheduled_at").in("campaign_id", ids).eq("status", "pending").gte("scheduled_at", new Date().toISOString()).order("scheduled_at", { ascending: true }),
+    ]);
+
+    for (const row of (pendingRes.data ?? [])) {
       pendingCounts[row.campaign_id] = (pendingCounts[row.campaign_id] ?? 0) + 1;
+    }
+    for (const row of (publishedRes.data ?? [])) {
+      publishedToday[row.campaign_id] = (publishedToday[row.campaign_id] ?? 0) + 1;
+    }
+    for (const row of (nextRes.data ?? [])) {
+      if (!nextPostAt[row.campaign_id]) nextPostAt[row.campaign_id] = row.scheduled_at;
     }
   }
 
@@ -65,6 +77,8 @@ export async function GET() {
     account_folders: afMap[a.id] ?? [],
     video_folders: vfMap[a.id] ?? [],
     pending_posts: pendingCounts[a.id] ?? 0,
+    published_today: publishedToday[a.id] ?? 0,
+    next_post_at: nextPostAt[a.id] ?? null,
   }));
 
   return NextResponse.json({ automations: result });
