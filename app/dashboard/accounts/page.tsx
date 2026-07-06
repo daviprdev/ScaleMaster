@@ -33,6 +33,11 @@ import {
   ListX,
   Tag,
   Check,
+  UserCog,
+  Clipboard,
+  Download,
+  ExternalLink,
+  Camera,
 } from "lucide-react";
 import MagicLinkModal from "@/components/dashboard/MagicLinkModal";
 import { useRouter } from "next/navigation";
@@ -72,6 +77,7 @@ interface Account {
   meta_app_id: string | null;
   meta_app_name: string | null;
   labels: AccountLabel[];
+  profile_draft: ProfileDraft | null;
 }
 
 interface AccountStoriesData {
@@ -82,6 +88,13 @@ interface AccountStoriesData {
 interface AccountLabel {
   text: string;
   color: string;
+}
+
+interface ProfileDraft {
+  photo_url: string | null;
+  bio: string;
+  link: string;
+  synced_at: string | null;
 }
 
 const LABEL_COLORS = [
@@ -210,6 +223,7 @@ function AccountCard({
   onProxyClick,
   onClearQueueClick,
   onLabelUpdate,
+  onEditProfile,
   refreshing,
   toggling,
   deleting,
@@ -229,6 +243,7 @@ function AccountCard({
   onProxyClick: (account: Account) => void;
   onClearQueueClick: (account: Account) => void;
   onLabelUpdate: (id: string, labels: AccountLabel[]) => void;
+  onEditProfile: (account: Account) => void;
   refreshing: boolean;
   toggling: boolean;
   deleting: boolean;
@@ -426,6 +441,12 @@ function AccountCard({
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
                 >
                   <RefreshCw size={12} className="text-cyan-400" /> Sincronizar
+                </button>
+                <button
+                  onClick={() => { onEditProfile(account); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
+                >
+                  <UserCog size={12} className="text-[#00FF41]" /> Editar Perfil Manual
                 </button>
                 <button
                   onClick={() => { onToggle(account); setMenuOpen(false); }}
@@ -652,6 +673,266 @@ function AccountCard({
   );
 }
 
+// ── Modal Editar Perfil Manual ────────────────────────────────
+function EditProfileModal({
+  account,
+  onClose,
+  onSaved,
+}: {
+  account: Account;
+  onClose: () => void;
+  onSaved: (id: string, draft: ProfileDraft) => void;
+}) {
+  const supabase = useMemo(() => createClient(), []);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [bio, setBio] = useState(account.profile_draft?.bio ?? "");
+  const [link, setLink] = useState(account.profile_draft?.link ?? "");
+  const [photoUrl, setPhotoUrl] = useState<string | null>(account.profile_draft?.photo_url ?? null);
+  const [synced, setSynced] = useState<string | null>(account.profile_draft?.synced_at ?? null);
+
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [markingSynced, setMarkingSynced] = useState(false);
+  const [copied, setCopied] = useState<"bio" | "link" | null>(null);
+
+  const displayPhoto = photoUrl ?? account.avatar_url ?? null;
+
+  const copyText = async (text: string, type: "bio" | "link") => {
+    try { await navigator.clipboard.writeText(text); } catch { /* ignore */ }
+    setCopied(type);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop() ?? "jpg";
+      const path = `profile-photos/${account.id}.${ext}`;
+      const { error } = await supabase.storage
+        .from("videos-library")
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (!error) {
+        const { data: urlData } = supabase.storage.from("videos-library").getPublicUrl(path);
+        setPhotoUrl(urlData.publicUrl + `?t=${Date.now()}`);
+      }
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDownloadPhoto = async () => {
+    if (!displayPhoto) return;
+    try {
+      const res = await fetch(displayPhoto);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `foto_${account.username}.jpg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* ignore */ }
+  };
+
+  const buildDraft = (): ProfileDraft => ({ photo_url: photoUrl, bio, link, synced_at: synced });
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const draft = buildDraft();
+      await supabase.from("instagram_accounts").update({ profile_draft: draft }).eq("id", account.id);
+      onSaved(account.id, draft);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleMarkSynced = async () => {
+    setMarkingSynced(true);
+    try {
+      const now = new Date().toISOString();
+      const draft: ProfileDraft = { photo_url: photoUrl, bio, link, synced_at: now };
+      await supabase.from("instagram_accounts").update({ profile_draft: draft }).eq("id", account.id);
+      setSynced(now);
+      onSaved(account.id, draft);
+    } finally {
+      setMarkingSynced(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ duration: 0.18 }}
+        className="glass relative z-10 w-full max-w-md max-h-[90vh] overflow-y-auto"
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 pb-3">
+          <div className="min-w-0 pr-4">
+            <h2 className="font-bold text-white text-sm">Editar perfil — @{account.username}</h2>
+            <p className="text-[11px] text-white/35 mt-1 leading-relaxed">
+              A API do Instagram não permite editar bio/foto. Salve aqui o que quer e use os botões para copiar/baixar e colar manualmente.
+            </p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white hover:bg-white/[0.06] flex-shrink-0 transition-colors">
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="px-5 pb-5 space-y-5">
+          {/* Foto */}
+          <div>
+            <p className="text-[11px] font-semibold text-white/50 uppercase tracking-widest mb-3">Foto sugerida</p>
+            <div className="flex items-center gap-4">
+              {/* Avatar preview */}
+              <div className="relative flex-shrink-0">
+                {displayPhoto ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={displayPhoto} alt="foto" className="w-16 h-16 rounded-full object-cover ring-2 ring-white/10" />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center">
+                    <Camera size={22} className="text-white/20" />
+                  </div>
+                )}
+                {uploading && (
+                  <div className="absolute inset-0 rounded-full bg-black/60 flex items-center justify-center">
+                    <Loader2 size={16} className="animate-spin text-[#00FF41]" />
+                  </div>
+                )}
+              </div>
+
+              {/* Ações de foto */}
+              <div className="flex flex-col gap-2 flex-1">
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-white/70 hover:text-white transition-colors disabled:opacity-40"
+                  style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.09)" }}
+                >
+                  <Upload size={13} className="text-[#00FF41]" />
+                  {uploading ? "Enviando..." : "Enviar foto"}
+                </button>
+                <button
+                  onClick={handleDownloadPhoto}
+                  disabled={!displayPhoto}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-white/70 hover:text-white transition-colors disabled:opacity-40"
+                  style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.09)" }}
+                >
+                  <Download size={13} className="text-[#00E5FF]" />
+                  Baixar p/ celular
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Bio */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-semibold text-white/50 uppercase tracking-widest">Bio sugerida</p>
+              <span className="text-[10px] text-white/25">{bio.length}/150</span>
+            </div>
+            <textarea
+              value={bio}
+              onChange={e => setBio(e.target.value.slice(0, 150))}
+              placeholder="Texto da bio..."
+              rows={4}
+              className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none resize-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.09)", lineHeight: "1.5" }}
+            />
+            <button
+              onClick={() => copyText(bio, "bio")}
+              disabled={!bio}
+              className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-white/60 hover:text-white transition-colors disabled:opacity-40"
+              style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.07)" }}
+            >
+              {copied === "bio" ? <Check size={12} className="text-emerald-400" /> : <Clipboard size={12} />}
+              {copied === "bio" ? "Copiado!" : "Copiar bio"}
+            </button>
+          </div>
+
+          {/* Link */}
+          <div>
+            <p className="text-[11px] font-semibold text-white/50 uppercase tracking-widest mb-2">Link da bio</p>
+            <input
+              value={link}
+              onChange={e => setLink(e.target.value)}
+              placeholder="https://..."
+              type="url"
+              className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.09)" }}
+            />
+            <button
+              onClick={() => copyText(link, "link")}
+              disabled={!link}
+              className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-white/60 hover:text-white transition-colors disabled:opacity-40"
+              style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.07)" }}
+            >
+              {copied === "link" ? <Check size={12} className="text-emerald-400" /> : <Clipboard size={12} />}
+              {copied === "link" ? "Copiado!" : "Copiar link"}
+            </button>
+          </div>
+
+          {synced && (
+            <p className="text-[10px] text-emerald-400/70 flex items-center gap-1">
+              <CheckCircle2 size={10} />
+              Marcado sincronizado em {new Date(synced).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}
+            </p>
+          )}
+
+          {/* Ações rodapé */}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="btn-primary flex items-center gap-1.5 px-4 py-2 text-xs font-bold disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={12} className="animate-spin" /> : null}
+              Salvar rascunho
+            </button>
+            <button
+              onClick={() => window.open(`https://instagram.com/${account.username}`, "_blank")}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs text-white/60 hover:text-white transition-colors"
+              style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.09)" }}
+            >
+              <ExternalLink size={12} /> Abrir IG
+            </button>
+            <button
+              onClick={handleMarkSynced}
+              disabled={markingSynced}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs transition-colors disabled:opacity-50"
+              style={{
+                background: synced ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.05)",
+                border: synced ? "0.5px solid rgba(16,185,129,0.3)" : "0.5px solid rgba(255,255,255,0.09)",
+                color: synced ? "#34d399" : "rgba(255,255,255,0.6)",
+              }}
+            >
+              {markingSynced ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+              Marcar sincronizado
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 function AccountSkeleton() {
   return (
     <div className="glass-card rounded-2xl animate-pulse">
@@ -825,11 +1106,11 @@ export default function AccountsPage() {
       const { data } = await supabase
         .from("instagram_accounts")
         .select(
-          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url, meta_app_id, labels, user_meta_apps(app_name)"
+          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url, meta_app_id, labels, profile_draft, user_meta_apps(app_name)"
         )
         .order("connected_at", { ascending: false });
       const fetched = ((data ?? []) as unknown as (Account & { proxy_url: string | null; user_meta_apps: { app_name: string } | null })[]).map(
-        (row) => ({ ...row, has_proxy: row.proxy_url !== null, meta_app_name: row.user_meta_apps?.app_name ?? null, labels: (row.labels as AccountLabel[]) ?? [] })
+        (row) => ({ ...row, has_proxy: row.proxy_url !== null, meta_app_name: row.user_meta_apps?.app_name ?? null, labels: (row.labels as AccountLabel[]) ?? [], profile_draft: (row.profile_draft as ProfileDraft | null) ?? null })
       ) as Account[];
       setAccounts(fetched);
       return fetched;
@@ -1200,6 +1481,13 @@ export default function AccountsPage() {
 
   const handleLabelUpdate = useCallback((id: string, labels: AccountLabel[]) => {
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, labels } : a));
+  }, []);
+
+  // Edit profile modal
+  const [editProfileAccount, setEditProfileAccount] = useState<Account | null>(null);
+
+  const handleProfileSaved = useCallback((id: string, draft: ProfileDraft) => {
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, profile_draft: draft } : a));
   }, []);
 
   // ── Folder CRUD ────────────────────────────────────────────────
@@ -2383,6 +2671,7 @@ export default function AccountsPage() {
                 onProxyClick={handleProxyClick}
                 onClearQueueClick={(acc) => setClearQueueDialog({ id: acc.id, username: acc.username })}
                 onLabelUpdate={handleLabelUpdate}
+                onEditProfile={setEditProfileAccount}
                 refreshing={refreshingId === account.id}
                 toggling={togglingId === account.id}
                 deleting={deletingId === account.id}
@@ -2396,6 +2685,17 @@ export default function AccountsPage() {
           </AnimatePresence>
         </motion.div>
       )}
+
+      {/* Modal Editar Perfil Manual */}
+      <AnimatePresence>
+        {editProfileAccount && (
+          <EditProfileModal
+            account={editProfileAccount}
+            onClose={() => setEditProfileAccount(null)}
+            onSaved={handleProfileSaved}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
