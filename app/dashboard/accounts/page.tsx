@@ -31,6 +31,8 @@ import {
   Globe,
   Upload,
   ListX,
+  Tag,
+  Check,
 } from "lucide-react";
 import MagicLinkModal from "@/components/dashboard/MagicLinkModal";
 import { useRouter } from "next/navigation";
@@ -69,12 +71,30 @@ interface Account {
   has_proxy: boolean;
   meta_app_id: string | null;
   meta_app_name: string | null;
+  labels: AccountLabel[];
 }
 
 interface AccountStoriesData {
   count: number;
   expiring_first_at: string | null;
 }
+
+interface AccountLabel {
+  text: string;
+  color: string;
+}
+
+const LABEL_COLORS = [
+  "#EF4444", // red
+  "#F97316", // orange
+  "#EAB308", // yellow
+  "#22C55E", // green
+  "#06B6D4", // cyan
+  "#3B82F6", // blue
+  "#8B5CF6", // purple
+  "#EC4899", // pink
+];
+
 
 function storyCountdown(timestamp: string | null): string {
   if (!timestamp) return "";
@@ -189,6 +209,7 @@ function AccountCard({
   onMoveClick,
   onProxyClick,
   onClearQueueClick,
+  onLabelUpdate,
   refreshing,
   toggling,
   deleting,
@@ -207,6 +228,7 @@ function AccountCard({
   onMoveClick: (account: Account) => void;
   onProxyClick: (account: Account) => void;
   onClearQueueClick: (account: Account) => void;
+  onLabelUpdate: (id: string, labels: AccountLabel[]) => void;
   refreshing: boolean;
   toggling: boolean;
   deleting: boolean;
@@ -218,6 +240,48 @@ function AccountCard({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Label state
+  const [labelFormOpen, setLabelFormOpen] = useState(false);
+  const [labelText, setLabelText] = useState("");
+  const [labelColor, setLabelColor] = useState(LABEL_COLORS[5]); // blue default
+  const [savingLabel, setSavingLabel] = useState(false);
+  const labelInputRef = useRef<HTMLInputElement>(null);
+
+  const supabaseLabel = useMemo(() => createClient(), []);
+
+  const handleAddLabel = async () => {
+    const text = labelText.trim();
+    if (!text || savingLabel) return;
+    setSavingLabel(true);
+    try {
+      const newLabels: AccountLabel[] = [...(account.labels ?? []), { text, color: labelColor }];
+      await supabaseLabel
+        .from("instagram_accounts")
+        .update({ labels: newLabels })
+        .eq("id", account.id);
+      onLabelUpdate(account.id, newLabels);
+      setLabelText("");
+      setLabelFormOpen(false);
+    } finally {
+      setSavingLabel(false);
+    }
+  };
+
+  const handleRemoveLabel = async (index: number) => {
+    const newLabels = (account.labels ?? []).filter((_, i) => i !== index);
+    await supabaseLabel
+      .from("instagram_accounts")
+      .update({ labels: newLabels })
+      .eq("id", account.id);
+    onLabelUpdate(account.id, newLabels);
+  };
+
+  useEffect(() => {
+    if (labelFormOpen) {
+      setTimeout(() => labelInputRef.current?.focus(), 60);
+    }
+  }, [labelFormOpen]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -487,6 +551,104 @@ function AccountCard({
         </div>
       )}
 
+      {/* ── Etiquetas ─────────────────────────────────────────── */}
+      <div className="px-5 pb-4">
+        {/* Chips de etiquetas existentes */}
+        {(account.labels ?? []).length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {(account.labels ?? []).map((lbl, i) => (
+              <div
+                key={i}
+                className="group/lbl flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold cursor-default select-none"
+                style={{
+                  background: `${lbl.color}18`,
+                  border: `0.5px solid ${lbl.color}50`,
+                  color: lbl.color,
+                }}
+              >
+                {lbl.text}
+                <button
+                  onClick={() => handleRemoveLabel(i)}
+                  className="opacity-0 group-hover/lbl:opacity-100 transition-opacity ml-0.5 hover:text-white"
+                >
+                  <X size={9} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Formulário inline de nova etiqueta */}
+        <AnimatePresence>
+          {labelFormOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden"
+            >
+              <div
+                className="rounded-xl p-3 mb-2"
+                style={{ background: "rgba(255,255,255,0.03)", border: "0.5px solid rgba(255,255,255,0.08)" }}
+              >
+                <p className="text-[9px] font-bold uppercase tracking-widest text-white/30 mb-2">
+                  Nova etiqueta para @{account.username}
+                </p>
+                <div className="flex items-center gap-2">
+                  {/* Input */}
+                  <input
+                    ref={labelInputRef}
+                    value={labelText}
+                    onChange={e => setLabelText(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") handleAddLabel(); if (e.key === "Escape") setLabelFormOpen(false); }}
+                    placeholder="Ex: Lote junho"
+                    maxLength={24}
+                    className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-xs text-white placeholder-white/20 outline-none"
+                    style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.1)" }}
+                  />
+                  {/* Seletor de cor */}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {LABEL_COLORS.map(c => (
+                      <button
+                        key={c}
+                        onClick={() => setLabelColor(c)}
+                        className="w-4 h-4 rounded-full flex-shrink-0 transition-transform hover:scale-110"
+                        style={{
+                          background: c,
+                          outline: labelColor === c ? `2px solid ${c}` : "none",
+                          outlineOffset: "1px",
+                          boxShadow: labelColor === c ? `0 0 8px ${c}80` : "none",
+                        }}
+                      />
+                    ))}
+                  </div>
+                  {/* OK */}
+                  <button
+                    onClick={handleAddLabel}
+                    disabled={!labelText.trim() || savingLabel}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-black disabled:opacity-40 flex-shrink-0 transition-opacity"
+                    style={{ background: labelColor }}
+                  >
+                    {savingLabel ? <Loader2 size={10} className="animate-spin" /> : <Check size={10} />}
+                    OK
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Botão + etiqueta */}
+        <button
+          onClick={() => { setLabelFormOpen(o => !o); if (labelFormOpen) { setLabelText(""); } }}
+          className="flex items-center gap-1 text-[10px] text-white/25 hover:text-[#00FF41] transition-colors"
+        >
+          <Tag size={10} />
+          {labelFormOpen ? "cancelar" : "+ etiqueta"}
+        </button>
+      </div>
+
     </motion.div>
   );
 }
@@ -664,11 +826,11 @@ export default function AccountsPage() {
       const { data } = await supabase
         .from("instagram_accounts")
         .select(
-          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url, meta_app_id, user_meta_apps(app_name)"
+          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url, meta_app_id, labels, user_meta_apps(app_name)"
         )
         .order("connected_at", { ascending: false });
       const fetched = ((data ?? []) as unknown as (Account & { proxy_url: string | null; user_meta_apps: { app_name: string } | null })[]).map(
-        (row) => ({ ...row, has_proxy: row.proxy_url !== null, meta_app_name: row.user_meta_apps?.app_name ?? null })
+        (row) => ({ ...row, has_proxy: row.proxy_url !== null, meta_app_name: row.user_meta_apps?.app_name ?? null, labels: (row.labels as AccountLabel[]) ?? [] })
       ) as Account[];
       setAccounts(fetched);
       return fetched;
@@ -1036,6 +1198,10 @@ export default function AccountsPage() {
       setMovingAccountId(null);
     }
   }, [router]);
+
+  const handleLabelUpdate = useCallback((id: string, labels: AccountLabel[]) => {
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, labels } : a));
+  }, []);
 
   // ── Folder CRUD ────────────────────────────────────────────────
 
@@ -2217,6 +2383,7 @@ export default function AccountsPage() {
                 onMoveClick={handleMoveClick}
                 onProxyClick={handleProxyClick}
                 onClearQueueClick={(acc) => setClearQueueDialog({ id: acc.id, username: acc.username })}
+                onLabelUpdate={handleLabelUpdate}
                 refreshing={refreshingId === account.id}
                 toggling={togglingId === account.id}
                 deleting={deletingId === account.id}
