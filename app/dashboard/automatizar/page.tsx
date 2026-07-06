@@ -3,10 +3,22 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus, Bot, Pencil, Trash2, Power, X, ChevronDown, ChevronUp,
-  Folder, Film, Clock, Loader2, CheckCircle2, AlertCircle,
+  Plus, Bot, Pencil, Trash2, X, ChevronDown, ChevronUp,
+  Folder, Film, Clock, Loader2, AlertCircle, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const AUTO_CAPTION_TYPES = [
+  { id: "curiosidades-gerais", label: "Curiosidades Gerais", emoji: "💡", desc: "Fatos do dia a dia" },
+  { id: "curiosidades-tops",   label: "Curiosidades Tops",   emoji: "🏆", desc: "Fatos virais e surpreendentes" },
+  { id: "fatos-complexos",     label: "Fatos Complexos",     emoji: "🔬", desc: "Ciência acessível" },
+] as const;
+
+const AUTO_CAPTION_PREVIEWS: Record<string, string> = {
+  "curiosidades-gerais": "🍯 O mel nunca estraga. Arqueólogos encontraram potes com mais de 3.000 anos nas pirâmides do Egito — e ainda estavam comestíveis!",
+  "curiosidades-tops":   "🤯 INACREDITÁVEL: Você existe porque TODOS os seus ancestrais sobreviveram e tiveram filhos desde o início da vida na Terra. Você é um milagre de bilhões de anos!",
+  "fatos-complexos":     "🧠 A memória humana não funciona como um HD. Cada vez que você se lembra de algo, reconstrói a memória do zero — e a modifica sutilmente.",
+};
 
 interface AccountFolder { id: string; name: string; account_count?: number; }
 interface VideoFolder   { id: string; name: string; video_count?: number; }
@@ -17,6 +29,8 @@ interface Automation {
   offset_seconds: number;
   active: boolean;
   captions: string[];
+  auto_caption_enabled: boolean;
+  auto_caption_type: string | null;
   account_folders: { id: string; name: string }[];
   video_folders: { id: string; name: string }[];
   pending_posts: number;
@@ -29,6 +43,8 @@ const DEFAULT_FORM = {
   offset_seconds: 30,
   active: false,
   captions: "",
+  auto_caption_enabled: false,
+  auto_caption_type: "curiosidades-gerais" as string,
   account_folder_ids: [] as string[],
   video_folder_ids: [] as string[],
 };
@@ -59,6 +75,8 @@ function AutomationModal({
           offset_seconds: editing.offset_seconds,
           active: editing.active,
           captions: editing.captions?.join("\n") ?? "",
+          auto_caption_enabled: editing.auto_caption_enabled ?? false,
+          auto_caption_type: editing.auto_caption_type ?? "curiosidades-gerais",
           account_folder_ids: editing.account_folders.map((f) => f.id),
           video_folder_ids: editing.video_folders.map((f) => f.id),
         });
@@ -88,7 +106,9 @@ function AutomationModal({
         posts_per_day: form.posts_per_day,
         offset_seconds: form.offset_seconds,
         active: form.active,
-        captions: form.captions.split("\n").map((c) => c.trim()).filter(Boolean),
+        captions: form.auto_caption_enabled ? [] : form.captions.split("\n").map((c) => c.trim()).filter(Boolean),
+        auto_caption_enabled: form.auto_caption_enabled,
+        auto_caption_type: form.auto_caption_enabled ? form.auto_caption_type : null,
         account_folder_ids: form.account_folder_ids,
         video_folder_ids: form.video_folder_ids,
       };
@@ -270,19 +290,85 @@ function AutomationModal({
                 </button>
               </div>
 
-              {/* Captions */}
-              <div>
-                <label className="block text-xs text-white/50 mb-1.5 font-medium">
-                  Captions (uma por linha — opcional)
-                </label>
-                <textarea
-                  value={form.captions}
-                  onChange={(e) => setForm((p) => ({ ...p, captions: e.target.value }))}
-                  rows={4}
-                  placeholder="Deixe vazio para usar captions padrão"
-                  className="input-glass w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 resize-none"
-                />
+              {/* Legendas Automáticas */}
+              <div className="p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Sparkles size={13} style={{ color: "var(--matrix)" }} />
+                    <div>
+                      <p className="text-sm font-medium text-white/80">Legendas Automáticas</p>
+                      <p className="text-[10px] text-white/35">Curiosidades únicas em PT-BR por post</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setForm((p) => ({ ...p, auto_caption_enabled: !p.auto_caption_enabled }))}
+                    className={cn(
+                      "relative w-11 h-6 rounded-full transition-all flex-shrink-0",
+                      form.auto_caption_enabled ? "bg-[#00FF41]" : "bg-white/10"
+                    )}
+                  >
+                    <span className={cn(
+                      "absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all",
+                      form.auto_caption_enabled ? "left-[22px]" : "left-0.5"
+                    )} />
+                  </button>
+                </div>
+                <AnimatePresence>
+                  {form.auto_caption_enabled && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="grid grid-cols-3 gap-2 mt-3">
+                        {AUTO_CAPTION_TYPES.map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => setForm((p) => ({ ...p, auto_caption_type: t.id }))}
+                            className={cn(
+                              "p-2.5 rounded-xl border text-left transition-all",
+                              form.auto_caption_type === t.id
+                                ? "border-[#00FF41]/40 bg-[#00FF41]/[0.06]"
+                                : "border-white/[0.07] hover:border-white/20"
+                            )}
+                          >
+                            <span className="text-sm">{t.emoji}</span>
+                            <p className="text-[10px] font-medium text-white/80 mt-1 leading-tight">{t.label}</p>
+                            <p className="text-[9px] text-white/35 mt-0.5 leading-tight">{t.desc}</p>
+                          </button>
+                        ))}
+                      </div>
+                      {form.auto_caption_type && (
+                        <div className="mt-2.5 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                          <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo — cada post recebe uma diferente</p>
+                          <p className="text-[10px] text-white/50 leading-relaxed italic">
+                            {AUTO_CAPTION_PREVIEWS[form.auto_caption_type]}
+                          </p>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
+
+              {/* Captions manuais — ocultas quando auto está ativo */}
+              {!form.auto_caption_enabled && (
+                <div>
+                  <label className="block text-xs text-white/50 mb-1.5 font-medium">
+                    Captions (uma por linha — opcional)
+                  </label>
+                  <textarea
+                    value={form.captions}
+                    onChange={(e) => setForm((p) => ({ ...p, captions: e.target.value }))}
+                    rows={4}
+                    placeholder="Deixe vazio para postar sem legenda"
+                    className="input-glass w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 resize-none"
+                  />
+                </div>
+              )}
 
               {error && (
                 <p className="text-xs text-red-400 flex items-center gap-1.5">

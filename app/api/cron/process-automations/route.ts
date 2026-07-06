@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { getAutoCaption } from "@/lib/auto-captions";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
   // Busca automações ativas com suas relações
   const { data: automations, error } = await admin
     .from("automations")
-    .select("id, user_id, name, posts_per_day, offset_seconds, captions, active")
+    .select("id, user_id, name, posts_per_day, offset_seconds, captions, active, auto_caption_enabled, auto_caption_type")
     .eq("active", true);
 
   if (error) {
@@ -135,10 +136,12 @@ export async function GET(req: NextRequest) {
       // Vídeo aleatório
       const video = videos[Math.floor(Math.random() * videos.length)];
 
-      // Caption aleatória
-      const caption = captionPool.length
-        ? captionPool[Math.floor(Math.random() * captionPool.length)]
-        : "";
+      // Caption: automática ou do pool manual
+      const caption = automation.auto_caption_enabled && automation.auto_caption_type
+        ? getAutoCaption(automation.auto_caption_type as "curiosidades-gerais" | "curiosidades-tops" | "fatos-complexos")
+        : captionPool.length
+          ? captionPool[Math.floor(Math.random() * captionPool.length)]
+          : "";
 
       inserts.push({
         user_id:      automation.user_id,

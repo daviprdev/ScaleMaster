@@ -13,10 +13,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json().catch(() => ({}));
   const {
     name, posts_per_day, offset_seconds, active, captions,
+    auto_caption_enabled, auto_caption_type,
     account_folder_ids, video_folder_ids,
   } = body as {
     name?: string; posts_per_day?: number; offset_seconds?: number;
     active?: boolean; captions?: string[];
+    auto_caption_enabled?: boolean; auto_caption_type?: string | null;
     account_folder_ids?: string[]; video_folder_ids?: string[];
   };
 
@@ -34,6 +36,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (offset_seconds !== undefined) update.offset_seconds = offset_seconds;
   if (active !== undefined) update.active = active;
   if (captions !== undefined) update.captions = captions.map((c: string) => c.trim()).filter(Boolean);
+  if (auto_caption_enabled !== undefined) {
+    update.auto_caption_enabled = auto_caption_enabled;
+    update.auto_caption_type = auto_caption_enabled ? (auto_caption_type ?? "curiosidades-gerais") : null;
+  }
 
   if (Object.keys(update).length) {
     const { error } = await admin.from("automations").update(update).eq("id", id);

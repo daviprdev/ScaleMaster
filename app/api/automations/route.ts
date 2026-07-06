@@ -82,11 +82,14 @@ export async function POST(req: NextRequest) {
     offset_seconds = 30,
     active = false,
     captions = [],
+    auto_caption_enabled = false,
+    auto_caption_type = null,
     account_folder_ids = [],
     video_folder_ids = [],
   } = body as {
     name?: string; posts_per_day?: number; offset_seconds?: number;
     active?: boolean; captions?: string[];
+    auto_caption_enabled?: boolean; auto_caption_type?: string | null;
     account_folder_ids?: string[]; video_folder_ids?: string[];
   };
 
@@ -94,7 +97,7 @@ export async function POST(req: NextRequest) {
 
   const { data: automation, error } = await admin
     .from("automations")
-    .insert({ user_id: user.id, name: name.trim(), posts_per_day, offset_seconds, active, captions: captions.map((c: string) => c.trim()).filter(Boolean) })
+    .insert({ user_id: user.id, name: name.trim(), posts_per_day, offset_seconds, active, captions: captions.map((c: string) => c.trim()).filter(Boolean), auto_caption_enabled, auto_caption_type: auto_caption_enabled ? auto_caption_type : null })
     .select()
     .single();
 
