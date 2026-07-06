@@ -215,8 +215,8 @@ export async function processVideoForAccount(
       cmd.run();
       timer = setTimeout(() => {
         try { (cmd as any).kill("SIGKILL"); } catch { /* ok */ }
-        reject(new Error("FFmpeg timeout (>45s)"));
-      }, 45_000);
+        reject(new Error("FFmpeg timeout (>90s)"));
+      }, 90_000);
     });
 
     // ── 7. Upload para Supabase Storage ──────────────────────────────────────

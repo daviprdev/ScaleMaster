@@ -15,15 +15,27 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const BATCH_SIZE = 20;
-const RUN_BUDGET_MS = 55_000;
+// maxDuration=300 já era liberado pela Vercel, mas o budget próprio ficava em
+// só 55s — bem menos que o necessário. O claim atômico por post (linha ~276)
+// protege contra processamento duplicado mesmo com invocações do cron (a cada
+// 1 min) se sobrepondo, então é seguro usar quase todo o maxDuration.
+const RUN_BUDGET_MS = 250_000;
 
-// Reserva de tempo para o strip pipeline por vídeo (download + FFmpeg + upload ≈ 20s)
-const STRIP_RESERVE_MS = 22_000;
+// Reserva de tempo para o strip pipeline por vídeo (download + FFmpeg + upload)
+const STRIP_RESERVE_MS = 30_000;
 
-// Reserva de tempo para fingerprint único por conta (download + FFmpeg ultrafast + upload ≈ 28s).
+// Reserva de tempo para fingerprint único por conta (download + FFmpeg ultrafast + upload).
 // Sem fingerprint, o mesmo vídeo byte-a-byte vai para todas as contas →
 // Instagram detecta coordinated inauthentic behavior → contas caem.
-const FINGERPRINT_RESERVE_MS = 30_000;
+// Alinhado ao timeout interno do FFmpeg em lib/video-effects.ts (90s) + margem.
+const FINGERPRINT_RESERVE_MS = 100_000;
+
+// Quando o fingerprint falha/estoura timeout, o post NÃO pode voltar para a
+// fila com o mesmo scheduled_at antigo — senão ele continua sendo sempre o
+// mais antigo (ORDER BY scheduled_at ASC) e trava o ciclo pra sempre, nunca
+// dando chance aos posts atrás dele. Empurra alguns minutos pra frente antes
+// de tentar de novo.
+const FINGERPRINT_RETRY_DELAY_MS = 3 * 60_000;
 
 // Vídeos com esse padrão foram upados direto pelo browser (sem FFmpeg strip).
 // Contêm SEI NAL units tipo 5+6 que a Meta API rejeita → ERROR/EXPIRED.
@@ -383,9 +395,12 @@ export async function GET(req: NextRequest) {
             console.log(`[publish-scheduled] 🔐 Fingerprint aplicado @${account.username}`);
           } catch (fxErr) {
             console.warn(
-              `[publish-scheduled] ⚠ Fingerprint falhou @${account.username}: ${fxErr instanceof Error ? fxErr.message : fxErr} — adiando.`
+              `[publish-scheduled] ⚠ Fingerprint falhou @${account.username}: ${fxErr instanceof Error ? fxErr.message : fxErr} — adiando ${FINGERPRINT_RETRY_DELAY_MS / 60_000}min.`
             );
-            await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
+            await admin.from("scheduled_posts").update({
+              status: "pending",
+              scheduled_at: new Date(Date.now() + FINGERPRINT_RETRY_DELAY_MS).toISOString(),
+            }).eq("id", post.id);
             summary.skipped++;
             continue;
           }
