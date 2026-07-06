@@ -22,7 +22,6 @@ import {
   ShieldAlert,
   Clock,
   Activity,
-  Lock,
   Sparkles,
   TrendingUp,
   Globe,
@@ -48,44 +47,43 @@ type NavGroup = {
 
 const navGroups: NavGroup[] = [
   {
-    label: "MENU",
+    label: "VISÃO GERAL",
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, exact: true },
-    ],
-  },
-  {
-    label: "POSTAGENS",
-    items: [
       { label: "Contas", href: "/dashboard/accounts", icon: Users },
-      { label: "Logins", href: "/dashboard/logins", icon: Lock },
-      { label: "Postar", href: "/dashboard/postar", icon: Send },
-      { label: "Stories", href: "/dashboard/stories", icon: ImagePlay },
-      { label: "Loop", href: "/dashboard/loop", icon: Repeat2 },
-      { label: "Automatizar", href: "/dashboard/automatizar", icon: Bot },
-      { label: "Clonar Perfil", href: "/dashboard/clone", icon: Copy },
-      { label: "Monitor", href: "/dashboard/monitor", icon: Activity },
     ],
   },
   {
-    label: "CONTEÚDOS",
+    label: "PUBLICAÇÃO",
     items: [
-      { label: "Inspirações",   href: "/dashboard/inspirations", icon: Sparkles },
-      { label: "Biblioteca",    href: "/dashboard/library",      icon: FolderOpen },
+      { label: "Postar", href: "/dashboard/postar", icon: Send },
+      { label: "Automatizar", href: "/dashboard/automatizar", icon: Bot },
+      { label: "Loop", href: "/dashboard/loop", icon: Repeat2 },
+      { label: "Clonar Perfil", href: "/dashboard/clone", icon: Copy },
+      { label: "Stories", href: "/dashboard/stories", icon: ImagePlay },
+    ],
+  },
+  {
+    label: "CONTEÚDO",
+    items: [
+      { label: "Inspirações", href: "/dashboard/inspirations", icon: Sparkles },
+      { label: "Biblioteca",  href: "/dashboard/library",      icon: FolderOpen },
     ],
   },
   {
     label: "RELATÓRIOS",
     items: [
+      { label: "Monitor",   href: "/dashboard/monitor",   icon: Activity },
       { label: "Analytics", href: "/dashboard/analytics", icon: TrendingUp },
     ],
   },
   {
-    label: "CONFIGURAÇÃO",
+    label: "CONFIGURAÇÕES",
     items: [
-      { label: "Meus Apps", href: "/dashboard/apps", icon: KeyRound },
-      { label: "Failover", href: "/dashboard/failover", icon: ShieldAlert },
+      { label: "Meu App",        href: "/dashboard/apps",           icon: KeyRound },
+      { label: "Failover",       href: "/dashboard/failover",       icon: ShieldAlert },
       { label: "Horário Humano", href: "/dashboard/human-schedule", icon: Clock },
-      { label: "Proxies", href: "/dashboard/proxy-test", icon: Globe },
+      { label: "Proxies",        href: "/dashboard/proxy-test",     icon: Globe },
     ],
   },
 ];
