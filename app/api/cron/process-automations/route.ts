@@ -112,6 +112,23 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Histórico completo por conta (todo o tempo de vida da automação) para
+    // não repetir vídeo até esgotar o pool da pasta. Sem isso, Math.random()
+    // puro reincide nos mesmos vídeos com pools pequenos ou muitas contas.
+    const { data: historyPosts } = await admin
+      .from("scheduled_posts")
+      .select("account_id, video_id")
+      .eq("campaign_id", automation.id)
+      .not("video_id", "is", null)
+      .in("status", ["pending", "publishing", "published"])
+      .limit(100000);
+
+    const postedByAccount: Record<string, Set<string>> = {};
+    for (const p of (historyPosts ?? [])) {
+      if (!postedByAccount[p.account_id]) postedByAccount[p.account_id] = new Set();
+      postedByAccount[p.account_id].add(p.video_id);
+    }
+
     // Captions disponíveis
     const captionPool = automation.captions?.filter((c: string) => c.trim()) ?? [];
 
@@ -133,8 +150,12 @@ export async function GET(req: NextRequest) {
         nextAt = new Date(now.getTime() + accountStaggerMs + 60_000); // +1min mínimo
       }
 
-      // Vídeo aleatório
-      const video = videos[Math.floor(Math.random() * videos.length)];
+      // Vídeo aleatório do pool ainda não postado por esta conta; reinicia
+      // o histórico quando ela já postou todos os vídeos da pasta (ciclo completo).
+      const posted = postedByAccount[account.id] ?? new Set<string>();
+      const available = videos.filter((v) => !posted.has(v.id));
+      const pool = available.length > 0 ? available : videos;
+      const video = pool[Math.floor(Math.random() * pool.length)];
 
       // Caption: automática ou do pool manual
       const caption = automation.auto_caption_enabled && automation.auto_caption_type
