@@ -1192,6 +1192,15 @@ export default function AccountsPage() {
     silentSyncAll();
   }, [fetchAccounts, fetchStories]);
 
+  // Auto-refresh a cada 60s: atualiza a lista do banco sem chamar a Meta API.
+  // Reflete mudanças feitas pelos crons (health_status, followers, etc.) sem precisar recarregar a página.
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetchAccounts();
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [fetchAccounts]);
+
   const handleSyncAll = useCallback(async () => {
     if (syncingAll) return;
     setSyncingAll(true);
