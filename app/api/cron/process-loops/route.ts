@@ -982,9 +982,10 @@ async function processOneLoop(
     // Fila de erros críticos — aplicados DEPOIS do loop para detecção de cascata.
     // Se ≥ CASCADE_LOOP_THRESHOLD das contas do loop errarem com erros críticos
     // no MESMO ciclo, trata como outage da Meta e não marca nenhuma como error.
-    // Isso espelha o comportamento do sync-all (CASCADE_THRESHOLD = 0.3) mas
-    // no nível do cron — que não tinha essa proteção antes.
-    const CASCADE_LOOP_THRESHOLD = 0.3; // 30% do loop
+    // Threshold 0.6 (60%): alinhado com sync-accounts (70%). 30% era sensível demais —
+    // com 14 contas, 5 falhando (36%) disparava cascata e escondia erros individuais reais,
+    // fazendo o Failover mostrar "0 contas caídas" mesmo com contas genuinamente mortas.
+    const CASCADE_LOOP_THRESHOLD = 0.6; // 60% do loop
     const criticalErrorQueue: Array<{
       account: AccountRow;
       errorMsg: string;
@@ -1154,7 +1155,7 @@ async function processOneLoop(
     // Mínimo de 2 para não disparar com 1 conta em loop de conta única.
     if (criticalErrorQueue.length > 0) {
       const cascadeRatio = criticalErrorQueue.length / Math.max(validAccounts.length, 1);
-      const isCascade = criticalErrorQueue.length >= 2 && cascadeRatio >= CASCADE_LOOP_THRESHOLD;
+      const isCascade = criticalErrorQueue.length >= 4 && cascadeRatio >= CASCADE_LOOP_THRESHOLD;
 
       if (isCascade) {
         // Cascata detectada — não marcar nenhuma conta como error neste ciclo.
