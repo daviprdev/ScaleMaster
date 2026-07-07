@@ -1172,23 +1172,27 @@ export default function AccountsPage() {
     if (_autoSyncDone.current) return;
     _autoSyncDone.current = true;
     const silentSyncAll = async () => {
+      setSyncingAll(true);
       const excludeIds: string[] = [];
-      let hadUpdates = false;
-      for (let i = 0; i < 15; i++) {
-        try {
-          const res = await fetch("/api/accounts/sync-all", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ excludeIds }),
-            signal: AbortSignal.timeout(55_000),
-          });
-          const data: { synced?: number; token_errors?: number; processedIds?: string[]; remaining?: number } = await res.json();
-          excludeIds.push(...(data.processedIds ?? []));
-          if ((data.synced ?? 0) > 0 || (data.token_errors ?? 0) > 0) hadUpdates = true;
-          if (!data.remaining || data.remaining <= 0) break;
-        } catch { break; }
+      try {
+        for (let i = 0; i < 15; i++) {
+          try {
+            const res = await fetch("/api/accounts/sync-all", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ excludeIds }),
+              signal: AbortSignal.timeout(55_000),
+            });
+            const data: { synced?: number; token_errors?: number; processedIds?: string[]; remaining?: number } = await res.json();
+            excludeIds.push(...(data.processedIds ?? []));
+            if (!data.remaining || data.remaining <= 0) break;
+          } catch { break; }
+        }
+      } finally {
+        setSyncingAll(false);
+        fetchAccounts();
+        fetchStories();
       }
-      if (hadUpdates) { fetchAccounts(); fetchStories(); }
     };
     silentSyncAll();
   }, [fetchAccounts, fetchStories]);
