@@ -37,6 +37,20 @@ O repositório `Saas` estava inicializado na pasta home do usuário, não na pas
 
 ---
 
+### ✅ Sessão 2026-07-07 — Diagnóstico de quedas + sync tempo real + idade da conta
+
+**Diagnóstico das quedas de contas (25 subidas, ~13 caíram).** Causa raiz: **volume de postagem alto demais para contas novas** — loops a 30 e 60 min = 24 a 48 posts/dia em contas com dias de vida. O Instagram lê como bot e derruba. Não era warmup, proxy nem excesso de requisição. A conta que viralizou (1640 seg.) levou **checkpoint de conta** (`code=190 — "you cannot access the app till you log in to www.instagram.com"`), que é restrição real no nível da conta com o token ainda válido — por isso o painel mostrava "online". Régua recomendada: semana 1 = 1–2 posts/dia, subindo devagar até teto ~10/dia.
+
+**Warmup confirmado inexistente no código.** A feature "Warmup automático" (2026-06-10) não está em nenhum `.ts` — foi revertida ou nunca commitada. `warmup_posts_done` travado em 0 mesmo com 140+ posts. Colunas no banco viraram no-op. Controle de volume passa a ser 100% manual (decisão do usuário).
+
+**sync-accounts: 6h → tempo real.** O painel só sincronizava a cada 6h (cron) e o sync ao abrir a página era estrangulado. Mudado: cron `* * * * *` + `STALE_MINUTES=5` (era 6h) — cada conta atualiza sozinha a cada ~5 min, ritmo ~14 contas/min, sem burst. Com o auto-refresh de 60s da página, atualiza sem clicar. São 2 requisições de leitura por conta a cada ~5 min, muito abaixo do limite da Meta. Commit `ffb7530`.
+
+**Idade da conta no card.** Helper `accountAge(connected_at)` mostra "hoje / 5 dias / 3 semanas / 2 meses" no rodapé do card de Contas, sem ícone — pra decidir quando subir posts/dia. Commit `006f8be`.
+
+**Proxies das 21 contas novas (sem pasta).** Importados via CSV (`username,http://user:pass@ip:porta`). Confirmado no código: cada conta usa só o seu `proxy_url` (sem cruzar), e a **postagem não cai pro IP da Vercel** se o proxy falha (process-loops pula a conta; publish-pending relança pra backoff). Teste real via curl: **5 dos 24 proxies estão mortos** (exit 56) — 3 em contas (`araujocardosooh273`, `melissamaiabeattriz`, `alinekiararamos`) e 2 nos reservas. Contas com proxy morto não postam (ficam puladas). Pendente: 2 proxies bons de reposição.
+
+---
+
 ### ✅ Sessão 2026-06-24 — Fix histórico Clone + Style + Drag-and-drop Pastas
 
 #### Fix — Excluir histórico Clone não persistia
