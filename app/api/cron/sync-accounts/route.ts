@@ -2,11 +2,12 @@
  * /api/cron/sync-accounts
  *
  * Sincroniza perfis de TODAS as contas de TODOS os usuários em background.
- * Roda a cada 6 horas para garantir que followers_count, avatar_url e last_post_at
- * nunca fiquem desatualizados por mais de 6h — mesmo sem o usuário abrir o painel.
+ * Roda a cada 1 min (vercel.json) e só pega contas paradas há mais de STALE_MINUTES,
+ * ordenadas da mais velha pra mais nova — refresca o painel sozinho (~5 min de
+ * frescor) sem sincronizar todas de uma vez (anti-burst / anti-checkpoint).
  *
  * Lógica:
- *   - Busca contas com profile_refreshed_at IS NULL ou > 6h atrás
+ *   - Busca contas com profile_refreshed_at IS NULL ou > STALE_MINUTES atrás
  *   - Processa em lotes de 3 com 2s de delay entre lotes (anti-rate-limit)
  *   - Erros de token genuíno: marca health_status='error' + registra em failover_logs
  *   - Erros de infra/rede/proxy: loga e segue (não marca como error)
@@ -23,8 +24,8 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const GRAPH = "https://graph.instagram.com/v21.0";
-const STALE_HOURS = 6;
-const STALE_MS = STALE_HOURS * 60 * 60 * 1000;
+const STALE_MINUTES = 5; // painel quase ao vivo — o cron roda a cada 1 min e só pega contas paradas há mais de 5 min (ritmo natural ~14 contas/min, sem burst)
+const STALE_MS = STALE_MINUTES * 60 * 1000;
 const BATCH_SIZE = 3;
 const BATCH_DELAY_MS = 2_000;
 const TOKEN_ERROR_CODES = new Set([190, 102, 104]);
@@ -168,7 +169,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ synced: 0, message: "Nenhuma conta desatualizada." });
   }
 
-  console.log(`[cron/sync-accounts] ${accounts.length} contas desatualizadas (>${STALE_HOURS}h)`);
+  console.log(`[cron/sync-accounts] ${accounts.length} contas desatualizadas (>${STALE_MINUTES}min)`);
 
   const results: Awaited<ReturnType<typeof syncOne>>[] = [];
   const startedAt = Date.now();
