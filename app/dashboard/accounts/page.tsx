@@ -1172,27 +1172,22 @@ export default function AccountsPage() {
     if (_autoSyncDone.current) return;
     _autoSyncDone.current = true;
     const silentSyncAll = async () => {
-      setSyncingAll(true);
       const excludeIds: string[] = [];
-      try {
-        for (let i = 0; i < 15; i++) {
-          try {
-            const res = await fetch("/api/accounts/sync-all", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ excludeIds }),
-              signal: AbortSignal.timeout(55_000),
-            });
-            const data: { synced?: number; token_errors?: number; processedIds?: string[]; remaining?: number } = await res.json();
-            excludeIds.push(...(data.processedIds ?? []));
-            if (!data.remaining || data.remaining <= 0) break;
-          } catch { break; }
-        }
-      } finally {
-        setSyncingAll(false);
-        fetchAccounts();
-        fetchStories();
+      for (let i = 0; i < 15; i++) {
+        try {
+          const res = await fetch("/api/accounts/sync-all", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ excludeIds }),
+            signal: AbortSignal.timeout(55_000),
+          });
+          const data: { synced?: number; token_errors?: number; processedIds?: string[]; remaining?: number } = await res.json();
+          excludeIds.push(...(data.processedIds ?? []));
+          if (!data.remaining || data.remaining <= 0) break;
+        } catch { break; }
       }
+      fetchAccounts();
+      fetchStories();
     };
     silentSyncAll();
   }, [fetchAccounts, fetchStories]);
@@ -1243,7 +1238,7 @@ export default function AccountsPage() {
         excludeIds.push(...(data.processedIds ?? []));
         setSyncProgress({ done: doneCount, total });
         if (data.cascade) {
-          setNotification({ type: "error", message: data.cascade_message ?? "Falha em cascata detectada." });
+          setNotification({ type: "error", message: data.cascade_message ?? "Muitos tokens inválidos ao mesmo tempo — reconecte as contas." });
           break;
         }
         if (!data.remaining || data.remaining <= 0) break;
@@ -1259,8 +1254,9 @@ export default function AccountsPage() {
                 (totalErrors > 0 ? `, ${totalErrors} com erro.` : "."),
             }
       );
-    } catch {
-      setNotification({ type: "error", message: "Falha ao sincronizar contas." });
+    } catch (err) {
+      const isTimeout = err instanceof Error && err.name === "TimeoutError";
+      setNotification({ type: "error", message: isTimeout ? "Timeout: sincronização demorou demais. Tente novamente." : "Falha ao sincronizar contas." });
     } finally {
       setSyncingAll(false);
       setSyncProgress(null);
@@ -1277,9 +1273,15 @@ export default function AccountsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accountId: id }),
       });
+      const data = await res.json() as { error?: string };
       if (res.ok) {
         await Promise.all([fetchAccounts(), fetchStories()]);
+        setNotification({ type: "success", message: "Conta sincronizada com sucesso." });
+      } else {
+        setNotification({ type: "error", message: data.error ?? "Falha ao sincronizar conta." });
       }
+    } catch {
+      setNotification({ type: "error", message: "Erro de rede ao sincronizar conta." });
     } finally {
       _refreshingRef.current = null;
       setRefreshingId(null);
