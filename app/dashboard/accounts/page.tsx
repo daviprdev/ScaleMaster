@@ -1220,7 +1220,14 @@ export default function AccountsPage() {
           // então 55s aqui dá margem e ainda garante que o cliente sempre se recupera.
           signal: AbortSignal.timeout(55_000),
         });
-        const data = (await res.json()) as {
+        // Verifica ok ANTES de res.json() — se servidor retornar HTML (504/500),
+        // res.json() lança SyntaxError que cai no catch como "Falha ao sincronizar".
+        if (!res.ok) {
+          let errMsg = "Falha ao sincronizar contas.";
+          try { const d = await res.json() as { error?: string }; if (d.error) errMsg = d.error; } catch { /* HTML */ }
+          throw new Error(errMsg);
+        }
+        let data: {
           synced?: number;
           errors?: number;
           token_errors?: number;
@@ -1229,7 +1236,13 @@ export default function AccountsPage() {
           processedIds?: string[];
           cascade?: boolean;
           cascade_message?: string;
-        };
+        } = {};
+        try {
+          data = await res.json();
+        } catch {
+          // Resposta não é JSON válido (ex: Vercel edge truncou o body)
+          break;
+        }
         const processedThisCall = data.processed ?? 0;
         doneCount += processedThisCall;
         totalSynced += data.synced ?? 0;
@@ -1243,7 +1256,7 @@ export default function AccountsPage() {
         }
         if (!data.remaining || data.remaining <= 0) break;
       }
-      await Promise.all([fetchAccounts(), fetchStories()]);
+      await Promise.allSettled([fetchAccounts(), fetchStories()]);
       setNotification((prev) =>
         prev?.type === "error"
           ? prev
@@ -1255,6 +1268,8 @@ export default function AccountsPage() {
             }
       );
     } catch (err) {
+      // Atualiza a lista mesmo no erro — o servidor pode ter sincronizado antes de falhar
+      await Promise.allSettled([fetchAccounts(), fetchStories()]);
       const isTimeout = err instanceof Error && err.name === "TimeoutError";
       setNotification({ type: "error", message: isTimeout ? "Timeout: sincronização demorou demais. Tente novamente." : "Falha ao sincronizar contas." });
     } finally {
