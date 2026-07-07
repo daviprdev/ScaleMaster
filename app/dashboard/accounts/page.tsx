@@ -169,6 +169,21 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 }
 
+// Idade da conta desde que foi adicionada no SaaS (connected_at).
+// Formato simples "5 dias", "3 semanas" — usado para saber quando aumentar posts/dia.
+function accountAge(dateStr: string): string {
+  const d = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000);
+  if (d < 1) return "hoje";
+  if (d === 1) return "1 dia";
+  if (d < 7) return `${d} dias`;
+  if (d < 14) return "1 semana";
+  if (d < 30) return `${Math.floor(d / 7)} semanas`;
+  if (d < 60) return "1 mês";
+  if (d < 365) return `${Math.floor(d / 30)} meses`;
+  const y = Math.floor(d / 365);
+  return y === 1 ? "1 ano" : `${y} anos`;
+}
+
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   cancelled: "Conexão cancelada. Nenhuma conta foi adicionada.",
   state_mismatch: "Erro de segurança (state inválido). Tente novamente.",
@@ -533,6 +548,9 @@ function AccountCard({
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-5 py-3">
+          <div className="whitespace-nowrap text-[11px] flex-shrink-0 text-white/55 font-medium">
+            {accountAge(account.connected_at)}
+          </div>
           <Metric icon={<Users size={11} />} label={`${formatNumber(account.followers_count)} seg.`} muted={account.followers_count == null} />
           <Metric icon={<FileText size={11} />} label={`${account.posts_count ?? "—"} posts`} muted={account.posts_count == null} />
           <Metric icon={<Clock size={11} />} label={account.last_post_at ? timeAgo(account.last_post_at) : "—"} muted={!account.last_post_at} />
