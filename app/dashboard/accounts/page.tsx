@@ -1272,16 +1272,24 @@ export default function AccountsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accountId: id }),
+        signal: AbortSignal.timeout(28_000),
       });
-      const data = await res.json() as { error?: string };
       if (res.ok) {
         await Promise.all([fetchAccounts(), fetchStories()]);
         setNotification({ type: "success", message: "Conta sincronizada com sucesso." });
       } else {
-        setNotification({ type: "error", message: data.error ?? "Falha ao sincronizar conta." });
+        let errorMsg = "Falha ao sincronizar conta.";
+        try {
+          const data = await res.json() as { error?: string };
+          if (data.error) errorMsg = data.error;
+        } catch { /* HTML de erro / sem body */ }
+        setNotification({ type: "error", message: errorMsg });
+        // Atualiza a lista mesmo no erro — o servidor pode ter marcado a conta como caída
+        await Promise.allSettled([fetchAccounts(), fetchStories()]);
       }
     } catch {
-      setNotification({ type: "error", message: "Erro de rede ao sincronizar conta." });
+      // Timeout ou rede — sem notificação; atualiza a lista para refletir mudanças do servidor
+      await Promise.allSettled([fetchAccounts(), fetchStories()]);
     } finally {
       _refreshingRef.current = null;
       setRefreshingId(null);

@@ -34,6 +34,23 @@ interface GraphStoriesEdge {
   error?: { message: string; code: number };
 }
 
+// Faz fetch com proxy, com fallback automático para sem proxy se proxy falhar.
+// Timeout 12s por chamada — suficiente para a API da Meta responder normalmente
+// e ainda cabe dentro do maxDuration=30 junto com as demais operações da rota.
+async function fetchWithFallback(
+  url: string,
+  proxy: ReturnType<typeof getProxyForAccount>
+): Promise<Response> {
+  try {
+    return await undiciFetch(url, proxyInit(proxy, { signal: AbortSignal.timeout(12_000) }) as any) as unknown as Response;
+  } catch (err) {
+    if (!proxy) throw err;
+    // Proxy morto → tenta direto pelo IP da Vercel (leitura de perfil não precisa de proxy)
+    console.warn("[accounts/refresh] Proxy falhou, tentando sem proxy:", (err as Error).message?.slice(0, 80));
+    return await undiciFetch(url, { signal: AbortSignal.timeout(12_000) } as any) as unknown as Response;
+  }
+}
+
 async function fetchMetaProfile(
   igId: string,
   token: string,
@@ -44,7 +61,7 @@ async function fetchMetaProfile(
     `?fields=followers_count,media_count,name,profile_picture_url,username` +
     `&access_token=${encodeURIComponent(token)}`;
 
-  const profileRes = await undiciFetch(profileUrl, proxyInit(proxy) as any);
+  const profileRes = await fetchWithFallback(profileUrl, proxy);
   const profile = (await profileRes.json()) as GraphProfile;
 
   if (profile.error) return { profile, lastPostAt: null, activeStoriesCount: 0 };
@@ -60,7 +77,7 @@ async function fetchMetaProfile(
         `${GRAPH}/${igId}/media` +
         `?fields=timestamp&limit=1` +
         `&access_token=${encodeURIComponent(token)}`;
-      const mediaRes = await undiciFetch(mediaUrl, proxyInit(proxy) as any);
+      const mediaRes = await fetchWithFallback(mediaUrl, proxy);
       const mediaData = (await mediaRes.json()) as GraphMediaEdge;
       lastPostAt = mediaData.data?.[0]?.timestamp ?? null;
     })(),
@@ -71,7 +88,7 @@ async function fetchMetaProfile(
         `${GRAPH}/${igId}/stories` +
         `?fields=id` +
         `&access_token=${encodeURIComponent(token)}`;
-      const storiesRes = await undiciFetch(storiesUrl, proxyInit(proxy) as any);
+      const storiesRes = await fetchWithFallback(storiesUrl, proxy);
       if (!storiesRes.ok) return;
       const storiesData = (await storiesRes.json()) as GraphStoriesEdge;
       if (!storiesData.error && Array.isArray(storiesData.data)) {

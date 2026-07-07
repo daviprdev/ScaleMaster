@@ -65,8 +65,16 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       `${GRAPH}/${acc.ig_business_account_id}` +
       `?fields=followers_count,media_count,name,profile_picture_url` +
       `&access_token=${encodeURIComponent(token)}`;
-    const res = await undiciFetch(url, proxyInit(proxy, { signal: AbortSignal.timeout(15_000) }) as any);
-    return (await res.json()) as Record<string, unknown>;
+    try {
+      const res = await undiciFetch(url, proxyInit(proxy, { signal: AbortSignal.timeout(15_000) }) as any);
+      return (await res.json()) as Record<string, unknown>;
+    } catch (err) {
+      if (!proxy) throw err;
+      // Proxy morto → retry sem proxy
+      console.warn(`[cron/sync-accounts] Proxy falhou para @${acc.username}, tentando sem proxy: ${(err as Error).message?.slice(0, 80)}`);
+      const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) } as any);
+      return (await res.json()) as Record<string, unknown>;
+    }
   };
 
   try {
