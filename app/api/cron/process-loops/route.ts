@@ -455,7 +455,7 @@ async function assignVideosForLoop(
   // histórico por loop fazia cada loop novo repostar tudo que a conta já
   // postou por outros loops/abas — mesmo vídeo chegou a sair 9× na mesma conta.
   const accountIds = validAccounts.map(a => a.id);
-  const [containersHistRes, scheduledHistRes, windowClaimsRes] = await Promise.all([
+  const [containersHistRes, scheduledHistRes, jobsHistRes, windowClaimsRes] = await Promise.all([
     (admin as any)
       .from("pending_containers")
       .select("account_id, video_id")
@@ -468,6 +468,18 @@ async function assignVideosForLoop(
       .select("account_id, video_id")
       .in("account_id", accountIds)
       .in("status", ["pending", "publishing", "published"])
+      .not("video_id", "is", null)
+      .limit(100000),
+    // Vídeos RESERVADOS em jobs de processamento (modo efeitos): o vídeo do
+    // container vem do job enfileirado no ciclo ANTERIOR (doneJobVideoIds), não
+    // da atribuição atual. Sem contar os jobs como reserva, a atribuição repete
+    // o vídeo do job da própria conta no ciclo seguinte e distribui o mesmo
+    // vídeo para várias contas (49 jobs / 24 vídeos distintos em produção).
+    (admin as any)
+      .from("video_processing_jobs")
+      .select("account_id, video_id")
+      .in("account_id", accountIds)
+      .in("status", ["queued", "processing", "done"])
       .not("video_id", "is", null)
       .limit(100000),
     // Guard inter-run: vídeos reivindicados por QUALQUER conta nesta janela.
@@ -485,16 +497,21 @@ async function assignVideosForLoop(
   const historyRows = [
     ...(((containersHistRes as { data?: { account_id: string; video_id: string }[] }).data) ?? []),
     ...(((scheduledHistRes as { data?: { account_id: string; video_id: string }[] }).data) ?? []),
+    ...(((jobsHistRes as { data?: { account_id: string; video_id: string }[] }).data) ?? []),
   ];
   const postedByAccountMap = new Map<string, Set<string>>();
   // Uso global por vídeo entre as contas do loop: base do balanceamento que
   // impede o mesmo vídeo de sair em várias contas enquanto outros ficam parados.
+  // Uso contado 1× por par conta+vídeo: um job consumido também vira container,
+  // e contar as duas fontes dobraria o peso do vídeo no balanceamento.
   const usageByVideo = new Map<string, number>();
   for (const row of historyRows) {
     let set = postedByAccountMap.get(row.account_id);
     if (!set) { set = new Set(); postedByAccountMap.set(row.account_id, set); }
-    set.add(row.video_id);
-    usageByVideo.set(row.video_id, (usageByVideo.get(row.video_id) ?? 0) + 1);
+    if (!set.has(row.video_id)) {
+      set.add(row.video_id);
+      usageByVideo.set(row.video_id, (usageByVideo.get(row.video_id) ?? 0) + 1);
+    }
   }
 
   const globallyTaken = new Set<string>(
