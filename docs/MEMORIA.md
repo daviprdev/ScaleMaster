@@ -2988,3 +2988,24 @@ Junto com esse fix, `publish-scheduled` também passou a **priorizar posts de St
 
 #### Lição
 Todo catch-block que reseta um job de fila para retry DEVE avançar o timestamp de ordenação (nunca deixar como estava) — é o segundo incidente de starvation por esse exato padrão neste projeto (Apify em junho, FFmpeg em julho). Vale revisar outros crons (`process-loops`, `publish-pending`) em busca do mesmo anti-padrão antes que vire um terceiro incidente.
+
+---
+
+### ✅ Sessão 2026-07-07 — Stories: indicador de story ativo por conta + separação Automatizar × Postar
+
+#### Feat — Indicador de story ativo ao selecionar pasta na aba Stories (commit `ced8fdb`)
+Ao selecionar um modelo (pasta) em `/dashboard/stories`, a página agora dispara checagem ao vivo via `GET /api/accounts/stories` — rota que já existia (consulta `graph.instagram.com/{id}/stories` com proxy por conta) e não era usada pela UI de Stories. Resultado na seção Contas:
+- Anel gradiente matrix→cyan no avatar (estilo Instagram) nas contas que já têm story ativo, com tooltip de contagem.
+- Legenda "N com story ativo · M sem story" acima dos chips.
+- Atalho **"Sem story"** ao lado de Todas/Limpar — seleciona de uma vez só as contas que ainda não postaram (caso de uso principal).
+- Botão RefreshCw para recheck manual; fetch roda uma vez por visita (cache em memória da página) para não martelar a Meta a cada troca de pasta.
+- Bônus: modal "Importar do IG" mostra o mesmo anel + badge verde "story ativo" na escolha da conta fonte — lá o usuário precisa escolher justamente uma conta COM story.
+
+#### Fix — Campanhas de Automatizar/Clonar vazavam para "Campanhas Ativas" do Postar (commit `fedf4ee`)
+O cron `process-automations` grava `scheduled_posts` com `campaign_id = automation.id`, e o `GET /api/campaigns` agrupa TODOS os `scheduled_posts` por `campaign_id` sem distinguir origem — automações (e clones) apareciam como campanha na aba Postar. Fix:
+- API busca os ids da tabela `automations` do usuário e marca `is_automation` em cada summary.
+- Aba Postar filtra `!is_automation && !is_clone` na lista de Campanhas Ativas — cada origem fica na sua aba.
+- **Preservado de propósito:** a detecção de "contas sem campanha ativa" (borda vermelha + botão Novas) segue contando automações e clones — conta coberta por automação está recebendo posts. Monitor de Campanhas também segue agregado (é a função dele).
+
+#### Lição
+Compartilhar a fila `scheduled_posts` entre origens (Postar/Clonar/Automatizar/Stories) é a arquitetura certa — retry, proxy e fingerprint em um pipeline só. Mas toda UI que agrupa por `campaign_id` precisa saber a ORIGEM do id (tabela `automations`, flag `is_clone` via `clone_source_profile`, `post_type='story'`) antes de exibir, senão as abas vazam umas nas outras.
