@@ -400,9 +400,10 @@ function TemplatesSection({
 // ── Modal de importação de template ─────────────────────────────────────────
 
 function ImportTemplateModal({
-  accounts, onClose, onCreated,
+  accounts, storiesMap, onClose, onCreated,
 }: {
   accounts: Account[];
+  storiesMap: Record<string, { count: number; expiring_first_at?: string | null }> | null;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -475,17 +476,23 @@ function ImportTemplateModal({
             <>
               <p className="text-xs text-white/40">Escolha a conta que tem o story ativo que você quer manter em loop.</p>
               <div className="max-h-64 overflow-y-auto space-y-1.5">
-                {accounts.map(acc => (
-                  <button key={acc.id} onClick={() => setSourceAccountId(acc.id)}
-                    className={cn("w-full flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
-                      sourceAccountId === acc.id ? "border-[#00E5FF]/40 bg-[#00E5FF]/8 text-[#00E5FF]" : "border-white/[0.08] text-white/60 hover:border-white/20")}>
-                    {acc.avatar_url
-                      ? <img src={acc.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover" />
-                      : <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#00E5FF]/40 to-[#00FF41]/40 flex items-center justify-center"><span className="text-[9px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>}
-                    <span className="text-xs font-medium">@{acc.username}</span>
-                    {sourceAccountId === acc.id && <Check size={12} className="ml-auto text-[#00E5FF]" />}
-                  </button>
-                ))}
+                {accounts.map(acc => {
+                  const withStory = (storiesMap?.[acc.id]?.count ?? 0) > 0;
+                  return (
+                    <button key={acc.id} onClick={() => setSourceAccountId(acc.id)}
+                      className={cn("w-full flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
+                        sourceAccountId === acc.id ? "border-[#00E5FF]/40 bg-[#00E5FF]/8 text-[#00E5FF]" : "border-white/[0.08] text-white/60 hover:border-white/20")}>
+                      <span className={cn("relative flex-shrink-0 rounded-full", withStory && "p-[1.5px] bg-gradient-to-tr from-[#00FF41] to-[#00E5FF]")}>
+                        {acc.avatar_url
+                          ? <img src={acc.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover block" />
+                          : <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#00E5FF]/40 to-[#00FF41]/40 flex items-center justify-center"><span className="text-[9px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>}
+                      </span>
+                      <span className="text-xs font-medium">@{acc.username}</span>
+                      {withStory && <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#00FF41]/15 text-[#00FF41] font-semibold">story ativo</span>}
+                      {sourceAccountId === acc.id && <Check size={12} className="ml-auto text-[#00E5FF]" />}
+                    </button>
+                  );
+                })}
               </div>
               {importError && (
                 <p className="flex items-center gap-1.5 text-xs text-red-400"><AlertCircle size={12} /> {importError}</p>
@@ -572,6 +579,10 @@ export default function StoriesPage() {
   const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
   const [clearingHistory, setClearingHistory] = useState(false);
 
+  // Stories ativos por conta (checagem ao vivo na Meta)
+  const [storiesMap, setStoriesMap] = useState<Record<string, { count: number; expiring_first_at?: string | null }> | null>(null);
+  const [loadingStories, setLoadingStories] = useState(false);
+
   // Templates
   const [templates, setTemplates] = useState<StoryTemplate[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
@@ -607,6 +618,15 @@ export default function StoriesPage() {
       setHistoryPublished(d.published ?? 0);
       setHistoryQueued(d.queued ?? 0);
     } finally { setLoadingHistory(false); setRefreshingHistory(false); }
+  }, []);
+
+  const fetchActiveStories = useCallback(async () => {
+    setLoadingStories(true);
+    try {
+      const res = await fetch("/api/accounts/stories");
+      const d = await res.json() as { stories?: Record<string, { count: number; expiring_first_at?: string | null }> };
+      setStoriesMap(d.stories ?? {});
+    } catch {/* silent */} finally { setLoadingStories(false); }
   }, []);
 
   const fetchTemplates = useCallback(async () => {
@@ -702,7 +722,14 @@ export default function StoriesPage() {
   const handleSelectFolder = (folderId: string) => {
     setSelectedFolderId(folderId);
     setSelectedAccountIds([]);
+    if (!storiesMap && !loadingStories) fetchActiveStories();
   };
+
+  const hasActiveStory = (accountId: string) => (storiesMap?.[accountId]?.count ?? 0) > 0;
+
+  const folderWithStoryCount = selectedFolder && storiesMap
+    ? selectedFolder.accounts.filter(a => hasActiveStory(a.id)).length
+    : 0;
 
   const toggleAccount = (id: string) =>
     setSelectedAccountIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -848,25 +875,57 @@ export default function StoriesPage() {
               </div>
               {selectedFolder && selectedFolder.accounts.length > 0 && (
                 <div className="flex items-center gap-2">
+                  {storiesMap && (
+                    <>
+                      <button onClick={() => setSelectedAccountIds(selectedFolder.accounts.filter(a => !hasActiveStory(a.id)).map(a => a.id))}
+                        className="text-xs text-amber-400/70 hover:text-amber-400 transition-colors">Sem story</button>
+                      <span className="text-white/15 text-xs">·</span>
+                    </>
+                  )}
                   <button onClick={() => setSelectedAccountIds(selectedFolder.accounts.map(a => a.id))} className="text-xs text-[#00FF41]/70 hover:text-[#00FF41] transition-colors">Todas</button>
                   <span className="text-white/15 text-xs">·</span>
                   <button onClick={() => setSelectedAccountIds([])} className="text-xs text-white/30 hover:text-white/60 transition-colors">Limpar</button>
+                  <button onClick={fetchActiveStories} disabled={loadingStories} title="Verificar stories ativos agora"
+                    className="text-white/30 hover:text-white/60 transition-colors disabled:opacity-40">
+                    <RefreshCw size={12} className={loadingStories ? "animate-spin" : ""} />
+                  </button>
                 </div>
               )}
             </div>
+            {selectedFolder && loadingStories && !storiesMap && (
+              <div className="flex items-center gap-2 mb-3 text-[10px] text-white/30">
+                <Loader2 size={10} className="animate-spin" /> Verificando quais contas já têm story ativo…
+              </div>
+            )}
+            {selectedFolder && storiesMap && (
+              <div className="flex items-center gap-3 mb-3 text-[10px]">
+                <span className="flex items-center gap-1.5 text-[#00FF41]/80">
+                  <span className="w-2 h-2 rounded-full bg-gradient-to-tr from-[#00FF41] to-[#00E5FF]" />
+                  {folderWithStoryCount} com story ativo
+                </span>
+                <span className="flex items-center gap-1.5 text-white/35">
+                  <span className="w-2 h-2 rounded-full bg-white/20" />
+                  {selectedFolder.accounts.length - folderWithStoryCount} sem story
+                </span>
+              </div>
+            )}
             {!selectedFolder ? (
               <p className="text-white/25 text-sm py-4 text-center">Selecione um modelo acima</p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {selectedFolder.accounts.map(acc => {
                   const isSelected = selectedAccountIds.includes(acc.id);
+                  const withStory = hasActiveStory(acc.id);
                   return (
                     <button key={acc.id} onClick={() => toggleAccount(acc.id)}
+                      title={storiesMap ? (withStory ? `${storiesMap[acc.id]?.count ?? 1} story ativo` : "Sem story ativo") : undefined}
                       className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all",
                         isSelected ? "border-[#00E5FF]/40 bg-[#00E5FF]/8 text-[#00E5FF]" : "border-white/[0.08] text-white/55 hover:border-white/20")}>
-                      {acc.avatar_url
-                        ? <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
-                        : <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#00E5FF]/40 to-[#00FF41]/40 flex-shrink-0 flex items-center justify-center"><span className="text-[8px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>}
+                      <span className={cn("relative flex-shrink-0 rounded-full", withStory && "p-[1.5px] bg-gradient-to-tr from-[#00FF41] to-[#00E5FF]")}>
+                        {acc.avatar_url
+                          ? <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover block" />
+                          : <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#00E5FF]/40 to-[#00FF41]/40 flex items-center justify-center"><span className="text-[8px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>}
+                      </span>
                       <span className="text-xs font-medium leading-none">@{acc.username}</span>
                       {isSelected && <Check size={9} className="text-[#00E5FF] flex-shrink-0" strokeWidth={3} />}
                     </button>
@@ -909,7 +968,7 @@ export default function StoriesPage() {
           <TemplatesSection
             templates={templates}
             loading={loadingTemplates}
-            onImportClick={() => setImportModalOpen(true)}
+            onImportClick={() => { setImportModalOpen(true); if (!storiesMap && !loadingStories) fetchActiveStories(); }}
             onToggle={handleToggleTemplate}
             togglingId={togglingTemplateId}
             onDelete={handleDeleteTemplate}
@@ -938,6 +997,7 @@ export default function StoriesPage() {
         {importModalOpen && (
           <ImportTemplateModal
             accounts={accounts}
+            storiesMap={storiesMap}
             onClose={() => setImportModalOpen(false)}
             onCreated={() => { setImportModalOpen(false); fetchTemplates(); }}
           />
