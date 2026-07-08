@@ -84,12 +84,15 @@ export async function GET(req: NextRequest) {
     if (!accounts?.length) continue;
 
     // Busca vídeos das pastas de vídeos
+    // (.limit explícito — o padrão do Supabase corta em 1000 linhas e pastas
+    //  grandes teriam parte dos vídeos silenciosamente ignorada)
     const { data: videos } = await admin
       .from("videos_library")
       .select("id, public_url")
       .in("folder_id", videoFolderIds)
       .eq("user_id", automation.user_id)
-      .not("public_url", "is", null);
+      .not("public_url", "is", null)
+      .limit(10000);
 
     if (!videos?.length) continue;
 
@@ -100,7 +103,8 @@ export async function GET(req: NextRequest) {
       .eq("campaign_id", automation.id)
       .in("status", ["pending", "publishing", "published"])
       .gte("scheduled_at", now.toISOString())
-      .lte("scheduled_at", windowEnd);
+      .lte("scheduled_at", windowEnd)
+      .limit(100000);
 
     const countByAccount: Record<string, number> = {};
     const lastByAccount: Record<string, Date>   = {};
@@ -124,9 +128,13 @@ export async function GET(req: NextRequest) {
       .limit(100000);
 
     const postedByAccount: Record<string, Set<string>> = {};
+    // Uso global por vídeo (todas as contas): base do balanceamento que impede
+    // o mesmo vídeo de aparecer em várias contas enquanto outros ficam parados.
+    const usageByVideo: Record<string, number> = {};
     for (const p of (historyPosts ?? [])) {
       if (!postedByAccount[p.account_id]) postedByAccount[p.account_id] = new Set();
       postedByAccount[p.account_id].add(p.video_id);
+      usageByVideo[p.video_id] = (usageByVideo[p.video_id] ?? 0) + 1;
     }
 
     // Captions disponíveis
@@ -150,12 +158,24 @@ export async function GET(req: NextRequest) {
         nextAt = new Date(now.getTime() + accountStaggerMs + 60_000); // +1min mínimo
       }
 
-      // Vídeo aleatório do pool ainda não postado por esta conta; reinicia
-      // o histórico quando ela já postou todos os vídeos da pasta (ciclo completo).
+      // Seleção em duas camadas:
+      //  1. Exclui o histórico da própria conta (nunca repete vídeo na mesma
+      //     conta até esgotar a pasta — aí o ciclo reinicia).
+      //  2. Entre os disponíveis, escolhe aleatoriamente entre os de MENOR uso
+      //     global na automação. Sem isso, sorteio independente por conta faz o
+      //     mesmo vídeo sair em várias contas quase ao mesmo tempo enquanto
+      //     outros da pasta ficam dias sem uso.
       const posted = postedByAccount[account.id] ?? new Set<string>();
       const available = videos.filter((v) => !posted.has(v.id));
       const pool = available.length > 0 ? available : videos;
-      const video = pool[Math.floor(Math.random() * pool.length)];
+      const minUse = Math.min(...pool.map((v) => usageByVideo[v.id] ?? 0));
+      const leastUsed = pool.filter((v) => (usageByVideo[v.id] ?? 0) === minUse);
+      const video = leastUsed[Math.floor(Math.random() * leastUsed.length)];
+      // Incrementa em memória para que as próximas contas DESTE run já vejam o
+      // vídeo como usado (sem isso, todas sorteariam do mesmo grupo min-use).
+      usageByVideo[video.id] = (usageByVideo[video.id] ?? 0) + 1;
+      posted.add(video.id);
+      postedByAccount[account.id] = posted;
 
       // Caption: automática ou do pool manual
       const caption = automation.auto_caption_enabled && automation.auto_caption_type
