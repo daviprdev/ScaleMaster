@@ -4,7 +4,6 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount, proxyInit } from "@/lib/proxy";
-import { processVideoForAccount } from "@/lib/video-effects";
 import { fetch as undiciFetch, type ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
@@ -157,18 +156,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fingerprint único por conta antes de publicar.
-    // Impede que o Instagram detecte o mesmo vídeo em múltiplas contas.
-    let effectiveMediaUrl = media_url;
-    try {
-      effectiveMediaUrl = await processVideoForAccount(media_url, account.id);
-      console.log(`[posts/create] 🔐 Fingerprint aplicado para @${account.username}`);
-    } catch (fxErr) {
-      console.warn(
-        `[posts/create] ⚠ Fingerprint falhou para @${account.username}: ` +
-        `${fxErr instanceof Error ? fxErr.message : String(fxErr)} — usando URL original.`
-      );
-    }
+    // SEM fingerprint automático: o re-encode degradava a qualidade e o
+    // Instagram suprimia o alcance (lição de 2026-06-18, repetida em 2026-07-08).
+    // A URL original vai direto para a Meta, igual ao process-loops.
+    const effectiveMediaUrl = media_url;
 
     try {
       const result = await publishViaMetaAPI(

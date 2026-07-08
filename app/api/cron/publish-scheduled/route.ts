@@ -8,7 +8,6 @@ import {
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount } from "@/lib/proxy";
-import { processVideoForAccount } from "@/lib/video-effects";
 import { downloadAndStripMetadata } from "@/lib/ffmpeg-process";
 
 export const runtime = "nodejs";
@@ -24,18 +23,6 @@ const RUN_BUDGET_MS = 250_000;
 // Reserva de tempo para o strip pipeline por vídeo (download + FFmpeg + upload)
 const STRIP_RESERVE_MS = 30_000;
 
-// Reserva de tempo para fingerprint único por conta (download + FFmpeg ultrafast + upload).
-// Sem fingerprint, o mesmo vídeo byte-a-byte vai para todas as contas →
-// Instagram detecta coordinated inauthentic behavior → contas caem.
-// Alinhado ao timeout interno do FFmpeg em lib/video-effects.ts (90s) + margem.
-const FINGERPRINT_RESERVE_MS = 100_000;
-
-// Quando o fingerprint falha/estoura timeout, o post NÃO pode voltar para a
-// fila com o mesmo scheduled_at antigo — senão ele continua sendo sempre o
-// mais antigo (ORDER BY scheduled_at ASC) e trava o ciclo pra sempre, nunca
-// dando chance aos posts atrás dele. Empurra alguns minutos pra frente antes
-// de tentar de novo.
-const FINGERPRINT_RETRY_DELAY_MS = 3 * 60_000;
 
 // Vídeos com esse padrão foram upados direto pelo browser (sem FFmpeg strip).
 // Contêm SEI NAL units tipo 5+6 que a Meta API rejeita → ERROR/EXPIRED.
@@ -379,32 +366,11 @@ export async function GET(req: NextRequest) {
           console.warn(`[publish-scheduled] ⏱ Budget insuficiente para strip @${account.username} — prosseguindo com URL original.`);
         }
 
-        // Fingerprint único por conta: impede o Instagram de detectar o mesmo
-        // vídeo sendo postado em múltiplas contas simultaneamente.
-        // Imagens de story não passam por FFmpeg — não há fingerprint a aplicar.
-        if (!isImageMedia(rawVideoUrl)) {
-          if (Date.now() - runStart > RUN_BUDGET_MS - FINGERPRINT_RESERVE_MS) {
-            console.warn(`[publish-scheduled] ⏱ Budget insuficiente para fingerprint @${account.username} — adiando para próximo ciclo.`);
-            await admin.from("scheduled_posts").update({ status: "pending" }).eq("id", post.id);
-            summary.skipped++;
-            continue;
-          }
-          try {
-            effectiveVideoUrl = await processVideoForAccount(effectiveVideoUrl, account.id);
-            console.log(`[publish-scheduled] 🔐 Fingerprint aplicado @${account.username}`);
-          } catch (fxErr) {
-            const fxMsg = fxErr instanceof Error ? fxErr.message : String(fxErr);
-            console.warn(
-              `[publish-scheduled] ⚠ Fingerprint falhou @${account.username}: ${fxMsg} — adiando ${FINGERPRINT_RETRY_DELAY_MS / 60_000}min.`
-            );
-            await admin.from("scheduled_posts").update({
-              status: "pending",
-              scheduled_at: new Date(Date.now() + FINGERPRINT_RETRY_DELAY_MS).toISOString(),
-            }).eq("id", post.id);
-            summary.skipped++;
-            continue;
-          }
-        }
+        // SEM fingerprint automático: re-encode (libx264 CRF 22 + maxrate 4M +
+        // noise + pitch shift) degradava a qualidade → Instagram re-transcodifica
+        // de fonte ruim → retenção baixa → alcance suprimido (0–200 views vs 25k
+        // do Loop, que sempre postou a URL original). Mesma lição de 2026-06-18.
+        // A URL original do Supabase vai direto para a Meta, igual ao process-loops.
 
         // Guarda de segurança: não deve acontecer com a nova arquitetura
         if (isCloneUrl(effectiveVideoUrl)) {
