@@ -9,7 +9,8 @@
  *  - Intervalo entre posts = floor(1440 / posts_per_day) minutos
  *  - Janela de look-ahead = próximas 24h
  *  - Se count de posts na janela < posts_per_day → cria o próximo post
- *  - next_scheduled_at = max(now, last_scheduled_at + interval) + account_stagger
+ *  - next_scheduled_at = max(now, last_scheduled_at + interval) + stagger dinâmico
+ *    (intervalo ÷ nº de contas, com jitter ±30% — offset_seconds não é mais usado)
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
   // Busca automações ativas com suas relações
   const { data: automations, error } = await admin
     .from("automations")
-    .select("id, user_id, name, posts_per_day, offset_seconds, captions, active, auto_caption_enabled, auto_caption_type")
+    .select("id, user_id, name, posts_per_day, captions, active, auto_caption_enabled, auto_caption_type")
     .eq("active", true);
 
   if (error) {
@@ -116,19 +117,54 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Histórico completo por conta atravessando TODAS as origens: Postar/
-    // Clonar/Automatizar (scheduled_posts) + Loop (pending_containers).
-    // Histórico escopado por campaign_id fazia cada aba "esquecer" o que a
-    // conta já postou pelas outras — o mesmo vídeo chegou a sair 9× na mesma
-    // conta ao alternar entre Postar → Loop → Automatizar.
+    // Só busca histórico para contas que realmente precisam de post neste run.
+    // Em regime, isso é 1–3 contas por minuto — sem esse filtro, o histórico
+    // COMPLETO de todas as contas (200 contas × 12/dia = 100k linhas em ~40
+    // dias, teto do .limit) trafegava a cada minuto e truncava silenciosamente,
+    // quebrando o anti-repetição sem aviso.
+    const needyIds = accounts
+      .filter((a) => (countByAccount[a.id] ?? 0) < automation.posts_per_day)
+      .map((a) => a.id);
+    if (!needyIds.length) continue;
+
+    // Histórico por conta atravessando TODAS as origens: Postar/Clonar/
+    // Automatizar (scheduled_posts) + Loop (pending_containers).
+    // Janela de 90 dias: cobre mais de um ciclo completo da pasta (pool de 500
+    // vídeos a 12/dia = ~42 dias/ciclo); além disso o pool já reinicia sozinho.
     const accountIds = accounts.map((a) => a.id);
-    const [{ data: spHistory }, { data: pcHistory }] = await Promise.all([
+    const repeatCutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    // Uso global: só o passado recente importa — o balanceamento existe para o
+    // mesmo vídeo não sair em várias contas QUASE AO MESMO TEMPO. 7 dias mantém
+    // a query pequena mesmo com 200 contas (16k linhas vs 100k+ sem janela).
+    const usageCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [
+      { data: spRepeat }, { data: pcRepeat },
+      { data: spUsage },  { data: pcUsage },
+    ] = await Promise.all([
+      admin
+        .from("scheduled_posts")
+        .select("account_id, video_id")
+        .in("account_id", needyIds)
+        .not("video_id", "is", null)
+        .in("status", ["pending", "publishing", "published"])
+        .gte("created_at", repeatCutoff)
+        .limit(100000),
+      admin
+        .from("pending_containers")
+        .select("account_id, video_id")
+        .in("account_id", needyIds)
+        .not("video_id", "is", null)
+        .neq("status", "error")
+        .gte("created_at", repeatCutoff)
+        .limit(100000),
       admin
         .from("scheduled_posts")
         .select("account_id, video_id")
         .in("account_id", accountIds)
         .not("video_id", "is", null)
         .in("status", ["pending", "publishing", "published"])
+        .gte("created_at", usageCutoff)
         .limit(100000),
       admin
         .from("pending_containers")
@@ -136,22 +172,36 @@ export async function GET(req: NextRequest) {
         .in("account_id", accountIds)
         .not("video_id", "is", null)
         .neq("status", "error")
+        .gte("created_at", usageCutoff)
         .limit(100000),
     ]);
-    const historyPosts = [...(spHistory ?? []), ...(pcHistory ?? [])];
 
+    // Anti-repetição por conta (só contas precisando de post, janela 90d)
     const postedByAccount: Record<string, Set<string>> = {};
-    // Uso global por vídeo (todas as contas): base do balanceamento que impede
-    // o mesmo vídeo de aparecer em várias contas enquanto outros ficam parados.
-    const usageByVideo: Record<string, number> = {};
-    for (const p of historyPosts) {
+    for (const p of [...(spRepeat ?? []), ...(pcRepeat ?? [])]) {
       if (!postedByAccount[p.account_id]) postedByAccount[p.account_id] = new Set();
       postedByAccount[p.account_id].add(p.video_id);
+    }
+
+    // Uso global por vídeo (todas as contas, janela 7d): base do balanceamento
+    // que impede o mesmo vídeo de aparecer em várias contas enquanto outros
+    // ficam parados.
+    const usageByVideo: Record<string, number> = {};
+    for (const p of [...(spUsage ?? []), ...(pcUsage ?? [])]) {
       usageByVideo[p.video_id] = (usageByVideo[p.video_id] ?? 0) + 1;
     }
 
     // Captions disponíveis
     const captionPool = automation.captions?.filter((c: string) => c.trim()) ?? [];
+
+    // Stagger dinâmico: distribui as contas uniformemente dentro de UM ciclo
+    // do intervalo (intervalo ÷ nº de contas), em vez do offset_seconds fixo.
+    // Offset fixo de 5 min com 200 contas jogava a última pra +16h40 no
+    // arranque; offset pequeno criava rajada de 200 posts a cada ciclo.
+    // Ex.: 2h com 200 contas → 1 post a cada ~36s, constante, sem rajadas.
+    // Jitter ±30% de um passo quebra a periodicidade perfeita (anti-bot).
+    // Mesma lógica do process-loops desde 2026-06.
+    const staggerBaseMs = Math.max(5, (intervalMin * 60) / accounts.length) * 1000;
 
     // Cria posts necessários para cada conta
     const inserts: Record<string, unknown>[] = [];
@@ -159,7 +209,8 @@ export async function GET(req: NextRequest) {
       const currentCount = countByAccount[account.id] ?? 0;
       if (currentCount >= automation.posts_per_day) return;
 
-      const accountStaggerMs = accountIdx * automation.offset_seconds * 1000;
+      const jitterMs = (Math.random() * 0.6 - 0.3) * staggerBaseMs;
+      const accountStaggerMs = Math.max(0, accountIdx * staggerBaseMs + jitterMs);
       const lastAt = lastByAccount[account.id];
 
       // Próximo scheduled_at
