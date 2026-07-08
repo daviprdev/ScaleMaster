@@ -3009,3 +3009,28 @@ O cron `process-automations` grava `scheduled_posts` com `campaign_id = automati
 
 #### Lição
 Compartilhar a fila `scheduled_posts` entre origens (Postar/Clonar/Automatizar/Stories) é a arquitetura certa — retry, proxy e fingerprint em um pipeline só. Mas toda UI que agrupa por `campaign_id` precisa saber a ORIGEM do id (tabela `automations`, flag `is_clone` via `clone_source_profile`, `post_type='story'`) antes de exibir, senão as abas vazam umas nas outras.
+
+---
+
+### ✅ Sessão 2026-07-08 — Fix urgente: views 0–200 no Automatizar (fingerprint) + preparação para 200 contas
+
+#### Fix — Fingerprint automático removido de publish-scheduled e posts/create (commit `6ea2e02`)
+Usuário reportou views péssimas nas contas do Automatizar (novas com 0, antigas caindo de 2k+ para 100–200), enquanto a melhor conta — que estava no Loop — fez 25k views com o mesmo tipo de conteúdo.
+
+**Causa:** commit `3df0cb6` (30/06) reintroduziu `processVideoForAccount` INCONDICIONAL no `publish-scheduled` e `posts/create` — re-encode libx264 ultrafast CRF 22 + `maxrate 4M` (piorado em `36be7db`, 06/07) + noise + eq + pitch shift ±1% em TODO vídeo. Dupla compressão lossy → Meta re-transcodifica de fonte ruim → retenção baixa → alcance suprimido. O pitch shift ainda quebrava o reconhecimento de áudio em trending. **Mesma lição de 18/06 (`5b553eb`)**, que removeu o base fingerprint do Loop mas não foi replicada quando o publish-scheduled ganhou fingerprint depois.
+
+**Fix:** chamada removida dos dois arquivos — URL original do Supabase vai direto à Meta, igual ao "modo direto" do `process-loops`. Strip de metadados/SEI mantido (stream copy, sem perda). REGRA PERMANENTE: nunca reintroduzir re-encode FFmpeg automático no caminho de postagem; FFmpeg só com efeito criativo ativado pelo usuário.
+
+#### Perf — process-automations pronto para 200 contas × 12/dia (commit `56a3dae`)
+Usuário planeja modelo com 200 contas, proxy fixo único por conta, apps Meta separados, intervalo de 2h (2.400 posts/dia). Motor de publicação já aguentava (capacidade ~28k/dia); dois pontos não escalavam:
+1. **Histórico em janelas:** a query puxava TODO o histórico de todas as contas a cada minuto — estouraria o `.limit(100000)` em ~40 dias e truncaria em silêncio, quebrando o anti-repetição. Agora: anti-repetição busca só as contas que precisam de post no run (1–3/min em regime, janela 90d); balanceamento global com janela 7d; run sem conta precisando pula as queries.
+2. **Stagger dinâmico:** `offset_seconds` fixo (5 min × 200 contas = última conta +16h40 no arranque) substituído por `intervalo ÷ nº de contas` com jitter ±30% — 2h/200 contas = 1 post a cada ~36s constante, sem rajadas. Campo `offset_seconds` permanece no banco/UI mas o cron não lê mais.
+
+#### Recomendações registradas para a operação de 200 contas
+- Subir em ondas de 30–50 contas, cada onda com seus proxies e seu App Meta (BYOC, ~40–50 contas/app).
+- Rampa de volume: contas novas começam com 2–4 posts/dia; 12/dia só em conta aquecida (as quedas de ontem foram volume + vídeo degradado).
+- Pool de mídia grande (500+ vídeos) para diluir duplicação entre contas.
+- Custos: Supabase egress ~1,3 TB/mês (Meta baixa cada vídeo do Storage) ≈ US$ 100–120/mês + Vercel Pro. O vídeo NUNCA passa pela Vercel no fluxo normal — só orquestração HTTP.
+
+#### Lição
+Segunda vez que o mesmo mecanismo (re-encode automático "anti-fingerprint") derruba as views da operação inteira (18/06 e 30/06→08/07). O trade-off qualidade × unicidade de arquivo tem vencedor claro na prática: qualidade. A defesa contra duplicação é pool grande + balanceamento de seleção, não degradação do arquivo.
