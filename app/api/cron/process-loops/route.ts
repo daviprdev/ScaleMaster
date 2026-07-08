@@ -435,10 +435,11 @@ async function attemptFailover(
 // o mesmo vídeo para contas diferentes — a raiz do erro 368 em burst.
 //
 // Estratégia:
-//  1. Busca o histórico de TODAS as contas em paralelo (Promise.allSettled)
+//  1. Busca o histórico de TODAS as contas em 2 queries batch — atravessando
+//     todas as origens (Loop + Postar/Clonar/Automatizar), sem escopo por loop_id
 //  2. Busca vídeos já reivindicados por QUALQUER conta nesta janela (guard inter-run)
 //  3. Atribui vídeos em passagem síncrona única — sem async entre decisões.
-//     Conta[0] → Vídeo A, Conta[1] → Vídeo B, etc. Nenhum vídeo repetido.
+//     Prioriza vídeos de menor uso global entre as contas do loop.
 // ---------------------------------------------------------------------------
 
 async function assignVideosForLoop(
@@ -448,19 +449,27 @@ async function assignVideosForLoop(
   validAccounts: AccountRow[],
   windowStartIso: string
 ): Promise<Map<string, VideoAssignment>> {
-  // Busca paralela: histórico por conta + vídeos já tomados nesta janela
-  const [historySettled, windowClaimsRes] = await Promise.all([
-    Promise.allSettled(
-      validAccounts.map(account =>
-        (admin as any)
-          .from("pending_containers")
-          .select("video_id")
-          .eq("loop_id", loop.id)
-          .eq("account_id", account.id)
-          .neq("status", "error")
-          .not("video_id", "is", null)
-      )
-    ),
+  // Busca paralela: histórico por conta + vídeos já tomados nesta janela.
+  // Histórico atravessa TODAS as origens (Loop via pending_containers +
+  // Postar/Clonar/Automatizar via scheduled_posts), sem escopo por loop_id:
+  // histórico por loop fazia cada loop novo repostar tudo que a conta já
+  // postou por outros loops/abas — mesmo vídeo chegou a sair 9× na mesma conta.
+  const accountIds = validAccounts.map(a => a.id);
+  const [containersHistRes, scheduledHistRes, windowClaimsRes] = await Promise.all([
+    (admin as any)
+      .from("pending_containers")
+      .select("account_id, video_id")
+      .in("account_id", accountIds)
+      .neq("status", "error")
+      .not("video_id", "is", null)
+      .limit(100000),
+    (admin as any)
+      .from("scheduled_posts")
+      .select("account_id, video_id")
+      .in("account_id", accountIds)
+      .in("status", ["pending", "publishing", "published"])
+      .not("video_id", "is", null)
+      .limit(100000),
     // Guard inter-run: vídeos reivindicados por QUALQUER conta nesta janela.
     // Impede que duas invocações concorrentes do cron escolham o mesmo vídeo
     // para contas diferentes, mesmo que cada processo tenha sua própria memória.
@@ -473,6 +482,21 @@ async function assignVideosForLoop(
       .not("video_id", "is", null),
   ]);
 
+  const historyRows = [
+    ...(((containersHistRes as { data?: { account_id: string; video_id: string }[] }).data) ?? []),
+    ...(((scheduledHistRes as { data?: { account_id: string; video_id: string }[] }).data) ?? []),
+  ];
+  const postedByAccountMap = new Map<string, Set<string>>();
+  // Uso global por vídeo entre as contas do loop: base do balanceamento que
+  // impede o mesmo vídeo de sair em várias contas enquanto outros ficam parados.
+  const usageByVideo = new Map<string, number>();
+  for (const row of historyRows) {
+    let set = postedByAccountMap.get(row.account_id);
+    if (!set) { set = new Set(); postedByAccountMap.set(row.account_id, set); }
+    set.add(row.video_id);
+    usageByVideo.set(row.video_id, (usageByVideo.get(row.video_id) ?? 0) + 1);
+  }
+
   const globallyTaken = new Set<string>(
     ((windowClaimsRes as { data?: { video_id: string }[] }).data ?? [])
       .map(r => r.video_id)
@@ -484,27 +508,14 @@ async function assignVideosForLoop(
   );
 
   // Passagem síncrona: sem await entre as decisões — sem TOCTOU intra-run.
-  // Cada conta tem pool INDEPENDENTE de todos os vídeos da pasta.
-  // O mesmo vídeo pode ser atribuído a múltiplas contas no mesmo ciclo —
-  // a deduplicação é por conta (cada uma percorre os 247 vídeos individualmente).
+  // Cada conta tem pool INDEPENDENTE de todos os vídeos da pasta, mas o
+  // desempate entre os disponíveis prioriza os vídeos de MENOR uso global —
+  // evita o mesmo vídeo sair em várias contas quase ao mesmo tempo.
   const assignments = new Map<string, VideoAssignment>();
 
   for (let i = 0; i < validAccounts.length; i++) {
     const account = validAccounts[i];
-    const settled = historySettled[i];
-
-    const postedByAccount = new Set<string>(
-      settled.status === "fulfilled"
-        ? ((settled.value as { data?: { video_id: string }[] }).data ?? []).map(r => r.video_id)
-        : [] // falha no histórico → trata como vazio (best-effort)
-    );
-
-    if (settled.status === "rejected") {
-      console.warn(
-        `[assign-phase] @${account.username}: falha ao buscar histórico — tratando como vazio. ` +
-        `Reason: ${String((settled as PromiseRejectedResult).reason)}`
-      );
-    }
+    const postedByAccount = postedByAccountMap.get(account.id) ?? new Set<string>();
 
     // Pool individual: exclui apenas o que ESTA conta já postou.
     // globallyTaken serve de guard para invocações concorrentes (raramente populado
@@ -542,8 +553,12 @@ async function assignVideosForLoop(
       continue;
     }
 
-    const randomIdx = Math.floor(Math.random() * available.length);
-    const video = available[randomIdx];
+    // Sorteia apenas entre os de menor uso global e incrementa em memória para
+    // que as próximas contas DESTE run já enxerguem o vídeo como usado.
+    const minUse = Math.min(...available.map(v => usageByVideo.get(v.id) ?? 0));
+    const leastUsed = available.filter(v => (usageByVideo.get(v.id) ?? 0) === minUse);
+    const video = leastUsed[Math.floor(Math.random() * leastUsed.length)];
+    usageByVideo.set(video.id, (usageByVideo.get(video.id) ?? 0) + 1);
     assignments.set(account.id, { video, isCycleReset });
   }
 
@@ -551,7 +566,7 @@ async function assignVideosForLoop(
     .map(([, a]) => `${a.video.filename.slice(0, 20)}${a.isCycleReset ? "*" : ""}`)
     .join(", ");
   console.log(
-    `[assign-phase] "${loop.name}": ${assignments.size}/${validAccounts.length} conta(s) com vídeo atribuído (pool independente por conta). ` +
+    `[assign-phase] "${loop.name}": ${assignments.size}/${validAccounts.length} conta(s) com vídeo atribuído (histórico por conta em todas as origens + menor uso global). ` +
     `[${summary}]`
   );
 

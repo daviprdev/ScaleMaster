@@ -116,22 +116,35 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Histórico completo por conta (todo o tempo de vida da automação) para
-    // não repetir vídeo até esgotar o pool da pasta. Sem isso, Math.random()
-    // puro reincide nos mesmos vídeos com pools pequenos ou muitas contas.
-    const { data: historyPosts } = await admin
-      .from("scheduled_posts")
-      .select("account_id, video_id")
-      .eq("campaign_id", automation.id)
-      .not("video_id", "is", null)
-      .in("status", ["pending", "publishing", "published"])
-      .limit(100000);
+    // Histórico completo por conta atravessando TODAS as origens: Postar/
+    // Clonar/Automatizar (scheduled_posts) + Loop (pending_containers).
+    // Histórico escopado por campaign_id fazia cada aba "esquecer" o que a
+    // conta já postou pelas outras — o mesmo vídeo chegou a sair 9× na mesma
+    // conta ao alternar entre Postar → Loop → Automatizar.
+    const accountIds = accounts.map((a) => a.id);
+    const [{ data: spHistory }, { data: pcHistory }] = await Promise.all([
+      admin
+        .from("scheduled_posts")
+        .select("account_id, video_id")
+        .in("account_id", accountIds)
+        .not("video_id", "is", null)
+        .in("status", ["pending", "publishing", "published"])
+        .limit(100000),
+      admin
+        .from("pending_containers")
+        .select("account_id, video_id")
+        .in("account_id", accountIds)
+        .not("video_id", "is", null)
+        .neq("status", "error")
+        .limit(100000),
+    ]);
+    const historyPosts = [...(spHistory ?? []), ...(pcHistory ?? [])];
 
     const postedByAccount: Record<string, Set<string>> = {};
     // Uso global por vídeo (todas as contas): base do balanceamento que impede
     // o mesmo vídeo de aparecer em várias contas enquanto outros ficam parados.
     const usageByVideo: Record<string, number> = {};
-    for (const p of (historyPosts ?? [])) {
+    for (const p of historyPosts) {
       if (!postedByAccount[p.account_id]) postedByAccount[p.account_id] = new Set();
       postedByAccount[p.account_id].add(p.video_id);
       usageByVideo[p.video_id] = (usageByVideo[p.video_id] ?? 0) + 1;

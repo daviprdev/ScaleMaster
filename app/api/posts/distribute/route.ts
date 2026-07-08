@@ -60,7 +60,8 @@ export async function POST(req: NextRequest) {
     .select("id, public_url")
     .eq("folder_id", folder_id)
     .eq("user_id", user.id)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .limit(10000);
 
   if (vErr || !allVideos?.length)
     return NextResponse.json({ error: "Nenhum vídeo encontrado na pasta." }, { status: 400 });
@@ -69,7 +70,34 @@ export async function POST(req: NextRequest) {
     ? allVideos.length
     : Math.min(video_count, allVideos.length);
 
-  const baseVideos = allVideos.slice(0, maxVideos);
+  // Histórico por conta atravessando TODAS as origens (Postar/Clonar/Automatizar
+  // via scheduled_posts + Loop via pending_containers). Antes, o subconjunto era
+  // slice(0, N) fixo por created_at — toda campanha nova começava SEMPRE pelos
+  // mesmos N vídeos mais antigos da pasta, repetindo o que a conta já postou.
+  const [{ data: spHist }, { data: pcHist }] = await Promise.all([
+    admin
+      .from("scheduled_posts")
+      .select("account_id, video_id")
+      .in("account_id", account_ids)
+      .not("video_id", "is", null)
+      .in("status", ["pending", "publishing", "published"])
+      .limit(100000),
+    admin
+      .from("pending_containers")
+      .select("account_id, video_id")
+      .in("account_id", account_ids)
+      .not("video_id", "is", null)
+      .neq("status", "error")
+      .limit(100000),
+  ]);
+
+  // account_id → (video_id → vezes postado)
+  const postedCount = new Map<string, Map<string, number>>();
+  for (const row of [...(spHist ?? []), ...(pcHist ?? [])]) {
+    let m = postedCount.get(row.account_id);
+    if (!m) { m = new Map(); postedCount.set(row.account_id, m); }
+    m.set(row.video_id, (m.get(row.video_id) ?? 0) + 1);
+  }
 
   const campaignId = randomUUID();
   // Distribui uniformemente ao longo de 24h
@@ -90,7 +118,15 @@ export async function POST(req: NextRequest) {
     const staggerMs = account_stagger_seconds
       ? ai * account_stagger_seconds * 1_000
       : ai * autoStaggerPerAccountMs;
-    const accountVideos = fisherYates(baseVideos); // embaralhamento único por conta
+    // Embaralha e depois ordena (sort estável) pelo nº de vezes que ESTA conta
+    // já postou cada vídeo: vídeos nunca postados vêm primeiro em ordem
+    // aleatória; só reutiliza os já postados se a quantidade pedida exigir.
+    const counts = postedCount.get(accountId);
+    const accountVideos = fisherYates(allVideos)
+      .map((v) => ({ v, uses: counts?.get(v.id) ?? 0 }))
+      .sort((a, b) => a.uses - b.uses)
+      .slice(0, maxVideos)
+      .map((x) => x.v);
 
     for (let vi = 0; vi < accountVideos.length; vi++) {
       const video = accountVideos[vi];
@@ -128,8 +164,8 @@ export async function POST(req: NextRequest) {
     campaign_id: campaignId,
     total_posts: rows.length,
     accounts: account_ids.length,
-    videos_per_account: baseVideos.length,
-    days: Math.ceil(baseVideos.length / posts_per_day),
+    videos_per_account: maxVideos,
+    days: Math.ceil(maxVideos / posts_per_day),
     first_slot: times[0],
     last_slot: times[times.length - 1],
   });
