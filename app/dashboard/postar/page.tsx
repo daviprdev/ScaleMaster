@@ -50,6 +50,8 @@ interface Campaign {
   account_ids: string[];
   campaign_status: "running" | "completed";
   created_at: string;
+  is_clone?: boolean;
+  is_automation?: boolean;
 }
 
 // ── Campaign helpers ────────────────────────────────────────────────────────
@@ -537,7 +539,8 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
     try {
       const res = await fetch("/api/campaigns");
       const d = await res.json() as { campaigns: Campaign[] };
-      setCampaigns(d.campaigns ?? []);
+      // Automações e clones têm abas próprias (Automatizar / Clonar Perfil) — aqui só campanhas criadas no Postar
+      setCampaigns((d.campaigns ?? []).filter(c => !c.is_automation && !c.is_clone));
     } catch {/* silent */} finally {
       setLoading(false);
       setRefreshing(false);

@@ -25,6 +25,7 @@ interface RpcRow {
 
 interface CampaignSummary extends RpcRow {
   campaign_status: "running" | "completed";
+  is_automation: boolean;
 }
 
 export async function GET(req: NextRequest) {
@@ -53,6 +54,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Automatizar usa campaign_id = automation.id — marca essas linhas para que
+  // a lista de Campanhas Ativas (aba Postar) possa exibi-las separadas ou ocultá-las
+  const automationIds = new Set<string>();
+  {
+    const { data: autoRows } = await (admin as any)
+      .from("automations")
+      .select("id")
+      .eq("user_id", user.id);
+    for (const r of (autoRows ?? []) as { id: string }[]) automationIds.add(r.id);
+  }
+
   let campaigns: CampaignSummary[] = ((data as RpcRow[]) ?? []).map(row => ({
     ...row,
     total: Number(row.total),
@@ -62,6 +74,7 @@ export async function GET(req: NextRequest) {
     cancelled: Number(row.cancelled),
     account_ids: row.account_ids ?? [],
     campaign_status: (Number(row.pending) > 0 ? "running" : "completed") as "running" | "completed",
+    is_automation: automationIds.has(row.campaign_id),
   })).sort((a, b) => {
     if (a.campaign_status !== b.campaign_status) {
       return a.campaign_status === "running" ? -1 : 1;
