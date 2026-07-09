@@ -7,7 +7,7 @@ import {
   publishReadyContainer,
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
-import { getProxyForAccount } from "@/lib/proxy";
+import { getProxyForAccount, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
 import { downloadAndStripMetadata } from "@/lib/ffmpeg-process";
 
 export const runtime = "nodejs";
@@ -467,6 +467,10 @@ export async function GET(req: NextRequest) {
           .from("scheduled_posts")
           .update({ status: "pending", error_message: `[RETRY] ${msg.slice(0, 300)}` })
           .eq("id", post.id);
+        // Falha de proxy → registra na conta para o ProxyOutageBanner do dashboard.
+        if (account.proxy_url && isProxyNetworkError(msg)) {
+          await recordProxyFailure(admin, account.id, "publish-scheduled", msg);
+        }
         summary.skipped++;
       } else {
         console.error(`[publish-scheduled] ✗ @${account.username} (${post.id}):`, msg);

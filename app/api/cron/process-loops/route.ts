@@ -2,7 +2,7 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
-import { getProxyForAccount } from "@/lib/proxy";
+import { getProxyForAccount, recordProxyFailure } from "@/lib/proxy";
 import { getAutoCaption } from "@/lib/auto-captions";
 import type { ProxyAgent } from "undici";
 
@@ -1129,6 +1129,7 @@ async function processOneLoop(
               `[loop-cron] ⛔ @${account.username}: proxy falhou (fetch failed) — ` +
               `conta pulada neste ciclo.`
             );
+            await recordProxyFailure(admin, account.id, "loop", proxyMsg);
             continue;
           } else {
             throw proxyErr;

@@ -6,7 +6,7 @@ import {
   publishReadyContainer,
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
-import { getProxyForAccount } from "@/lib/proxy";
+import { getProxyForAccount, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -146,6 +146,10 @@ export async function GET(req: NextRequest) {
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(`@${account.username}: ${msg}`);
         summary.failed++;
+        // Falha de proxy → registra na conta para o ProxyOutageBanner do dashboard.
+        if (account.proxy_url && isProxyNetworkError(msg)) {
+          await recordProxyFailure(admin, account.id, "story-templates", msg);
+        }
       }
     }
 

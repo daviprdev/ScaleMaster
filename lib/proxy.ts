@@ -120,6 +120,49 @@ export function getProxyForAccount(
   return null;
 }
 
+// ── Rastreamento de falha de proxy ───────────────────────────────────────────
+
+/**
+ * Detecta erros de rede do proxy (túnel recusado, credencial inválida, timeout).
+ * O undici reporta CONNECT 407 e conexão cortada como "fetch failed" genérico.
+ */
+export function isProxyNetworkError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("fetch failed") ||
+    lower.includes("[proxy]") ||
+    lower.includes("proxy dedicado falhou") ||
+    lower.includes("econnreset") ||
+    lower.includes("econnrefused") ||
+    lower.includes("socket hang up")
+  );
+}
+
+/**
+ * Persiste a falha de proxy na conta para o ProxyOutageBanner do dashboard.
+ * Sem isso, quedas do provedor (todas as contas ao mesmo tempo) ficam invisíveis
+ * no painel — os crons apenas pulam as contas em silêncio (outage 2026-07-09).
+ * Sempre await (fire-and-forget é cancelado pelo serverless da Vercel).
+ */
+export async function recordProxyFailure(
+  admin: unknown,
+  accountId: string,
+  source: string,
+  message: string
+): Promise<void> {
+  try {
+    await (admin as { from: (t: string) => any })
+      .from("instagram_accounts")
+      .update({
+        last_proxy_error_at: new Date().toISOString(),
+        last_proxy_error: `[${source}] ${message}`.slice(0, 300),
+      })
+      .eq("id", accountId);
+  } catch (e) {
+    console.warn(`[proxy-health] Falha ao registrar erro de proxy (${accountId.slice(0, 8)}…): ${String(e)}`);
+  }
+}
+
 // ── proxyInit ─────────────────────────────────────────────────────────────────
 
 export function proxyInit(

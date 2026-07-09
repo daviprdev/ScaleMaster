@@ -5,7 +5,7 @@ import {
   publishReadyContainer,
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
-import { getProxyForAccount } from "@/lib/proxy";
+import { getProxyForAccount, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -305,6 +305,10 @@ export async function GET(req: NextRequest) {
           `[publish-pending] ⏸ @${account?.username ?? "?"} container ${container.id}: ` +
           `erro transitório — retry em 5min. Motivo: ${msg.slice(0, 120)}`
         );
+        // Falha de proxy → registra na conta para o ProxyOutageBanner do dashboard.
+        if (account?.proxy_url && isProxyNetworkError(msg)) {
+          await recordProxyFailure(admin, account.id, "publish-pending", msg);
+        }
         await (admin as any)
           .from("pending_containers")
           .update({ status: "pending", retry_after: retryAfter })
