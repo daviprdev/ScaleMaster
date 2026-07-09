@@ -420,16 +420,25 @@ export async function GET(req: NextRequest) {
   // aceitável pois é um evento único de setup, não recorrente de postagem.
   let bootstrapProxy: ProxyAgent | null = null;
   try {
-    const { data: proxyAcct } = await (admin as any)
+    // Sorteio aleatório entre todos os proxies do usuário — distribui o onboarding
+    // entre os IPs disponíveis em vez de concentrar sempre no mesmo (um proxy morto
+    // fixo derrubava todas as conexões; ver fix 2026-07-09).
+    const { data: proxyAccts } = await (admin as any)
       .from("instagram_accounts")
       .select("id, proxy_url")
       .eq("user_id", userId)
       .not("proxy_url", "is", null)
-      .limit(1)
-      .maybeSingle();
-    if (proxyAcct?.id && proxyAcct.proxy_url) {
+      .neq("health_status", "error")
+      .limit(200);
+    const candidates = (proxyAccts ?? []).filter(
+      (a: { id?: string; proxy_url?: string }) => a.id && a.proxy_url
+    );
+    if (candidates.length > 0) {
+      const proxyAcct = candidates[Math.floor(Math.random() * candidates.length)];
       bootstrapProxy = getProxyForAccount(proxyAcct.id, proxyAcct.proxy_url);
-      console.log(`[ig/callback] proxy bootstrap obtido de conta ${(proxyAcct.id as string).slice(0, 8)}…`);
+      console.log(
+        `[ig/callback] proxy bootstrap sorteado de conta ${(proxyAcct.id as string).slice(0, 8)}… (${candidates.length} candidatos)`
+      );
     } else {
       console.log("[ig/callback] sem proxy bootstrap disponível — usando IP Vercel para exchange de token.");
     }
