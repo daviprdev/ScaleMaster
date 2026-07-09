@@ -105,6 +105,32 @@ async function fetchWithTimeout(
   }
 }
 
+// Erro de rede do proxy (morto/instável) — a requisição nem chegou à Meta.
+function isProxyNetworkError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  return msg.includes("fetch failed") || msg.includes("timeout");
+}
+
+// Executa a chamada à Meta com o proxy atual; se o proxy falhar com erro de rede,
+// retenta sem proxy (IP Vercel — aceitável no onboarding, evento único de setup)
+// e desativa o proxy para as chamadas seguintes do mesmo request.
+async function callMetaWithFallback<T>(
+  label: string,
+  holder: { agent: ProxyAgent | null },
+  fn: (proxy: ProxyAgent | null) => Promise<T>
+): Promise<T> {
+  try {
+    return await fn(holder.agent);
+  } catch (err) {
+    if (!holder.agent || !isProxyNetworkError(err)) throw err;
+    console.warn(
+      `[ig/callback] ${label}: falha de rede via proxy (${(err as Error).message}) — retry sem proxy.`
+    );
+    holder.agent = null;
+    return fn(null);
+  }
+}
+
 function detectRateLimit(res: Response): void {
   if (res.status === 429) {
     const retryAfter = res.headers.get("Retry-After") ?? "60";
@@ -347,25 +373,27 @@ async function upsertAccount(
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
+  // Magic link: user_id vem do cookie em vez de sessão autenticada.
+  // Lido antes das checagens iniciais para que qualquer erro redirecione
+  // para /add/error (o cliente do magic link não tem sessão no dashboard).
+  const magicUserId = req.cookies.get("ig_oauth_magic_user_id")?.value ?? "";
+  const isMagicLink = !!magicUserId;
+
   if (searchParams.get("error")) {
     const reason = searchParams.get("error_reason") ?? searchParams.get("error") ?? "";
     console.warn("[ig/callback] Cancelado pelo usuário:", reason);
-    return redirectWithError("cancelled");
+    return redirectWithError("cancelled", undefined, isMagicLink);
   }
 
   const state = searchParams.get("state") ?? "";
   const cookieState = req.cookies.get("ig_oauth_state")?.value ?? "";
   if (!state || !cookieState || state !== cookieState) {
     console.error("[ig/callback] State inválido. state:", state, "| cookie:", cookieState);
-    return redirectWithError("state_mismatch");
+    return redirectWithError("state_mismatch", undefined, isMagicLink);
   }
 
   const code = searchParams.get("code");
-  if (!code) return redirectWithError("no_code");
-
-  // Magic link: user_id vem do cookie em vez de sessão autenticada
-  const magicUserId = req.cookies.get("ig_oauth_magic_user_id")?.value ?? "";
-  const isMagicLink = !!magicUserId;
+  if (!code) return redirectWithError("no_code", undefined, isMagicLink);
 
   let userId: string;
   if (isMagicLink) {
@@ -409,13 +437,20 @@ export async function GET(req: NextRequest) {
     console.warn("[ig/callback] falha ao buscar proxy bootstrap:", (e as Error).message);
   }
 
+  // Holder mutável: se um proxy falhar com erro de rede, callMetaWithFallback
+  // zera o agent e as chamadas seguintes saem direto pelo IP da Vercel.
+  const proxyHolder: { agent: ProxyAgent | null } = { agent: bootstrapProxy };
+
   try {
-    const { token: shortToken, igUserId } = await exchangeCode(code, credentials.appId, credentials.appSecret, bootstrapProxy);
+    const { token: shortToken, igUserId } = await callMetaWithFallback(
+      "exchangeCode",
+      proxyHolder,
+      (p) => exchangeCode(code, credentials.appId, credentials.appSecret, p)
+    );
 
     // Tenta obter o proxy específico da conta sendo (re)conectada.
     // Se o ig_user_id retornar e a conta já existir no banco com proxy próprio,
     // usamos esse proxy para as chamadas seguintes — mais preciso que o bootstrap.
-    let accountProxy: ProxyAgent | null = bootstrapProxy;
     if (igUserId) {
       try {
         const { data: existingAcct } = await (admin as any)
@@ -427,7 +462,7 @@ export async function GET(req: NextRequest) {
         if (existingAcct?.id && existingAcct.proxy_url) {
           const specificProxy = getProxyForAccount(existingAcct.id, existingAcct.proxy_url);
           if (specificProxy) {
-            accountProxy = specificProxy;
+            proxyHolder.agent = specificProxy;
             console.log(`[ig/callback] proxy específico da conta @ig_id=${igUserId} encontrado.`);
           }
         }
@@ -436,8 +471,16 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const { token: longToken, expiresAt } = await getLongLivedToken(shortToken, credentials.appSecret, accountProxy);
-    const profile = await getIGProfile(longToken, accountProxy);
+    const { token: longToken, expiresAt } = await callMetaWithFallback(
+      "getLongLivedToken",
+      proxyHolder,
+      (p) => getLongLivedToken(shortToken, credentials.appSecret, p)
+    );
+    const profile = await callMetaWithFallback(
+      "getIGProfile",
+      proxyHolder,
+      (p) => getIGProfile(longToken, p)
+    );
 
     console.log(`[ig/callback] @${profile.username} (id:${profile.id}) → user ${userId}${isMagicLink ? " [magic-link]" : ""}`);
 
