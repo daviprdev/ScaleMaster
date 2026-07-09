@@ -3034,3 +3034,26 @@ Usuário planeja modelo com 200 contas, proxy fixo único por conta, apps Meta s
 
 #### Lição
 Segunda vez que o mesmo mecanismo (re-encode automático "anti-fingerprint") derruba as views da operação inteira (18/06 e 30/06→08/07). O trade-off qualidade × unicidade de arquivo tem vencedor claro na prática: qualidade. A defesa contra duplicação é pool grande + balanceamento de seleção, não degradação do arquivo.
+
+---
+
+### ✅ Sessão 2026-07-09 — Fix: "Link inválido" ao conectar contas via magic link (proxy bootstrap morto)
+
+**Commits:** `37627c1`, `c9df072`
+
+#### Problema
+Todas as tentativas de conectar contas novas via magic link falhavam no último passo (após aceitar no Instagram) com a tela "Link inválido". Gerar link novo não resolvia.
+
+#### Causa raiz (via logs Vercel)
+1. O callback OAuth escolhia um **proxy bootstrap fixo** (`.limit(1)` — sempre a mesma primeira conta com proxy) para a troca de token. Quando esse proxy estava morto, `exchangeCode` estourava `fetch failed` — o callback era o único ponto do pipeline SEM fallback de proxy.
+2. A página `/add/error` mostrava o título "Link inválido" para **qualquer** erro do fluxo, mascarando o problema real.
+3. Proxies mortos identificados: `45.38.101.192:6125` e `85.198.47.73:6341` (100% de falha), `50.114.84.103:7342` (instável) — verificar com gbproxies; também afetam postagens das contas que os usam como dedicado.
+
+#### Fixes
+- **`callMetaWithFallback`** no callback: erro de rede (`fetch failed`/timeout) com proxy ativo → retry sem proxy (IP Vercel) + desativa o proxy para as chamadas seguintes do request. Aplicado em `exchangeCode`, `getLongLivedToken`, `getIGProfile`.
+- **Proxy bootstrap sorteado**: busca todas as contas com proxy e `health_status != error` e sorteia uma aleatória — distribui o onboarding entre os IPs em vez de concentrar num só.
+- **`/add/error` com título/mensagem por reason** (cancelled, state_mismatch, rate_limit, personal_account, server_error…) — "Link inválido" só para link realmente inválido.
+- **Cookie magic link lido antes das checagens iniciais**: `cancelled`/`state_mismatch` redirecionavam o cliente (sem sessão) para a tela de login em vez de `/add/error`.
+
+#### Lição (importante)
+A troca de token OAuth é chamada servidor-a-servidor autenticada pelo **App Meta**, não pela conta — IP compartilhado nessa etapa é comportamento padrão de SaaS (Buffer, Hootsuite) e não é vetor de linkagem entre contas. O que a Meta associa à conta é o login/aceite no navegador do cliente (IP/device dele) e as chamadas de **postagem** — onde o isolamento por proxy dedicado permanece intacto e sem fallback. Toda página de erro genérica com título fixo atrasa diagnóstico: sempre propagar o motivo real.
