@@ -37,6 +37,14 @@ const META_INFRA_MESSAGES = [
   "cannot parse access token",
   "malformed access token",
   "could not decrypt",
+];
+
+// Checkpoint do Instagram: a conta caiu e exige login manual via browser para
+// voltar. Não é transitório do ponto de vista do painel — a conta não posta e
+// não sincroniza até o usuário resolver. Deve ficar VERMELHA imediatamente
+// (mesmo comportamento do refresh manual), sem tentar renovar token (renovação
+// não resolve checkpoint).
+const CHECKPOINT_MESSAGES = [
   "you cannot access the app till you log in",
   "log in to www.instagram.com and follow the instructions",
 ];
@@ -55,6 +63,12 @@ function isMetaInfraError(code: number, message: string): boolean {
   if (code !== 190) return false;
   const lower = message.toLowerCase();
   return META_INFRA_MESSAGES.some(p => lower.includes(p));
+}
+
+function isCheckpointError(code: number, message: string): boolean {
+  if (code !== 190) return false;
+  const lower = message.toLowerCase();
+  return CHECKPOINT_MESSAGES.some(p => lower.includes(p));
 }
 
 async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmin>) {
@@ -83,6 +97,13 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
 
     if (data.error) {
       const err = data.error as { code: number; message: string };
+
+      // Checkpoint = conta caída de verdade → marca vermelho direto,
+      // igual ao refresh manual. Renovar token não resolve checkpoint.
+      if (isCheckpointError(err.code, err.message)) {
+        console.warn(`[cron/sync-accounts] 🔴 Checkpoint @${acc.username} — marcando como error`);
+        return { id: acc.id, user_id: acc.user_id, ok: false, tokenError: true, errorCode: err.code, errorMessage: err.message };
+      }
 
       if (isMetaInfraError(err.code, err.message)) {
         console.warn(`[cron/sync-accounts] ⚠️ Infra error @${acc.username} (code=${err.code}) — transitório, ignorado`);

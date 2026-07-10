@@ -16,20 +16,23 @@ const STALE_MS = 5 * 60 * 1000;
 // 102/104 = Session key invalid / Incorrect signature
 const TOKEN_ERROR_CODES = new Set([190, 102, 104]);
 
-// Mensagens de code=190 que são erros de INFRAESTRUTURA ou CHECKPOINT — transitórios,
-// não tokens mortos. Ocorrem durante instabilidade dos servidores da Meta OU quando
-// o Instagram aciona verificação manual (checkpoint anti-automação).
+// Mensagens de code=190 que são erros de INFRAESTRUTURA da Meta — transitórios,
+// não tokens mortos. Ocorrem durante instabilidade dos servidores da Meta.
 // Tratar como non-fatal: nunca marcar conta como error por esses.
-// Checkpoint ("you cannot access the app"): o token é válido, mas o Instagram exige
-// que o usuário faça login via browser para liberar. A conta pode ser restaurada e
-// tentará novamente no próximo ciclo — NÃO deve ser excluída permanentemente do loop.
 const META_INFRA_MESSAGES = [
   "failed to decrypt",
   "cannot parse access token",
   "malformed access token",
   "could not decrypt",
-  // Checkpoint do Instagram: verificação de segurança anti-automação.
-  // Mensagem exata retornada quando o Instagram exige login via browser.
+];
+
+// Checkpoint do Instagram ("you cannot access the app till you log in"):
+// a conta caiu e exige login manual via browser para voltar. Não é transitório
+// do ponto de vista do painel — a conta não posta e não sincroniza até o usuário
+// resolver. Deve ficar VERMELHA imediatamente (mesmo comportamento da rota
+// /api/accounts/refresh), sem tentar renovar token (renovação não resolve
+// checkpoint). Restauração via Failover → Restaurar após o login manual.
+const CHECKPOINT_MESSAGES = [
   "you cannot access the app till you log in",
   "log in to www.instagram.com and follow the instructions",
 ];
@@ -78,6 +81,12 @@ function isMetaInfraError(code: number, message: string): boolean {
   return META_INFRA_MESSAGES.some(p => lower.includes(p));
 }
 
+function isCheckpointError(code: number, message: string): boolean {
+  if (code !== 190) return false;
+  const lower = message.toLowerCase();
+  return CHECKPOINT_MESSAGES.some(p => lower.includes(p));
+}
+
 async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmin>): Promise<SyncResult> {
   let activeToken = acc.meta_access_token;
   const proxy = getProxyForAccount(acc.id, acc.proxy_url ?? null);
@@ -107,6 +116,16 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
 
     if (data.error) {
       const err = data.error as { code: number; message: string };
+
+      // Checkpoint = conta caída de verdade → marca vermelho direto,
+      // igual à rota /api/accounts/refresh. Renovar token não resolve checkpoint.
+      if (isCheckpointError(err.code, err.message)) {
+        console.warn(`[sync-all] 🔴 Checkpoint para @${acc.username} — marcando como error`);
+        return {
+          id: acc.id, user_id: acc.user_id, username: acc.username,
+          ok: false, tokenError: true, errorCode: err.code, errorMessage: err.message,
+        };
+      }
 
       // "Failed to decrypt" e similares são falhas de infraestrutura da Meta —
       // os servidores deles falharam internamente ao processar o token válido.
