@@ -187,14 +187,28 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Cascade detection — não marca ninguém se for problema do App/Meta
+  // Cascade detection — não marca ninguém se for problema do App/Meta.
+  // O denominador é o TOTAL de contas ativas, não o lote stale deste run:
+  // contas mortas nunca têm profile_refreshed_at atualizado, então o lote stale
+  // degenera para "só as mortas" em poucos minutos — medir a cascata contra ele
+  // dispara falso positivo todo run e nenhuma conta é marcada nunca (sync congela
+  // sem ficar vermelho até um sync manual forçado). Cascata real da Meta derruba
+  // a maioria das contas ATIVAS, então é isso que deve ser medido.
+  const { count: totalActive } = await admin
+    .from("instagram_accounts")
+    .select("id", { count: "exact", head: true })
+    .neq("health_status", "error")
+    .not("ig_business_account_id", "is", null)
+    .not("meta_access_token", "is", null);
+  const cascadeBase = Math.max(totalActive ?? 0, results.length);
+
   const tokenErrorResults = results.filter(r => (r as any).tokenError);
   const isCascade =
     tokenErrorResults.length >= MIN_CASCADE_COUNT &&
-    tokenErrorResults.length >= Math.ceil(accounts.length * CASCADE_THRESHOLD);
+    tokenErrorResults.length >= Math.ceil(cascadeBase * CASCADE_THRESHOLD);
 
   if (isCascade) {
-    console.warn(`[cron/sync-accounts] CASCATA: ${tokenErrorResults.length}/${accounts.length} token errors — nenhuma conta marcada.`);
+    console.warn(`[cron/sync-accounts] CASCATA: ${tokenErrorResults.length}/${cascadeBase} contas ativas com token error — nenhuma conta marcada.`);
     return NextResponse.json({ synced: 0, cascade: true, token_errors: tokenErrorResults.length });
   }
 

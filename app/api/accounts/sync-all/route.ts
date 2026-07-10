@@ -328,17 +328,21 @@ export async function POST(request: Request) {
 
   // Erros de infra (ex: "Failed to decrypt") são excluídos da detecção de cascata:
   // já são tratados como non-fatal individualmente e nunca marcam como error.
+  // Denominador = TODAS as contas ativas do usuário, não só as stale deste run:
+  // contas mortas nunca avançam profile_refreshed_at, então no sync silencioso
+  // (sem force) o conjunto stale degenera para "só as mortas" e a cascata
+  // dispararia falso positivo em todo run, sem nunca marcá-las como error.
   const tokenErrorResults = results.filter((r) => r.tokenError);
   const isCascade =
     tokenErrorResults.length >= MIN_CASCADE_COUNT &&
-    tokenErrorResults.length >= Math.ceil(stale.length * CASCADE_THRESHOLD);
+    tokenErrorResults.length >= Math.ceil(accounts.length * CASCADE_THRESHOLD);
 
   if (isCascade) {
     // Queda em cascata: App Meta desativado, secret rotacionado ou outage da API.
     // Não marcar nenhuma conta como error — evita destruir o painel inteiro por
     // um evento externo temporário.
     console.warn(
-      `[sync-all] CASCATA detectada: ${tokenErrorResults.length}/${stale.length} contas com ` +
+      `[sync-all] CASCATA detectada: ${tokenErrorResults.length}/${accounts.length} contas ativas com ` +
       `code=${tokenErrorResults[0]?.errorCode} — "${tokenErrorResults[0]?.errorMessage}". ` +
       `Nenhuma conta marcada como error.`
     );
