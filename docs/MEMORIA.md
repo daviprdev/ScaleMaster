@@ -3057,3 +3057,23 @@ Todas as tentativas de conectar contas novas via magic link falhavam no último 
 
 #### Lição (importante)
 A troca de token OAuth é chamada servidor-a-servidor autenticada pelo **App Meta**, não pela conta — IP compartilhado nessa etapa é comportamento padrão de SaaS (Buffer, Hootsuite) e não é vetor de linkagem entre contas. O que a Meta associa à conta é o login/aceite no navegador do cliente (IP/device dele) e as chamadas de **postagem** — onde o isolamento por proxy dedicado permanece intacto e sem fallback. Toda página de erro genérica com título fixo atrasa diagnóstico: sempre propagar o motivo real.
+
+---
+
+### ✅ Sessão 2026-07-10 — Fix: conta caída não ficava vermelha no sync automático (checkpoint tratado como infra)
+
+**Commits:** `baa9b3f`, `f0a7d81`
+
+#### Problema
+Conta que caía não ficava vermelha automaticamente — ficava só com o "sincronizado Xh atrás" congelado em relação às outras. Só virava vermelha ao atualizar manualmente.
+
+#### Causa raiz (confirmada via failover_logs)
+Conta em checkpoint retorna `code=190 — "You cannot access the app till you log in to www.instagram.com..."`. Em 2026-06-13 essa mensagem foi adicionada a `META_INFRA_MESSAGES` no cron `sync-accounts` e no `sync-all` — tratada como infra transitória: nunca marcava `health_status='error'` e nunca atualizava `profile_refreshed_at` (sync congelado, todo minuto, para sempre). A rota manual `/api/accounts/refresh` tem lista de infra menor (só decrypt/parse) — por isso o botão manual marcava vermelho na hora. Todas as marcações recentes no `failover_logs` eram `[refresh]` com essa mensagem.
+
+#### Fixes
+- **Checkpoint = queda real**: mensagens movidas para `CHECKPOINT_MESSAGES` + `isCheckpointError()` no cron `sync-accounts` e no `sync-all` — marca `health_status='error'` direto (sem tentar `refreshMetaToken`, que não resolve checkpoint) + grava motivo em `failover_logs`. Infra genuína (failed to decrypt etc.) continua transitória.
+- **Cascade com denominador correto** (hardening, commit `baa9b3f`): a detecção de cascata media erros contra o lote stale do run — como contas mortas nunca avançam `profile_refreshed_at`, o lote degenerava para "só as mortas" e a cascata dispararia falso positivo todo run. Agora o denominador é o total de contas ativas (cron: count exact no banco; sync-all: todas as contas não-error do usuário).
+- `process-loops`/`publish-pending` mantêm checkpoint como skip/retry transitório — a conta sai dos ciclos sozinha ao ser marcada pelo sync (≤5 min).
+
+#### Lição
+Listas de "erros transitórios" compartilhadas entre rotas divergiram silenciosamente (cron ignorava checkpoint, refresh manual não) — o mesmo erro tinha dois comportamentos dependendo de quem sincronizava. Classificação de erro da Meta deveria viver num módulo único importado por todas as rotas.
