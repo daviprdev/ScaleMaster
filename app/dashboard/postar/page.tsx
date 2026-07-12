@@ -836,6 +836,7 @@ export default function PostarPage() {
   const [postsPerDay, setPostsPerDay] = useState<number>(2);
   const [startDatetime, setStartDatetime] = useState("");
   const [accountStaggerSeconds, setAccountStaggerSeconds] = useState<number | null>(null);
+  const [burstMode, setBurstMode] = useState(false);             // Modo Ciclo: postar tudo de uma vez
 
   // Captions
   const [captions, setCaptions] = useState<string[]>(["", ""]);
@@ -947,7 +948,7 @@ export default function PostarPage() {
     if (selectedAccountIds.length === 0) { setSubmitError("Selecione ao menos 1 conta."); return; }
     if (!selectedFolderId) { setSubmitError("Selecione uma pasta de mídia."); return; }
     if (folderVideoCount === 0) { setSubmitError("A pasta selecionada está vazia."); return; }
-    if (!startDatetime) { setSubmitError("Defina a data e hora de início."); return; }
+    if (!burstMode && !startDatetime) { setSubmitError("Defina a data e hora de início."); return; }
 
     setSubmitError(null);
     setSubmitting(true);
@@ -961,10 +962,11 @@ export default function PostarPage() {
           folder_id: selectedFolderId,
           video_count: videoCount,
           posts_per_day: postsPerDay,
-          start_at: new Date(startDatetime).toISOString(),
+          start_at: burstMode ? new Date().toISOString() : new Date(startDatetime).toISOString(),
           captions: autoCaptionEnabled ? [] : validCaptions,
           auto_caption_type: autoCaptionEnabled ? autoCaptionType : undefined,
           account_stagger_seconds: accountStaggerSeconds,
+          burst_mode: burstMode,
         }),
       });
 
@@ -987,6 +989,7 @@ export default function PostarPage() {
       setPostsPerDay(2);
       setCaptions(["", ""]);
       setAccountStaggerSeconds(null);
+      setBurstMode(false);
 
       setSuccess({
         total_posts: data.total_posts ?? 0,
@@ -1015,6 +1018,7 @@ export default function PostarPage() {
     setPostsPerDay(2);
     setCaptions(["", ""]);
     setAccountStaggerSeconds(null);
+    setBurstMode(false);
     setActiveTab("create");
   };
 
@@ -1327,46 +1331,101 @@ export default function PostarPage() {
             <SectionCard>
               <SectionLabel Icon={CalendarDays}>Cadência</SectionLabel>
 
-              {/* Posts por dia */}
-              <div className="mb-5">
-                <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Posts por dia por conta</p>
-                <div className="flex flex-wrap gap-2">
-                  {POSTS_PER_DAY_OPTIONS.map(n => {
-                    const mins = Math.floor((24 * 60) / n);
-                    const hint = mins >= 60
-                      ? `${Math.floor(mins / 60)}h`
-                      : `${mins}min`;
-                    return (
-                      <button
-                        key={n}
-                        onClick={() => setPostsPerDay(n)}
-                        title={`Intervalo: ~${hint} entre posts`}
-                        className={cn(
-                          "flex flex-col items-center px-3.5 py-2 rounded-xl border transition-all",
-                          postsPerDay === n
-                            ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
-                            : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
-                        )}
-                      >
-                        <span className="text-sm font-bold leading-none">{n}</span>
-                        <span className="text-[9px] opacity-50 mt-0.5 leading-none">{hint}</span>
-                      </button>
-                    );
-                  })}
+              {/* Toggle Modo Ciclo */}
+              <div className="mb-5 p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Zap size={13} style={{ color: "var(--electric)" }} />
+                    <div>
+                      <p className="text-sm font-medium text-white/80">Modo Ciclo</p>
+                      <p className="text-[10px] text-white/35">Posta todos os vídeos escolhidos de uma vez, agora</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBurstMode(v => !v)}
+                    className={cn(
+                      "relative w-11 h-6 rounded-full transition-colors flex-shrink-0",
+                      burstMode ? "bg-[#00E5FF]/80" : "bg-white/10"
+                    )}
+                  >
+                    <span className={cn(
+                      "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform",
+                      burstMode ? "translate-x-5" : "translate-x-0"
+                    )} />
+                  </button>
                 </div>
+                <AnimatePresence>
+                  {burstMode && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="overflow-hidden"
+                    >
+                      <p className="mt-3 text-[11px] text-[#00E5FF]/70 leading-relaxed">
+                        Ao criar, cada conta selecionada recebe os vídeos escolhidos imediatamente — a fila
+                        publica no ritmo máximo do pipeline. Sem agendamento e sem distribuição por dias.
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
-              {/* Start datetime */}
-              <div>
-                <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Data e hora do primeiro post</p>
-                <input
-                  type="datetime-local"
-                  value={startDatetime}
-                  min={minDatetime}
-                  onChange={e => setStartDatetime(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all [color-scheme:dark]"
-                />
-              </div>
+              {/* Posts por dia + data de início — ocultos no Modo Ciclo */}
+              <AnimatePresence initial={false}>
+                {!burstMode && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden"
+                  >
+                    {/* Posts por dia */}
+                    <div className="mb-5">
+                      <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Posts por dia por conta</p>
+                      <div className="flex flex-wrap gap-2">
+                        {POSTS_PER_DAY_OPTIONS.map(n => {
+                          const mins = Math.floor((24 * 60) / n);
+                          const hint = mins >= 60
+                            ? `${Math.floor(mins / 60)}h`
+                            : `${mins}min`;
+                          return (
+                            <button
+                              key={n}
+                              onClick={() => setPostsPerDay(n)}
+                              title={`Intervalo: ~${hint} entre posts`}
+                              className={cn(
+                                "flex flex-col items-center px-3.5 py-2 rounded-xl border transition-all",
+                                postsPerDay === n
+                                  ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
+                                  : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                              )}
+                            >
+                              <span className="text-sm font-bold leading-none">{n}</span>
+                              <span className="text-[9px] opacity-50 mt-0.5 leading-none">{hint}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Start datetime */}
+                    <div>
+                      <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Data e hora do primeiro post</p>
+                      <input
+                        type="datetime-local"
+                        value={startDatetime}
+                        min={minDatetime}
+                        onChange={e => setStartDatetime(e.target.value)}
+                        className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all [color-scheme:dark]"
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Stagger entre contas */}
               <div className="mt-5">
@@ -1403,6 +1462,10 @@ export default function PostarPage() {
                     <p className="text-[11px]" style={{ color: "var(--matrix)" }}>
                       {accountStaggerSeconds}s entre cada conta — arraste até o início para automático
                     </p>
+                  ) : burstMode ? (
+                    <p className="text-[11px] text-white/30 italic">
+                      Todas as contas postam juntas — use o slider para espaçar
+                    </p>
                   ) : (
                     <p className="text-[11px] text-white/30 italic">
                       Proporcional ao intervalo ÷ número de contas (máx. 5 min)
@@ -1413,7 +1476,7 @@ export default function PostarPage() {
 
               {/* Summary */}
               <AnimatePresence>
-                {videosPerAccount > 0 && startDatetime && selectedAccountIds.length > 0 && (
+                {videosPerAccount > 0 && (burstMode || startDatetime) && selectedAccountIds.length > 0 && (
                   <motion.div
                     initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1424,7 +1487,15 @@ export default function PostarPage() {
                     {(() => {
                       const days = Math.ceil(videosPerAccount / postsPerDay);
                       const totalPosts = videosPerAccount * selectedAccountIds.length;
-                      return (
+                      return burstMode ? (
+                        <p className="text-xs text-white/55 leading-relaxed">
+                          <span className="text-[#00FF41] font-semibold">{videosPerAccount}</span> vídeos ×{" "}
+                          <span className="text-[#00E5FF] font-semibold">{selectedAccountIds.length}</span> conta{selectedAccountIds.length !== 1 ? "s" : ""} ={" "}
+                          <span className="text-white font-semibold">{totalPosts}</span> posts publicados{" "}
+                          <span className="text-[#00E5FF] font-semibold">de uma vez, agora</span>.
+                          {" "}Cada conta recebe os vídeos em ordem aleatória única.
+                        </p>
+                      ) : (
                         <p className="text-xs text-white/55 leading-relaxed">
                           <span className="text-[#00FF41] font-semibold">{videosPerAccount}</span> vídeos ×{" "}
                           <span className="text-[#00E5FF] font-semibold">{selectedAccountIds.length}</span> conta{selectedAccountIds.length !== 1 ? "s" : ""} ={" "}
@@ -1539,9 +1610,9 @@ export default function PostarPage() {
               )}
             >
               {submitting ? (
-                <><Loader2 size={16} className="animate-spin text-black/70" /> Criando distribuição...</>
+                <><Loader2 size={16} className="animate-spin text-black/70" /> {burstMode ? "Postando agora..." : "Criando distribuição..."}</>
               ) : (
-                <><Send size={16} /> Criar Distribuição
+                <>{burstMode ? <Zap size={16} /> : <Send size={16} />} {burstMode ? "Postar Tudo Agora" : "Criar Distribuição"}
                   {videosPerAccount > 0 && selectedAccountIds.length > 0 && (
                     <span className="ml-1 opacity-70">
                       ({videosPerAccount * selectedAccountIds.length} posts · {selectedAccountIds.length} conta{selectedAccountIds.length !== 1 ? "s" : ""})

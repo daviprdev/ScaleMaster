@@ -19,11 +19,12 @@ interface DistributeBody {
   account_ids: string[];
   folder_id: string;
   video_count: number;            // -1 = todos, ou 10/20/50
-  posts_per_day: number;          // 1–1440
-  start_at: string;               // ISO datetime
+  posts_per_day: number;          // 1–1440 (ignorado em burst_mode)
+  start_at: string;               // ISO datetime (ignorado em burst_mode)
   captions: string[];
   auto_caption_type?: string;     // se presente, ignora captions e gera automaticamente
   account_stagger_seconds?: number | null; // null = cálculo automático
+  burst_mode?: boolean;           // Modo Ciclo: todos os vídeos agendados para agora
 }
 
 export async function POST(req: NextRequest) {
@@ -36,15 +37,15 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const body = await req.json() as DistributeBody;
-  const { account_ids, folder_id, video_count, posts_per_day, start_at, captions, auto_caption_type, account_stagger_seconds } = body;
+  const { account_ids, folder_id, video_count, posts_per_day, start_at, captions, auto_caption_type, account_stagger_seconds, burst_mode } = body;
 
   if (!account_ids?.length)
     return NextResponse.json({ error: "Selecione ao menos 1 conta." }, { status: 400 });
   if (!folder_id)
     return NextResponse.json({ error: "Selecione uma pasta de mídia." }, { status: 400 });
-  if (!posts_per_day || posts_per_day < 1 || posts_per_day > 1440)
+  if (!burst_mode && (!posts_per_day || posts_per_day < 1 || posts_per_day > 1440))
     return NextResponse.json({ error: "Posts por dia deve ser entre 1 e 1440." }, { status: 400 });
-  if (!start_at)
+  if (!burst_mode && !start_at)
     return NextResponse.json({ error: "Informe a data e hora de início." }, { status: 400 });
 
   const isAutoCaption = !!auto_caption_type;
@@ -100,16 +101,19 @@ export async function POST(req: NextRequest) {
   }
 
   const campaignId = randomUUID();
-  // Distribui uniformemente ao longo de 24h
-  const intervalMinutes = Math.floor((24 * 60) / posts_per_day);
-  const startTime = new Date(start_at).getTime();
+  // Distribui uniformemente ao longo de 24h (ignorado em burst_mode)
+  const intervalMinutes = burst_mode ? 0 : Math.floor((24 * 60) / posts_per_day);
+  // Modo Ciclo: tudo agendado para agora — o cron publish-scheduled drena a fila
+  // no ritmo máximo do pipeline (lotes por minuto, retry/backoff da Meta intactos).
+  const startTime = burst_mode ? Date.now() : new Date(start_at).getTime();
 
   const rows: object[] = [];
 
   // Stagger entre contas: customizável ou proporcional ao intervalo (máx. 5 min).
   // Custom: exato, sem jitter — conta[i] posta em i × stagger_s segundos.
   // Auto: proporcional ao intervalo garantindo que todas as contas postem dentro da 1ª janela.
-  const autoStaggerPerAccountMs = account_ids.length > 1
+  // Burst: zero por padrão — "de uma vez" é literal, salvo stagger custom.
+  const autoStaggerPerAccountMs = !burst_mode && account_ids.length > 1
     ? Math.min(5 * 60_000, Math.floor((intervalMinutes * 60_000 * 0.9) / (account_ids.length - 1)))
     : 0;
 
@@ -130,7 +134,8 @@ export async function POST(req: NextRequest) {
 
     for (let vi = 0; vi < accountVideos.length; vi++) {
       const video = accountVideos[vi];
-      const slotMs = vi * intervalMinutes * 60_000;
+      // Burst: 2s entre vídeos só para ordenação estável na fila (scheduled_at ASC)
+      const slotMs = burst_mode ? vi * 2_000 : vi * intervalMinutes * 60_000;
       const scheduledAt = new Date(startTime + slotMs + staggerMs).toISOString();
       const caption = isAutoCaption
         ? getAutoCaption(autoType)
@@ -165,7 +170,7 @@ export async function POST(req: NextRequest) {
     total_posts: rows.length,
     accounts: account_ids.length,
     videos_per_account: maxVideos,
-    days: Math.ceil(maxVideos / posts_per_day),
+    days: burst_mode ? 1 : Math.ceil(maxVideos / posts_per_day),
     first_slot: times[0],
     last_slot: times[times.length - 1],
   });
