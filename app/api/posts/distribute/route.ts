@@ -112,25 +112,42 @@ export async function POST(req: NextRequest) {
   // Stagger entre contas: customizável ou proporcional ao intervalo (máx. 5 min).
   // Custom: exato, sem jitter — conta[i] posta em i × stagger_s segundos.
   // Auto: proporcional ao intervalo garantindo que todas as contas postem dentro da 1ª janela.
-  // Burst: zero por padrão — "de uma vez" é literal, salvo stagger custom.
   const autoStaggerPerAccountMs = !burst_mode && account_ids.length > 1
     ? Math.min(5 * 60_000, Math.floor((intervalMinutes * 60_000 * 0.9) / (account_ids.length - 1)))
     : 0;
 
+  // Burst: blocos SEQUENCIAIS por conta — conta[0] posta seu lote inteiro, depois
+  // conta[1], depois conta[2]... O bloco dura maxVideos × 2s; stagger custom vira
+  // o espaçamento mínimo entre o início de cada conta (nunca menor que o bloco,
+  // para os lotes não se intercalarem na fila).
+  const burstBlockMs = burst_mode
+    ? Math.max((account_stagger_seconds ?? 0) * 1_000, maxVideos * 2_000)
+    : 0;
+
+  // Burst: uso em memória neste request — vídeos já sorteados para contas
+  // anteriores ficam no fim da preferência, então cada conta recebe um lote
+  // DIFERENTE até a pasta esgotar (depois recomeça balanceado).
+  const inRunUse = new Map<string, number>();
+
   for (let ai = 0; ai < account_ids.length; ai++) {
     const accountId = account_ids[ai];
-    const staggerMs = account_stagger_seconds
-      ? ai * account_stagger_seconds * 1_000
-      : ai * autoStaggerPerAccountMs;
+    const staggerMs = burst_mode
+      ? ai * burstBlockMs
+      : account_stagger_seconds
+        ? ai * account_stagger_seconds * 1_000
+        : ai * autoStaggerPerAccountMs;
     // Embaralha e depois ordena (sort estável) pelo nº de vezes que ESTA conta
     // já postou cada vídeo: vídeos nunca postados vêm primeiro em ordem
     // aleatória; só reutiliza os já postados se a quantidade pedida exigir.
     const counts = postedCount.get(accountId);
     const accountVideos = fisherYates(allVideos)
-      .map((v) => ({ v, uses: counts?.get(v.id) ?? 0 }))
+      .map((v) => ({ v, uses: (counts?.get(v.id) ?? 0) + (inRunUse.get(v.id) ?? 0) }))
       .sort((a, b) => a.uses - b.uses)
       .slice(0, maxVideos)
       .map((x) => x.v);
+    if (burst_mode) {
+      for (const v of accountVideos) inRunUse.set(v.id, (inRunUse.get(v.id) ?? 0) + 1);
+    }
 
     for (let vi = 0; vi < accountVideos.length; vi++) {
       const video = accountVideos[vi];

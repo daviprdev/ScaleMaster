@@ -1338,7 +1338,7 @@ export default function PostarPage() {
                     <Zap size={13} style={{ color: "var(--electric)" }} />
                     <div>
                       <p className="text-sm font-medium text-white/80">Modo Ciclo</p>
-                      <p className="text-[10px] text-white/35">Posta todos os vídeos escolhidos de uma vez, agora</p>
+                      <p className="text-[10px] text-white/35">Cada conta posta seu lote de vídeos de uma vez, uma conta após a outra</p>
                     </div>
                   </div>
                   <button
@@ -1365,8 +1365,9 @@ export default function PostarPage() {
                       className="overflow-hidden"
                     >
                       <p className="mt-3 text-[11px] text-[#00E5FF]/70 leading-relaxed">
-                        Ao criar, cada conta selecionada recebe os vídeos escolhidos imediatamente — a fila
-                        publica no ritmo máximo do pipeline. Sem agendamento e sem distribuição por dias.
+                        Vídeos sorteados aleatoriamente da pasta, sem repetir entre as contas. A conta 1 posta
+                        o lote inteiro de uma vez, depois a conta 2, depois a conta 3... começando agora,
+                        sem agendamento e sem distribuição por dias.
                       </p>
                     </motion.div>
                   )}
@@ -1464,7 +1465,7 @@ export default function PostarPage() {
                     </p>
                   ) : burstMode ? (
                     <p className="text-[11px] text-white/30 italic">
-                      Todas as contas postam juntas — use o slider para espaçar
+                      Blocos em sequência imediata — use o slider para dar uma folga extra entre contas
                     </p>
                   ) : (
                     <p className="text-[11px] text-white/30 italic">
@@ -1489,11 +1490,11 @@ export default function PostarPage() {
                       const totalPosts = videosPerAccount * selectedAccountIds.length;
                       return burstMode ? (
                         <p className="text-xs text-white/55 leading-relaxed">
-                          <span className="text-[#00FF41] font-semibold">{videosPerAccount}</span> vídeos ×{" "}
+                          <span className="text-[#00FF41] font-semibold">{videosPerAccount}</span> vídeos por conta ×{" "}
                           <span className="text-[#00E5FF] font-semibold">{selectedAccountIds.length}</span> conta{selectedAccountIds.length !== 1 ? "s" : ""} ={" "}
-                          <span className="text-white font-semibold">{totalPosts}</span> posts publicados{" "}
-                          <span className="text-[#00E5FF] font-semibold">de uma vez, agora</span>.
-                          {" "}Cada conta recebe os vídeos em ordem aleatória única.
+                          <span className="text-white font-semibold">{totalPosts}</span> posts.
+                          {" "}Cada conta posta seu lote <span className="text-[#00E5FF] font-semibold">de uma vez</span>, em sequência:
+                          {" "}conta 1 → conta 2 → conta 3... com vídeos sorteados sem repetição entre elas.
                         </p>
                       ) : (
                         <p className="text-xs text-white/55 leading-relaxed">
