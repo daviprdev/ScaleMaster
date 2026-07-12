@@ -1232,7 +1232,8 @@ export default function PostarPage() {
             </SectionCard>
 
             {/* 2. Pasta + Quantidade */}
-            <SectionCard>
+            {/* z-30 quando o dropdown está aberto — .glass-card cria stacking context (backdrop-filter) e o card seguinte pintava por cima da lista */}
+            <SectionCard className={folderOpen ? "relative z-30" : undefined}>
               <SectionLabel Icon={FolderOpen}>Pasta de Mídia</SectionLabel>
 
               {/* Folder selector */}
@@ -1266,7 +1267,7 @@ export default function PostarPage() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -6 }}
                         transition={{ duration: 0.12 }}
-                        className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#0d111b] border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                        className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#0d111b] border border-white/10 rounded-xl shadow-2xl overflow-y-auto max-h-72"
                       >
                         {folders.map(f => (
                           <button
