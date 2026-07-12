@@ -1293,6 +1293,15 @@ export default function PostarPage() {
               )}
 
               {/* Quantidade */}
+              {burstMode ? (
+                <div className="flex items-center gap-2 px-3.5 py-3 rounded-xl bg-[#00E5FF]/[0.04] border border-[#00E5FF]/15">
+                  <Zap size={12} className="text-[#00E5FF] flex-shrink-0" />
+                  <p className="text-[11px] text-white/50">
+                    Modo Ciclo ativo — quantidade definida na seção Cadência:{" "}
+                    <span className="text-[#00E5FF] font-semibold">{videoCount === -1 ? "todos os" : videoCount} vídeos por conta</span>
+                  </p>
+                </div>
+              ) : (
               <div>
                 <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Quantos vídeos postar</p>
                 <div className="flex gap-2">
@@ -1325,6 +1334,7 @@ export default function PostarPage() {
                   </p>
                 )}
               </div>
+              )}
             </SectionCard>
 
             {/* 3. Cadência */}
@@ -1343,7 +1353,10 @@ export default function PostarPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setBurstMode(v => !v)}
+                    onClick={() => {
+                      if (!burstMode && (videoCount === -1 || videoCount > 50)) setVideoCount(5);
+                      setBurstMode(v => !v);
+                    }}
                     className={cn(
                       "relative w-11 h-6 rounded-full transition-colors flex-shrink-0",
                       burstMode ? "bg-[#00E5FF]/80" : "bg-white/10"
@@ -1364,6 +1377,45 @@ export default function PostarPage() {
                       transition={{ duration: 0.15 }}
                       className="overflow-hidden"
                     >
+                      {/* Quantidade de vídeos por conta */}
+                      <div className="mt-3">
+                        <p className="text-[10px] text-white/40 font-medium mb-2 uppercase tracking-wider">Quantos vídeos por conta</p>
+                        <div className="flex items-center gap-2">
+                          {[1, 3, 5, 10, 20].map(n => (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => setVideoCount(n)}
+                              className={cn(
+                                "px-3.5 py-2 rounded-xl text-sm font-bold border transition-all",
+                                videoCount === n
+                                  ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
+                                  : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                              )}
+                            >
+                              {n}
+                            </button>
+                          ))}
+                          <input
+                            type="number"
+                            min={1}
+                            max={999}
+                            value={videoCount === -1 ? "" : videoCount}
+                            onChange={e => {
+                              const v = parseInt(e.target.value, 10);
+                              if (!isNaN(v) && v >= 1) setVideoCount(Math.min(v, 999));
+                            }}
+                            placeholder="Outro"
+                            className="w-20 px-3 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm text-center focus:outline-none focus:border-[#00E5FF]/40 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                        </div>
+                        {selectedFolderId && folderVideoCount > 0 && videoCount > folderVideoCount && (
+                          <p className="mt-1.5 text-[10px] text-amber-400/70">
+                            A pasta tem só {folderVideoCount} vídeos — cada conta receberá {folderVideoCount}.
+                          </p>
+                        )}
+                      </div>
+
                       <p className="mt-3 text-[11px] text-[#00E5FF]/70 leading-relaxed">
                         Vídeos sorteados aleatoriamente da pasta, sem repetir entre as contas. A conta 1 posta
                         o lote inteiro de uma vez, depois a conta 2, depois a conta 3... começando agora,
