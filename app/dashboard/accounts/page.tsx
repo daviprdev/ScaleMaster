@@ -1054,6 +1054,7 @@ export default function AccountsPage() {
   const _tokenRefreshingRef = useRef<string | null>(null);
   const _autoRefreshDone = useRef(false);
   const _autoSyncDone = useRef(false);
+  const _firstLoadDone = useRef(false);
 
   // Close folder menu on outside click
   useEffect(() => {
@@ -1119,7 +1120,9 @@ export default function AccountsPage() {
   }, []);
 
   const fetchAccounts = useCallback(async (): Promise<Account[]> => {
-    setLoading(true);
+    // Skeleton apenas no primeiro carregamento; refreshes seguintes (sync,
+    // auto-refresh 60s) atualizam os dados em cima dos cards já na tela.
+    if (!_firstLoadDone.current) setLoading(true);
     try {
       const { data } = await supabase
         .from("instagram_accounts")
@@ -1133,6 +1136,7 @@ export default function AccountsPage() {
       setAccounts(fetched);
       return fetched;
     } finally {
+      _firstLoadDone.current = true;
       setLoading(false);
     }
   }, [supabase]);
