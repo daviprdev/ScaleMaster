@@ -18,7 +18,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { refreshMetaToken } from "@/lib/meta-refresh";
 import { fetch as undiciFetch } from "undici";
-import { getProxyForAccount, proxyInit } from "@/lib/proxy";
+import { getProxyForAccount, proxyInit, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -89,6 +89,14 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
   let activeToken = acc.meta_access_token;
   const proxy = getProxyForAccount(acc.id, acc.proxy_url);
 
+  // Política sem-proxy = sem-sync (2026-07-15): nenhuma requisição de sync sai
+  // pelo IP da Vercel. Se a conta não tem proxy (ou o decrypt/URL falhou), pula
+  // o ciclo em silêncio — sem marcar erro. Mesma regra do pipeline de postagem.
+  if (!proxy) {
+    console.warn(`[cron/sync-accounts] @${acc.username} sem proxy utilizável — sync pulado.`);
+    return { id: acc.id, user_id: acc.user_id, ok: false };
+  }
+
   const fetchProfile = async (token: string) => {
     const url =
       `${GRAPH}/${acc.ig_business_account_id}` +
@@ -98,11 +106,13 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       const res = await undiciFetch(url, proxyInit(proxy, { signal: AbortSignal.timeout(15_000) }) as any);
       return (await res.json()) as Record<string, unknown>;
     } catch (err) {
-      if (!proxy) throw err;
-      // Proxy morto → retry sem proxy
-      console.warn(`[cron/sync-accounts] Proxy falhou para @${acc.username}, tentando sem proxy: ${(err as Error).message?.slice(0, 80)}`);
-      const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) } as any);
-      return (await res.json()) as Record<string, unknown>;
+      // Proxy morto → NÃO cai para IP Vercel. Registra a falha (ProxyOutageBanner)
+      // e pula o ciclo — a conta tenta de novo no próximo sync.
+      const msg = (err as Error).message ?? String(err);
+      if (isProxyNetworkError(msg)) {
+        await recordProxyFailure(admin, acc.id, "cron/sync-accounts", msg);
+      }
+      throw err;
     }
   };
 
@@ -194,6 +204,9 @@ export async function GET(request: NextRequest) {
     .neq("health_status", "error")
     .not("ig_business_account_id", "is", null)
     .not("meta_access_token", "is", null)
+    // Sem proxy = sem sync: contas sem proxy dedicado ficam fora da fila —
+    // nenhuma requisição em nome delas sai pelo IP datacenter da Vercel.
+    .not("proxy_url", "is", null)
     .or(`profile_refreshed_at.is.null,profile_refreshed_at.lte.${cutoff}`)
     .order("profile_refreshed_at", { ascending: true, nullsFirst: true })
     .limit(200);

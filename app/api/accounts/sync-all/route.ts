@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { refreshMetaToken } from "@/lib/meta-refresh";
 import { fetch as undiciFetch } from "undici";
-import { getProxyForAccount, proxyInit } from "@/lib/proxy";
+import { getProxyForAccount, proxyInit, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -99,6 +99,14 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
   let activeToken = acc.meta_access_token;
   const proxy = getProxyForAccount(acc.id, acc.proxy_url ?? null);
 
+  // Política sem-proxy = sem-sync (2026-07-15): nenhuma requisição de sync sai
+  // pelo IP da Vercel. Se o proxy não existe ou o decrypt/URL falhou, pula em
+  // silêncio (sem marcar erro). Mesma regra do pipeline de postagem.
+  if (!proxy) {
+    console.warn(`[sync-all] @${acc.username} sem proxy utilizável — sync pulado.`);
+    return { id: acc.id, user_id: acc.user_id, username: acc.username, ok: false };
+  }
+
   const fetchProfile = async (token: string) => {
     const profileUrl =
       `${GRAPH}/${acc.ig_business_account_id}` +
@@ -111,11 +119,13 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       );
       return (await res.json()) as Record<string, unknown>;
     } catch (err) {
-      if (!proxy) throw err;
-      // Proxy morto → retry sem proxy (leitura de perfil não precisa de proxy)
-      console.warn(`[sync-all] Proxy falhou para @${acc.username}, tentando sem proxy: ${(err as Error).message?.slice(0, 80)}`);
-      const res = await undiciFetch(profileUrl, { signal: AbortSignal.timeout(15_000) } as any);
-      return (await res.json()) as Record<string, unknown>;
+      // Proxy morto → NÃO cai para IP Vercel. Registra a falha (ProxyOutageBanner)
+      // e pula — a conta tenta de novo no próximo sync.
+      const msg = (err as Error).message ?? String(err);
+      if (isProxyNetworkError(msg)) {
+        await recordProxyFailure(admin, acc.id, "sync-all", msg);
+      }
+      throw err;
     }
   };
 
@@ -291,6 +301,9 @@ export async function POST(request: Request) {
 
   const stale = (accounts as unknown as AccountRow[]).filter((a) => {
     if (excludeIds.includes(a.id)) return false;
+    // Sem proxy = sem sync (vale até no force): nenhuma requisição em nome da
+    // conta sai pelo IP datacenter da Vercel.
+    if (!a.proxy_url) return false;
     // Contas recém-conectadas (< 10 min) recebem grace period — a Meta precisa
     // de tempo para ativar o token em todos os seus servidores. Sem o grace period,
     // qualquer falha transitória nesse momento marcaria a conta como error

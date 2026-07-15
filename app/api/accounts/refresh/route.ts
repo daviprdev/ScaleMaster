@@ -34,21 +34,16 @@ interface GraphStoriesEdge {
   error?: { message: string; code: number };
 }
 
-// Faz fetch com proxy, com fallback automático para sem proxy se proxy falhar.
+// Faz fetch pelo proxy da conta. Sem fallback para IP Vercel (2026-07-15):
+// nenhuma requisição em nome da conta sai pelo IP datacenter — proxy morto
+// propaga o erro e o refresh falha com mensagem clara em vez de vazar o IP.
 // Timeout 12s por chamada — suficiente para a API da Meta responder normalmente
 // e ainda cabe dentro do maxDuration=30 junto com as demais operações da rota.
-async function fetchWithFallback(
+async function fetchViaProxy(
   url: string,
   proxy: ReturnType<typeof getProxyForAccount>
 ): Promise<Response> {
-  try {
-    return await undiciFetch(url, proxyInit(proxy, { signal: AbortSignal.timeout(12_000) }) as any) as unknown as Response;
-  } catch (err) {
-    if (!proxy) throw err;
-    // Proxy morto → tenta direto pelo IP da Vercel (leitura de perfil não precisa de proxy)
-    console.warn("[accounts/refresh] Proxy falhou, tentando sem proxy:", (err as Error).message?.slice(0, 80));
-    return await undiciFetch(url, { signal: AbortSignal.timeout(12_000) } as any) as unknown as Response;
-  }
+  return await undiciFetch(url, proxyInit(proxy, { signal: AbortSignal.timeout(12_000) }) as any) as unknown as Response;
 }
 
 async function fetchMetaProfile(
@@ -61,7 +56,7 @@ async function fetchMetaProfile(
     `?fields=followers_count,media_count,name,profile_picture_url,username` +
     `&access_token=${encodeURIComponent(token)}`;
 
-  const profileRes = await fetchWithFallback(profileUrl, proxy);
+  const profileRes = await fetchViaProxy(profileUrl, proxy);
   const profile = (await profileRes.json()) as GraphProfile;
 
   if (profile.error) return { profile, lastPostAt: null, activeStoriesCount: 0 };
@@ -77,7 +72,7 @@ async function fetchMetaProfile(
         `${GRAPH}/${igId}/media` +
         `?fields=timestamp&limit=1` +
         `&access_token=${encodeURIComponent(token)}`;
-      const mediaRes = await fetchWithFallback(mediaUrl, proxy);
+      const mediaRes = await fetchViaProxy(mediaUrl, proxy);
       const mediaData = (await mediaRes.json()) as GraphMediaEdge;
       lastPostAt = mediaData.data?.[0]?.timestamp ?? null;
     })(),
@@ -88,7 +83,7 @@ async function fetchMetaProfile(
         `${GRAPH}/${igId}/stories` +
         `?fields=id` +
         `&access_token=${encodeURIComponent(token)}`;
-      const storiesRes = await fetchWithFallback(storiesUrl, proxy);
+      const storiesRes = await fetchViaProxy(storiesUrl, proxy);
       if (!storiesRes.ok) return;
       const storiesData = (await storiesRes.json()) as GraphStoriesEdge;
       if (!storiesData.error && Array.isArray(storiesData.data)) {
@@ -138,7 +133,28 @@ export async function POST(req: NextRequest) {
 
   const encryptedProxy = (account as Record<string, unknown>).proxy_url as string | null;
   const proxy = getProxyForAccount(accountId, encryptedProxy);
-  const { profile, lastPostAt, activeStoriesCount } = await fetchMetaProfile(igId, token, proxy);
+
+  // Sem proxy = sem sync: nenhuma requisição em nome da conta sai pelo IP
+  // datacenter da Vercel (política 2026-07-15, igual ao pipeline de postagem).
+  if (!proxy) {
+    return NextResponse.json(
+      { error: "Conta sem proxy configurado — sincronização bloqueada para não expor o IP do servidor. Configure um proxy no menu ⋯ → Configurar Proxy." },
+      { status: 422 }
+    );
+  }
+
+  let profileResult: Awaited<ReturnType<typeof fetchMetaProfile>>;
+  try {
+    profileResult = await fetchMetaProfile(igId, token, proxy);
+  } catch (err) {
+    const msg = (err as Error).message ?? String(err);
+    console.warn(`[accounts/refresh] Proxy falhou para @${(account as Record<string, unknown>).username}: ${msg.slice(0, 120)}`);
+    return NextResponse.json(
+      { error: "Proxy da conta não respondeu — sincronização adiada (o IP do servidor não é usado como fallback). Verifique o proxy em /dashboard/proxy-test." },
+      { status: 502 }
+    );
+  }
+  const { profile, lastPostAt, activeStoriesCount } = profileResult;
 
   if (profile.error) {
     const code = profile.error.code;
