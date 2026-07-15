@@ -48,7 +48,15 @@ const MIN_CASCADE_COUNT = 4;
 
 // Tempo mínimo após conexão antes de tentar sync — dá margem para a Meta
 // ativar o token em todos os seus servidores e evita marcar contas novas como error.
-const NEW_ACCOUNT_GRACE_MS = 10 * 60 * 1_000; // 10 minutos
+// Elevado 10 → 30 min (2026-07-15): contas recém-conectadas caíam em checkpoint
+// ~30 min após conectar sem nunca ter postado — o padrão robótico de leituras
+// via IP datacenter na janela mais sensível do risk engine da Meta era gatilho.
+const NEW_ACCOUNT_GRACE_MS = 30 * 60 * 1_000; // 30 minutos
+
+// Nas primeiras 24h após conectar, o sync SILENCIOSO (sem force) respeita
+// cadência máxima de 1 sync/hora — mesma regra do cron sync-accounts.
+const NEW_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1_000;
+const NEW_ACCOUNT_STALE_MS = 60 * 60 * 1_000;
 
 interface AccountRow {
   id: string;
@@ -212,9 +220,12 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       }
     }
 
-    // Fetch last post timestamp (non-critical) — usa activeToken (pode ter sido renovado acima)
+    // Fetch last post timestamp (non-critical) — usa activeToken (pode ter sido renovado acima).
+    // Pulado em contas < 24h: corta pela metade as requisições na janela sensível a checkpoint.
     let lastPostAt: string | null = null;
-    try {
+    const isNewAccount = acc.connected_at &&
+      Date.now() - new Date(acc.connected_at).getTime() < NEW_ACCOUNT_AGE_MS;
+    if (!isNewAccount) try {
       const mediaUrl =
         `${GRAPH}/${acc.ig_business_account_id}/media` +
         `?fields=timestamp&limit=1` +
@@ -293,6 +304,12 @@ export async function POST(request: Request) {
           `— grace period ativo, pulando sync.`
         );
         return false;
+      }
+      // Conta < 24h: sync silencioso no máximo 1×/hora (anti-checkpoint).
+      // Sync manual (force) continua permitido — é ação pontual do usuário.
+      if (!force && ageMs < NEW_ACCOUNT_AGE_MS && a.profile_refreshed_at) {
+        const staleMs = Date.now() - new Date(a.profile_refreshed_at).getTime();
+        if (staleMs < NEW_ACCOUNT_STALE_MS) return false;
       }
     }
     if (force) return true;

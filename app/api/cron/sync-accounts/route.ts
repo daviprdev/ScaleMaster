@@ -26,6 +26,18 @@ export const maxDuration = 300;
 const GRAPH = "https://graph.instagram.com/v21.0";
 const STALE_MINUTES = 5; // painel quase ao vivo — o cron roda a cada 1 min e só pega contas paradas há mais de 5 min (ritmo natural ~14 contas/min, sem burst)
 const STALE_MS = STALE_MINUTES * 60 * 1000;
+
+// ── Proteção anti-checkpoint para contas recém-conectadas ──────────────────
+// Contas novas (especialmente recém-criadas no Instagram) estão na janela mais
+// sensível do risk engine da Meta. O callback OAuth não grava profile_refreshed_at,
+// então a conta nova entrava no TOPO da fila (nullsFirst) e era pingada já no
+// primeiro minuto + a cada 5 min — padrão robótico de IP datacenter que derrubava
+// contas em checkpoint ~30 min após conectar, sem nunca ter postado (2026-07-15).
+// Regra: primeiras SYNC só após 30 min de conexão; nas primeiras 24h, no máximo
+// 1 sync por hora. Depois de 24h, cadência normal de 5 min.
+const NEW_ACCOUNT_FIRST_SYNC_MS = 30 * 60 * 1000; // 30 min sem NENHUM sync após conectar
+const NEW_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;   // considera "nova" por 24h
+const NEW_ACCOUNT_STALE_MS = 60 * 60 * 1000;      // cadência de 1h durante as 24h iniciais
 const BATCH_SIZE = 3;
 const BATCH_DELAY_MS = 2_000;
 const TOKEN_ERROR_CODES = new Set([190, 102, 104]);
@@ -57,6 +69,8 @@ interface AccountRow {
   meta_access_token: string;
   fb_page_id: string | null;
   proxy_url: string | null;
+  connected_at: string | null;
+  profile_refreshed_at: string | null;
 }
 
 function isMetaInfraError(code: number, message: string): boolean {
@@ -134,9 +148,12 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       }
     }
 
-    // Último post (não crítico)
+    // Último post (não crítico). Pulado em contas < 24h: corta pela metade as
+    // requisições na janela mais sensível a checkpoint.
     let lastPostAt: string | null = null;
-    try {
+    const isNewAccount = acc.connected_at &&
+      Date.now() - new Date(acc.connected_at).getTime() < NEW_ACCOUNT_AGE_MS;
+    if (!isNewAccount) try {
       const mediaRes = await undiciFetch(
         `${GRAPH}/${acc.ig_business_account_id}/media?fields=timestamp&limit=1&access_token=${encodeURIComponent(activeToken)}`,
         proxyInit(proxy, { signal: AbortSignal.timeout(10_000) }) as any
@@ -173,7 +190,7 @@ export async function GET(request: NextRequest) {
   const cutoff = new Date(Date.now() - STALE_MS).toISOString();
   const { data: accounts, error } = await admin
     .from("instagram_accounts")
-    .select("id, username, user_id, ig_business_account_id, meta_access_token, fb_page_id, proxy_url")
+    .select("id, username, user_id, ig_business_account_id, meta_access_token, fb_page_id, proxy_url, connected_at, profile_refreshed_at")
     .neq("health_status", "error")
     .not("ig_business_account_id", "is", null)
     .not("meta_access_token", "is", null)
@@ -186,24 +203,42 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  if (!accounts || accounts.length === 0) {
+  // Cadência reduzida para contas recém-conectadas (anti-checkpoint)
+  const nowMs = Date.now();
+  const eligible = ((accounts ?? []) as unknown as AccountRow[]).filter((a) => {
+    if (!a.connected_at) return true;
+    const ageMs = nowMs - new Date(a.connected_at).getTime();
+    if (ageMs >= NEW_ACCOUNT_AGE_MS) return true; // conta madura → cadência normal
+    if (ageMs < NEW_ACCOUNT_FIRST_SYNC_MS) {
+      console.log(`[cron/sync-accounts] @${a.username} conectada há ${Math.round(ageMs / 60_000)}min — grace inicial (30min), pulando.`);
+      return false;
+    }
+    if (!a.profile_refreshed_at) return true; // primeira sync após o grace inicial
+    const staleMs = nowMs - new Date(a.profile_refreshed_at).getTime();
+    if (staleMs < NEW_ACCOUNT_STALE_MS) {
+      return false; // conta nova sincronizada há < 1h → aguarda
+    }
+    return true;
+  });
+
+  if (eligible.length === 0) {
     return NextResponse.json({ synced: 0, message: "Nenhuma conta desatualizada." });
   }
 
-  console.log(`[cron/sync-accounts] ${accounts.length} contas desatualizadas (>${STALE_MINUTES}min)`);
+  console.log(`[cron/sync-accounts] ${eligible.length} contas desatualizadas (>${STALE_MINUTES}min)`);
 
   const results: Awaited<ReturnType<typeof syncOne>>[] = [];
   const startedAt = Date.now();
   const RUN_BUDGET_MS = 260_000;
 
-  for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+  for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
     if (Date.now() - startedAt > RUN_BUDGET_MS) break;
-    const batch = (accounts as unknown as AccountRow[]).slice(i, i + BATCH_SIZE);
+    const batch = eligible.slice(i, i + BATCH_SIZE);
     const settled = await Promise.allSettled(batch.map(acc => syncOne(acc, admin)));
     for (const s of settled) {
       if (s.status === "fulfilled") results.push(s.value);
     }
-    if (i + BATCH_SIZE < accounts.length) {
+    if (i + BATCH_SIZE < eligible.length) {
       await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
     }
   }
