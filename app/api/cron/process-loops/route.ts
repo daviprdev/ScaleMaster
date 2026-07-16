@@ -349,81 +349,11 @@ function isCriticalMetaError(msg: string): boolean {
   return patterns.some(p => lower.includes(p));
 }
 
-async function attemptFailover(
-  admin: ReturnType<typeof getSupabaseAdmin>,
-  failedAccount: AccountRow,
-  loop: LoopRow,
-  videoUrl: string,
-  caption: string,
-  errorMsg: string,
-  windowStartIso: string,
-  videoId: string,
-  cycleNumber: number
-): Promise<boolean> {
-  await (admin as any)
-    .from("instagram_accounts")
-    .update({ health_status: "error" })
-    .eq("id", failedAccount.id);
-
-  const { data: backups } = await (admin as any)
-    .from("instagram_accounts")
-    .select("id, username, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, is_active, proxy_url")
-    .eq("user_id", loop.user_id)
-    .eq("is_active", true)
-    .eq("health_status", "online")
-    .neq("id", failedAccount.id)
-    .order("failover_priority", { ascending: true })
-    .limit(1);
-
-  const backup = backups?.[0] ?? null;
-
-  // NUNCA usar .catch() no builder Supabase — usar try/catch com await.
-  try {
-    await (admin as any).from("failover_logs").insert({
-      user_id: loop.user_id,
-      failed_account_id: failedAccount.id,
-      backup_account_id: backup?.id ?? null,
-      error_reason: errorMsg.slice(0, 500),
-    });
-  } catch (logErr) {
-    const logMsg = logErr instanceof Error ? logErr.message : String(logErr);
-    console.warn(`[loop-cron] failover_logs: falha ao registrar evento (best-effort): ${logMsg}`);
-  }
-
-  if (!backup?.meta_access_token || !backup?.ig_business_account_id) {
-    console.warn(`[loop-cron] Sem conta de backup disponível para "${loop.name}".`);
-    return false;
-  }
-
-  const backupExists = await containerAlreadyExists(admin, loop.id, backup.id, windowStartIso);
-  if (backupExists) {
-    console.log(`[loop-cron] ⚡ @${backup.username} (backup): container já existe — idempotente.`);
-    return true;
-  }
-
-  console.log(`[loop-cron] Failover: @${failedAccount.username} → @${backup.username}`);
-  const backupProxy = getProxyForAccount(backup.id, (backup as AccountRow).proxy_url);
-  try {
-    await createContainerForAccount(
-      admin,
-      { ...backup, is_active: true },
-      loop,
-      videoUrl,
-      caption,
-      backup.meta_access_token,
-      videoId,
-      cycleNumber,
-      0,
-      backupProxy
-    );
-    return true;
-  } catch (backupErr) {
-    const msg = backupErr instanceof Error ? backupErr.message : String(backupErr);
-    console.error(`[loop-cron] ✗ @${backup.username} (failover):`, msg);
-    await recordContainerError(admin, backup, loop, caption, msg, videoId, cycleNumber);
-    return false;
-  }
-}
+// Failover cross-conta REMOVIDO (2026-07-16). Antes, quando uma conta falhava,
+// o vídeo+legenda dela era repostado através de OUTRA conta do usuário (backup por
+// failover_priority, sem respeitar a pasta) — misturando conteúdo entre
+// clientes/personas. Agora as contas são independentes: erro crítico marca a conta
+// como health_status='error' e para; nenhuma outra conta assume o post.
 
 // ---------------------------------------------------------------------------
 // FASE 1 — Atribuição atômica de vídeos (pre-assignment)
@@ -1201,7 +1131,12 @@ async function processOneLoop(
           `Contas: ${criticalErrorQueue.map(e => "@" + e.account.username).join(", ")}`
         );
       } else {
-        // Não é cascata — erros são individuais. Marcar e tentar failover.
+        // Não é cascata — erros são individuais. Marca a conta como error e PARA.
+        // Failover cross-conta DESATIVADO: antes, o vídeo+legenda de uma conta que
+        // falhava era repostado através de OUTRA conta do usuário (escolhida por
+        // failover_priority, sem respeitar a pasta) — o que misturava conteúdo de
+        // um cliente/persona no perfil de outro. As contas são independentes: uma
+        // conta que dá erro apenas pula o ciclo dela; nenhuma outra conta assume.
         for (const item of criticalErrorQueue) {
           try {
             await (admin as any)
@@ -1214,19 +1149,6 @@ async function processOneLoop(
             );
           } catch (markErr) {
             console.warn(`[loop-cron] Falha ao marcar @${item.account.username} como error: ${markErr}`);
-          }
-
-          if (item.videoUrl) {
-            try {
-              const failoverOk = await attemptFailover(
-                admin, item.account, loop, item.videoUrl, item.caption, item.errorMsg,
-                windowStartIso, item.videoId, newCyclesDone
-              );
-              if (failoverOk) containersCreated++;
-            } catch (failoverErr) {
-              const failoverMsg = failoverErr instanceof Error ? failoverErr.message : String(failoverErr);
-              console.error(`[loop-cron] ✗ Failover falhou @${item.account.username}: ${failoverMsg}`);
-            }
           }
         }
       }
