@@ -29,10 +29,6 @@
       "schedule": "0 */12 * * *"
     },
     {
-      "path": "/api/cron/sync-accounts",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/cron/story-templates",
       "schedule": "*/30 * * * *"
     },
