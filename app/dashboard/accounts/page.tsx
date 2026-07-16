@@ -1018,6 +1018,9 @@ export default function AccountsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+  const [bulkMovePendingFolderId, setBulkMovePendingFolderId] = useState<string | null>(null);
+  const [bulkMoving, setBulkMoving] = useState(false);
 
   // CSV proxy import
   const [showCsvImport, setShowCsvImport] = useState(false);
@@ -1453,10 +1456,63 @@ export default function AccountsPage() {
     }
   }, [confirmBulkDelete, selectedIds, supabase]);
 
+  const handleBulkMove = useCallback(async (folderId: string | null) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkMoving(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          fetch(`/api/accounts/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folder_id: folderId }),
+          }).then((r) => (r.ok ? id : Promise.reject(new Error(id))))
+        )
+      );
+      const movedIds = new Set(
+        results.filter((r) => r.status === "fulfilled").map((r) => (r as PromiseFulfilledResult<string>).value)
+      );
+      if (movedIds.size > 0) {
+        // Recalcula contadores de pasta com base no estado atual das contas movidas.
+        setAccounts((prev) => {
+          setFolders((fs) =>
+            fs.map((f) => {
+              let delta = 0;
+              for (const acc of prev) {
+                if (!movedIds.has(acc.id)) continue;
+                if (acc.folder_id === f.id) delta -= 1;
+                if (folderId === f.id) delta += 1;
+              }
+              return delta !== 0 ? { ...f, account_count: Math.max(0, f.account_count + delta) } : f;
+            })
+          );
+          return prev.map((a) => (movedIds.has(a.id) ? { ...a, folder_id: folderId } : a));
+        });
+        const target = folderId ? folders.find((f) => f.id === folderId)?.name ?? "pasta" : "Sem pasta";
+        setNotification({
+          type: "success",
+          message: `${movedIds.size} conta${movedIds.size !== 1 ? "s" : ""} movida${movedIds.size !== 1 ? "s" : ""} para ${target}.`,
+        });
+        router.refresh();
+      }
+      const failed = ids.length - movedIds.size;
+      if (failed > 0) {
+        setNotification({ type: "error", message: `${failed} conta${failed !== 1 ? "s" : ""} não pôde${failed !== 1 ? "ram" : ""} ser movida${failed !== 1 ? "s" : ""}.` });
+      }
+      setBulkMoveOpen(false);
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    } finally {
+      setBulkMoving(false);
+    }
+  }, [selectedIds, folders, router]);
+
   const cancelSelectMode = useCallback(() => {
     setSelectMode(false);
     setSelectedIds(new Set());
     setConfirmBulkDelete(false);
+    setBulkMoveOpen(false);
   }, []);
 
   const handleMoveClick = useCallback((account: Account) => {
@@ -2173,6 +2229,118 @@ export default function AccountsPage() {
         )}
       </AnimatePresence>
 
+      {/* Modal: Mover contas selecionadas em massa para pasta */}
+      <AnimatePresence>
+        {bulkMoveOpen && (
+          <>
+            <motion.div
+              key="bulk-move-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => !bulkMoving && setBulkMoveOpen(false)}
+            />
+            <motion.div
+              key="bulk-move-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
+            >
+              <div className="glass rounded-2xl neon-border w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
+                      <Folder size={13} className="text-violet-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Mover para pasta</h3>
+                      <p className="text-[11px] text-white/30">
+                        {selectedIds.size} conta{selectedIds.size !== 1 ? "s" : ""} selecionada{selectedIds.size !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => !bulkMoving && setBulkMoveOpen(false)}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                  <button
+                    onClick={() => setBulkMovePendingFolderId(null)}
+                    className={cn(
+                      "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
+                      bulkMovePendingFolderId === null
+                        ? "bg-white/[0.07] border-white/20 text-white"
+                        : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
+                    )}
+                  >
+                    <FolderOpen size={12} className="text-white/30 flex-shrink-0" />
+                    <span className="flex-1">Sem pasta</span>
+                    {bulkMovePendingFolderId === null && (
+                      <CheckCircle2 size={12} className="text-[#00FF41] flex-shrink-0" />
+                    )}
+                  </button>
+
+                  {folders.length === 0 ? (
+                    <p className="text-[11px] text-white/25 text-center py-3">
+                      Nenhuma pasta criada. Crie pastas nas abas acima.
+                    </p>
+                  ) : (
+                    folders.map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => setBulkMovePendingFolderId(f.id)}
+                        className={cn(
+                          "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
+                          bulkMovePendingFolderId === f.id
+                            ? "bg-violet-600/15 border-violet-500/30 text-violet-200"
+                            : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
+                        )}
+                      >
+                        <Folder size={12} className={cn(
+                          "flex-shrink-0",
+                          bulkMovePendingFolderId === f.id ? "text-violet-400" : "text-violet-400/50"
+                        )} />
+                        <span className="flex-1 truncate">{f.name}</span>
+                        {bulkMovePendingFolderId === f.id && (
+                          <CheckCircle2 size={12} className="text-violet-400 flex-shrink-0" />
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => !bulkMoving && setBulkMoveOpen(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => handleBulkMove(bulkMovePendingFolderId)}
+                    disabled={bulkMoving}
+                    className="flex-1 py-2.5 rounded-xl bg-violet-600/25 border border-violet-500/30 text-violet-300 text-xs font-semibold hover:bg-violet-600/35 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    {bulkMoving
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : <Folder size={12} />
+                    }
+                    Mover {selectedIds.size > 0 ? `(${selectedIds.size})` : ""}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Modal: Configurar Proxy por conta */}
       <AnimatePresence>
         {proxyAccount && (
@@ -2475,25 +2643,35 @@ export default function AccountsPage() {
           ) : (
             <>
               {selectedIds.size > 0 && (
-                <button
-                  onClick={handleBulkDelete}
-                  disabled={bulkDeleting}
-                  className={cn(
-                    "flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all",
-                    confirmBulkDelete
-                      ? "bg-red-600 border border-red-500 text-white hover:bg-red-700"
-                      : "bg-red-600/15 border border-red-500/30 text-red-400 hover:bg-red-600/25"
-                  )}
-                >
-                  {bulkDeleting
-                    ? <Loader2 size={14} className="animate-spin" />
-                    : <Trash2 size={14} />
-                  }
-                  {confirmBulkDelete
-                    ? `Confirmar exclusão (${selectedIds.size})`
-                    : `Excluir selecionadas (${selectedIds.size})`
-                  }
-                </button>
+                <>
+                  <button
+                    onClick={() => { setBulkMovePendingFolderId(null); setBulkMoveOpen(true); }}
+                    disabled={bulkMoving || bulkDeleting}
+                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-violet-600/15 border border-violet-500/30 text-violet-300 hover:bg-violet-600/25 disabled:opacity-40"
+                  >
+                    <Folder size={14} />
+                    {`Mover para pasta (${selectedIds.size})`}
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={bulkDeleting || bulkMoving}
+                    className={cn(
+                      "flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-40",
+                      confirmBulkDelete
+                        ? "bg-red-600 border border-red-500 text-white hover:bg-red-700"
+                        : "bg-red-600/15 border border-red-500/30 text-red-400 hover:bg-red-600/25"
+                    )}
+                  >
+                    {bulkDeleting
+                      ? <Loader2 size={14} className="animate-spin" />
+                      : <Trash2 size={14} />
+                    }
+                    {confirmBulkDelete
+                      ? `Confirmar exclusão (${selectedIds.size})`
+                      : `Excluir selecionadas (${selectedIds.size})`
+                    }
+                  </button>
+                </>
               )}
             </>
           )}
