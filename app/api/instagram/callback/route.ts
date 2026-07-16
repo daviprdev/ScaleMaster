@@ -302,7 +302,11 @@ async function upsertAccount(
     username: profile.username,
     display_name: profile.name,
     avatar_url: profile.profile_picture_url,
-    is_active: true,
+    // is_active NÃO é enviado: conta nova entra INATIVA (default false no banco) e
+    // só posta quando o usuário ativa manualmente (toggle "Ativar conta"). Isso
+    // impede que contas recém-conectadas comecem a postar sozinhas ao cair numa
+    // pasta com Loop/Automação ativa. Na reconexão, o upsert-update abaixo não toca
+    // is_active, preservando o estado anterior da conta.
     meta_access_token: longToken,
     ig_business_account_id: profile.id,
     token_expires_at: expiresAt.toISOString(),
@@ -348,9 +352,10 @@ async function upsertAccount(
     const { error: updateError } = await admin
       .from("instagram_accounts")
       .update({
+        // is_active preservado na reconexão (não reenvia) — se a conta já estava
+        // ativa, continua ativa; se estava inativa, continua inativa.
         display_name: profile.name,
         avatar_url: profile.profile_picture_url,
-        is_active: true,
         meta_access_token: longToken,
         ig_business_account_id: profile.id,
         token_expires_at: expiresAt.toISOString(),

@@ -74,11 +74,15 @@ export async function GET(req: NextRequest) {
     const accountFolderIds = aFolders.map((f) => f.folder_id);
     const videoFolderIds   = vFolders.map((f) => f.folder_id);
 
-    // Busca contas das pastas selecionadas (health_status != error)
+    // Busca contas das pastas selecionadas (health_status != error).
+    // is_active = true: contas recém-conectadas entram INATIVAS e não são
+    // enroladas automaticamente na automação só por estarem na pasta — o usuário
+    // ativa manualmente quando a conta estiver pronta para postar.
     const { data: accounts } = await admin
       .from("instagram_accounts")
       .select("id, username, meta_access_token, ig_business_account_id")
       .in("folder_id", accountFolderIds)
+      .eq("is_active", true)
       .neq("health_status", "error")
       .not("meta_access_token", "is", null);
 
