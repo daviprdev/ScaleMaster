@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { encrypt, decrypt } from "@/lib/encrypt";
-import { normalizeProxyUrl, proxyHash } from "@/lib/proxy-pool";
+import { parseProxyLine, proxyHash } from "@/lib/proxy-pool";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,15 +89,18 @@ export async function POST(req: NextRequest) {
   let added = 0;
   let duplicates = 0;
   let invalid = 0;
+  const invalidSamples: string[] = [];
 
   for (const raw of rawUrls) {
-    const normalized = normalizeProxyUrl(raw);
-    if (!normalized) continue;
-    // Validação: precisa ser URL http(s) com host e porta.
-    try {
-      const u = new URL(normalized);
-      if (!/^https?:$/.test(u.protocol) || !u.hostname) { invalid++; continue; }
-    } catch { invalid++; continue; }
+    if (!raw.trim()) continue;
+    // Aceita URL completa, ip:porta:user:pass, user:pass@ip:porta etc. —
+    // normaliza tudo para http://user:pass@host:port.
+    const normalized = parseProxyLine(raw);
+    if (!normalized) {
+      invalid++;
+      if (invalidSamples.length < 3) invalidSamples.push(raw.trim().slice(0, 60));
+      continue;
+    }
 
     const { error } = await admin.from("proxy_pool").insert({
       user_id: user.id,
@@ -113,7 +116,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ added, duplicates, invalid });
+  return NextResponse.json({ added, duplicates, invalid, invalid_samples: invalidSamples });
 }
 
 // DELETE /api/proxy-pool?id=<uuid> — remove entrada LIVRE do estoque.

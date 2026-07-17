@@ -71,7 +71,10 @@ function ProxyPoolSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ urls }),
       });
-      const data = await res.json() as { added?: number; duplicates?: number; invalid?: number; error?: string };
+      const data = await res.json() as {
+        added?: number; duplicates?: number; invalid?: number;
+        invalid_samples?: string[]; error?: string;
+      };
       if (!res.ok) {
         setNotice({ type: "error", message: data.error ?? "Falha ao adicionar proxies." });
         return;
@@ -79,9 +82,15 @@ function ProxyPoolSection() {
       const parts = [`${data.added ?? 0} adicionado${(data.added ?? 0) !== 1 ? "s" : ""}`];
       if (data.duplicates) parts.push(`${data.duplicates} duplicado${data.duplicates !== 1 ? "s" : ""} ignorado${data.duplicates !== 1 ? "s" : ""}`);
       if (data.invalid) parts.push(`${data.invalid} inválido${data.invalid !== 1 ? "s" : ""}`);
-      setNotice({ type: "success", message: parts.join(" · ") + "." });
-      setAddText("");
-      setShowAdd(false);
+      let msg = parts.join(" · ") + ".";
+      if ((data.added ?? 0) === 0 && data.invalid && data.invalid_samples?.length) {
+        msg += ` Ex. de linha não reconhecida: "${data.invalid_samples[0]}"`;
+      }
+      setNotice({ type: (data.added ?? 0) > 0 ? "success" : "error", message: msg });
+      if ((data.added ?? 0) > 0) {
+        setAddText("");
+        setShowAdd(false);
+      }
       loadPool();
     } finally {
       setAdding(false);
@@ -200,8 +209,8 @@ function ProxyPoolSection() {
               <textarea
                 value={addText}
                 onChange={e => setAddText(e.target.value)}
-                placeholder={"Um proxy por linha:\nhttp://usuario:senha@ip:porta\nhttp://usuario:senha@ip:porta"}
-                rows={5}
+                placeholder={"Um proxy por linha — qualquer um destes formatos:\nip:porta:usuario:senha\nusuario:senha@ip:porta\nhttp://usuario:senha@ip:porta\nip:porta"}
+                rows={6}
                 className="w-full input-glass rounded-xl px-3.5 py-3 text-xs font-mono resize-y"
               />
               <button
