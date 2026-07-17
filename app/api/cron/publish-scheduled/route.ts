@@ -9,6 +9,7 @@ import {
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
 import { downloadAndStripMetadata } from "@/lib/ffmpeg-process";
+import { isAccountDeadError, markDeadAccounts, type DeadAccountCandidate } from "@/lib/account-health";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -43,6 +44,7 @@ interface AccountRow {
 
 interface PostRow {
   id: string;
+  user_id: string | null;
   video_id: string | null;
   video_url: string | null;
   caption: string | null;
@@ -159,7 +161,7 @@ export async function GET(req: NextRequest) {
   // IMPORTANTE: não buscamos posts com instagram.com URLs — esses são tratados
   // pelo prefetch-clone-urls que resolve as URLs para Supabase antes de publicar.
   const SELECT_FIELDS =
-    "id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, " +
+    "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, " +
     "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url), " +
     "videos_library(public_url)";
 
@@ -224,6 +226,12 @@ export async function GET(req: NextRequest) {
 
   let publishAttemptsInThisRun = 0;
 
+  // Detecção passiva de conta caída (2026-07-17): falha permanente com padrão
+  // inequívoco de checkpoint/token morto → candidata a health_status='error',
+  // marcada após o loop com guarda de cascata (lib/account-health.ts).
+  const attemptedAccounts = new Set<string>();
+  const deadCandidates: DeadAccountCandidate[] = [];
+
   for (const post of posts) {
     // ── Budget global ──────────────────────────────────────────────────────
     const elapsed = Date.now() - runStart;
@@ -262,6 +270,8 @@ export async function GET(req: NextRequest) {
       summary.skipped++;
       continue;
     }
+
+    attemptedAccounts.add(account.id);
 
     const proxy = getProxyForAccount(account.id, account.proxy_url ?? null);
 
@@ -479,9 +489,21 @@ export async function GET(req: NextRequest) {
           .update({ status: "failed", error_message: msg, creation_id: null })
           .eq("id", post.id);
         summary.failed++;
+        // Conta caída de verdade (checkpoint/token morto) → candidata a vermelho.
+        if (post.user_id && isAccountDeadError(msg)) {
+          deadCandidates.push({
+            accountId: account.id,
+            username: account.username,
+            userId: post.user_id,
+            reason: msg,
+          });
+        }
       }
     }
   }
+
+  // Marcação passiva de saúde — com guarda de cascata (outage não marca ninguém).
+  await markDeadAccounts(admin, "publish-scheduled", deadCandidates, attemptedAccounts.size);
 
   const totalElapsed = Math.round((Date.now() - runStart) / 1000);
   console.log(`[publish-scheduled] ■ Resumo (${totalElapsed}s):`, summary);

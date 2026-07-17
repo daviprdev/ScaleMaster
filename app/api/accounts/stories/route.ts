@@ -53,7 +53,10 @@ export async function GET() {
     .eq("user_id", user.id)
     .neq("health_status", "error")
     .not("ig_business_account_id", "is", null)
-    .not("meta_access_token", "is", null);
+    .not("meta_access_token", "is", null)
+    // Política sem-proxy-sem-sync: conta sem proxy dedicado não gera NENHUMA
+    // requisição à Meta em nome dela (antes saía pelo IP datacenter da Vercel).
+    .not("proxy_url", "is", null);
 
   if (!accounts || accounts.length === 0) {
     return NextResponse.json({ stories: {} });

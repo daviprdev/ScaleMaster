@@ -9,7 +9,12 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const GRAPH = "https://graph.instagram.com/v21.0";
-const STALE_MS = 5 * 60 * 1000;
+// 6 HORAS (2026-07-17, era 5 min). O sync de perfil é só métrica de painel
+// (seguidores/posts mudam devagar) — a detecção de conta caída agora é PASSIVA,
+// feita pelo pipeline de postagem (lib/account-health.ts nos crons process-loops/
+// publish-pending/publish-scheduled), que já toca a Meta várias vezes por dia
+// sem nenhuma chamada extra. Número fresco na hora = botão manual (force).
+const STALE_MS = 6 * 60 * 60 * 1000;
 
 // Apenas tokens genuinamente mortos justificam marcar health_status='error'.
 // 190 = Invalid OAuth 2.0 Access Token (token expirado/revogado)
@@ -53,10 +58,11 @@ const MIN_CASCADE_COUNT = 4;
 // via IP datacenter na janela mais sensível do risk engine da Meta era gatilho.
 const NEW_ACCOUNT_GRACE_MS = 30 * 60 * 1_000; // 30 minutos
 
-// Nas primeiras 24h após conectar, o sync SILENCIOSO (sem force) respeita
-// cadência máxima de 1 sync/hora — mesma regra do cron sync-accounts.
-const NEW_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1_000;
-const NEW_ACCOUNT_STALE_MS = 60 * 60 * 1_000;
+// Contas com menos de 7 dias: NENHUM sync automático (2026-07-17, era 24h com
+// cadência 1×/h). É a janela em que o risk engine da Meta está mais sensível a
+// padrões robóticos de leitura — conta nova só sincroniza pelo botão manual
+// (force), que continua respeitando o grace inicial de 30 min.
+const NEW_ACCOUNT_SILENT_BLOCK_MS = 7 * 24 * 60 * 60 * 1_000;
 
 interface AccountRow {
   id: string;
@@ -95,7 +101,7 @@ function isCheckpointError(code: number, message: string): boolean {
   return CHECKPOINT_MESSAGES.some(p => lower.includes(p));
 }
 
-async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmin>): Promise<SyncResult> {
+async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmin>, force: boolean): Promise<SyncResult> {
   let activeToken = acc.meta_access_token;
   const proxy = getProxyForAccount(acc.id, acc.proxy_url ?? null);
 
@@ -231,11 +237,11 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
     }
 
     // Fetch last post timestamp (non-critical) — usa activeToken (pode ter sido renovado acima).
-    // Pulado em contas < 24h: corta pela metade as requisições na janela sensível a checkpoint.
+    // APENAS no sync manual (force): o sync silencioso faz exatamente 1 GET por
+    // conta (perfil). last_post_at já é alimentado de graça pelo próprio pipeline
+    // de postagem para contas ativas.
     let lastPostAt: string | null = null;
-    const isNewAccount = acc.connected_at &&
-      Date.now() - new Date(acc.connected_at).getTime() < NEW_ACCOUNT_AGE_MS;
-    if (!isNewAccount) try {
+    if (force) try {
       const mediaUrl =
         `${GRAPH}/${acc.ig_business_account_id}/media` +
         `?fields=timestamp&limit=1` +
@@ -318,12 +324,9 @@ export async function POST(request: Request) {
         );
         return false;
       }
-      // Conta < 24h: sync silencioso no máximo 1×/hora (anti-checkpoint).
-      // Sync manual (force) continua permitido — é ação pontual do usuário.
-      if (!force && ageMs < NEW_ACCOUNT_AGE_MS && a.profile_refreshed_at) {
-        const staleMs = Date.now() - new Date(a.profile_refreshed_at).getTime();
-        if (staleMs < NEW_ACCOUNT_STALE_MS) return false;
-      }
+      // Conta < 7 dias: NENHUM sync automático — janela mais sensível do risk
+      // engine da Meta. Sync manual (force) continua permitido.
+      if (!force && ageMs < NEW_ACCOUNT_SILENT_BLOCK_MS) return false;
     }
     if (force) return true;
     if (!a.profile_refreshed_at) return true;
@@ -353,7 +356,7 @@ export async function POST(request: Request) {
     const elapsed = Date.now() - startedAt;
     if (elapsed > HARD_DEADLINE_MS) break;
     const batch = stale.slice(i, i + BATCH_SIZE);
-    const batchPromise = Promise.allSettled(batch.map(acc => syncOne(acc, admin)));
+    const batchPromise = Promise.allSettled(batch.map(acc => syncOne(acc, admin, force)));
     const timedOut = Symbol("timeout");
     const raceResult = await Promise.race([
       batchPromise,

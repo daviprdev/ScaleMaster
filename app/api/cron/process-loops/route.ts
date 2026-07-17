@@ -4,6 +4,7 @@ import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount, recordProxyFailure } from "@/lib/proxy";
 import { getAutoCaption } from "@/lib/auto-captions";
+import { markDeadAccounts } from "@/lib/account-health";
 import type { ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
@@ -308,11 +309,10 @@ function isRateLimitError(msg: string): boolean {
     // token válido, problema transitório. Trata como skip silencioso igual rate-limit.
     lower.includes("failed to decrypt") ||
     lower.includes("cannot parse access token") ||
-    lower.includes("malformed access token") ||
-    // Checkpoint do Instagram: exige login via browser — token válido, conta não morta.
-    // Skip silencioso neste ciclo; a conta tentará novamente no próximo interval.
-    lower.includes("you cannot access the app till you log in") ||
-    lower.includes("log in to www.instagram.com and follow the instructions")
+    lower.includes("malformed access token")
+    // Checkpoint REMOVIDO daqui (2026-07-17): checkpoint é conta caída de verdade —
+    // agora flui para isCriticalMetaError e marca a conta como error (com guarda
+    // de cascata). Detecção passiva pelo pipeline substitui o ping do sync.
   );
 }
 
@@ -330,6 +330,12 @@ function isCriticalMetaError(msg: string): boolean {
     "has been blocked from",        // "your account has been blocked from"
     "your account has been disabled",
     "checkpoint",
+    // Checkpoint do Instagram (mensagem literal da Meta, não contém a palavra
+    // "checkpoint"): conta exige login manual via browser. Movido do skip
+    // silencioso (isRateLimitError) para cá em 2026-07-17 — o pipeline é quem
+    // marca a conta vermelha agora, com a guarda de cascata abaixo.
+    "you cannot access the app till you log in",
+    "log in to www.instagram.com and follow the instructions",
     // Códigos de erro explicitamente na mensagem legível (ex: "#190 Error..."):
     "error code 190",
     "error code 102",
@@ -942,12 +948,8 @@ async function processOneLoop(
     let phase2bAttempts = 0;
 
     // Fila de erros críticos — aplicados DEPOIS do loop para detecção de cascata.
-    // Se ≥ CASCADE_LOOP_THRESHOLD das contas do loop errarem com erros críticos
-    // no MESMO ciclo, trata como outage da Meta e não marca nenhuma como error.
-    // Threshold 0.6 (60%): alinhado com sync-accounts (70%). 30% era sensível demais —
-    // com 14 contas, 5 falhando (36%) disparava cascata e escondia erros individuais reais,
-    // fazendo o Failover mostrar "0 contas caídas" mesmo com contas genuinamente mortas.
-    const CASCADE_LOOP_THRESHOLD = 0.6; // 60% do loop
+    // Guarda de cascata (≥4 contas E ≥60% do loop) e marcação centralizadas em
+    // lib/account-health.ts (markDeadAccounts).
     const criticalErrorQueue: Array<{
       account: AccountRow;
       errorMsg: string;
@@ -1117,41 +1119,23 @@ async function processOneLoop(
     // Threshold: 2+ contas E ≥30% do loop erraram criticamente = outage da Meta.
     // Mínimo de 2 para não disparar com 1 conta em loop de conta única.
     if (criticalErrorQueue.length > 0) {
-      const cascadeRatio = criticalErrorQueue.length / Math.max(validAccounts.length, 1);
-      const isCascade = criticalErrorQueue.length >= 4 && cascadeRatio >= CASCADE_LOOP_THRESHOLD;
-
-      if (isCascade) {
-        // Cascata detectada — não marcar nenhuma conta como error neste ciclo.
-        // Serão tentadas novamente no próximo ciclo (interval_minutes).
-        // Evita destruir o painel inteiro por um outage temporário da Meta.
-        console.warn(
-          `[CASCADE-LOOP] "${loop.name}": ${criticalErrorQueue.length}/${validAccounts.length} contas ` +
-          `(${(cascadeRatio * 100).toFixed(0)}%) com erro crítico no mesmo ciclo — ` +
-          `possível outage da Meta. Nenhuma conta marcada como error. ` +
-          `Contas: ${criticalErrorQueue.map(e => "@" + e.account.username).join(", ")}`
-        );
-      } else {
-        // Não é cascata — erros são individuais. Marca a conta como error e PARA.
-        // Failover cross-conta DESATIVADO: antes, o vídeo+legenda de uma conta que
-        // falhava era repostado através de OUTRA conta do usuário (escolhida por
-        // failover_priority, sem respeitar a pasta) — o que misturava conteúdo de
-        // um cliente/persona no perfil de outro. As contas são independentes: uma
-        // conta que dá erro apenas pula o ciclo dela; nenhuma outra conta assume.
-        for (const item of criticalErrorQueue) {
-          try {
-            await (admin as any)
-              .from("instagram_accounts")
-              .update({ health_status: "error" })
-              .eq("id", item.account.id);
-            console.warn(
-              `[loop-cron] ⚠️ @${item.account.username} marcada como health_status=error ` +
-              `("${item.errorMsg.slice(0, 80)}"). Restaure em Failover se resolvido.`
-            );
-          } catch (markErr) {
-            console.warn(`[loop-cron] Falha ao marcar @${item.account.username} como error: ${markErr}`);
-          }
-        }
-      }
+      // Marcação centralizada em lib/account-health.ts: guarda de cascata
+      // (≥4 contas E ≥60% do loop = outage da Meta, ninguém é marcado) + update
+      // health_status + failover_logs com o motivo real (AccountHealthBanner
+      // deixa de mostrar "Erro Desconhecido" para quedas detectadas pelo loop).
+      // Failover cross-conta segue DESATIVADO: conta com erro apenas para;
+      // nenhuma outra conta assume o post dela.
+      await markDeadAccounts(
+        admin,
+        "loop-cron",
+        criticalErrorQueue.map(item => ({
+          accountId: item.account.id,
+          username: item.account.username,
+          userId: loop.user_id,
+          reason: item.errorMsg,
+        })),
+        validAccounts.length
+      );
     }
 
     loopContainersCreated = containersCreated;

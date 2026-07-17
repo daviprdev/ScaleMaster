@@ -6,6 +6,7 @@ import {
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
+import { isAccountDeadError, markDeadAccounts, type DeadAccountCandidate } from "@/lib/account-health";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -110,6 +111,12 @@ export async function GET(req: NextRequest) {
   // A Meta bloqueia com "too many actions" com intervalos < 5s entre publicações.
   let publishAttemptsInThisRun = 0;
 
+  // Detecção passiva de conta caída (2026-07-17): contas cujo publish falha com
+  // erro inequívoco de checkpoint/token morto são marcadas após o loop, com
+  // guarda de cascata (lib/account-health.ts).
+  const attemptedAccounts = new Set<string>();
+  const deadCandidates: DeadAccountCandidate[] = [];
+
   for (const container of containers) {
     summary.checked++;
 
@@ -163,6 +170,8 @@ export async function GET(req: NextRequest) {
       summary.errors++;
       continue;
     }
+
+    attemptedAccounts.add(account.id);
 
     try {
       let proxy = getProxyForAccount(account.id, account.proxy_url);
@@ -292,11 +301,10 @@ export async function GET(req: NextRequest) {
         // ao descriptografar internamente — transitório, retry em 5min.
         lower.includes("failed to decrypt") ||
         lower.includes("cannot parse access token") ||
-        lower.includes("malformed access token") ||
-        // Checkpoint do Instagram: exige login via browser — token válido, não é erro permanente.
-        // Retry em 5min; a conta pode sair do checkpoint sem ação adicional no código.
-        lower.includes("you cannot access the app till you log in") ||
-        lower.includes("log in to www.instagram.com and follow the instructions")
+        lower.includes("malformed access token")
+        // Checkpoint REMOVIDO daqui (2026-07-17): checkpoint é conta caída de
+        // verdade — cai no branch permanente abaixo e entra em deadCandidates
+        // (marcação com guarda de cascata após o loop).
       );
 
       if (isTransient) {
@@ -323,9 +331,21 @@ export async function GET(req: NextRequest) {
           .from("pending_containers")
           .update({ status: "error", error_message: msg.slice(0, 500) })
           .eq("id", container.id);
+        // Conta caída de verdade (checkpoint/token morto) → candidata a vermelho.
+        if (account && isAccountDeadError(msg)) {
+          deadCandidates.push({
+            accountId: account.id,
+            username: account.username,
+            userId: container.user_id,
+            reason: msg,
+          });
+        }
       }
     }
   }
+
+  // Marcação passiva de saúde — com guarda de cascata (outage não marca ninguém).
+  await markDeadAccounts(admin, "publish-pending", deadCandidates, attemptedAccounts.size);
 
   console.log("[publish-pending] Resumo:", summary);
   return NextResponse.json({ ok: true, ...summary });

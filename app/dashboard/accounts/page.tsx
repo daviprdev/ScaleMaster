@@ -1160,8 +1160,9 @@ export default function AccountsPage() {
     fetchUserApps();
     fetchFolders();
     fetchAccounts().then(async (fetched) => {
-      fetchStories();
-
+      // fetchStories removido do page-load (2026-07-17): era 1 GET à Meta por
+      // conta a cada abertura da página. Stories ao vivo agora só no botão
+      // manual de sincronizar; a badge simplesmente não aparece sem os dados.
       if (_autoRefreshDone.current) return;
       _autoRefreshDone.current = true;
 
@@ -1192,7 +1193,7 @@ export default function AccountsPage() {
         fetchAccounts();
       }
     });
-  }, [fetchAccounts, fetchStories, fetchUserApps, fetchFolders]);
+  }, [fetchAccounts, fetchUserApps, fetchFolders]);
 
   useEffect(() => {
     if (_autoSyncDone.current) return;
@@ -1213,10 +1214,9 @@ export default function AccountsPage() {
         } catch { break; }
       }
       fetchAccounts();
-      fetchStories();
     };
     silentSyncAll();
-  }, [fetchAccounts, fetchStories]);
+  }, [fetchAccounts]);
 
   // Auto-refresh a cada 60s: atualiza a lista do banco sem chamar a Meta API.
   // Reflete mudanças feitas pelos crons (health_status, followers, etc.) sem precisar recarregar a página.
@@ -1326,7 +1326,10 @@ export default function AccountsPage() {
         signal: AbortSignal.timeout(28_000),
       });
       if (res.ok) {
-        await Promise.all([fetchAccounts(), fetchStories()]);
+        // fetchStories removido (2026-07-17): era uma varredura de TODAS as
+        // contas na Meta para o sync de UMA conta. A rota de refresh já
+        // persiste active_stories_count no banco; fetchAccounts reflete.
+        await fetchAccounts();
         setNotification({ type: "success", message: "Conta sincronizada com sucesso." });
       } else {
         let errorMsg = "Falha ao sincronizar conta.";
@@ -1336,11 +1339,11 @@ export default function AccountsPage() {
         } catch { /* HTML de erro / sem body */ }
         setNotification({ type: "error", message: errorMsg });
         // Atualiza a lista mesmo no erro — o servidor pode ter marcado a conta como caída
-        await Promise.allSettled([fetchAccounts(), fetchStories()]);
+        await fetchAccounts();
       }
     } catch {
       // Timeout ou rede — sem notificação; atualiza a lista para refletir mudanças do servidor
-      await Promise.allSettled([fetchAccounts(), fetchStories()]);
+      await fetchAccounts();
     } finally {
       _refreshingRef.current.delete(id);
       setRefreshingIds(prev => {
@@ -1349,7 +1352,7 @@ export default function AccountsPage() {
         return next;
       });
     }
-  }, [fetchAccounts, fetchStories]);
+  }, [fetchAccounts]);
 
   const handleRefreshToken = useCallback(async (id: string) => {
     if (_tokenRefreshingRef.current) return;
