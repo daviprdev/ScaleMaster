@@ -53,15 +53,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Nenhuma conta válida encontrada." }, { status: 400 });
 
   // +5s: dá margem para o insert terminar antes do cron (que roda a cada 1 min) considerar a linha.
-  const scheduledAt = new Date(Date.now() + 5_000).toISOString();
+  // Stagger de 20s por conta: todas com o mesmo horário disparavam ~17 publicações
+  // simultâneas no mesmo Meta App → "User is performing too many actions" em massa.
+  const STAGGER_MS = 20_000;
+  const base = Date.now() + 5_000;
 
-  const rows = validAccountIds.map((accountId) => ({
+  const rows = validAccountIds.map((accountId, i) => ({
     user_id: user.id,
     account_id: accountId,
     video_id: null,
     video_url: media_url,
     caption: "",
-    scheduled_at: scheduledAt,
+    scheduled_at: new Date(base + i * STAGGER_MS).toISOString(),
     status: "pending",
     campaign_id: null,
     post_type: "story",

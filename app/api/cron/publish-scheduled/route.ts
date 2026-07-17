@@ -473,9 +473,23 @@ export async function GET(req: NextRequest) {
 
       if (isTransientError(msg)) {
         console.warn(`[publish-scheduled] ⏸ @${account.username} (${post.id}): transitório → retry. ${msg.slice(0, 100)}`);
+        // Rate-limit da Meta: empurra scheduled_at +2min com jitter 0–60s. Sem isso,
+        // o lote inteiro rate-limitado era re-tentado de uma vez a cada minuto,
+        // tomando rate-limit de novo em cascata. Erros de proxy/timeout mantêm o
+        // horário original (retry no próximo ciclo resolve blip de rede).
+        const isRateLimit = /too many actions|retry your request later|please retry/i.test(msg);
+        const retryUpdate: Record<string, string> = {
+          status: "pending",
+          error_message: `[RETRY] ${msg.slice(0, 300)}`,
+        };
+        if (isRateLimit) {
+          retryUpdate.scheduled_at = new Date(
+            Date.now() + 120_000 + Math.floor(Math.random() * 60_000)
+          ).toISOString();
+        }
         await admin
           .from("scheduled_posts")
-          .update({ status: "pending", error_message: `[RETRY] ${msg.slice(0, 300)}` })
+          .update(retryUpdate)
           .eq("id", post.id);
         // Falha de proxy → registra na conta para o ProxyOutageBanner do dashboard.
         if (account.proxy_url && isProxyNetworkError(msg)) {
