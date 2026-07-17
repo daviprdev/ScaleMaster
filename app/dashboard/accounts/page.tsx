@@ -1029,7 +1029,7 @@ export default function AccountsPage() {
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvResults, setCsvResults] = useState<Array<{ username: string; status: string; error?: string }> | null>(null);
 
-  const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [refreshingIds, setRefreshingIds] = useState<Set<string>>(new Set());
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [tokenRefreshingId, setTokenRefreshingId] = useState<string | null>(null);
@@ -1054,7 +1054,7 @@ export default function AccountsPage() {
   const supabase = useMemo(() => createClient(), []);
   const _togglingRef = useRef<string | null>(null);
   const _deletingRef = useRef<string | null>(null);
-  const _refreshingRef = useRef<string | null>(null);
+  const _refreshingRef = useRef<Set<string>>(new Set());
   const _tokenRefreshingRef = useRef<string | null>(null);
   const _autoRefreshDone = useRef(false);
   const _autoSyncDone = useRef(false);
@@ -1314,9 +1314,10 @@ export default function AccountsPage() {
   }, [syncingAll, accounts, fetchAccounts, fetchStories]);
 
   const handleRefresh = useCallback(async (id: string) => {
-    if (_refreshingRef.current) return;
-    _refreshingRef.current = id;
-    setRefreshingId(id);
+    // Bloqueia apenas clique duplo na MESMA conta — contas diferentes sincronizam em paralelo.
+    if (_refreshingRef.current.has(id)) return;
+    _refreshingRef.current.add(id);
+    setRefreshingIds(prev => new Set(prev).add(id));
     try {
       const res = await fetch("/api/accounts/refresh", {
         method: "POST",
@@ -1341,8 +1342,12 @@ export default function AccountsPage() {
       // Timeout ou rede — sem notificação; atualiza a lista para refletir mudanças do servidor
       await Promise.allSettled([fetchAccounts(), fetchStories()]);
     } finally {
-      _refreshingRef.current = null;
-      setRefreshingId(null);
+      _refreshingRef.current.delete(id);
+      setRefreshingIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     }
   }, [fetchAccounts, fetchStories]);
 
@@ -2963,7 +2968,7 @@ export default function AccountsPage() {
                 onClearQueueClick={(acc) => setClearQueueDialog({ id: acc.id, username: acc.username })}
                 onLabelUpdate={handleLabelUpdate}
                 onEditProfile={setEditProfileAccount}
-                refreshing={refreshingId === account.id}
+                refreshing={refreshingIds.has(account.id)}
                 toggling={togglingId === account.id}
                 deleting={deletingId === account.id}
                 tokenRefreshing={tokenRefreshingId === account.id}
