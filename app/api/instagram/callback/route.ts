@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt } from "@/lib/encrypt";
 import { fetch as undiciFetch, type ProxyAgent } from "undici";
 import { getProxyForAccount, proxyInit } from "@/lib/proxy";
+import { claimProxyForAccount } from "@/lib/proxy-pool";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -506,6 +507,30 @@ export async function GET(req: NextRequest) {
         .update({ posts_count: profile.media_count })
         .eq("user_id", userId)
         .eq("ig_business_account_id", profile.id);
+    }
+
+    // Estoque de proxies: conta sem proxy recebe um automaticamente no momento
+    // da conexão (claim atômico — sem reutilização entre conexões simultâneas).
+    // Conta reconectada que já tem proxy mantém o dela. Falha aqui NUNCA
+    // bloqueia a conexão — a conta só fica com a badge "sem proxy".
+    try {
+      const { data: connectedAcct } = await admin
+        .from("instagram_accounts")
+        .select("id, proxy_url")
+        .eq("user_id", userId)
+        .eq("ig_business_account_id", profile.id)
+        .maybeSingle();
+      if (connectedAcct?.id && !connectedAcct.proxy_url) {
+        const { assigned, wasUsed } = await claimProxyForAccount(admin, userId, connectedAcct.id);
+        if (assigned) {
+          console.log(
+            `[ig/callback] @${profile.username}: proxy ${wasUsed ? "reutilizado" : "limpo"} ` +
+            `atribuído do estoque.`
+          );
+        }
+      }
+    } catch (poolErr) {
+      console.warn(`[ig/callback] Estoque de proxies falhou (conexão segue):`, poolErr);
     }
 
     const successUrl = isMagicLink

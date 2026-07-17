@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Globe, Loader2, CheckCircle2, AlertCircle, RefreshCw, Shield } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import {
+  Globe, Loader2, CheckCircle2, AlertCircle, RefreshCw, Shield,
+  Database, Plus, Trash2, X, Zap,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -13,6 +16,278 @@ interface ProxyResult {
   proxy_label: string | null;
   ip: string | null;
   error: string | null;
+}
+
+interface PoolItem {
+  id: string;
+  display: string;
+  assigned_username: string | null;
+  was_used: boolean;
+  created_at: string;
+}
+
+interface PoolData {
+  items: PoolItem[];
+  total: number;
+  free_clean: number;
+  free_used: number;
+  in_use: number;
+}
+
+// ── Estoque de Proxies ──────────────────────────────────────────────────────
+function ProxyPoolSection() {
+  const [pool, setPool] = useState<PoolData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addText, setAddText] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const loadPool = useCallback(async () => {
+    try {
+      const res = await fetch("/api/proxy-pool", { cache: "no-store" });
+      if (!res.ok) return;
+      setPool(await res.json() as PoolData);
+    } catch { /* non-critical */ } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadPool(); }, [loadPool]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  const handleAdd = async () => {
+    const urls = addText.split("\n").map(l => l.trim()).filter(Boolean);
+    if (urls.length === 0) return;
+    setAdding(true);
+    try {
+      const res = await fetch("/api/proxy-pool", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls }),
+      });
+      const data = await res.json() as { added?: number; duplicates?: number; invalid?: number; error?: string };
+      if (!res.ok) {
+        setNotice({ type: "error", message: data.error ?? "Falha ao adicionar proxies." });
+        return;
+      }
+      const parts = [`${data.added ?? 0} adicionado${(data.added ?? 0) !== 1 ? "s" : ""}`];
+      if (data.duplicates) parts.push(`${data.duplicates} duplicado${data.duplicates !== 1 ? "s" : ""} ignorado${data.duplicates !== 1 ? "s" : ""}`);
+      if (data.invalid) parts.push(`${data.invalid} inválido${data.invalid !== 1 ? "s" : ""}`);
+      setNotice({ type: "success", message: parts.join(" · ") + "." });
+      setAddText("");
+      setShowAdd(false);
+      loadPool();
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleAssignAll = async () => {
+    setAssigning(true);
+    try {
+      const res = await fetch("/api/proxy-pool/assign", { method: "POST" });
+      const data = await res.json() as { assigned?: number; out_of_stock?: number; message?: string };
+      if (data.message) {
+        setNotice({ type: "success", message: data.message });
+      } else {
+        const msg = `${data.assigned ?? 0} conta${(data.assigned ?? 0) !== 1 ? "s" : ""} recebeu proxy do estoque` +
+          ((data.out_of_stock ?? 0) > 0 ? ` — estoque acabou, ${data.out_of_stock} conta${data.out_of_stock !== 1 ? "s" : ""} ficou sem.` : ".");
+        setNotice({ type: (data.out_of_stock ?? 0) > 0 ? "error" : "success", message: msg });
+      }
+      loadPool();
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleRemove = async (id: string) => {
+    setRemovingId(id);
+    try {
+      const res = await fetch(`/api/proxy-pool?id=${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setPool(prev => prev ? {
+          ...prev,
+          items: prev.items.filter(i => i.id !== id),
+          total: prev.total - 1,
+        } : prev);
+        loadPool();
+      } else {
+        const data = await res.json() as { error?: string };
+        setNotice({ type: "error", message: data.error ?? "Falha ao remover." });
+      }
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
+  return (
+    <div className="glass-card rounded-2xl p-6 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-[#00E5FF]/10 border border-[#00E5FF]/20 flex items-center justify-center flex-shrink-0">
+            <Database size={16} className="text-[#00E5FF]" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-white">Estoque de Proxies</p>
+            <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
+              Proxies armazenados aqui são atribuídos automaticamente a cada conta nova no momento
+              da conexão — um por conta, sem repetição. Proxies de contas excluídas voltam como
+              &quot;devolvidos&quot; e só são redistribuídos quando os limpos acabarem.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowAdd(v => !v)}
+          className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border border-[#00E5FF]/25 text-[#00E5FF]/80 hover:text-[#00E5FF] hover:border-[#00E5FF]/45 hover:bg-[#00E5FF]/[0.06] transition-all flex-shrink-0"
+        >
+          {showAdd ? <X size={13} /> : <Plus size={13} />}
+          {showAdd ? "Fechar" : "Adicionar"}
+        </button>
+      </div>
+
+      {/* Contadores */}
+      {pool && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { label: "Total", value: pool.total, cls: "text-white/70" },
+            { label: "Livres", value: pool.free_clean, cls: "text-[#00FF41]" },
+            { label: "Devolvidos", value: pool.free_used, cls: "text-amber-400" },
+            { label: "Em uso", value: pool.in_use, cls: "text-[#00E5FF]" },
+          ].map(c => (
+            <div key={c.label} className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+              <p className={cn("text-lg font-bold tabular-nums", c.cls)}>{c.value}</p>
+              <p className="text-[10px] uppercase tracking-wider text-white/30 font-semibold">{c.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Notificação inline */}
+      <AnimatePresence>
+        {notice && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className={cn(
+              "flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-medium",
+              notice.type === "success"
+                ? "bg-[#00FF41]/8 border-[#00FF41]/20 text-[#00FF41]"
+                : "bg-red-500/8 border-red-500/25 text-red-300"
+            )}
+          >
+            {notice.type === "success" ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+            {notice.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Form de adição */}
+      <AnimatePresence>
+        {showAdd && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-2 pt-1">
+              <textarea
+                value={addText}
+                onChange={e => setAddText(e.target.value)}
+                placeholder={"Um proxy por linha:\nhttp://usuario:senha@ip:porta\nhttp://usuario:senha@ip:porta"}
+                rows={5}
+                className="w-full input-glass rounded-xl px-3.5 py-3 text-xs font-mono resize-y"
+              />
+              <button
+                onClick={handleAdd}
+                disabled={adding || !addText.trim()}
+                className="btn-primary flex items-center gap-2 text-sm px-4 py-2 disabled:opacity-50"
+              >
+                {adding ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                Adicionar ao estoque
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Atribuir em massa */}
+      {pool && pool.total > 0 && (
+        <button
+          onClick={handleAssignAll}
+          disabled={assigning || pool.free_clean + pool.free_used === 0}
+          className="flex items-center gap-1.5 text-xs px-3.5 py-2.5 rounded-xl font-semibold bg-[#00FF41]/10 border border-[#00FF41]/25 text-[#00FF41] hover:bg-[#00FF41]/20 transition-all disabled:opacity-40"
+        >
+          {assigning ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+          Atribuir às contas sem proxy
+        </button>
+      )}
+
+      {/* Lista */}
+      {loading ? (
+        <div className="flex items-center gap-2 text-xs text-white/30 py-2">
+          <Loader2 size={13} className="animate-spin" /> Carregando estoque...
+        </div>
+      ) : pool && pool.items.length > 0 ? (
+        <div className="rounded-xl border border-white/[0.06] overflow-hidden max-h-80 overflow-y-auto">
+          {pool.items.map((item, i) => (
+            <div
+              key={item.id}
+              className={cn(
+                "flex items-center gap-3 px-3.5 py-2.5",
+                i < pool.items.length - 1 && "border-b border-white/[0.04]"
+              )}
+            >
+              <span className={cn(
+                "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                item.assigned_username ? "bg-[#00E5FF]" : item.was_used ? "bg-amber-400" : "bg-[#00FF41]"
+              )} />
+              <span className="text-xs font-mono text-white/60 flex-1 truncate">{item.display}</span>
+              {item.assigned_username ? (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00E5FF]/10 text-[#00E5FF] font-semibold">
+                  @{item.assigned_username}
+                </span>
+              ) : item.was_used ? (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-semibold">
+                  devolvido
+                </span>
+              ) : (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00FF41]/10 text-[#00FF41] font-semibold">
+                  livre
+                </span>
+              )}
+              {!item.assigned_username && (
+                <button
+                  onClick={() => handleRemove(item.id)}
+                  disabled={removingId === item.id}
+                  title="Remover do estoque"
+                  className="text-white/20 hover:text-red-400 transition-colors flex-shrink-0"
+                >
+                  {removingId === item.id
+                    ? <Loader2 size={12} className="animate-spin" />
+                    : <Trash2 size={12} />
+                  }
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-white/25 py-1">
+          Estoque vazio — adicione proxies para que contas novas os recebam automaticamente ao conectar.
+        </p>
+      )}
+    </div>
+  );
 }
 
 export default function ProxyTestPage() {
@@ -40,11 +315,13 @@ export default function ProxyTestPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-white">Verificar Proxies</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-white">Proxies</h1>
         <p className="text-sm text-white/35 mt-0.5">
-          Confirma qual IP cada conta usa ao se comunicar com a Meta API.
+          Estoque com atribuição automática e verificação do IP real de cada conta.
         </p>
       </div>
+
+      <ProxyPoolSection />
 
       <div className="glass-card rounded-2xl p-6 space-y-4">
         <div className="flex items-start gap-3">
@@ -52,7 +329,7 @@ export default function ProxyTestPage() {
             <Shield size={16} className="text-[#00FF41]" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">Como funciona</p>
+            <p className="text-sm font-semibold text-white">Verificar IPs</p>
             <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
               Cada conta faz uma requisição ao serviço <span className="font-mono text-white/60">api.ipify.org</span> através
               do seu proxy configurado. O IP retornado é o que a Meta API enxerga — deve ser diferente por conta.
