@@ -141,10 +141,13 @@ export default function SettingsPage() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Security
-  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [showCurrentPw, setShowCurrentPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
+  // "form" = digitando nova senha · "code" = aguardando código enviado ao email
+  const [pwStep, setPwStep] = useState<"form" | "code">("form");
+  const [verifyCode, setVerifyCode] = useState("");
+  const [sendingCode, setSendingCode] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [passwordError, setPasswordError] = useState("");
@@ -341,33 +344,97 @@ export default function SettingsPage() {
     }
   };
 
-  // ── Password save ──────────────────────────────────────────
-  const handleSavePassword = async (e: React.FormEvent) => {
+  // ── Password: verificação por email em 2 etapas ────────────
+  // Etapa 1: reauthenticate() envia código de 6 dígitos ao email do perfil.
+  // Etapa 2: updateUser({ password, nonce }) só conclui com o código correto
+  // (exige "Secure password change" ativo no Supabase Auth).
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
+
+  const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (_savingPasswordRef.current) return;
+    if (sendingCode) return;
     setPasswordError("");
     if (!newPassword || newPassword.length < 6) {
       setPasswordError("A nova senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+    setSendingCode(true);
+    try {
+      const { error } = await supabase.auth.reauthenticate();
+      if (error) throw error;
+      setPwStep("code");
+      setVerifyCode("");
+      setResendCooldown(60);
+    } catch (err) {
+      setPasswordError(
+        err instanceof Error ? err.message : "Erro ao enviar o código."
+      );
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (sendingCode || resendCooldown > 0) return;
+    setPasswordError("");
+    setSendingCode(true);
+    try {
+      const { error } = await supabase.auth.reauthenticate();
+      if (error) throw error;
+      setResendCooldown(60);
+    } catch (err) {
+      setPasswordError(
+        err instanceof Error ? err.message : "Erro ao reenviar o código."
+      );
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
+  const handleConfirmPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (_savingPasswordRef.current) return;
+    setPasswordError("");
+    if (verifyCode.trim().length < 6) {
+      setPasswordError("Digite o código de 6 dígitos enviado ao seu email.");
       return;
     }
     _savingPasswordRef.current = true;
     setSavingPassword(true);
     setPasswordSuccess(false);
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+        nonce: verifyCode.trim(),
+      });
       if (error) throw error;
       setPasswordSuccess(true);
-      setCurrentPassword("");
       setNewPassword("");
+      setVerifyCode("");
+      setPwStep("form");
+      setResendCooldown(0);
       setTimeout(() => setPasswordSuccess(false), 3000);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
       setPasswordError(
-        err instanceof Error ? err.message : "Erro ao atualizar senha."
+        /nonce|invalid|expired/i.test(msg)
+          ? "Código inválido ou expirado. Verifique o email e tente novamente."
+          : msg || "Erro ao atualizar senha."
       );
     } finally {
       _savingPasswordRef.current = false;
       setSavingPassword(false);
     }
+  };
+
+  const handleCancelCode = () => {
+    setPwStep("form");
+    setVerifyCode("");
+    setPasswordError("");
   };
 
   // ── Coupon ─────────────────────────────────────────────────
@@ -548,80 +615,134 @@ export default function SettingsPage() {
 
       {/* ── Segurança ──────────────────────────────────────── */}
       <Section icon={<Shield size={15} />} title="Segurança">
-        <form onSubmit={handleSavePassword} className="space-y-4">
-          <div>
-            <label className="text-[11px] font-medium text-white/35 block mb-1.5">
-              Senha Atual
-            </label>
-            <div className="relative">
-              <input
-                type={showCurrentPw ? "text" : "password"}
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                placeholder="••••••••"
-                className="input-glass w-full text-sm py-2.5 pr-10"
-              />
+        {pwStep === "form" ? (
+          <form onSubmit={handleSendCode} className="space-y-4">
+            <div>
+              <label className="text-[11px] font-medium text-white/35 block mb-1.5">
+                Nova Senha
+              </label>
+              <div className="relative">
+                <input
+                  type={showNewPw ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="input-glass w-full text-sm py-2.5 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPw(!showNewPw)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors"
+                >
+                  {showNewPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+              <PasswordStrength password={newPassword} />
+            </div>
+
+            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-[#00E5FF]/[0.05] border border-[#00E5FF]/15 text-[11px] text-white/45">
+              <Mail size={13} className="flex-shrink-0 mt-0.5 text-[#00E5FF]/70" />
+              <span>
+                Por segurança, enviaremos um código de verificação para o email
+                da conta antes de alterar a senha.
+              </span>
+            </div>
+
+            {passwordError && (
+              <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                <AlertCircle size={13} className="flex-shrink-0" />
+                {passwordError}
+              </div>
+            )}
+
+            <div className="flex justify-end">
               <button
-                type="button"
-                onClick={() => setShowCurrentPw(!showCurrentPw)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors"
+                type="submit"
+                disabled={sendingCode || !newPassword}
+                className={cn(
+                  "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed",
+                  passwordSuccess
+                    ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
+                    : "btn-primary"
+                )}
               >
-                {showCurrentPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                {sendingCode && <Loader2 size={14} className="animate-spin" />}
+                {!sendingCode && passwordSuccess && <Check size={14} />}
+                {sendingCode
+                  ? "Enviando código..."
+                  : passwordSuccess
+                  ? "Senha atualizada!"
+                  : "Enviar Código de Verificação"}
               </button>
             </div>
-          </div>
+          </form>
+        ) : (
+          <form onSubmit={handleConfirmPassword} className="space-y-4">
+            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-[#00FF41]/[0.05] border border-[#00FF41]/15 text-[11px] text-white/50">
+              <Mail size={13} className="flex-shrink-0 mt-0.5 text-[#00FF41]/70" />
+              <span>
+                Enviamos um código de 6 dígitos para{" "}
+                <span className="font-semibold text-white/75">{email}</span>.
+                Digite-o abaixo para confirmar a alteração da senha.
+              </span>
+            </div>
 
-          <div>
-            <label className="text-[11px] font-medium text-white/35 block mb-1.5">
-              Nova Senha
-            </label>
-            <div className="relative">
+            <div>
+              <label className="text-[11px] font-medium text-white/35 block mb-1.5">
+                Código de Verificação
+              </label>
               <input
-                type={showNewPw ? "text" : "password"}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="••••••••"
-                className="input-glass w-full text-sm py-2.5 pr-10"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={verifyCode}
+                onChange={(e) =>
+                  setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                }
+                placeholder="000000"
+                className="input-glass w-full text-lg py-2.5 font-mono tracking-[0.5em] text-center"
+                autoFocus
               />
+            </div>
+
+            {passwordError && (
+              <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                <AlertCircle size={13} className="flex-shrink-0" />
+                {passwordError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleCancelCode}
+                  className="text-xs text-white/35 hover:text-white/60 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResendCode}
+                  disabled={sendingCode || resendCooldown > 0}
+                  className="text-xs text-[#00E5FF]/70 hover:text-[#00E5FF] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {resendCooldown > 0
+                    ? `Reenviar em ${resendCooldown}s`
+                    : "Reenviar código"}
+                </button>
+              </div>
               <button
-                type="button"
-                onClick={() => setShowNewPw(!showNewPw)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors"
+                type="submit"
+                disabled={savingPassword || verifyCode.length < 6}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold btn-primary transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {showNewPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                {savingPassword && <Loader2 size={14} className="animate-spin" />}
+                {savingPassword ? "Confirmando..." : "Confirmar Alteração"}
               </button>
             </div>
-            <PasswordStrength password={newPassword} />
-          </div>
-
-          {passwordError && (
-            <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
-              <AlertCircle size={13} className="flex-shrink-0" />
-              {passwordError}
-            </div>
-          )}
-
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={savingPassword || !newPassword}
-              className={cn(
-                "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed",
-                passwordSuccess
-                  ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
-                  : "btn-primary"
-              )}
-            >
-              {savingPassword && <Loader2 size={14} className="animate-spin" />}
-              {!savingPassword && passwordSuccess && <Check size={14} />}
-              {savingPassword
-                ? "Atualizando..."
-                : passwordSuccess
-                ? "Atualizado!"
-                : "Atualizar Senha"}
-            </button>
-          </div>
-        </form>
+          </form>
+        )}
       </Section>
 
       {/* ── Dispositivos e Sessões ─────────────────────────── */}
