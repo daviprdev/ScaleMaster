@@ -1021,6 +1021,7 @@ export default function AccountsPage() {
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
   const [bulkMovePendingFolderId, setBulkMovePendingFolderId] = useState<string | null>(null);
   const [bulkMoving, setBulkMoving] = useState(false);
+  const [bulkActivating, setBulkActivating] = useState(false);
 
   // CSV proxy import
   const [showCsvImport, setShowCsvImport] = useState(false);
@@ -1455,6 +1456,31 @@ export default function AccountsPage() {
       setBulkDeleting(false);
     }
   }, [confirmBulkDelete, selectedIds, supabase]);
+
+  const handleBulkActivate = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkActivating(true);
+    try {
+      const { error } = await supabase
+        .from("instagram_accounts")
+        .update({ is_active: true })
+        .in("id", ids);
+      if (error) {
+        setNotification({ type: "error", message: "Falha ao ativar as contas selecionadas." });
+        return;
+      }
+      setAccounts(prev => prev.map(a => (selectedIds.has(a.id) ? { ...a, is_active: true } : a)));
+      setNotification({
+        type: "success",
+        message: `${ids.length} conta${ids.length !== 1 ? "s" : ""} ativada${ids.length !== 1 ? "s" : ""} com sucesso.`,
+      });
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    } finally {
+      setBulkActivating(false);
+    }
+  }, [selectedIds, supabase]);
 
   const handleBulkMove = useCallback(async (folderId: string | null) => {
     const ids = Array.from(selectedIds);
@@ -2645,8 +2671,19 @@ export default function AccountsPage() {
               {selectedIds.size > 0 && (
                 <>
                   <button
+                    onClick={handleBulkActivate}
+                    disabled={bulkActivating || bulkMoving || bulkDeleting}
+                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-[#00FF41]/10 border border-[#00FF41]/30 text-[#00FF41] hover:bg-[#00FF41]/20 disabled:opacity-40"
+                  >
+                    {bulkActivating
+                      ? <Loader2 size={14} className="animate-spin" />
+                      : <Power size={14} />
+                    }
+                    {`Ativar (${selectedIds.size})`}
+                  </button>
+                  <button
                     onClick={() => { setBulkMovePendingFolderId(null); setBulkMoveOpen(true); }}
-                    disabled={bulkMoving || bulkDeleting}
+                    disabled={bulkMoving || bulkDeleting || bulkActivating}
                     className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-violet-600/15 border border-violet-500/30 text-violet-300 hover:bg-violet-600/25 disabled:opacity-40"
                   >
                     <Folder size={14} />
@@ -2654,7 +2691,7 @@ export default function AccountsPage() {
                   </button>
                   <button
                     onClick={handleBulkDelete}
-                    disabled={bulkDeleting || bulkMoving}
+                    disabled={bulkDeleting || bulkMoving || bulkActivating}
                     className={cn(
                       "flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-40",
                       confirmBulkDelete
