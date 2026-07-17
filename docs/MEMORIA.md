@@ -3077,3 +3077,25 @@ Conta em checkpoint retorna `code=190 — "You cannot access the app till you lo
 
 #### Lição
 Listas de "erros transitórios" compartilhadas entre rotas divergiram silenciosamente (cron ignorava checkpoint, refresh manual não) — o mesmo erro tinha dois comportamentos dependendo de quem sincronizava. Classificação de erro da Meta deveria viver num módulo único importado por todas as rotas.
+
+---
+
+### ✅ Sessão 2026-07-17 — Refatoração definitiva do sync + Estoque de Proxies (consumo único)
+
+**Commits:** `4e5e861`, `7b30f5a`, `1b0ff56`, `33e6a44`, `3253a7a`, `85fe50a`
+
+#### 1. Arquitetura definitiva de sync (`1b0ff56`)
+O sync misturava dois trabalhos: detectar conta caída (precisa ser rápido) e atualizar métricas de painel (muda devagar). Para ter o primeiro, pingava a Meta a cada 5 min — o padrão que derrubava contas novas por checkpoint. Separação:
+- **Saúde = passiva pelo pipeline de postagem.** Novo `lib/account-health.ts`: `isAccountDeadError()` (padrões estritos de checkpoint/token morto; erros de infra excluídos) + `markDeadAccounts()` (cascata ≥4 contas E ≥60% do run = outage, ninguém marcado; senão `health_status='error'` + `failover_logs` com motivo real). Integrado em `process-loops`, `publish-pending` e `publish-scheduled` — conta caída fica vermelha no minuto em que a postagem falha, com zero chamada extra. Resolve também a lição da sessão 2026-07-10 (classificação de erro num módulo único).
+- **Métricas = raras.** `sync-all`: STALE 5min→6h; sync silencioso = 1 GET (último post só no manual); contas <7 dias só sync manual. Stories: rota exclui contas sem proxy (furava a política sem-proxy-sem-sync via IP Vercel) e busca ao vivo só no botão manual.
+- Ponto cego aceito: conta ociosa caída só é detectada no sync de 6h/manual.
+
+#### 2. Estoque de Proxies com atribuição automática (`33e6a44` + `3253a7a` + `85fe50a`)
+Tabela `proxy_pool` (AES-256-GCM + hash SHA-256 p/ dedup, RLS, migrations aplicadas via MCP). Callback OAuth atribui proxy livre a cada conta nova via claim atômico (`UPDATE ... WHERE assigned_account_id IS NULL` — sem corrida). **Política: 1 proxy = 1 conta, PARA SEMPRE** — conta excluída → trigger DELETA a entrada; proxy trocado/removido manualmente (PATCH/CSV) → entrada deletada; zero redistribuição. `parseProxyLine` aceita formatos de fornecedor (`ip:porta:user:senha` e variantes). UI na página Proxies: contadores Total/Livres/Em uso + "Atribuir às contas sem proxy". Confirmado funcionando pelo usuário.
+
+#### 3. UX de Contas (`4e5e861`, `7b30f5a`)
+- Botão "Ativar (N)" no modo seleção — ativa contas em massa (complementa "conta nova entra inativa").
+- Sync manual individual em paralelo: trava global trocada por Set de IDs — várias contas sincronizam ao mesmo tempo, cada card com spinner próprio.
+
+#### Fluxo de operação resultante
+Colar proxies no estoque → magic link → conta conecta já com proxy e inativa → descansa dias em silêncio total → ativar em massa → volume baixo no início. Se cair, o pipeline marca vermelho sozinho.
