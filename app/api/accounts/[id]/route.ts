@@ -50,5 +50,16 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Consumo único do estoque: se o proxy da conta foi removido ou trocado
+  // manualmente, a entrada do estoque atribuída a ela é DELETADA — proxy que
+  // já pertenceu a uma conta nunca volta a ser distribuído.
+  if ("proxy_url" in body) {
+    const { error: poolErr } = await supabase
+      .from("proxy_pool")
+      .delete()
+      .eq("assigned_account_id", id);
+    if (poolErr) console.warn(`[accounts/${id}] Falha ao consumir entrada do estoque:`, poolErr.message);
+  }
+
   return NextResponse.json({ success: true });
 }

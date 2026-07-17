@@ -22,15 +22,13 @@ interface PoolItem {
   id: string;
   display: string;
   assigned_username: string | null;
-  was_used: boolean;
   created_at: string;
 }
 
 interface PoolData {
   items: PoolItem[];
   total: number;
-  free_clean: number;
-  free_used: number;
+  free: number;
   in_use: number;
 }
 
@@ -139,8 +137,8 @@ function ProxyPoolSection() {
             <p className="text-sm font-semibold text-white">Estoque de Proxies</p>
             <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
               Proxies armazenados aqui são atribuídos automaticamente a cada conta nova no momento
-              da conexão — um por conta, sem repetição. Proxies de contas excluídas voltam como
-              &quot;devolvidos&quot; e só são redistribuídos quando os limpos acabarem.
+              da conexão — <span className="text-white/60">1 proxy = 1 conta, para sempre</span>.
+              Proxy atribuído nunca é redistribuído; excluir a conta elimina o proxy do estoque junto.
             </p>
           </div>
         </div>
@@ -155,11 +153,10 @@ function ProxyPoolSection() {
 
       {/* Contadores */}
       {pool && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {[
             { label: "Total", value: pool.total, cls: "text-white/70" },
-            { label: "Livres", value: pool.free_clean, cls: "text-[#00FF41]" },
-            { label: "Devolvidos", value: pool.free_used, cls: "text-amber-400" },
+            { label: "Livres", value: pool.free, cls: "text-[#00FF41]" },
             { label: "Em uso", value: pool.in_use, cls: "text-[#00E5FF]" },
           ].map(c => (
             <div key={c.label} className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
@@ -224,7 +221,7 @@ function ProxyPoolSection() {
       {pool && pool.total > 0 && (
         <button
           onClick={handleAssignAll}
-          disabled={assigning || pool.free_clean + pool.free_used === 0}
+          disabled={assigning || pool.free === 0}
           className="flex items-center gap-1.5 text-xs px-3.5 py-2.5 rounded-xl font-semibold bg-[#00FF41]/10 border border-[#00FF41]/25 text-[#00FF41] hover:bg-[#00FF41]/20 transition-all disabled:opacity-40"
         >
           {assigning ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
@@ -249,16 +246,12 @@ function ProxyPoolSection() {
             >
               <span className={cn(
                 "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                item.assigned_username ? "bg-[#00E5FF]" : item.was_used ? "bg-amber-400" : "bg-[#00FF41]"
+                item.assigned_username ? "bg-[#00E5FF]" : "bg-[#00FF41]"
               )} />
               <span className="text-xs font-mono text-white/60 flex-1 truncate">{item.display}</span>
               {item.assigned_username ? (
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00E5FF]/10 text-[#00E5FF] font-semibold">
                   @{item.assigned_username}
-                </span>
-              ) : item.was_used ? (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-semibold">
-                  devolvido
                 </span>
               ) : (
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00FF41]/10 text-[#00FF41] font-semibold">

@@ -521,12 +521,9 @@ export async function GET(req: NextRequest) {
         .eq("ig_business_account_id", profile.id)
         .maybeSingle();
       if (connectedAcct?.id && !connectedAcct.proxy_url) {
-        const { assigned, wasUsed } = await claimProxyForAccount(admin, userId, connectedAcct.id);
+        const { assigned } = await claimProxyForAccount(admin, userId, connectedAcct.id);
         if (assigned) {
-          console.log(
-            `[ig/callback] @${profile.username}: proxy ${wasUsed ? "reutilizado" : "limpo"} ` +
-            `atribuído do estoque.`
-          );
+          console.log(`[ig/callback] @${profile.username}: proxy atribuído do estoque (consumo único).`);
         }
       }
     } catch (poolErr) {

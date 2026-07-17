@@ -1,13 +1,14 @@
 // ---------------------------------------------------------------------------
-// Estoque de Proxies — claim atômico (2026-07-17)
+// Estoque de Proxies — claim atômico, CONSUMO ÚNICO (2026-07-17)
 //
 // Contas novas recebem proxy automaticamente no callback OAuth. Garantias:
 //  - Sem reutilização: UPDATE condicional `WHERE assigned_account_id IS NULL` —
 //    o row-level lock do Postgres garante que duas conexões simultâneas nunca
 //    reivindicam o mesmo proxy (mesmo padrão do claim do publish-pending).
-//  - Limpos primeiro: proxies devolvidos por contas excluídas (was_used=true)
-//    só são redistribuídos quando os limpos acabarem (opção 2 do usuário —
-//    IP de conta possivelmente banida é o último recurso).
+//  - 1 proxy = 1 conta, PARA SEMPRE (decisão do usuário): proxy atribuído
+//    nunca volta ao estoque. Conta excluída → trigger no banco DELETA a
+//    entrada do estoque junto. Proxy removido/trocado manualmente na conta →
+//    entrada deletada no PATCH /api/accounts/[id].
 // ---------------------------------------------------------------------------
 
 import crypto from "crypto";
@@ -27,7 +28,6 @@ export function proxyHash(normalizedUrl: string): string {
 interface PoolRow {
   id: string;
   proxy_url: string; // ciphertext AES-256-GCM
-  was_used: boolean;
 }
 
 // Reivindica um proxy livre do estoque para a conta e grava o ciphertext em
@@ -36,51 +36,45 @@ export async function claimProxyForAccount(
   admin: AdminClient,
   userId: string,
   accountId: string
-): Promise<{ assigned: boolean; wasUsed?: boolean }> {
-  // Duas passadas: limpos primeiro, depois os devolvidos (was_used).
-  for (const wantUsed of [false, true]) {
-    // Até 5 candidatos por passada — se perder a corrida em um, tenta o próximo.
-    const { data: candidates } = await admin
+): Promise<{ assigned: boolean }> {
+  // Até 5 candidatos — se perder a corrida em um, tenta o próximo.
+  const { data: candidates } = await admin
+    .from("proxy_pool")
+    .select("id, proxy_url")
+    .eq("user_id", userId)
+    .is("assigned_account_id", null)
+    .order("created_at", { ascending: true })
+    .limit(5);
+
+  for (const candidate of (candidates ?? []) as PoolRow[]) {
+    // Claim atômico: só vence se ninguém reivindicou este proxy no meio-tempo.
+    const { data: claimed, error: claimErr } = await admin
       .from("proxy_pool")
-      .select("id, proxy_url, was_used")
-      .eq("user_id", userId)
+      .update({ assigned_account_id: accountId })
+      .eq("id", candidate.id)
       .is("assigned_account_id", null)
-      .eq("was_used", wantUsed)
-      .order("created_at", { ascending: true })
-      .limit(5);
+      .select("id");
 
-    for (const candidate of (candidates ?? []) as PoolRow[]) {
-      // Claim atômico: só vence se ninguém reivindicou este proxy no meio-tempo.
-      const { data: claimed, error: claimErr } = await admin
+    if (claimErr || !claimed || claimed.length === 0) continue; // perdeu a corrida
+
+    const { error: acctErr } = await admin
+      .from("instagram_accounts")
+      .update({ proxy_url: candidate.proxy_url })
+      .eq("id", accountId);
+
+    if (acctErr) {
+      // Não conseguiu gravar na conta — libera o claim (o proxy nunca chegou a
+      // ser usado por conta nenhuma, então pode voltar a ficar livre).
+      await admin
         .from("proxy_pool")
-        .update({ assigned_account_id: accountId })
-        .eq("id", candidate.id)
-        .is("assigned_account_id", null)
-        .select("id");
-
-      if (claimErr || !claimed || claimed.length === 0) continue; // perdeu a corrida
-
-      const { error: acctErr } = await admin
-        .from("instagram_accounts")
-        .update({ proxy_url: candidate.proxy_url })
-        .eq("id", accountId);
-
-      if (acctErr) {
-        // Devolve o proxy ao estoque se não conseguiu gravar na conta.
-        await admin
-          .from("proxy_pool")
-          .update({ assigned_account_id: null })
-          .eq("id", candidate.id);
-        console.error(`[proxy-pool] Falha ao gravar proxy na conta ${accountId}: ${acctErr.message}`);
-        return { assigned: false };
-      }
-
-      console.log(
-        `[proxy-pool] Proxy ${candidate.id} (${wantUsed ? "reutilizado" : "limpo"}) ` +
-        `atribuído à conta ${accountId}.`
-      );
-      return { assigned: true, wasUsed: wantUsed };
+        .update({ assigned_account_id: null })
+        .eq("id", candidate.id);
+      console.error(`[proxy-pool] Falha ao gravar proxy na conta ${accountId}: ${acctErr.message}`);
+      return { assigned: false };
     }
+
+    console.log(`[proxy-pool] Proxy ${candidate.id} atribuído à conta ${accountId} (consumo único).`);
+    return { assigned: true };
   }
 
   console.warn(`[proxy-pool] Estoque vazio para user ${userId} — conta ${accountId} ficou sem proxy.`);

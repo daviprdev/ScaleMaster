@@ -21,7 +21,6 @@ interface PoolRow {
   id: string;
   proxy_url: string;
   assigned_account_id: string | null;
-  was_used: boolean;
   created_at: string;
 }
 
@@ -35,7 +34,7 @@ export async function GET() {
   const [{ data: rows }, { data: accounts }] = await Promise.all([
     admin
       .from("proxy_pool")
-      .select("id, proxy_url, assigned_account_id, was_used, created_at")
+      .select("id, proxy_url, assigned_account_id, created_at")
       .eq("user_id", user.id)
       .order("created_at", { ascending: true }),
     admin
@@ -57,16 +56,14 @@ export async function GET() {
       assigned_username: r.assigned_account_id
         ? usernameById.get(r.assigned_account_id) ?? null
         : null,
-      was_used: r.was_used,
       created_at: r.created_at,
     };
   });
 
-  const free_clean = items.filter((i) => !i.assigned_username && !i.was_used).length;
-  const free_used = items.filter((i) => !i.assigned_username && i.was_used).length;
+  const free = items.filter((i) => !i.assigned_username).length;
   const in_use = items.filter((i) => i.assigned_username).length;
 
-  return NextResponse.json({ items, total: items.length, free_clean, free_used, in_use });
+  return NextResponse.json({ items, total: items.length, free, in_use });
 }
 
 // POST /api/proxy-pool — adiciona proxies em lote (um por linha).

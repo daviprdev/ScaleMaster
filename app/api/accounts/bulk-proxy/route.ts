@@ -75,6 +75,19 @@ export async function POST(req: NextRequest) {
     })
   );
 
+  // Consumo único do estoque: contas que tiveram proxy trocado/removido via CSV
+  // têm a entrada do estoque atribuída a elas DELETADA — nunca redistribuída.
+  const touchedIds = body.rows
+    .map(r => accountMap.get(r.username.replace(/^@/, "").trim().toLowerCase()))
+    .filter((id): id is string => !!id);
+  if (touchedIds.length > 0) {
+    const { error: poolErr } = await admin
+      .from("proxy_pool")
+      .delete()
+      .in("assigned_account_id", touchedIds);
+    if (poolErr) console.warn("[bulk-proxy] Falha ao consumir entradas do estoque:", poolErr.message);
+  }
+
   const saved = results.filter(r => r.status === "saved").length;
   const removed = results.filter(r => r.status === "removed").length;
   const notFound = results.filter(r => r.status === "not_found").length;
