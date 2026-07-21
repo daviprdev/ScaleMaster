@@ -17,6 +17,7 @@ const IG_WEB_APP_ID = "936619743392459";
 const IG_ASBD_ID = "129477";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const GRAPH = "https://graph.instagram.com/v21.0";
 
 interface CheckerResult {
   username: string;
@@ -32,6 +33,13 @@ interface CheckerResult {
 interface IgSession {
   cookie: string;
   csrfToken: string;
+}
+
+interface HelperAccount {
+  id: string;
+  ig_business_account_id: string;
+  meta_access_token: string;
+  proxy_url: string | null;
 }
 
 function sanitizeUsername(raw: string): string {
@@ -82,7 +90,7 @@ async function fetchIgSession(proxyAgent: ProxyAgent | null): Promise<IgSession 
   }
 }
 
-async function checkOne(
+async function checkOneAnonymous(
   username: string,
   proxyAgent: ProxyAgent | null,
   session: IgSession | null
@@ -117,20 +125,25 @@ async function checkOne(
       return {
         username,
         status: "error",
-        message: "Instagram limitou as verificações — tente novamente em alguns minutos",
+        message: "Instagram limitou as verificações anônimas — tente novamente em alguns minutos",
       };
     }
 
-    if (res.status === 400 && !session) {
+    if (res.status === 401) {
       return {
         username,
         status: "error",
-        message: "Instagram exigiu sessão válida e não foi possível obtê-la — tente novamente",
+        message: "Instagram exigiu login para essa consulta (proteção anti-bot reforçada)",
       };
     }
 
     if (!res.ok) {
-      return { username, status: "error", message: `Instagram respondeu ${res.status}` };
+      const bodyText = await res.text().catch(() => "");
+      return {
+        username,
+        status: "error",
+        message: `Instagram respondeu ${res.status}${bodyText ? `: ${bodyText.slice(0, 140)}` : ""}`,
+      };
     }
 
     const contentType = res.headers.get("content-type") ?? "";
@@ -177,6 +190,49 @@ async function checkOne(
   }
 }
 
+/**
+ * Fallback oficial via Meta Graph API (Business Discovery) — usa o token de
+ * uma conta já conectada no SaaS para consultar dados públicos de OUTRA conta.
+ * Não sofre bloqueio anti-bot (é tráfego autenticado da própria Meta), mas só
+ * enxerga contas Business/Creator — não confirma nem descarta contas pessoais.
+ * Retorna null quando o resultado é ambíguo (não dá pra saber se não existe
+ * ou se só não é Business/Creator).
+ */
+async function businessDiscoveryFallback(
+  username: string,
+  helper: HelperAccount
+): Promise<CheckerResult | null> {
+  try {
+    const proxyAgent = getProxyForAccount(helper.id, helper.proxy_url);
+    const fields = `business_discovery.username(${username}){username,followers_count,media_count,profile_picture_url}`;
+    const url = `${GRAPH}/${helper.ig_business_account_id}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(helper.meta_access_token)}`;
+
+    const res = await undiciFetch(
+      url,
+      proxyInit(proxyAgent, { signal: AbortSignal.timeout(12_000) }) as any
+    );
+    const json = (await res.json()) as {
+      business_discovery?: { username?: string; followers_count?: number; profile_picture_url?: string };
+      error?: { message?: string };
+    };
+
+    const bd = json?.business_discovery;
+    if (bd?.username) {
+      return {
+        username,
+        status: "active",
+        message: "Ativa (confirmado via Meta API — conta Business/Creator)",
+        followers: bd.followers_count,
+        profile_pic_url: bd.profile_picture_url,
+      };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: Request) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado." }, { status: 503 });
@@ -211,11 +267,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Nenhum usuário válido informado." }, { status: 400 });
   }
 
-  // Empresta o proxy residencial de alguma conta do usuário para essa checagem
-  // pontual — checar direto pelo IP datacenter da Vercel esbarra em bloqueio do
-  // Instagram quase de imediato (mesma razão pela qual o pipeline de postagem
-  // nunca sai pelo IP da Vercel). Não é vinculado a nenhuma conta específica.
   const admin = getSupabaseAdmin();
+
+  // Empresta o proxy residencial de alguma conta do usuário para a consulta
+  // anônima — checar direto pelo IP datacenter da Vercel esbarra em bloqueio
+  // do Instagram quase de imediato. Não é vinculado a nenhuma conta específica.
   let proxyAgent: ProxyAgent | null = null;
   try {
     const { data: candidates } = await admin
@@ -237,9 +293,44 @@ export async function POST(req: Request) {
   // qualquer username, mesmo real. Buscada uma vez e reaproveitada no lote.
   const session = await fetchIgSession(proxyAgent);
 
+  // Conta auxiliar com token Meta válido, para o fallback oficial via
+  // Business Discovery quando a consulta anônima é bloqueada (401/429/erro).
+  let helper: HelperAccount | null = null;
+  try {
+    const { data: helperCandidates } = await admin
+      .from("instagram_accounts")
+      .select("id, ig_business_account_id, meta_access_token, proxy_url")
+      .eq("user_id", user.id)
+      .eq("health_status", "online")
+      .not("ig_business_account_id", "is", null)
+      .not("meta_access_token", "is", null)
+      .limit(5);
+    const helperPool = (helperCandidates ?? []) as HelperAccount[];
+    if (helperPool.length > 0) {
+      helper = helperPool[Math.floor(Math.random() * helperPool.length)];
+    }
+  } catch {
+    helper = null;
+  }
+
   const results: CheckerResult[] = [];
   for (let i = 0; i < usernames.length; i++) {
-    results.push(await checkOne(usernames[i], proxyAgent, session));
+    const username = usernames[i];
+    let result = await checkOneAnonymous(username, proxyAgent, session);
+
+    if (result.status === "error" && helper) {
+      const fallback = await businessDiscoveryFallback(username, helper);
+      if (fallback) {
+        result = fallback;
+      } else {
+        result = {
+          ...result,
+          message: `${result.message} · Não foi possível confirmar via API oficial (perfil pode ser pessoal, oculto ou indisponível)`,
+        };
+      }
+    }
+
+    results.push(result);
     if (i < usernames.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, DELAY_MS + Math.random() * 400));
     }
