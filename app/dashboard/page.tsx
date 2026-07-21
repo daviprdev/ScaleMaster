@@ -4,9 +4,10 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   Instagram,
-  Download,
   CalendarCheck,
-  TrendingUp,
+  ListOrdered,
+  UserPlus,
+  ShieldAlert,
   ArrowUpRight,
   Play,
   Clock,
@@ -14,18 +15,28 @@ import {
   AlertCircle,
   RefreshCw,
   Trash2,
-  Search,
-  FolderOpen,
-  CalendarPlus,
-  UserPlus,
+  Send,
+  Bot,
+  Repeat2,
+  ImagePlay,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────
 interface DashboardStats {
-  accounts: { total: number; this_month: number };
-  videos: { total: number; this_week: number };
-  scheduled: { pending: number; next_at: string | null };
-  published: { total: number };
+  accounts: {
+    total: number;
+    added_today: number;
+    added_yesterday: number;
+    added_7d: number;
+  };
+  accounts_down: {
+    total: number;
+    down_today: number;
+    down_yesterday: number;
+    down_7d: number;
+  };
+  posts_today: { published: number };
+  queue: { pending: number };
   recent_activity: {
     type: "download" | "schedule";
     text: string;
@@ -50,17 +61,6 @@ function timeAgo(dateStr: string): string {
   return `há ${Math.floor(hrs / 24)}d`;
 }
 
-function nextPostIn(dateStr: string | null): string {
-  if (!dateStr) return "Nenhuma agendada";
-  const diff = new Date(dateStr).getTime() - Date.now();
-  if (diff <= 0) return "Em breve";
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 60) return `Próxima em ${mins}min`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `Próxima em ${hrs}h`;
-  return `Próxima em ${Math.floor(hrs / 24)}d`;
-}
-
 function formatScheduled(dateStr: string): { label: string; time: string } {
   const d = new Date(dateStr);
   const now = new Date();
@@ -79,7 +79,7 @@ const fadeUp = {
 };
 const stagger = { show: { transition: { staggerChildren: 0.08 } } };
 
-// ── Skeleton ─────────────────────────────────────────────────────
+// ── Skeletons ────────────────────────────────────────────────────
 function StatSkeleton() {
   return (
     <div className="glass-card p-5 animate-pulse">
@@ -88,6 +88,46 @@ function StatSkeleton() {
       <div className="h-3 w-28 rounded bg-white/[0.05] mb-1.5" />
       <div className="h-2.5 w-20 rounded bg-white/[0.03]" />
     </div>
+  );
+}
+
+function BreakdownSkeleton() {
+  return (
+    <div className="glass-card p-5 animate-pulse">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-white/[0.06] flex-shrink-0" />
+        <div className="space-y-1.5">
+          <div className="h-6 w-10 rounded bg-white/[0.08]" />
+          <div className="h-2.5 w-24 rounded bg-white/[0.05]" />
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/[0.06]">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="flex flex-col items-center gap-1.5">
+            <div className="h-4 w-6 rounded bg-white/[0.06]" />
+            <div className="h-2 w-10 rounded bg-white/[0.04]" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Reusable ambient glow wrapper (efeito de fundo transparente) ──
+function AmbientGlow({ color }: { color: string }) {
+  return (
+    <>
+      <div
+        className="absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl pointer-events-none transition-opacity duration-500 opacity-40 group-hover:opacity-90"
+        style={{ background: color }}
+      />
+      <div
+        className="absolute inset-0 pointer-events-none opacity-[0.05]"
+        style={{
+          background: `radial-gradient(120% 100% at 0% 0%, ${color}, transparent 60%)`,
+        }}
+      />
+    </>
   );
 }
 
@@ -136,50 +176,74 @@ export default function DashboardPage() {
     }
   }, [clearConfirm, loadStats]);
 
-  const statCards = stats
+  const simpleCards = stats
     ? [
         {
           label: "Contas Conectadas",
           value: String(stats.accounts.total),
-          change: stats.accounts.this_month > 0 ? `+${stats.accounts.this_month} este mês` : "Nenhuma este mês",
-          up: stats.accounts.this_month > 0,
+          change: "Total no SaaS",
           icon: Instagram,
           iconColor: "#00FF41",
-          glow: "rgba(0,255,65,0.18)",
-          accent: "rgba(0,255,65,0.08)",
+          glow: "rgba(0,255,65,0.22)",
         },
         {
-          label: "Vídeos Baixados",
-          value: String(stats.videos.total),
-          change: stats.videos.this_week > 0 ? `+${stats.videos.this_week} esta semana` : "Nenhum esta semana",
-          up: stats.videos.this_week > 0,
-          icon: Download,
-          iconColor: "#00E5FF",
-          glow: "rgba(0,229,255,0.18)",
-          accent: "rgba(0,229,255,0.08)",
-        },
-        {
-          label: "Postagens Agendadas",
-          value: String(stats.scheduled.pending),
-          change: nextPostIn(stats.scheduled.next_at),
-          up: false,
+          label: "Postagens Hoje",
+          value: String(stats.posts_today.published),
+          change: "Publicadas hoje",
           icon: CalendarCheck,
-          iconColor: "#00FF41",
-          glow: "rgba(0,255,65,0.18)",
-          accent: "rgba(0,255,65,0.08)",
+          iconColor: "#00E5FF",
+          glow: "rgba(0,229,255,0.22)",
         },
         {
-          label: "Posts Publicados",
-          value: String(stats.published.total),
-          change: stats.published.total > 0 ? "Total publicado" : "Nenhum ainda",
-          up: stats.published.total > 0,
-          icon: TrendingUp,
-          iconColor: "#00E5FF",
-          glow: "rgba(0,229,255,0.18)",
-          accent: "rgba(0,229,255,0.08)",
+          label: "Fila",
+          value: String(stats.queue.pending),
+          change: "Aguardando publicação",
+          icon: ListOrdered,
+          iconColor: "#00FF41",
+          glow: "rgba(0,255,65,0.22)",
         },
       ]
     : null;
+
+  const breakdownCards = stats
+    ? [
+        {
+          key: "added",
+          label: "Contas Adicionadas",
+          total: stats.accounts.added_7d,
+          totalLabel: "novas em 7 dias",
+          icon: UserPlus,
+          iconColor: "#00FF41",
+          glow: "rgba(0,255,65,0.22)",
+          items: [
+            { label: "Hoje", value: stats.accounts.added_today },
+            { label: "Ontem", value: stats.accounts.added_yesterday },
+            { label: "7 dias", value: stats.accounts.added_7d },
+          ],
+        },
+        {
+          key: "down",
+          label: "Contas Caídas",
+          total: stats.accounts_down.total,
+          totalLabel: "com erro agora",
+          icon: ShieldAlert,
+          iconColor: "#FF3B3B",
+          glow: "rgba(255,59,59,0.22)",
+          items: [
+            { label: "Hoje", value: stats.accounts_down.down_today },
+            { label: "Ontem", value: stats.accounts_down.down_yesterday },
+            { label: "7 dias", value: stats.accounts_down.down_7d },
+          ],
+        },
+      ]
+    : null;
+
+  const quickActions = [
+    { label: "Postar", href: "/dashboard/postar", icon: Send, desc: "Distribuição de conteúdo", color: "#00FF41" },
+    { label: "Automatizar", href: "/dashboard/automatizar", icon: Bot, desc: "Publicação por pasta", color: "#00E5FF" },
+    { label: "Loop", href: "/dashboard/loop", icon: Repeat2, desc: "Ciclo contínuo", color: "#00FF41" },
+    { label: "Stories", href: "/dashboard/stories", icon: ImagePlay, desc: "Postar e importar", color: "#00E5FF" },
+  ];
 
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6 max-w-7xl">
@@ -196,26 +260,21 @@ export default function DashboardPage() {
         </button>
       </motion.div>
 
-      {/* Stat cards */}
-      <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {loading || !statCards
-          ? Array.from({ length: 4 }).map((_, i) => (
+      {/* Simple stat cards: Contas Conectadas / Postagens Hoje / Fila */}
+      <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {loading || !simpleCards
+          ? Array.from({ length: 3 }).map((_, i) => (
               <motion.div key={i} variants={fadeUp}><StatSkeleton /></motion.div>
             ))
-          : statCards.map((stat, i) => (
+          : simpleCards.map((stat, i) => (
               <motion.div
                 key={i}
                 variants={fadeUp}
                 className="glass-card ticks p-5 group relative overflow-hidden"
               >
-                {/* Background accent */}
-                <div
-                  className="absolute -top-8 -right-8 w-28 h-28 rounded-full blur-3xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500"
-                  style={{ background: stat.accent }}
-                />
+                <AmbientGlow color={stat.glow} />
 
                 <div className="flex items-start justify-between mb-4 relative z-10">
-                  {/* Glass icon */}
                   <div
                     className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{
@@ -226,12 +285,6 @@ export default function DashboardPage() {
                   >
                     <stat.icon size={18} style={{ color: stat.iconColor }} strokeWidth={1.5} />
                   </div>
-
-                  {stat.up && (
-                    <span className="flex items-center gap-0.5 text-[10px] font-medium text-emerald-400">
-                      <ArrowUpRight size={11} />
-                    </span>
-                  )}
                 </div>
 
                 <div
@@ -242,6 +295,56 @@ export default function DashboardPage() {
                 </div>
                 <div className="text-xs text-white/50 font-medium relative z-10">{stat.label}</div>
                 <div className="text-[10px] text-white/25 mt-1 relative z-10">{stat.change}</div>
+              </motion.div>
+            ))}
+      </motion.div>
+
+      {/* Breakdown cards: Contas Adicionadas / Contas Caídas */}
+      <motion.div variants={stagger} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {loading || !breakdownCards
+          ? Array.from({ length: 2 }).map((_, i) => (
+              <motion.div key={i} variants={fadeUp}><BreakdownSkeleton /></motion.div>
+            ))
+          : breakdownCards.map((card) => (
+              <motion.div
+                key={card.key}
+                variants={fadeUp}
+                className="glass-card ticks p-5 group relative overflow-hidden"
+              >
+                <AmbientGlow color={card.glow} />
+
+                <div className="flex items-center gap-3 mb-4 relative z-10">
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: "rgba(255,255,255,0.04)",
+                      border: `0.5px solid ${card.iconColor}33`,
+                      boxShadow: `0 0 14px ${card.glow}`,
+                    }}
+                  >
+                    <card.icon size={18} style={{ color: card.iconColor }} strokeWidth={1.5} />
+                  </div>
+                  <div>
+                    <div
+                      className="text-2xl font-black leading-none"
+                      style={{ color: card.iconColor, textShadow: `0 0 20px ${card.glow}` }}
+                    >
+                      {card.total}
+                    </div>
+                    <div className="text-xs text-white/50 font-medium mt-1">{card.label}</div>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-white/20 relative z-10 mb-2">{card.totalLabel}</div>
+
+                <div className="grid grid-cols-3 gap-2 relative z-10 pt-3 border-t border-white/[0.06]">
+                  {card.items.map((item) => (
+                    <div key={item.label} className="flex flex-col items-center gap-0.5">
+                      <div className="text-sm font-bold text-white/75">{item.value}</div>
+                      <div className="text-[10px] text-white/25">{item.label}</div>
+                    </div>
+                  ))}
+                </div>
               </motion.div>
             ))}
       </motion.div>
@@ -322,11 +425,11 @@ export default function DashboardPage() {
                     color: "#00FF41",
                   }}
                 >
-                  {stats.scheduled.pending} agendadas
+                  {stats.queue.pending} na fila
                 </span>
               )}
 
-              {!loading && stats && stats.scheduled.pending > 0 && (
+              {!loading && stats && stats.queue.pending > 0 && (
                 <button
                   onClick={handleClearQueue}
                   disabled={clearing}
@@ -403,18 +506,13 @@ export default function DashboardPage() {
       <motion.div variants={fadeUp} className="glass-card p-5">
         <h2 className="text-sm font-semibold text-white/80 tracking-wide uppercase mb-4">Ações Rápidas</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { label: "Pesquisar Reels", href: "/dashboard/inspirations", icon: Search, desc: "Scraping de perfil", color: "#00FF41" },
-            { label: "Ver Biblioteca", href: "/dashboard/library", icon: FolderOpen, desc: "Seus vídeos", color: "#00E5FF" },
-            { label: "Agendar Post", href: "/dashboard/postar", icon: CalendarPlus, desc: "Múltiplas contas", color: "#00FF41" },
-            { label: "Adicionar Conta", href: "/dashboard/accounts", icon: UserPlus, desc: "Conectar Instagram", color: "#00E5FF" },
-          ].map((action, i) => (
+          {quickActions.map((action, i) => (
             <motion.a
               key={i}
               href={action.href}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
-              className="flex flex-col items-center gap-3 p-4 rounded-xl cursor-pointer text-center group/action transition-all duration-300"
+              className="flex flex-col items-center gap-3 p-4 rounded-xl cursor-pointer text-center group/action relative overflow-hidden transition-all duration-300"
               style={{
                 background: "rgba(255,255,255,0.02)",
                 border: "0.5px solid rgba(255,255,255,0.07)",
@@ -429,7 +527,11 @@ export default function DashboardPage() {
               }}
             >
               <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                className="absolute -top-6 -right-6 w-20 h-20 rounded-full blur-2xl pointer-events-none opacity-0 group-hover/action:opacity-60 transition-opacity duration-500"
+                style={{ background: `${action.color}55` }}
+              />
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center relative z-10"
                 style={{
                   background: "rgba(255,255,255,0.04)",
                   border: `0.5px solid ${action.color}22`,
@@ -437,7 +539,7 @@ export default function DashboardPage() {
               >
                 <action.icon size={18} style={{ color: action.color }} strokeWidth={1.5} />
               </div>
-              <div>
+              <div className="relative z-10">
                 <p className="text-xs font-medium text-white/70">{action.label}</p>
                 <p className="text-[10px] text-white/30 mt-0.5">{action.desc}</p>
               </div>
