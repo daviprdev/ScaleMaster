@@ -38,6 +38,11 @@ import {
   Download,
   ExternalLink,
   Camera,
+  UserSearch,
+  ShieldCheck,
+  ShieldOff,
+  BadgeCheck,
+  Lock,
 } from "lucide-react";
 import MagicLinkModal from "@/components/dashboard/MagicLinkModal";
 import { useRouter } from "next/navigation";
@@ -55,6 +60,17 @@ interface AccountFolder {
   name: string;
   account_count: number;
   created_at: string;
+}
+
+interface CheckerResult {
+  username: string;
+  status: "active" | "not_found" | "error";
+  message: string;
+  full_name?: string;
+  is_private?: boolean;
+  is_verified?: boolean;
+  followers?: number;
+  profile_pic_url?: string;
 }
 
 interface Account {
@@ -1013,6 +1029,13 @@ export default function AccountsPage() {
   const [clearQueueDialog, setClearQueueDialog] = useState<{ id: string; username: string } | null>(null);
   const [clearingQueue, setClearingQueue] = useState(false);
 
+  // Verificador de Perfis
+  const [showChecker, setShowChecker] = useState(false);
+  const [checkerText, setCheckerText] = useState("");
+  const [checkerRunning, setCheckerRunning] = useState(false);
+  const [checkerResults, setCheckerResults] = useState<CheckerResult[] | null>(null);
+  const [checkerProgress, setCheckerProgress] = useState<{ done: number; total: number } | null>(null);
+
   // Bulk select
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1586,6 +1609,52 @@ export default function AccountsPage() {
       setCsvImporting(false);
     }
   }, [csvText, fetchAccounts]);
+
+  const CHECKER_MAX = 60;
+  const CHECKER_BATCH = 15;
+
+  const handleCheckProfiles = useCallback(async () => {
+    const list = Array.from(
+      new Set(
+        checkerText
+          .split(/[\n,]/)
+          .map(s => s.trim().replace(/^@/, ""))
+          .filter(Boolean)
+      )
+    ).slice(0, CHECKER_MAX);
+
+    if (list.length === 0) return;
+
+    setCheckerRunning(true);
+    setCheckerResults([]);
+    setCheckerProgress({ done: 0, total: list.length });
+
+    const collected: CheckerResult[] = [];
+    for (let i = 0; i < list.length; i += CHECKER_BATCH) {
+      const chunk = list.slice(i, i + CHECKER_BATCH);
+      try {
+        const res = await fetch("/api/instagram/checker", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ usernames: chunk }),
+        });
+        const data = (await res.json()) as { results?: CheckerResult[]; error?: string };
+        if (data.results) {
+          collected.push(...data.results);
+        } else {
+          collected.push(
+            ...chunk.map(u => ({ username: u, status: "error" as const, message: data.error ?? "Falha na requisição" }))
+          );
+        }
+      } catch {
+        collected.push(...chunk.map(u => ({ username: u, status: "error" as const, message: "Falha de rede" })));
+      }
+      setCheckerResults([...collected]);
+      setCheckerProgress({ done: Math.min(i + CHECKER_BATCH, list.length), total: list.length });
+    }
+
+    setCheckerRunning(false);
+  }, [checkerText]);
 
   const handleSaveProxy = useCallback(async (proxyUrl: string | null) => {
     if (!proxyAccount) return;
@@ -2595,6 +2664,147 @@ export default function AccountsPage() {
         )}
       </AnimatePresence>
 
+      {/* Modal: Verificador de Perfis */}
+      <AnimatePresence>
+        {showChecker && (
+          <>
+            <motion.div
+              key="checker-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => { if (!checkerRunning) { setShowChecker(false); setCheckerResults(null); setCheckerText(""); setCheckerProgress(null); } }}
+            />
+            <motion.div
+              key="checker-modal"
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
+            >
+              <div className="glass rounded-2xl neon-border w-full max-w-lg p-6 space-y-4 pointer-events-auto">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
+                      <UserSearch size={13} className="text-amber-400" />
+                    </div>
+                    <h3 className="text-base font-bold text-white">Verificador de Perfis</h3>
+                  </div>
+                  <button
+                    onClick={() => { if (!checkerRunning) { setShowChecker(false); setCheckerResults(null); setCheckerText(""); setCheckerProgress(null); } }}
+                    disabled={checkerRunning}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors disabled:opacity-30"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+
+                {!checkerResults ? (
+                  <>
+                    <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 space-y-1">
+                      <p className="text-[11px] text-white/40">Cole @usuários do Instagram — um por linha ou separados por vírgula.</p>
+                      <p className="text-[11px] text-white/25">
+                        Verifica se o perfil está ativo publicamente. Contas banidas, removidas ou que nunca existiram aparecem como &quot;não encontrada&quot; — o Instagram não distingue o motivo publicamente. Até {CHECKER_MAX} por vez.
+                      </p>
+                    </div>
+                    <textarea
+                      value={checkerText}
+                      onChange={e => setCheckerText(e.target.value)}
+                      placeholder={"@conta1\nconta2\nconta3"}
+                      rows={8}
+                      className="w-full rounded-xl bg-black/40 border border-white/[0.08] text-xs text-white/70 font-mono placeholder-white/15 px-3 py-2.5 focus:outline-none focus:border-amber-500/40 resize-none"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setShowChecker(false); setCheckerText(""); }}
+                        className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleCheckProfiles}
+                        disabled={!checkerText.trim()}
+                        className="flex-1 py-2.5 rounded-xl bg-amber-600/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-600/30 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <UserSearch size={12} />
+                        Verificar
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {checkerProgress && (
+                      <div className="flex items-center justify-between text-[10px] text-white/30 px-0.5">
+                        <span>{checkerRunning ? "Verificando…" : "Concluído"}</span>
+                        <span className="font-mono tabular-nums">{checkerProgress.done}/{checkerProgress.total}</span>
+                      </div>
+                    )}
+                    <div className="space-y-1.5 max-h-80 overflow-y-auto">
+                      {checkerResults.map((r, i) => (
+                        <div key={i} className={cn(
+                          "flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs",
+                          r.status === "active" && "bg-[#00FF41]/[0.06] border border-[#00FF41]/15",
+                          r.status === "not_found" && "bg-red-500/[0.06] border border-red-500/15",
+                          r.status === "error" && "bg-white/[0.03] border border-white/[0.06]",
+                        )}>
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            {r.status === "active" && <ShieldCheck size={12} className="text-[#00FF41]/80 flex-shrink-0" />}
+                            {r.status === "not_found" && <ShieldOff size={12} className="text-red-400/80 flex-shrink-0" />}
+                            {r.status === "error" && <AlertTriangle size={12} className="text-amber-400/70 flex-shrink-0" />}
+                            <span className={cn(
+                              "font-mono truncate",
+                              r.status === "active" && "text-[#00FF41]/80",
+                              r.status === "not_found" && "text-red-400/80",
+                              r.status === "error" && "text-white/40",
+                            )}>@{r.username}</span>
+                            {r.is_verified && <BadgeCheck size={11} className="text-[#00E5FF]/70 flex-shrink-0" />}
+                            {r.is_private && <Lock size={10} className="text-white/25 flex-shrink-0" />}
+                          </span>
+                          <span className={cn(
+                            "text-[10px] font-semibold text-right flex-shrink-0",
+                            r.status === "active" && "text-[#00FF41]/60",
+                            r.status === "not_found" && "text-red-400/60",
+                            r.status === "error" && "text-amber-400/60",
+                          )}>
+                            {r.status === "active" && typeof r.followers === "number"
+                              ? `${r.followers.toLocaleString("pt-BR")} seguidores`
+                              : r.message}
+                          </span>
+                        </div>
+                      ))}
+                      {checkerRunning && checkerProgress && checkerProgress.done < checkerProgress.total && (
+                        <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-white/25">
+                          <Loader2 size={12} className="animate-spin" />
+                          Verificando próximo lote…
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => { setCheckerResults(null); setCheckerProgress(null); }}
+                        disabled={checkerRunning}
+                        className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors disabled:opacity-40"
+                      >
+                        Verificar mais
+                      </button>
+                      <button
+                        onClick={() => { setShowChecker(false); setCheckerResults(null); setCheckerText(""); setCheckerProgress(null); }}
+                        disabled={checkerRunning}
+                        className="flex-1 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/25 text-amber-300 text-xs font-semibold hover:bg-amber-500/25 transition-all disabled:opacity-40"
+                      >
+                        Fechar
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Banner de notificação OAuth */}
       <AnimatePresence>
         {notification && (
@@ -2657,6 +2867,13 @@ export default function AccountsPage() {
               >
                 <Upload size={14} />
                 Proxies
+              </button>
+              <button
+                onClick={() => { setShowChecker(true); setCheckerResults(null); setCheckerProgress(null); setCheckerText(""); }}
+                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-amber-500/20 text-amber-400/70 hover:text-amber-300 hover:border-amber-500/40 hover:bg-amber-500/[0.06] transition-all"
+              >
+                <UserSearch size={14} />
+                Verificar
               </button>
               <button
                 onClick={() => setMagicLinkOpen(true)}
