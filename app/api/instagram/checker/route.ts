@@ -14,6 +14,9 @@ const DELAY_MS = 900;
 
 // App ID público usado pelo cliente web do Instagram (sem login necessário).
 const IG_WEB_APP_ID = "936619743392459";
+const IG_ASBD_ID = "129477";
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 interface CheckerResult {
   username: string;
@@ -26,6 +29,11 @@ interface CheckerResult {
   profile_pic_url?: string;
 }
 
+interface IgSession {
+  cookie: string;
+  csrfToken: string;
+}
+
 function sanitizeUsername(raw: string): string {
   return raw
     .trim()
@@ -35,17 +43,63 @@ function sanitizeUsername(raw: string): string {
     .toLowerCase();
 }
 
-async function checkOne(username: string, proxyAgent: ProxyAgent | null): Promise<CheckerResult> {
+/**
+ * O endpoint web_profile_info exige um cookie de sessão anônima válido
+ * (csrftoken) — sem ele, o Instagram responde 400 Bad Request para toda
+ * consulta, mesmo em perfis reais. Visita a home pública uma vez para
+ * receber esse cookie e reaproveita em todas as consultas da mesma request.
+ */
+async function fetchIgSession(proxyAgent: ProxyAgent | null): Promise<IgSession | null> {
+  try {
+    const res = await undiciFetch(
+      "https://www.instagram.com/",
+      proxyInit(proxyAgent, {
+        headers: {
+          "User-Agent": UA,
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        },
+        signal: AbortSignal.timeout(12_000),
+      }) as any
+    );
+
+    const setCookies =
+      typeof (res.headers as { getSetCookie?: () => string[] }).getSetCookie === "function"
+        ? (res.headers as unknown as { getSetCookie: () => string[] }).getSetCookie()
+        : [];
+
+    if (setCookies.length === 0) return null;
+
+    const cookiePairs = setCookies.map((c) => c.split(";")[0].trim());
+    const cookie = cookiePairs.join("; ");
+    const csrfPair = cookiePairs.find((c) => c.startsWith("csrftoken="));
+    const csrfToken = csrfPair ? csrfPair.split("=")[1] : "";
+
+    if (!csrfToken) return null;
+    return { cookie, csrfToken };
+  } catch {
+    return null;
+  }
+}
+
+async function checkOne(
+  username: string,
+  proxyAgent: ProxyAgent | null,
+  session: IgSession | null
+): Promise<CheckerResult> {
   try {
     const res = await undiciFetch(
       `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`,
       proxyInit(proxyAgent, {
         headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          "User-Agent": UA,
           "x-ig-app-id": IG_WEB_APP_ID,
+          "x-asbd-id": IG_ASBD_ID,
+          "x-requested-with": "XMLHttpRequest",
+          ...(session ? { "x-csrftoken": session.csrfToken, Cookie: session.cookie } : {}),
           Accept: "*/*",
           "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+          Referer: `https://www.instagram.com/${encodeURIComponent(username)}/`,
         },
         signal: AbortSignal.timeout(12_000),
       }) as any
@@ -64,6 +118,14 @@ async function checkOne(username: string, proxyAgent: ProxyAgent | null): Promis
         username,
         status: "error",
         message: "Instagram limitou as verificações — tente novamente em alguns minutos",
+      };
+    }
+
+    if (res.status === 400 && !session) {
+      return {
+        username,
+        status: "error",
+        message: "Instagram exigiu sessão válida e não foi possível obtê-la — tente novamente",
       };
     }
 
@@ -150,7 +212,7 @@ export async function POST(req: Request) {
   }
 
   // Empresta o proxy residencial de alguma conta do usuário para essa checagem
-  // pontual — checar direto pelo IP datacenter da Vercel esbarra em 429 do
+  // pontual — checar direto pelo IP datacenter da Vercel esbarra em bloqueio do
   // Instagram quase de imediato (mesma razão pela qual o pipeline de postagem
   // nunca sai pelo IP da Vercel). Não é vinculado a nenhuma conta específica.
   const admin = getSupabaseAdmin();
@@ -171,9 +233,13 @@ export async function POST(req: Request) {
     proxyAgent = null;
   }
 
+  // Sessão anônima (cookie csrftoken) — sem ela o Instagram responde 400 para
+  // qualquer username, mesmo real. Buscada uma vez e reaproveitada no lote.
+  const session = await fetchIgSession(proxyAgent);
+
   const results: CheckerResult[] = [];
   for (let i = 0; i < usernames.length; i++) {
-    results.push(await checkOne(usernames[i], proxyAgent));
+    results.push(await checkOne(usernames[i], proxyAgent, session));
     if (i < usernames.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, DELAY_MS + Math.random() * 400));
     }
