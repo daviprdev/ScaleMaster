@@ -37,6 +37,20 @@ O repositório `Saas` estava inicializado na pasta home do usuário, não na pas
 
 ---
 
+### ✅ Sessão 2026-07-21 — Dashboard reconstruído + Verificador de Perfis do Instagram
+
+**Dashboard (`/dashboard`) reconstruído.** `GET /api/dashboard/stats` reescrito: `accounts` ganha `added_today/added_yesterday/added_7d`; novo `accounts_down` (total com `health_status='error'` + quedas hoje/ontem/7d via `failover_logs`, deduplicadas por conta); `posts_today.published`; `queue.pending` agora soma `scheduled_posts` (pending/publishing) + `pending_containers` (pending/publishing) — antes só contava agendados futuros. UI: 3 cards simples (Contas Conectadas / Postagens Hoje / Fila) + 2 cards de breakdown com 3 mini-métricas (Hoje/Ontem/7 dias) para Contas Adicionadas (verde) e Contas Caídas (vermelho). Efeito de glow transparente sempre visível atrás de cada card (antes só no hover). Ações Rápidas trocadas para Postar/Automatizar/Loop/Stories (ícones iguais aos da Sidebar). Commit `6a75bc3`.
+
+**Verificador de Perfis do Instagram — nova função na aba Contas.** Botão "Verificar" abre modal: cola usernames (até 60), checa em lotes de 15 via `POST /api/instagram/checker`. Consulta o endpoint público `web_profile_info` do cliente web do Instagram para classificar cada perfil em `active` / `not_found` / `error`. **Limitação estrutural documentada:** o Instagram não expõe publicamente se uma conta foi banida, removida ou nunca existiu — todas caem em `not_found`. Commit `3fd8022`.
+
+**Fix 1 — "Instagram respondeu 400" em toda conta real.** O endpoint `web_profile_info` exige cookie de sessão anônima (`csrftoken`) — sem ele, responde 400 para QUALQUER username, mesmo ativo. Fix: `fetchIgSession()` visita `instagram.com` uma vez por request, extrai cookies via `res.headers.getSetCookie()` (undici 8), reaproveita no lote inteiro. Commit `429bc61`.
+
+**Fix 2 — Instagram escalou para 401 mesmo com csrftoken.** Confirmado pelo usuário que a proteção anti-bot da Meta foi além do cookie de visitante — passou a exigir sessão autenticada real ("login required"), o que é um teto estrutural do método anônimo (não dá pra contornar sem credenciais reais). Fix: fallback OFICIAL via Meta Graph API — `business_discovery` (`graph.instagram.com/v21.0/{id}?fields=business_discovery.username(alvo){...}`) usando o token de uma conta já conectada no SaaS, roteado pelo proxy dela. Não sofre bloqueio anti-bot, mas só confirma contas Business/Creator (não confirma nem descarta contas pessoais — mensagem honesta nesse caso). Commit `eb33850`.
+
+**Lição geral:** para qualquer feature nova que precise consultar dados do Instagram fora do fluxo de conta conectada (ex.: esse checker), o caminho anônimo (scraping de `www.instagram.com`) tem viabilidade decrescente — a Meta está fechando isso progressivamente. Preferir sempre, quando possível, um caminho oficial via Graph API com token de conta já conectada como fallback (ou como primário).
+
+---
+
 ### ✅ Sessão 2026-07-07 — Diagnóstico de quedas + sync tempo real + idade da conta
 
 **Diagnóstico das quedas de contas (25 subidas, ~13 caíram).** Causa raiz: **volume de postagem alto demais para contas novas** — loops a 30 e 60 min = 24 a 48 posts/dia em contas com dias de vida. O Instagram lê como bot e derruba. Não era warmup, proxy nem excesso de requisição. A conta que viralizou (1640 seg.) levou **checkpoint de conta** (`code=190 — "you cannot access the app till you log in to www.instagram.com"`), que é restrição real no nível da conta com o token ainda válido — por isso o painel mostrava "online". Régua recomendada: semana 1 = 1–2 posts/dia, subindo devagar até teto ~10/dia.
