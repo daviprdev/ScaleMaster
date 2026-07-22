@@ -170,7 +170,7 @@ export default function MagicLinkModal({ open, onClose }: Props) {
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -4 }}
                           transition={{ duration: 0.12 }}
-                          className="absolute top-full left-0 right-0 mt-1 rounded-xl bg-[#0a0a0a] border border-white/10 shadow-2xl z-10 overflow-hidden"
+                          className="absolute top-full left-0 right-0 mt-1 rounded-xl bg-[#0a0a0a] border border-white/10 shadow-2xl z-10 max-h-60 overflow-y-auto"
                         >
                           {/* Global option only if env var configured */}
                           <button
