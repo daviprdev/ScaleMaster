@@ -1883,8 +1883,8 @@ export default function AccountsPage() {
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
-              <div className="glass rounded-2xl neon-border w-full max-w-sm p-6 space-y-4 pointer-events-auto">
-                <div className="flex items-center justify-between">
+              <div className="glass rounded-2xl neon-border w-full max-w-sm max-h-[85vh] flex flex-col p-6 space-y-4 pointer-events-auto overflow-hidden">
+                <div className="flex items-center justify-between flex-shrink-0">
                   <div className="flex items-center gap-2.5">
                     <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
                       <KeyRound size={13} className="text-violet-400" />
@@ -1903,7 +1903,7 @@ export default function AccountsPage() {
                   <motion.div
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="space-y-4"
+                    className="space-y-4 overflow-y-auto"
                   >
                     <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-4 space-y-1.5 text-center">
                       <p className="text-sm font-semibold text-amber-300">Nenhum App cadastrado</p>
@@ -1923,12 +1923,12 @@ export default function AccountsPage() {
                   <motion.div
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="space-y-3"
+                    className="space-y-3 min-h-0 flex flex-col"
                   >
-                    <p className="text-xs text-white/35">
+                    <p className="text-xs text-white/35 flex-shrink-0">
                       Escolha qual App Meta usar para autorizar a conta no Instagram:
                     </p>
-                    <div className="space-y-2">
+                    <div className="space-y-2 overflow-y-auto pr-1">
                       {userApps.map(app => (
                         <button
                           key={app.id}
@@ -1957,7 +1957,7 @@ export default function AccountsPage() {
                     </div>
                     <button
                       onClick={() => { setAppPickerOpen(false); router.push("/dashboard/apps"); }}
-                      className="w-full text-center text-xs text-white/25 hover:text-violet-400 transition-colors py-1"
+                      className="w-full text-center text-xs text-white/25 hover:text-violet-400 transition-colors py-1 flex-shrink-0"
                     >
                       + Cadastrar novo app
                     </button>
