@@ -1045,6 +1045,8 @@ export default function AccountsPage() {
   const [bulkMovePendingFolderId, setBulkMovePendingFolderId] = useState<string | null>(null);
   const [bulkMoving, setBulkMoving] = useState(false);
   const [bulkActivating, setBulkActivating] = useState(false);
+  const [bulkSyncing, setBulkSyncing] = useState(false);
+  const [bulkSyncProgress, setBulkSyncProgress] = useState<{ done: number; total: number } | null>(null);
 
   // CSV proxy import
   const [showCsvImport, setShowCsvImport] = useState(false);
@@ -1529,6 +1531,71 @@ export default function AccountsPage() {
       setBulkActivating(false);
     }
   }, [selectedIds, supabase]);
+
+  const handleBulkSync = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkSyncing(true);
+    setBulkSyncProgress({ done: 0, total: ids.length });
+    let done = 0;
+    let succeeded = 0;
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          fetch("/api/accounts/refresh", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accountId: id }),
+            signal: AbortSignal.timeout(28_000),
+          })
+            .then(async (res) => {
+              done += 1;
+              setBulkSyncProgress({ done, total: ids.length });
+              if (!res.ok) throw new Error(id);
+              const data = await res.json() as {
+                active_stories_count?: number;
+                active_stories_expiring_first_at?: string | null;
+              };
+              return { id, data };
+            })
+            .catch((err) => {
+              done += 1;
+              setBulkSyncProgress({ done, total: ids.length });
+              throw err;
+            })
+        )
+      );
+      const fulfilled = results.filter(
+        (r): r is PromiseFulfilledResult<{ id: string; data: { active_stories_count?: number; active_stories_expiring_first_at?: string | null } }> =>
+          r.status === "fulfilled"
+      );
+      succeeded = fulfilled.length;
+      if (fulfilled.length > 0) {
+        setStoriesMap((prev) => {
+          const next = { ...prev };
+          for (const { value: { id, data } } of fulfilled) {
+            if (typeof data.active_stories_count === "number") {
+              next[id] = { count: data.active_stories_count, expiring_first_at: data.active_stories_expiring_first_at ?? null };
+            }
+          }
+          return next;
+        });
+      }
+      await fetchAccounts();
+      const failed = ids.length - succeeded;
+      setNotification({
+        type: succeeded === 0 ? "error" : "success",
+        message:
+          `${succeeded} conta${succeeded !== 1 ? "s" : ""} sincronizada${succeeded !== 1 ? "s" : ""}` +
+          (failed > 0 ? `, ${failed} com erro.` : "."),
+      });
+      setSelectedIds(new Set());
+      setSelectMode(false);
+    } finally {
+      setBulkSyncing(false);
+      setBulkSyncProgress(null);
+    }
+  }, [selectedIds, fetchAccounts]);
 
   const handleBulkMove = useCallback(async (folderId: string | null) => {
     const ids = Array.from(selectedIds);
@@ -2913,8 +2980,22 @@ export default function AccountsPage() {
               {selectedIds.size > 0 && (
                 <>
                   <button
+                    onClick={handleBulkSync}
+                    disabled={bulkSyncing || bulkActivating || bulkMoving || bulkDeleting}
+                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-[#00E5FF]/10 border border-[#00E5FF]/30 text-[#00E5FF] hover:bg-[#00E5FF]/20 disabled:opacity-40"
+                  >
+                    {bulkSyncing
+                      ? <Loader2 size={14} className="animate-spin" />
+                      : <RefreshCw size={14} />
+                    }
+                    {bulkSyncing && bulkSyncProgress
+                      ? `Sincronizando (${bulkSyncProgress.done}/${bulkSyncProgress.total})`
+                      : `Sincronizar (${selectedIds.size})`
+                    }
+                  </button>
+                  <button
                     onClick={handleBulkActivate}
-                    disabled={bulkActivating || bulkMoving || bulkDeleting}
+                    disabled={bulkActivating || bulkMoving || bulkDeleting || bulkSyncing}
                     className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-[#00FF41]/10 border border-[#00FF41]/30 text-[#00FF41] hover:bg-[#00FF41]/20 disabled:opacity-40"
                   >
                     {bulkActivating
@@ -2925,7 +3006,7 @@ export default function AccountsPage() {
                   </button>
                   <button
                     onClick={() => { setBulkMovePendingFolderId(null); setBulkMoveOpen(true); }}
-                    disabled={bulkMoving || bulkDeleting || bulkActivating}
+                    disabled={bulkMoving || bulkDeleting || bulkActivating || bulkSyncing}
                     className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-violet-600/15 border border-violet-500/30 text-violet-300 hover:bg-violet-600/25 disabled:opacity-40"
                   >
                     <Folder size={14} />
@@ -2933,7 +3014,7 @@ export default function AccountsPage() {
                   </button>
                   <button
                     onClick={handleBulkDelete}
-                    disabled={bulkDeleting || bulkMoving || bulkActivating}
+                    disabled={bulkDeleting || bulkMoving || bulkActivating || bulkSyncing}
                     className={cn(
                       "flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-40",
                       confirmBulkDelete
