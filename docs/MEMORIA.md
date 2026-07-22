@@ -3130,3 +3130,16 @@ Conta nova movida para uma pasta (ex: LAURA LINS) que já tem campanha ativa na 
 
 #### Escopo
 Só afeta campanhas criadas pelo Postar. Clonar Perfil continua snapshot fixo (não usa `video_id`, conteúdo vem do perfil raspado) — fora do escopo desta sessão.
+
+---
+
+### ✅ Sessão 2026-07-22 (cont.) — UX: atalhos "selecionar todas" + Biblioteca de Mídia em Stories
+
+Resumo rápido dos ajustes seguintes na mesma sessão:
+
+- **Automatizar**: botão "Selecionar todas / Limpar" no modal de criar/editar automação, para pastas de contas e pastas de vídeos (só existia clique pasta por pasta).
+- **Postar → Contas**: botão "todas as pastas" ao lado do "selecionar" de cada pasta — marca contas de todas as pastas de uma vez, sem rolar até o topo.
+- **Contas (`/dashboard/accounts`)**: no modo "Selecionar" (bulk), botão "Selecionar todas" agora aparece assim que o modo liga, marcando de uma vez todas as contas da pasta/aba aberta no momento (antes só existia Ativar/Mover/Excluir, exigia marcar uma por uma primeiro).
+- **Stories — Biblioteca de Mídia**: nova tabela `story_media` (RLS); `POST /api/stories/upload` grava um registro a cada envio; `GET/DELETE /api/stories/media` lista/exclui (exclusão remove também do Storage). Grid "Biblioteca" no card Mídia de `/dashboard/stories` deixa reusar uma foto/vídeo já enviado antes (clicar seleciona sem re-upload) e escolher outras contas para repostar no dia seguinte.
+
+Todos os itens acima com build validado e deploy feito (push direto pra `main`, sem PR).
