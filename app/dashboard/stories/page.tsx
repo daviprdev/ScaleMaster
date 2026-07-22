@@ -27,7 +27,7 @@ interface FolderItem {
 }
 
 interface UploadedMedia {
-  file: File;
+  file: File | null;
   previewUrl: string;
   url: string | null;
   media_type: "image" | "video";
@@ -35,6 +35,14 @@ interface UploadedMedia {
   status: "uploading" | "done" | "error";
   error?: string;
   duration?: number;
+}
+
+interface StoryMediaItem {
+  id: string;
+  public_url: string;
+  storage_path: string;
+  media_type: "image" | "video";
+  created_at: string;
 }
 
 interface HistoryItem {
@@ -133,9 +141,11 @@ function SingleMediaUpload({
 
   if (media) {
     const isVideo = media.media_type === "video";
-    const sizeLabel = media.file.size < 1024 * 1024
-      ? `${(media.file.size / 1024).toFixed(0)} KB`
-      : `${(media.file.size / 1024 / 1024).toFixed(1)} MB`;
+    const sizeLabel = !media.file
+      ? "Da biblioteca"
+      : media.file.size < 1024 * 1024
+        ? `${(media.file.size / 1024).toFixed(0)} KB`
+        : `${(media.file.size / 1024 / 1024).toFixed(1)} MB`;
 
     return (
       <div className="relative group rounded-2xl overflow-hidden border border-white/10 bg-black/30" style={{ aspectRatio: "9/16", maxHeight: 320 }}>
@@ -143,7 +153,7 @@ function SingleMediaUpload({
           <video src={media.previewUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={media.previewUrl} alt={media.file.name} className="w-full h-full object-cover" />
+          <img src={media.previewUrl} alt={media.file?.name ?? ""} className="w-full h-full object-cover" />
         )}
         <div className="absolute top-2 left-2 flex items-center gap-1">
           <span className={cn(
@@ -216,6 +226,75 @@ function SingleMediaUpload({
         </p>
         <p className="text-xs text-white/25 mt-1">JPG, PNG, MP4 (máx. 60s)</p>
       </div>
+    </div>
+  );
+}
+
+// ── Biblioteca de Mídia ──────────────────────────────────────────────────
+
+function MediaLibrary({
+  items, loading, selectedStoragePath, onSelect, onDelete, deletingId,
+}: {
+  items: StoryMediaItem[];
+  loading: boolean;
+  selectedStoragePath: string | null;
+  onSelect: (item: StoryMediaItem) => void;
+  onDelete: (id: string) => void;
+  deletingId: string | null;
+}) {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-6"><Loader2 size={16} className="animate-spin text-[#00E5FF]" /></div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <p className="text-white/20 text-xs text-center py-4">
+        Nada salvo ainda — toda foto/vídeo enviado aqui fica guardado para reusar depois.
+      </p>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+      {items.map(item => {
+        const isVideo = item.media_type === "video";
+        const isSelected = selectedStoragePath === item.storage_path;
+        return (
+          <div
+            key={item.id}
+            onClick={() => onSelect(item)}
+            className={cn(
+              "relative group rounded-lg overflow-hidden border cursor-pointer bg-black/30 transition-all",
+              isSelected ? "border-[#00E5FF]/60 ring-1 ring-[#00E5FF]/40" : "border-white/[0.08] hover:border-white/25"
+            )}
+            style={{ aspectRatio: "9/16" }}
+          >
+            {isVideo ? (
+              <video src={item.public_url} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={item.public_url} alt="" className="w-full h-full object-cover" />
+            )}
+            <span className="absolute top-1 left-1 w-4 h-4 rounded-md bg-black/60 flex items-center justify-center">
+              {isVideo ? <Film size={8} className="text-[#00E5FF]" /> : <Image size={8} className="text-[#00FF41]" />}
+            </span>
+            {isSelected && (
+              <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[#00E5FF]/90 flex items-center justify-center">
+                <Check size={8} className="text-black" strokeWidth={3} />
+              </span>
+            )}
+            <button
+              onClick={e => { e.stopPropagation(); onDelete(item.id); }}
+              disabled={deletingId === item.id}
+              className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 w-5 h-5 rounded-md bg-red-500/70 flex items-center justify-center text-white transition-all"
+            >
+              {deletingId === item.id ? <Loader2 size={9} className="animate-spin" /> : <Trash2 size={9} />}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -565,6 +644,11 @@ export default function StoriesPage() {
   // Media
   const [media, setMedia] = useState<UploadedMedia | null>(null);
 
+  // Biblioteca de Mídia (memória de fotos/vídeos já enviados)
+  const [mediaLibrary, setMediaLibrary] = useState<StoryMediaItem[]>([]);
+  const [loadingLibrary, setLoadingLibrary] = useState(true);
+  const [deletingLibraryId, setDeletingLibraryId] = useState<string | null>(null);
+
   // Publish
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
@@ -638,12 +722,22 @@ export default function StoriesPage() {
     } finally { setLoadingTemplates(false); }
   }, []);
 
+  const fetchMediaLibrary = useCallback(async () => {
+    setLoadingLibrary(true);
+    try {
+      const res = await fetch("/api/stories/media");
+      const d = await res.json() as { items?: StoryMediaItem[] };
+      setMediaLibrary(d.items ?? []);
+    } catch {/* silent */} finally { setLoadingLibrary(false); }
+  }, []);
+
   useEffect(() => {
     fetchAccounts();
     fetchFolders();
     fetchHistory();
     fetchTemplates();
-  }, [fetchAccounts, fetchFolders, fetchHistory, fetchTemplates]);
+    fetchMediaLibrary();
+  }, [fetchAccounts, fetchFolders, fetchHistory, fetchTemplates, fetchMediaLibrary]);
 
   useEffect(() => {
     if (historyQueued === 0) return;
@@ -654,7 +748,7 @@ export default function StoriesPage() {
   // ── Upload handler ─────────────────────────────────────────────────────────
 
   const handleAddMedia = useCallback(async (file: File) => {
-    if (media) URL.revokeObjectURL(media.previewUrl);
+    if (media?.previewUrl.startsWith("blob:")) URL.revokeObjectURL(media.previewUrl);
 
     const isVideo = file.type.startsWith("video/");
     const previewUrl = URL.createObjectURL(file);
@@ -686,14 +780,37 @@ export default function StoriesPage() {
         setMedia(prev => prev && prev.previewUrl === previewUrl ? { ...prev, status: "error", error: data.error ?? "Falha no upload" } : prev);
       } else {
         setMedia(prev => prev && prev.previewUrl === previewUrl ? { ...prev, url: data.url!, storage_path: data.storage_path!, status: "done" } : prev);
+        fetchMediaLibrary();
       }
     } catch {
       setMedia(prev => prev && prev.previewUrl === previewUrl ? { ...prev, status: "error", error: "Erro de conexão" } : prev);
     }
-  }, [media]);
+  }, [media, fetchMediaLibrary]);
 
   const handleRemoveMedia = useCallback(() => {
-    setMedia(prev => { if (prev) URL.revokeObjectURL(prev.previewUrl); return null; });
+    setMedia(prev => { if (prev?.previewUrl.startsWith("blob:")) URL.revokeObjectURL(prev.previewUrl); return null; });
+  }, []);
+
+  const handleSelectFromLibrary = useCallback((item: StoryMediaItem) => {
+    setMedia(prev => {
+      if (prev?.previewUrl.startsWith("blob:")) URL.revokeObjectURL(prev.previewUrl);
+      return {
+        file: null,
+        previewUrl: item.public_url,
+        url: item.public_url,
+        media_type: item.media_type,
+        storage_path: item.storage_path,
+        status: "done",
+      };
+    });
+  }, []);
+
+  const handleDeleteLibraryItem = useCallback(async (id: string) => {
+    setDeletingLibraryId(id);
+    try {
+      await fetch(`/api/stories/media?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      setMediaLibrary(prev => prev.filter(i => i.id !== id));
+    } finally { setDeletingLibraryId(null); }
   }, []);
 
   // ── Modelo (pasta) / Contas ──────────────────────────────────────────────────
@@ -836,6 +953,23 @@ export default function StoriesPage() {
           <SectionCard>
             <SectionLabel Icon={Upload}>Mídia (foto ou vídeo)</SectionLabel>
             <SingleMediaUpload media={media} onAdd={handleAddMedia} onRemove={handleRemoveMedia} />
+
+            <div className="mt-5 pt-4 border-t border-white/[0.06]">
+              <div className="flex items-center gap-2 mb-3">
+                <ImagePlay size={12} className="text-white/30" />
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-white/30">
+                  Biblioteca — mídias já enviadas antes
+                </span>
+              </div>
+              <MediaLibrary
+                items={mediaLibrary}
+                loading={loadingLibrary}
+                selectedStoragePath={media?.storage_path ?? null}
+                onSelect={handleSelectFromLibrary}
+                onDelete={handleDeleteLibraryItem}
+                deletingId={deletingLibraryId}
+              />
+            </div>
           </SectionCard>
 
           {/* Modelo */}

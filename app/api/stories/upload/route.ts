@@ -58,11 +58,28 @@ export async function POST(req: NextRequest) {
 
   const { data: urlData } = admin.storage.from("videos-library").getPublicUrl(storagePath);
 
+  // Salva na biblioteca de mídia de Stories — permite reusar a mesma foto/vídeo
+  // em outro dia sem precisar subir o arquivo de novo.
+  let mediaId: string | null = null;
+  const { data: mediaRow, error: mediaErr } = await admin
+    .from("story_media")
+    .insert({
+      user_id: user.id,
+      storage_path: storagePath,
+      public_url: urlData.publicUrl,
+      media_type: isImage ? "image" : "video",
+    })
+    .select("id")
+    .single();
+  if (mediaErr) console.error("[stories/upload] erro ao salvar na biblioteca:", mediaErr.message);
+  else mediaId = mediaRow?.id ?? null;
+
   return NextResponse.json({
     url: urlData.publicUrl,
     media_type: isImage ? "image" : "video",
     filename: file.name,
     storage_path: storagePath,
     size: file.size,
+    media_id: mediaId,
   });
 }
