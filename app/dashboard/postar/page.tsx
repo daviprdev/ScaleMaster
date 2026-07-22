@@ -1183,19 +1183,29 @@ export default function PostarPage() {
                               </span>
                             )}
                           </div>
-                          {/* Botão selecionar pasta — stopPropagation para não fechar */}
-                          <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); toggleFolder(group.accounts); }}
-                            className={cn(
-                              "flex-shrink-0 text-[10px] px-2.5 py-1 rounded-lg border transition-all ml-2",
-                              allSelected
-                                ? "border-[#00FF41]/30 text-[#00FF41]/70 hover:bg-[#00FF41]/10"
-                                : "border-white/[0.08] text-white/30 hover:border-[#00FF41]/30 hover:text-[#00FF41]/60"
-                            )}
-                          >
-                            {allSelected ? "desmarcar" : "selecionar"}
-                          </button>
+                          {/* Botões selecionar pasta / todas as pastas — stopPropagation para não fechar */}
+                          <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); toggleFolder(group.accounts); }}
+                              className={cn(
+                                "text-[10px] px-2.5 py-1 rounded-lg border transition-all whitespace-nowrap",
+                                allSelected
+                                  ? "border-[#00FF41]/30 text-[#00FF41]/70 hover:bg-[#00FF41]/10"
+                                  : "border-white/[0.08] text-white/30 hover:border-[#00FF41]/30 hover:text-[#00FF41]/60"
+                              )}
+                            >
+                              {allSelected ? "desmarcar" : "selecionar"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); setSelectedAccountIds(accounts.map(a => a.id)); }}
+                              title="Selecionar todas as contas de todas as pastas"
+                              className="text-[10px] px-2.5 py-1 rounded-lg border border-white/[0.08] text-white/25 hover:border-[#00E5FF]/30 hover:text-[#00E5FF]/70 transition-all whitespace-nowrap"
+                            >
+                              todas as pastas
+                            </button>
+                          </div>
                         </div>
 
                         {/* Chips — visíveis só quando expandido */}
