@@ -111,6 +111,14 @@ function AutomationModal({
     }));
   };
 
+  const toggleAllFolders = (type: "account" | "video", allIds: string[]) => {
+    const key = type === "account" ? "account_folder_ids" : "video_folder_ids";
+    setForm((prev) => ({
+      ...prev,
+      [key]: prev[key].length === allIds.length ? [] : allIds,
+    }));
+  };
+
   const handleSave = async () => {
     if (!form.name.trim()) { setError("Nome é obrigatório."); return; }
     if (!form.account_folder_ids.length) { setError("Selecione ao menos uma pasta de contas."); return; }
@@ -174,9 +182,20 @@ function AutomationModal({
 
               {/* Pastas de contas */}
               <div>
-                <label className="block text-xs text-white/50 mb-2 font-medium">
-                  Pastas de contas ({form.account_folder_ids.length})
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs text-white/50 font-medium">
+                    Pastas de contas ({form.account_folder_ids.length})
+                  </label>
+                  {accountFolders.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => toggleAllFolders("account", accountFolders.map((f) => f.id))}
+                      className="text-[11px] text-[#00FF41]/70 hover:text-[#00FF41] transition-colors"
+                    >
+                      {form.account_folder_ids.length === accountFolders.length ? "Limpar" : "Selecionar todas"}
+                    </button>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   {accountFolders.length === 0 && (
                     <p className="text-xs text-white/25 col-span-2">Nenhuma pasta de contas criada.</p>
@@ -206,9 +225,20 @@ function AutomationModal({
 
               {/* Pastas de vídeos */}
               <div>
-                <label className="block text-xs text-white/50 mb-2 font-medium">
-                  Pastas de vídeos ({form.video_folder_ids.length})
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs text-white/50 font-medium">
+                    Pastas de vídeos ({form.video_folder_ids.length})
+                  </label>
+                  {videoFolders.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => toggleAllFolders("video", videoFolders.map((f) => f.id))}
+                      className="text-[11px] text-[#00E5FF]/70 hover:text-[#00E5FF] transition-colors"
+                    >
+                      {form.video_folder_ids.length === videoFolders.length ? "Limpar" : "Selecionar todas"}
+                    </button>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   {videoFolders.length === 0 && (
                     <p className="text-xs text-white/25 col-span-2">Nenhuma pasta de vídeos criada.</p>
