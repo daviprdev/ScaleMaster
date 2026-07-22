@@ -3103,13 +3103,34 @@ export default function AccountsPage() {
               Selecionar
             </button>
           ) : (
-            <button
-              onClick={cancelSelectMode}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-white/[0.03] border-white/[0.07] text-white/35 hover:text-white/60 hover:border-white/15 transition-all"
-            >
-              <X size={11} />
-              Cancelar
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  const filteredIds = filteredAccounts.map(a => a.id);
+                  const allSelected = filteredIds.length > 0 && filteredIds.every(id => selectedIds.has(id));
+                  setSelectedIds(prev => {
+                    const next = new Set(prev);
+                    if (allSelected) {
+                      filteredIds.forEach(id => next.delete(id));
+                    } else {
+                      filteredIds.forEach(id => next.add(id));
+                    }
+                    return next;
+                  });
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-[#00FF41]/[0.06] border-[#00FF41]/20 text-[#00FF41]/70 hover:text-[#00FF41] hover:border-[#00FF41]/40 transition-all"
+              >
+                <CheckCircle2 size={11} />
+                {filteredAccounts.length > 0 && filteredAccounts.every(a => selectedIds.has(a.id)) ? "Desmarcar todas" : "Selecionar todas"}
+              </button>
+              <button
+                onClick={cancelSelectMode}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-white/[0.03] border-white/[0.07] text-white/35 hover:text-white/60 hover:border-white/15 transition-all"
+              >
+                <X size={11} />
+                Cancelar
+              </button>
+            </>
           )}
         </div>
       )}
