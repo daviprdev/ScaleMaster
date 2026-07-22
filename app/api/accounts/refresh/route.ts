@@ -215,6 +215,7 @@ export async function POST(req: NextRequest) {
     posts_count: profile.media_count ?? 0,
     has_active_stories: activeStoriesCount > 0,
     active_stories_count: activeStoriesCount,
+    active_stories_expiring_first_at: activeStoriesExpiringFirstAt,
     profile_refreshed_at: new Date().toISOString(),
     // NÃO sobrescrever health_status aqui:
     // health_status='error' pode ter sido definido pelo cron por erro de API
@@ -233,9 +234,9 @@ export async function POST(req: NextRequest) {
     .eq("id", accountId);
 
   if (updateErr) {
-    if (updateErr.code === "42703" || updateErr.message?.includes("active_stories_count")) {
-      // Column not yet migrated — persist everything else
-      const { active_stories_count: _, ...updateWithoutCount } = update;
+    if (updateErr.code === "42703" || updateErr.message?.includes("active_stories")) {
+      // Column(s) not yet migrated — persist everything else
+      const { active_stories_count: _c, active_stories_expiring_first_at: _e, ...updateWithoutCount } = update;
       await admin.from("instagram_accounts").update(updateWithoutCount).eq("id", accountId);
     } else {
       console.error("[accounts/refresh] Update error:", updateErr);

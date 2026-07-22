@@ -84,6 +84,8 @@ interface Account {
   posts_count: number | null;
   last_post_at: string | null;
   has_active_stories: boolean | null;
+  active_stories_count: number | null;
+  active_stories_expiring_first_at: string | null;
   profile_refreshed_at: string | null;
   ig_business_account_id: string | null;
   token_expires_at: string | null;
@@ -96,9 +98,27 @@ interface Account {
   profile_draft: ProfileDraft | null;
 }
 
-interface AccountStoriesData {
-  count: number;
-  expiring_first_at: string | null;
+// Deriva o que mostrar no badge de stories direto dos campos persistidos da
+// conta (has_active_stories/active_stories_count/active_stories_expiring_first_at) —
+// sem depender de nenhum fetch adicional. Nunca fica em branco depois do
+// primeiro sync; se o dado estiver velho o suficiente pra o story já ter
+// expirado (regra de 24h do Instagram), avisa em vez de mentir uma contagem.
+function storiesDisplay(account: Account): { label: string; amber: boolean; muted: boolean } | null {
+  if (account.active_stories_count === null || account.active_stories_count === undefined) return null;
+  if (account.active_stories_count === 0) {
+    return { label: "0 stories ativos", amber: false, muted: true };
+  }
+  const expiresAt = account.active_stories_expiring_first_at
+    ? new Date(account.active_stories_expiring_first_at).getTime() + 24 * 60 * 60 * 1000
+    : 0;
+  if (expiresAt <= Date.now()) {
+    return { label: "stories desatualizados · sincronize", amber: false, muted: true };
+  }
+  return {
+    label: `${account.active_stories_count} ${account.active_stories_count === 1 ? "story" : "stories"} · exp. ${storyCountdown(account.active_stories_expiring_first_at)}`,
+    amber: true,
+    muted: false,
+  };
 }
 
 interface AccountLabel {
@@ -245,7 +265,6 @@ function Metric({
 // ── Card de conta ─────────────────────────────────────────────
 function AccountCard({
   account,
-  storiesData,
   onRefresh,
   onToggle,
   onDelete,
@@ -265,7 +284,6 @@ function AccountCard({
   onSelect,
 }: {
   account: Account;
-  storiesData?: AccountStoriesData;
   onRefresh: (id: string) => void;
   onToggle: (acc: Account) => void;
   onDelete: (id: string) => void;
@@ -343,6 +361,7 @@ function AccountCard({
   const isMetaConnected = !!account.ig_business_account_id;
   const tokenChip = tokenStatusChip(account.token_expires_at, isMetaConnected);
   const accountFell = account.health_status === "error" || account.health_status === "blocked";
+  const storiesInfo = storiesDisplay(account);
 
   return (
     <motion.div
@@ -578,16 +597,12 @@ function AccountCard({
             label={account.profile_refreshed_at ? `sync ${timeAgo(account.profile_refreshed_at)}` : "não sincronizado"}
             muted={!account.profile_refreshed_at}
           />
-          {isMetaConnected && storiesData !== undefined && (
+          {isMetaConnected && storiesInfo && (
             <Metric
               icon={<Clapperboard size={11} />}
-              label={
-                storiesData.count > 0
-                  ? `${storiesData.count} ${storiesData.count === 1 ? "story" : "stories"} · exp. ${storyCountdown(storiesData.expiring_first_at)}`
-                  : "0 stories ativos"
-              }
-              amber={storiesData.count > 0}
-              muted={storiesData.count === 0}
+              label={storiesInfo.label}
+              amber={storiesInfo.amber}
+              muted={storiesInfo.muted}
             />
           )}
           <Metric
@@ -1059,7 +1074,6 @@ export default function AccountsPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [tokenRefreshingId, setTokenRefreshingId] = useState<string | null>(null);
   const [movingAccountId, setMovingAccountId] = useState<string | null>(null);
-  const [storiesMap, setStoriesMap] = useState<Record<string, AccountStoriesData>>({});
   const [sortMode, setSortMode] = useState<"none" | "followers_desc" | "followers_asc" | "story_expiring">("none");
 
   // Move-to-folder modal (page-level, outside motion transforms)
@@ -1156,7 +1170,7 @@ export default function AccountsPage() {
       const { data } = await supabase
         .from("instagram_accounts")
         .select(
-          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url, meta_app_id, labels, profile_draft, user_meta_apps(app_name)"
+          "id, username, display_name, avatar_url, is_active, connected_at, followers_count, posts_count, last_post_at, has_active_stories, active_stories_count, active_stories_expiring_first_at, profile_refreshed_at, ig_business_account_id, token_expires_at, health_status, folder_id, proxy_url, meta_app_id, labels, profile_draft, user_meta_apps(app_name)"
         )
         .order("connected_at", { ascending: false });
       const fetched = ((data ?? []) as unknown as (Account & { proxy_url: string | null; user_meta_apps: { app_name: string } | null })[]).map(
@@ -1170,24 +1184,10 @@ export default function AccountsPage() {
     }
   }, [supabase]);
 
-  const fetchStories = useCallback(async () => {
-    try {
-      const res = await fetch("/api/accounts/stories");
-      if (!res.ok) return;
-      const data = await res.json() as { stories?: Record<string, AccountStoriesData> };
-      if (data.stories) setStoriesMap(data.stories);
-    } catch {
-      // non-critical
-    }
-  }, []);
-
   useEffect(() => {
     fetchUserApps();
     fetchFolders();
     fetchAccounts().then(async (fetched) => {
-      // fetchStories removido do page-load (2026-07-17): era 1 GET à Meta por
-      // conta a cada abertura da página. Stories ao vivo agora só no botão
-      // manual de sincronizar; a badge simplesmente não aparece sem os dados.
       if (_autoRefreshDone.current) return;
       _autoRefreshDone.current = true;
 
@@ -1316,7 +1316,7 @@ export default function AccountsPage() {
         }
         if (!data.remaining || data.remaining <= 0) break;
       }
-      await Promise.allSettled([fetchAccounts(), fetchStories()]);
+      await fetchAccounts();
       setNotification((prev) =>
         prev?.type === "error"
           ? prev
@@ -1329,14 +1329,14 @@ export default function AccountsPage() {
       );
     } catch (err) {
       // Atualiza a lista mesmo no erro — o servidor pode ter sincronizado antes de falhar
-      await Promise.allSettled([fetchAccounts(), fetchStories()]);
+      await fetchAccounts();
       const isTimeout = err instanceof Error && err.name === "TimeoutError";
       setNotification({ type: "error", message: isTimeout ? "Timeout: sincronização demorou demais. Tente novamente." : "Falha ao sincronizar contas." });
     } finally {
       setSyncingAll(false);
       setSyncProgress(null);
     }
-  }, [syncingAll, accounts, fetchAccounts, fetchStories]);
+  }, [syncingAll, accounts, fetchAccounts]);
 
   const handleRefresh = useCallback(async (id: string) => {
     // Bloqueia apenas clique duplo na MESMA conta — contas diferentes sincronizam em paralelo.
@@ -1351,26 +1351,9 @@ export default function AccountsPage() {
         signal: AbortSignal.timeout(28_000),
       });
       if (res.ok) {
-        // fetchStories (varredura de TODAS as contas) removido do page-load em
-        // 2026-07-17. A rota de refresh já busca stories da própria conta e
-        // devolve no corpo da resposta — só precisamos refletir isso no
-        // storiesMap local pra badge do card acender, sem NENHUMA chamada
-        // extra à Meta.
-        try {
-          const data = await res.json() as {
-            active_stories_count?: number;
-            active_stories_expiring_first_at?: string | null;
-          };
-          if (typeof data.active_stories_count === "number") {
-            setStoriesMap(prev => ({
-              ...prev,
-              [id]: {
-                count: data.active_stories_count!,
-                expiring_first_at: data.active_stories_expiring_first_at ?? null,
-              },
-            }));
-          }
-        } catch { /* body já pode ter sido consumido ou não é JSON */ }
+        // A rota de refresh já persiste has_active_stories/active_stories_count/
+        // active_stories_expiring_first_at no banco — fetchAccounts() reflete
+        // direto, sem precisar de nenhum estado paralelo.
         await fetchAccounts();
         setNotification({ type: "success", message: "Conta sincronizada com sucesso." });
       } else {
@@ -1548,15 +1531,10 @@ export default function AccountsPage() {
             body: JSON.stringify({ accountId: id }),
             signal: AbortSignal.timeout(28_000),
           })
-            .then(async (res) => {
+            .then((res) => {
               done += 1;
               setBulkSyncProgress({ done, total: ids.length });
               if (!res.ok) throw new Error(id);
-              const data = await res.json() as {
-                active_stories_count?: number;
-                active_stories_expiring_first_at?: string | null;
-              };
-              return { id, data };
             })
             .catch((err) => {
               done += 1;
@@ -1565,22 +1543,9 @@ export default function AccountsPage() {
             })
         )
       );
-      const fulfilled = results.filter(
-        (r): r is PromiseFulfilledResult<{ id: string; data: { active_stories_count?: number; active_stories_expiring_first_at?: string | null } }> =>
-          r.status === "fulfilled"
-      );
-      succeeded = fulfilled.length;
-      if (fulfilled.length > 0) {
-        setStoriesMap((prev) => {
-          const next = { ...prev };
-          for (const { value: { id, data } } of fulfilled) {
-            if (typeof data.active_stories_count === "number") {
-              next[id] = { count: data.active_stories_count, expiring_first_at: data.active_stories_expiring_first_at ?? null };
-            }
-          }
-          return next;
-        });
-      }
+      // Cada chamada já persiste has_active_stories/active_stories_count no
+      // banco — fetchAccounts() abaixo reflete tudo de uma vez.
+      succeeded = results.filter((r) => r.status === "fulfilled").length;
       await fetchAccounts();
       const failed = ids.length - succeeded;
       setNotification({
@@ -1885,8 +1850,8 @@ export default function AccountsPage() {
     }
     if (sortMode === "story_expiring") {
       return [...base].sort((a, b) => {
-        const ta = storiesMap[a.id]?.expiring_first_at ?? null;
-        const tb = storiesMap[b.id]?.expiring_first_at ?? null;
+        const ta = a.active_stories_count && a.active_stories_count > 0 ? a.active_stories_expiring_first_at : null;
+        const tb = b.active_stories_count && b.active_stories_count > 0 ? b.active_stories_expiring_first_at : null;
         if (!ta && !tb) return 0;
         if (!ta) return 1;
         if (!tb) return -1;
@@ -1894,7 +1859,7 @@ export default function AccountsPage() {
       });
     }
     return base;
-  }, [accounts, activeFolderId, sortMode, storiesMap]);
+  }, [accounts, activeFolderId, sortMode]);
 
   const sortedFolders = useMemo(() => {
     if (!folderOrder.length) return folders;
@@ -3297,7 +3262,6 @@ export default function AccountsPage() {
               <AccountCard
                 key={account.id}
                 account={account}
-                storiesData={storiesMap[account.id]}
                 onRefresh={handleRefresh}
                 onToggle={handleToggle}
                 onDelete={handleDelete}

@@ -37,6 +37,10 @@ interface DistributeCampaignRow {
   burst_mode: boolean;
 }
 
+// TTL do lock: se uma execução travar (erro, timeout da função), o lock se
+// libera sozinho depois desse tempo em vez de bloquear a campanha para sempre.
+const LOCK_TTL_MINUTES = 10;
+
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
@@ -63,35 +67,69 @@ export async function GET(req: NextRequest) {
   let totalEnrolled = 0;
 
   for (const campaign of watched) {
-    // Contas atualmente nas pastas vigiadas por esta campanha
-    const { data: folderAccounts } = await admin
-      .from("instagram_accounts")
-      .select("id")
-      .in("folder_id", campaign.account_folder_ids)
-      .eq("is_active", true)
-      .neq("health_status", "error");
+    // Lock atômico: se execuções do cron se sobrepuserem (inserir milhares de
+    // linhas pode levar mais que o intervalo entre disparos), a segunda
+    // invocação NÃO pode reprocessar a mesma campanha antes da primeira
+    // terminar de comitar — foi exatamente isso que causou a campanha
+    // duplicada 8x em 2026-07-22. Claim via UPDATE condicional: só uma
+    // invocação consegue marcar syncing_at, as demais pulam a campanha.
+    const cutoffIso = new Date(Date.now() - LOCK_TTL_MINUTES * 60_000).toISOString();
+    const { data: claimed } = await admin
+      .from("distribute_campaigns")
+      .update({ syncing_at: new Date().toISOString() })
+      .eq("id", campaign.id)
+      .or(`syncing_at.is.null,syncing_at.lt.${cutoffIso}`)
+      .select("id");
 
-    if (!folderAccounts?.length) continue;
+    if (!claimed?.length) continue; // outra invocação já está processando esta campanha
 
-    // Contas já matriculadas nesta campanha (qualquer post já criado para ela)
-    const { data: enrolledRows } = await admin
-      .from("scheduled_posts")
-      .select("account_id")
-      .eq("campaign_id", campaign.id)
-      .limit(100000);
+    try {
+      // Contas atualmente nas pastas vigiadas por esta campanha
+      const { data: folderAccounts } = await admin
+        .from("instagram_accounts")
+        .select("id")
+        .in("folder_id", campaign.account_folder_ids)
+        .eq("is_active", true)
+        .neq("health_status", "error");
 
-    const enrolledIds = new Set((enrolledRows ?? []).map((r: { account_id: string }) => r.account_id));
-    const newAccountIds = folderAccounts.map(a => a.id).filter(id => !enrolledIds.has(id));
-    if (!newAccountIds.length) continue;
+      if (!folderAccounts?.length) continue;
 
-    const { data: allVideos } = await admin
-      .from("videos_library")
-      .select("id, public_url")
-      .eq("folder_id", campaign.video_folder_id)
-      .order("created_at", { ascending: true })
-      .limit(10000);
+      // Contas já matriculadas nesta campanha (qualquer post já criado para ela)
+      const { data: enrolledRows } = await admin
+        .from("scheduled_posts")
+        .select("account_id")
+        .eq("campaign_id", campaign.id)
+        .limit(100000);
 
-    if (!allVideos?.length) continue;
+      const enrolledIds = new Set((enrolledRows ?? []).map((r: { account_id: string }) => r.account_id));
+      const newAccountIds = folderAccounts.map(a => a.id).filter(id => !enrolledIds.has(id));
+      if (!newAccountIds.length) continue;
+
+      await processNewAccounts(admin, campaign, newAccountIds);
+      totalEnrolled += newAccountIds.length;
+    } finally {
+      // Libera o lock assim que termina (sucesso ou erro). O TTL acima cobre
+      // o caso da função ser encerrada à força pela Vercel antes do finally rodar.
+      await admin.from("distribute_campaigns").update({ syncing_at: null }).eq("id", campaign.id);
+    }
+  }
+
+  return NextResponse.json({ enrolled: totalEnrolled, campaigns: watched.length });
+}
+
+async function processNewAccounts(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  campaign: DistributeCampaignRow,
+  newAccountIds: string[]
+) {
+  const { data: allVideos } = await admin
+    .from("videos_library")
+    .select("id, public_url")
+    .eq("folder_id", campaign.video_folder_id)
+    .order("created_at", { ascending: true })
+    .limit(10000);
+
+  if (!allVideos?.length) return;
 
     const maxVideos = campaign.video_count === -1
       ? allVideos.length
@@ -175,9 +213,5 @@ export async function GET(req: NextRequest) {
       if (insErr) console.error(`[sync-distribute-accounts] Erro ao inserir posts para campanha ${campaign.id}:`, insErr.message);
     }
 
-    totalEnrolled += newAccountIds.length;
-    console.log(`[sync-distribute-accounts] +${newAccountIds.length} conta(s) matriculada(s) na campanha ${campaign.id}`);
-  }
-
-  return NextResponse.json({ enrolled: totalEnrolled, campaigns: watched.length });
+  console.log(`[sync-distribute-accounts] +${newAccountIds.length} conta(s) matriculada(s) na campanha ${campaign.id}`);
 }
