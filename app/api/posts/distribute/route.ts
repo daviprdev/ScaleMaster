@@ -25,6 +25,7 @@ interface DistributeBody {
   auto_caption_type?: string;     // se presente, ignora captions e gera automaticamente
   account_stagger_seconds?: number | null; // null = cálculo automático
   burst_mode?: boolean;           // Modo Ciclo: todos os vídeos agendados para agora
+  sync_folder_ids?: string[];     // pastas de contas cujas contas novas devem entrar sozinhas na campanha
 }
 
 export async function POST(req: NextRequest) {
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const body = await req.json() as DistributeBody;
-  const { account_ids, folder_id, video_count, posts_per_day, start_at, captions, auto_caption_type, account_stagger_seconds, burst_mode } = body;
+  const { account_ids, folder_id, video_count, posts_per_day, start_at, captions, auto_caption_type, account_stagger_seconds, burst_mode, sync_folder_ids } = body;
 
   if (!account_ids?.length)
     return NextResponse.json({ error: "Selecione ao menos 1 conta." }, { status: 400 });
@@ -177,6 +178,26 @@ export async function POST(req: NextRequest) {
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await admin.from("scheduled_posts").insert(rows.slice(i, i + 500));
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Sincronização com pasta(s) de contas: persiste a config da campanha para que
+  // o cron sync-distribute-accounts possa matricular contas novas adicionadas
+  // depois, sem precisar recriar a distribuição.
+  if (Array.isArray(sync_folder_ids) && sync_folder_ids.length > 0) {
+    const { error: syncErr } = await admin.from("distribute_campaigns").insert({
+      id: campaignId,
+      user_id: user.id,
+      account_folder_ids: sync_folder_ids,
+      video_folder_id: folder_id,
+      video_count,
+      posts_per_day: burst_mode ? 1 : posts_per_day,
+      captions: isAutoCaption ? [] : validCaptions,
+      auto_caption_enabled: isAutoCaption,
+      auto_caption_type: isAutoCaption ? autoType : null,
+      account_stagger_seconds: account_stagger_seconds ?? null,
+      burst_mode: !!burst_mode,
+    });
+    if (syncErr) console.error("[distribute] erro ao salvar sync da campanha:", syncErr.message);
   }
 
   const times = rows.map((r) => (r as { scheduled_at: string }).scheduled_at).sort();

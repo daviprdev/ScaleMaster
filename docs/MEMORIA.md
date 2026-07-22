@@ -3113,3 +3113,20 @@ Tabela `proxy_pool` (AES-256-GCM + hash SHA-256 p/ dedup, RLS, migrations aplica
 
 #### Fluxo de operação resultante
 Colar proxies no estoque → magic link → conta conecta já com proxy e inativa → descansa dias em silêncio total → ativar em massa → volume baixo no início. Se cair, o pipeline marca vermelho sozinho.
+
+---
+
+### ✅ Sessão 2026-07-22 — Feat: campanhas do Postar sincronizadas com pasta de contas
+
+#### Pedido do usuário
+Conta nova movida para uma pasta (ex: LAURA LINS) que já tem campanha ativa na aba Postar não entrava sozinha na fila — só Automatizar e Loop (modo pasta) faziam isso, porque recalculam contas da pasta a cada ciclo do cron. Postar/Clonar criam um snapshot fixo de `account_ids` no momento da criação.
+
+#### Implementação
+- Nova tabela `distribute_campaigns` (migration aplicada via MCP Supabase): guarda a config completa da campanha (pasta(s) de conta vigiadas, pasta de mídia, video_count, posts_per_day, captions, auto_caption, stagger, burst_mode) usando o mesmo `id` = `campaign_id` de `scheduled_posts`.
+- `POST /api/posts/distribute` aceita `sync_folder_ids` opcional — grava a config quando o usuário ativa o toggle.
+- Novo cron `GET /api/cron/sync-distribute-accounts` (`*/5 * * * *`): para cada campanha sincronizada, detecta contas da pasta que ainda não têm nenhum post naquele `campaign_id` e as matricula com a mesma lógica de sorteio/anti-repetição (fisher-yates + menor uso por conta) e cadência da campanha original.
+- Frontend (`/dashboard/postar`): toggle "Sincronizar com a pasta" aparece só quando a seleção cobre 100% de uma ou mais pastas inteiras (evita ambiguidade de seleção parcial). Badge "Sincronizada" no card da campanha (`GET /api/campaigns` expõe `is_synced`/`synced_folder_names`).
+- Cancelar ou excluir a campanha (`DELETE /api/campaigns`) apaga a linha de `distribute_campaigns` — sincronização para junto, sem deixar config órfã reativando contas indevidamente.
+
+#### Escopo
+Só afeta campanhas criadas pelo Postar. Clonar Perfil continua snapshot fixo (não usa `video_id`, conteúdo vem do perfil raspado) — fora do escopo desta sessão.

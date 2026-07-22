@@ -52,6 +52,8 @@ interface Campaign {
   created_at: string;
   is_clone?: boolean;
   is_automation?: boolean;
+  is_synced?: boolean;
+  synced_folder_names?: string[];
 }
 
 // ── Campaign helpers ────────────────────────────────────────────────────────
@@ -684,6 +686,15 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {campaign.is_synced && (
+                    <span
+                      title={`Contas novas em ${(campaign.synced_folder_names ?? []).join(", ")} entram automaticamente`}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold border whitespace-nowrap bg-[#00E5FF]/10 text-[#00E5FF] border-[#00E5FF]/20"
+                    >
+                      <RefreshCw size={9} />
+                      Sincronizada
+                    </span>
+                  )}
                   <span className={cn("flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold border whitespace-nowrap", statusCls, statusBorder)}>
                     {statusLabel === "Concluída"  && <CheckCircle2 size={9} />}
                     {statusLabel === "Na Fila"    && <Clock size={9} />}
@@ -823,6 +834,7 @@ export default function PostarPage() {
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [accountsWithCampaign, setAccountsWithCampaign] = useState<Set<string>>(new Set());
+  const [syncFolders, setSyncFolders] = useState(false);
 
   // Folder
   const [folders, setFolders] = useState<FolderItem[]>([]);
@@ -922,6 +934,15 @@ export default function PostarPage() {
     return groups;
   }, [accounts]);
 
+  // Pastas com TODAS as contas atualmente selecionadas — só essas podem ser
+  // sincronizadas (contas novas nelas entram sozinhas na campanha depois).
+  const fullySelectedFolders = useMemo(() => {
+    return accountsByFolder.filter(g => {
+      if (g.id === "__no_folder__" || g.accounts.length === 0) return false;
+      return g.accounts.every(a => selectedAccountIds.includes(a.id));
+    });
+  }, [accountsByFolder, selectedAccountIds]);
+
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const toggleAccount = (id: string) =>
@@ -967,6 +988,7 @@ export default function PostarPage() {
           auto_caption_type: autoCaptionEnabled ? autoCaptionType : undefined,
           account_stagger_seconds: accountStaggerSeconds,
           burst_mode: burstMode,
+          sync_folder_ids: syncFolders ? fullySelectedFolders.map(g => g.id) : [],
         }),
       });
 
@@ -990,6 +1012,7 @@ export default function PostarPage() {
       setCaptions(["", ""]);
       setAccountStaggerSeconds(null);
       setBurstMode(false);
+      setSyncFolders(false);
 
       setSuccess({
         total_posts: data.total_posts ?? 0,
@@ -1019,6 +1042,7 @@ export default function PostarPage() {
     setCaptions(["", ""]);
     setAccountStaggerSeconds(null);
     setBurstMode(false);
+    setSyncFolders(false);
     setActiveTab("create");
   };
 
@@ -1232,6 +1256,35 @@ export default function PostarPage() {
                 <p className="mt-3 text-xs text-[#00FF41]/60 font-mono">
                   {selectedAccountIds.length} conta{selectedAccountIds.length !== 1 ? "s" : ""} selecionada{selectedAccountIds.length !== 1 ? "s" : ""}
                 </p>
+              )}
+
+              {fullySelectedFolders.length > 0 && (
+                <div className="mt-3 p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02]">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <RefreshCw size={13} className="text-[#00E5FF] flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-white/80">Sincronizar com a pasta</p>
+                        <p className="text-[10px] text-white/35 truncate">
+                          Contas adicionadas depois em {fullySelectedFolders.map(g => g.name).join(", ")} entram na fila sozinhas
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSyncFolders(v => !v)}
+                      className={cn(
+                        "relative w-11 h-6 rounded-full transition-colors flex-shrink-0",
+                        syncFolders ? "bg-[#00E5FF]/80" : "bg-white/10"
+                      )}
+                    >
+                      <span className={cn(
+                        "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform",
+                        syncFolders ? "translate-x-5" : "translate-x-0"
+                      )} />
+                    </button>
+                  </div>
+                </div>
               )}
             </SectionCard>
 

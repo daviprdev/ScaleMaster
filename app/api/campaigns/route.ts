@@ -26,6 +26,8 @@ interface RpcRow {
 interface CampaignSummary extends RpcRow {
   campaign_status: "running" | "completed";
   is_automation: boolean;
+  is_synced: boolean;
+  synced_folder_names: string[];
 }
 
 export async function GET(req: NextRequest) {
@@ -65,6 +67,32 @@ export async function GET(req: NextRequest) {
     for (const r of (autoRows ?? []) as { id: string }[]) automationIds.add(r.id);
   }
 
+  // Campanhas do Postar sincronizadas com pasta(s) de contas — contas novas
+  // entram sozinhas via cron sync-distribute-accounts.
+  const syncedFolderNames = new Map<string, string[]>();
+  {
+    const { data: syncRows } = await (admin as any)
+      .from("distribute_campaigns")
+      .select("id, account_folder_ids")
+      .eq("user_id", user.id);
+    if (syncRows?.length) {
+      const allFolderIds = Array.from(new Set(
+        (syncRows as { id: string; account_folder_ids: string[] }[]).flatMap(r => r.account_folder_ids ?? [])
+      ));
+      let folderNameById = new Map<string, string>();
+      if (allFolderIds.length) {
+        const { data: folderRows } = await (admin as any)
+          .from("account_folders")
+          .select("id, name")
+          .in("id", allFolderIds);
+        folderNameById = new Map((folderRows ?? []).map((f: { id: string; name: string }) => [f.id, f.name]));
+      }
+      for (const r of syncRows as { id: string; account_folder_ids: string[] }[]) {
+        syncedFolderNames.set(r.id, (r.account_folder_ids ?? []).map(fid => folderNameById.get(fid) ?? "?"));
+      }
+    }
+  }
+
   let campaigns: CampaignSummary[] = ((data as RpcRow[]) ?? []).map(row => ({
     ...row,
     total: Number(row.total),
@@ -75,6 +103,8 @@ export async function GET(req: NextRequest) {
     account_ids: row.account_ids ?? [],
     campaign_status: (Number(row.pending) > 0 ? "running" : "completed") as "running" | "completed",
     is_automation: automationIds.has(row.campaign_id),
+    is_synced: syncedFolderNames.has(row.campaign_id),
+    synced_folder_names: syncedFolderNames.get(row.campaign_id) ?? [],
   })).sort((a, b) => {
     if (a.campaign_status !== b.campaign_status) {
       return a.campaign_status === "running" ? -1 : 1;
@@ -142,6 +172,14 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
   }
+
+  // Cancelar ou excluir a campanha encerra a sincronização com pasta — contas
+  // novas adicionadas depois não devem mais ser matriculadas automaticamente.
+  await (admin as any)
+    .from("distribute_campaigns")
+    .delete()
+    .eq("id", campaignId)
+    .eq("user_id", user.id);
 
   return NextResponse.json({ success: true });
 }
