@@ -1349,9 +1349,26 @@ export default function AccountsPage() {
         signal: AbortSignal.timeout(28_000),
       });
       if (res.ok) {
-        // fetchStories removido (2026-07-17): era uma varredura de TODAS as
-        // contas na Meta para o sync de UMA conta. A rota de refresh já
-        // persiste active_stories_count no banco; fetchAccounts reflete.
+        // fetchStories (varredura de TODAS as contas) removido do page-load em
+        // 2026-07-17. A rota de refresh já busca stories da própria conta e
+        // devolve no corpo da resposta — só precisamos refletir isso no
+        // storiesMap local pra badge do card acender, sem NENHUMA chamada
+        // extra à Meta.
+        try {
+          const data = await res.json() as {
+            active_stories_count?: number;
+            active_stories_expiring_first_at?: string | null;
+          };
+          if (typeof data.active_stories_count === "number") {
+            setStoriesMap(prev => ({
+              ...prev,
+              [id]: {
+                count: data.active_stories_count!,
+                expiring_first_at: data.active_stories_expiring_first_at ?? null,
+              },
+            }));
+          }
+        } catch { /* body já pode ter sido consumido ou não é JSON */ }
         await fetchAccounts();
         setNotification({ type: "success", message: "Conta sincronizada com sucesso." });
       } else {

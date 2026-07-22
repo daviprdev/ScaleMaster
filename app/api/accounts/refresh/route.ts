@@ -30,7 +30,7 @@ interface GraphMediaEdge {
 }
 
 interface GraphStoriesEdge {
-  data?: Array<{ id: string }>;
+  data?: Array<{ id: string; timestamp?: string }>;
   error?: { message: string; code: number };
 }
 
@@ -50,7 +50,7 @@ async function fetchMetaProfile(
   igId: string,
   token: string,
   proxy: ReturnType<typeof getProxyForAccount>
-): Promise<{ profile: GraphProfile; lastPostAt: string | null; activeStoriesCount: number }> {
+): Promise<{ profile: GraphProfile; lastPostAt: string | null; activeStoriesCount: number; activeStoriesExpiringFirstAt: string | null }> {
   const profileUrl =
     `${GRAPH}/${igId}` +
     `?fields=followers_count,media_count,name,profile_picture_url,username` +
@@ -59,11 +59,12 @@ async function fetchMetaProfile(
   const profileRes = await fetchViaProxy(profileUrl, proxy);
   const profile = (await profileRes.json()) as GraphProfile;
 
-  if (profile.error) return { profile, lastPostAt: null, activeStoriesCount: 0 };
+  if (profile.error) return { profile, lastPostAt: null, activeStoriesCount: 0, activeStoriesExpiringFirstAt: null };
 
   // Fetch most recent media timestamp and active stories in parallel (both non-critical)
   let lastPostAt: string | null = null;
   let activeStoriesCount = 0;
+  let activeStoriesExpiringFirstAt: string | null = null;
 
   await Promise.allSettled([
     // Last post timestamp
@@ -77,22 +78,29 @@ async function fetchMetaProfile(
       lastPostAt = mediaData.data?.[0]?.timestamp ?? null;
     })(),
 
-    // Active stories count — data.length is the only way to get this value
+    // Active stories count + earliest timestamp (mesmo request, campo extra —
+    // permite atualizar o badge de stories na tela sem chamada adicional à Meta).
     (async () => {
       const storiesUrl =
         `${GRAPH}/${igId}/stories` +
-        `?fields=id` +
+        `?fields=id,timestamp` +
         `&access_token=${encodeURIComponent(token)}`;
       const storiesRes = await fetchViaProxy(storiesUrl, proxy);
       if (!storiesRes.ok) return;
       const storiesData = (await storiesRes.json()) as GraphStoriesEdge;
       if (!storiesData.error && Array.isArray(storiesData.data)) {
         activeStoriesCount = storiesData.data.length;
+        const timestamps = storiesData.data.map((s) => s.timestamp).filter(Boolean) as string[];
+        if (timestamps.length > 0) {
+          activeStoriesExpiringFirstAt = timestamps.sort(
+            (a, b) => new Date(a).getTime() - new Date(b).getTime()
+          )[0];
+        }
       }
     })(),
   ]);
 
-  return { profile, lastPostAt, activeStoriesCount };
+  return { profile, lastPostAt, activeStoriesCount, activeStoriesExpiringFirstAt };
 }
 
 export async function POST(req: NextRequest) {
@@ -154,7 +162,7 @@ export async function POST(req: NextRequest) {
       { status: 502 }
     );
   }
-  const { profile, lastPostAt, activeStoriesCount } = profileResult;
+  const { profile, lastPostAt, activeStoriesCount, activeStoriesExpiringFirstAt } = profileResult;
 
   if (profile.error) {
     const code = profile.error.code;
@@ -234,5 +242,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, stats: update, active_stories_count: activeStoriesCount });
+  return NextResponse.json({
+    success: true,
+    stats: update,
+    active_stories_count: activeStoriesCount,
+    active_stories_expiring_first_at: activeStoriesExpiringFirstAt,
+  });
 }
