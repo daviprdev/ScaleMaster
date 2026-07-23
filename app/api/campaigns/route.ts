@@ -286,7 +286,7 @@ export async function PATCH(req: NextRequest) {
     const startTime = Date.now() + 30_000;
     const autoType = (body.auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
 
-    const updates: { id: string; caption: string; scheduled_at: string }[] = [];
+    const updates: { id: string; user_id: string; caption: string; scheduled_at: string }[] = [];
     accountIds.forEach((accId, ai) => {
       const staggerMs = staggerSeconds != null ? ai * staggerSeconds * 1_000 : ai * autoStaggerMs;
       const accRows = byAccount.get(accId)!;
@@ -295,7 +295,14 @@ export async function PATCH(req: NextRequest) {
         const caption = isAutoCaption
           ? getAutoCaption(autoType)
           : validCaptions[Math.floor(Math.random() * validCaptions.length)];
-        updates.push({ id: row.id, caption, scheduled_at: scheduledAt });
+        // user_id é NOT NULL sem default na tabela — mesmo resolvendo por
+        // ON CONFLICT DO UPDATE, o Postgres valida a linha do INSERT contra
+        // as constraints da tabela antes de decidir o conflito, então
+        // omitir uma coluna NOT NULL derruba o upsert inteiro (já vimos
+        // "null value in column user_id violates not-null constraint" em
+        // produção). O valor é sempre o mesmo já existente na linha (as
+        // pendingRows já vieram filtradas por user_id = user.id acima).
+        updates.push({ id: row.id, user_id: user.id, caption, scheduled_at: scheduledAt });
       });
     });
 
