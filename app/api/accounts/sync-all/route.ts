@@ -256,9 +256,46 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       // non-critical
     }
 
+    // Fetch active stories (non-critical) — sempre, mesmo no sync silencioso.
+    // Antes só a rota de sync individual (/api/accounts/refresh) buscava isso,
+    // então o botão "Sincronizar Todas" nunca atualizava o badge de stories dos
+    // cards mesmo depois de rodar com sucesso (bug reportado pelo usuário).
+    let activeStoriesCount = 0;
+    let activeStoriesExpiringFirstAt: string | null = null;
+    try {
+      const storiesUrl =
+        `${GRAPH}/${acc.ig_business_account_id}/stories` +
+        `?fields=id,timestamp` +
+        `&access_token=${encodeURIComponent(activeToken)}`;
+      const storiesRes = await undiciFetch(
+        storiesUrl,
+        proxyInit(proxy, { signal: AbortSignal.timeout(15_000) }) as any
+      );
+      if (storiesRes.ok) {
+        const storiesData = (await storiesRes.json()) as {
+          data?: Array<{ id: string; timestamp?: string }>;
+          error?: unknown;
+        };
+        if (!storiesData.error && Array.isArray(storiesData.data)) {
+          activeStoriesCount = storiesData.data.length;
+          const timestamps = storiesData.data.map((s) => s.timestamp).filter(Boolean) as string[];
+          if (timestamps.length > 0) {
+            activeStoriesExpiringFirstAt = timestamps.sort(
+              (a, b) => new Date(a).getTime() - new Date(b).getTime()
+            )[0];
+          }
+        }
+      }
+    } catch {
+      // non-critical
+    }
+
     const update: Record<string, unknown> = {
       followers_count: (data.followers_count as number) ?? 0,
       posts_count: (data.media_count as number) ?? 0,
+      has_active_stories: activeStoriesCount > 0,
+      active_stories_count: activeStoriesCount,
+      active_stories_expiring_first_at: activeStoriesExpiringFirstAt,
       profile_refreshed_at: new Date().toISOString(),
     };
     if (lastPostAt) update.last_post_at = lastPostAt;
