@@ -115,8 +115,12 @@ export async function GET(req: NextRequest) {
       if (!type) { allMatched = false; break; }
       votes.set(type, (votes.get(type) ?? 0) + 1);
     }
-    if (allMatched && votes.size > 0) {
-      inferredAutoType = [...votes.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    if (allMatched && votes.size > 1) {
+      // Legendas batem com mais de um pool automático — a campanha estava
+      // sorteando entre tipos (modo "variado"), não usando um tipo fixo.
+      inferredAutoType = "variado";
+    } else if (allMatched && votes.size === 1) {
+      inferredAutoType = [...votes.entries()][0][0];
     }
   }
 

@@ -123,12 +123,14 @@ const AUTO_CAPTION_TYPES_CLONE = [
   { id: "curiosidades-gerais", label: "Curiosidades Gerais", emoji: "💡", desc: "Fatos do dia a dia" },
   { id: "curiosidades-tops",   label: "Curiosidades Tops",   emoji: "🏆", desc: "Fatos virais" },
   { id: "fatos-complexos",     label: "Fatos Complexos",     emoji: "🔬", desc: "Ciência acessível" },
+  { id: "variado",             label: "Variado",             emoji: "🔀", desc: "Sorteia entre os 3 tipos" },
 ] as const;
 
 const AUTO_CAPTION_PREVIEWS_CLONE: Record<string, string> = {
   "curiosidades-gerais": "🍯 O mel nunca estraga. Arqueólogos encontraram potes com mais de 3.000 anos nas pirâmides do Egito — e ainda estavam comestíveis!",
   "curiosidades-tops":   "🤯 INACREDITÁVEL: Você existe porque TODOS os seus ancestrais sobreviveram e tiveram filhos desde o início da vida na Terra!",
   "fatos-complexos":     "🧠 A memória humana não funciona como um HD. Cada vez que você se lembra de algo, reconstrói a memória do zero — e a modifica.",
+  "variado":             "🔀 Cada legenda sorteada vem de um tipo diferente — mistura os 3 tipos ao longo da campanha.",
 };
 
 const HISTORY_KEY = "clone_history_v1";

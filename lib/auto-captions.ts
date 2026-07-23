@@ -4,7 +4,8 @@
 export type AutoCaptionType =
   | "curiosidades-gerais"
   | "curiosidades-tops"
-  | "fatos-complexos";
+  | "fatos-complexos"
+  | "variado";
 
 export const AUTO_CAPTION_TYPES = [
   {
@@ -24,6 +25,12 @@ export const AUTO_CAPTION_TYPES = [
     label: "Fatos Complexos",
     emoji: "🔬",
     desc: "Ciência e filosofia acessíveis",
+  },
+  {
+    id: "variado" as AutoCaptionType,
+    label: "Variado",
+    emoji: "🔀",
+    desc: "Sorteia entre os 3 tipos a cada legenda",
   },
 ] as const;
 
@@ -281,6 +288,9 @@ function getPool(type: AutoCaptionType): string[] {
   switch (type) {
     case "curiosidades-tops":    return CURIOSIDADES_TOPS;
     case "fatos-complexos":      return FATOS_COMPLEXOS;
+    // "variado" mistura os 3 pools — cada legenda sorteada (getAutoCaption)
+    // ou cada posição embaralhada (getUniqueCaptions) pode vir de qualquer tipo.
+    case "variado":               return [...CURIOSIDADES_GERAIS, ...CURIOSIDADES_TOPS, ...FATOS_COMPLEXOS];
     case "curiosidades-gerais":
     default:                     return CURIOSIDADES_GERAIS;
   }

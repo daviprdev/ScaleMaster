@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getAutoCaption } from "@/lib/auto-captions";
+import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -247,7 +247,7 @@ export async function GET(req: NextRequest) {
 
       // Caption: automática ou do pool manual
       const caption = automation.auto_caption_enabled && automation.auto_caption_type
-        ? getAutoCaption(automation.auto_caption_type as "curiosidades-gerais" | "curiosidades-tops" | "fatos-complexos")
+        ? getAutoCaption(automation.auto_caption_type as AutoCaptionType)
         : captionPool.length
           ? captionPool[Math.floor(Math.random() * captionPool.length)]
           : "";
