@@ -167,14 +167,17 @@ async function containerAlreadyExists(
   admin: ReturnType<typeof getSupabaseAdmin>,
   loopId: string,
   accountId: string,
-  _windowStartIso: string // mantido na assinatura para compatibilidade, mas não usado
+  cycleNumber: number
 ): Promise<boolean> {
   const { data } = await (admin as any)
     .from("pending_containers")
     .select("id")
     .eq("loop_id", loopId)
     .eq("account_id", accountId)
-    .in("status", ["pending", "publishing"])
+    // in-flight (qualquer ciclo) OU já publicado NESTE ciclo — permite retry
+    // seguro do mesmo ciclo (ver AUTO-HEALING de conclusão parcial) sem
+    // duplicar post de uma conta que já foi atendida.
+    .or(`status.in.(pending,publishing),and(status.eq.published,cycle_number.eq.${cycleNumber})`)
     .limit(1)
     .maybeSingle();
   return data !== null;
@@ -608,6 +611,10 @@ async function processOneLoop(
 
   let loopClaimMade = false;
   let loopContainersCreated = 0;
+  // Contas que DEVERIAM ter recebido container neste ciclo (kind "ready" ou
+  // "already_done" na FASE 2a) — usado para distinguir ciclo completo de
+  // ciclo parcial no AUTO-HEALING (ver finally abaixo).
+  let loopReadyCount = 0;
   // Hoisted: newCyclesDone e isComplete precisam ser acessíveis no finally para revert do CLAIM.
   let newCyclesDone = loop.cycles_done + 1;
   let isComplete = false;
@@ -848,7 +855,7 @@ async function processOneLoop(
           return { kind: "skip", account, reason: "sem vídeo pré-atribuído" };
         }
 
-        const alreadyDone = await containerAlreadyExists(admin, loop.id, account.id, windowStartIso);
+        const alreadyDone = await containerAlreadyExists(admin, loop.id, account.id, newCyclesDone);
         if (alreadyDone) return { kind: "already_done", account };
 
         // Parse captions (isolado por conta — sem estado compartilhado)
@@ -984,9 +991,11 @@ async function processOneLoop(
       if (prep.kind === "already_done") {
         console.log(`[loop-cron] ⚡ @${prep.account.username}: container já existe — idempotente.`);
         containersCreated++;
+        loopReadyCount++;
         continue;
       }
 
+      loopReadyCount++;
       const { account, assignment, caption, videoUrl } = prep;
 
       // Jitter 1–3s anti-burst a partir da segunda conta TENTADA (independe de sucesso).
@@ -1146,16 +1155,24 @@ async function processOneLoop(
     console.error(`[loop-cron] ✗ Erro inesperado no loop "${loop.name}": ${loopErrMsg}`);
     return "error";
   } finally {
-    if (loopClaimMade && loopContainersCreated === 0) {
-      // Nenhum container criado — reverte o CLAIM para que o loop seja elegível
-      // novamente no próximo minuto.
-      // - Se pipelineActive=true (jobs FFmpeg enfileirados): verifica a cada minuto
-      //   se process-videos terminou, em vez de esperar o intervalo inteiro (bug anterior).
-      // - Se pipelineActive=false (sem jobs ativos): mantém o comportamento original
-      //   de retry imediato.
-      const reason = loopPipelineActive ? "aguardando process-videos" : "pipeline inativo";
+    // Reverte o CLAIM (last_posted_at/cycles_done) sempre que o ciclo NÃO
+    // terminou completo — seja 0 containers, seja parcial (ex: 2 de 44 contas,
+    // as demais paradas por rate-limit/erro/timeout do runtime). Sem isso, um
+    // sucesso parcial travava o loop inteiro pelo `interval_minutes` completo
+    // enquanto a maioria das contas nunca chegava a receber container nenhum
+    // — o loop "avançava" ~1-2 contas por hora em vez de processar o lote
+    // inteiro a cada ciclo. containerAlreadyExists() agora bloqueia por
+    // cycle_number, então o retry no próximo minuto é seguro: contas já
+    // publicadas NESTE ciclo não recebem um segundo container.
+    const cycleIncomplete = loopContainersCreated < loopReadyCount;
+    if (loopClaimMade && (loopContainersCreated === 0 || cycleIncomplete)) {
+      const reason = loopPipelineActive
+        ? "aguardando process-videos"
+        : cycleIncomplete
+          ? `ciclo parcial (${loopContainersCreated}/${loopReadyCount} contas prontas)`
+          : "pipeline inativo";
       console.warn(
-        `[AUTO-HEALING] Loop "${loop.name}" (${loop.id}): CLAIM revertido — 0 containers (${reason}).`
+        `[AUTO-HEALING] Loop "${loop.name}" (${loop.id}): CLAIM revertido — ${reason}.`
       );
       try {
         const revertPayload: Record<string, unknown> = {
