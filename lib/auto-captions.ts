@@ -259,6 +259,20 @@ export function getUniqueCaptions(type: AutoCaptionType, count: number): string[
   return result.slice(0, count);
 }
 
+/**
+ * Identifica se uma legenda pertence a um dos pools automáticos (match exato).
+ * Usado para inferir, a partir de posts já criados, se uma campanha estava
+ * usando legendas automáticas e de qual tipo — sem precisar de config salva.
+ */
+export function matchAutoCaptionType(caption: string): AutoCaptionType | null {
+  const trimmed = caption.trim();
+  if (!trimmed) return null;
+  for (const type of ["curiosidades-gerais", "curiosidades-tops", "fatos-complexos"] as AutoCaptionType[]) {
+    if (getPool(type).includes(trimmed)) return type;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers internos
 // ---------------------------------------------------------------------------

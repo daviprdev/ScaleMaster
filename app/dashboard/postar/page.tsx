@@ -6,7 +6,7 @@ import {
   Users, Film, CalendarDays, Send, FolderOpen, X, Check,
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
   Shuffle, Zap, List, Library, Save, BookMarked, BarChart2,
-  RefreshCw, ChevronDown, Sparkles,
+  RefreshCw, ChevronDown, Sparkles, Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -524,6 +524,292 @@ function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: R
   );
 }
 
+// ── EditCampaignModal ────────────────────────────────────────────────────────
+// Edita legendas (manual ou automática) e cadência de uma campanha ativa
+// criada no Postar. Só afeta posts ainda 'pending' — o horário deles é
+// recalculado a partir de agora com a nova cadência; posts já publicados
+// não são tocados. Ao abrir, busca em /api/campaigns/edit-info a config
+// exata usada na criação (campanhas sincronizadas com pasta) ou, na
+// ausência dela, reconstrói a melhor estimativa a partir dos posts já criados.
+
+type AutoCaptionTypeId = typeof AUTO_CAPTION_TYPES_POSTAR[number]["id"];
+
+function EditCampaignModal({
+  campaign,
+  onClose,
+  onSaved,
+}: {
+  campaign: Campaign | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [loadingInfo, setLoadingInfo] = useState(false);
+  const [captionMode, setCaptionMode] = useState<"manual" | "auto">("manual");
+  const [captionsText, setCaptionsText] = useState("");
+  const [autoCaptionType, setAutoCaptionType] = useState<AutoCaptionTypeId>("curiosidades-gerais");
+  const [postsPerDay, setPostsPerDay] = useState(4);
+  const [staggerSeconds, setStaggerSeconds] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!campaign) return;
+    let cancelled = false;
+    setError(null);
+    setLoadingInfo(true);
+    fetch(`/api/campaigns/edit-info?campaign_id=${encodeURIComponent(campaign.campaign_id)}`)
+      .then(res => res.json())
+      .then((d: {
+        caption_mode?: "manual" | "auto";
+        captions?: string[];
+        auto_caption_type?: AutoCaptionTypeId;
+        posts_per_day?: number;
+        account_stagger_seconds?: number | null;
+        error?: string;
+      }) => {
+        if (cancelled) return;
+        if (d.error) { setError(d.error); return; }
+        setCaptionMode(d.caption_mode ?? "manual");
+        setCaptionsText((d.captions ?? []).join("\n"));
+        setAutoCaptionType(d.auto_caption_type ?? "curiosidades-gerais");
+        setPostsPerDay(d.posts_per_day ?? 4);
+        setStaggerSeconds(d.account_stagger_seconds ?? null);
+      })
+      .catch(() => { if (!cancelled) setError("Não foi possível carregar a configuração atual."); })
+      .finally(() => { if (!cancelled) setLoadingInfo(false); });
+    return () => { cancelled = true; };
+  }, [campaign?.campaign_id]);
+
+  if (!campaign) return null;
+
+  const intervalHint = (n: number) => {
+    const mins = Math.max(1, Math.floor((24 * 60) / n));
+    return mins >= 60 ? `${Math.floor(mins / 60)}h` : `${mins}min`;
+  };
+
+  const handleSave = async () => {
+    setError(null);
+    const captions = captionsText.split("\n").map(c => c.trim()).filter(Boolean);
+    if (captionMode === "manual" && captions.length === 0) {
+      setError("Informe ao menos uma legenda.");
+      return;
+    }
+    if (!postsPerDay || postsPerDay < 1 || postsPerDay > 1440) {
+      setError("Posts por dia deve ser entre 1 e 1440.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/campaigns", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaign_id: campaign.campaign_id,
+          caption_mode: captionMode,
+          captions: captionMode === "manual" ? captions : undefined,
+          auto_caption_type: captionMode === "auto" ? autoCaptionType : undefined,
+          posts_per_day: postsPerDay,
+          account_stagger_seconds: staggerSeconds,
+        }),
+      });
+      const d = await res.json() as { error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Erro ao salvar edição.");
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao salvar edição.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      {campaign && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            className="glass relative w-full max-w-lg rounded-2xl border border-white/10 p-6 z-10 max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-lg font-bold text-white">Editar campanha</h2>
+              <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-[11px] text-white/30 mb-5 font-mono">#{campaign.campaign_id.slice(0, 8).toUpperCase()}</p>
+
+            {loadingInfo ? (
+              <div className="flex items-center justify-center py-16 gap-2 text-white/30 text-sm">
+                <Loader2 size={16} className="animate-spin" /> Carregando configuração atual...
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {campaign.pending === 0 ? (
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
+                    <AlertCircle size={14} className="flex-shrink-0" />
+                    Essa campanha não tem posts pendentes — nada será reagendado, mas a configuração é salva para futuras contas sincronizadas.
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-white/35 leading-relaxed">
+                    As mudanças abaixo valem só para os{" "}
+                    <span className="text-white/60 font-medium">{campaign.pending} posts pendentes</span> desta campanha —
+                    posts já publicados não mudam. Os horários são recalculados a partir de agora com a nova cadência.
+                  </p>
+                )}
+
+                {/* Cadência */}
+                <div>
+                  <label className="block text-xs text-white/50 mb-2 font-medium uppercase tracking-wider">Posts por dia por conta</label>
+                  <div className="flex flex-wrap gap-2">
+                    {POSTS_PER_DAY_OPTIONS.map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setPostsPerDay(n)}
+                        title={`Intervalo: ~${intervalHint(n)} entre posts`}
+                        className={cn(
+                          "flex flex-col items-center px-3.5 py-2 rounded-xl border transition-all",
+                          postsPerDay === n
+                            ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
+                            : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                        )}
+                      >
+                        <span className="text-sm font-bold leading-none">{n}</span>
+                        <span className="text-[9px] opacity-50 mt-0.5 leading-none">{intervalHint(n)}</span>
+                      </button>
+                    ))}
+                    <input
+                      type="number"
+                      min={1}
+                      max={1440}
+                      value={postsPerDay}
+                      onChange={e => {
+                        const v = parseInt(e.target.value, 10);
+                        if (!isNaN(v) && v >= 1) setPostsPerDay(Math.min(v, 1440));
+                      }}
+                      className="w-20 px-3 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm text-center focus:outline-none focus:border-[#00E5FF]/40 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Stagger entre contas */}
+                <div>
+                  <label className="block text-xs text-white/50 mb-2 font-medium uppercase tracking-wider">Intervalo entre contas</label>
+                  <div className="space-y-2.5 p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-white/40">Auto</span>
+                      <span className={cn("text-sm font-bold", staggerSeconds ? "text-[#00FF41]" : "text-white/30")}>
+                        {staggerSeconds ? `${staggerSeconds}s` : "Automático"}
+                      </span>
+                      <span className="text-xs text-white/40">5 min</span>
+                    </div>
+                    <input
+                      type="range" min={0} max={300} step={5}
+                      value={staggerSeconds ?? 0}
+                      onChange={e => { const v = Number(e.target.value); setStaggerSeconds(v === 0 ? null : v); }}
+                      className="range-slider"
+                      style={{
+                        background: staggerSeconds
+                          ? `linear-gradient(to right, var(--matrix) 0%, var(--matrix) ${(staggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) ${(staggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) 100%)`
+                          : `linear-gradient(to right, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.08) 100%)`
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Legendas */}
+                <div className="p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02]">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <Sparkles size={13} style={{ color: "var(--matrix)" }} />
+                      <div>
+                        <p className="text-sm font-medium text-white/80">Legendas Automáticas</p>
+                        <p className="text-[10px] text-white/35">Curiosidades únicas em PT-BR por post</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCaptionMode(m => m === "auto" ? "manual" : "auto")}
+                      className={cn("relative w-11 h-6 rounded-full transition-all flex-shrink-0", captionMode === "auto" ? "bg-[#00FF41]" : "bg-white/10")}
+                    >
+                      <span className={cn("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all", captionMode === "auto" ? "left-[22px]" : "left-0.5")} />
+                    </button>
+                  </div>
+
+                  <AnimatePresence initial={false} mode="wait">
+                    {captionMode === "auto" ? (
+                      <motion.div key="auto" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
+                        <div className="grid grid-cols-3 gap-2 mt-3">
+                          {AUTO_CAPTION_TYPES_POSTAR.map(t => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => setAutoCaptionType(t.id)}
+                              className={cn(
+                                "p-2.5 rounded-xl border text-left transition-all",
+                                autoCaptionType === t.id ? "border-[#00FF41]/40 bg-[#00FF41]/[0.06]" : "border-white/[0.07] hover:border-white/20"
+                              )}
+                            >
+                              <span className="text-sm">{t.emoji}</span>
+                              <p className="text-[10px] font-medium text-white/80 mt-1 leading-tight">{t.label}</p>
+                              <p className="text-[9px] text-white/35 mt-0.5 leading-tight">{t.desc}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div key="manual" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
+                        <textarea
+                          value={captionsText}
+                          onChange={e => setCaptionsText(e.target.value)}
+                          rows={5}
+                          placeholder={"Uma legenda por linha...\nSorteada aleatoriamente em cada post."}
+                          className="w-full mt-3 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm placeholder-white/20 resize-none focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all leading-relaxed"
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {error && (
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                    <AlertCircle size={13} className="flex-shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all bg-[#00FF41] text-black hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                    {saving ? "Salvando..." : "Salvar edição"}
+                  </button>
+                  <button
+                    onClick={onClose}
+                    disabled={saving}
+                    className="px-5 py-3 rounded-xl text-sm text-white/50 hover:text-white/80 border border-white/10 hover:border-white/20 transition-all disabled:opacity-40"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 // ── CampaignsList ──────────────────────────────────────────────────────────
 
 function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreateNew: () => void }) {
@@ -534,6 +820,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [expandedError, setExpandedError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [editCampaign, setEditCampaign] = useState<Campaign | null>(null);
 
   const fetchCampaigns = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -614,6 +901,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
   void tick;
 
   return (
+    <>
     <div className="max-w-3xl mx-auto">
       {/* Header row */}
       <div className="flex items-center justify-between mb-5">
@@ -702,6 +990,13 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                     {statusLabel === "Atrasada"   && <AlertCircle size={9} />}
                     {statusLabel}
                   </span>
+                  <button
+                    onClick={() => setEditCampaign(campaign)}
+                    title="Editar legendas e cadência"
+                    className="w-7 h-7 rounded-lg border flex items-center justify-center transition-all bg-white/[0.04] border-white/[0.08] text-white/25 hover:text-[#00E5FF] hover:border-[#00E5FF]/25"
+                  >
+                    <Pencil size={11} />
+                  </button>
                   <button
                     onClick={() => handleDelete(campaign.campaign_id)}
                     disabled={isDeleting}
@@ -820,6 +1115,12 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
         })}
       </div>
     </div>
+    <EditCampaignModal
+      campaign={editCampaign}
+      onClose={() => setEditCampaign(null)}
+      onSaved={() => { setEditCampaign(null); fetchCampaigns(true); }}
+    />
+    </>
   );
 }
 
