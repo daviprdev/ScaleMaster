@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Bot, Pencil, Trash2, X, ChevronDown, ChevronUp,
-  Folder, Film, Clock, Loader2, AlertCircle, Sparkles,
+  Folder, Film, Clock, Loader2, AlertCircle, Sparkles, Users, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -35,10 +35,54 @@ interface Automation {
   auto_caption_type: string | null;
   account_folders: { id: string; name: string }[];
   video_folders: { id: string; name: string }[];
+  account_count: number;
   pending_posts: number;
   published_today: number;
   next_post_at: string | null;
   created_at: string;
+}
+
+interface AccountDetail {
+  id: string;
+  username: string;
+  avatar_url: string | null;
+  health_status: string;
+  is_active: boolean;
+  published_today: number;
+  last_published_at: string | null;
+  pending: number;
+  next_scheduled_at: string | null;
+  failed_today: number;
+  last_error: string | null;
+  status: "publicado" | "na_fila" | "erro_conta" | "inativa" | "falhou" | "sem_atividade";
+}
+
+const ACCOUNT_STATUS_LABEL: Record<AccountDetail["status"], { label: string; color: string; bg: string }> = {
+  publicado:      { label: "Publicou hoje", color: "#00FF41", bg: "rgba(0,255,65,0.08)" },
+  na_fila:        { label: "Na fila",        color: "#00E5FF", bg: "rgba(0,229,255,0.08)" },
+  falhou:         { label: "Falhou hoje",    color: "#f87171", bg: "rgba(248,113,113,0.08)" },
+  erro_conta:     { label: "Conta com erro", color: "#f87171", bg: "rgba(248,113,113,0.08)" },
+  inativa:        { label: "Inativa",        color: "rgba(255,255,255,0.4)", bg: "rgba(255,255,255,0.04)" },
+  sem_atividade:  { label: "Sem atividade",  color: "rgba(255,255,255,0.5)", bg: "rgba(255,255,255,0.04)" },
+};
+
+function formatRelative(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = d.getTime() - now.getTime();
+  const past = diffMs < 0;
+  const diffMin = Math.round(Math.abs(diffMs) / 60000);
+  let label: string;
+  if (diffMin < 1) label = "agora";
+  else if (diffMin < 60) label = `${diffMin} min`;
+  else {
+    const h = Math.floor(diffMin / 60);
+    const rem = diffMin % 60;
+    label = `${h}h${rem > 0 ? ` ${rem}min` : ""}`;
+  }
+  if (label === "agora") return "agora";
+  return past ? `há ${label}` : `em ${label}`;
 }
 
 function formatNextPost(iso: string | null): string {
@@ -443,13 +487,160 @@ function AutomationModal({
   );
 }
 
+const ACCOUNT_FILTERS = [
+  { id: "todas", label: "Todas" },
+  { id: "publicado", label: "Publicaram" },
+  { id: "na_fila", label: "Na fila" },
+  { id: "sem_atividade", label: "Sem atividade" },
+  { id: "erro_conta", label: "Com erro" },
+] as const;
+
+function AccountsDetailModal({
+  open, onClose, automationId, automationName,
+}: {
+  open: boolean; onClose: () => void;
+  automationId: string | null; automationName: string;
+}) {
+  const [accounts, setAccounts] = useState<AccountDetail[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<typeof ACCOUNT_FILTERS[number]["id"]>("todas");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    if (!open || !automationId) return;
+    setLoading(true);
+    fetch(`/api/automations/${automationId}/accounts`)
+      .then((r) => r.json())
+      .then((d) => setAccounts(d.accounts ?? []))
+      .finally(() => setLoading(false));
+  }, [open, automationId]);
+
+  const filtered = accounts.filter((a) => {
+    if (filter !== "todas" && a.status !== filter) return false;
+    if (search && !a.username.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const counts = {
+    todas: accounts.length,
+    publicado: accounts.filter((a) => a.status === "publicado").length,
+    na_fila: accounts.filter((a) => a.status === "na_fila").length,
+    sem_atividade: accounts.filter((a) => a.status === "sem_atividade").length,
+    erro_conta: accounts.filter((a) => a.status === "erro_conta" || a.status === "inativa" || a.status === "falhou").length,
+  };
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            className="glass relative w-full max-w-2xl rounded-2xl border border-white/10 p-6 z-10 max-h-[85vh] flex flex-col"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-white">Contas — {automationName}</h2>
+                <p className="text-xs text-white/35 mt-0.5">
+                  {counts.publicado} publicaram hoje · {counts.na_fila} na fila · {counts.sem_atividade} sem atividade
+                </p>
+              </div>
+              <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 mb-3">
+              <div className="relative flex-1">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar @usuário..."
+                  className="input-glass w-full pl-8 pr-3 py-2 rounded-xl text-xs text-white placeholder-white/20"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+              {ACCOUNT_FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setFilter(f.id)}
+                  className={cn(
+                    "px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all",
+                    filter === f.id
+                      ? "bg-[#00FF41]/10 border-[#00FF41]/40 text-[#00FF41]"
+                      : "bg-white/[0.03] border-white/[0.08] text-white/45 hover:text-white/70"
+                  )}
+                >
+                  {f.label} ({counts[f.id]})
+                </button>
+              ))}
+            </div>
+
+            <div className="overflow-y-auto flex-1 -mx-2 px-2 space-y-1.5">
+              {loading ? (
+                <div className="flex items-center justify-center py-16">
+                  <Loader2 size={20} className="animate-spin text-white/30" />
+                </div>
+              ) : filtered.length === 0 ? (
+                <p className="text-center text-xs text-white/25 py-16">Nenhuma conta encontrada.</p>
+              ) : (
+                filtered.map((a) => {
+                  const s = ACCOUNT_STATUS_LABEL[a.status];
+                  return (
+                    <div key={a.id} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {a.avatar_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={a.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-white/10 flex-shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-white truncate">@{a.username}</p>
+                          <p className="text-[10px] text-white/30 mt-0.5">
+                            {a.status === "publicado" && `último post ${formatRelative(a.last_published_at)}`}
+                            {a.status === "na_fila" && `próximo ${formatRelative(a.next_scheduled_at)}`}
+                            {a.status === "falhou" && (a.last_error ? a.last_error.slice(0, 50) : "falha recente")}
+                            {a.status === "erro_conta" && "reconecte a conta"}
+                            {a.status === "inativa" && "ative na aba Contas"}
+                            {a.status === "sem_atividade" && "ainda não entrou no ciclo"}
+                          </p>
+                        </div>
+                      </div>
+                      <span
+                        className="text-[10px] font-semibold px-2 py-1 rounded-md flex-shrink-0"
+                        style={{ color: s.color, background: s.bg }}
+                      >
+                        {s.label}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 function AutomationCard({
-  automation, onEdit, onDelete, onToggle,
+  automation, onEdit, onDelete, onToggle, onShowAccounts,
 }: {
   automation: Automation;
   onEdit: () => void;
   onDelete: () => void;
   onToggle: () => void;
+  onShowAccounts: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -483,10 +674,14 @@ function AutomationCard({
             <h3 className="font-bold text-white text-sm truncate">{automation.name}</h3>
           </div>
           <p className="text-[11px] text-white/30">
-            {automation.active ? "Ativa" : "Pausada"} · {automation.pending_posts} post{automation.pending_posts !== 1 ? "s" : ""} na fila
+            {automation.active ? "Ativa" : "Pausada"} · {automation.account_count} conta{automation.account_count !== 1 ? "s" : ""} · {automation.pending_posts} post{automation.pending_posts !== 1 ? "s" : ""} na fila
           </p>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          <button onClick={onShowAccounts}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-white/35 hover:text-white hover:bg-white/[0.06] transition-all">
+            <Users size={13} />
+          </button>
           <button onClick={handleToggle} disabled={toggling}
             className={cn(
               "relative w-10 h-5.5 rounded-full transition-all",
@@ -523,15 +718,15 @@ function AutomationCard({
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-white/[0.03] rounded-xl p-3 text-center">
           <p className="text-lg font-bold text-[#00FF41]">{automation.posts_per_day}</p>
-          <p className="text-[10px] text-white/30 mt-0.5">posts/dia</p>
+          <p className="text-[10px] text-white/30 mt-0.5">posts/dia · conta</p>
         </div>
         <div className="bg-white/[0.03] rounded-xl p-3 text-center">
-          <p className="text-lg font-bold text-[#00E5FF]">{gapLabel(automation.posts_per_day)}</p>
-          <p className="text-[10px] text-white/30 mt-0.5">gap</p>
+          <p className="text-lg font-bold text-[#00E5FF]">{automation.posts_per_day * automation.account_count}</p>
+          <p className="text-[10px] text-white/30 mt-0.5">total/dia ({automation.account_count}c)</p>
         </div>
         <div className="bg-white/[0.03] rounded-xl p-3 text-center">
-          <p className="text-lg font-bold text-white/70">{automation.offset_seconds}s</p>
-          <p className="text-[10px] text-white/30 mt-0.5">offset</p>
+          <p className="text-lg font-bold text-white/70">{gapLabel(automation.posts_per_day)}</p>
+          <p className="text-[10px] text-white/30 mt-0.5">gap/conta</p>
         </div>
       </div>
 
@@ -564,15 +759,15 @@ function AutomationCard({
         {/* Barra de progresso */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] text-white/40">Progresso hoje</span>
+            <span className="text-[10px] text-white/40">Progresso hoje (todas as contas)</span>
             <span className="text-[10px] font-semibold text-white/60">
-              {automation.published_today} / {automation.posts_per_day} posts
+              {automation.published_today} / {automation.posts_per_day * automation.account_count} posts
             </span>
           </div>
           <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
             <motion.div
               initial={{ width: 0 }}
-              animate={{ width: `${Math.min(100, (automation.published_today / automation.posts_per_day) * 100)}%` }}
+              animate={{ width: `${Math.min(100, (automation.published_today / Math.max(1, automation.posts_per_day * automation.account_count)) * 100)}%` }}
               transition={{ duration: 0.8, ease: "easeOut" }}
               className="h-full rounded-full"
               style={{ background: "linear-gradient(90deg, #00FF41, #00E5FF)" }}
@@ -607,6 +802,7 @@ export default function AutomatizarPage() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Automation | null>(null);
+  const [accountsModal, setAccountsModal] = useState<{ id: string; name: string } | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -695,6 +891,7 @@ export default function AutomatizarPage() {
                 onEdit={() => { setEditing(a); setModalOpen(true); }}
                 onDelete={() => handleDelete(a.id)}
                 onToggle={() => handleToggle(a)}
+                onShowAccounts={() => setAccountsModal({ id: a.id, name: a.name })}
               />
             ))}
           </AnimatePresence>
@@ -720,6 +917,13 @@ export default function AutomatizarPage() {
         accountFolders={accountFolders}
         videoFolders={videoFolders}
         onSaved={loadAll}
+      />
+
+      <AccountsDetailModal
+        open={!!accountsModal}
+        onClose={() => setAccountsModal(null)}
+        automationId={accountsModal?.id ?? null}
+        automationName={accountsModal?.name ?? ""}
       />
     </div>
   );

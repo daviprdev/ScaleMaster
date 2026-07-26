@@ -32,11 +32,34 @@ export async function GET() {
   ]);
 
   const afMap: Record<string, { id: string; name: string }[]> = {};
+  const folderIdsByAutomation: Record<string, string[]> = {};
   for (const row of (afRes.data ?? [])) {
     const f = (row as any).account_folders;
     if (!f) continue;
     if (!afMap[row.automation_id]) afMap[row.automation_id] = [];
     afMap[row.automation_id].push({ id: f.id, name: f.name });
+    if (!folderIdsByAutomation[row.automation_id]) folderIdsByAutomation[row.automation_id] = [];
+    folderIdsByAutomation[row.automation_id].push(row.folder_id);
+  }
+
+  // Conta contas ativas e sem erro por pasta (mesmo filtro que o cron aplica),
+  // para o front calcular total/dia = posts_per_day x account_count.
+  const allFolderIds = Array.from(new Set(Object.values(folderIdsByAutomation).flat()));
+  const accountCountByFolder: Record<string, number> = {};
+  if (allFolderIds.length) {
+    const { data: folderAccounts } = await admin
+      .from("instagram_accounts")
+      .select("folder_id")
+      .in("folder_id", allFolderIds)
+      .eq("is_active", true)
+      .neq("health_status", "error");
+    for (const row of (folderAccounts ?? [])) {
+      accountCountByFolder[row.folder_id] = (accountCountByFolder[row.folder_id] ?? 0) + 1;
+    }
+  }
+  const accountCountByAutomation: Record<string, number> = {};
+  for (const [autoId, fIds] of Object.entries(folderIdsByAutomation)) {
+    accountCountByAutomation[autoId] = fIds.reduce((sum, fid) => sum + (accountCountByFolder[fid] ?? 0), 0);
   }
 
   const vfMap: Record<string, { id: string; name: string }[]> = {};
@@ -76,6 +99,7 @@ export async function GET() {
     ...a,
     account_folders: afMap[a.id] ?? [],
     video_folders: vfMap[a.id] ?? [],
+    account_count: accountCountByAutomation[a.id] ?? 0,
     pending_posts: pendingCounts[a.id] ?? 0,
     published_today: publishedToday[a.id] ?? 0,
     next_post_at: nextPostAt[a.id] ?? null,
