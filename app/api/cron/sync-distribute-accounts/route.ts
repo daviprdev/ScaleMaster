@@ -12,7 +12,17 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 90;
+
+// Limite de contas novas matriculadas por execução, por campanha. Sem isso,
+// N contas ficando "novas" de uma vez (ex: primeira sincronização de uma
+// pasta com 62 contas, video_count=-1 = todos os vídeos) gera um insert
+// gigante numa função com budget curto — sob banco lento o insert não
+// termina a tempo, o lock expira, e a próxima execução reprocessa as MESMAS
+// contas do zero (foi exatamente essa cascata que gerou 667k linhas em
+// 2026-07-26). Limitando o lote, cada execução termina rápido e sobra
+// sempre para o próximo ciclo de 5 min continuar de onde parou.
+const MAX_NEW_ACCOUNTS_PER_RUN = 5;
 
 function fisherYates<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -102,11 +112,17 @@ export async function GET(req: NextRequest) {
         .limit(100000);
 
       const enrolledIds = new Set((enrolledRows ?? []).map((r: { account_id: string }) => r.account_id));
-      const newAccountIds = folderAccounts.map(a => a.id).filter(id => !enrolledIds.has(id));
-      if (!newAccountIds.length) continue;
+      const allNewAccountIds = folderAccounts.map(a => a.id).filter(id => !enrolledIds.has(id));
+      if (!allNewAccountIds.length) continue;
+
+      // Só uma fatia por execução — o restante fica para o próximo ciclo.
+      const newAccountIds = allNewAccountIds.slice(0, MAX_NEW_ACCOUNTS_PER_RUN);
 
       await processNewAccounts(admin, campaign, newAccountIds);
       totalEnrolled += newAccountIds.length;
+      if (allNewAccountIds.length > newAccountIds.length) {
+        console.log(`[sync-distribute-accounts] Campanha ${campaign.id}: +${newAccountIds.length} agora, ${allNewAccountIds.length - newAccountIds.length} restante(s) para o próximo ciclo.`);
+      }
     } finally {
       // Libera o lock assim que termina (sucesso ou erro). O TTL acima cobre
       // o caso da função ser encerrada à força pela Vercel antes do finally rodar.
