@@ -24,6 +24,16 @@ export const maxDuration = 90;
 // sempre para o próximo ciclo de 5 min continuar de onde parou.
 const MAX_NEW_ACCOUNTS_PER_RUN = 5;
 
+// TTL do lock DEVE ter margem folgada acima do schedule do cron (10 min).
+// Causa raiz da recaída de 2026-07-27 (campanha afeffe3a, 51k+ linhas): TTL
+// era exatamente igual ao intervalo do cron. Quando uma execução demorava
+// mais que 10 min (comum: enrolledRows escaneava TODA a campanha, que só
+// cresce), a invocação seguinte via o lock como "expirado" e reprocessava a
+// MESMA campanha em paralelo com a execução anterior ainda rodando — as duas
+// liam o mesmo estado "não matriculado" e inseriam o mesmo lote duas vezes,
+// ciclo que se auto-alimenta (campanha maior → scan mais lento → mais overlap).
+const LOCK_TTL_MINUTES = 30;
+
 function fisherYates<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -47,9 +57,6 @@ interface DistributeCampaignRow {
   burst_mode: boolean;
 }
 
-// TTL do lock: se uma execução travar (erro, timeout da função), o lock se
-// libera sozinho depois desse tempo em vez de bloquear a campanha para sempre.
-const LOCK_TTL_MINUTES = 10;
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -104,15 +111,30 @@ export async function GET(req: NextRequest) {
 
       if (!folderAccounts?.length) continue;
 
-      // Contas já matriculadas nesta campanha (qualquer post já criado para ela)
-      const { data: enrolledRows } = await admin
+      const folderAccountIds = folderAccounts.map(a => a.id);
+
+      // Contas já matriculadas nesta campanha (qualquer post já criado para ela).
+      // Escopado com .in(account_id, folderAccountIds) em vez de escanear TODA a
+      // campanha por campaign_id: a campanha só cresce (chega a dezenas de
+      // milhares de linhas), então um scan completo a cada execução ficava cada
+      // vez mais lento — a raiz do bug de 2026-07-27 (ver LOCK_TTL_MINUTES acima).
+      // Escopar pelas contas da pasta mantém a query com tamanho fixo e pequeno.
+      const { data: enrolledRows, error: enrolledErr } = await admin
         .from("scheduled_posts")
         .select("account_id")
         .eq("campaign_id", campaign.id)
-        .limit(100000);
+        .in("account_id", folderAccountIds);
+
+      if (enrolledErr) {
+        // NUNCA tratar erro de query como "ninguém matriculado ainda" — isso
+        // reinsere contas que já têm posts. Pula a campanha neste ciclo e
+        // tenta de novo no próximo (o lock já foi liberado no finally).
+        console.error(`[sync-distribute-accounts] Campanha ${campaign.id}: falha ao checar contas matriculadas, pulando ciclo: ${enrolledErr.message}`);
+        continue;
+      }
 
       const enrolledIds = new Set((enrolledRows ?? []).map((r: { account_id: string }) => r.account_id));
-      const allNewAccountIds = folderAccounts.map(a => a.id).filter(id => !enrolledIds.has(id));
+      const allNewAccountIds = folderAccountIds.filter(id => !enrolledIds.has(id));
       if (!allNewAccountIds.length) continue;
 
       // Só uma fatia por execução — o restante fica para o próximo ciclo.
