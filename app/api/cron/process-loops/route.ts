@@ -1157,15 +1157,23 @@ async function processOneLoop(
   } finally {
     // Reverte o CLAIM (last_posted_at/cycles_done) sempre que o ciclo NÃO
     // terminou completo — seja 0 containers, seja parcial (ex: 2 de 44 contas,
-    // as demais paradas por rate-limit/erro/timeout do runtime). Sem isso, um
-    // sucesso parcial travava o loop inteiro pelo `interval_minutes` completo
-    // enquanto a maioria das contas nunca chegava a receber container nenhum
-    // — o loop "avançava" ~1-2 contas por hora em vez de processar o lote
-    // inteiro a cada ciclo. containerAlreadyExists() agora bloqueia por
+    // as demais paradas por rate-limit/erro/timeout do runtime), seja pipeline
+    // de efeitos ainda ativo (contas aguardando o FFmpeg do process-videos).
+    // Sem isso, um sucesso parcial travava o loop inteiro pelo `interval_minutes`
+    // completo enquanto a maioria das contas nunca chegava a receber container
+    // nenhum — o loop "avançava" ~1-2 contas por hora em vez de processar o
+    // lote inteiro a cada ciclo. containerAlreadyExists() agora bloqueia por
     // cycle_number, então o retry no próximo minuto é seguro: contas já
     // publicadas NESTE ciclo não recebem um segundo container.
+    //
+    // Bug corrigido em 2026-07-27: loopPipelineActive já era usado no texto do
+    // motivo de revert mas nunca entrava na condição do if — um loop com efeito
+    // criativo ativo e muitas contas (ex: 74) commitava o CLAIM assim que as poucas
+    // contas com job 'done' terminassem, mesmo com dezenas ainda 'queued' — essas
+    // ficavam travadas até o próximo `interval_minutes` inteiro (1h), quando o
+    // certo era tentar de novo a cada ciclo do cron até TODAS terem sido tentadas.
     const cycleIncomplete = loopContainersCreated < loopReadyCount;
-    if (loopClaimMade && (loopContainersCreated === 0 || cycleIncomplete)) {
+    if (loopClaimMade && (loopContainersCreated === 0 || cycleIncomplete || loopPipelineActive)) {
       const reason = loopPipelineActive
         ? "aguardando process-videos"
         : cycleIncomplete
