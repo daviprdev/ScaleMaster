@@ -1,17 +1,25 @@
 ﻿/**
  * /api/cron/process-videos
  *
- * Processa jobs da fila video_processing_jobs em batches de BATCH_SIZE.
- * Cada job roda FFmpeg com parâmetros únicos por conta (processVideoForAccount).
+ * Processa jobs da fila video_processing_jobs até o orçamento de tempo (RUN_BUDGET_MS)
+ * se esgotar. Cada job roda FFmpeg com parâmetros únicos por conta (processVideoForAccount).
  *
  * Fluxo:
  *   1. Limpa jobs expirados
- *   2. Reclama BATCH_SIZE jobs queued → status='processing'
- *   3. Processa cada job sequencialmente (CPU completo por encode)
+ *   2. Reclama até FETCH_LIMIT jobs queued → status='processing'
+ *   3. Processa sequencialmente (CPU completo por encode) enquanto sobrar orçamento
  *   4. Atualiza status='done' com output_url ou status='error'
+ *   5. Jobs reclamados mas não alcançados (orçamento esgotou) voltam pra 'queued'
+ *      na hora — não esperam os 10min do auto-healing.
  *
  * Separado do process-loops para que o FFmpeg nunca bloqueie o fluxo de postagem.
- * Com 5 jobs × ~20s = ~100s por run, bem dentro do limite de 300s.
+ *
+ * Antes: BATCH_SIZE fixo de 5 job/run (~100s de um orçamento de 300s) — throughput
+ * de 60 vídeos/hora artificialmente baixo (loops com 70+ contas levavam >1h só na
+ * fila de FFmpeg). Fix (2026-07-27): processa até RUN_BUDGET_MS em vez de um teto
+ * fixo de jobs — usa o orçamento de 300s quase inteiro por run, sem mudar a
+ * frequência do cron (evita repetir o esgotamento de Disk IO do Supabase já visto
+ * com crons mais frequentes).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -21,7 +29,12 @@ import { processVideoForAccount } from "@/lib/video-effects";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const BATCH_SIZE = 5;
+// Candidatos buscados por run — teto alto, o limite real é o orçamento de tempo abaixo.
+const FETCH_LIMIT = 40;
+// Margem de segurança abaixo do maxDuration=300s: um job em andamento pode levar até
+// ~150s no pior caso (60s de download + 90s de timeout do FFmpeg), então paramos de
+// INICIAR novos jobs bem antes do limite para não estourar a função no meio de um encode.
+const RUN_BUDGET_MS = 200_000;
 
 interface JobRow {
   id:         string;
@@ -84,14 +97,14 @@ export async function GET(req: NextRequest) {
     console.warn("[process-videos] Falha no auto-healing:", String(e));
   }
 
-  // ── Busca e reclama BATCH_SIZE jobs ─────────────────────────────────────────
+  // ── Busca e reclama até FETCH_LIMIT jobs ────────────────────────────────────
   const { data: jobs, error: fetchErr } = await (admin as any)
     .from("video_processing_jobs")
     .select("id, account_id, video_id, source_url, effects, loop_id")
     .eq("status", "queued")
     .gt("expires_at", now.toISOString())
     .order("created_at", { ascending: true })
-    .limit(BATCH_SIZE);
+    .limit(FETCH_LIMIT);
 
   if (fetchErr) {
     console.error("[process-videos] Erro ao buscar jobs:", fetchErr.message);
@@ -110,13 +123,29 @@ export async function GET(req: NextRequest) {
     .update({ status: "processing" })
     .in("id", jobIds);
 
-  console.log(`[process-videos] Processando ${jobs.length} job(s)…`);
+  console.log(`[process-videos] ${jobs.length} job(s) reclamado(s), processando até o orçamento de tempo…`);
 
   let processed = 0;
   let errors    = 0;
+  const runStart = Date.now();
 
   // ── Processa sequencialmente: cada encode tem CPU completo ──────────────────
-  for (const job of jobs as JobRow[]) {
+  // Para de INICIAR novos jobs quando o orçamento estoura — o job em andamento
+  // (se houver) sempre termina antes do maxDuration matar a função.
+  for (let i = 0; i < (jobs as JobRow[]).length; i++) {
+    if (Date.now() - runStart > RUN_BUDGET_MS) {
+      const remaining = (jobs as JobRow[]).slice(i).map(j => j.id);
+      await (admin as any)
+        .from("video_processing_jobs")
+        .update({ status: "queued" })
+        .in("id", remaining);
+      console.log(
+        `[process-videos] ⏱️ Orçamento de tempo esgotado — ${remaining.length} job(s) devolvido(s) pra fila (sem esperar auto-healing).`
+      );
+      break;
+    }
+
+    const job = (jobs as JobRow[])[i];
     const start = Date.now();
     try {
       const outputUrl = await processVideoForAccount(
