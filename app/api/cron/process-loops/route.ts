@@ -707,6 +707,25 @@ async function processOneLoop(
     // 2a) PARALELO — idempotency + caption para contas com job done.
     // 2b) SEQUENCIAL — token refresh + criação de container Meta com jitter.
 
+    // ── Contas já resolvidas neste ciclo (idempotência antecipada) ────────────
+    // Sem isso, o pipeline de vídeo continuava enfileirando/aguardando job para
+    // contas que JÁ têm container publicado neste cycle_number — e como
+    // loopPipelineActive considera esse "aguardando" residual, o CLAIM nunca
+    // comitava enquanto sobrasse QUALQUER conta ainda no pipeline, mesmo com o
+    // restante do lote inteiro já publicado. Resultado em produção: 74/85 contas
+    // publicaram o post do ciclo 1, mas last_posted_at/cycles_done ficaram
+    // travados para sempre porque as outras 11 nunca saíam do pipeline — o loop
+    // nunca avançava pro ciclo 2 e parecia "parado" para as 74 já atendidas.
+    const { data: alreadyPostedRows } = await (admin as any)
+      .from("pending_containers")
+      .select("account_id")
+      .eq("loop_id", loop.id)
+      .in("account_id", validAccounts.map(a => a.id))
+      .or(`status.in.(pending,publishing),and(status.eq.published,cycle_number.eq.${newCyclesDone})`);
+    const alreadyPostedThisCycle = new Set<string>(
+      (alreadyPostedRows ?? []).map((r: { account_id: string }) => r.account_id)
+    );
+
     // ── PRÉ-FASE 2a: Check da fila de processamento ──────────────────────────
     // Busca jobs existentes (queued/processing/done) para todas as contas do loop.
     const { data: existingJobRows } = await (admin as any)
@@ -770,6 +789,11 @@ async function processOneLoop(
       for (const account of validAccounts) {
         const assignment  = videoAssignments.get(account.id);
         if (!assignment) continue;
+
+        // Conta já publicada neste ciclo: nada a fazer no pipeline — ver comentário
+        // acima sobre alreadyPostedThisCycle. Evita FFmpeg desperdiçado e, principal,
+        // evita que essa conta conte como "aguardando" e trave o CLAIM do loop inteiro.
+        if (alreadyPostedThisCycle.has(account.id)) continue;
 
         const existingJob = existingJobsMap.get(account.id);
 
