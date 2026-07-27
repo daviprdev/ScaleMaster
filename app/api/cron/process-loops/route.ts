@@ -609,19 +609,14 @@ async function processOneLoop(
 
   const isAutoCaption = loop.auto_caption_enabled === true && !!loop.auto_caption_type;
 
-  let loopClaimMade = false;
-  let loopContainersCreated = 0;
-  // Contas que DEVERIAM ter recebido container neste ciclo (kind "ready" ou
-  // "already_done" na FASE 2a) — usado para distinguir ciclo completo de
-  // ciclo parcial no AUTO-HEALING (ver finally abaixo).
-  let loopReadyCount = 0;
-  // Hoisted: newCyclesDone e isComplete precisam ser acessíveis no finally para revert do CLAIM.
-  let newCyclesDone = loop.cycles_done + 1;
-  let isComplete = false;
-  // Pipeline ativo: jobs enfileirados ou aguardando process-videos.
-  // Se true, NÃO reverter o CLAIM mesmo com 0 containers —
-  // os containers serão criados no próximo ciclo quando os jobs ficarem 'done'.
-  let loopPipelineActive = false;
+  let containersCreated = 0;
+  // Contas que efetivamente avançaram de ciclo nesta run — usado só para
+  // atualizar o cycles_done/last_posted_at informativos de `loops` no finally
+  // (exibição na UI; não gate mais nada).
+  const succeededAccountIds = new Set<string>();
+  // Hoisted (precisam ser acessíveis no finally, fora do escopo do try):
+  let accountLastContainer = new Map<string, { createdAt: number; cycleNumber: number }>();
+  let nextCycleByAccount = new Map<string, number>();
 
   try {
     console.log(
@@ -631,64 +626,88 @@ async function processOneLoop(
       `| isArray: ${Array.isArray(loop.captions)}`
     );
 
-    // ── CLAIM: avança o estado do loop ANTES de processar contas ──────────────
-    const cyclesExhausted = !loop.is_infinite && newCyclesDone >= loop.cycles;
-    const mediaLimitReached =
-      !loop.is_infinite &&
-      loop.media_limit !== null &&
-      loop.media_limit !== undefined &&
-      newCyclesDone >= loop.media_limit;
-    isComplete = cyclesExhausted || mediaLimitReached;
-
-    // Claim verdadeiramente atômico: condiciona no last_posted_at que vimos no
-    // fetch. Se outra invocação concorrente do cron já atualizou o loop (mudou
-    // last_posted_at), o UPDATE afeta 0 rows — esta invocação aborta sem criar
-    // containers duplicados.
+    // ── Escalonamento POR CONTA: cada conta tem seu próprio relógio ───────────
+    // Antes, o loop inteiro avançava em "ciclos" travados por um CLAIM global
+    // (last_posted_at/cycles_done em `loops`) — só avançava pro ciclo seguinte
+    // quando TODAS as contas do lote já tivessem postado. Com pipeline de FFmpeg
+    // (efeito ativo) ou qualquer conta lenta/com erro, isso travava o LOTE
+    // INTEIRO por horas: quem postou cedo esperava o resto terminar antes do
+    // ciclo seguinte sequer começar a contar o `interval_minutes` (bug do CLAIM
+    // corrigido em 347bb23 — mas o modelo de lote continuava garantindo só
+    // ~1 post por ciclo completo, não 1 post por `interval_minutes` por conta,
+    // que é o comportamento que o usuário configura e espera).
     //
-    // Sem esta condição, duas invocações simultâneas (crons sobrepostos) ambas
-    // ganhariam o CLAIM e criariam containers duplicados → spam Meta API (#368).
-    let claimQuery = (admin as any)
-      .from("loops")
-      .update({
-        last_posted_at: now.toISOString(),
-        cycles_done: newCyclesDone,
-        ...(isComplete ? { status: "completed" } : {}),
-      })
-      .eq("id", loop.id);
+    // Agora cada conta decide sozinha se está devida: due = agora >= último
+    // container não-erro desta conta + interval_minutes. Sem CLAIM, sem
+    // reversão, sem estado mutável compartilhado — a verdade é sempre
+    // `pending_containers`, nunca um contador em `loops`.
+    const { data: lastContainerRows } = await (admin as any)
+      .from("pending_containers")
+      .select("account_id, created_at, cycle_number")
+      .eq("loop_id", loop.id)
+      .in("account_id", validAccounts.map(a => a.id))
+      .in("status", ["published", "pending", "publishing"])
+      .order("created_at", { ascending: false });
 
-    // Filtra pelo valor exato que vimos no fetch para garantir exclusão mútua.
-    if (loop.last_posted_at === null || loop.last_posted_at === undefined) {
-      claimQuery = claimQuery.is("last_posted_at", null);
-    } else {
-      claimQuery = claimQuery.eq("last_posted_at", loop.last_posted_at);
+    // Uma linha por conta (a mais recente — primeira vista graças ao ORDER BY DESC).
+    for (const row of (lastContainerRows ?? []) as { account_id: string; created_at: string; cycle_number: number | null }[]) {
+      if (!accountLastContainer.has(row.account_id)) {
+        accountLastContainer.set(row.account_id, {
+          createdAt: new Date(row.created_at).getTime(),
+          cycleNumber: row.cycle_number ?? 0,
+        });
+      }
     }
 
-    const { data: claimResult, error: claimErr } = await claimQuery.select("id");
+    // Teto de ciclos/mídia (loops não-infinitos) — agora POR CONTA: cada uma
+    // para de postar quando atinge o próprio limite, em vez de travar o lote
+    // inteiro esperando as demais atingirem o mesmo limite ao mesmo tempo.
+    const cap = loop.is_infinite
+      ? Infinity
+      : Math.min(loop.cycles ?? Infinity, loop.media_limit ?? Infinity);
 
-    if (claimErr) throw new Error(`Falha no CLAIM: ${claimErr.message}`);
-    if (!claimResult?.length) {
-      console.warn(`[loop-cron] "${loop.name}": CLAIM retornou 0 rows — outra invocação concorrente já reivindicou. Pulando.`);
+    const intervalMs = loop.interval_minutes * 60_000;
+    const dueAccounts: AccountRow[] = [];
+    let cappedCount = 0;
+
+    for (const account of validAccounts) {
+      const last = accountLastContainer.get(account.id);
+      const lastCycleNumber = last?.cycleNumber ?? 0;
+      if (lastCycleNumber >= cap) {
+        cappedCount++;
+        continue;
+      }
+      const isDue = !last || (now.getTime() - last.createdAt >= intervalMs);
+      if (isDue) {
+        dueAccounts.push(account);
+        nextCycleByAccount.set(account.id, lastCycleNumber + 1);
+      }
+    }
+
+    if (!loop.is_infinite && validAccounts.length > 0 && cappedCount === validAccounts.length) {
+      console.log(`[loop-cron] "${loop.name}": todas as contas atingiram o limite de ciclos/mídia → completed.`);
+      await (admin as any).from("loops").update({ status: "completed" }).eq("id", loop.id);
       return "skipped";
     }
-    loopClaimMade = true;
 
-    if (isComplete) {
+    if (dueAccounts.length === 0) {
       console.log(
-        `[loop-cron] "${loop.name}" atingiu limite de execuções ` +
-        `(${newCyclesDone}/${loop.is_infinite ? "∞" : loop.cycles}) → completed.`
+        `[loop-cron] "${loop.name}": nenhuma conta devida ainda ` +
+        `(intervalo de ${loop.interval_minutes}min por conta, ${cappedCount} no teto) — pulando.`
       );
+      return "skipped";
     }
 
-    // Janela de idempotência: usa o momento do CLAIM (now) como fronteira.
-    // Containers desta execução são criados APÓS now → ficam dentro da janela.
-    // Containers da execução anterior foram criados antes do now anterior → fora da janela.
-    // NUNCA usar interval_minutes aqui: isso incluiria os containers da execução anterior,
-    // fazendo containerAlreadyExists() retornar true e pulando a postagem sem criar nada.
+    console.log(
+      `[loop-cron] "${loop.name}": ${dueAccounts.length}/${validAccounts.length} conta(s) devida(s) agora ` +
+      `(${cappedCount} no teto de ciclos).`
+    );
+
     const windowStartIso = now.toISOString();
 
-    // ── FASE 1: Atribuição atômica de vídeos ──────────────────────────────────
+    // ── FASE 1: Atribuição atômica de vídeos (só para quem está devido) ──────
     const videoAssignments = await assignVideosForLoop(
-      admin, loop, allVideos, validAccounts, windowStartIso
+      admin, loop, allVideos, dueAccounts, windowStartIso
     );
 
     if (videoAssignments.size === 0) {
@@ -707,32 +726,16 @@ async function processOneLoop(
     // 2a) PARALELO — idempotency + caption para contas com job done.
     // 2b) SEQUENCIAL — token refresh + criação de container Meta com jitter.
 
-    // ── Contas já resolvidas neste ciclo (idempotência antecipada) ────────────
-    // Sem isso, o pipeline de vídeo continuava enfileirando/aguardando job para
-    // contas que JÁ têm container publicado neste cycle_number — e como
-    // loopPipelineActive considera esse "aguardando" residual, o CLAIM nunca
-    // comitava enquanto sobrasse QUALQUER conta ainda no pipeline, mesmo com o
-    // restante do lote inteiro já publicado. Resultado em produção: 74/85 contas
-    // publicaram o post do ciclo 1, mas last_posted_at/cycles_done ficaram
-    // travados para sempre porque as outras 11 nunca saíam do pipeline — o loop
-    // nunca avançava pro ciclo 2 e parecia "parado" para as 74 já atendidas.
-    const { data: alreadyPostedRows } = await (admin as any)
-      .from("pending_containers")
-      .select("account_id")
-      .eq("loop_id", loop.id)
-      .in("account_id", validAccounts.map(a => a.id))
-      .or(`status.in.(pending,publishing),and(status.eq.published,cycle_number.eq.${newCyclesDone})`);
-    const alreadyPostedThisCycle = new Set<string>(
-      (alreadyPostedRows ?? []).map((r: { account_id: string }) => r.account_id)
-    );
-
     // ── PRÉ-FASE 2a: Check da fila de processamento ──────────────────────────
-    // Busca jobs existentes (queued/processing/done) para todas as contas do loop.
+    // Busca jobs existentes (queued/processing/done) apenas para as contas
+    // devidas neste run — contas que já postaram recentemente (fora de
+    // `dueAccounts`) não entram mais aqui, então não desperdiçam FFmpeg nem
+    // ficam contando como "aguardando".
     const { data: existingJobRows } = await (admin as any)
       .from("video_processing_jobs")
       .select("id, account_id, status, output_url, video_id")
       .eq("loop_id", loop.id)
-      .in("account_id", validAccounts.map(a => a.id))
+      .in("account_id", dueAccounts.map(a => a.id))
       .in("status", ["queued", "processing", "done"])
       .gt("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false });
@@ -777,7 +780,7 @@ async function processOneLoop(
 
     if (!hasActiveEffects) {
       // Caminho direto: sem FFmpeg, sem fila, sem espera de ciclo extra.
-      for (const account of validAccounts) {
+      for (const account of dueAccounts) {
         const assignment = videoAssignments.get(account.id);
         if (assignment) processedVideoUrls.set(account.id, assignment.video.public_url);
       }
@@ -786,14 +789,9 @@ async function processOneLoop(
       );
     } else {
       // Caminho FFmpeg: usa a fila video_processing_jobs (requer tabela no banco).
-      for (const account of validAccounts) {
+      for (const account of dueAccounts) {
         const assignment  = videoAssignments.get(account.id);
         if (!assignment) continue;
-
-        // Conta já publicada neste ciclo: nada a fazer no pipeline — ver comentário
-        // acima sobre alreadyPostedThisCycle. Evita FFmpeg desperdiçado e, principal,
-        // evita que essa conta conte como "aguardando" e trave o CLAIM do loop inteiro.
-        if (alreadyPostedThisCycle.has(account.id)) continue;
 
         const existingJob = existingJobsMap.get(account.id);
 
@@ -844,14 +842,13 @@ async function processOneLoop(
         }
       }
 
-      loopPipelineActive = firstTimeInserts > 0 || waitingAccounts > 0;
     }
 
     const doneCount = processedVideoUrls.size;
     console.log(
       `[loop-cron] "${loop.name}" — ${doneCount} conta(s) com URL pronta. ` +
       (hasActiveEffects
-        ? `fila: ${firstTimeInserts} novo(s), ${waitingAccounts} aguardando. pipelineActive=${loopPipelineActive}`
+        ? `fila: ${firstTimeInserts} novo(s), ${waitingAccounts} aguardando.`
         : `modo direto (sem efeitos).`)
     );
 
@@ -863,13 +860,13 @@ async function processOneLoop(
     const t2aStart = Date.now();
 
     console.log(
-      `[loop-cron] "${loop.name}" — ${validAccounts.length} conta(s), ` +
+      `[loop-cron] "${loop.name}" — ${dueAccounts.length} conta(s) devida(s), ` +
       `${videoAssignments.size} atribuição(ões). Iniciando FASE 2a (paralelo).`
     );
 
     // ── FASE 2a: paralelo ─────────────────────────────────────────────────────
     const prepSettled = await Promise.allSettled(
-      validAccounts.map(async (account): Promise<AccountPrep> => {
+      dueAccounts.map(async (account): Promise<AccountPrep> => {
         if (!account.meta_access_token || !account.ig_business_account_id) {
           return { kind: "skip", account, reason: "sem credenciais Meta" };
         }
@@ -879,7 +876,8 @@ async function processOneLoop(
           return { kind: "skip", account, reason: "sem vídeo pré-atribuído" };
         }
 
-        const alreadyDone = await containerAlreadyExists(admin, loop.id, account.id, newCyclesDone);
+        const accountCycleNumber = nextCycleByAccount.get(account.id) ?? 1;
+        const alreadyDone = await containerAlreadyExists(admin, loop.id, account.id, accountCycleNumber);
         if (alreadyDone) return { kind: "already_done", account };
 
         // Parse captions (isolado por conta — sem estado compartilhado)
@@ -994,12 +992,12 @@ async function processOneLoop(
 
       if (settled.status === "rejected") {
         const msg = settled.reason instanceof Error ? settled.reason.message : String(settled.reason);
-        const acct = validAccounts[i];
+        const acct = dueAccounts[i];
         console.error(`[loop-cron] ✗ Erro na FASE 2a @${acct?.username ?? "?"}: ${msg}`);
         if (acct) {
           await recordContainerError(
             admin, acct, loop, "", msg,
-            videoAssignments.get(acct.id)?.video.id ?? "", newCyclesDone
+            videoAssignments.get(acct.id)?.video.id ?? "", nextCycleByAccount.get(acct.id) ?? 1
           );
         }
         continue;
@@ -1015,12 +1013,12 @@ async function processOneLoop(
       if (prep.kind === "already_done") {
         console.log(`[loop-cron] ⚡ @${prep.account.username}: container já existe — idempotente.`);
         containersCreated++;
-        loopReadyCount++;
+        succeededAccountIds.add(prep.account.id);
         continue;
       }
 
-      loopReadyCount++;
       const { account, assignment, caption, videoUrl } = prep;
+      const accountCycleNumber = nextCycleByAccount.get(account.id) ?? 1;
 
       // Jitter 1–3s anti-burst a partir da segunda conta TENTADA (independe de sucesso).
       // Bug anterior: condicionava em containersCreated > 0 — quando todos falham
@@ -1081,7 +1079,7 @@ async function processOneLoop(
         try {
           await createContainerForAccount(
             admin, account, loop, videoUrl, caption, tokenToUse,
-            videoIdToUse, newCyclesDone,
+            videoIdToUse, accountCycleNumber,
             initialDelayMinutes,
             proxy
           );
@@ -1103,6 +1101,7 @@ async function processOneLoop(
 
         newContainerIdx++;
         containersCreated++;
+        succeededAccountIds.add(account.id);
 
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -1126,7 +1125,7 @@ async function processOneLoop(
 
         await recordContainerError(
           admin, account, loop, caption, msg,
-          errorVideoId, newCyclesDone
+          errorVideoId, accountCycleNumber
         );
 
         if (isCriticalMetaError(msg)) {
@@ -1142,7 +1141,7 @@ async function processOneLoop(
           });
           console.warn(
             `[loop-cron] ⏳ @${account.username}: erro crítico enfileirado para avaliação de cascata ` +
-            `(${criticalErrorQueue.length}/${validAccounts.length} até agora).`
+            `(${criticalErrorQueue.length}/${dueAccounts.length} até agora).`
           );
         }
       }
@@ -1167,62 +1166,40 @@ async function processOneLoop(
           userId: loop.user_id,
           reason: item.errorMsg,
         })),
-        validAccounts.length
+        dueAccounts.length
       );
     }
 
-    loopContainersCreated = containersCreated;
-    return containersCreated > 0 ? "processed" : loopPipelineActive ? "skipped" : "error";
+    console.log(
+      `[loop-cron] "${loop.name}": ${containersCreated}/${dueAccounts.length} container(s) neste run.`
+    );
+    return containersCreated > 0 ? "processed" : "skipped";
 
   } catch (loopErr) {
     const loopErrMsg = loopErr instanceof Error ? loopErr.message : String(loopErr);
     console.error(`[loop-cron] ✗ Erro inesperado no loop "${loop.name}": ${loopErrMsg}`);
     return "error";
   } finally {
-    // Reverte o CLAIM (last_posted_at/cycles_done) sempre que o ciclo NÃO
-    // terminou completo — seja 0 containers, seja parcial (ex: 2 de 44 contas,
-    // as demais paradas por rate-limit/erro/timeout do runtime), seja pipeline
-    // de efeitos ainda ativo (contas aguardando o FFmpeg do process-videos).
-    // Sem isso, um sucesso parcial travava o loop inteiro pelo `interval_minutes`
-    // completo enquanto a maioria das contas nunca chegava a receber container
-    // nenhum — o loop "avançava" ~1-2 contas por hora em vez de processar o
-    // lote inteiro a cada ciclo. containerAlreadyExists() agora bloqueia por
-    // cycle_number, então o retry no próximo minuto é seguro: contas já
-    // publicadas NESTE ciclo não recebem um segundo container.
-    //
-    // Bug corrigido em 2026-07-27: loopPipelineActive já era usado no texto do
-    // motivo de revert mas nunca entrava na condição do if — um loop com efeito
-    // criativo ativo e muitas contas (ex: 74) commitava o CLAIM assim que as poucas
-    // contas com job 'done' terminassem, mesmo com dezenas ainda 'queued' — essas
-    // ficavam travadas até o próximo `interval_minutes` inteiro (1h), quando o
-    // certo era tentar de novo a cada ciclo do cron até TODAS terem sido tentadas.
-    const cycleIncomplete = loopContainersCreated < loopReadyCount;
-    if (loopClaimMade && (loopContainersCreated === 0 || cycleIncomplete || loopPipelineActive)) {
-      const reason = loopPipelineActive
-        ? "aguardando process-videos"
-        : cycleIncomplete
-          ? `ciclo parcial (${loopContainersCreated}/${loopReadyCount} contas prontas)`
-          : "pipeline inativo";
-      console.warn(
-        `[AUTO-HEALING] Loop "${loop.name}" (${loop.id}): CLAIM revertido — ${reason}.`
-      );
+    // Sem CLAIM, não há nada pra reverter — atualiza `last_posted_at`/`cycles_done`
+    // apenas de forma informativa (exibição no card do loop e no analytics),
+    // best-effort, sem gate de concorrência: a verdade sobre due/not-due de cada
+    // conta vem sempre de `pending_containers`, nunca destes dois campos.
+    if (containersCreated > 0) {
       try {
-        const revertPayload: Record<string, unknown> = {
-          last_posted_at: loop.last_posted_at,
-          cycles_done:    loop.cycles_done,
-        };
-        if (isComplete) revertPayload.status = "active";
-        await (admin as any).from("loops").update(revertPayload).eq("id", loop.id);
-        console.log(`[AUTO-HEALING] last_posted_at/cycles_done revertidos para "${loop.name}".`);
-      } catch (revertErr) {
-        const revertMsg = revertErr instanceof Error ? revertErr.message : String(revertErr);
-        console.error(`[AUTO-HEALING] Falha ao reverter CLAIM de "${loop.name}": ${revertMsg}`);
+        const cyclesPerAccount = validAccounts.map(a => {
+          const pre = accountLastContainer.get(a.id)?.cycleNumber ?? 0;
+          return succeededAccountIds.has(a.id)
+            ? Math.max(pre, nextCycleByAccount.get(a.id) ?? pre)
+            : pre;
+        });
+        const cyclesDoneDisplay = cyclesPerAccount.length > 0 ? Math.min(...cyclesPerAccount) : loop.cycles_done;
+        await (admin as any)
+          .from("loops")
+          .update({ last_posted_at: now.toISOString(), cycles_done: cyclesDoneDisplay })
+          .eq("id", loop.id);
+      } catch (displayErr) {
+        console.warn(`[loop-cron] Falha ao atualizar last_posted_at/cycles_done informativos: ${String(displayErr)}`);
       }
-    } else if (loopClaimMade) {
-      const pipelineNote = loopPipelineActive ? ` | pipeline ativo (aguardando process-videos)` : "";
-      console.log(
-        `[loop-cron] [FINALLY] "${loop.name}": ${loopContainersCreated} container(s)${pipelineNote} — OK.`
-      );
     }
   }
 }
@@ -1342,14 +1319,14 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // ── Filtra loops que já passaram do intervalo mínimo ──────────────────────
-  const eligible = loops.filter((loop) => {
-    if (!loop.last_posted_at) return true;
-    const nextRun = new Date(loop.last_posted_at).getTime() + loop.interval_minutes * 60_000;
-    return now.getTime() >= nextRun;
-  });
+  // Todos os loops ativos são processados a cada run — não há mais um gate
+  // por `loop.last_posted_at` no nível do loop inteiro (esse campo agora é só
+  // informativo). Quem decide se HÁ trabalho a fazer é o due-check POR CONTA
+  // dentro de processOneLoop; loops sem nenhuma conta devida retornam "skipped"
+  // rapidamente (uma query barata), sem chamar a Meta API.
+  const eligible = loops;
 
-  console.log(`[loop-cron] ${loops.length} loop(s) ativo(s), ${eligible.length} elegível(eis) agora.`);
+  console.log(`[loop-cron] ${loops.length} loop(s) ativo(s) — processando todos (due-check por conta).`);
 
   // ── Processa todos os loops elegíveis em PARALELO ─────────────────────────
   // Loops são completamente independentes (pastas, contas e claims distintos),
