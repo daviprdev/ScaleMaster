@@ -101,6 +101,28 @@ export async function POST(req: NextRequest) {
     m.set(row.video_id, (m.get(row.video_id) ?? 0) + 1);
   }
 
+  // Pool compartilhado ordenado por menor uso GLOBAL entre as contas selecionadas
+  // (prioriza vídeo nunca postado por nenhuma delas), com desempate aleatório.
+  const globalUsage = (videoId: string) => {
+    let total = 0;
+    for (const accountId of account_ids) total += postedCount.get(accountId)?.get(videoId) ?? 0;
+    return total;
+  };
+  const sharedPool = fisherYates(allVideos).sort((a, b) => globalUsage(a.id) - globalUsage(b.id));
+  const poolSize = sharedPool.length;
+
+  // Atribuição em "quadrado latino": na rodada r, a conta de índice `ai` recebe
+  // sharedPool[(ai + r) % poolSize]. Isso garante que, na MESMA rodada (mesmo
+  // horário relativo entre as contas), nenhuma conta repete vídeo com outra —
+  // desde que nº de contas <= tamanho do pool. E cada conta percorre até
+  // poolSize vídeos distintos ao longo das rodadas, sem repetir os próprios.
+  // Corrige o caso real (81 contas / 330 vídeos) em que o sorteio independente
+  // por conta fazia o mesmo vídeo sair em várias contas na mesma janela de
+  // horas — padrão de conteúdo duplicado que a Meta suprime no alcance.
+  function videoForRound(accountIndex: number, round: number) {
+    return sharedPool[(accountIndex + round) % poolSize];
+  }
+
   const campaignId = randomUUID();
   // Distribui uniformemente ao longo de 24h (ignorado em burst_mode)
   const intervalMinutes = burst_mode ? 0 : Math.floor((24 * 60) / posts_per_day);
@@ -125,11 +147,6 @@ export async function POST(req: NextRequest) {
     ? Math.max((account_stagger_seconds ?? 0) * 1_000, maxVideos * 2_000)
     : 0;
 
-  // Burst: uso em memória neste request — vídeos já sorteados para contas
-  // anteriores ficam no fim da preferência, então cada conta recebe um lote
-  // DIFERENTE até a pasta esgotar (depois recomeça balanceado).
-  const inRunUse = new Map<string, number>();
-
   for (let ai = 0; ai < account_ids.length; ai++) {
     const accountId = account_ids[ai];
     const staggerMs = burst_mode
@@ -137,21 +154,9 @@ export async function POST(req: NextRequest) {
       : account_stagger_seconds
         ? ai * account_stagger_seconds * 1_000
         : ai * autoStaggerPerAccountMs;
-    // Embaralha e depois ordena (sort estável) pelo nº de vezes que ESTA conta
-    // já postou cada vídeo: vídeos nunca postados vêm primeiro em ordem
-    // aleatória; só reutiliza os já postados se a quantidade pedida exigir.
-    const counts = postedCount.get(accountId);
-    const accountVideos = fisherYates(allVideos)
-      .map((v) => ({ v, uses: (counts?.get(v.id) ?? 0) + (inRunUse.get(v.id) ?? 0) }))
-      .sort((a, b) => a.uses - b.uses)
-      .slice(0, maxVideos)
-      .map((x) => x.v);
-    if (burst_mode) {
-      for (const v of accountVideos) inRunUse.set(v.id, (inRunUse.get(v.id) ?? 0) + 1);
-    }
 
-    for (let vi = 0; vi < accountVideos.length; vi++) {
-      const video = accountVideos[vi];
+    for (let vi = 0; vi < maxVideos; vi++) {
+      const video = videoForRound(ai, vi);
       // Burst: 2s entre vídeos só para ordenação estável na fila (scheduled_at ASC)
       const slotMs = burst_mode ? vi * 2_000 : vi * intervalMinutes * 60_000;
       const scheduledAt = new Date(startTime + slotMs + staggerMs).toISOString();

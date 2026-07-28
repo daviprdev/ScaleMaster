@@ -204,7 +204,16 @@ async function processNewAccounts(
       ? Math.max((campaign.account_stagger_seconds ?? 0) * 1_000, maxVideos * 2_000)
       : 0;
 
-    const inRunUse = new Map<string, number>();
+    // Pool compartilhado (mesmo esquema "quadrado latino" do distribute/route.ts):
+    // garante que, na mesma rodada, as contas novas não repitam vídeo entre si.
+    const globalUsage = (videoId: string) => {
+      let total = 0;
+      for (const accountId of newAccountIds) total += postedCount.get(accountId)?.get(videoId) ?? 0;
+      return total;
+    };
+    const sharedPool = fisherYates(allVideos).sort((a, b) => globalUsage(a.id) - globalUsage(b.id));
+    const poolSize = sharedPool.length;
+
     const rows: object[] = [];
 
     newAccountIds.forEach((accountId, ai) => {
@@ -214,15 +223,7 @@ async function processNewAccounts(
           ? ai * campaign.account_stagger_seconds * 1_000
           : ai * autoStaggerPerAccountMs;
 
-      const counts = postedCount.get(accountId);
-      const accountVideos = fisherYates(allVideos)
-        .map((v) => ({ v, uses: (counts?.get(v.id) ?? 0) + (inRunUse.get(v.id) ?? 0) }))
-        .sort((a, b) => a.uses - b.uses)
-        .slice(0, maxVideos)
-        .map((x) => x.v);
-      if (campaign.burst_mode) {
-        for (const v of accountVideos) inRunUse.set(v.id, (inRunUse.get(v.id) ?? 0) + 1);
-      }
+      const accountVideos = Array.from({ length: maxVideos }, (_, vi) => sharedPool[(ai + vi) % poolSize]);
 
       accountVideos.forEach((video, vi) => {
         const slotMs = campaign.burst_mode ? vi * 2_000 : vi * intervalMinutes * 60_000;
