@@ -3166,3 +3166,12 @@ Mesmo fix replicado em `app/api/cron/sync-distribute-accounts/route.ts` (matríc
 
 #### Lição para o futuro
 Pool de vídeos pequeno relativo ao nº de contas é uma causa real de views ruins, distinta de: fingerprint/re-encode ruim (já documentado), modo rajada (já documentado), saúde de conta/proxy. Ao investigar views ruins, checar também: `distinct_videos` vs `distinct_accounts` da campanha e se algum vídeo aparece em múltiplas contas dentro de uma janela de tempo curta. Commit `4ba88d8`.
+
+#### Investigação complementar: conteúdo raspado sem transformação perceptual
+Os 330 vídeos da campanha vinham do fluxo Inspirações → "Baixar" → upload manual na Biblioteca (nome `autoscale_reel_{id}.mp4`) — Reels de outros criadores, não conteúdo original. A limpeza no download (SEI/metadado) só remove identificador do arquivo, não muda pixel/áudio. Efeitos perceptuais reais só existem no Loop (opt-in, `lib/video-effects.ts`). Usuário optou por só diagnóstico por ora — decidiu migrar as 81 contas de Postar pra Loop (que já tem histórico validado com 2 contas de teste) em vez de mexer no pipeline do Postar.
+
+#### Loop já tinha proteção equivalente (confirmado, sem necessidade de fix)
+`assignVideosForLoop` em `process-loops` já coordena a seleção entre contas que ficam devidas no mesmo ciclo (contador de uso incrementado em memória durante o loop síncrono, sem await entre decisões) — mesma garantia do quadrado latino do Postar, só que calculada em tempo real por execução. Fix equivalente já tinha sido aplicado no Loop em 08/07 (ver sessão correspondente). Confirmado por leitura de código, sem necessidade de alteração.
+
+#### Legendas: travessão era só no preview da UI, não na legenda real
+Usuário notou "—" na legenda de exemplo mostrada na tela, achando que vinha de IA. Era `AUTO_CAPTION_PREVIEWS*` (texto de exemplo hardcoded em 4 telas, nem batia com o pool real) — corrigido nas 4. Na sequência, a pedido do usuário, os 3 pools de `lib/auto-captions.ts` foram reescritos do zero (99 + 85 + 96 legendas novas), sem travessão e com aberturas mais variadas (o pool anterior abusava do padrão "PALAVRA MAIÚSCULA: fato!"). Repetição de legenda entre contas (sorteio 100% aleatório, sem anti-repetição como o vídeo tem) segue como ponto de atenção não resolvido, registrado mas não corrigido nesta sessão.
