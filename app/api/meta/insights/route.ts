@@ -55,7 +55,7 @@ async function fetchInsightsMetrics(
   token: string,
   proxy: ReturnType<typeof getProxyForAccount>
 ): Promise<{ reach: number | null; plays: number | null; shares: number | null; saved: number | null }> {
-  const metrics = ["reach", "plays", "shares", "saved"].join(",");
+  const metrics = ["reach", "views", "shares", "saved"].join(",");
   const res = await undiciFetch(
     `${GRAPH_API}/${mediaId}/insights?metric=${metrics}&period=lifetime&access_token=${encodeURIComponent(token)}`,
     proxyInit(proxy) as any
@@ -72,7 +72,7 @@ async function fetchInsightsMetrics(
 
   return {
     reach: get("reach"),
-    plays: get("plays"),
+    plays: get("views"),
     shares: get("shares"),
     saved: get("saved"),
   };

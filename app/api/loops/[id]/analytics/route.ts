@@ -66,7 +66,7 @@ async function fetchMediaInsights(
   } catch { /* non-critical */ }
 
   try {
-    const url = `${GRAPH}/${mediaId}/insights?metric=plays,reach,impressions&access_token=${encodeURIComponent(token)}`;
+    const url = `${GRAPH}/${mediaId}/insights?metric=views,reach&access_token=${encodeURIComponent(token)}`;
     const res = await undiciFetch(url, proxyInit(proxy) as any);
     const data = (await res.json()) as {
       data?: Array<{ name: string; values?: Array<{ value: number }>; value?: number }>;
@@ -74,7 +74,7 @@ async function fetchMediaInsights(
     if (data.data && !("error" in data)) {
       for (const m of data.data) {
         const val = (m.values?.[0]?.value ?? m.value) ?? 0;
-        if (m.name === "plays") plays = val;
+        if (m.name === "views") plays = val;
         if (m.name === "reach") reach = val;
       }
     }
