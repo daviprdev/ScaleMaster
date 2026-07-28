@@ -3143,3 +3143,26 @@ Resumo rápido dos ajustes seguintes na mesma sessão:
 - **Stories — Biblioteca de Mídia**: nova tabela `story_media` (RLS); `POST /api/stories/upload` grava um registro a cada envio; `GET/DELETE /api/stories/media` lista/exclui (exclusão remove também do Storage). Grid "Biblioteca" no card Mídia de `/dashboard/stories` deixa reusar uma foto/vídeo já enviado antes (clicar seleciona sem re-upload) e escolher outras contas para repostar no dia seguinte.
 
 Todos os itens acima com build validado e deploy feito (push direto pra `main`, sem PR).
+
+---
+
+### ✅ Sessão 2026-07-28 — Fix: vídeos da aba Postar com views 0–5 (duplicação entre contas)
+
+#### Pedido do usuário
+Vídeos postados via aba Postar saindo com 0, 2, 5 views no máximo.
+
+#### Diagnóstico (SQL direto no Supabase, sem suposição)
+- Cadência: 60 min entre posts por conta, exatamente como configurado — não era "modo rajada" (bug já visto antes).
+- Contas: 81/81 `health_status=online`, 79/81 com proxy dedicado — saúde de conta não era a causa.
+- Sem re-encode FFmpeg automático rodando (regra permanente confirmada no código).
+- Causa real: a pasta de mídia da campanha ativa tinha só **330 vídeos** para **81 contas**, com `video_count="Todos"` (330 × 81 = 26.730 posts batendo exato). Já no 1º dia, 1 vídeo específico saiu em **11 contas diferentes** dentro de uma janela de 9h. A aba Postar não aplica nenhuma variação por conta (isso só existe no Loop via efeitos) — o mesmo arquivo, byte-a-byte idêntico, saindo em dezenas de contas em curto espaço de tempo é o padrão clássico que o sistema de detecção de conteúdo duplicado da Meta reconhece e suprime no alcance, independente de proxy/token/saúde de conta.
+
+#### Fix aplicado
+`app/api/posts/distribute/route.ts` sorteava vídeo de forma independente por conta (fisher-yates + menor uso próprio, sem nenhuma coordenação entre contas). Substituído por **pool compartilhado + atribuição tipo quadrado latino**: vídeos ordenados por menor uso GLOBAL entre as contas selecionadas; na rodada `r`, a conta de índice `ai` recebe `pool[(ai + r) % poolSize]`. Isso garante:
+- Zero repetição de vídeo entre contas na MESMA rodada/horário (desde que nº de contas ≤ tamanho do pool — ex: 81 ≤ 330, folga confortável).
+- Cada conta ainda passa por todos os vídeos distintos do pool ao longo da campanha (preserva a garantia anterior de "sem repetir vídeo pra mesma conta").
+
+Mesmo fix replicado em `app/api/cron/sync-distribute-accounts/route.ts` (matrícula de contas novas numa campanha já sincronizada com pasta de contas) — usava o mesmo padrão de seleção independente por conta.
+
+#### Lição para o futuro
+Pool de vídeos pequeno relativo ao nº de contas é uma causa real de views ruins, distinta de: fingerprint/re-encode ruim (já documentado), modo rajada (já documentado), saúde de conta/proxy. Ao investigar views ruins, checar também: `distinct_videos` vs `distinct_accounts` da campanha e se algum vídeo aparece em múltiplas contas dentro de uma janela de tempo curta. Commit `4ba88d8`.
