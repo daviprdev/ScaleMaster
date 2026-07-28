@@ -107,10 +107,10 @@ const AUTO_CAPTION_TYPES = [
 ] as const;
 
 const AUTO_CAPTION_PREVIEWS: Record<string, string> = {
-  "curiosidades-gerais": "🍯 O mel nunca estraga. Arqueólogos encontraram potes com mais de 3.000 anos nas pirâmides do Egito — e ainda estavam comestíveis!",
+  "curiosidades-gerais": "🍯 O mel nunca estraga. Arqueólogos encontraram potes com mais de 3.000 anos nas pirâmides do Egito e ainda estavam comestíveis!",
   "curiosidades-tops":   "🤯 INACREDITÁVEL: Você existe porque TODOS os seus ancestrais sobreviveram e tiveram filhos desde o início da vida na Terra. Você é um milagre de bilhões de anos!",
-  "fatos-complexos":     "🧠 A memória humana não funciona como um HD. Cada vez que você se lembra de algo, reconstrói a memória do zero — e a modifica sutilmente.",
-  "variado":             "🔀 Cada legenda sorteada vem de um tipo diferente — mistura curiosidades gerais, tops e fatos complexos ao longo do loop.",
+  "fatos-complexos":     "🧠 A memória humana não funciona como um HD. Cada vez que você se lembra de algo, reconstrói a memória do zero e a modifica sutilmente.",
+  "variado":             "🔀 Cada legenda sorteada vem de um tipo diferente. Mistura curiosidades gerais, tops e fatos complexos ao longo do loop.",
 };
 
 const DEFAULT_FORM: FormData = {
@@ -1575,7 +1575,7 @@ function LoopFormModal({
                     </div>
                     {form.autoCaptionType && (
                       <div className="mt-2.5 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
-                        <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo — cada post recebe uma diferente</p>
+                        <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma diferente)</p>
                         <p className="text-[10px] text-white/50 leading-relaxed italic">
                           {AUTO_CAPTION_PREVIEWS[form.autoCaptionType]}
                         </p>
