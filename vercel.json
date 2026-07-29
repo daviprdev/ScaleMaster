@@ -18,7 +18,7 @@
     },
     {
       "path": "/api/cron/publish-scheduled",
-      "schedule": "*/5 * * * *"
+      "schedule": "* * * * *"
     },
     {
       "path": "/api/analytics/sync",
