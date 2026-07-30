@@ -523,7 +523,7 @@ export async function GET(req: NextRequest) {
       if (connectedAcct?.id && !connectedAcct.proxy_url) {
         const { assigned } = await claimProxyForAccount(admin, userId, connectedAcct.id);
         if (assigned) {
-          console.log(`[ig/callback] @${profile.username}: proxy atribuído do estoque (consumo único).`);
+          console.log(`[ig/callback] @${profile.username}: proxy atribuído do estoque (verificado e vivo).`);
         }
       }
     } catch (poolErr) {

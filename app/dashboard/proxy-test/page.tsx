@@ -146,8 +146,9 @@ function ProxyPoolSection() {
             <p className="text-sm font-semibold text-white">Estoque de Proxies</p>
             <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
               Proxies armazenados aqui são atribuídos automaticamente a cada conta nova no momento
-              da conexão — <span className="text-white/60">1 proxy = 1 conta, para sempre</span>.
-              Proxy atribuído nunca é redistribuído; excluir a conta elimina o proxy do estoque junto.
+              da conexão. Ao excluir uma conta (ou trocar o proxy dela), a entrada volta ao estoque
+              como <span className="text-white/60">livre</span> — antes de reatribuí-la a outra
+              conta, verificamos se o proxy ainda responde; se estiver morto, ele é descartado.
             </p>
           </div>
         </div>
