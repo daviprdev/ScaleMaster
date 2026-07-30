@@ -3105,7 +3105,9 @@ O sync misturava dois trabalhos: detectar conta caída (precisa ser rápido) e a
 - Ponto cego aceito: conta ociosa caída só é detectada no sync de 6h/manual.
 
 #### 2. Estoque de Proxies com atribuição automática (`33e6a44` + `3253a7a` + `85fe50a`)
-Tabela `proxy_pool` (AES-256-GCM + hash SHA-256 p/ dedup, RLS, migrations aplicadas via MCP). Callback OAuth atribui proxy livre a cada conta nova via claim atômico (`UPDATE ... WHERE assigned_account_id IS NULL` — sem corrida). **Política: 1 proxy = 1 conta, PARA SEMPRE** — conta excluída → trigger DELETA a entrada; proxy trocado/removido manualmente (PATCH/CSV) → entrada deletada; zero redistribuição. `parseProxyLine` aceita formatos de fornecedor (`ip:porta:user:senha` e variantes). UI na página Proxies: contadores Total/Livres/Em uso + "Atribuir às contas sem proxy". Confirmado funcionando pelo usuário.
+Tabela `proxy_pool` (AES-256-GCM + hash SHA-256 p/ dedup, RLS, migrations aplicadas via MCP). Callback OAuth atribui proxy livre a cada conta nova via claim atômico (`UPDATE ... WHERE assigned_account_id IS NULL` — sem corrida). **Política original: 1 proxy = 1 conta, PARA SEMPRE** — conta excluída → trigger DELETA a entrada; proxy trocado/removido manualmente (PATCH/CSV) → entrada deletada; zero redistribuição. `parseProxyLine` aceita formatos de fornecedor (`ip:porta:user:senha` e variantes). UI na página Proxies: contadores Total/Livres/Em uso + "Atribuir às contas sem proxy". Confirmado funcionando pelo usuário.
+
+> **Atualização 2026-07-30:** essa política de consumo único foi revertida para reaproveitamento (corte de custo). Ver sessão "Refactor: Estoque de Proxies reaproveita em vez de descartar" no final deste arquivo.
 
 #### 3. UX de Contas (`4e5e861`, `7b30f5a`)
 - Botão "Ativar (N)" no modo seleção — ativa contas em massa (complementa "conta nova entra inativa").
@@ -3175,3 +3177,25 @@ Os 330 vídeos da campanha vinham do fluxo Inspirações → "Baixar" → upload
 
 #### Legendas: travessão era só no preview da UI, não na legenda real
 Usuário notou "—" na legenda de exemplo mostrada na tela, achando que vinha de IA. Era `AUTO_CAPTION_PREVIEWS*` (texto de exemplo hardcoded em 4 telas, nem batia com o pool real) — corrigido nas 4. Na sequência, a pedido do usuário, os 3 pools de `lib/auto-captions.ts` foram reescritos do zero (99 + 85 + 96 legendas novas), sem travessão e com aberturas mais variadas (o pool anterior abusava do padrão "PALAVRA MAIÚSCULA: fato!"). Repetição de legenda entre contas (sorteio 100% aleatório, sem anti-repetição como o vídeo tem) segue como ponto de atenção não resolvido, registrado mas não corrigido nesta sessão.
+
+---
+
+### ✅ Sessão 2026-07-30 — Refactor: Estoque de Proxies reaproveita em vez de descartar
+
+#### Pedido do usuário
+Cortar custo — parar de comprar proxy novo toda vez que uma conta some, já que a política de 17/07 ("1 proxy = 1 conta, PARA SEMPRE") descartava a entrada do estoque junto com a conta excluída, mesmo quando o proxy continuava perfeitamente utilizável.
+
+#### O que existia antes
+Trigger `trg_release_proxy_on_account_delete` (BEFORE DELETE em `instagram_accounts`) fazia `DELETE FROM proxy_pool WHERE assigned_account_id = OLD.id` — qualquer caminho de exclusão de conta (card, bulk, cascade de pasta, admin) apagava o proxy do estoque pra sempre. PATCH `/api/accounts/[id]` e `bulk-proxy` faziam o mesmo ao trocar/remover proxy manualmente.
+
+#### Mudança
+1. **Banco:** trigger + função `release_proxy_on_account_delete()` removidos via migration `proxy_pool_reuse_instead_of_delete` (aplicada por MCP no projeto `nulhkxjpsulkoygmralf`). A FK `proxy_pool.assigned_account_id → instagram_accounts.id ON DELETE SET NULL` já existia desde a criação da tabela e sozinha já libera a entrada (não deleta) quando a conta é excluída — o trigger era a única coisa que convertia esse "liberar" em "apagar". Sem ele, exclusão de conta = proxy volta a ficar livre no estoque automaticamente, zero código novo necessário.
+2. **PATCH `/api/accounts/[id]`** e **`POST /api/accounts/bulk-proxy`**: trocado `DELETE` por `UPDATE assigned_account_id = null` na entrada do `proxy_pool` vinculada à conta — mesma lógica de liberação, aplicada nos dois pontos que faziam troca/remoção manual.
+3. **`claimProxyForAccount` (`lib/proxy-pool.ts`):** como agora um proxy livre pode ter ficado parado no estoque por semanas (de uma conta banida, por exemplo), adicionado teste de vida antes de reatribuir — `new ProxyAgent(url)` + `undiciFetch("https://api.ipify.org?format=json")` com `AbortSignal.timeout(8_000)`. Se falhar, a entrada É deletada de vez (não vale manter proxy morto "livre" no estoque) e o próximo candidato (até 5, mesma janela do claim atômico) é tentado. Se responder, segue o fluxo normal de atribuição.
+4. Texto da UI em `/dashboard/proxy-test` atualizado (não fala mais em "1 proxy = 1 conta, para sempre").
+
+#### Por que o health check é no CLAIM e não no DELETE
+Cogitado checar a saúde do proxy no momento da exclusão da conta, mas: (a) não dá pra fazer chamada de rede de dentro de um trigger Postgres puro; (b) mesmo que desse, checar na exclusão não garante nada — o proxy pode morrer semanas depois, parado no estoque, antes de ser reaproveitado. Checar exatamente no momento em que ele está prestes a ser entregue a uma conta nova (claim) é o ponto que realmente importa e existe só um call site (`app/api/instagram/callback/route.ts`) chamando `claimProxyForAccount`.
+
+#### Resultado esperado
+Proxy de conta excluída/banida circula de novo automaticamente; só é descartado quando o teste de conectividade no claim falhar de verdade. Reduz a necessidade de comprar proxy novo a cada conta perdida. Commit `7904882`, push direto pra `main`.
