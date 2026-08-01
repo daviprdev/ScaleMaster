@@ -99,19 +99,12 @@ interface SavedCaption {
   created_at: string;
 }
 
-const AUTO_CAPTION_TYPES = [
-  { id: "curiosidades-gerais", label: "Curiosidades Gerais", emoji: "💡", desc: "Fatos do dia a dia" },
-  { id: "curiosidades-tops",   label: "Curiosidades Tops",   emoji: "🏆", desc: "Fatos virais e surpreendentes" },
-  { id: "fatos-complexos",     label: "Fatos Complexos",     emoji: "🔬", desc: "Ciência acessível" },
-  { id: "variado",             label: "Variado",             emoji: "🔀", desc: "Sorteia entre os 3 tipos" },
-] as const;
+// Valor fixo enviado como auto_caption_type — não há mais seleção de categoria,
+// o pool em lib/auto-captions.ts é único e cobre temas livres.
+const AUTO_CAPTION_TYPE_VALUE = "curiosidades-gerais";
 
-const AUTO_CAPTION_PREVIEWS: Record<string, string> = {
-  "curiosidades-gerais": "🍯 O mel nunca estraga. Arqueólogos encontraram potes com mais de 3.000 anos nas pirâmides do Egito e ainda estavam comestíveis!",
-  "curiosidades-tops":   "🤯 INACREDITÁVEL: Você existe porque TODOS os seus ancestrais sobreviveram e tiveram filhos desde o início da vida na Terra. Você é um milagre de bilhões de anos!",
-  "fatos-complexos":     "🧠 A memória humana não funciona como um HD. Cada vez que você se lembra de algo, reconstrói a memória do zero e a modifica sutilmente.",
-  "variado":             "🔀 Cada legenda sorteada vem de um tipo diferente. Mistura curiosidades gerais, tops e fatos complexos ao longo do loop.",
-};
+const AUTO_CAPTION_PREVIEW =
+  "3 atitudes de quem tem produtividade real:\n\n1️⃣ Priorizar, não preencher agenda.\n2️⃣ Dormir antes de trabalhar.\n3️⃣ Eliminar antes de delegar.\n\nSalva pra reler quando precisar.\n\n#produtividade #foco #rotina";
 
 const DEFAULT_FORM: FormData = {
   name: "",
@@ -133,7 +126,7 @@ const DEFAULT_FORM: FormData = {
   effectNoise:  false,
   effectAntiAi: true,
   autoCaptionEnabled: false,
-  autoCaptionType: "curiosidades-gerais",
+  autoCaptionType: AUTO_CAPTION_TYPE_VALUE,
   accountStaggerSeconds: null,
 };
 
@@ -1228,7 +1221,7 @@ function LoopFormModal({
         effectNoise:  editingLoop.effect_noise  ?? false,
         effectAntiAi: editingLoop.effect_anti_ai ?? true,
         autoCaptionEnabled: editingLoop.auto_caption_enabled ?? false,
-        autoCaptionType: editingLoop.auto_caption_type ?? "curiosidades-gerais",
+        autoCaptionType: editingLoop.auto_caption_type ?? AUTO_CAPTION_TYPE_VALUE,
         accountStaggerSeconds: (editingLoop as any).account_stagger_seconds ?? null,
       };
     }
@@ -1258,7 +1251,6 @@ function LoopFormModal({
     if (form.accountMode === "folder" && !form.accountFolderId) { setError("Selecione uma pasta de contas."); return; }
     if (form.accountMode === "specific" && form.accountIds.length === 0) { setError("Selecione pelo menos uma conta."); return; }
     if (!form.folderId) { setError("Selecione uma pasta da biblioteca."); return; }
-    if (form.autoCaptionEnabled && !form.autoCaptionType) { setError("Selecione um tipo de legenda automática."); return; }
     setError(null);
     setSaving(true);
     try {
@@ -1554,33 +1546,12 @@ function LoopFormModal({
                     transition={{ duration: 0.15 }}
                     className="overflow-hidden"
                   >
-                    <div className="grid grid-cols-3 gap-2 mt-3">
-                      {AUTO_CAPTION_TYPES.map(t => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => update("autoCaptionType", t.id)}
-                          className={cn(
-                            "p-2.5 rounded-xl border text-left transition-all",
-                            form.autoCaptionType === t.id
-                              ? "border-[#00FF41]/40 bg-[#00FF41]/[0.06]"
-                              : "border-white/[0.07] hover:border-white/20"
-                          )}
-                        >
-                          <span className="text-sm">{t.emoji}</span>
-                          <p className="text-[10px] font-medium text-white/80 mt-1 leading-tight">{t.label}</p>
-                          <p className="text-[9px] text-white/35 mt-0.5 leading-tight">{t.desc}</p>
-                        </button>
-                      ))}
+                    <div className="mt-3 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                      <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma legenda diferente)</p>
+                      <p className="text-[10px] text-white/50 leading-relaxed italic whitespace-pre-line">
+                        {AUTO_CAPTION_PREVIEW}
+                      </p>
                     </div>
-                    {form.autoCaptionType && (
-                      <div className="mt-2.5 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
-                        <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma diferente)</p>
-                        <p className="text-[10px] text-white/50 leading-relaxed italic">
-                          {AUTO_CAPTION_PREVIEWS[form.autoCaptionType]}
-                        </p>
-                      </div>
-                    )}
                   </motion.div>
                 )}
               </AnimatePresence>

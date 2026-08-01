@@ -119,19 +119,12 @@ const REEL_COUNT_OPTIONS = [
 
 const PPD_OPTIONS = [1, 2, 3, 4, 6, 8, 12, 24, 48];
 
-const AUTO_CAPTION_TYPES_CLONE = [
-  { id: "curiosidades-gerais", label: "Curiosidades Gerais", emoji: "💡", desc: "Fatos do dia a dia" },
-  { id: "curiosidades-tops",   label: "Curiosidades Tops",   emoji: "🏆", desc: "Fatos virais" },
-  { id: "fatos-complexos",     label: "Fatos Complexos",     emoji: "🔬", desc: "Ciência acessível" },
-  { id: "variado",             label: "Variado",             emoji: "🔀", desc: "Sorteia entre os 3 tipos" },
-] as const;
+// Valor fixo enviado como auto_caption_type — não há mais seleção de categoria,
+// o pool em lib/auto-captions.ts é único e cobre temas livres.
+const AUTO_CAPTION_TYPE_VALUE = "curiosidades-gerais";
 
-const AUTO_CAPTION_PREVIEWS_CLONE: Record<string, string> = {
-  "curiosidades-gerais": "🍯 O mel nunca estraga. Arqueólogos encontraram potes com mais de 3.000 anos nas pirâmides do Egito e ainda estavam comestíveis!",
-  "curiosidades-tops":   "🤯 INACREDITÁVEL: Você existe porque TODOS os seus ancestrais sobreviveram e tiveram filhos desde o início da vida na Terra!",
-  "fatos-complexos":     "🧠 A memória humana não funciona como um HD. Cada vez que você se lembra de algo, reconstrói a memória do zero e a modifica.",
-  "variado":             "🔀 Cada legenda sorteada vem de um tipo diferente. Mistura os 3 tipos ao longo da campanha.",
-};
+const AUTO_CAPTION_PREVIEW_CLONE =
+  "3 atitudes de quem tem produtividade real:\n\n1️⃣ Priorizar, não preencher agenda.\n2️⃣ Dormir antes de trabalhar.\n3️⃣ Eliminar antes de delegar.\n\nSalva pra reler quando precisar.\n\n#produtividade #foco #rotina";
 
 const HISTORY_KEY = "clone_history_v1";
 const SAVED_PROFILES_KEY = "clone_saved_profiles_v1";
@@ -163,7 +156,6 @@ export default function ClonePage() {
 
   // Auto captions
   const [autoCaptionEnabled, setAutoCaptionEnabled] = useState(false);
-  const [autoCaptionType, setAutoCaptionType]       = useState("curiosidades-gerais");
 
   // Submit
   const [submitting, setSubmitting]   = useState(false);
@@ -382,7 +374,7 @@ export default function ClonePage() {
           reel_count:        reelCount,
           posts_per_day:     postsPerDay,
           start_at:          startAtISO,
-          auto_caption_type: autoCaptionEnabled ? autoCaptionType : undefined,
+          auto_caption_type: autoCaptionEnabled ? AUTO_CAPTION_TYPE_VALUE : undefined,
           profile_username:  profile?.username ?? query.replace(/^@/, "").trim(),
         }),
       });
@@ -897,33 +889,12 @@ export default function ClonePage() {
                   transition={{ duration: 0.15 }}
                   className="overflow-hidden"
                 >
-                  <div className="grid grid-cols-3 gap-2 mt-3">
-                    {AUTO_CAPTION_TYPES_CLONE.map(t => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => setAutoCaptionType(t.id)}
-                        className={cn(
-                          "p-2.5 rounded-xl border text-left transition-all",
-                          autoCaptionType === t.id
-                            ? "border-[#00FF41]/40 bg-[#00FF41]/[0.06]"
-                            : "border-white/[0.07] hover:border-white/20"
-                        )}
-                      >
-                        <span className="text-sm">{t.emoji}</span>
-                        <p className="text-[10px] font-medium text-white/80 mt-1 leading-tight">{t.label}</p>
-                        <p className="text-[9px] text-white/35 mt-0.5 leading-tight">{t.desc}</p>
-                      </button>
-                    ))}
+                  <div className="mt-3 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                    <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma legenda diferente)</p>
+                    <p className="text-[10px] text-white/50 leading-relaxed italic whitespace-pre-line">
+                      {AUTO_CAPTION_PREVIEW_CLONE}
+                    </p>
                   </div>
-                  {autoCaptionType && (
-                    <div className="mt-2.5 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
-                      <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma diferente)</p>
-                      <p className="text-[10px] text-white/50 leading-relaxed italic">
-                        {AUTO_CAPTION_PREVIEWS_CLONE[autoCaptionType]}
-                      </p>
-                    </div>
-                  )}
                 </motion.div>
               )}
             </AnimatePresence>

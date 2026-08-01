@@ -87,19 +87,12 @@ const POSTS_PER_DAY_OPTIONS = [1, 2, 3, 4, 6, 8, 12, 24, 36, 48, 72];
 
 const MAX_CAPTION_CHARS = 2200;
 
-const AUTO_CAPTION_TYPES_POSTAR = [
-  { id: "curiosidades-gerais", label: "Curiosidades Gerais", emoji: "💡", desc: "Fatos do dia a dia" },
-  { id: "curiosidades-tops",   label: "Curiosidades Tops",   emoji: "🏆", desc: "Fatos virais e surpreendentes" },
-  { id: "fatos-complexos",     label: "Fatos Complexos",     emoji: "🔬", desc: "Ciência acessível" },
-  { id: "variado",             label: "Variado",             emoji: "🔀", desc: "Sorteia entre os 3 tipos" },
-] as const;
+// Valor fixo enviado como auto_caption_type — não há mais seleção de categoria,
+// o pool em lib/auto-captions.ts é único e cobre temas livres.
+const AUTO_CAPTION_TYPE_VALUE = "curiosidades-gerais";
 
-const AUTO_CAPTION_PREVIEWS_POSTAR: Record<string, string> = {
-  "curiosidades-gerais": "🍯 O mel nunca estraga. Arqueólogos encontraram potes com mais de 3.000 anos nas pirâmides do Egito e ainda estavam comestíveis!",
-  "curiosidades-tops":   "🤯 INACREDITÁVEL: Você existe porque TODOS os seus ancestrais sobreviveram e tiveram filhos desde o início da vida na Terra. Você é um milagre de bilhões de anos!",
-  "fatos-complexos":     "🧠 A memória humana não funciona como um HD. Cada vez que você se lembra de algo, reconstrói a memória do zero e a modifica sutilmente.",
-  "variado":             "🔀 Cada legenda sorteada vem de um tipo diferente. Mistura curiosidades gerais, tops e fatos complexos ao longo da campanha.",
-};
+const AUTO_CAPTION_PREVIEW_POSTAR =
+  "3 atitudes de quem tem produtividade real:\n\n1️⃣ Priorizar, não preencher agenda.\n2️⃣ Dormir antes de trabalhar.\n3️⃣ Eliminar antes de delegar.\n\nSalva pra reler quando precisar.\n\n#produtividade #foco #rotina";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -534,8 +527,6 @@ function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: R
 // exata usada na criação (campanhas sincronizadas com pasta) ou, na
 // ausência dela, reconstrói a melhor estimativa a partir dos posts já criados.
 
-type AutoCaptionTypeId = typeof AUTO_CAPTION_TYPES_POSTAR[number]["id"];
-
 function EditCampaignModal({
   campaign,
   onClose,
@@ -548,7 +539,6 @@ function EditCampaignModal({
   const [loadingInfo, setLoadingInfo] = useState(false);
   const [captionMode, setCaptionMode] = useState<"manual" | "auto">("manual");
   const [captionsText, setCaptionsText] = useState("");
-  const [autoCaptionType, setAutoCaptionType] = useState<AutoCaptionTypeId>("curiosidades-gerais");
   const [postsPerDay, setPostsPerDay] = useState(4);
   const [staggerSeconds, setStaggerSeconds] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -564,7 +554,6 @@ function EditCampaignModal({
       .then((d: {
         caption_mode?: "manual" | "auto";
         captions?: string[];
-        auto_caption_type?: AutoCaptionTypeId;
         posts_per_day?: number;
         account_stagger_seconds?: number | null;
         error?: string;
@@ -573,7 +562,6 @@ function EditCampaignModal({
         if (d.error) { setError(d.error); return; }
         setCaptionMode(d.caption_mode ?? "manual");
         setCaptionsText((d.captions ?? []).join("\n"));
-        setAutoCaptionType(d.auto_caption_type ?? "curiosidades-gerais");
         setPostsPerDay(d.posts_per_day ?? 4);
         setStaggerSeconds(d.account_stagger_seconds ?? null);
       })
@@ -609,7 +597,7 @@ function EditCampaignModal({
           campaign_id: campaign.campaign_id,
           caption_mode: captionMode,
           captions: captionMode === "manual" ? captions : undefined,
-          auto_caption_type: captionMode === "auto" ? autoCaptionType : undefined,
+          auto_caption_type: captionMode === "auto" ? AUTO_CAPTION_TYPE_VALUE : undefined,
           posts_per_day: postsPerDay,
           account_stagger_seconds: staggerSeconds,
         }),
@@ -747,22 +735,11 @@ function EditCampaignModal({
                   <AnimatePresence initial={false} mode="wait">
                     {captionMode === "auto" ? (
                       <motion.div key="auto" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
-                        <div className="grid grid-cols-3 gap-2 mt-3">
-                          {AUTO_CAPTION_TYPES_POSTAR.map(t => (
-                            <button
-                              key={t.id}
-                              type="button"
-                              onClick={() => setAutoCaptionType(t.id)}
-                              className={cn(
-                                "p-2.5 rounded-xl border text-left transition-all",
-                                autoCaptionType === t.id ? "border-[#00FF41]/40 bg-[#00FF41]/[0.06]" : "border-white/[0.07] hover:border-white/20"
-                              )}
-                            >
-                              <span className="text-sm">{t.emoji}</span>
-                              <p className="text-[10px] font-medium text-white/80 mt-1 leading-tight">{t.label}</p>
-                              <p className="text-[9px] text-white/35 mt-0.5 leading-tight">{t.desc}</p>
-                            </button>
-                          ))}
+                        <div className="mt-3 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                          <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma legenda diferente)</p>
+                          <p className="text-[10px] text-white/50 leading-relaxed italic whitespace-pre-line">
+                            {AUTO_CAPTION_PREVIEW_POSTAR}
+                          </p>
                         </div>
                       </motion.div>
                     ) : (
@@ -1156,7 +1133,6 @@ export default function PostarPage() {
   // Captions
   const [captions, setCaptions] = useState<string[]>(["", ""]);
   const [autoCaptionEnabled, setAutoCaptionEnabled] = useState(false);
-  const [autoCaptionType, setAutoCaptionType] = useState("curiosidades-gerais");
 
   // Submit
   const [submitting, setSubmitting] = useState(false);
@@ -1288,7 +1264,7 @@ export default function PostarPage() {
           posts_per_day: postsPerDay,
           start_at: burstMode ? new Date().toISOString() : new Date(startDatetime).toISOString(),
           captions: autoCaptionEnabled ? [] : validCaptions,
-          auto_caption_type: autoCaptionEnabled ? autoCaptionType : undefined,
+          auto_caption_type: autoCaptionEnabled ? AUTO_CAPTION_TYPE_VALUE : undefined,
           account_stagger_seconds: accountStaggerSeconds,
           burst_mode: burstMode,
           sync_folder_ids: syncFolders ? fullySelectedFolders.map(g => g.id) : [],
@@ -1966,33 +1942,12 @@ export default function PostarPage() {
                       transition={{ duration: 0.15 }}
                       className="overflow-hidden"
                     >
-                      <div className="grid grid-cols-3 gap-2 mt-3">
-                        {AUTO_CAPTION_TYPES_POSTAR.map(t => (
-                          <button
-                            key={t.id}
-                            type="button"
-                            onClick={() => setAutoCaptionType(t.id)}
-                            className={cn(
-                              "p-2.5 rounded-xl border text-left transition-all",
-                              autoCaptionType === t.id
-                                ? "border-[#00FF41]/40 bg-[#00FF41]/[0.06]"
-                                : "border-white/[0.07] hover:border-white/20"
-                            )}
-                          >
-                            <span className="text-sm">{t.emoji}</span>
-                            <p className="text-[10px] font-medium text-white/80 mt-1 leading-tight">{t.label}</p>
-                            <p className="text-[9px] text-white/35 mt-0.5 leading-tight">{t.desc}</p>
-                          </button>
-                        ))}
+                      <div className="mt-3 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
+                        <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma legenda diferente)</p>
+                        <p className="text-[10px] text-white/50 leading-relaxed italic whitespace-pre-line">
+                          {AUTO_CAPTION_PREVIEW_POSTAR}
+                        </p>
                       </div>
-                      {autoCaptionType && (
-                        <div className="mt-2.5 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
-                          <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma diferente)</p>
-                          <p className="text-[10px] text-white/50 leading-relaxed italic">
-                            {AUTO_CAPTION_PREVIEWS_POSTAR[autoCaptionType]}
-                          </p>
-                        </div>
-                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
