@@ -3199,3 +3199,37 @@ Cogitado checar a saúde do proxy no momento da exclusão da conta, mas: (a) nã
 
 #### Resultado esperado
 Proxy de conta excluída/banida circula de novo automaticamente; só é descartado quando o teste de conectividade no claim falhar de verdade. Reduz a necessidade de comprar proxy novo a cada conta perdida. Commit `7904882`, push direto pra `main`.
+
+---
+
+### ✅ Sessão 2026-08-08 — Fix: serviço restrito (exceed_storage_size_quota) — vazamento de 391GB em temp/
+
+#### Pedido do usuário
+Não conseguia logar no SaaS. Supabase retornava: *"Service for this project is restricted due to the following violations: exceed_storage_size_quota. The project owner must upgrade their plan or remove spend caps to restore service."* Usuário já tinha pago o upgrade ~10 min antes e nada mudou.
+
+#### Diagnóstico (via MCP Supabase, sem suposição)
+1. `get_project` mostrava `status: ACTIVE_HEALTHY` e `get_organization` já mostrava `plan: pro` — o pagamento tinha sido processado. Mas os logs de `auth` mais recentes eram de véspera, nenhuma request nova do dia — sinal de bloqueio na borda, antes de chegar nos serviços.
+2. Usuário confirmou no painel do Supabase a mensagem completa: *"All services are restricted... You have exceeded your plan's quota (Storage Size Exceeded). **Disable spend cap to lift restrictions immediately**, or wait until the start of your next billing period."* — ou seja, a causa não era o plano (já Pro), era o **spend cap** ainda ativo na organização, que segura a restrição até ser desligado manualmente mesmo em plano pago.
+3. Usuário perguntou se desativar o cap significa pagar mais — resposta honesta: sim, overage é cobrado por GB excedente da cota de 100GB do Pro. Antes de recomendar desativar sem mais, foi pedido para investigar o consumo.
+4. `execute_sql` no bucket via `storage.objects`: **395GB / 55.186 arquivos** no bucket `videos-library`. Quebra por pasta: `temp/` sozinha = **391GB / 54.328 arquivos** (`videos/` só 3.5GB, `stories/` 14MB — nada a ver com biblioteca de vídeos real do usuário).
+5. Quebra por prefixo dentro de `temp/`: `vpf_*` (video-effects) = 263GB/31.378 arquivos, do mais antigo em **2026-06-23** até o mais recente **ontem** (2026-08-07) — ou seja, mesmo tendo rotina de limpeza no código, nunca parou de crescer. `strip_*` (SEI-strip do publish-scheduled) = 128GB/22.752 arquivos, de 2026-06-25 até 2026-08-05.
+6. Grep no código confirmou dois bugs em cascata:
+   - `temp/strip_*` (criado em `app/api/cron/publish-scheduled/route.ts`, feature de 25/06 pra limpar fingerprint SEI de vídeos upados via browser) **não tinha absolutamente nenhuma rotina de limpeza** em lugar nenhum — vazamento permanente desde que a feature existe.
+   - A limpeza que JÁ existia em `app/api/cron/process-loops/route.ts` (adicionada em 10/06 para `temp/vfx_*`) filtrava certo por `vfx_`/`vpf_`, mas fazia **um único `.list("temp", {limit:100, sortBy: created_at asc})`** sobre a pasta inteira antes de filtrar — como os `strip_*` nunca eram apagados, assim que passaram a superar ~100 arquivos (bem no início, dado o volume) eles passaram a ocupar PERMANENTEMENTE o topo da lista ordenada por data (mais antigos primeiro = nunca removidos = sempre no topo), e o filtro client-side nunca mais alcançava nenhum `vpf_`/`vfx_` de verdade na window de 100 itens retornada. A "limpeza que existia" estava starved (travada por outro prefixo) há semanas — parecia funcionar (não dava erro, corria sem exceção) mas nunca deletava nada de fato.
+7. Antes de apagar qualquer coisa, checado se algum post ativo dependia desses arquivos: `scheduled_posts` com `video_url like '%/temp/%' and status in (pending,publishing)` = 0; `pending_containers` ativos (11 registros) não têm coluna de URL de vídeo — só `creation_id`, já enviado à Meta. Ou seja, depois que o container é criado na Meta o arquivo em `temp/` não serve mais pra nada — seguro apagar arquivos com alguma margem de segurança (>6h).
+
+#### Ação imediata — limpeza de 391GB
+Escrito script Node standalone (`fetch` nativo do Node 24 direto na Storage REST API do Supabase — sem instalar `@supabase/supabase-js`, que teria problema de resolução de módulo rodando fora da pasta do projeto) que:
+- Lista `temp/` em páginas de 1000, ordenado por `created_at asc`, sempre com `offset=0` (itens deletados saem da lista, então a "próxima página" desliza sozinha pros próximos mais antigos).
+- Filtra candidatos com `created_at` mais antigo que 6h (cutoff conservador, bem acima do tempo de qualquer ciclo de publicação individual).
+- Deleta em lotes de 500 via `DELETE /storage/v1/object/{bucket}` (API de Storage de verdade — não `DELETE` direto na tabela `storage.objects` via SQL, que só apagaria a linha de metadado e deixaria o blob físico órfão no backend, sem liberar espaço/billing de verdade).
+
+Rodado em background (~56 rounds, ~1000 arquivos por round): **54.328 arquivos apagados, 391.22GB liberados**. Confirmado depois via SQL: bucket caiu de 395GB para **3.6GB** (870 arquivos restantes, todos legítimos — pasta `videos/` da Biblioteca real).
+
+#### Fix permanente no código
+`app/api/cron/process-loops/route.ts` — bloco de cleanup reescrito: em vez de um `list()` único sobre toda a `temp/` seguido de filtro client-side, agora itera sobre `["vfx_", "vpf_", "strip_", "clone_"]` e faz um `list("temp", {limit:500, search: prefix, sortBy: created_at asc})` **por prefixo**, deletando cada um isoladamente. Isso elimina a starvation de raiz: um prefixo sem limpeza própria (como `strip_` era) nunca mais pode bloquear a limpeza dos outros, porque cada busca já vem pré-filtrada pelo próprio Storage (`search`), não depende de compartilhar a mesma janela ordenada por data com prefixos concorrentes. Roda a cada 5 min (`process-loops` já está no `vercel.json` com `*/5 * * * *`), cutoff de 2h mantido igual ao original. `clone_*` (temp de download do Clonar Perfil) também passou a ser coberto — antes só `vfx_`/`vpf_` tinham qualquer limpeza.
+
+Build (`npm run build`) validado antes do commit. Commit `ed9e574`, push direto pra `main` (autorizado explicitamente pelo usuário).
+
+#### Lição para o futuro
+Toda vez que uma nova rotina passar a fazer upload pra `temp/` (scratch space), ela **precisa** entrar na lista `TEMP_PREFIXES` do cleanup em `process-loops` — não existe garbage collection automático genérico pra essa pasta, só o que está explicitamente listado ali. E: uma rotina de limpeza que roda sem erro não é prova de que está limpando algo — vale periodicamente conferir com uma query direta em `storage.objects` (`group by bucket_id` / `group by split_part(name,'/',1)`) se o volume real está de fato estável ao longo do tempo, em vez de confiar só na ausência de warning nos logs.
