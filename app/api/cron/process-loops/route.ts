@@ -1224,27 +1224,35 @@ export async function GET(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const now = new Date();
 
-  // ── CLEANUP: Arquivos temporários de efeitos de vídeo (temp/vfx_*) ─────────
-  // video-effects.ts faz upload para temp/ mas não deleta após o publish.
-  // Limpamos arquivos com mais de 2h a cada run do process-loops (a cada 15min).
+  // ── CLEANUP: Arquivos temporários (temp/vfx_*, vpf_*, strip_*, clone_*) ────
+  // video-effects.ts e publish-scheduled fazem upload para temp/ mas nunca
+  // deletam após o uso. Limpamos arquivos com mais de 2h a cada run.
+  // IMPORTANTE: cada prefixo é listado (e portanto apagado) SEPARADAMENTE via
+  // `search`. Um list() único sobre toda a pasta temp/, ordenado por
+  // created_at asc, ficava starved para sempre assim que um prefixo sem
+  // limpeza própria (ex: strip_*) acumulava >100 arquivos antigos — eles
+  // dominavam o topo da lista e nenhum outro prefixo era sequer avaliado.
   {
     const cleanupCutoff = new Date(now.getTime() - 2 * 60 * 60_000).toISOString();
-    try {
-      const { data: tempFiles } = await admin.storage
-        .from("videos-library")
-        .list("temp", { limit: 100, sortBy: { column: "created_at", order: "asc" } });
+    const TEMP_PREFIXES = ["vfx_", "vpf_", "strip_", "clone_"];
+    for (const prefix of TEMP_PREFIXES) {
+      try {
+        const { data: tempFiles } = await admin.storage
+          .from("videos-library")
+          .list("temp", { limit: 500, search: prefix, sortBy: { column: "created_at", order: "asc" } });
 
-      const toDelete = (tempFiles ?? [])
-        .filter(f => (f.name.startsWith("vfx_") || f.name.startsWith("vpf_")) && f.created_at && f.created_at < cleanupCutoff)
-        .map(f => `temp/${f.name}`);
+        const toDelete = (tempFiles ?? [])
+          .filter(f => f.name.startsWith(prefix) && f.created_at && f.created_at < cleanupCutoff)
+          .map(f => `temp/${f.name}`);
 
-      if (toDelete.length > 0) {
-        await admin.storage.from("videos-library").remove(toDelete);
-        console.log(`[cleanup] ${toDelete.length} arquivo(s) temp/vfx_* removidos (>2h).`);
+        if (toDelete.length > 0) {
+          await admin.storage.from("videos-library").remove(toDelete);
+          console.log(`[cleanup] ${toDelete.length} arquivo(s) temp/${prefix}* removidos (>2h).`);
+        }
+      } catch (cleanupErr) {
+        // Best-effort — não deve travar o cron
+        console.warn(`[cleanup] Falha ao limpar temp/${prefix}*:`, String(cleanupErr));
       }
-    } catch (cleanupErr) {
-      // Best-effort — não deve travar o cron
-      console.warn("[cleanup] Falha ao limpar arquivos temp:", String(cleanupErr));
     }
   }
 
