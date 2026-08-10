@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/publish-pending",
-      "schedule": "*/5 * * * *"
+      "schedule": "* * * * *"
     },
     {
       "path": "/api/cron/publish-scheduled",
