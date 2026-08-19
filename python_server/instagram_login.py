@@ -141,6 +141,14 @@ def perform_login(
     cl.set_settings(settings)
     cl.set_proxy(proxy_url)
 
+    # Diagnóstico temporário — confirma se o proxy está realmente sendo usado
+    # pela sessão do instagrapi (mesmo cliente HTTP que faz o login) antes de
+    # investigar mais a fundo o 429 recorrente no /accounts/login/.
+    try:
+        proxy_ip = cl.public.get("https://api.ipify.org?format=json", timeout=10).json().get("ip")
+    except Exception as e:
+        proxy_ip = f"erro ao checar IP: {e}"
+
     verification_code = ""
     if totp_secret:
         import pyotp
@@ -151,7 +159,7 @@ def perform_login(
         cl.login(username, password, verification_code=verification_code, relogin=False)
     except Exception as exc:  # instagrapi lança tipos variados conforme a versão
         error_code, error_message = _classify_error(exc)
-        return LoginResult(False, error_code=error_code, error_message=error_message[:500])
+        return LoginResult(False, error_code=error_code, error_message=f"[proxy_ip={proxy_ip}] {error_message}"[:500])
 
     try:
         info = cl.account_info()
