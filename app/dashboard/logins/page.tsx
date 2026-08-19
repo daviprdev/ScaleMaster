@@ -6,7 +6,9 @@ import {
   Lock, Plus, Eye, EyeOff, Copy, Check,
   Pencil, Trash2, X, KeyRound, Mail, User,
   Shield, AlertTriangle, RefreshCw, WifiOff, Zap, CheckSquare, Square,
+  Upload, Link2,
 } from "lucide-react";
+import MagicLinkModal from "@/components/dashboard/MagicLinkModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 type Login = {
@@ -546,6 +548,181 @@ function LoginModal({
   );
 }
 
+// ─── Bulk Import Modal ───────────────────────────────────────────────────────
+type BulkRow = { username: string; password_hash: string; two_factor_key?: string };
+
+function parseBulkText(text: string): BulkRow[] {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"))
+    .map((line) => {
+      const sep = line.includes(":") ? ":" : ",";
+      const [username, password_hash, two_factor_key] = line.split(sep).map((p) => p.trim());
+      return { username, password_hash, two_factor_key: two_factor_key || undefined };
+    })
+    .filter((r) => r.username && r.password_hash);
+}
+
+function BulkImportModal({
+  onClose, onImported,
+}: {
+  onClose: () => void;
+  onImported: () => Promise<void>;
+}) {
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<{ created: number; skipped: number } | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const rows = parseBulkText(text);
+  const invalidLines = text.split("\n").filter((l) => l.trim() && !l.trim().startsWith("#")).length - rows.length;
+
+  const handleImport = async () => {
+    if (rows.length === 0) return;
+    setSaving(true);
+    setErrorMsg(null);
+    setResult(null);
+    try {
+      const res = await fetch("/api/logins/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.error ?? "Erro ao importar");
+        return;
+      }
+      setResult({ created: data.created, skipped: data.skipped });
+      await onImported();
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "Erro desconhecido");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key="bulk-backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        style={{
+          position: "fixed", inset: 0, zIndex: 200,
+          background: "rgba(0,0,0,0.72)",
+          backdropFilter: "blur(6px)",
+          WebkitBackdropFilter: "blur(6px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "1rem",
+        }}
+        onClick={saving ? undefined : onClose}
+      >
+        <motion.div
+          key="bulk-content"
+          initial={{ opacity: 0, scale: 0.94, y: 18 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.94, y: 18 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          onClick={(e) => e.stopPropagation()}
+          className="glass ticks w-full"
+          style={{ maxWidth: 560 }}
+        >
+          <div className="flex items-center justify-between px-6 pt-5 pb-4">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{ background: "rgba(0,229,255,0.08)", border: "0.5px solid rgba(0,229,255,0.3)" }}
+              >
+                <Upload size={14} style={{ color: "var(--electric)" }} />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-white">Importar Vários Logins</p>
+                <p className="text-[11px] text-white/35 leading-tight">Cole uma lista, um login por linha</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              disabled={saving}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white/30
+                hover:text-white hover:bg-white/[0.06] transition-all"
+            >
+              <X size={15} />
+            </button>
+          </div>
+
+          <div style={{ height: "0.5px", background: "rgba(255,255,255,0.07)" }} />
+
+          <div className="px-6 py-5 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-white/50 uppercase tracking-widest">
+                Lista (usuario:senha:chave2fa)
+              </label>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                disabled={saving}
+                placeholder={"joana.silva:MinhaSenha123:JBSWY3DPEHPK3PXP\npedro.dev:OutraSenha456\n# a chave 2FA é opcional"}
+                rows={8}
+                className="input-glass w-full font-mono text-[12px] resize-y"
+                style={{ paddingLeft: "0.85rem", lineHeight: 1.6 }}
+              />
+              <p className="text-[11px] text-white/30 leading-relaxed">
+                Um login por linha, separado por <code className="text-white/50">:</code> ou <code className="text-white/50">,</code>.
+                Campos: usuário, senha e (opcional) chave 2FA. Linhas com <code className="text-white/50">#</code> são ignoradas.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 text-[12px]">
+              <span className="text-white/50">{rows.length} login(s) reconhecido(s)</span>
+              {invalidLines > 0 && (
+                <span className="text-amber-400">· {invalidLines} linha(s) ignorada(s) (sem senha)</span>
+              )}
+            </div>
+
+            {errorMsg && (
+              <div
+                className="flex items-center gap-2 text-[12px] text-red-400 rounded-xl px-3 py-2.5"
+                style={{ background: "rgba(239,68,68,0.07)", border: "0.5px solid rgba(239,68,68,0.2)" }}
+              >
+                <AlertTriangle size={13} className="flex-shrink-0" />
+                {errorMsg}
+              </div>
+            )}
+
+            {result && (
+              <div
+                className="flex items-center gap-2 text-[12px] rounded-xl px-3 py-2.5"
+                style={{ background: "rgba(0,255,65,0.06)", border: "0.5px solid rgba(0,255,65,0.2)", color: "var(--matrix)" }}
+              >
+                <Check size={13} className="flex-shrink-0" />
+                {result.created} login(s) importado(s){result.skipped > 0 ? `, ${result.skipped} ignorado(s)` : ""}.
+              </div>
+            )}
+
+            <div className="flex gap-2.5 pt-1">
+              <button type="button" onClick={onClose} disabled={saving} className="btn-ghost flex-1 py-2.5 text-sm">
+                {result ? "Fechar" : "Cancelar"}
+              </button>
+              <button
+                type="button"
+                onClick={handleImport}
+                disabled={saving || rows.length === 0}
+                className="btn-primary flex-1 py-2.5 text-sm"
+                style={{ opacity: saving || rows.length === 0 ? 0.5 : 1 }}
+              >
+                {saving ? <RefreshCw size={14} className="animate-spin" /> : `Importar ${rows.length || ""}`}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 // ─── Empty State ───────────────────────────────────────────────────────────
 function EmptyVault({ onAdd }: { onAdd: () => void }) {
   return (
@@ -578,6 +755,8 @@ export default function LoginsPage() {
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState<string | null>(null);
   const [showModal, setShowModal]   = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [showMagicLink, setShowMagicLink] = useState(false);
   const [editing, setEditing]       = useState<Login | null>(null);
   const [saving, setSaving]         = useState(false);
   const [formError, setFormError]   = useState<string | null>(null);
@@ -769,9 +948,21 @@ export default function LoginsPage() {
             </>
           ) : (
             <>
+              <button
+                onClick={() => setShowMagicLink(true)}
+                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-[#00FF41]/20 text-[#00FF41]/70 hover:text-[#00FF41] hover:border-[#00FF41]/40 hover:bg-[#00FF41]/[0.06] transition-all"
+                title="Link para conectar contas via Instagram (sem senha guardada aqui)"
+              >
+                <Link2 size={14} />
+                Link de Convite
+              </button>
               <button onClick={toggleSelectionMode} className="btn-ghost gap-2 py-2 text-sm">
                 <CheckSquare size={13} />
                 Selecionar
+              </button>
+              <button onClick={() => setShowBulkModal(true)} className="btn-ghost gap-2 py-2 text-sm">
+                <Upload size={13} />
+                Importar Vários
               </button>
               <button onClick={openAdd} className="btn-primary gap-2">
                 <Plus size={14} />
@@ -877,6 +1068,17 @@ export default function LoginsPage() {
           formError={formError}
         />
       )}
+
+      {/* Bulk import modal */}
+      {showBulkModal && (
+        <BulkImportModal
+          onClose={() => setShowBulkModal(false)}
+          onImported={load}
+        />
+      )}
+
+      {/* Magic Link — convite oficial via OAuth, sem senha */}
+      <MagicLinkModal open={showMagicLink} onClose={() => setShowMagicLink(false)} />
     </div>
   );
 }

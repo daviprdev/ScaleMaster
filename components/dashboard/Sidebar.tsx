@@ -28,6 +28,7 @@ import {
   Copy,
   ImagePlay,
   Bot,
+  Lock,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -81,6 +82,7 @@ const navGroups: NavGroup[] = [
     label: "CONFIGURAÇÕES",
     items: [
       { label: "Meu App",        href: "/dashboard/apps",           icon: KeyRound },
+      { label: "Logins",         href: "/dashboard/logins",         icon: Lock },
       { label: "Failover",       href: "/dashboard/failover",       icon: ShieldAlert },
       { label: "Horário Humano", href: "/dashboard/human-schedule", icon: Clock },
       { label: "Proxies",        href: "/dashboard/proxy-test",     icon: Globe },
