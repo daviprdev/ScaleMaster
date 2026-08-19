@@ -49,10 +49,14 @@ _DEVICE_POOL: list[dict] = [
      "android_version": 28, "android_release": "9.0", "dpi": "480dpi", "resolution": "1080x2160"},
 ]
 
-_APP_VERSIONS: list[tuple[str, str]] = [
-    ("269.0.0.18.75", "314665256"),
-    ("266.0.0.19.301", "312685796"),
-    ("275.0.0.27.98", "320783404"),
+# app_version, version_code, bloks_versioning_id — as 3 triplas precisam bater
+# exatamente com o que o instagrapi conhece (instagrapi/config.py APP_SETTINGS);
+# combos inventados deixam bloks_versioning_id vazio e o login falha com
+# "Client.bloks_versioning_id is empty (hash is expected)".
+_APP_VERSIONS: list[tuple[str, str, str]] = [
+    ("428.0.0.47.67", "961145276", "7189b949425f9bf80ea8bd880cf5a3080b292d9b1c4b38a18d112f7c4b71e7a8"),
+    ("364.0.0.35.86", "374010953", "8ccf54aad76788a6ca03ddfc33afcdcf692f2f5a3ba814ea73d5facba7fa2c2d"),
+    ("385.0.0.47.74", "378906843", "a8973d49a9cc6a6f65a4997c10216ce2a06f65a517010e64885e92029bb19221"),
 ]
 
 
@@ -64,9 +68,10 @@ def build_deterministic_settings(device_seed: str) -> dict:
     """Settings dict completo (device + uuids) determinístico a partir de device_seed."""
     rng = random.Random(device_seed)
     device = dict(rng.choice(_DEVICE_POOL))
-    app_version, version_code = rng.choice(_APP_VERSIONS)
+    app_version, version_code, bloks_versioning_id = rng.choice(_APP_VERSIONS)
     device["app_version"] = app_version
     device["version_code"] = version_code
+    device["bloks_versioning_id"] = bloks_versioning_id
 
     return {
         "uuids": {
