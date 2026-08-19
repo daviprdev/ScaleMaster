@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { encrypt, decryptMaybe } from "@/lib/encrypt";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,7 +17,7 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const [loginsResult, accountsResult] = await Promise.all([
+  const [loginsResult, accountsResult, jobsResult] = await Promise.all([
     supabase
       .from("account_logins")
       .select("*")
@@ -24,31 +25,58 @@ export async function GET() {
       .order("created_at", { ascending: false }),
     supabase
       .from("instagram_accounts")
-      .select("username, meta_access_token, token_expires_at, is_active, health_status")
+      .select("id, username, meta_access_token, token_expires_at, is_active, health_status, connection_method, access_token")
       .eq("user_id", user.id),
+    supabase
+      .from("login_jobs")
+      .select("account_id, status")
+      .eq("user_id", user.id)
+      .in("status", ["queued", "processing"]),
   ]);
 
   if (loginsResult.error) return NextResponse.json({ error: loginsResult.error.message }, { status: 500 });
 
   const now = Date.now();
-  // Maps username → "connected" | "error" for accounts that exist in instagram_accounts
-  const accountMap = new Map<string, "connected" | "error">();
+  const connectingAccountIds = new Set((jobsResult.data ?? []).map((j) => j.account_id as string));
+
+  // Maps username → "connected" | "error" | "connecting" for accounts that
+  // exist in instagram_accounts (OAuth ou instagrapi — connection_method distingue).
+  const accountMap = new Map<string, "connected" | "error" | "connecting">();
   for (const a of (accountsResult.data ?? [])) {
     const key = (a.username as string).toLowerCase();
+    const healthOk = !a.health_status || a.health_status === "online";
+
+    if (a.connection_method === "instagrapi") {
+      if (a.access_token && healthOk) {
+        accountMap.set(key, "connected");
+      } else if (!healthOk) {
+        accountMap.set(key, "error");
+      } else if (connectingAccountIds.has(a.id as string)) {
+        accountMap.set(key, "connecting");
+      } else {
+        accountMap.set(key, "error");
+      }
+      continue;
+    }
+
     const tokenOk =
       !!a.meta_access_token &&
       (a.token_expires_at == null || new Date(a.token_expires_at).getTime() > now);
-    const healthOk = !a.health_status || a.health_status === "online";
     const ok = a.is_active && tokenOk && healthOk;
     accountMap.set(key, ok ? "connected" : "error");
   }
 
   const logins = (loginsResult.data ?? []).map((l) => {
     const key = (l.username as string).toLowerCase();
-    const meta_status: "connected" | "error" | "not_connected" = accountMap.has(key)
+    const meta_status: "connected" | "error" | "connecting" | "not_connected" = accountMap.has(key)
       ? accountMap.get(key)!
       : "not_connected";
-    return { ...l, meta_status };
+    return {
+      ...l,
+      password_hash: decryptMaybe(l.password_hash as string | null),
+      two_factor_key: decryptMaybe(l.two_factor_key as string | null),
+      meta_status,
+    };
   });
 
   return NextResponse.json({ logins });
@@ -90,15 +118,17 @@ export async function POST(req: NextRequest) {
       user_id: user.id,
       profile_name: resolvedProfileName,
       username: username.trim(),
-      password_hash,
+      password_hash: encrypt(password_hash),
       recovery_email: recovery_email?.trim() || null,
-      two_factor_key: two_factor_key?.trim() || null,
+      two_factor_key: two_factor_key?.trim() ? encrypt(two_factor_key.trim()) : null,
     })
     .select()
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ login: data }, { status: 201 });
+  return NextResponse.json({
+    login: { ...data, password_hash, two_factor_key: two_factor_key?.trim() || null },
+  }, { status: 201 });
 }
 
 // PATCH — update an existing login (user_id protected by RLS)
@@ -136,9 +166,11 @@ export async function PATCH(req: NextRequest) {
       updates.profile_name = raw.username.trim();
     }
   }
-  if (raw.password_hash !== undefined) updates.password_hash = raw.password_hash;
+  if (raw.password_hash !== undefined) updates.password_hash = encrypt(raw.password_hash);
   if (raw.recovery_email !== undefined) updates.recovery_email = raw.recovery_email?.trim() || null;
-  if (raw.two_factor_key !== undefined) updates.two_factor_key = raw.two_factor_key?.trim() || null;
+  if (raw.two_factor_key !== undefined) {
+    updates.two_factor_key = raw.two_factor_key?.trim() ? encrypt(raw.two_factor_key.trim()) : null;
+  }
 
   const { data, error } = await supabase
     .from("account_logins")
@@ -149,7 +181,13 @@ export async function PATCH(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ login: data });
+  return NextResponse.json({
+    login: {
+      ...data,
+      password_hash: raw.password_hash !== undefined ? raw.password_hash : decryptMaybe(data.password_hash),
+      two_factor_key: raw.two_factor_key !== undefined ? (raw.two_factor_key?.trim() || null) : decryptMaybe(data.two_factor_key),
+    },
+  });
 }
 
 // DELETE — remove a login entry by id

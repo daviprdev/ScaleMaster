@@ -1,10 +1,12 @@
 """
 AutoScale Railway Worker — FastAPI
-Responsável pelo processamento pesado de vídeo (FFmpeg) fora da Vercel.
+Responsável pelo processamento pesado de vídeo (FFmpeg) e pelo login
+automatizado de contas Instagram via instagrapi, fora da Vercel.
 
 Endpoints:
-  POST /video/effects   — aplica efeitos de vídeo e faz upload para Supabase
-  GET  /health          — liveness check para Railway
+  POST /video/effects       — aplica efeitos de vídeo e faz upload para Supabase
+  POST /instagram/login     — login automatizado via instagrapi (device + proxy dedicados)
+  GET  /health               — liveness check para Railway
 """
 
 import asyncio
@@ -16,6 +18,8 @@ import uuid
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Header
 from pydantic import BaseModel
+
+from instagram_login import perform_login
 
 # ---------------------------------------------------------------------------
 # Config — lidas na inicialização; crash imediato se ausentes
@@ -56,6 +60,28 @@ class VideoEffectsRequest(BaseModel):
 
 class VideoEffectsResponse(BaseModel):
     url: str
+
+
+class InstagramLoginRequest(BaseModel):
+    username: str
+    password: str
+    proxy_url: str
+    device_seed: str
+    totp_secret: str | None = None
+    existing_settings: dict | None = None
+
+
+class InstagramLoginResponse(BaseModel):
+    success: bool
+    settings: dict | None = None
+    ig_user_id: str | None = None
+    username: str | None = None
+    full_name: str | None = None
+    profile_pic_url: str | None = None
+    followers_count: int | None = None
+    media_count: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +245,23 @@ async def video_effects(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return VideoEffectsResponse(url=url)
+
+
+@app.post("/instagram/login", response_model=InstagramLoginResponse)
+async def instagram_login(
+    req: InstagramLoginRequest,
+    _: None = Depends(verify_secret),
+) -> InstagramLoginResponse:
+    result = await asyncio.to_thread(
+        perform_login,
+        req.username,
+        req.password,
+        req.proxy_url,
+        req.device_seed,
+        req.totp_secret,
+        req.existing_settings,
+    )
+    return InstagramLoginResponse(success=result.success, **result.data)
 
 
 @app.get("/health")

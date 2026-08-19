@@ -27,3 +27,14 @@ export function decrypt(ciphertext: string): string {
   decipher.setAuthTag(tag);
   return decipher.update(enc).toString("utf8") + decipher.final("utf8");
 }
+
+// Linhas legadas gravadas antes da criptografia ser aplicada não batem o
+// formato iv:tag:enc — nesse caso devolve o valor como está em vez de quebrar.
+export function decryptMaybe(value: string | null | undefined): string | null {
+  if (!value) return value ?? null;
+  try {
+    return decrypt(value);
+  } catch {
+    return value;
+  }
+}

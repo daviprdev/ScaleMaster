@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Lock, Plus, Eye, EyeOff, Copy, Check,
   Pencil, Trash2, X, KeyRound, Mail, User,
-  Shield, AlertTriangle, RefreshCw, WifiOff,
+  Shield, AlertTriangle, RefreshCw, WifiOff, Zap, CheckSquare, Square,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -18,7 +18,7 @@ type Login = {
   two_factor_key: string | null;
   created_at: string;
   updated_at: string;
-  meta_status: "connected" | "error" | "not_connected";
+  meta_status: "connected" | "error" | "connecting" | "not_connected";
 };
 
 type FormData = {
@@ -100,11 +100,14 @@ function SecretField({
 
 // ─── LoginCard ─────────────────────────────────────────────────────────────
 function LoginCard({
-  login, onEdit, onDelete,
+  login, onEdit, onDelete, selectionMode, selected, onToggleSelect,
 }: {
   login: Login;
   onEdit: (l: Login) => void;
   onDelete: (id: string) => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }) {
   const [revPw,  setRevPw]  = useState(false);
   const [revTfa, setRevTfa] = useState(false);
@@ -133,6 +136,16 @@ function LoginCard({
       {/* Card header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
+          {selectionMode && (
+            <button
+              onClick={() => onToggleSelect?.(login.id)}
+              className="w-5 h-5 flex-shrink-0 flex items-center justify-center"
+              style={{ color: selected ? "var(--matrix)" : "rgba(255,255,255,0.25)" }}
+              title={selected ? "Desmarcar" : "Selecionar"}
+            >
+              {selected ? <CheckSquare size={16} /> : <Square size={16} />}
+            </button>
+          )}
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
             style={
@@ -172,6 +185,18 @@ function LoginCard({
                 >
                   <WifiOff size={9} />
                   Token Inválido
+                </span>
+              ) : login.meta_status === "connecting" ? (
+                <span
+                  className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                  style={{
+                    background: "rgba(0,229,255,0.1)",
+                    border: "0.5px solid rgba(0,229,255,0.4)",
+                    color: "var(--electric)",
+                  }}
+                >
+                  <RefreshCw size={9} className="animate-spin" />
+                  Conectando…
                 </span>
               ) : (
                 <span
@@ -557,6 +582,10 @@ export default function LoginsPage() {
   const [saving, setSaving]         = useState(false);
   const [formError, setFormError]   = useState<string | null>(null);
   const [notice, setNotice]         = useState(true);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds]     = useState<Set<string>>(new Set());
+  const [connecting, setConnecting]       = useState(false);
+  const [connectMsg, setConnectMsg]       = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -574,6 +603,54 @@ export default function LoginsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Auto-refresh enquanto houver login em andamento (job queued/processing no cron).
+  const hasConnecting = logins.some((l) => l.meta_status === "connecting");
+  useEffect(() => {
+    if (!hasConnecting) return;
+    const id = setInterval(load, 15_000);
+    return () => clearInterval(id);
+  }, [hasConnecting, load]);
+
+  const toggleSelectionMode = () => {
+    setSelectionMode((v) => !v);
+    setSelectedIds(new Set());
+  };
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleAutoConnect = async () => {
+    if (selectedIds.size === 0) return;
+    setConnecting(true);
+    setConnectMsg(null);
+    try {
+      const res = await fetch("/api/logins/auto-connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login_ids: Array.from(selectedIds) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setConnectMsg(data.error ?? "Erro ao iniciar conexão automática");
+      } else {
+        const ok = (data.results ?? []).filter((r: { ok: boolean }) => r.ok).length;
+        setConnectMsg(`${ok}/${selectedIds.size} conta(s) enfileirada(s) para login automático.`);
+        setSelectionMode(false);
+        setSelectedIds(new Set());
+        await load();
+      }
+    } catch (e) {
+      setConnectMsg(e instanceof Error ? e.message : "Erro desconhecido");
+    } finally {
+      setConnecting(false);
+      setTimeout(() => setConnectMsg(null), 6000);
+    }
+  };
 
   const openAdd = () => {
     setEditing(null);
@@ -673,11 +750,48 @@ export default function LoginsPage() {
             </button>
           )}
         </div>
-        <button onClick={openAdd} className="btn-primary gap-2">
-          <Plus size={14} />
-          <span>Adicionar Login</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {selectionMode ? (
+            <>
+              <span className="text-[12px] text-white/35">{selectedIds.size} selecionada(s)</span>
+              <button
+                onClick={handleAutoConnect}
+                disabled={selectedIds.size === 0 || connecting}
+                className="btn-primary gap-2 py-2 text-sm"
+                style={{ opacity: selectedIds.size === 0 || connecting ? 0.5 : 1 }}
+              >
+                {connecting ? <RefreshCw size={13} className="animate-spin" /> : <Zap size={13} />}
+                Conectar Automaticamente
+              </button>
+              <button onClick={toggleSelectionMode} className="btn-ghost py-2 text-sm">
+                Cancelar
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={toggleSelectionMode} className="btn-ghost gap-2 py-2 text-sm">
+                <CheckSquare size={13} />
+                Selecionar
+              </button>
+              <button onClick={openAdd} className="btn-primary gap-2">
+                <Plus size={14} />
+                <span>Adicionar Login</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Auto-connect feedback */}
+      {connectMsg && (
+        <div
+          className="flex items-center gap-3 rounded-2xl px-4 py-3.5"
+          style={{ background: "rgba(0,229,255,0.06)", border: "0.5px solid rgba(0,229,255,0.25)" }}
+        >
+          <Zap size={15} className="flex-shrink-0" style={{ color: "var(--electric)" }} />
+          <p className="text-sm text-white/70 flex-1">{connectMsg}</p>
+        </div>
+      )}
 
       {/* Error state */}
       {error && (
@@ -727,6 +841,9 @@ export default function LoginsPage() {
                 login={login}
                 onEdit={openEdit}
                 onDelete={handleDelete}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(login.id)}
+                onToggleSelect={toggleSelect}
               />
             ))}
           </AnimatePresence>
