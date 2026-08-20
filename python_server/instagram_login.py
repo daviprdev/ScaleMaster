@@ -110,6 +110,22 @@ def _classify_error(exc: Exception) -> tuple[str, str]:
     msg = str(exc)
     lower = msg.lower()
 
+    # AccountSuspended (instagrapi >= algumas versões 2.x, ausente em outras —
+    # detectado por nome da classe em vez de import direto pra não quebrar em
+    # versões sem ela) é um ChallengeRequired cujo challenge.url contém
+    # "/suspended/". A mensagem da exceção em si continua sendo o texto genérico
+    # "challenge_required" — o sinal real de suspensão está só na URL do
+    # challenge, carregada como atributo (ClientError guarda todo **last_json
+    # como atributos da instância). Sem esse check aqui, cai no branch de
+    # checkpoint_required (transitório) e fica em backoff pra sempre numa conta
+    # que a própria Meta já baniu — nunca vai resolver sozinho com retry.
+    challenge_url = ""
+    challenge_data = getattr(exc, "challenge", None)
+    if isinstance(challenge_data, dict):
+        challenge_url = str(challenge_data.get("url") or challenge_data.get("api_path") or "")
+    if type(exc).__name__ == "AccountSuspended" or "/suspended/" in challenge_url:
+        return "banned_or_disabled", f"Conta suspensa pelo Instagram — {msg} (challenge_url={challenge_url})"
+
     if isinstance(exc, BadPassword) or "the password you entered" in lower:
         return "bad_password", msg
     if isinstance(exc, ChallengeRequired) or "challenge_required" in lower:
