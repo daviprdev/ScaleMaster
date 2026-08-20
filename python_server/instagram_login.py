@@ -64,7 +64,44 @@ def _seeded_uuid(rng: random.Random) -> str:
     return str(uuid_lib.UUID(bytes=bytes(rng.getrandbits(8) for _ in range(16))))
 
 
-def build_deterministic_settings(device_seed: str) -> dict:
+# country ISO2 -> (locale, country_code discagem, timezone_offset em segundos).
+# A doc oficial do instagrapi (best-practices) é explícita: "Match set_country,
+# set_locale, device settings ... to the account's normal environment" — um
+# device dizendo país X enquanto conecta por IP de país Y é um sinal clássico
+# de account-takeover/bot pro risk engine da Meta. Antes disso era sempre
+# BR/pt_BR fixo, descasado sempre que o proxy de teste não era brasileiro.
+_COUNTRY_MAP: dict[str, tuple[str, int, int]] = {
+    "BR": ("pt_BR", 55, -10800),
+    "US": ("en_US", 1, -18000),
+    "DE": ("de_DE", 49, 3600),
+    "PT": ("pt_PT", 351, 0),
+    "GB": ("en_GB", 44, 0),
+    "FR": ("fr_FR", 33, 3600),
+    "ES": ("es_ES", 34, 3600),
+    "MX": ("es_MX", 52, -21600),
+    "AR": ("es_AR", 54, -10800),
+    "CA": ("en_CA", 1, -18000),
+    "IT": ("it_IT", 39, 3600),
+    "NL": ("nl_NL", 31, 3600),
+    "PL": ("pl_PL", 48, 3600),
+}
+_DEFAULT_COUNTRY = "BR"
+
+
+def _lookup_proxy_geo(cl: Client) -> tuple[str, str]:
+    """IP + país ISO2 de saída do proxy, via a mesma sessão HTTP do login.
+    Fallback pro país default se a lookup falhar (proxy instável, bloqueado
+    etc.) — nunca deixa perform_login travar por causa disso."""
+    try:
+        data = cl.public.get("https://ipinfo.io/json", timeout=10).json()
+        ip = str(data.get("ip") or "")
+        country = str(data.get("country") or "").upper()
+        return ip, country
+    except Exception as e:
+        return f"erro ao checar IP: {e}", ""
+
+
+def build_deterministic_settings(device_seed: str, country_iso2: str = _DEFAULT_COUNTRY) -> dict:
     """Settings dict completo (device + uuids) determinístico a partir de device_seed."""
     rng = random.Random(device_seed)
     device = dict(rng.choice(_DEVICE_POOL))
@@ -72,6 +109,10 @@ def build_deterministic_settings(device_seed: str) -> dict:
     device["app_version"] = app_version
     device["version_code"] = version_code
     device["bloks_versioning_id"] = bloks_versioning_id
+
+    locale, country_code, timezone_offset = _COUNTRY_MAP.get(
+        country_iso2, _COUNTRY_MAP[_DEFAULT_COUNTRY]
+    )
 
     return {
         "uuids": {
@@ -82,10 +123,10 @@ def build_deterministic_settings(device_seed: str) -> dict:
             "device_id": "android-" + "".join(rng.choice("0123456789abcdef") for _ in range(16)),
         },
         "device_settings": device,
-        "country": "BR",
-        "country_code": 55,
-        "locale": "pt_BR",
-        "timezone_offset": -10800,
+        "country": country_iso2 if country_iso2 in _COUNTRY_MAP else _DEFAULT_COUNTRY,
+        "country_code": country_code,
+        "locale": locale,
+        "timezone_offset": timezone_offset,
     }
 
 
@@ -157,18 +198,20 @@ def perform_login(
 ) -> LoginResult:
     cl = Client()
     cl.delay_range = [1, 3]
-
-    settings = existing_settings or build_deterministic_settings(device_seed)
-    cl.set_settings(settings)
     cl.set_proxy(proxy_url)
 
-    # Diagnóstico temporário — confirma se o proxy está realmente sendo usado
-    # pela sessão do instagrapi (mesmo cliente HTTP que faz o login) antes de
-    # investigar mais a fundo o 429 recorrente no /accounts/login/.
-    try:
-        proxy_ip = cl.public.get("https://api.ipify.org?format=json", timeout=10).json().get("ip")
-    except Exception as e:
-        proxy_ip = f"erro ao checar IP: {e}"
+    # IP + país de saída do proxy, via a mesma sessão HTTP que faz o login.
+    # Numa conta nova (sem existing_settings), o país detectado decide
+    # country/locale/timezone do device — nunca fixo em BR indepenente do
+    # proxy, que descasava dispositivo x geografia e é sinal de bot pro risk
+    # engine da Meta (ver _COUNTRY_MAP acima). Numa relogin (existing_settings
+    # presente), a geografia do device já foi fixada no primeiro login e não é
+    # reavaliada aqui — mudar identidade de device em sessões já estabelecidas
+    # é o que a doc do instagrapi orienta a NUNCA fazer.
+    proxy_ip, proxy_country = _lookup_proxy_geo(cl)
+
+    settings = existing_settings or build_deterministic_settings(device_seed, proxy_country)
+    cl.set_settings(settings)
 
     verification_code = ""
     if totp_secret:
@@ -189,7 +232,7 @@ def perform_login(
     # com auto-resolve de challenge) está mesmo rodando no worker no momento
     # do teste, sem depender do que o painel do Railway mostra como "deploy
     # mais recente" (que pode estar com o build ainda não substituído no ar).
-    BUILD = "chgv2"
+    BUILD = "chgv3"
 
     try:
         cl.login(username, password, verification_code=verification_code, relogin=False)
@@ -210,7 +253,7 @@ def perform_login(
             return LoginResult(
                 False,
                 error_code=error_code,
-                error_message=f"[{BUILD}][proxy_ip={proxy_ip}][resolve_fail] {error_message} :: {tb}"[:500],
+                error_message=f"[{BUILD}][proxy_ip={proxy_ip}][geo={proxy_country or settings.get('country')}][resolve_fail] {error_message} :: {tb}"[:500],
             )
         try:
             cl.relogin()
@@ -219,14 +262,14 @@ def perform_login(
             return LoginResult(
                 False,
                 error_code=error_code,
-                error_message=f"[{BUILD}][proxy_ip={proxy_ip}][pos_challenge] {error_message}"[:500],
+                error_message=f"[{BUILD}][proxy_ip={proxy_ip}][geo={proxy_country or settings.get('country')}][pos_challenge] {error_message}"[:500],
             )
     except Exception as exc:  # instagrapi lança tipos variados conforme a versão
         error_code, error_message = _classify_error(exc)
         return LoginResult(
             False,
             error_code=error_code,
-            error_message=f"[{BUILD}][proxy_ip={proxy_ip}][{type(exc).__name__}] {error_message}"[:500],
+            error_message=f"[{BUILD}][proxy_ip={proxy_ip}][geo={proxy_country or settings.get('country')}][{type(exc).__name__}] {error_message}"[:500],
         )
 
     try:
