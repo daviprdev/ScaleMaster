@@ -168,6 +168,13 @@ def perform_login(
     cl.challenge_code_handler = lambda _username, _choice=None: ""
     cl.change_password_handler = lambda _username: ""
 
+    # Marcador de build — prefixado em toda mensagem de erro retornada por esta
+    # função. Só serve pra confirmar, sem ambiguidade, se este código (versão
+    # com auto-resolve de challenge) está mesmo rodando no worker no momento
+    # do teste, sem depender do que o painel do Railway mostra como "deploy
+    # mais recente" (que pode estar com o build ainda não substituído no ar).
+    BUILD = "chgv2"
+
     try:
         cl.login(username, password, verification_code=verification_code, relogin=False)
     except ChallengeRequired as exc:
@@ -180,12 +187,14 @@ def perform_login(
         try:
             cl.challenge_resolve(cl.last_json)
         except Exception as challenge_exc:
+            import traceback
+
             error_code, error_message = _classify_error(challenge_exc)
-            step_info = str(cl.last_json)[:200] if getattr(cl, "last_json", None) else ""
+            tb = traceback.format_exc(limit=4).replace("\n", " | ")
             return LoginResult(
                 False,
                 error_code=error_code,
-                error_message=f"[proxy_ip={proxy_ip}][challenge_step={step_info}] {error_message}"[:500],
+                error_message=f"[{BUILD}][proxy_ip={proxy_ip}][resolve_fail] {error_message} :: {tb}"[:500],
             )
         try:
             cl.relogin()
@@ -194,11 +203,15 @@ def perform_login(
             return LoginResult(
                 False,
                 error_code=error_code,
-                error_message=f"[proxy_ip={proxy_ip}] pós-challenge: {error_message}"[:500],
+                error_message=f"[{BUILD}][proxy_ip={proxy_ip}][pos_challenge] {error_message}"[:500],
             )
     except Exception as exc:  # instagrapi lança tipos variados conforme a versão
         error_code, error_message = _classify_error(exc)
-        return LoginResult(False, error_code=error_code, error_message=f"[proxy_ip={proxy_ip}] {error_message}"[:500])
+        return LoginResult(
+            False,
+            error_code=error_code,
+            error_message=f"[{BUILD}][proxy_ip={proxy_ip}][{type(exc).__name__}] {error_message}"[:500],
+        )
 
     try:
         info = cl.account_info()
