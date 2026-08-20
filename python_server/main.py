@@ -266,4 +266,10 @@ async def instagram_login(
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok"}
+    try:
+        import importlib.metadata
+
+        instagrapi_version = importlib.metadata.version("instagrapi")
+    except Exception as e:
+        instagrapi_version = f"erro: {e}"
+    return {"status": "ok", "instagrapi_version": instagrapi_version}
