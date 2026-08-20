@@ -174,7 +174,7 @@ export async function GET(req: NextRequest) {
         device_seed: account.id,
         totp_secret: totpSecret || undefined,
         existing_settings: existingSettings || undefined,
-      }, 90_000);
+      }, 130_000);
 
       if (result.success) {
         await (admin as any).from("instagram_accounts").update({

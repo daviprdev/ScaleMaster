@@ -160,8 +160,42 @@ def perform_login(
 
         verification_code = pyotp.TOTP(totp_secret).now()
 
+    # A lib nunca deve bloquear esperando input() num servidor headless — os
+    # handlers padrão (manual_input_code / manual_change_password) fazem
+    # exatamente isso. Sobrescritos para falhar rápido (retornar vazio) sempre
+    # que o challenge realmente exigir código de email/SMS ou nova senha —
+    # esses casos exigem acesso humano à conta e não são automatizáveis aqui.
+    cl.challenge_code_handler = lambda _username, _choice=None: ""
+    cl.change_password_handler = lambda _username: ""
+
     try:
         cl.login(username, password, verification_code=verification_code, relogin=False)
+    except ChallengeRequired as exc:
+        # Alguns challenges de "dispositivo/local novo" (delta_login_review,
+        # scraping_warning, add_birthday, step vazio) são resolvidos sozinhos
+        # pela própria lib via challenge_resolve, sem precisar de código —
+        # equivalente ao "Fui eu" que o app mostra. Só os que realmente
+        # exigem código (email/SMS) ou ação manual continuam falhando aqui,
+        # graças aos handlers fail-fast acima.
+        try:
+            cl.challenge_resolve(cl.last_json)
+        except Exception as challenge_exc:
+            error_code, error_message = _classify_error(challenge_exc)
+            step_info = str(cl.last_json)[:200] if getattr(cl, "last_json", None) else ""
+            return LoginResult(
+                False,
+                error_code=error_code,
+                error_message=f"[proxy_ip={proxy_ip}][challenge_step={step_info}] {error_message}"[:500],
+            )
+        try:
+            cl.relogin()
+        except Exception as relogin_exc:
+            error_code, error_message = _classify_error(relogin_exc)
+            return LoginResult(
+                False,
+                error_code=error_code,
+                error_message=f"[proxy_ip={proxy_ip}] pós-challenge: {error_message}"[:500],
+            )
     except Exception as exc:  # instagrapi lança tipos variados conforme a versão
         error_code, error_message = _classify_error(exc)
         return LoginResult(False, error_code=error_code, error_message=f"[proxy_ip={proxy_ip}] {error_message}"[:500])
