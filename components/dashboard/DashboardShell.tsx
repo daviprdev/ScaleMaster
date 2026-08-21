@@ -21,7 +21,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <div className="relative flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header onMobileMenuToggle={openMenu} />
 
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto pl-safe pr-safe">
           <div className="max-w-6xl mx-auto w-full px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-10">
             {children}
           </div>

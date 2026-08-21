@@ -55,7 +55,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-dvh bg-gray-950 flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden">
       <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none" />
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 right-1/4 w-[500px] h-[400px] bg-cyan-600/8 rounded-full blur-[100px]" />

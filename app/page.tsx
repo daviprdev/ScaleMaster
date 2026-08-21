@@ -104,7 +104,7 @@ const mockNav = ["Dashboard", "Contas", "Postar", "Loop"];
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-black overflow-hidden">
+    <div className="min-h-dvh bg-black overflow-hidden pt-safe pb-safe">
       {/* Background effects */}
       <div className="fixed inset-0 grid-bg opacity-40 pointer-events-none" />
       <div className="fixed inset-0 pointer-events-none">

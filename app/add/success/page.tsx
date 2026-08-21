@@ -1,6 +1,6 @@
 export default function AddSuccessPage() {
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4">
+    <div className="min-h-dvh bg-black flex items-center justify-center p-4 pt-safe pb-safe">
       <div className="glass-card rounded-2xl p-8 max-w-sm w-full text-center space-y-4">
         <div className="w-16 h-16 rounded-full bg-[#00FF41]/10 border border-[#00FF41]/30 flex items-center justify-center mx-auto">
           <svg

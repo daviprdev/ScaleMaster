@@ -17,7 +17,7 @@ export function BackgroundController() {
   const [open, setOpen] = useState(false);
 
   return (
-    <div style={{ position: "fixed", bottom: 18, right: 18, zIndex: 50 }}>
+    <div style={{ position: "fixed", bottom: "calc(18px + env(safe-area-inset-bottom))", right: "calc(18px + env(safe-area-inset-right))", zIndex: 50 }}>
       <AnimatePresence>
         {open && (
           <motion.div

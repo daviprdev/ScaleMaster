@@ -42,7 +42,7 @@ export default async function AdminLayout({
   if (roleData?.role !== "admin") redirect("/dashboard");
 
   return (
-    <div className="min-h-screen bg-black text-white flex">
+    <div className="min-h-dvh bg-black text-white flex pt-safe pb-safe">
       {/* Subtle grid overlay */}
       <div className="fixed inset-0 grid-bg opacity-10 pointer-events-none" />
 

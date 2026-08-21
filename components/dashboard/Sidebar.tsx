@@ -418,7 +418,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   animate={{ x: 0 }}
                   exit={{ x: "-100%" }}
                   transition={{ duration: 0.28, ease: "easeOut" }}
-                  style={{ position: "fixed", left: 0, top: 0, height: "100%", width: 280, zIndex: 260, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(22px) saturate(160%)", WebkitBackdropFilter: "blur(22px) saturate(160%)" }}
+                  style={{ position: "fixed", left: 0, top: 0, height: "100%", width: 280, zIndex: 260, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(22px) saturate(160%)", WebkitBackdropFilter: "blur(22px) saturate(160%)", paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
                   className="flex flex-col border-r border-white/[0.07] overflow-hidden"
                 >
 

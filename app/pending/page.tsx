@@ -73,7 +73,7 @@ export default function PendingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-dvh bg-gray-950 flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden">
       {/* Background */}
       <div className="fixed inset-0 grid-bg opacity-20 pointer-events-none" />
       <div className="fixed inset-0 pointer-events-none">

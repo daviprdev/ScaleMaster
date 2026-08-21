@@ -159,7 +159,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col h-dvh pt-safe pb-safe">
       {/* ── System banners ─────────────────────────────────────── */}
       {impData && (
         <ImpersonationBanner
