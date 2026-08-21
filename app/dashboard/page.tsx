@@ -19,6 +19,7 @@ import {
   Bot,
   Repeat2,
   ImagePlay,
+  Eye,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -36,6 +37,12 @@ interface DashboardStats {
     down_7d: number;
   };
   posts_today: { published: number };
+  views: {
+    total: number;
+    tracked_posts: number;
+    total_posts: number;
+    last_synced_at: string | null;
+  };
   queue: { pending: number };
   recent_activity: {
     type: "download" | "schedule";
@@ -59,6 +66,12 @@ function timeAgo(dateStr: string): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `há ${hrs}h`;
   return `há ${Math.floor(hrs / 24)}d`;
+}
+
+function formatCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(n);
 }
 
 function formatScheduled(dateStr: string): { label: string; time: string } {
@@ -195,6 +208,17 @@ export default function DashboardPage() {
           glow: "rgba(0,229,255,0.22)",
         },
         {
+          label: "Views Totais",
+          value: formatCompact(stats.views.total),
+          change:
+            stats.views.total_posts > 0
+              ? `${stats.views.tracked_posts}/${stats.views.total_posts} posts sincronizados`
+              : "Contas ativas e conectadas",
+          icon: Eye,
+          iconColor: "#00E5FF",
+          glow: "rgba(0,229,255,0.22)",
+        },
+        {
           label: "Fila",
           value: String(stats.queue.pending),
           change: "Aguardando publicação",
@@ -260,10 +284,10 @@ export default function DashboardPage() {
         </button>
       </motion.div>
 
-      {/* Simple stat cards: Contas Conectadas / Postagens Hoje / Fila */}
-      <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Simple stat cards: Contas Conectadas / Postagens Hoje / Views Totais / Fila */}
+      <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {loading || !simpleCards
-          ? Array.from({ length: 3 }).map((_, i) => (
+          ? Array.from({ length: 4 }).map((_, i) => (
               <motion.div key={i} variants={fadeUp}><StatSkeleton /></motion.div>
             ))
           : simpleCards.map((stat, i) => (

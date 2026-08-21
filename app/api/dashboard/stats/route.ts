@@ -51,6 +51,7 @@ export async function GET() {
     recentVideosRes,
     recentPostsRes,
     upcomingRes,
+    viewsPostsRes,
   ] = await Promise.all([
     admin
       .from("instagram_accounts")
@@ -118,6 +119,13 @@ export async function GET() {
       .gt("scheduled_at", nowIso)
       .order("scheduled_at", { ascending: true })
       .limit(4),
+    admin
+      .from("scheduled_posts")
+      .select("insights_plays, insights_fetched_at, instagram_accounts!inner(is_active, health_status)")
+      .eq("user_id", user.id)
+      .eq("status", "published")
+      .eq("instagram_accounts.is_active", true)
+      .neq("instagram_accounts.health_status", "error"),
   ]);
 
   // Contas Caídas — deduplica por conta dentro de cada janela (eventos de failover)
@@ -163,6 +171,23 @@ export async function GET() {
     )
     .slice(0, 5);
 
+  const viewsRows = (viewsPostsRes.data ?? []) as unknown as {
+    insights_plays: number | null;
+    insights_fetched_at: string | null;
+  }[];
+  let viewsTotal = 0;
+  let viewsTracked = 0;
+  let viewsLastSyncedAt: string | null = null;
+  for (const row of viewsRows) {
+    if (row.insights_plays !== null) {
+      viewsTotal += row.insights_plays;
+      viewsTracked++;
+    }
+    if (row.insights_fetched_at && (!viewsLastSyncedAt || row.insights_fetched_at > viewsLastSyncedAt)) {
+      viewsLastSyncedAt = row.insights_fetched_at;
+    }
+  }
+
   return NextResponse.json({
     accounts: {
       total: accountsTotalRes.count ?? 0,
@@ -178,6 +203,12 @@ export async function GET() {
     },
     posts_today: {
       published: postsPublishedTodayRes.count ?? 0,
+    },
+    views: {
+      total: viewsTotal,
+      tracked_posts: viewsTracked,
+      total_posts: viewsRows.length,
+      last_synced_at: viewsLastSyncedAt,
     },
     queue: {
       pending: (queuePendingScheduledRes.count ?? 0) + (queuePendingContainersRes.count ?? 0),
