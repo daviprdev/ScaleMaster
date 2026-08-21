@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import { BackgroundProvider } from "@/components/BackgroundContext";
 import "./globals.css";
@@ -27,6 +27,19 @@ export const metadata: Metadata = {
   title: "AutoScale — Automação Inteligente para Instagram",
   description:
     "Gerencie múltiplas contas, faça scraping de Reels e automatize postagens com IA.",
+  applicationName: "AutoScale",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "AutoScale",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#000000",
 };
 
 export default function RootLayout({
