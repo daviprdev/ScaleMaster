@@ -57,7 +57,13 @@ async function fetchInsightsMetrics(
     error?: { message: string; code?: number };
   };
 
-  if (!res.ok || data.error) return { reach: null, plays: null, shares: null, saved: null };
+  if (!res.ok || data.error) {
+    console.warn(
+      `[meta-insights] insights falhou p/ media ${mediaId} | http=${res.status} | ` +
+      `error=${JSON.stringify(data.error ?? data)}`
+    );
+    return { reach: null, plays: null, shares: null, saved: null };
+  }
 
   const get = (name: string): number | null =>
     data.data?.find((m) => m.name === name)?.values?.[0]?.value ?? null;
