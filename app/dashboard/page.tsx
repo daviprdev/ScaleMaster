@@ -36,7 +36,7 @@ interface DashboardStats {
     down_yesterday: number;
     down_7d: number;
   };
-  posts_today: { published: number };
+  posts_today: { published: number; scheduled: number; loop: number };
   views: {
     total: number;
     tracked_posts: number;
@@ -202,7 +202,7 @@ export default function DashboardPage() {
         {
           label: "Postagens Hoje",
           value: String(stats.posts_today.published),
-          change: "Publicadas hoje",
+          change: `${stats.posts_today.loop} via Loop · ${stats.posts_today.scheduled} via campanhas`,
           icon: CalendarCheck,
           iconColor: "#00E5FF",
           glow: "rgba(0,229,255,0.22)",

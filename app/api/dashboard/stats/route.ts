@@ -46,6 +46,7 @@ export async function GET() {
     accountsDownTotalRes,
     failoverLogs7dRes,
     postsPublishedTodayRes,
+    loopPublishedTodayRes,
     queuePendingScheduledRes,
     queuePendingContainersRes,
     recentVideosRes,
@@ -89,6 +90,12 @@ export async function GET() {
       .eq("user_id", user.id)
       .eq("status", "published")
       .gte("published_at", startOfToday),
+    admin
+      .from("pending_containers")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("status", "published")
+      .gte("created_at", startOfToday),
     admin
       .from("scheduled_posts")
       .select("*", { count: "exact", head: true })
@@ -202,7 +209,9 @@ export async function GET() {
       down_7d: down7d.size,
     },
     posts_today: {
-      published: postsPublishedTodayRes.count ?? 0,
+      published: (postsPublishedTodayRes.count ?? 0) + (loopPublishedTodayRes.count ?? 0),
+      scheduled: postsPublishedTodayRes.count ?? 0,
+      loop: loopPublishedTodayRes.count ?? 0,
     },
     views: {
       total: viewsTotal,
