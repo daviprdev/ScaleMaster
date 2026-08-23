@@ -11,7 +11,7 @@ export async function GET() {
   const scope = "instagram_business_basic,instagram_business_content_publish,instagram_manage_comments,instagram_manage_insights";
 
   const oauthUrl =
-    "https://api.instagram.com/oauth/authorize" +
+    "https://www.instagram.com/oauth/authorize" +
     "?client_id=" + clientId +
     "&redirect_uri=" + encodeURIComponent(redirectUri) +
     "&scope=" + scope +

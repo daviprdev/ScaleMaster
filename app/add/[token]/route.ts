@@ -59,10 +59,10 @@ export async function GET(
   // Gera state CSRF e monta URL OAuth
   const state = crypto.randomUUID();
   const oauthUrl =
-    "https://api.instagram.com/oauth/authorize" +
+    "https://www.instagram.com/oauth/authorize" +
     "?client_id=" + clientId +
     "&redirect_uri=" + encodeURIComponent(REDIRECT_URI) +
-    "&scope=instagram_business_basic,instagram_business_content_publish,instagram_business_manage_comments" +
+    "&scope=instagram_business_basic,instagram_business_content_publish,instagram_business_manage_comments,instagram_business_manage_insights" +
     "&response_type=code" +
     "&state=" + state;
 
