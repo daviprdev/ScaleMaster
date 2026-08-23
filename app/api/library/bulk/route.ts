@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Supabase não configurado." }, { status: 503 });
   }
 
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+
   let body: { items?: BulkDeleteItem[] };
   try {
     body = await req.json() as { items?: BulkDeleteItem[] };
@@ -31,15 +36,33 @@ export async function DELETE(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
 
-  // ── Fase 1: Banco de dados (PRIMEIRO — evita efeito fantasma) ──
-  const ids = items.map(i => i.id).filter(Boolean);
+  // ── Fase 0: confirma que os IDs recebidos de fato pertencem ao usuário ──
+  const requestedIds = items.map(i => i.id).filter(Boolean);
+  if (requestedIds.length === 0) {
+    return NextResponse.json({ error: "Nenhum ID válido fornecido." }, { status: 400 });
+  }
+
+  const { data: owned, error: ownedError } = await admin
+    .from("videos_library")
+    .select("id, storage_path")
+    .eq("user_id", user.id)
+    .in("id", requestedIds);
+
+  if (ownedError) {
+    return NextResponse.json({ error: ownedError.message }, { status: 500 });
+  }
+
+  const ownedRows = (owned ?? []) as { id: string; storage_path: string }[];
+  const ids = ownedRows.map(r => r.id);
   if (ids.length === 0) {
     return NextResponse.json({ error: "Nenhum ID válido fornecido." }, { status: 400 });
   }
 
+  // ── Fase 1: Banco de dados (PRIMEIRO — evita efeito fantasma) ──
   const { error: dbError } = await admin
     .from("videos_library")
     .delete()
+    .eq("user_id", user.id)
     .in("id", ids);
 
   if (dbError) {
@@ -49,8 +72,8 @@ export async function DELETE(req: NextRequest) {
 
   // ── Fase 2: Storage (DEPOIS — best-effort, não bloqueia resposta) ──
   // "direct/" = URL externa sem upload no Storage → pular
-  const storagePaths = items
-    .map(i => i.storage_path)
+  const storagePaths = ownedRows
+    .map(r => r.storage_path)
     .filter(p => p && !p.startsWith("direct/"));
 
   if (storagePaths.length > 0) {

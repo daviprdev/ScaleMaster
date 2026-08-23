@@ -41,13 +41,19 @@ export async function PATCH(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+
+  const { data: updated, error } = await supabase
     .from("instagram_accounts")
     .update(updates)
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .select("id")
+    .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error || !updated) {
+    return NextResponse.json({ error: error?.message ?? "Conta não encontrada." }, { status: 404 });
   }
 
   // Reaproveitamento do estoque: se o proxy da conta foi removido ou trocado

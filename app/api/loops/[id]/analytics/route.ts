@@ -156,7 +156,8 @@ export async function GET(
       )
     `)
     .eq("loop_id", loopId)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(100000);
 
   const rows = (containers ?? []) as ContainerRow[];
   const now = Date.now();

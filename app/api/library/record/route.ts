@@ -48,9 +48,23 @@ export async function POST(req: NextRequest) {
 
   const supabaseUser = await createClient();
   const { data: { user } } = await supabaseUser.auth.getUser();
-  const userId = user?.id ?? null;
+  if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  const userId = user.id;
 
-  const { data: urlData } = getSupabaseAdmin().storage
+  const admin = getSupabaseAdmin();
+
+  // Confirma que a pasta informada pertence ao usuário logado
+  const { data: folder } = await admin
+    .from("library_folders")
+    .select("id")
+    .eq("id", folderId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!folder) {
+    return NextResponse.json({ error: "Pasta não encontrada." }, { status: 404 });
+  }
+
+  const { data: urlData } = admin.storage
     .from("videos-library")
     .getPublicUrl(storagePath);
 
@@ -70,7 +84,7 @@ export async function POST(req: NextRequest) {
   };
   insertPayload.folder_id = folderId;
 
-  const { data: record, error } = await getSupabaseAdmin()
+  const { data: record, error } = await admin
     .from("videos_library")
     .insert(insertPayload as never)
     .select()

@@ -74,6 +74,33 @@ export async function POST(req: NextRequest) {
 
   const anyAdmin = getSupabaseAdmin() as any;
 
+  // Valida ownership de pasta de mídia, pasta de contas e contas específicas
+  // antes de criar o loop — sem isso, um folder_id/account_id de outro usuário
+  // (vazado/adivinhado) fazia o cron postar conteúdo alheio em contas alheias.
+  const accountIdsToCheck: string[] = body.account_ids ?? [];
+  const [libFolderCheck, accFolderCheck, accountsCheck] = await Promise.all([
+    body.folder_id
+      ? anyAdmin.from("library_folders").select("id").eq("id", body.folder_id).eq("user_id", user.id).single()
+      : Promise.resolve({ data: null }),
+    body.account_folder_id
+      ? anyAdmin.from("account_folders").select("id").eq("id", body.account_folder_id).eq("user_id", user.id).single()
+      : Promise.resolve({ data: null }),
+    accountIdsToCheck.length
+      ? anyAdmin.from("instagram_accounts").select("id").in("id", accountIdsToCheck).eq("user_id", user.id)
+      : Promise.resolve({ data: [] }),
+  ]);
+  if (body.folder_id && !libFolderCheck.data) {
+    return NextResponse.json({ error: "Pasta de mídia não encontrada." }, { status: 400 });
+  }
+  if (body.account_folder_id && !accFolderCheck.data) {
+    return NextResponse.json({ error: "Pasta de contas não encontrada." }, { status: 400 });
+  }
+  const ownedAccountIds = new Set(((accountsCheck.data ?? []) as { id: string }[]).map((a) => a.id));
+  const notOwnedAccounts = accountIdsToCheck.filter((id) => !ownedAccountIds.has(id));
+  if (notOwnedAccounts.length > 0) {
+    return NextResponse.json({ error: "Uma ou mais contas não pertencem a este usuário." }, { status: 403 });
+  }
+
   const captionsToSave = (body.captions ?? []).map((c: string) => c.trim()).filter(Boolean);
   const autoEnabled = body.auto_caption_enabled ?? false;
 

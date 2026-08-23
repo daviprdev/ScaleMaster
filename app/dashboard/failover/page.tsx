@@ -233,25 +233,34 @@ export default function FailoverPage() {
     load();
   }, [load]);
 
-  const savePriorities = useCallback(async (arr: Account[]) => {
+  const savePriorities = useCallback(async (arr: Account[], previous: Account[]) => {
     setSaving(true);
-    await fetch("/api/failover/accounts", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        updates: arr.map((a, i) => ({ id: a.id, failover_priority: i })),
-      }),
-    });
-    setSaving(false);
+    try {
+      const res = await fetch("/api/failover/accounts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          updates: arr.map((a, i) => ({ id: a.id, failover_priority: i })),
+        }),
+      });
+      if (!res.ok) throw new Error("PATCH falhou");
+    } catch {
+      // Reverte a reordenação local — o servidor não confirmou a nova ordem
+      setAccounts(previous);
+      setError("Não foi possível salvar a nova ordem. Tente novamente.");
+    } finally {
+      setSaving(false);
+    }
   }, []);
 
   const move = (idx: number, dir: -1 | 1) => {
     const swap = idx + dir;
     if (swap < 0 || swap >= accounts.length) return;
+    const previous = accounts;
     const arr = [...accounts];
     [arr[idx], arr[swap]] = [arr[swap], arr[idx]];
     setAccounts(arr);
-    savePriorities(arr);
+    savePriorities(arr, previous);
   };
 
   const cleanupErrorAccounts = async () => {

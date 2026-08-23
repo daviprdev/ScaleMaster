@@ -75,7 +75,10 @@ export async function POST(req: NextRequest) {
   // Obtém o usuário autenticado via cookies da sessão
   const supabaseUser = await createClient();
   const { data: { user } } = await supabaseUser.auth.getUser();
-  const userId = user?.id ?? null;
+  if (!user) {
+    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  }
+  const userId = user.id;
 
   let cleanup: (() => void) | null = null;
 

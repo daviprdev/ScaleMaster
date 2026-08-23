@@ -46,6 +46,10 @@ export async function POST(req: NextRequest) {
 
   const results: BulkProxyResult[] = await Promise.all(
     body.rows.map(async (row): Promise<BulkProxyResult> => {
+      if (!row || typeof row.username !== "string" || !row.username.trim()) {
+        return { username: String(row?.username ?? ""), status: "error", error: "Linha inválida: username ausente." };
+      }
+
       const username = row.username.replace(/^@/, "").trim().toLowerCase();
       const accountId = accountMap.get(username);
 
@@ -79,6 +83,7 @@ export async function POST(req: NextRequest) {
   // CSV liberam a entrada do estoque atribuída a elas (volta a ficar livre em
   // vez de ser deletada).
   const touchedIds = body.rows
+    .filter((r): r is BulkProxyRow => !!r && typeof r.username === "string")
     .map(r => accountMap.get(r.username.replace(/^@/, "").trim().toLowerCase()))
     .filter((id): id is string => !!id);
   if (touchedIds.length > 0) {

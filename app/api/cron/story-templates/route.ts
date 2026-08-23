@@ -11,6 +11,13 @@ import { getProxyForAccount, isProxyNetworkError, recordProxyFailure } from "@/l
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// Sem essa guarda, vários templates ou muitas contas por template facilmente
+// passam de 60s reais e a Vercel mata a function no meio do loop — as contas
+// ainda não alcançadas simplesmente não recebem o story naquele ciclo, sem
+// nenhum erro registrado. Corta o processamento antes disso pra devolver uma
+// resposta normal (o resto é pego no próximo ciclo, respeitando o claim).
+const RUN_BUDGET_MS = 45_000;
+
 interface TemplateRow {
   id: string;
   user_id: string;
@@ -53,6 +60,7 @@ export async function GET(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
   const now = new Date();
+  const runStart = Date.now();
 
   const { data: templates } = await admin
     .from("story_templates")
@@ -72,6 +80,12 @@ export async function GET(req: NextRequest) {
   const summary = { processed: 0, published: 0, failed: 0 };
 
   for (const template of eligible) {
+    // ── Budget global ──────────────────────────────────────────────────────
+    if (Date.now() - runStart > RUN_BUDGET_MS) {
+      console.log(`[story-templates] ⏱ Budget esgotado — ${eligible.length - summary.processed} template(s) restantes ficam pro próximo ciclo.`);
+      break;
+    }
+
     // Claim atômico: condiciona no last_posted_at visto no fetch — evita que
     // duas invocações concorrentes do cron repostem o mesmo template 2x.
     let claimQuery = admin
@@ -97,6 +111,11 @@ export async function GET(req: NextRequest) {
     const errors: string[] = [];
 
     for (const row of (targets ?? []) as unknown as TargetAccountRow[]) {
+      if (Date.now() - runStart > RUN_BUDGET_MS) {
+        console.log(`[story-templates] ⏱ Budget esgotado no meio do template ${template.id} — contas restantes ficam pro próximo ciclo.`);
+        break;
+      }
+
       const account = row.instagram_accounts;
       if (!account || !account.is_active || account.health_status === "error") continue;
       if (!account.ig_business_account_id || !account.meta_access_token) {

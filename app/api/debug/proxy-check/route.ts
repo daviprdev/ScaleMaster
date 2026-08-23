@@ -12,7 +12,9 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
-  if (secret && auth !== `Bearer ${secret}`) {
+  if (!secret) {
+    console.warn("[debug/proxy-check] CRON_SECRET não definida — rota sem proteção.");
+  } else if (auth !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

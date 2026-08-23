@@ -38,9 +38,15 @@ export default async function DashboardLayout({
   // Impersonation banner data
   const cookieStore = await cookies();
   const impCookie = cookieStore.get("admin-impersonating");
-  const impData = impCookie
-    ? (JSON.parse(impCookie.value) as { adminEmail: string })
-    : null;
+  let impData: { adminEmail: string } | null = null;
+  if (impCookie) {
+    try {
+      impData = JSON.parse(impCookie.value) as { adminEmail: string };
+    } catch {
+      // Cookie malformado (editado manualmente/corrompido) — ignora em vez de derrubar o dashboard
+      impData = null;
+    }
+  }
 
   // Active system announcement
   let announcementMessage: string | null = null;

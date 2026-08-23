@@ -71,6 +71,23 @@ export async function POST(req: NextRequest) {
 
   // ── Busca vídeos ──────────────────────────────────────────────────────────
   const admin = getSupabaseAdmin() as any;
+
+  // Valida ownership de TODAS as contas antes de agendar qualquer post — impede
+  // agendar/publicar em conta de outro usuário via account_id vazado/adivinhado.
+  const { data: ownedAccountRows } = await admin
+    .from("instagram_accounts")
+    .select("id")
+    .in("id", account_ids)
+    .eq("user_id", user.id);
+  const ownedAccountIds = new Set((ownedAccountRows ?? []).map((a: { id: string }) => a.id));
+  const notOwnedAccounts = account_ids.filter((id) => !ownedAccountIds.has(id));
+  if (notOwnedAccounts.length > 0) {
+    return NextResponse.json(
+      { error: "Uma ou mais contas não pertencem a este usuário." },
+      { status: 403 }
+    );
+  }
+
   let videos: VideoRecord[] = [];
 
   if (folder_id) {

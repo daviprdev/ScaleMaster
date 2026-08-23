@@ -8,7 +8,7 @@
  *   - eq contrast/brightness/saturation ±2%   → quebra pHash colorimétrico
  *   - noise luma c0s=2–4                      → quebra pHash espacial
  *   - asetrate pitch ±1%                      → quebra Chromaprint/AudID
- *   - libx264 CRF 19 ultrafast                → novo bitstream limpo
+ *   - libx264 CRF 22 ultrafast                → novo bitstream limpo
  *   - -map_metadata -1 + creation_time fake   → remove rastreio + parece captura original
  *   - efeitos criativos do usuário (opcionais): hflip, negate, zoom, blur, noise+, antiAi
  */
@@ -111,7 +111,7 @@ async function uploadToTemp(filePath: string, uid: string): Promise<string> {
  * Sempre re-encoda — nunca retorna URL original.
  *
  * Base (sempre ativo, parâmetros via FNV-1a do accountId):
- *   eq + noise luma + pitch shift de áudio + CRF 19 + fake creation_time
+ *   eq + noise luma + pitch shift de áudio + CRF 22 + fake creation_time
  *
  * Efeitos criativos (opcionais, ativados no painel do Loop):
  *   mirror, invert, zoom, blur, noise+, antiAi
@@ -250,7 +250,13 @@ export async function processVideoForAccount(
 }
 
 // ── applyVideoEffects — wrapper de compatibilidade ───────────────────────────
-// Chamado por publish-scheduled e posts/create.
+// Órfã hoje (zero call sites — confirmado via grep em 23/08/2026): chamadas em
+// publish-scheduled e posts/create foram removidas em 08/07 (ver CLAUDE.md,
+// "Fix — Views 0-200 no Automatizar"), que tirou o re-encode automático desses
+// dois fluxos. O processamento real do Loop passa por processVideoForAccount()
+// via a fila video_processing_jobs, não por esta função. Mantida por enquanto
+// caso algum caminho futuro precise do wrapper; não remover a lógica interna
+// (só o re-encode automático foi removido dos fluxos de postagem).
 // Se nenhum efeito criativo estiver ativo, retorna URL original sem re-encode.
 
 export async function applyVideoEffects(

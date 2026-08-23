@@ -1833,11 +1833,18 @@ export default function LoopPage() {
   const handleToggleStatus = async (loop: Loop) => {
     const newStatus = loop.status === "active" ? "paused" : "active";
     setLoops(prev => prev.map(l => l.id === loop.id ? { ...l, status: newStatus } : l));
-    await fetch(`/api/loops/${loop.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: newStatus }),
-    });
+    try {
+      const res = await fetch(`/api/loops/${loop.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) throw new Error("PATCH falhou");
+    } catch {
+      // Reverte o update otimista — o servidor não confirmou a mudança
+      setLoops(prev => prev.map(l => l.id === loop.id ? { ...l, status: loop.status } : l));
+      window.alert("Não foi possível alterar o status do loop. Tente novamente.");
+    }
   };
 
   const handleDelete = async (loop: Loop) => {

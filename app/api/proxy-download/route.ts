@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -56,6 +57,15 @@ const VIDEO_FETCH_HEADERS = {
 //    streams the body. Response is streamed (not buffered) to avoid OOM on large files.
 //
 export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return new NextResponse(
+      JSON.stringify({ error: "Não autenticado." }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   const url = req.nextUrl.searchParams.get("url");
   const filename = req.nextUrl.searchParams.get("filename") ?? "autoscale_reel.mp4";
 
@@ -131,6 +141,12 @@ export async function GET(req: NextRequest) {
 // HEAD is used by the client for fast URL validation before triggering a full download.
 // Supabase URLs are always reachable — return 200 without a network fetch.
 export async function HEAD(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return new NextResponse(null, { status: 401 });
+  }
+
   const url = req.nextUrl.searchParams.get("url");
 
   if (!url || !isAllowed(url)) {

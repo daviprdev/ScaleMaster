@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
       "instagram_accounts(id, meta_access_token, ig_business_account_id, proxy_url)"
     )
     .eq("id", body.post_id)
+    .eq("user_id", user.id)
     .eq("status", "published")
     .single();
 

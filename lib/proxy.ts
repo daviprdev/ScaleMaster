@@ -1,32 +1,20 @@
 /**
- * lib/proxy.ts — Proxy residencial por conta para chamadas à Meta Graph API.
+ * lib/proxy.ts — Proxy residencial dedicado por conta para chamadas à Meta Graph API.
  *
  * Prioridade:
- *   1. instagram_accounts.proxy_url (AES-256-GCM) → proxy dedicado individual
- *   2. PROXY_URL_TEMPLATE env var           → proxy por sessão (Smartproxy sticky)
- *   3. null                                 → sem proxy (IP Vercel)
+ *   1. instagram_accounts.proxy_url (AES-256-GCM) → proxy dedicado individual (estoque)
+ *   2. null                                       → sem proxy (IP Vercel)
  *
- * ── Como configurar com Smartproxy ──────────────────────────────────────────
+ * Política do projeto (2026-07-15): "sem proxy = sem sync/postagem" — nenhuma
+ * chamada em nome de uma conta sai pelo IP datacenter da Vercel. Contas sem
+ * proxy dedicado ficam paradas até receberem um do estoque (/dashboard/proxy-test),
+ * não caem para IP direto.
  *
- * No painel Smartproxy → Residential Proxies → Endpoint Generator:
- *   Escolha: Sticky Session | País: BR | Duration: 720 min
- *
- * Formato da URL (copie do painel e substitua apenas {SESSION}):
- *   http://USERNAME_country-BR_session-{SESSION}:PASSWORD@gate.smartproxy.com:7000
- *
- * Adicione como env var PROXY_URL_TEMPLATE na Vercel:
- *   http://smart-xxxxx_country-BR_session-{SESSION}:SENHA@gate.smartproxy.com:7000
- *
- * Regras CRÍTICAS:
- *   - {SESSION} é o ÚNICO placeholder — username e password devem ser literais
- *   - NÃO use {user}, {pass}, {username}, {password} — a URL ficaria inválida
- *   - Teste com o endpoint de diagnóstico: /dashboard/proxy-test
- *
- * Cada conta recebe um session_id determinístico (SHA-256 do account_id, 8 hex)
- * → mesmo account_id = mesmo session_id = mesmo IP residencial por 12h.
+ * O antigo fallback via PROXY_URL_TEMPLATE (sessão sticky por account_id no
+ * Smartproxy) foi removido em 2026-06-14 — sticky session rotacionava o IP de
+ * várias contas ao mesmo tempo e causava cascata. Ver CLAUDE.md.
  */
 
-import { createHash } from "crypto";
 import { ProxyAgent } from "undici";
 import { decrypt } from "@/lib/encrypt";
 
@@ -61,12 +49,6 @@ function buildProxyAgent(rawUrl: string, accountId: string): ProxyAgent | null {
   }
 }
 
-// ── Session ID determinístico por account ────────────────────────────────────
-
-function sessionForAccount(accountId: string): string {
-  return createHash("sha256").update(accountId).digest("hex").slice(0, 8);
-}
-
 // ── getProxyForAccount ────────────────────────────────────────────────────────
 
 /**
@@ -74,8 +56,7 @@ function sessionForAccount(accountId: string): string {
  *
  * Ordem de prioridade:
  *   1. proxy_url individual no banco (AES-256-GCM)
- *   2. PROXY_URL_TEMPLATE com session derivada do account_id
- *   3. null → IP da Vercel (sem proxy)
+ *   2. null → IP da Vercel (sem proxy)
  */
 export function getProxyForAccount(
   accountId: string,
@@ -97,26 +78,7 @@ export function getProxyForAccount(
     }
   }
 
-  // 2. Template global (Smartproxy sticky session por account)
-  const template = process.env.PROXY_URL_TEMPLATE;
-  if (template) {
-    if (!template.includes("{SESSION}")) {
-      // Log apenas na primeira chamada (evita spam nos logs do cron)
-      console.warn("[proxy] PROXY_URL_TEMPLATE não contém {SESSION} — template ignorado.");
-    } else {
-      const session = sessionForAccount(accountId);
-      const rawUrl  = template.replace("{SESSION}", session);
-      const agent   = buildProxyAgent(rawUrl, accountId);
-      if (agent) {
-        console.log(
-          `[proxy] ${accountId.slice(0, 8)}… → template (sessão ${session}) | ${proxyLabels.get(agent)}`
-        );
-        return agent;
-      }
-    }
-  }
-
-  // 3. Sem proxy
+  // 2. Sem proxy dedicado — política do projeto é não cair pro IP da Vercel.
   return null;
 }
 

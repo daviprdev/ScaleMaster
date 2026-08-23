@@ -1098,6 +1098,7 @@ export default function AccountsPage() {
   const _autoRefreshDone = useRef(false);
   const _autoSyncDone = useRef(false);
   const _firstLoadDone = useRef(false);
+  const _fetchIdRef = useRef(0);
 
   // Close folder menu on outside click
   useEffect(() => {
@@ -1166,6 +1167,10 @@ export default function AccountsPage() {
     // Skeleton apenas no primeiro carregamento; refreshes seguintes (sync,
     // auto-refresh 60s) atualizam os dados em cima dos cards já na tela.
     if (!_firstLoadDone.current) setLoading(true);
+    // Guard contra corrida entre chamadas concorrentes (mount, auto-sync,
+    // intervalo de 60s, handleSyncAll/handleRefresh/handleBulkSync): só a
+    // resposta da chamada MAIS RECENTE pode sobrescrever o state.
+    const reqId = ++_fetchIdRef.current;
     try {
       const { data } = await supabase
         .from("instagram_accounts")
@@ -1176,11 +1181,11 @@ export default function AccountsPage() {
       const fetched = ((data ?? []) as unknown as (Account & { proxy_url: string | null; user_meta_apps: { app_name: string } | null })[]).map(
         (row) => ({ ...row, has_proxy: row.proxy_url !== null, meta_app_name: row.user_meta_apps?.app_name ?? null, labels: (row.labels as AccountLabel[]) ?? [], profile_draft: (row.profile_draft as ProfileDraft | null) ?? null })
       ) as Account[];
-      setAccounts(fetched);
+      if (reqId === _fetchIdRef.current) setAccounts(fetched);
       return fetched;
     } finally {
       _firstLoadDone.current = true;
-      setLoading(false);
+      if (reqId === _fetchIdRef.current) setLoading(false);
     }
   }, [supabase]);
 
@@ -1409,7 +1414,11 @@ export default function AccountsPage() {
     _togglingRef.current = account.id;
     setTogglingId(account.id);
     try {
-      await supabase.from("instagram_accounts").update({ is_active: !account.is_active }).eq("id", account.id);
+      const { error } = await supabase.from("instagram_accounts").update({ is_active: !account.is_active }).eq("id", account.id);
+      if (error) {
+        setNotification({ type: "error", message: "Falha ao alterar status da conta." });
+        return;
+      }
       setAccounts(prev => prev.map(a => a.id === account.id ? { ...a, is_active: !a.is_active } : a));
     } finally {
       _togglingRef.current = null;
@@ -1422,7 +1431,11 @@ export default function AccountsPage() {
     _deletingRef.current = id;
     setDeletingId(id);
     try {
-      await supabase.from("instagram_accounts").delete().eq("id", id);
+      const { error } = await supabase.from("instagram_accounts").delete().eq("id", id);
+      if (error) {
+        setNotification({ type: "error", message: "Falha ao excluir conta." });
+        return;
+      }
       setAccounts(prev => prev.filter(a => a.id !== id));
       // Update folder counts
       setFolders(prev => prev.map(f => {
@@ -1476,7 +1489,11 @@ export default function AccountsPage() {
     setBulkDeleting(true);
     try {
       const ids = Array.from(selectedIds);
-      await supabase.from("instagram_accounts").delete().in("id", ids);
+      const { error } = await supabase.from("instagram_accounts").delete().in("id", ids);
+      if (error) {
+        setNotification({ type: "error", message: "Falha ao excluir contas selecionadas." });
+        return;
+      }
       setAccounts(prev => prev.filter(a => !selectedIds.has(a.id)));
       setNotification({
         type: "success",

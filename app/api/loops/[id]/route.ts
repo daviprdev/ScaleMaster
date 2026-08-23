@@ -20,6 +20,18 @@ export async function PATCH(
 
   const anyAdmin = getSupabaseAdmin() as any;
 
+  // BUG CRÍTICO corrigido: antes, um PATCH só com { account_ids } pulava o
+  // bloco de update escalar (que tinha o único .eq("user_id", ...)) e ia direto
+  // pro delete+insert de loop_accounts sem NENHUMA checagem de dono — qualquer
+  // usuário conseguia sequestrar o loop de outro trocando as contas dele.
+  const { data: ownedLoop } = await anyAdmin
+    .from("loops")
+    .select("id")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+  if (!ownedLoop) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
+
   const updatePayload: Record<string, unknown> = {};
   const scalars = ["status", "name", "folder_id", "account_folder_id", "is_infinite", "cycles",
     "interval_minutes", "media_limit", "captions", "cover_image_url",
@@ -48,6 +60,34 @@ export async function PATCH(
     }
 
     updatePayload[key] = body[key];
+  }
+
+  // Mesma checagem de ownership de pasta/conta do POST — evita que a edição de
+  // um loop já próprio seja usada pra apontar pra pasta/conta de outro usuário.
+  const accountIdsInBody = "account_ids" in body ? (body.account_ids as string[]) : [];
+  const [libFolderCheck, accFolderCheck, accountsCheck] = await Promise.all([
+    updatePayload.folder_id
+      ? anyAdmin.from("library_folders").select("id").eq("id", updatePayload.folder_id).eq("user_id", user.id).single()
+      : Promise.resolve({ data: null }),
+    updatePayload.account_folder_id
+      ? anyAdmin.from("account_folders").select("id").eq("id", updatePayload.account_folder_id).eq("user_id", user.id).single()
+      : Promise.resolve({ data: null }),
+    accountIdsInBody.length
+      ? anyAdmin.from("instagram_accounts").select("id").in("id", accountIdsInBody).eq("user_id", user.id)
+      : Promise.resolve({ data: [] }),
+  ]);
+  if (updatePayload.folder_id && !libFolderCheck.data) {
+    return NextResponse.json({ error: "Pasta de mídia não encontrada." }, { status: 400 });
+  }
+  if (updatePayload.account_folder_id && !accFolderCheck.data) {
+    return NextResponse.json({ error: "Pasta de contas não encontrada." }, { status: 400 });
+  }
+  if (accountIdsInBody.length) {
+    const ownedAccountIds = new Set(((accountsCheck.data ?? []) as { id: string }[]).map((a) => a.id));
+    const notOwnedAccounts = accountIdsInBody.filter((accId) => !ownedAccountIds.has(accId));
+    if (notOwnedAccounts.length > 0) {
+      return NextResponse.json({ error: "Uma ou mais contas não pertencem a este usuário." }, { status: 403 });
+    }
   }
 
   if (Object.keys(updatePayload).length > 0) {

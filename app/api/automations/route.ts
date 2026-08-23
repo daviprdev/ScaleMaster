@@ -79,9 +79,9 @@ export async function GET() {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     const [pendingRes, publishedRes, nextRes] = await Promise.all([
-      admin.from("scheduled_posts").select("campaign_id").in("campaign_id", ids).in("status", ["pending", "publishing"]),
-      admin.from("scheduled_posts").select("campaign_id").in("campaign_id", ids).eq("status", "published").gte("scheduled_at", since24h),
-      admin.from("scheduled_posts").select("campaign_id, scheduled_at").in("campaign_id", ids).eq("status", "pending").gte("scheduled_at", new Date().toISOString()).order("scheduled_at", { ascending: true }),
+      admin.from("scheduled_posts").select("campaign_id").in("campaign_id", ids).in("status", ["pending", "publishing"]).limit(100000),
+      admin.from("scheduled_posts").select("campaign_id").in("campaign_id", ids).eq("status", "published").gte("scheduled_at", since24h).limit(100000),
+      admin.from("scheduled_posts").select("campaign_id, scheduled_at").in("campaign_id", ids).eq("status", "pending").gte("scheduled_at", new Date().toISOString()).order("scheduled_at", { ascending: true }).limit(100000),
     ]);
 
     for (const row of (pendingRes.data ?? [])) {
@@ -132,6 +132,30 @@ export async function POST(req: NextRequest) {
   };
 
   const admin = getSupabaseAdmin();
+
+  // Valida ownership das pastas antes de vincular — sem isso, uma automação
+  // podia apontar pra pasta de contas/vídeos de OUTRO usuário via folder_id
+  // vazado/adivinhado, fazendo o cron postar conteúdo alheio em contas alheias.
+  if (account_folder_ids.length || video_folder_ids.length) {
+    const [{ data: ownedAccFolders }, { data: ownedVidFolders }] = await Promise.all([
+      account_folder_ids.length
+        ? admin.from("account_folders").select("id").in("id", account_folder_ids).eq("user_id", user.id)
+        : Promise.resolve({ data: [] as { id: string }[] }),
+      video_folder_ids.length
+        ? admin.from("library_folders").select("id").in("id", video_folder_ids).eq("user_id", user.id)
+        : Promise.resolve({ data: [] as { id: string }[] }),
+    ]);
+    const ownedAccFolderIds = new Set((ownedAccFolders ?? []).map((f: { id: string }) => f.id));
+    const ownedVidFolderIds = new Set((ownedVidFolders ?? []).map((f: { id: string }) => f.id));
+    const badAcc = account_folder_ids.filter((id: string) => !ownedAccFolderIds.has(id));
+    const badVid = video_folder_ids.filter((id: string) => !ownedVidFolderIds.has(id));
+    if (badAcc.length > 0 || badVid.length > 0) {
+      return NextResponse.json(
+        { error: "Uma ou mais pastas não pertencem a este usuário." },
+        { status: 400 }
+      );
+    }
+  }
 
   const { data: automation, error } = await admin
     .from("automations")

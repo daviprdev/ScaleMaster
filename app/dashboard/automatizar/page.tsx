@@ -792,18 +792,28 @@ export default function AutomatizarPage() {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   const handleDelete = async (id: string) => {
-    await fetch(`/api/automations/${id}`, { method: "DELETE" });
-    setAutomations((prev) => prev.filter((a) => a.id !== id));
+    try {
+      const res = await fetch(`/api/automations/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("DELETE falhou");
+      setAutomations((prev) => prev.filter((a) => a.id !== id));
+    } catch {
+      window.alert("Não foi possível excluir a automação. Tente novamente.");
+    }
   };
 
   const handleToggle = async (automation: Automation) => {
     const newActive = !automation.active;
-    await fetch(`/api/automations/${automation.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active: newActive }),
-    });
-    setAutomations((prev) => prev.map((a) => a.id === automation.id ? { ...a, active: newActive } : a));
+    try {
+      const res = await fetch(`/api/automations/${automation.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: newActive }),
+      });
+      if (!res.ok) throw new Error("PATCH falhou");
+      setAutomations((prev) => prev.map((a) => a.id === automation.id ? { ...a, active: newActive } : a));
+    } catch {
+      window.alert("Não foi possível alterar o status da automação. Tente novamente.");
+    }
   };
 
   const activeCount = automations.filter((a) => a.active).length;

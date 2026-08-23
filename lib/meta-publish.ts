@@ -113,7 +113,7 @@ async function pollContainerStatus(
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, i === 0 ? 5_000 : intervalMs));
     const res = await undiciFetch(
-      `${GRAPH_API}/${creationId}?fields=status_code&access_token=${token}`,
+      `${GRAPH_API}/${creationId}?fields=status_code&access_token=${encodeURIComponent(token)}`,
       proxyInit(proxy, { signal: AbortSignal.timeout(45_000) }) as any
     );
     const data = (await res.json()) as {

@@ -885,16 +885,22 @@ export default function StoriesPage() {
   const handleDeleteHistoryItem = async (id: string) => {
     setDeletingHistoryId(id);
     try {
-      await fetch(`/api/posts/stories/history?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const res = await fetch(`/api/posts/stories/history?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("DELETE falhou");
       setHistory(prev => prev.filter(i => i.id !== id));
+    } catch {
+      window.alert("Não foi possível remover o item do histórico. Tente novamente.");
     } finally { setDeletingHistoryId(null); }
   };
 
   const handleClearHistory = async () => {
     setClearingHistory(true);
     try {
-      await fetch("/api/posts/stories/history?all=true", { method: "DELETE" });
+      const res = await fetch("/api/posts/stories/history?all=true", { method: "DELETE" });
+      if (!res.ok) throw new Error("DELETE falhou");
       setHistory([]); setHistoryPublished(0); setHistoryQueued(0);
+    } catch {
+      window.alert("Não foi possível limpar o histórico. Tente novamente.");
     } finally { setClearingHistory(false); }
   };
 
@@ -904,20 +910,26 @@ export default function StoriesPage() {
     setTogglingTemplateId(t.id);
     try {
       const newStatus = t.status === "active" ? "paused" : "active";
-      await fetch(`/api/stories/templates/${t.id}`, {
+      const res = await fetch(`/api/stories/templates/${t.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
+      if (!res.ok) throw new Error("PATCH falhou");
       setTemplates(prev => prev.map(x => x.id === t.id ? { ...x, status: newStatus } : x));
+    } catch {
+      window.alert("Não foi possível alterar o status do modelo. Tente novamente.");
     } finally { setTogglingTemplateId(null); }
   };
 
   const handleDeleteTemplate = async (id: string) => {
     setDeletingTemplateId(id);
     try {
-      await fetch(`/api/stories/templates/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/stories/templates/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("DELETE falhou");
       setTemplates(prev => prev.filter(x => x.id !== id));
+    } catch {
+      window.alert("Não foi possível excluir o modelo. Tente novamente.");
     } finally { setDeletingTemplateId(null); }
   };
 

@@ -77,6 +77,22 @@ export async function POST(req: NextRequest) {
 
   const admin = getSupabaseAdmin() as any;
 
+  // Valida ownership de TODAS as contas antes de criar qualquer registro —
+  // impede publicar/agendar em conta de outro usuário via account_id vazado/adivinhado.
+  const { data: ownedAccountRows } = await admin
+    .from("instagram_accounts")
+    .select("id")
+    .in("id", account_ids)
+    .eq("user_id", user.id);
+  const ownedAccountIds = new Set((ownedAccountRows ?? []).map((a: { id: string }) => a.id));
+  const notOwned = account_ids.filter((id: string) => !ownedAccountIds.has(id));
+  if (notOwned.length > 0) {
+    return NextResponse.json(
+      { error: "Uma ou mais contas não pertencem a este usuário." },
+      { status: 403 }
+    );
+  }
+
   // Create single_posts record
   const { data: post, error: postErr } = await admin
     .from("single_posts")
@@ -113,11 +129,28 @@ export async function POST(req: NextRequest) {
     .from("instagram_accounts")
     .select("id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url")
     .in("id", account_ids)
+    .eq("user_id", user.id)
     .eq("is_active", true);
 
   if (accsErr || !accounts?.length) {
     await admin.from("single_posts").update({ status: "failed" }).eq("id", post.id);
+    await admin
+      .from("single_post_accounts")
+      .update({ status: "failed", error_message: "Conta inativa ou não encontrada." })
+      .eq("post_id", post.id);
     return NextResponse.json({ error: "Nenhuma conta ativa encontrada." }, { status: 404 });
+  }
+
+  // Contas do body que não vieram na query (inativas nesse meio tempo) não devem
+  // ficar presas em "pending" pra sempre — marca falha explícita pra cada uma.
+  const returnedIds = new Set((accounts as AccountRow[]).map(a => a.id));
+  const missingIds = account_ids.filter((id: string) => !returnedIds.has(id));
+  if (missingIds.length > 0) {
+    await admin
+      .from("single_post_accounts")
+      .update({ status: "failed", error_message: "Conta inativa ou não encontrada no momento da publicação." })
+      .eq("post_id", post.id)
+      .in("account_id", missingIds);
   }
 
   await admin.from("single_posts").update({ status: "publishing" }).eq("id", post.id);

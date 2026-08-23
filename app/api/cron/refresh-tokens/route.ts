@@ -57,7 +57,8 @@ export async function GET(req: NextRequest) {
     .select("id, username, user_id, meta_access_token, fb_page_id, token_expires_at, proxy_url")
     .neq("health_status", "error")
     .not("meta_access_token", "is", null)
-    .or(`token_expires_at.is.null,token_expires_at.lt.${threshold}`);
+    .or(`token_expires_at.is.null,token_expires_at.lt.${threshold}`)
+    .limit(1000);
 
   if (error) {
     console.error("[refresh-tokens] Erro ao buscar contas:", error.message);

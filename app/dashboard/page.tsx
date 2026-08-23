@@ -158,8 +158,11 @@ export default function DashboardPage() {
     else setLoading(true);
     try {
       const r = await fetch("/api/dashboard/stats", { cache: "no-store" });
+      if (!r.ok) return;
       const data = await r.json();
       if (!data.error) setStats(data);
+    } catch {
+      // Rede/JSON inválido — ignora silenciosamente, próximo tick (60s) tenta de novo
     } finally {
       setLoading(false);
       setRefreshing(false);

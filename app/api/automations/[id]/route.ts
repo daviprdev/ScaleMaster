@@ -46,6 +46,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Valida ownership das pastas antes de vincular — mesmo risco do POST: uma
+  // pasta de outro usuário aqui faz o cron postar conteúdo/em contas alheias.
+  if (account_folder_ids?.length || video_folder_ids?.length) {
+    const [{ data: ownedAccFolders }, { data: ownedVidFolders }] = await Promise.all([
+      account_folder_ids?.length
+        ? admin.from("account_folders").select("id").in("id", account_folder_ids).eq("user_id", user.id)
+        : Promise.resolve({ data: [] as { id: string }[] }),
+      video_folder_ids?.length
+        ? admin.from("library_folders").select("id").in("id", video_folder_ids).eq("user_id", user.id)
+        : Promise.resolve({ data: [] as { id: string }[] }),
+    ]);
+    const ownedAccFolderIds = new Set((ownedAccFolders ?? []).map((f: { id: string }) => f.id));
+    const ownedVidFolderIds = new Set((ownedVidFolders ?? []).map((f: { id: string }) => f.id));
+    const badAcc = (account_folder_ids ?? []).filter((fid) => !ownedAccFolderIds.has(fid));
+    const badVid = (video_folder_ids ?? []).filter((fid) => !ownedVidFolderIds.has(fid));
+    if (badAcc.length > 0 || badVid.length > 0) {
+      return NextResponse.json(
+        { error: "Uma ou mais pastas não pertencem a este usuário." },
+        { status: 400 }
+      );
+    }
+  }
+
   // Atualiza relações se fornecidas
   if (account_folder_ids !== undefined) {
     await admin.from("automation_account_folders").delete().eq("automation_id", id);

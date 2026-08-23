@@ -49,13 +49,29 @@ export async function POST(req: NextRequest) {
   if (!burst_mode && !start_at)
     return NextResponse.json({ error: "Informe a data e hora de início." }, { status: 400 });
 
+  const admin = getSupabaseAdmin();
+
+  // Valida ownership de TODAS as contas antes de agendar qualquer post — impede
+  // agendar/publicar em conta de outro usuário via account_id vazado/adivinhado.
+  const { data: ownedAccountRows } = await admin
+    .from("instagram_accounts")
+    .select("id")
+    .in("id", account_ids)
+    .eq("user_id", user.id);
+  const ownedAccountIds = new Set((ownedAccountRows ?? []).map((a: { id: string }) => a.id));
+  const notOwnedAccounts = account_ids.filter((id) => !ownedAccountIds.has(id));
+  if (notOwnedAccounts.length > 0) {
+    return NextResponse.json(
+      { error: "Uma ou mais contas não pertencem a este usuário." },
+      { status: 403 }
+    );
+  }
+
   const isAutoCaption = !!auto_caption_type;
   const validCaptions = isAutoCaption ? [] : (captions ?? []).map(c => c.trim()).filter(Boolean);
 
   // Pré-gera legendas automáticas únicas se necessário (1 por post total)
   const autoType = (auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
-
-  const admin = getSupabaseAdmin();
 
   const { data: allVideos, error: vErr } = await admin
     .from("videos_library")

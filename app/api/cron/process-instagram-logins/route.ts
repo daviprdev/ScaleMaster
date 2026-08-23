@@ -22,6 +22,14 @@ export const maxDuration = 300;
 
 const RUN_LIMIT = 3;
 const MAX_TRANSIENT_RETRIES = 6;
+// maxDuration=300, mas RUN_LIMIT=3 jobs sequenciais de até 130s cada podem somar
+// ~394s — corta o loop antes de estourar o timeout real da Vercel.
+const RUN_BUDGET_MS = 250_000;
+// Job travado em 'processing' (function morta no meio) nunca seria pego de novo,
+// já que a busca só pega status='queued'. created_at é o único timestamp
+// disponível na tabela (sem updated_at) — 10 min é bem acima do pior caso real
+// (130s de chamada + jitter), então não gera falso positivo.
+const STUCK_PROCESSING_MS = 10 * 60_000;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 interface InstagramLoginResponse {
@@ -82,7 +90,32 @@ export async function GET(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const now = new Date();
   const nowIso = now.toISOString();
-  const summary = { checked: 0, done: 0, transient: 0, error: 0, skipped_no_proxy: 0 };
+  const runStart = Date.now();
+  const summary = { checked: 0, done: 0, transient: 0, error: 0, skipped_no_proxy: 0, auto_healed: 0 };
+
+  // ── AUTO-HEALING: Jobs presos em 'processing' (>10 min) voltam pra fila ────
+  {
+    const healCutoff = new Date(now.getTime() - STUCK_PROCESSING_MS).toISOString();
+    const { data: healed, error: healErr } = await (admin as any)
+      .from("login_jobs")
+      .update({
+        status: "queued",
+        error_message: "[AUTO-HEALING] Job preso >10 min em processing — devolvido à fila.",
+      })
+      .eq("status", "processing")
+      .lt("created_at", healCutoff)
+      .select("id");
+
+    if (healErr) {
+      console.warn("[AUTO-HEALING] login-cron: falha ao desbloquear jobs presos:", healErr.message);
+    } else {
+      const healedCount = healed?.length ?? 0;
+      if (healedCount > 0) {
+        console.log(`[AUTO-HEALING] login-cron: destravando ${healedCount} job(s) preso(s).`);
+        summary.auto_healed = healedCount;
+      }
+    }
+  }
 
   const { data: rows, error: fetchErr } = await (admin as any)
     .from("login_jobs")
@@ -109,6 +142,13 @@ export async function GET(req: NextRequest) {
   let attempts = 0;
 
   for (const job of jobs) {
+    // ── Budget global ──────────────────────────────────────────────────────
+    const elapsed = Date.now() - runStart;
+    if (elapsed > RUN_BUDGET_MS) {
+      console.log(`[login-cron] ⏱ Budget esgotado (${Math.round(elapsed / 1000)}s) — restante fica pro próximo ciclo.`);
+      break;
+    }
+
     summary.checked++;
 
     // Claim atômico — mesmo idiom CAS de publish-pending.

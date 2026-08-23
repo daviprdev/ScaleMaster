@@ -40,6 +40,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, posts: mockPosts, mock: true });
   }
 
+  const admin = getSupabaseAdmin();
+
+  // Valida ownership da conta e do vídeo antes de inserir — sem isso, um
+  // account_id/video_id de outro usuário (vazado ou adivinhado) permitia
+  // agendar posts na conta/vídeo de terceiros.
+  const [{ data: ownedAccountRows }, { data: ownedVideo }] = await Promise.all([
+    admin.from("instagram_accounts").select("id").in("id", account_ids).eq("user_id", user.id),
+    admin.from("videos_library").select("id").eq("id", video_id).eq("user_id", user.id).single(),
+  ]);
+  const ownedAccountIds = new Set((ownedAccountRows ?? []).map((a: { id: string }) => a.id));
+  const notOwnedAccounts = account_ids.filter((id) => !ownedAccountIds.has(id));
+  if (notOwnedAccounts.length > 0) {
+    return NextResponse.json(
+      { error: "Uma ou mais contas não pertencem a este usuário." },
+      { status: 403 }
+    );
+  }
+  if (!ownedVideo) {
+    return NextResponse.json({ error: "Vídeo não encontrado." }, { status: 404 });
+  }
+
   // Cria um registro por conta selecionada
   const records = account_ids.map((account_id) => ({
     user_id: user.id,
@@ -50,7 +71,7 @@ export async function POST(req: NextRequest) {
     status: "pending",
   }));
 
-  const { data, error } = await getSupabaseAdmin()
+  const { data, error } = await admin
     .from("scheduled_posts")
     .insert(records)
     .select();

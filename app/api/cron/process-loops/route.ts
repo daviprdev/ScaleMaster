@@ -231,32 +231,6 @@ async function createContainerForAccount(
 }
 
 // ---------------------------------------------------------------------------
-// Remove conta de todos os loop_accounts após erro crítico irrecuperável.
-// Contas mortas (banidas, não-confirmadas, pessoais sem API) não devem
-// continuar consumindo ciclos do cron nem rate-limit da Meta.
-// ---------------------------------------------------------------------------
-
-async function removeFromAllLoops(
-  admin: ReturnType<typeof getSupabaseAdmin>,
-  accountId: string,
-  username: string
-): Promise<void> {
-  try {
-    const { error } = await (admin as any)
-      .from("loop_accounts")
-      .delete()
-      .eq("account_id", accountId);
-    if (error) {
-      console.warn(`[loop-cron] Falha ao remover @${username} dos loops: ${error.message}`);
-    } else {
-      console.log(`[loop-cron] 🗑️ @${username} removida de todos os loops (conta morta/inválida).`);
-    }
-  } catch (e) {
-    console.warn(`[loop-cron] Exceção ao remover @${username} dos loops: ${String(e)}`);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Registra erro em pending_containers para rastreabilidade.
 // ---------------------------------------------------------------------------
 
@@ -959,7 +933,10 @@ async function processOneLoop(
     );
 
     // ── FASE 2b: sequencial + jitter 1–3s ─────────────────────────────────────
-    let containersCreated = 0;
+    // containersCreated NÃO é redeclarado aqui — usa a variável hoisted do escopo
+    // da função (linha ~612), que o `finally` também lê. Redeclarar com `let`
+    // sombreava a externa: os incrementos abaixo ficavam presos neste bloco `try`
+    // e a externa nunca saía de 0, travando last_posted_at/cycles_done pra sempre.
     // Stagger dinâmico com jitter aleatório: distribui os containers dentro do
     // intervalo configurado + ruído aleatório de ±30% por conta para que a Meta
     // não detecte um padrão periódico fixo no timing de postagem.
@@ -1148,8 +1125,8 @@ async function processOneLoop(
     }
 
     // ── Processa fila de erros críticos com detecção de cascata ──────────────
-    // Threshold: 2+ contas E ≥30% do loop erraram criticamente = outage da Meta.
-    // Mínimo de 2 para não disparar com 1 conta em loop de conta única.
+    // Threshold: CASCADE_MIN_COUNT=4 contas E CASCADE_RATIO≥60% do loop erraram
+    // criticamente = outage da Meta (lib/account-health.ts).
     if (criticalErrorQueue.length > 0) {
       // Marcação centralizada em lib/account-health.ts: guarda de cascata
       // (≥4 contas E ≥60% do loop = outage da Meta, ninguém é marcado) + update

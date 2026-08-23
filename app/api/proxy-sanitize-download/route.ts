@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sanitizeDoublePass } from "@/utils/videoSanitizer";
 import * as fs from "fs";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -43,6 +44,15 @@ function isAllowed(raw: string): boolean {
 // The HEAD endpoint is intentionally omitted — use /api/proxy-download HEAD for
 // fast URL validation (no FFmpeg overhead).
 export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return new NextResponse(
+      JSON.stringify({ error: "Não autenticado." }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   const url = req.nextUrl.searchParams.get("url");
   const filename = req.nextUrl.searchParams.get("filename") ?? "autoscale_reel.mp4";
 

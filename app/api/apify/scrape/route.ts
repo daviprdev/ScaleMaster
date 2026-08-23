@@ -4,6 +4,7 @@ import {
   withApifyTokenPool,
   APIFY_RATE_LIMIT_MESSAGE,
 } from "@/lib/apify-token-pool";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -71,6 +72,10 @@ async function scrapeReels(
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+
   const body = await req.json();
   const { username, limit = 300 } = body as { username: string; limit?: number };
 

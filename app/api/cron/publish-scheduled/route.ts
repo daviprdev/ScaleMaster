@@ -24,6 +24,12 @@ const RUN_BUDGET_MS = 250_000;
 // Reserva de tempo para o strip pipeline por vídeo (download + FFmpeg + upload)
 const STRIP_RESERVE_MS = 30_000;
 
+// Cap de tentativas para ERROR/EXPIRED da Meta (vídeo permanentemente rejeitado,
+// ex: codec incompatível) — sem isso, o post é recriado como container novo e
+// falha de novo a cada execução do cron, pra sempre. Requer scheduled_posts.retry_count
+// — ver supabase/scheduled_posts_retry_cap.sql.
+const MAX_ERROR_EXPIRED_RETRIES = 5;
+
 
 // Vídeos com esse padrão foram upados direto pelo browser (sem FFmpeg strip).
 // Contêm SEI NAL units tipo 5+6 que a Meta API rejeita → ERROR/EXPIRED.
@@ -52,6 +58,7 @@ interface PostRow {
   account_id: string;
   creation_id: string | null;
   post_type: string | null;
+  retry_count: number | null;
   instagram_accounts: AccountRow | null;
   videos_library: { public_url: string } | null;
 }
@@ -145,23 +152,36 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Auto-heal 2: posts failed por ERROR/EXPIRED recebem nova tentativa ────
-  const { data: healedError } = await admin
+  // Só revive quem ainda não bateu o cap — sem essa checagem, um post que já
+  // falhou permanentemente (ver branch pollStatus==="error" abaixo) voltaria a
+  // ser reprocessado pra sempre, na prática desfazendo o cap de tentativas.
+  const { data: errorExpiredFailedRows } = await admin
     .from("scheduled_posts")
-    .update({ status: "pending", error_message: null, creation_id: null })
+    .select("id, retry_count")
     .eq("status", "failed")
     .ilike("error_message", "%ERROR/EXPIRED%")
-    .lte("scheduled_at", now)
-    .select("id");
+    .lte("scheduled_at", now);
 
-  if (healedError?.length) {
-    console.log(`[publish-scheduled] ♻ ${healedError.length} post(s) ERROR/EXPIRED → retry.`);
+  let healedErrorCount = 0;
+  for (const row of (errorExpiredFailedRows ?? []) as { id: string; retry_count: number | null }[]) {
+    const nextRetryCount = (row.retry_count ?? 0) + 1;
+    if (nextRetryCount > MAX_ERROR_EXPIRED_RETRIES) continue;
+    await admin
+      .from("scheduled_posts")
+      .update({ status: "pending", error_message: null, creation_id: null, retry_count: nextRetryCount })
+      .eq("id", row.id);
+    healedErrorCount++;
+  }
+
+  if (healedErrorCount) {
+    console.log(`[publish-scheduled] ♻ ${healedErrorCount} post(s) ERROR/EXPIRED → retry.`);
   }
 
   // ── Busca posts elegíveis ─────────────────────────────────────────────────
   // IMPORTANTE: não buscamos posts com instagram.com URLs — esses são tratados
   // pelo prefetch-clone-urls que resolve as URLs para Supabase antes de publicar.
   const SELECT_FIELDS =
-    "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, " +
+    "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, " +
     "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url), " +
     "videos_library(public_url)";
 
@@ -218,7 +238,7 @@ export async function GET(req: NextRequest) {
     failed: 0,
     skipped: 0,
     unblocked: unblocked?.length ?? 0,
-    healed_error: healedError?.length ?? 0,
+    healed_error: healedErrorCount,
     queue_pending: countPending ?? 0,
     queue_eligible: countEligible ?? 0,
     queue_failed_total: countFailed ?? 0,
@@ -427,16 +447,41 @@ export async function GET(req: NextRequest) {
       }
 
       if (pollStatus === "error") {
+        // Este é o caminho ativo real do ERROR/EXPIRED da Meta (o "Auto-heal 2"
+        // acima cobre um cenário defensivo diferente) — sem cap aqui, um vídeo
+        // permanentemente rejeitado (ex: codec incompatível) fica sendo recriado
+        // como container novo e falhando de novo a cada minuto, pra sempre.
+        const nextRetryCount = (post.retry_count ?? 0) + 1;
+        if (nextRetryCount > MAX_ERROR_EXPIRED_RETRIES) {
+          await admin
+            .from("scheduled_posts")
+            .update({
+              status: "failed",
+              error_message: `[FALHA PERMANENTE] Meta rejeitou o vídeo (ERROR/EXPIRED) após ${MAX_ERROR_EXPIRED_RETRIES} tentativas — não será mais reprocessado.`,
+              creation_id: null,
+              retry_count: nextRetryCount,
+            })
+            .eq("id", post.id);
+          summary.failed++;
+          console.warn(`[publish-scheduled] ⛔ @${account.username}: ERROR/EXPIRED atingiu o cap de ${MAX_ERROR_EXPIRED_RETRIES} tentativas — falha permanente.`);
+          continue;
+        }
+
         await admin
           .from("scheduled_posts")
           .update({
             status: "pending",
-            error_message: "[RETRY] Container Meta ERROR/EXPIRED — recriando na próxima execução.",
+            error_message: `[RETRY ${nextRetryCount}/${MAX_ERROR_EXPIRED_RETRIES}] Container Meta ERROR/EXPIRED — recriando na próxima execução.`,
             creation_id: null,
+            retry_count: nextRetryCount,
+            // Empurra +3min: sem isso, este post continua sendo o primeiro da
+            // fila (ordenada por scheduled_at) e trava todo mundo atrás dele
+            // (mesmo padrão de starvation documentado em 2026-07-05).
+            scheduled_at: new Date(Date.now() + 3 * 60_000).toISOString(),
           })
           .eq("id", post.id);
         summary.skipped++;
-        console.warn(`[publish-scheduled] ⚠ @${account.username}: ERROR/EXPIRED → retry.`);
+        console.warn(`[publish-scheduled] ⚠ @${account.username}: ERROR/EXPIRED → retry ${nextRetryCount}/${MAX_ERROR_EXPIRED_RETRIES}.`);
         continue;
       }
 

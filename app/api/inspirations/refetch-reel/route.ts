@@ -4,6 +4,7 @@ import {
   APIFY_RATE_LIMIT_MESSAGE,
 } from "@/lib/apify-token-pool";
 import { ApifyClient } from "apify-client";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -53,6 +54,10 @@ async function fetchSingleReel(
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+
   let body: { shortCode?: string };
   try {
     body = await req.json();

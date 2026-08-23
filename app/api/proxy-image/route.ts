@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,12 @@ function isAllowed(raw: string): boolean {
 }
 
 export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return new NextResponse("Não autenticado.", { status: 401 });
+  }
+
   const url = req.nextUrl.searchParams.get("url");
 
   if (!url) {

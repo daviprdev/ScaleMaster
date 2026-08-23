@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { createClient } from "@/lib/supabase/server";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
+import { getProxyForAccount } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -44,12 +45,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, results, mock: true });
   }
 
+  const supabaseUser = await createClient();
+  const { data: { user } } = await supabaseUser.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Usuário não autenticado." }, { status: 401 });
+  }
+
   const admin = getSupabaseAdmin();
 
   const { data: video, error: videoErr } = await admin
     .from("videos_library")
     .select("public_url, filename")
     .eq("id", video_id)
+    .eq("user_id", user.id)
     .single();
 
   if (videoErr || !video?.public_url) {
@@ -58,18 +66,13 @@ export async function POST(req: NextRequest) {
 
   const { data: accounts, error: accsErr } = await admin
     .from("instagram_accounts")
-    .select("id, username, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id")
+    .select("id, username, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url")
     .in("id", account_ids)
+    .eq("user_id", user.id)
     .eq("is_active", true);
 
   if (accsErr || !accounts?.length) {
     return NextResponse.json({ error: "Nenhuma conta ativa encontrada." }, { status: 404 });
-  }
-
-  const supabaseUser = await createClient();
-  const { data: { user } } = await supabaseUser.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Usuário não autenticado." }, { status: 401 });
   }
 
   const results: PostResult[] = [];
@@ -85,10 +88,11 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    const proxy = getProxyForAccount(account.id, account.proxy_url);
     let tokenToUse = account.meta_access_token;
     if (isTokenExpiringSoon(account.token_expires_at, 7)) {
       try {
-        const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id);
+        const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id, proxy);
         await admin
           .from("instagram_accounts")
           .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })
@@ -104,7 +108,8 @@ export async function POST(req: NextRequest) {
       account.ig_business_account_id,
       tokenToUse,
       video.public_url,
-      caption
+      caption,
+      proxy
     );
     results.push({
       account_id: account.id,

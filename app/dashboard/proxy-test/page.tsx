@@ -430,7 +430,7 @@ export default function ProxyTestPage() {
             </div>
 
             <p className="text-[11px] text-white/20 text-center">
-              IPs diferentes = proxies únicos por conta. Session ID fixo = mesmo IP por até 12h (life-720).
+              IPs diferentes = proxies únicos por conta. Cada conta usa um proxy fixo e dedicado — sem rotação de sessão.
             </p>
           </motion.div>
         )}
