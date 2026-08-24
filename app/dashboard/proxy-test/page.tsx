@@ -40,6 +40,7 @@ function ProxyPoolSection() {
   const [addText, setAddText] = useState("");
   const [adding, setAdding] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [swapping, setSwapping] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
@@ -112,6 +113,30 @@ function ProxyPoolSection() {
       loadPool();
     } finally {
       setAssigning(false);
+    }
+  };
+
+  const handleSwapFailed = async () => {
+    setSwapping(true);
+    try {
+      const res = await fetch("/api/proxy-pool/swap-failed", { method: "POST" });
+      const data = await res.json() as {
+        candidates?: number; swapped?: number; no_stock?: number; message?: string; error?: string;
+      };
+      if (!res.ok) {
+        setNotice({ type: "error", message: data.error ?? "Falha ao trocar proxies." });
+        return;
+      }
+      if (data.message) {
+        setNotice({ type: "success", message: data.message });
+      } else {
+        const msg = `${data.swapped ?? 0} proxy${(data.swapped ?? 0) !== 1 ? "es" : ""} trocado${(data.swapped ?? 0) !== 1 ? "s" : ""} de ${data.candidates ?? 0} conta${(data.candidates ?? 0) !== 1 ? "s" : ""} com falha` +
+          ((data.no_stock ?? 0) > 0 ? ` — estoque insuficiente para ${data.no_stock} conta${data.no_stock !== 1 ? "s" : ""}.` : ".");
+        setNotice({ type: (data.no_stock ?? 0) > 0 ? "error" : "success", message: msg });
+      }
+      loadPool();
+    } finally {
+      setSwapping(false);
     }
   };
 
@@ -227,16 +252,27 @@ function ProxyPoolSection() {
         )}
       </AnimatePresence>
 
-      {/* Atribuir em massa */}
+      {/* Ações em massa */}
       {pool && pool.total > 0 && (
-        <button
-          onClick={handleAssignAll}
-          disabled={assigning || pool.free === 0}
-          className="flex items-center gap-1.5 text-xs px-3.5 py-2.5 rounded-xl font-semibold bg-[#00FF41]/10 border border-[#00FF41]/25 text-[#00FF41] hover:bg-[#00FF41]/20 transition-all disabled:opacity-40"
-        >
-          {assigning ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-          Atribuir às contas sem proxy
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleAssignAll}
+            disabled={assigning || pool.free === 0}
+            className="flex items-center gap-1.5 text-xs px-3.5 py-2.5 rounded-xl font-semibold bg-[#00FF41]/10 border border-[#00FF41]/25 text-[#00FF41] hover:bg-[#00FF41]/20 transition-all disabled:opacity-40"
+          >
+            {assigning ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+            Atribuir às contas sem proxy
+          </button>
+          <button
+            onClick={handleSwapFailed}
+            disabled={swapping}
+            title="Descarta o proxy das contas com falha nos últimos 30min e atribui um substituto livre do estoque"
+            className="flex items-center gap-1.5 text-xs px-3.5 py-2.5 rounded-xl font-semibold bg-amber-500/10 border border-amber-500/25 text-amber-300 hover:bg-amber-500/20 transition-all disabled:opacity-40"
+          >
+            {swapping ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            Trocar proxies com falha
+          </button>
+        </div>
       )}
 
       {/* Lista */}

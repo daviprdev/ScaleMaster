@@ -185,3 +185,43 @@ export async function claimProxyForAccount(
   console.warn(`[proxy-pool] Estoque vazio (ou só com proxies mortos) para user ${userId} — conta ${accountId} ficou sem proxy.`);
   return { assigned: false };
 }
+
+// Descarta o proxy atual da conta (morto — não volta ao estoque) e tenta
+// reivindicar um substituto livre. Usado pelo botão "Trocar proxies com falha"
+// quando o provedor cai: em vez de esperar o usuário reimportar a lista toda,
+// libera as contas travadas usando o que já sobra no estoque.
+export async function swapProxyForAccount(
+  admin: AdminClient,
+  userId: string,
+  accountId: string,
+  currentEncryptedProxyUrl: string | null
+): Promise<{ swapped: boolean; discarded: boolean }> {
+  let discarded = false;
+
+  if (currentEncryptedProxyUrl) {
+    try {
+      const plain = decrypt(currentEncryptedProxyUrl);
+      const hash = proxyHash(normalizeProxyUrl(plain));
+      const { data: removed } = await admin
+        .from("proxy_pool")
+        .delete()
+        .eq("user_id", userId)
+        .eq("proxy_hash", hash)
+        .select("id");
+      discarded = !!removed && removed.length > 0;
+    } catch (e) {
+      console.warn(`[proxy-pool] Não foi possível descriptografar/descartar o proxy morto da conta ${accountId}: ${String(e)}`);
+    }
+  }
+
+  // Zera o proxy da conta e o histórico de erro — se não houver substituto no
+  // estoque, a conta fica sem proxy (política "sem proxy = sem sync/postagem")
+  // em vez de manter um proxy morto, que resulta no mesmo travamento.
+  await admin
+    .from("instagram_accounts")
+    .update({ proxy_url: null, last_proxy_error_at: null, last_proxy_error: null })
+    .eq("id", accountId);
+
+  const { assigned } = await claimProxyForAccount(admin, userId, accountId);
+  return { swapped: assigned, discarded };
+}
