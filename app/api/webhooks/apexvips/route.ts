@@ -4,57 +4,86 @@ import { sendPushNotification } from "@/lib/web-push";
 
 export const dynamic = "force-dynamic";
 
-// Formato do payload da ApexVips ainda não documentado — extração defensiva por
-// nomes de campo comuns. Ajustar esta lista assim que a doc real estiver disponível.
-const AMOUNT_KEYS = ["amount", "value", "valor", "total", "price", "preco", "amount_paid", "net_amount"];
-const CUSTOMER_KEYS = ["customer", "customer_email", "email", "buyer", "cliente"];
-
-function extractField(payload: Record<string, unknown>, keys: string[]): unknown {
-  for (const key of keys) {
-    if (payload[key] !== undefined && payload[key] !== null) return payload[key];
-  }
-  return null;
+// Formato real documentado pelo usuário (25/08). Eventos vistos: user_joined,
+// payment_created, payment_approved. Só "payment_approved" é venda confirmada —
+// payment_created é o PIX gerado mas ainda não pago, user_joined é só entrada no
+// bot. Outros eventos futuros (ex: payment_declined/refunded) caem no default
+// "ignorado" abaixo até serem mapeados explicitamente.
+interface ApexVipsPayload {
+  event?: string;
+  transaction?: {
+    sale_code?: string;
+    plan_name?: string;
+    plan_value?: number; // em centavos
+    currency?: string;
+  };
+  customer?: {
+    full_name?: string;
+    username?: string;
+    phone?: string;
+  };
 }
 
-function parseAmount(raw: unknown): number | null {
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  if (typeof raw === "string") {
-    const parsed = Number(raw.replace(/[^\d.,-]/g, "").replace(",", "."));
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
+function isAuthorized(req: NextRequest, secret: string): boolean {
+  const auth = req.headers.get("authorization");
+  if (auth === `Bearer ${secret}`) return true;
+  const querySecret = req.nextUrl.searchParams.get("secret");
+  return querySecret === secret;
 }
 
 export async function POST(req: NextRequest) {
   const secret = process.env.APEXVIPS_WEBHOOK_SECRET;
-  const auth = req.headers.get("authorization");
   if (!secret) {
     console.warn("[apexvips-webhook] AVISO: APEXVIPS_WEBHOOK_SECRET nao configurado.");
-  } else if (auth !== `Bearer ${secret}`) {
+  } else if (!isAuthorized(req, secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let payload: Record<string, unknown>;
+  let payload: ApexVipsPayload;
   try {
     payload = await req.json();
   } catch {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const amount = parseAmount(extractField(payload, AMOUNT_KEYS));
-  const customer = extractField(payload, CUSTOMER_KEYS);
+  if (payload.event !== "payment_approved") {
+    return NextResponse.json({ ok: true, ignored: payload.event ?? "unknown" });
+  }
+
+  const tx = payload.transaction ?? {};
+  const customer = payload.customer ?? {};
+
+  const amount = typeof tx.plan_value === "number" ? tx.plan_value / 100 : null;
+  const currency = tx.currency ?? "BRL";
+  const externalId = tx.sale_code ?? null;
+  const customerIdentifier = customer.full_name ?? customer.username ?? customer.phone ?? null;
+  const planName = tx.plan_name ?? null;
 
   const admin = getSupabaseAdmin();
-  const { error } = await admin.from("sales").insert({
-    amount,
-    customer_identifier: typeof customer === "string" ? customer : null,
-    source: "apexvips",
-    raw_payload: payload,
-  });
+  const { data, error } = await admin
+    .from("sales")
+    .upsert(
+      {
+        external_id: externalId,
+        amount,
+        currency,
+        source: "apexvips",
+        customer_identifier: customerIdentifier,
+        raw_payload: payload,
+      },
+      { onConflict: "external_id", ignoreDuplicates: true }
+    )
+    .select();
 
   if (error) {
     console.error("[apexvips-webhook] falha ao gravar venda:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Com ignoreDuplicates, reenvio do mesmo sale_code não insere nada — select()
+  // volta vazio. Não reenvia o push pra não notificar a mesma venda 2x.
+  if (externalId && (!data || data.length === 0)) {
+    return NextResponse.json({ ok: true, duplicate: true });
   }
 
   try {
@@ -64,7 +93,7 @@ export async function POST(req: NextRequest) {
       title: "Nova venda recebida",
       body:
         amount != null
-          ? `Venda de R$ ${amount.toFixed(2)} via ApexVips.`
+          ? `${planName ?? "Venda"}: R$ ${amount.toFixed(2)} (${currency}) via ApexVips.`
           : "Nova venda recebida — verifique o payload (valor não identificado).",
       url: "/admin",
     });

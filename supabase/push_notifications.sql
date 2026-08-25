@@ -57,6 +57,7 @@ create policy "admins_select_notifications"
 -- 3. Vendas (ApexVips) — negócio do dono do SaaS, não dos usuários finais
 create table if not exists public.sales (
   id                   uuid        primary key default gen_random_uuid(),
+  external_id          text,       -- transaction.sale_code da ApexVips, dedup de reenvio de webhook
   amount               numeric(12,2),
   currency             text        not null default 'BRL',
   source               text        not null default 'apexvips',
@@ -66,6 +67,9 @@ create table if not exists public.sales (
 );
 
 create index if not exists sales_created_at_idx on public.sales(created_at);
+-- Índice único NÃO parcial: Postgres permite múltiplos NULL em coluna única,
+-- e o upsert (ON CONFLICT) do PostgREST não infere índice único parcial.
+create unique index if not exists sales_external_id_unique_idx on public.sales(external_id);
 
 alter table public.sales enable row level security;
 
