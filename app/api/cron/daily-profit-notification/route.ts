@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { sendPushNotification } from "@/lib/web-push";
+import { getDailyProfitMessage } from "@/lib/daily-profit-messages";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -63,17 +64,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ skipped: "no_admin_due", dateKey, currentBucket });
   }
 
-  const { data: sales, error } = await admin
-    .from("sales")
-    .select("amount")
-    .not("amount", "is", null)
-    .gte("created_at", startUtc.toISOString())
-    .lt("created_at", endUtc.toISOString());
+  const yesterdayStartUtc = new Date(startUtc.getTime() - 24 * 60 * 60 * 1000);
+
+  const [{ data: sales, error }, { data: yesterdaySales, error: yError }] = await Promise.all([
+    admin.from("sales").select("amount").not("amount", "is", null).gte("created_at", startUtc.toISOString()).lt("created_at", endUtc.toISOString()),
+    admin.from("sales").select("amount").not("amount", "is", null).gte("created_at", yesterdayStartUtc.toISOString()).lt("created_at", startUtc.toISOString()),
+  ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (yError) return NextResponse.json({ error: yError.message }, { status: 500 });
 
   const total = (sales ?? []).reduce((sum, s) => sum + Number(s.amount ?? 0), 0);
-  const formatted = total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const yesterdayTotal = (yesterdaySales ?? []).reduce((sum, s) => sum + Number(s.amount ?? 0), 0);
+  const { title, body } = getDailyProfitMessage(total, yesterdayTotal);
 
   const results = [];
   for (const a of dueAdmins) {
@@ -94,13 +97,13 @@ export async function GET(req: NextRequest) {
       targetType: "user",
       targetUserId: a.user_id,
       type: "system",
-      title: "Lucro diário",
-      body: `Faturamento de hoje (${dateKey}): R$ ${formatted}`,
+      title,
+      body,
       url: "/admin",
-      extraData: { profitDate: dateKey, total },
+      extraData: { profitDate: dateKey, total, yesterdayTotal },
     });
     results.push({ userId: a.user_id, ...result });
   }
 
-  return NextResponse.json({ dateKey, total, results });
+  return NextResponse.json({ dateKey, total, yesterdayTotal, title, body, results });
 }
