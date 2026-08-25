@@ -489,20 +489,35 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                     )}
                   </nav>
 
-                  {/* User trigger (simplified in mobile) */}
-                  <div className="p-3 border-t border-white/[0.06]">
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/40 hover:text-red-400 hover:bg-red-500/[0.07] transition-colors"
+                  {/* User trigger (simplified in mobile) — nome/foto leva ao Perfil, logout só no botão dedicado */}
+                  <div className="p-3 border-t border-white/[0.06] flex items-center gap-2">
+                    <Link
+                      href="/dashboard/settings"
+                      onClick={onMobileClose}
+                      className="flex-1 min-w-0 flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/70 hover:bg-white/[0.05] transition-colors"
                     >
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00FF41] to-[#00E5FF] flex items-center justify-center flex-shrink-0 text-sm font-bold text-black">
-                        {userInitial}
-                      </div>
+                      {userAvatar ? (
+                        <img
+                          src={userAvatar}
+                          alt="Avatar"
+                          className="w-8 h-8 rounded-full object-cover flex-shrink-0 shadow-[0_0_8px_rgba(0,255,65,0.22)]"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00FF41] to-[#00E5FF] flex items-center justify-center flex-shrink-0 text-sm font-bold text-black">
+                          {userInitial}
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0 text-left">
                         <p className="text-sm font-semibold text-white/85 truncate leading-tight">{userName}</p>
-                        <p className="text-[11px] text-white/35 leading-tight">Sair</p>
+                        <p className="text-[11px] text-white/35 leading-tight">Minha Conta</p>
                       </div>
-                      <LogOut size={15} className="flex-shrink-0 text-red-500/60" />
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      aria-label="Sair"
+                      className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-red-500/60 hover:text-red-400 hover:bg-red-500/[0.07] transition-colors"
+                    >
+                      <LogOut size={17} />
                     </button>
                   </div>
                 </motion.div>
