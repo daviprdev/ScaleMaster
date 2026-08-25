@@ -37,6 +37,24 @@ O repositório `Saas` estava inicializado na pasta home do usuário, não na pas
 
 ---
 
+### ✅ Sessão 2026-08-25 — Notificações Push (Web Push/VAPID): vendas, admin e sistema
+
+**Pedido.** Usuário quis notificações no celular para 3 casos: vendas (futuramente via bot ApexVips), mensagens manuais de admin, e mensagens configuradas no sistema (primeiro exemplo: resumo de lucro diário no fim do dia). Decisões tomadas antes de implementar: destinatário é por usuário (multi-dispositivo, não só um device admin — mas esta fase não implementa alertas automáticos por conta, só o que foi pedido); ApexVips ainda sem documentação de payload, então o webhook precisa ser defensivo; lucro diário = soma bruta das vendas do dia (sem custo), fuso BRT; entrega via Web Push nativo (VAPID), sem serviço terceiro, reaproveitando o PWA que já existia (`app/manifest.ts`).
+
+**Infra criada do zero** — não havia `public/` nem service worker no projeto. 3 tabelas novas (`supabase/push_notifications.sql`, aplicada via MCP): `push_subscriptions` (por usuário, RLS própria), `notifications` (log/auditoria, RLS admin-only), `sales` (vendas do dono do SaaS, RLS admin-only, insert só via service_role). `lib/web-push.ts`: dispatcher único `sendPushNotification()` resolve alvo (`all`/`admins`/`user`), envia via pacote `web-push` (VAPID), poda subscription morta em 404/410. `public/sw.js` novo com handlers `push`/`notificationclick`.
+
+**Cliente.** `components/dashboard/PushNotificationManager.tsx` — nova seção "Notificações" em `/dashboard/settings`, com feature-detect e aviso específico para iOS fora do modo standalone (precisa "Adicionar à Tela de Início" primeiro, iOS 16.4+).
+
+**Rotas.** `GET /api/push/vapid-public-key` (pública — evita precisar de `NEXT_PUBLIC_*`, facilita rotação de chave), `POST /api/push/subscribe`/`unsubscribe` (auth usuário). `GET/POST /api/admin/notifications` + nova página `/admin/notifications` (composer com seletor de alvo + histórico). `POST /api/webhooks/apexvips` (bearer `APEXVIPS_WEBHOOK_SECRET`) — extração defensiva de valor por nomes de campo comuns (`amount`/`value`/`valor`/`total`/...) já que o formato real da ApexVips é desconhecido; sempre grava `raw_payload` cru mesmo sem achar valor, pra permitir ajustar o parser depois sem migration nova.
+
+**Cron.** `GET /api/cron/daily-profit-notification` (`vercel.json`, `"55 2 * * *"` = 23:55 BRT — Vercel cron é UTC fixo e o Brasil não tem horário de verão desde 2019) soma `sales.amount` do dia e envia push aos admins; guarda de idempotência via `notifications.data->>profitDate` evita duplo envio.
+
+**Verificação local.** `npm run build` limpo; dev server: 401 sem secret em cron e webhook, cron soma corretamente e aplica idempotência na segunda chamada, webhook loga venda com e sem valor reconhecido. Dados de teste limpos do banco via MCP antes do commit.
+
+**Pendente do usuário:** adicionar `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` e `APEXVIPS_WEBHOOK_SECRET` nas env vars da Vercel (já geradas e presentes no `.env.local` local) antes do próximo deploy — sem elas o push simplesmente não sai em produção (rotas retornam erro tratado, não quebram o build).
+
+---
+
 ### ✅ Sessão 2026-08-23 — Link mágico quebrado (Meta migrou OAuth) + auditoria completa de segurança
 
 **Fix crítico — link mágico e conexão de contas 100% quebrados.** Instagram respondia "Sorry, this page isn't available" em qualquer app/conta. Teste direto confirmou a causa: `https://api.instagram.com/oauth/authorize` passou a retornar **HTTP 404 para qualquer `client_id`** (inclusive inválido), enquanto os mesmos parâmetros em `https://www.instagram.com/oauth/authorize` respondem com a tela de login real. A Meta migrou o host de autorização sem avisar e **sem atualizar a documentação oficial**, que ainda cita o host antigo. Corrigido em `app/api/instagram/auth/route.ts`, `app/add/[token]/route.ts` e `app/api/debug-env/route.ts`. O endpoint de troca de token (`api.instagram.com/oauth/access_token`, usado no callback) **não** foi afetado — é outro host/caminho e continua funcionando. Bônus: scope do link mágico sincronizado com `instagram_business_manage_insights`, que faltava desde 28/07. Commit `5a261ad`.

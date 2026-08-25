@@ -9,16 +9,18 @@ import {
   Headphones,
   LogOut,
   Activity,
+  Bell,
 } from "lucide-react";
 
 export const metadata = { title: "Admin — AutoScale" };
 
 const NAV_ITEMS = [
-  { href: "/admin",          label: "Visão Geral",       icon: LayoutDashboard },
-  { href: "/admin/users",    label: "Usuários",           icon: Users },
-  { href: "/admin/accounts", label: "Contas Conectadas",  icon: Instagram },
-  { href: "/admin/logs",     label: "Logs",               icon: Activity },
-  { href: "/admin/support",  label: "Suporte",            icon: Headphones },
+  { href: "/admin",              label: "Visão Geral",       icon: LayoutDashboard },
+  { href: "/admin/users",        label: "Usuários",           icon: Users },
+  { href: "/admin/accounts",     label: "Contas Conectadas",  icon: Instagram },
+  { href: "/admin/notifications",label: "Notificações",       icon: Bell },
+  { href: "/admin/logs",         label: "Logs",               icon: Activity },
+  { href: "/admin/support",      label: "Suporte",            icon: Headphones },
 ];
 
 export default async function AdminLayout({

@@ -47,6 +47,10 @@
     {
       "path": "/api/cron/sync-post-insights",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/daily-profit-notification",
+      "schedule": "55 2 * * *"
     }
   ]
 }

@@ -23,9 +23,11 @@ import {
   LogOut,
   MapPin,
   Clock,
+  Bell,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import PushNotificationManager from "@/components/dashboard/PushNotificationManager";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -1025,6 +1027,11 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
+      </Section>
+
+      {/* ── Notificações ─────────────────────────────────────── */}
+      <Section icon={<Bell size={15} />} title="Notificações">
+        <PushNotificationManager />
       </Section>
 
       {/* ── Assinatura ─────────────────────────────────────── */}
