@@ -28,6 +28,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import PushNotificationManager from "@/components/dashboard/PushNotificationManager";
+import NotificationAlertSettings from "@/components/dashboard/NotificationAlertSettings";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -1031,7 +1032,13 @@ export default function SettingsPage() {
 
       {/* ── Notificações ─────────────────────────────────────── */}
       <Section icon={<Bell size={15} />} title="Notificações">
-        <PushNotificationManager />
+        <div className="space-y-5">
+          <PushNotificationManager />
+          <div>
+            <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Alertas automáticos</p>
+            <NotificationAlertSettings />
+          </div>
+        </div>
       </Section>
 
       {/* ── Assinatura ─────────────────────────────────────── */}

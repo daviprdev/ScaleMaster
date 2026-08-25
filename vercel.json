@@ -50,7 +50,11 @@
     },
     {
       "path": "/api/cron/daily-profit-notification",
-      "schedule": "55 2 * * *"
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/check-health-alerts",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
