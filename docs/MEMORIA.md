@@ -51,7 +51,17 @@ O repositório `Saas` estava inicializado na pasta home do usuário, não na pas
 
 **Verificação local.** `npm run build` limpo; dev server: 401 sem secret em cron e webhook, cron soma corretamente e aplica idempotência na segunda chamada, webhook loga venda com e sem valor reconhecido. Dados de teste limpos do banco via MCP antes do commit.
 
-**Pendente do usuário:** adicionar `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` e `APEXVIPS_WEBHOOK_SECRET` nas env vars da Vercel (já geradas e presentes no `.env.local` local) antes do próximo deploy — sem elas o push simplesmente não sai em produção (rotas retornam erro tratado, não quebram o build).
+**Pendente do usuário:** adicionar `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` e `APEXVIPS_WEBHOOK_SECRET` nas env vars da Vercel (já geradas e presentes no `.env.local` local) antes do próximo deploy — sem elas o push simplesmente não sai em produção (rotas retornam erro tratado, não quebram o build). **Feito pelo usuário na mesma sessão** — confirmado funcionando em produção (push de teste chegou no iPhone).
+
+**Continuação da mesma sessão — 7 commits seguintes, tudo já em produção:**
+
+1. **Webhook ApexVips com payload real** (`6407c44`) — usuário trouxe a doc real (bot Telegram): eventos `user_joined`/`payment_created`/`payment_approved`, só o último é venda; `plan_value` em centavos; `sale_code` vira `sales.external_id` com índice único (não-parcial — parcial quebra o `ON CONFLICT` do PostgREST) pra dedup de reenvio de webhook; auth aceita `Authorization: Bearer` OU `?secret=` na URL (ApexVips só tinha campo de URL).
+2. **Fix mobile: nome/foto deslogava na hora** (`5d0e5af`) — drawer mobile tinha um único `<button>` cobrindo avatar+nome+"Sair" chamando logout direto; separado em Link "Minha Conta" + botão de ícone dedicado pro logout. Causa do "não resolveu" inicial: PWA instalada mantinha JS antigo em memória — resolvido reinstalando o ícone.
+3. **Alertas automáticos de queda + lucro diário configurável** (`0296253`) — nova tabela `notification_settings` por usuário (toggle proxy/conta, default on; toggle+horário lucro diário, default off, só admin vê). Novo cron `check-health-alerts` (*/10min) reusa os MESMOS limiares dos banners do dashboard (3+ contas com falha de proxy em 30min; qualquer `health_status=error`), cooldown 1h por tipo com furo pra conta nova. `daily-profit-notification` virou */15min checando settings por admin em vez de horário fixo global.
+4. **Mensagens variadas no lucro diário** (`a7e63e8` → simplificado em `2fac167`) — primeira versão comparava com ontem (3 tons); usuário pediu pra simplificar: sempre 1 mensagem positiva sorteada entre 4, sem comparação, com o valor embutido.
+5. **Emojis nos títulos** (`97c70dd` → ajustado em `5911571`) — venda = "Venda Aprovada!" (sem emoji); proxy = sirene 🚨 no início E no fim; conta caída = ❌ no início E no fim; lucro diário = 📊 no início + 🚀 no fim.
+
+**Esclarecidos como limitação de plataforma (não dá pra fazer, não é bug):** cor no texto do push nativo (só texto puro, em qualquer navegador/OS); o "from AutoScale" que aparece embaixo da notificação (selo de segurança do navegador pra qualquer PWA, não removível sem virar app nativo).
 
 ---
 
