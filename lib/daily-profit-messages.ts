@@ -19,5 +19,5 @@ function pick<T>(arr: T[]): T {
 
 export function getDailyProfitMessage(total: number): { title: string; body: string } {
   const v = formatBRL(total);
-  return { title: "Fechamento do dia", body: pick(MESSAGES(v)) };
+  return { title: "📊 Fechamento do dia", body: pick(MESSAGES(v)) };
 }

@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     await sendPushNotification({
       targetType: "admins",
       type: "sale",
-      title: "Nova venda recebida",
+      title: "💰 Nova venda recebida",
       body:
         amount != null
           ? `${planName ?? "Venda"}: R$ ${amount.toFixed(2)} (${currency}) via ApexVips.`
