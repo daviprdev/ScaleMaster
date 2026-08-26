@@ -280,8 +280,8 @@ export default function DashboardPage() {
           compareLabel: "Ontem",
           compareValue: formatBRL(stats.sales.yesterday),
           icon: DollarSign,
-          iconColor: "#FFC800",
-          glow: "rgba(255,200,0,0.22)",
+          iconColor: "#00FF41",
+          glow: "rgba(0,255,65,0.22)",
         },
         {
           label: "Vendas Mensais",
@@ -290,8 +290,8 @@ export default function DashboardPage() {
           compareLabel: "Mês anterior",
           compareValue: formatBRL(stats.sales.prev_month),
           icon: DollarSign,
-          iconColor: "#FFC800",
-          glow: "rgba(255,200,0,0.22)",
+          iconColor: "#00FF41",
+          glow: "rgba(0,255,65,0.22)",
         },
       ]
     : null;
@@ -316,45 +316,6 @@ export default function DashboardPage() {
           <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
           {refreshing ? "Atualizando…" : "Atualizar"}
         </button>
-      </motion.div>
-
-      {/* Simple stat cards: Contas Conectadas / Postagens Hoje / Views Totais / Fila */}
-      <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {loading || !simpleCards
-          ? Array.from({ length: 4 }).map((_, i) => (
-              <motion.div key={i} variants={fadeUp}><StatSkeleton /></motion.div>
-            ))
-          : simpleCards.map((stat, i) => (
-              <motion.div
-                key={i}
-                variants={fadeUp}
-                className="glass-card ticks p-5 group relative overflow-hidden"
-              >
-                <AmbientGlow color={stat.glow} />
-
-                <div className="flex items-start justify-between mb-4 relative z-10">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{
-                      background: "rgba(255,255,255,0.04)",
-                      border: `0.5px solid ${stat.iconColor}33`,
-                      boxShadow: `0 0 14px ${stat.glow}`,
-                    }}
-                  >
-                    <stat.icon size={18} style={{ color: stat.iconColor }} strokeWidth={1.5} />
-                  </div>
-                </div>
-
-                <div
-                  className="text-2xl font-black mb-0.5 relative z-10"
-                  style={{ color: stat.iconColor, textShadow: `0 0 20px ${stat.glow}` }}
-                >
-                  {stat.value}
-                </div>
-                <div className="text-xs text-white/50 font-medium relative z-10">{stat.label}</div>
-                <div className="text-[10px] text-white/25 mt-1 relative z-10">{stat.change}</div>
-              </motion.div>
-            ))}
       </motion.div>
 
       {/* Vendas: diária / mensal */}
@@ -395,6 +356,45 @@ export default function DashboardPage() {
                 <div className="text-[10px] text-white/30 mt-2 pt-2 border-t border-white/[0.06] relative z-10">
                   {stat.compareLabel}: <span className="text-white/50 font-medium">{stat.compareValue}</span>
                 </div>
+              </motion.div>
+            ))}
+      </motion.div>
+
+      {/* Simple stat cards: Contas Conectadas / Postagens Hoje / Views Totais / Fila */}
+      <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {loading || !simpleCards
+          ? Array.from({ length: 4 }).map((_, i) => (
+              <motion.div key={i} variants={fadeUp}><StatSkeleton /></motion.div>
+            ))
+          : simpleCards.map((stat, i) => (
+              <motion.div
+                key={i}
+                variants={fadeUp}
+                className="glass-card ticks p-5 group relative overflow-hidden"
+              >
+                <AmbientGlow color={stat.glow} />
+
+                <div className="flex items-start justify-between mb-4 relative z-10">
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: "rgba(255,255,255,0.04)",
+                      border: `0.5px solid ${stat.iconColor}33`,
+                      boxShadow: `0 0 14px ${stat.glow}`,
+                    }}
+                  >
+                    <stat.icon size={18} style={{ color: stat.iconColor }} strokeWidth={1.5} />
+                  </div>
+                </div>
+
+                <div
+                  className="text-2xl font-black mb-0.5 relative z-10"
+                  style={{ color: stat.iconColor, textShadow: `0 0 20px ${stat.glow}` }}
+                >
+                  {stat.value}
+                </div>
+                <div className="text-xs text-white/50 font-medium relative z-10">{stat.label}</div>
+                <div className="text-[10px] text-white/25 mt-1 relative z-10">{stat.change}</div>
               </motion.div>
             ))}
       </motion.div>
