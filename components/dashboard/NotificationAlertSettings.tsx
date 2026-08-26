@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Loader2, ServerCrash, ShieldAlert, TrendingUp } from "lucide-react";
+import { Loader2, ServerCrash, ShieldAlert, TrendingUp, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
@@ -11,6 +11,7 @@ interface Settings {
   account_alerts_enabled: boolean;
   daily_profit_enabled: boolean;
   daily_profit_time: string;
+  sale_alerts_enabled: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -18,6 +19,7 @@ const DEFAULTS: Settings = {
   account_alerts_enabled: true,
   daily_profit_enabled: false,
   daily_profit_time: "23:55",
+  sale_alerts_enabled: true,
 };
 
 function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
@@ -140,6 +142,16 @@ export default function NotificationAlertSettings() {
         onChange={(v) => patch({ account_alerts_enabled: v })}
         disabled={saving}
       />
+      {isAdmin && (
+        <Row
+          icon={<DollarSign size={16} />}
+          title="Notificações de vendas"
+          description="Avisa na hora, a cada venda aprovada via ApexVips."
+          checked={settings.sale_alerts_enabled}
+          onChange={(v) => patch({ sale_alerts_enabled: v })}
+          disabled={saving}
+        />
+      )}
       {isAdmin && (
         <div className="px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3">
           <div className="flex items-center justify-between gap-3">

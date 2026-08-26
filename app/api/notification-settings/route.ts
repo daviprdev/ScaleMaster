@@ -9,6 +9,7 @@ const DEFAULTS = {
   account_alerts_enabled: true,
   daily_profit_enabled: false,
   daily_profit_time: "23:55",
+  sale_alerts_enabled: true,
 };
 
 export async function GET() {
@@ -21,7 +22,7 @@ export async function GET() {
   const admin = getSupabaseAdmin();
   const { data } = await admin
     .from("notification_settings")
-    .select("proxy_alerts_enabled, account_alerts_enabled, daily_profit_enabled, daily_profit_time")
+    .select("proxy_alerts_enabled, account_alerts_enabled, daily_profit_enabled, daily_profit_time, sale_alerts_enabled")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -43,6 +44,7 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.daily_profit_time === "string" && /^\d{2}:\d{2}$/.test(body.daily_profit_time)) {
     patch.daily_profit_time = body.daily_profit_time;
   }
+  if (typeof body.sale_alerts_enabled === "boolean") patch.sale_alerts_enabled = body.sale_alerts_enabled;
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "Nenhum campo válido para atualizar" }, { status: 400 });
@@ -51,7 +53,7 @@ export async function PATCH(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const { data: existing } = await admin
     .from("notification_settings")
-    .select("proxy_alerts_enabled, account_alerts_enabled, daily_profit_enabled, daily_profit_time")
+    .select("proxy_alerts_enabled, account_alerts_enabled, daily_profit_enabled, daily_profit_time, sale_alerts_enabled")
     .eq("user_id", user.id)
     .maybeSingle();
 

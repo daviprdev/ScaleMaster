@@ -98,7 +98,19 @@ export async function sendPushNotification(params: {
     subs = data ?? [];
   } else if (targetType === "admins") {
     const { data: admins } = await admin.from("user_roles").select("user_id").eq("role", "admin");
-    const ids = (admins ?? []).map((a: any) => a.user_id);
+    let ids = (admins ?? []).map((a: any) => a.user_id);
+
+    if (type === "sale" && ids.length) {
+      const { data: prefs } = await admin
+        .from("notification_settings")
+        .select("user_id, sale_alerts_enabled")
+        .in("user_id", ids);
+      const optedOut = new Set(
+        (prefs ?? []).filter((p: any) => p.sale_alerts_enabled === false).map((p: any) => p.user_id)
+      );
+      ids = ids.filter((id) => !optedOut.has(id));
+    }
+
     if (ids.length) {
       const { data } = await admin
         .from("push_subscriptions")
