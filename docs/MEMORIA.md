@@ -3283,3 +3283,19 @@ Build (`npm run build`) validado antes do commit. Commit `ed9e574`, push direto 
 
 #### Lição para o futuro
 Toda vez que uma nova rotina passar a fazer upload pra `temp/` (scratch space), ela **precisa** entrar na lista `TEMP_PREFIXES` do cleanup em `process-loops` — não existe garbage collection automático genérico pra essa pasta, só o que está explicitamente listado ali. E: uma rotina de limpeza que roda sem erro não é prova de que está limpando algo — vale periodicamente conferir com uma query direta em `storage.objects` (`group by bucket_id` / `group by split_part(name,'/',1)`) se o volume real está de fato estável ao longo do tempo, em vez de confiar só na ausência de warning nos logs.
+
+---
+
+### ✅ Sessão 2026-08-26 — Vendas por usuário (webhook individual) + cards diário/mensal no dashboard
+
+Resumo rápido (múltiplos commits: `6827c2d`, `9f797ef`, `b5df969`, `2df2812`, `d2354e0`, `18fc189`):
+
+1. **Toggle de notificação de venda por admin** — nova coluna `sale_alerts_enabled` em `notification_settings`; `sendPushNotification` filtra o broadcast "admins" por essa preferência quando `type="sale"`.
+2. **Seção Vendas no `/admin`** — API `GET /api/admin/sales` (admin-only) com totais hoje/7d/30d/geral + lista das 50 últimas vendas.
+3. **Pivot: vendas passam a ser por usuário, não só do dono do SaaS.** Cada usuário tem seu próprio link de webhook da ApexVips: coluna `sales_webhook_token` (UUID único) em `user_roles`, nova rota `POST /api/webhooks/apexvips/[token]` resolve o dono pelo token e grava a venda com `user_id`. Nova RLS `users_select_own_sales`. Rota global antiga (`/api/webhooks/apexvips?secret=`) mantida intacta como fallback (sales sem dono, só visíveis no `/admin`) — usuário precisa trocar manualmente a URL de cada bot na ApexVips pelo link pessoal (disponível em Configurações → Notificações → Vendas, componente `SalesWebhookCard`).
+4. **Auto-match por username descartado**: confirmado que o AutoScale loga por e-mail (não tem username) e o `customer.username` da ApexVips é o @ do Telegram — zero dado em comum pra cruzar automaticamente. Vinculação é 100% pelo token do link.
+5. **Dashboard principal (`/dashboard`)**: dois cards novos — **Vendas Diárias** (reinicia à meia-noite BRT, com linha pequena "Ontem: R$X") e **Vendas Mensais** (reinicia todo dia 1º, com linha pequena "Mês anterior: R$X"). `lib/brt-time.ts` novo (`brtMidnightUtc`, `brtMonthStartUtc(monthsAgo)`) — extrai helper duplicado entre `daily-profit-notification`, `admin/sales` e `dashboard/stats`.
+6. **Notificação de venda simplificada**: título "🔥 Venda Aprovada 🔥", corpo só com o valor em BRL (sem plano, sem "via ApexVips").
+7. **Backfill manual de histórico**: como o webhook só existe desde 25/08, o card Mensal ficava muito abaixo do real. Usuário mandou print do painel ApexVips (Hoje R$91,19/7 vendas, Mês R$9.912,28/657 vendas) e autorizou inserir 2 registros `source='manual_backfill'` pra fechar a conta: um datado 01/08 (R$9.808,31, histórico anterior ao tracking) e outro datado hoje (R$32,21, as 2 vendas que escaparam antes de trocar todos os bots pro link novo) — sem duplicar o que já estava sendo rastreado ao vivo.
+
+**Pendência do usuário**: confirmar que TODOS os bots da ApexVips foram trocados pro link pessoal (ele confirmou que sim nesta sessão) — a partir de amanhã (27/08) os cards devem bater sozinhos sem precisar de mais backfill manual.
