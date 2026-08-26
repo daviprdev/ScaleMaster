@@ -13,6 +13,7 @@ import {
   Send,
   Trash2,
   CheckCheck,
+  DollarSign,
 } from "lucide-react";
 import {
   AreaChart,
@@ -40,6 +41,25 @@ interface Announcement {
   created_at: string;
 }
 
+interface SaleRow {
+  id: string;
+  amount: number | null;
+  currency: string;
+  customer: string | null;
+  planName: string | null;
+  source: string;
+  createdAt: string;
+}
+
+interface SalesData {
+  totals: { today: number; week: number; month: number; allTime: number; count: number };
+  sales: SaleRow[];
+}
+
+function formatBRL(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 function formatDay(iso: string) {
   const d = new Date(iso + "T12:00:00Z");
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
@@ -55,18 +75,22 @@ export default function AdminDashboardPage() {
   const [annLoading, setAnnLoading] = useState(false);
   const [annSaved, setAnnSaved] = useState(false);
 
+  const [sales, setSales] = useState<SalesData | null>(null);
+
   useEffect(() => {
     Promise.all([
       fetch("/api/admin/stats").then((r) => r.json()),
       fetch("/api/admin/announcements").then((r) => r.json()),
+      fetch("/api/admin/sales").then((r) => r.json()),
     ])
-      .then(([statsData, annData]) => {
+      .then(([statsData, annData, salesData]) => {
         if (statsData.error) throw new Error(statsData.error);
         setStats(statsData);
         if (annData.announcement) {
           setAnnouncement(annData.announcement);
           setAnnMsg(annData.announcement.message);
         }
+        if (!salesData.error) setSales(salesData);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -247,6 +271,67 @@ export default function AdminDashboardPage() {
           </AreaChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Vendas (ApexVips) */}
+      {sales && (
+        <div className="glass-card rounded-2xl p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <DollarSign className="w-4 h-4 text-[#00FF41]" />
+            <h2 className="text-sm font-semibold text-white">Vendas</h2>
+            <span className="text-xs text-white/30">via ApexVips</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            {[
+              { label: "Hoje", value: sales.totals.today },
+              { label: "Últimos 7 dias", value: sales.totals.week },
+              { label: "Últimos 30 dias", value: sales.totals.month },
+              { label: "Total geral", value: sales.totals.allTime },
+            ].map((c) => (
+              <div key={c.label} className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
+                <p className="text-lg font-bold text-white metric-value">{formatBRL(c.value)}</p>
+                <p className="text-[11px] text-white/40 mt-0.5">{c.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {sales.sales.length === 0 ? (
+            <p className="text-sm text-white/30 text-center py-6">Nenhuma venda registrada ainda.</p>
+          ) : (
+            <div className="overflow-x-auto -mx-2">
+              <table className="w-full text-sm min-w-[520px]">
+                <thead>
+                  <tr className="text-left text-white/30 text-xs border-b border-white/[0.06]">
+                    <th className="px-2 py-2 font-medium">Cliente</th>
+                    <th className="px-2 py-2 font-medium">Plano</th>
+                    <th className="px-2 py-2 font-medium">Valor</th>
+                    <th className="px-2 py-2 font-medium">Data</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sales.sales.map((s) => (
+                    <tr key={s.id} className="border-b border-white/[0.03] last:border-0">
+                      <td className="px-2 py-2.5 text-white/70">{s.customer ?? "—"}</td>
+                      <td className="px-2 py-2.5 text-white/50">{s.planName ?? "—"}</td>
+                      <td className="px-2 py-2.5 text-[#00FF41] font-medium">
+                        {s.amount != null ? formatBRL(s.amount) : "—"}
+                      </td>
+                      <td className="px-2 py-2.5 text-white/40">
+                        {new Date(s.createdAt).toLocaleString("pt-BR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Announcement broadcaster */}
       <div className="glass-card rounded-2xl p-6">
