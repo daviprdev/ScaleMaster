@@ -25,7 +25,7 @@ import {
 
 // ── Types ────────────────────────────────────────────────────────
 interface DashboardStats {
-  sales: { today: number; month: number };
+  sales: { today: number; yesterday: number; month: number; prev_month: number };
   accounts: {
     total: number;
     added_today: number;
@@ -277,6 +277,8 @@ export default function DashboardPage() {
           label: "Vendas Diárias",
           value: formatBRL(stats.sales.today),
           change: "Desde a meia-noite (Brasília)",
+          compareLabel: "Ontem",
+          compareValue: formatBRL(stats.sales.yesterday),
           icon: DollarSign,
           iconColor: "#FFC800",
           glow: "rgba(255,200,0,0.22)",
@@ -285,6 +287,8 @@ export default function DashboardPage() {
           label: "Vendas Mensais",
           value: formatBRL(stats.sales.month),
           change: "Reinicia no dia 1º de cada mês",
+          compareLabel: "Mês anterior",
+          compareValue: formatBRL(stats.sales.prev_month),
           icon: DollarSign,
           iconColor: "#FFC800",
           glow: "rgba(255,200,0,0.22)",
@@ -388,6 +392,9 @@ export default function DashboardPage() {
                 </div>
                 <div className="text-xs text-white/50 font-medium relative z-10">{stat.label}</div>
                 <div className="text-[10px] text-white/25 mt-1 relative z-10">{stat.change}</div>
+                <div className="text-[10px] text-white/30 mt-2 pt-2 border-t border-white/[0.06] relative z-10">
+                  {stat.compareLabel}: <span className="text-white/50 font-medium">{stat.compareValue}</span>
+                </div>
               </motion.div>
             ))}
       </motion.div>

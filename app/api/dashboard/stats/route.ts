@@ -204,14 +204,22 @@ export async function GET() {
 
   const salesRows = (salesRes.data ?? []) as { amount: number | null; created_at: string }[];
   const todayStartIso = brtMidnightUtc(0).toISOString();
-  const monthStartIso = brtMonthStartUtc().toISOString();
+  const yesterdayStartIso = brtMidnightUtc(1).toISOString();
+  const monthStartIso = brtMonthStartUtc(0).toISOString();
+  const prevMonthStartIso = brtMonthStartUtc(1).toISOString();
   const sumSales = (sinceIso: string) =>
     salesRows.filter((r) => r.created_at >= sinceIso).reduce((acc, r) => acc + Number(r.amount ?? 0), 0);
+  const sumRange = (sinceIso: string, untilIso: string) =>
+    salesRows
+      .filter((r) => r.created_at >= sinceIso && r.created_at < untilIso)
+      .reduce((acc, r) => acc + Number(r.amount ?? 0), 0);
 
   return NextResponse.json({
     sales: {
       today: sumSales(todayStartIso),
+      yesterday: sumRange(yesterdayStartIso, todayStartIso),
       month: sumSales(monthStartIso),
+      prev_month: sumRange(prevMonthStartIso, monthStartIso),
     },
     accounts: {
       total: accountsTotalRes.count ?? 0,
