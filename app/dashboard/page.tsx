@@ -20,10 +20,12 @@ import {
   Repeat2,
   ImagePlay,
   Eye,
+  DollarSign,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────
 interface DashboardStats {
+  sales: { today: number; week: number; all_time: number };
   accounts: {
     total: number;
     added_today: number;
@@ -72,6 +74,10 @@ function formatCompact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
   return String(n);
+}
+
+function formatBRL(v: number): string {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 function formatScheduled(dateStr: string): { label: string; time: string } {
@@ -262,6 +268,20 @@ export default function DashboardPage() {
             { label: "7 dias", value: stats.accounts_down.down_7d },
           ],
         },
+        {
+          key: "sales",
+          label: "Vendas",
+          total: formatBRL(stats.sales.all_time),
+          totalLabel: "faturamento total",
+          icon: DollarSign,
+          iconColor: "#FFC800",
+          glow: "rgba(255,200,0,0.22)",
+          items: [
+            { label: "Hoje", value: formatBRL(stats.sales.today) },
+            { label: "7 dias", value: formatBRL(stats.sales.week) },
+            { label: "Total", value: formatBRL(stats.sales.all_time) },
+          ],
+        },
       ]
     : null;
 
@@ -326,10 +346,10 @@ export default function DashboardPage() {
             ))}
       </motion.div>
 
-      {/* Breakdown cards: Contas Adicionadas / Contas Caídas */}
-      <motion.div variants={stagger} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Breakdown cards: Contas Adicionadas / Contas Caídas / Vendas */}
+      <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {loading || !breakdownCards
-          ? Array.from({ length: 2 }).map((_, i) => (
+          ? Array.from({ length: 3 }).map((_, i) => (
               <motion.div key={i} variants={fadeUp}><BreakdownSkeleton /></motion.div>
             ))
           : breakdownCards.map((card) => (

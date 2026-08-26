@@ -29,6 +29,7 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import PushNotificationManager from "@/components/dashboard/PushNotificationManager";
 import NotificationAlertSettings from "@/components/dashboard/NotificationAlertSettings";
+import SalesWebhookCard from "@/components/dashboard/SalesWebhookCard";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -1037,6 +1038,10 @@ export default function SettingsPage() {
           <div>
             <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Alertas automáticos</p>
             <NotificationAlertSettings />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Vendas</p>
+            <SalesWebhookCard />
           </div>
         </div>
       </Section>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { brtMidnightUtc } from "@/lib/brt-time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +54,7 @@ export async function GET() {
     recentPostsRes,
     upcomingRes,
     viewsPostsRes,
+    salesRes,
   ] = await Promise.all([
     admin
       .from("instagram_accounts")
@@ -133,6 +135,11 @@ export async function GET() {
       .eq("status", "published")
       .eq("instagram_accounts.is_active", true)
       .neq("instagram_accounts.health_status", "error"),
+    admin
+      .from("sales")
+      .select("amount, created_at")
+      .eq("user_id", user.id)
+      .not("amount", "is", null),
   ]);
 
   // Contas Caídas — deduplica por conta dentro de cada janela (eventos de failover)
@@ -195,7 +202,18 @@ export async function GET() {
     }
   }
 
+  const salesRows = (salesRes.data ?? []) as { amount: number | null; created_at: string }[];
+  const todayStartIso = brtMidnightUtc(0).toISOString();
+  const weekStartIso = brtMidnightUtc(6).toISOString();
+  const sumSales = (sinceIso: string) =>
+    salesRows.filter((r) => r.created_at >= sinceIso).reduce((acc, r) => acc + Number(r.amount ?? 0), 0);
+
   return NextResponse.json({
+    sales: {
+      today: sumSales(todayStartIso),
+      week: sumSales(weekStartIso),
+      all_time: sumSales("1970-01-01T00:00:00.000Z"),
+    },
     accounts: {
       total: accountsTotalRes.count ?? 0,
       added_today: accountsTodayRes.count ?? 0,

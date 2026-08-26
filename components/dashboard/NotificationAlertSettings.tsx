@@ -142,16 +142,14 @@ export default function NotificationAlertSettings() {
         onChange={(v) => patch({ account_alerts_enabled: v })}
         disabled={saving}
       />
-      {isAdmin && (
-        <Row
-          icon={<DollarSign size={16} />}
-          title="Notificações de vendas"
-          description="Avisa na hora, a cada venda aprovada via ApexVips."
-          checked={settings.sale_alerts_enabled}
-          onChange={(v) => patch({ sale_alerts_enabled: v })}
-          disabled={saving}
-        />
-      )}
+      <Row
+        icon={<DollarSign size={16} />}
+        title="Notificações de vendas"
+        description="Avisa na hora, a cada venda aprovada via ApexVips."
+        checked={settings.sale_alerts_enabled}
+        onChange={(v) => patch({ sale_alerts_enabled: v })}
+        disabled={saving}
+      />
       {isAdmin && (
         <div className="px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3">
           <div className="flex items-center justify-between gap-3">
