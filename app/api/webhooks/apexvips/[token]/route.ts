@@ -58,7 +58,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   const externalId = tx.sale_code ?? null;
   const customerIdentifier =
     customer.username ?? customer.full_name ?? customer.profile_name ?? customer.phone ?? null;
-  const planName = tx.plan_name ?? null;
 
   const { data, error } = await admin
     .from("sales")
@@ -97,11 +96,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         targetType: "user",
         targetUserId: userId,
         type: "sale",
-        title: "Venda Aprovada!",
+        title: "🔥 Venda Aprovada 🔥",
         body:
           amount != null
-            ? `${planName ?? "Venda"}: R$ ${amount.toFixed(2)} (${currency}) via ApexVips.`
-            : "Nova venda recebida — verifique o payload (valor não identificado).",
+            ? amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+            : "Novo pagamento recebido.",
         url: "/dashboard",
       });
     }

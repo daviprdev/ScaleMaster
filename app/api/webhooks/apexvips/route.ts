@@ -57,7 +57,6 @@ export async function POST(req: NextRequest) {
   const currency = tx.currency ?? "BRL";
   const externalId = tx.sale_code ?? null;
   const customerIdentifier = customer.full_name ?? customer.username ?? customer.phone ?? null;
-  const planName = tx.plan_name ?? null;
 
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
@@ -90,11 +89,11 @@ export async function POST(req: NextRequest) {
     await sendPushNotification({
       targetType: "admins",
       type: "sale",
-      title: "Venda Aprovada!",
+      title: "🔥 Venda Aprovada 🔥",
       body:
         amount != null
-          ? `${planName ?? "Venda"}: R$ ${amount.toFixed(2)} (${currency}) via ApexVips.`
-          : "Nova venda recebida — verifique o payload (valor não identificado).",
+          ? amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+          : "Novo pagamento recebido.",
       url: "/admin",
     });
   } catch (err: any) {
