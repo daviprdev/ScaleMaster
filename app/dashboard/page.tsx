@@ -25,7 +25,7 @@ import {
 
 // ── Types ────────────────────────────────────────────────────────
 interface DashboardStats {
-  sales: { today: number; week: number; all_time: number };
+  sales: { today: number; month: number };
   accounts: {
     total: number;
     added_today: number;
@@ -268,19 +268,26 @@ export default function DashboardPage() {
             { label: "7 dias", value: stats.accounts_down.down_7d },
           ],
         },
+      ]
+    : null;
+
+  const salesCards = stats
+    ? [
         {
-          key: "sales",
-          label: "Vendas",
-          total: formatBRL(stats.sales.all_time),
-          totalLabel: "faturamento total",
+          label: "Vendas Diárias",
+          value: formatBRL(stats.sales.today),
+          change: "Desde a meia-noite (Brasília)",
           icon: DollarSign,
           iconColor: "#FFC800",
           glow: "rgba(255,200,0,0.22)",
-          items: [
-            { label: "Hoje", value: formatBRL(stats.sales.today) },
-            { label: "7 dias", value: formatBRL(stats.sales.week) },
-            { label: "Total", value: formatBRL(stats.sales.all_time) },
-          ],
+        },
+        {
+          label: "Vendas Mensais",
+          value: formatBRL(stats.sales.month),
+          change: "Reinicia no dia 1º de cada mês",
+          icon: DollarSign,
+          iconColor: "#FFC800",
+          glow: "rgba(255,200,0,0.22)",
         },
       ]
     : null;
@@ -346,10 +353,49 @@ export default function DashboardPage() {
             ))}
       </motion.div>
 
-      {/* Breakdown cards: Contas Adicionadas / Contas Caídas / Vendas */}
-      <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Vendas: diária / mensal */}
+      <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {loading || !salesCards
+          ? Array.from({ length: 2 }).map((_, i) => (
+              <motion.div key={i} variants={fadeUp}><StatSkeleton /></motion.div>
+            ))
+          : salesCards.map((stat, i) => (
+              <motion.div
+                key={i}
+                variants={fadeUp}
+                className="glass-card ticks p-5 group relative overflow-hidden"
+              >
+                <AmbientGlow color={stat.glow} />
+
+                <div className="flex items-start justify-between mb-4 relative z-10">
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: "rgba(255,255,255,0.04)",
+                      border: `0.5px solid ${stat.iconColor}33`,
+                      boxShadow: `0 0 14px ${stat.glow}`,
+                    }}
+                  >
+                    <stat.icon size={18} style={{ color: stat.iconColor }} strokeWidth={1.5} />
+                  </div>
+                </div>
+
+                <div
+                  className="text-2xl font-black mb-0.5 relative z-10"
+                  style={{ color: stat.iconColor, textShadow: `0 0 20px ${stat.glow}` }}
+                >
+                  {stat.value}
+                </div>
+                <div className="text-xs text-white/50 font-medium relative z-10">{stat.label}</div>
+                <div className="text-[10px] text-white/25 mt-1 relative z-10">{stat.change}</div>
+              </motion.div>
+            ))}
+      </motion.div>
+
+      {/* Breakdown cards: Contas Adicionadas / Contas Caídas */}
+      <motion.div variants={stagger} className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {loading || !breakdownCards
-          ? Array.from({ length: 3 }).map((_, i) => (
+          ? Array.from({ length: 2 }).map((_, i) => (
               <motion.div key={i} variants={fadeUp}><BreakdownSkeleton /></motion.div>
             ))
           : breakdownCards.map((card) => (

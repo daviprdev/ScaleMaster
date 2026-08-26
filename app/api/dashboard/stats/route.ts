@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { brtMidnightUtc } from "@/lib/brt-time";
+import { brtMidnightUtc, brtMonthStartUtc } from "@/lib/brt-time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -204,15 +204,14 @@ export async function GET() {
 
   const salesRows = (salesRes.data ?? []) as { amount: number | null; created_at: string }[];
   const todayStartIso = brtMidnightUtc(0).toISOString();
-  const weekStartIso = brtMidnightUtc(6).toISOString();
+  const monthStartIso = brtMonthStartUtc().toISOString();
   const sumSales = (sinceIso: string) =>
     salesRows.filter((r) => r.created_at >= sinceIso).reduce((acc, r) => acc + Number(r.amount ?? 0), 0);
 
   return NextResponse.json({
     sales: {
       today: sumSales(todayStartIso),
-      week: sumSales(weekStartIso),
-      all_time: sumSales("1970-01-01T00:00:00.000Z"),
+      month: sumSales(monthStartIso),
     },
     accounts: {
       total: accountsTotalRes.count ?? 0,
