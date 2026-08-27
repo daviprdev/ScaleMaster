@@ -46,6 +46,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
+  console.log(
+    "[apexvips-webhook][global] evento recebido:",
+    JSON.stringify({ event: payload.event, sale_code: payload.transaction?.sale_code, plan_value: payload.transaction?.plan_value })
+  );
+
   if (payload.event !== "payment_approved") {
     return NextResponse.json({ ok: true, ignored: payload.event ?? "unknown" });
   }
