@@ -237,7 +237,7 @@ export async function processVideoForAccount(
     console.log(
       `[process-videos] ✓ @${seed.slice(0, 8)} [${activeFx}] ` +
       `| ${inputSizeMB}MB → ${outputSizeMB}MB ` +
-      `| pitch=${pitchFactor.toFixed(4)} noise=${noiseLuma} crf=19`
+      `| pitch=${pitchFactor.toFixed(4)} noise=${noiseLuma} crf=22`
     );
 
     return publicUrl;
