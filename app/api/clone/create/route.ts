@@ -87,13 +87,22 @@ export async function POST(req: NextRequest) {
 
   const rows: object[] = [];
 
+  // Pool compartilhado ÚNICO (não por conta) — atribuição em "quadrado latino":
+  // na rodada r, a conta de índice `ai` recebe sharedPool[(ai + r) % poolSize].
+  // Garante que, na MESMA rodada (mesmo horário relativo entre as contas),
+  // nenhuma conta posta o mesmo Reel raspado que outra ao mesmo tempo — mesmo
+  // bug e mesmo fix já aplicados em posts/distribute (2026-07-28), que faltava
+  // aqui: cada conta sorteava sua própria sequência independente e o mesmo Reel
+  // saía em várias contas quase junto, sinal de conteúdo duplicado pra Meta.
+  const sharedPool = fisherYates(baseReels);
+  const poolSize    = sharedPool.length;
+
   for (let ai = 0; ai < account_ids.length; ai++) {
     const accountId = account_ids[ai];
     const staggerMs = ai * perAccountStaggerMs;
-    const shuffled  = fisherYates(baseReels);
 
-    for (let ri = 0; ri < shuffled.length; ri++) {
-      const reel        = shuffled[ri];
+    for (let ri = 0; ri < poolSize; ri++) {
+      const reel        = sharedPool[(ai + ri) % poolSize];
       const scheduledAt = new Date(startTime + ri * intervalMs + staggerMs).toISOString();
 
       rows.push({
