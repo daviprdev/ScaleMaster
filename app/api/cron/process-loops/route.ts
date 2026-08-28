@@ -359,7 +359,8 @@ async function assignVideosForLoop(
   admin: ReturnType<typeof getSupabaseAdmin>,
   loop: LoopRow,
   allVideos: VideoRow[],
-  validAccounts: AccountRow[],
+  allLoopAccounts: AccountRow[],
+  accountsToAssign: AccountRow[],
   windowStartIso: string
 ): Promise<Map<string, VideoAssignment>> {
   // Busca paralela: histórico por conta + vídeos já tomados nesta janela.
@@ -367,7 +368,17 @@ async function assignVideosForLoop(
   // Postar/Clonar/Automatizar via scheduled_posts), sem escopo por loop_id:
   // histórico por loop fazia cada loop novo repostar tudo que a conta já
   // postou por outros loops/abas — mesmo vídeo chegou a sair 9× na mesma conta.
-  const accountIds = validAccounts.map(a => a.id);
+  //
+  // IMPORTANTE: accountIds usa allLoopAccounts (TODAS as contas do loop, não só
+  // as devidas nesta rodada). Antes usava só as contas devidas — como cada tick
+  // do cron normalmente só tem 1-3 contas devidas de um loop com 40+ contas, o
+  // "menor uso GLOBAL" virava "menor uso entre essas 1-3 contas", uma amostra
+  // minúscula e instável a cada tick. Resultado observado em produção: um mesmo
+  // vídeo saindo 11× para a mesma conta e repetido em várias contas diferentes
+  // do mesmo loop em poucas horas, mesmo com pasta de 330 vídeos. Fix: histórico
+  // e usageByVideo sempre olham o loop inteiro; só a ATRIBUIÇÃO (loop abaixo)
+  // fica restrita às contas devidas.
+  const accountIds = allLoopAccounts.map(a => a.id);
   const [containersHistRes, scheduledHistRes, jobsHistRes, windowClaimsRes] = await Promise.all([
     (admin as any)
       .from("pending_containers")
@@ -443,8 +454,8 @@ async function assignVideosForLoop(
   // evita o mesmo vídeo sair em várias contas quase ao mesmo tempo.
   const assignments = new Map<string, VideoAssignment>();
 
-  for (let i = 0; i < validAccounts.length; i++) {
-    const account = validAccounts[i];
+  for (let i = 0; i < accountsToAssign.length; i++) {
+    const account = accountsToAssign[i];
     const postedByAccount = postedByAccountMap.get(account.id) ?? new Set<string>();
 
     // Pool individual: exclui apenas o que ESTA conta já postou.
@@ -496,7 +507,7 @@ async function assignVideosForLoop(
     .map(([, a]) => `${a.video.filename.slice(0, 20)}${a.isCycleReset ? "*" : ""}`)
     .join(", ");
   console.log(
-    `[assign-phase] "${loop.name}": ${assignments.size}/${validAccounts.length} conta(s) com vídeo atribuído (histórico por conta em todas as origens + menor uso global). ` +
+    `[assign-phase] "${loop.name}": ${assignments.size}/${accountsToAssign.length} conta(s) com vídeo atribuído (histórico por conta em todas as origens + menor uso global entre ${allLoopAccounts.length} conta(s) do loop). ` +
     `[${summary}]`
   );
 
@@ -681,7 +692,7 @@ async function processOneLoop(
 
     // ── FASE 1: Atribuição atômica de vídeos (só para quem está devido) ──────
     const videoAssignments = await assignVideosForLoop(
-      admin, loop, allVideos, dueAccounts, windowStartIso
+      admin, loop, allVideos, validAccounts, dueAccounts, windowStartIso
     );
 
     if (videoAssignments.size === 0) {
