@@ -1266,7 +1266,8 @@ export default function AccountsPage() {
     let total = accounts.filter((a) => a.health_status !== "error").length;
     setSyncProgress({ done: 0, total });
     let totalSynced = 0;
-    let totalErrors = 0;
+    let totalErrors = 0; // inclui transitórios (proxy timeout, infra Meta) — não vira card vermelho
+    let totalTokenErrors = 0; // token genuinamente morto — o único que marca health_status='error'
     let doneCount = 0;
     const excludeIds: string[] = [];
     try {
@@ -1312,6 +1313,7 @@ export default function AccountsPage() {
         doneCount += processedThisCall;
         totalSynced += data.synced ?? 0;
         totalErrors += data.errors ?? 0;
+        totalTokenErrors += data.token_errors ?? 0;
         if (i === 0) total = processedThisCall + (data.remaining ?? 0);
         excludeIds.push(...(data.processedIds ?? []));
         setSyncProgress({ done: doneCount, total });
@@ -1322,6 +1324,11 @@ export default function AccountsPage() {
         if (!data.remaining || data.remaining <= 0) break;
       }
       await fetchAccounts();
+      // totalErrors inclui falhas transitórias (timeout de proxy, infra da Meta) que
+      // não marcam nenhuma conta como vermelha — só totalTokenErrors (token genuinamente
+      // morto) corresponde às contas que de fato viram health_status='error'. Misturar
+      // os dois na mensagem gerava alarme falso (ex: "38 com erro" com só 1 conta vermelha).
+      const transientOnly = totalErrors - totalTokenErrors;
       setNotification((prev) =>
         prev?.type === "error"
           ? prev
@@ -1329,7 +1336,9 @@ export default function AccountsPage() {
               type: "success",
               message:
                 `Sincronização concluída: ${totalSynced} conta${totalSynced !== 1 ? "s" : ""} atualizada${totalSynced !== 1 ? "s" : ""}` +
-                (totalErrors > 0 ? `, ${totalErrors} com erro.` : "."),
+                (totalTokenErrors > 0 ? `, ${totalTokenErrors} com token inválido` : "") +
+                (transientOnly > 0 ? `, ${transientOnly} com falha temporária (tentará de novo sozinho)` : "") +
+                ".",
             }
       );
     } catch (err) {

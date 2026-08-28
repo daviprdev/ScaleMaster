@@ -83,6 +83,7 @@ interface SyncResult {
   ok: boolean;
   tokenError?: boolean;
   infraError?: boolean; // erro de infra da Meta — transitório, não marca como error
+  noProxy?: boolean; // conta sem proxy configurado — skip por design, não é erro
   tokenRefreshed?: boolean; // token foi renovado com sucesso durante o sync
   errorCode?: number;
   errorMessage?: string;
@@ -110,7 +111,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
   // silêncio (sem marcar erro). Mesma regra do pipeline de postagem.
   if (!proxy) {
     console.warn(`[sync-all] @${acc.username} sem proxy utilizável — sync pulado.`);
-    return { id: acc.id, user_id: acc.user_id, username: acc.username, ok: false };
+    return { id: acc.id, user_id: acc.user_id, username: acc.username, ok: false, noProxy: true };
   }
 
   const fetchProfile = async (token: string) => {
