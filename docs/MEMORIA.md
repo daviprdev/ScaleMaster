@@ -3319,3 +3319,48 @@ Sessão de diagnóstico geral iniciada por "38 contas com erro" no sync e "views
 6. **Fix — bug real de repetição de vídeo no Loop: `assignVideosForLoop` recebia só as contas devidas no tick, não o loop inteiro (`fdff34b`)**. Usuário reportou vídeo repetido 11× no mesmo dia numa única conta (`britofariataina`, loop **LAURA**, 43 contas, pasta com 330 vídeos) — não isolado, outros vídeos também repetiam bastante e em VÁRIAS contas do mesmo loop na mesma janela. Diagnóstico via SQL direto (`pending_containers` agrupado por conta+vídeo, últimos 2 dias) confirmou o padrão cruzado entre contas. Causa raiz: `processOneLoop` chamava `assignVideosForLoop(admin, loop, allVideos, dueAccounts, windowStartIso)` — o parâmetro que a função usa pra consultar histórico e calcular "uso global" (`usageByVideo`) recebia `dueAccounts` (só as 1-3 contas devidas naquele minuto do cron, de um loop com 43) em vez de `validAccounts` (todas as 43, que é o que o próprio comentário da função sempre disse ser a intenção: "Uso global por vídeo ENTRE AS CONTAS DO LOOP"). Com uma amostra de 1-3 contas a cada tick, o "menor uso global" virava ruído instável que convergia repetidamente nos mesmos poucos vídeos "sortudos" daquela amostra pequena — explica tanto a repetição na mesma conta (ela reaparece como due várias vezes ao longo do dia, cada vez com uma amostra global diferente e igualmente pequena) quanto entre contas diferentes do mesmo loop. Fix: função agora recebe dois parâmetros de conta separados — `allLoopAccounts` (histórico/uso-global) e `accountsToAssign` (só decide quem recebe vídeo nesta rodada, continua sendo só as devidas). Afeta qualquer loop grande com efeito desativado, não só o LAURA.
 
 7. **Investigação em aberto — "muita conta sem legenda"**: usuário reportou percepção geral de contas postando sem legenda; puxados os últimos 40 posts de `britofariataina` (mesma conta do bug #6) direto do banco — **100% têm legenda válida e completa** armazenada, e confirmado no código que não existe mais nenhuma chamada pós-publish (double-tap) que pudesse apagar a legenda depois de criada (função `updatePostCaption` existe em `lib/meta-publish.ts` mas não é chamada em nenhum lugar). Hipótese em aberto: descarte silencioso do lado da Meta (like o double-tap fazia antes, mas por outro mecanismo desta vez) ou confusão do usuário com a grade do perfil (que não mostra legenda). **Pendente**: usuário vai mandar link/print de um post específico sem legenda pra comparar com o texto exato salvo no banco.
+
+---
+
+### ✅ Sessão 2026-08-29/30 — Repetição de vídeo e views baixas: teto de 1000 linhas do PostgREST
+
+Usuário reportou "conta postando o mesmo vídeo 6× seguidas" e views muito baixas. **Uma única causa raiz explica os dois sintomas.** 1 commit no `main` (`c29a005`) + 1 migration.
+
+1. **Causa raiz — o `.limit(100000)` nunca funcionou.** O PostgREST corta TODA resposta em 1000 linhas e o `.limit()` do cliente não bypassa esse teto. Confirmado empiricamente via curl na REST API: `Content-Range: 0-999/26943` (existem 26.943 linhas, chegam 1000). As queries de anti-repetição do `process-loops` pediam **16.063 linhas** de histórico das 48 contas do loop LAURA e recebiam 1000 — **6%**. Como o histórico recente ficava invisível, o pool "disponível" reoferecia vídeos que a conta acabara de postar. A truncagem é **silenciosa**: nenhum erro, a query "funciona", e havia um comentário no código afirmando que o `.limit` explícito protegia justamente contra isso.
+
+   Medido em produção antes do fix (SQL direto, janela de 7 dias):
+   - `_michellyibrahim.129`: mesmo vídeo **7× seguidas** em 3h30, com 330 vídeos na pasta
+   - vídeo `17cde4cd`: saiu em **16 contas diferentes dentro de 2h** — conteúdo duplicado em massa na mesma janela é o padrão que a Meta suprime no alcance, e é a explicação das views baixas (mesma lição já documentada para o Postar em 28/07 e para o Clone em 28/08, nunca aplicada ao Loop)
+
+2. **Fix 1 — RPC agregado.** Nova função `get_account_video_usage(p_account_ids uuid[], p_since timestamptz)` retorna **UM** valor `jsonb` (`{account_id: {video_id: usos}}`) unindo as 3 origens: `pending_containers` (Loop) + `scheduled_posts` (Postar/Clonar/Automatizar) + `video_processing_jobs` (vídeos reservados no modo efeitos). Uma linha só → teto de linhas não se aplica. `lib/video-history.ts` novo encapsula (`fetchVideoUsage`, `postedSet`, `globalUsageByVideo`) e **lança** em caso de erro — postar repetido é pior que pular o ciclo. Índices `(account_id, video_id)` criados nas 3 tabelas: 1.3s → **43ms** quente.
+
+3. **Fix 2 — cooldown de recência por conta (12 últimos vídeos).** Na virada de ciclo (`isCycleReset`) o histórico da conta é reiniciado e o pool volta a conter tudo, inclusive o vídeo do post imediatamente anterior. 3 das 48 contas do LAURA já esgotaram os 330 vídeos, então esse caminho é real hoje — confirmado nos logs pós-deploy (`@_leonizafalon474`: "ciclo completo (330 postados) → reiniciando histórico", recebeu vídeo diferente).
+
+4. **Fix 3 — guard anti-duplicata ENTRE contas.** Vídeos usados recentemente por qualquer conta do loop saem do sorteio até metade da pasta circular (soft filter com fallback, nunca esvazia). O balanceamento por `usageByVideo` sozinho não resolvia: compara uso ACUMULADO, então vídeos empatados no mínimo continuavam podendo sair juntos.
+
+5. **Fix 4 — wrap-around dos loops não-infinitos** usava `allVideos[i % length]` onde `i` é a posição da conta na lista de devidas (quase sempre 0) → devolvia o MESMO vídeo tick após tick. Agora pula os recentes da conta.
+
+6. **Fix 5 — paginação via `.range()`** (helper `fetchAllRows`) nas leituras de pasta de mídia (`process-loops`, `posts/distribute`, `process-automations`, `sync-distribute-accounts`) e na janela de 24h das automações. O `.limit(10000)` tinha o mesmo teto silencioso — a pasta **SUSANA já está com 961 vídeos** e ia quebrar sozinha ao cruzar 1000, sem aviso.
+
+7. **Fix 6 — `sync-distribute-accounts`** passa a olhar as 3 origens; antes o histórico era restrito ao próprio `campaign_id`, então a conta repetia na campanha nova o que já postara por outras abas.
+
+8. **Validação em produção** (monitor ancorado no timestamp exato do deploy, 96 posts / 48 contas / 2 rodadas completas): **0 repetições consecutivas**, 95 vídeos distintos em 96 posts, `max contas com o mesmo vídeo: 2` (era 16) — e essa única colisão com **45 min** de distância, que é o cooldown global funcionando como projetado, não vazamento.
+
+#### Diagnóstico de views — o que NÃO é código
+
+Com o bug resolvido, levantados os números reais da operação:
+
+- **39,9 posts por conta / 24h** (máx 42) em contas com **14 dias de idade média** (a mais nova: 1 dia). Conta real de nicho posta 1–5×/dia. É o maior fator isolado de supressão e nenhum fix de código compensa. Recomendado: `interval_minutes` de 30 min → 4h (6/dia), e escalonar por idade (0–14d: 1–2/dia; 15–30d: 3–4/dia; 30+d: 5–8/dia) via pastas separadas — o warmup automático não existe no código (confirmado em 07/07).
+- **Legenda repetida até 15×** na rede em 24h (1.995 posts / 300 legendas distintas). Pool de 150 legendas fixas em `lib/auto-captions.ts` para 48 contas não fecha.
+- **Impossível medir views**: `insights_plays` está em 0 nos 623 posts publicados porque a permissão `instagram_business_manage_insights` nunca teve Advanced Access aprovado pela Meta (documentado em 21/08). Sem medição, toda otimização é achismo — priorizar o App Review.
+- **Qualidade de vídeo**: 24 dos 330 vídeos da pasta LAURA abaixo de 2 MB (7,3%, menor com 719 kB). Mediana saudável em 5,9 MB — não é sistêmico, mas vale limpeza. Nada apagado.
+
+#### Proxies — avaliados e descartados como causa
+
+Usuário perguntou se trocar o tipo de proxy influenciaria as views. Verificados via `ipinfo.io` os IPs que aparecem nos logs: **8 de 10 são datacenter** (`Latitude.sh LTDA` AS262287 na maioria, + `Webhosting Holdings`, `HostRoyale`); 2 são ISP (`Level 3/Lumen`, `SONDATECH`). Todos geolocalizam BR.
+
+**Recomendação: não trocar.** Na teoria datacenter é pior, mas empiricamente as contas não estão sofrendo: **0 de 133 contas** em `health_status='error'`; 128/128 ativas com proxy dedicado (nenhuma pelo IP da Vercel); dos 45 erros de container em 7 dias, **30 são "Loop excluído pelo usuário"**, 14 auto-healing e 1 timeout — zero rejeição da Meta, zero checkpoint, zero token morto. O proxy dedicado por conta resolveu a era de quedas em cascata.
+
+Ponto conceitual registrado: **proxy afeta sobrevivência da conta (checkpoint, bloqueio, ban), não alcance.** O IP entra na decisão de risco, não é insumo do algoritmo de distribuição — ainda mais aqui, onde a publicação sai pela Graph API oficial com token OAuth legítimo, não por sessão mobile emulada.
+
+**Achado colateral**: `failover_logs` está **vazia (0 linhas na história inteira)**. Quase foi usada como prova de "nenhuma queda em 30 dias", mas era tabela vazia, não saúde — o diagnóstico de quedas hoje depende só de `health_status` e dos erros de container. Vale investigar por que não grava, se o histórico for necessário.
