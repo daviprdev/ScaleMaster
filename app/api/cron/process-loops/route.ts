@@ -5,6 +5,7 @@ import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount, recordProxyFailure } from "@/lib/proxy";
 import { getAutoCaption } from "@/lib/auto-captions";
 import { markDeadAccounts } from "@/lib/account-health";
+import { fetchVideoUsage, postedSet, globalUsageByVideo, fetchAllRows } from "@/lib/video-history";
 import type { ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
@@ -378,34 +379,22 @@ async function assignVideosForLoop(
   // do mesmo loop em poucas horas, mesmo com pasta de 330 vídeos. Fix: histórico
   // e usageByVideo sempre olham o loop inteiro; só a ATRIBUIÇÃO (loop abaixo)
   // fica restrita às contas devidas.
+  //
+  // O histórico vem do RPC agregado `get_account_video_usage` (lib/video-history),
+  // NÃO de selects diretos: o PostgREST corta toda resposta em 1000 linhas e o
+  // `.limit(100000)` que ficava aqui não bypassava esse teto. Com 16.063 linhas
+  // de histórico neste loop, 94% ficavam invisíveis — inclusive as mais
+  // recentes — e o pool "disponível" voltava a oferecer vídeos que a conta
+  // acabara de postar. Era a causa do mesmo vídeo sair 6-7× seguidas na mesma
+  // conta mesmo com 330 vídeos na pasta.
   const accountIds = allLoopAccounts.map(a => a.id);
-  const [containersHistRes, scheduledHistRes, jobsHistRes, windowClaimsRes] = await Promise.all([
-    (admin as any)
-      .from("pending_containers")
-      .select("account_id, video_id")
-      .in("account_id", accountIds)
-      .neq("status", "error")
-      .not("video_id", "is", null)
-      .limit(100000),
-    (admin as any)
-      .from("scheduled_posts")
-      .select("account_id, video_id")
-      .in("account_id", accountIds)
-      .in("status", ["pending", "publishing", "published"])
-      .not("video_id", "is", null)
-      .limit(100000),
-    // Vídeos RESERVADOS em jobs de processamento (modo efeitos): o vídeo do
-    // container vem do job enfileirado no ciclo ANTERIOR (doneJobVideoIds), não
-    // da atribuição atual. Sem contar os jobs como reserva, a atribuição repete
-    // o vídeo do job da própria conta no ciclo seguinte e distribui o mesmo
-    // vídeo para várias contas (49 jobs / 24 vídeos distintos em produção).
-    (admin as any)
-      .from("video_processing_jobs")
-      .select("account_id, video_id")
-      .in("account_id", accountIds)
-      .in("status", ["queued", "processing", "done"])
-      .not("video_id", "is", null)
-      .limit(100000),
+  const [usage, windowClaimsRes, recentRes, globalRecentRes] = await Promise.all([
+    // Cobre pending_containers (Loop) + scheduled_posts (Postar/Clonar/
+    // Automatizar) + video_processing_jobs (vídeos reservados no modo efeitos:
+    // o container vem do job enfileirado no ciclo anterior, não da atribuição
+    // atual — sem contá-los como reserva, o vídeo do job repete no ciclo
+    // seguinte e vaza para várias contas).
+    fetchVideoUsage(admin, accountIds),
     // Guard inter-run: vídeos reivindicados por QUALQUER conta nesta janela.
     // Impede que duas invocações concorrentes do cron escolham o mesmo vídeo
     // para contas diferentes, mesmo que cada processo tenha sua própria memória.
@@ -416,33 +405,76 @@ async function assignVideosForLoop(
       .neq("status", "error")
       .gte("created_at", windowStartIso)
       .not("video_id", "is", null),
+    // Recência por conta devida: os últimos vídeos que ela postou. Serve de
+    // cooldown — na virada de ciclo (quando o histórico da conta é reiniciado)
+    // o pool volta a conter tudo, inclusive o vídeo do post anterior, e o
+    // sorteio podia devolvê-lo em seguida. Ordenado DESC de propósito: se o
+    // teto de 1000 linhas do PostgREST cortar, o que sobra são as linhas
+    // recentes, que é justamente o que este guard precisa.
+    (admin as any)
+      .from("pending_containers")
+      .select("account_id, video_id, created_at")
+      .in("account_id", accountsToAssign.map(a => a.id))
+      .neq("status", "error")
+      .not("video_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1000),
+    // Recência GLOBAL do loop: últimos vídeos usados por QUALQUER conta.
+    // Base do guard anti-duplicata entre contas (ver `recentlyUsedGlobally`).
+    (admin as any)
+      .from("pending_containers")
+      .select("video_id")
+      .in("account_id", accountIds)
+      .neq("status", "error")
+      .not("video_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1000),
   ]);
 
-  const historyRows = [
-    ...(((containersHistRes as { data?: { account_id: string; video_id: string }[] }).data) ?? []),
-    ...(((scheduledHistRes as { data?: { account_id: string; video_id: string }[] }).data) ?? []),
-    ...(((jobsHistRes as { data?: { account_id: string; video_id: string }[] }).data) ?? []),
-  ];
-  const postedByAccountMap = new Map<string, Set<string>>();
   // Uso global por vídeo entre as contas do loop: base do balanceamento que
   // impede o mesmo vídeo de sair em várias contas enquanto outros ficam parados.
-  // Uso contado 1× por par conta+vídeo: um job consumido também vira container,
-  // e contar as duas fontes dobraria o peso do vídeo no balanceamento.
-  const usageByVideo = new Map<string, number>();
-  for (const row of historyRows) {
-    let set = postedByAccountMap.get(row.account_id);
-    if (!set) { set = new Set(); postedByAccountMap.set(row.account_id, set); }
-    if (!set.has(row.video_id)) {
-      set.add(row.video_id);
-      usageByVideo.set(row.video_id, (usageByVideo.get(row.video_id) ?? 0) + 1);
-    }
-  }
+  // Contado 1× por par conta+vídeo: um job consumido também vira container, e
+  // contar as duas fontes dobraria o peso do vídeo no balanceamento.
+  const usageByVideo = globalUsageByVideo(usage);
 
   const globallyTaken = new Set<string>(
     ((windowClaimsRes as { data?: { video_id: string }[] }).data ?? [])
       .map(r => r.video_id)
       .filter(Boolean)
   );
+
+  // Cooldown de recência: os últimos RECENT_COOLDOWN vídeos de cada conta ficam
+  // fora do sorteio. O usuário aceita que um vídeo repita ao longo do tempo,
+  // mas nunca em sequência — este guard cobre o caso em que o histórico da
+  // conta é reiniciado (virada de ciclo) e o pool volta a conter o vídeo do
+  // post imediatamente anterior.
+  const RECENT_COOLDOWN = 12;
+  const recentByAccount = new Map<string, string[]>();
+  for (const row of (((recentRes as { data?: { account_id: string; video_id: string }[] }).data) ?? [])) {
+    const list = recentByAccount.get(row.account_id) ?? [];
+    if (list.length < RECENT_COOLDOWN && !list.includes(row.video_id)) {
+      list.push(row.video_id);
+      recentByAccount.set(row.account_id, list);
+    }
+  }
+
+  // Guard anti-duplicata ENTRE contas: os vídeos usados mais recentemente por
+  // qualquer conta do loop saem do sorteio até metade da pasta ter circulado.
+  //
+  // Sem ele, o mesmo vídeo saía em 16 contas diferentes dentro de 2h (medido em
+  // produção) — conteúdo idêntico publicado em massa na mesma janela é o padrão
+  // que a Meta suprime no alcance, e era a causa direta das views baixas. O
+  // balanceamento por `usageByVideo` sozinho não resolve: ele compara o uso
+  // ACUMULADO, então vídeos empatados no mínimo continuam podendo sair juntos.
+  //
+  // Metade do pool: garante que sempre reste a outra metade disponível, então o
+  // guard nunca esvazia o sorteio.
+  const globalCooldownSize = Math.floor(allVideos.length / 2);
+  const recentlyUsedGlobally = new Set<string>();
+  for (const row of (((globalRecentRes as { data?: { video_id: string }[] }).data) ?? [])) {
+    if (recentlyUsedGlobally.size >= globalCooldownSize) break;
+    recentlyUsedGlobally.add(row.video_id);
+  }
 
   console.log(
     `[assign-phase] "${loop.name}": ${globallyTaken.size} vídeo(s) já tomados nesta janela (guard inter-run).`
@@ -456,7 +488,7 @@ async function assignVideosForLoop(
 
   for (let i = 0; i < accountsToAssign.length; i++) {
     const account = accountsToAssign[i];
-    const postedByAccount = postedByAccountMap.get(account.id) ?? new Set<string>();
+    const postedByAccount = postedSet(usage, account.id);
 
     // Pool individual: exclui apenas o que ESTA conta já postou.
     // globallyTaken serve de guard para invocações concorrentes (raramente populado
@@ -465,8 +497,16 @@ async function assignVideosForLoop(
 
     let isCycleReset = false;
     if (available.length === 0 && loop.is_infinite) {
-      // Ciclo completo para esta conta: reinicia o histórico dela.
-      available = allVideos.filter(v => !globallyTaken.has(v.id));
+      // Ciclo completo para esta conta: reinicia o histórico dela — mas os
+      // últimos vídeos que ela postou continuam fora, para que a virada de
+      // ciclo nunca devolva o vídeo do post anterior logo em seguida.
+      const recent = new Set(recentByAccount.get(account.id) ?? []);
+      available = allVideos.filter(v => !globallyTaken.has(v.id) && !recent.has(v.id));
+      if (available.length === 0) {
+        // Pasta menor que o cooldown: relaxa para só o último vídeo.
+        const lastVideo = (recentByAccount.get(account.id) ?? [])[0];
+        available = allVideos.filter(v => !globallyTaken.has(v.id) && v.id !== lastVideo);
+      }
       isCycleReset = available.length > 0;
       if (isCycleReset) {
         console.log(
@@ -478,9 +518,15 @@ async function assignVideosForLoop(
 
     if (available.length === 0) {
       if (allVideos.length > 0) {
-        // Loop não-infinito que esgotou todos os vídeos: wrap-around pelo índice.
-        const fallbackIdx = i % allVideos.length;
-        const fallbackVideo = allVideos[fallbackIdx];
+        // Loop não-infinito que esgotou todos os vídeos: wrap-around pelo
+        // índice, pulando os vídeos recentes da conta — o índice sozinho é
+        // função da posição da conta na lista de devidas (quase sempre 0), o
+        // que devolvia o MESMO vídeo tick após tick para a mesma conta.
+        const recent = new Set(recentByAccount.get(account.id) ?? []);
+        const pool = allVideos.filter(v => !recent.has(v.id));
+        const wrapPool = pool.length > 0 ? pool : allVideos;
+        const fallbackIdx = i % wrapPool.length;
+        const fallbackVideo = wrapPool[fallbackIdx];
         console.log(
           `[assign-phase] @${account.username}: wrap-around (esgotou ${allVideos.length} vídeo(s)) ` +
           `→ vídeo[${fallbackIdx}] "${fallbackVideo.filename.slice(0, 24)}".`
@@ -494,12 +540,19 @@ async function assignVideosForLoop(
       continue;
     }
 
-    // Sorteia apenas entre os de menor uso global e incrementa em memória para
-    // que as próximas contas DESTE run já enxerguem o vídeo como usado.
-    const minUse = Math.min(...available.map(v => usageByVideo.get(v.id) ?? 0));
-    const leastUsed = available.filter(v => (usageByVideo.get(v.id) ?? 0) === minUse);
+    // Tira do sorteio o que circulou há pouco em qualquer conta do loop —
+    // relaxa só se isso zerar as opções desta conta.
+    const spread = available.filter(v => !recentlyUsedGlobally.has(v.id));
+    const pickFrom = spread.length > 0 ? spread : available;
+
+    // Sorteia apenas entre os de menor uso global e incrementa em memória (e no
+    // cooldown global) para que as próximas contas DESTE run já enxerguem o
+    // vídeo como usado.
+    const minUse = Math.min(...pickFrom.map(v => usageByVideo.get(v.id) ?? 0));
+    const leastUsed = pickFrom.filter(v => (usageByVideo.get(v.id) ?? 0) === minUse);
     const video = leastUsed[Math.floor(Math.random() * leastUsed.length)];
     usageByVideo.set(video.id, (usageByVideo.get(video.id) ?? 0) + 1);
+    recentlyUsedGlobally.add(video.id);
     assignments.set(account.id, { video, isCycleReset });
   }
 
@@ -579,18 +632,29 @@ async function processOneLoop(
   }
 
   // ── Busca todos os vídeos da pasta (pool global do loop) ───────────────────
-  const { data: allVideoRows, error: videoErr } = await (admin as any)
-    .from("videos_library")
-    .select("id, public_url, filename, file_size")
-    .eq("folder_id", loop.folder_id)
-    .order("created_at", { ascending: true });
+  // Paginado: sem `.range()` o PostgREST devolveria no máximo 1000 vídeos e o
+  // excedente da pasta ficaria fora do pool sem nenhum aviso.
+  let allVideoRows: VideoRow[];
+  try {
+    allVideoRows = await fetchAllRows<VideoRow>((from, to) =>
+      (admin as any)
+        .from("videos_library")
+        .select("id, public_url, filename, file_size")
+        .eq("folder_id", loop.folder_id)
+        .order("created_at", { ascending: true })
+        .range(from, to)
+    );
+  } catch (e) {
+    console.error(`[loop-cron] "${loop.name}": falha ao ler a pasta de vídeos — pulando. ${(e as Error).message}`);
+    return "skipped";
+  }
 
-  if (videoErr || !allVideoRows?.length) {
+  if (!allVideoRows.length) {
     console.warn(`[loop-cron] "${loop.name}" sem vídeos na pasta — pulando.`);
     return "skipped";
   }
 
-  const allVideos = allVideoRows as VideoRow[];
+  const allVideos = allVideoRows;
 
   const isAutoCaption = loop.auto_caption_enabled === true && !!loop.auto_caption_type;
 

@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
+import { fetchVideoUsage, globalUsageByVideo, fetchAllRows } from "@/lib/video-history";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -88,32 +89,46 @@ export async function GET(req: NextRequest) {
 
     if (!accounts?.length) continue;
 
-    // Busca vídeos das pastas de vídeos
-    // (.limit explícito — o padrão do Supabase corta em 1000 linhas e pastas
-    //  grandes teriam parte dos vídeos silenciosamente ignorada)
-    const { data: videos } = await admin
-      .from("videos_library")
-      .select("id, public_url")
-      .in("folder_id", videoFolderIds)
-      .eq("user_id", automation.user_id)
-      .not("public_url", "is", null)
-      .limit(10000);
+    // Busca vídeos das pastas de vídeos.
+    // Paginado: `.limit(10000)` não bypassa o teto de 1000 linhas do PostgREST —
+    // pastas grandes teriam o excedente silenciosamente ignorado no pool.
+    let videos: { id: string; public_url: string }[];
+    let existingPosts: { account_id: string; scheduled_at: string }[];
+    try {
+      videos = await fetchAllRows<{ id: string; public_url: string }>((from, to) =>
+        admin
+          .from("videos_library")
+          .select("id, public_url")
+          .in("folder_id", videoFolderIds)
+          .eq("user_id", automation.user_id)
+          .not("public_url", "is", null)
+          .range(from, to)
+      );
 
-    if (!videos?.length) continue;
+      if (!videos.length) continue;
 
-    // Para cada conta, verifica quantos posts estão na janela das próximas 24h
-    const { data: existingPosts } = await admin
-      .from("scheduled_posts")
-      .select("account_id, scheduled_at")
-      .eq("campaign_id", automation.id)
-      .in("status", ["pending", "publishing", "published"])
-      .gte("scheduled_at", now.toISOString())
-      .lte("scheduled_at", windowEnd)
-      .limit(100000);
+      // Para cada conta, verifica quantos posts estão na janela das próximas 24h.
+      // Também paginado: 200 contas × 12 posts/dia = 2400 linhas na janela, bem
+      // acima do teto — truncar aqui subestima countByAccount e agenda demais.
+      existingPosts = await fetchAllRows<{ account_id: string; scheduled_at: string }>((from, to) =>
+        admin
+          .from("scheduled_posts")
+          .select("account_id, scheduled_at")
+          .eq("campaign_id", automation.id)
+          .in("status", ["pending", "publishing", "published"])
+          .gte("scheduled_at", now.toISOString())
+          .lte("scheduled_at", windowEnd)
+          .order("scheduled_at", { ascending: true })
+          .range(from, to)
+      );
+    } catch (e) {
+      console.error(`[process-automations] automação ${automation.id}: ${(e as Error).message} — pulando ciclo.`);
+      continue;
+    }
 
     const countByAccount: Record<string, number> = {};
     const lastByAccount: Record<string, Date>   = {};
-    for (const p of (existingPosts ?? [])) {
+    for (const p of existingPosts) {
       countByAccount[p.account_id] = (countByAccount[p.account_id] ?? 0) + 1;
       const t = new Date(p.scheduled_at);
       if (!lastByAccount[p.account_id] || t > lastByAccount[p.account_id]) {
@@ -142,58 +157,33 @@ export async function GET(req: NextRequest) {
     // a query pequena mesmo com 200 contas (16k linhas vs 100k+ sem janela).
     const usageCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [
-      { data: spRepeat }, { data: pcRepeat },
-      { data: spUsage },  { data: pcUsage },
-    ] = await Promise.all([
-      admin
-        .from("scheduled_posts")
-        .select("account_id, video_id")
-        .in("account_id", needyIds)
-        .not("video_id", "is", null)
-        .in("status", ["pending", "publishing", "published"])
-        .gte("created_at", repeatCutoff)
-        .limit(100000),
-      admin
-        .from("pending_containers")
-        .select("account_id, video_id")
-        .in("account_id", needyIds)
-        .not("video_id", "is", null)
-        .neq("status", "error")
-        .gte("created_at", repeatCutoff)
-        .limit(100000),
-      admin
-        .from("scheduled_posts")
-        .select("account_id, video_id")
-        .in("account_id", accountIds)
-        .not("video_id", "is", null)
-        .in("status", ["pending", "publishing", "published"])
-        .gte("created_at", usageCutoff)
-        .limit(100000),
-      admin
-        .from("pending_containers")
-        .select("account_id, video_id")
-        .in("account_id", accountIds)
-        .not("video_id", "is", null)
-        .neq("status", "error")
-        .gte("created_at", usageCutoff)
-        .limit(100000),
-    ]);
+    // Lido pelo RPC agregado (lib/video-history), NÃO por selects diretos: o
+    // PostgREST corta toda resposta em 1000 linhas e o `.limit(100000)` que
+    // ficava aqui não bypassava esse teto — o histórico recente sumia em
+    // silêncio e o anti-repetição voltava a oferecer vídeos já postados.
+    let repeatUsage: Awaited<ReturnType<typeof fetchVideoUsage>>;
+    let globalUsage: Awaited<ReturnType<typeof fetchVideoUsage>>;
+    try {
+      [repeatUsage, globalUsage] = await Promise.all([
+        fetchVideoUsage(admin, needyIds, repeatCutoff),
+        fetchVideoUsage(admin, accountIds, usageCutoff),
+      ]);
+    } catch (e) {
+      console.error(`[process-automations] automação ${automation.id}: ${(e as Error).message} — pulando ciclo.`);
+      continue;
+    }
 
     // Anti-repetição por conta (só contas precisando de post, janela 90d)
     const postedByAccount: Record<string, Set<string>> = {};
-    for (const p of [...(spRepeat ?? []), ...(pcRepeat ?? [])]) {
-      if (!postedByAccount[p.account_id]) postedByAccount[p.account_id] = new Set();
-      postedByAccount[p.account_id].add(p.video_id);
+    for (const [accountId, usedVideos] of repeatUsage) {
+      postedByAccount[accountId] = new Set(usedVideos.keys());
     }
 
     // Uso global por vídeo (todas as contas, janela 7d): base do balanceamento
     // que impede o mesmo vídeo de aparecer em várias contas enquanto outros
-    // ficam parados.
-    const usageByVideo: Record<string, number> = {};
-    for (const p of [...(spUsage ?? []), ...(pcUsage ?? [])]) {
-      usageByVideo[p.video_id] = (usageByVideo[p.video_id] ?? 0) + 1;
-    }
+    // ficam parados. Contado 1× por par conta+vídeo.
+    const usageByVideo: Record<string, number> =
+      Object.fromEntries(globalUsageByVideo(globalUsage));
 
     // Captions disponíveis
     const captionPool = automation.captions?.filter((c: string) => c.trim()) ?? [];

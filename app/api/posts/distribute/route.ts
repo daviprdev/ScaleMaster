@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, getUniqueCaptions, type AutoCaptionType } from "@/lib/auto-captions";
+import { fetchVideoUsage, fetchAllRows } from "@/lib/video-history";
 
 export const runtime = "nodejs";
 
@@ -73,15 +74,25 @@ export async function POST(req: NextRequest) {
   // Pré-gera legendas automáticas únicas se necessário (1 por post total)
   const autoType = (auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
 
-  const { data: allVideos, error: vErr } = await admin
-    .from("videos_library")
-    .select("id, public_url")
-    .eq("folder_id", folder_id)
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: true })
-    .limit(10000);
+  // Paginado: `.limit(10000)` não bypassa o teto de 1000 linhas do PostgREST —
+  // uma pasta com mais de 1000 vídeos teria o excedente ignorado em silêncio.
+  let allVideos: { id: string; public_url: string }[];
+  try {
+    allVideos = await fetchAllRows<{ id: string; public_url: string }>((from, to) =>
+      admin
+        .from("videos_library")
+        .select("id, public_url")
+        .eq("folder_id", folder_id)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true })
+        .range(from, to)
+    );
+  } catch (e) {
+    console.error(`[distribute] ${(e as Error).message}`);
+    return NextResponse.json({ error: "Falha ao ler a pasta de mídia." }, { status: 503 });
+  }
 
-  if (vErr || !allVideos?.length)
+  if (!allVideos.length)
     return NextResponse.json({ error: "Nenhum vídeo encontrado na pasta." }, { status: 400 });
 
   const maxVideos = video_count === -1
@@ -92,29 +103,23 @@ export async function POST(req: NextRequest) {
   // via scheduled_posts + Loop via pending_containers). Antes, o subconjunto era
   // slice(0, N) fixo por created_at — toda campanha nova começava SEMPRE pelos
   // mesmos N vídeos mais antigos da pasta, repetindo o que a conta já postou.
-  const [{ data: spHist }, { data: pcHist }] = await Promise.all([
-    admin
-      .from("scheduled_posts")
-      .select("account_id, video_id")
-      .in("account_id", account_ids)
-      .not("video_id", "is", null)
-      .in("status", ["pending", "publishing", "published"])
-      .limit(100000),
-    admin
-      .from("pending_containers")
-      .select("account_id, video_id")
-      .in("account_id", account_ids)
-      .not("video_id", "is", null)
-      .neq("status", "error")
-      .limit(100000),
-  ]);
-
+  //
+  // Lido pelo RPC agregado, NÃO por selects diretos: o PostgREST corta toda
+  // resposta em 1000 linhas e o `.limit(100000)` que ficava aqui não bypassava
+  // esse teto — com dezenas de milhares de linhas de histórico, a maior parte
+  // (inclusive a mais recente) ficava invisível e o pool oferecia vídeos que a
+  // conta já tinha postado.
+  //
   // account_id → (video_id → vezes postado)
-  const postedCount = new Map<string, Map<string, number>>();
-  for (const row of [...(spHist ?? []), ...(pcHist ?? [])]) {
-    let m = postedCount.get(row.account_id);
-    if (!m) { m = new Map(); postedCount.set(row.account_id, m); }
-    m.set(row.video_id, (m.get(row.video_id) ?? 0) + 1);
+  let postedCount: Map<string, Map<string, number>>;
+  try {
+    postedCount = await fetchVideoUsage(admin, account_ids);
+  } catch (e) {
+    console.error(`[distribute] ${(e as Error).message}`);
+    return NextResponse.json(
+      { error: "Falha ao ler o histórico de vídeos das contas. Tente novamente." },
+      { status: 503 }
+    );
   }
 
   // Pool compartilhado ordenado por menor uso GLOBAL entre as contas selecionadas

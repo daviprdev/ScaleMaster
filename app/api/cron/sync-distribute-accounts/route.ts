@@ -22,6 +22,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
+import { fetchVideoUsage, globalUsageByVideo, fetchAllRows } from "@/lib/video-history";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -119,18 +120,23 @@ async function processCampaign(
 
   const accountIds = folderAccounts.map(a => a.id);
 
-  const { data: allVideos, error: vidErr } = await admin
-    .from("videos_library")
-    .select("id, public_url")
-    .eq("folder_id", campaign.video_folder_id)
-    .order("created_at", { ascending: true })
-    .limit(10000);
-
-  if (vidErr) {
-    console.error(`[sync-distribute-accounts] Campanha ${campaign.id}: falha ao buscar vídeos da pasta, pulando ciclo: ${vidErr.message}`);
+  // Paginado: `.limit(10000)` não bypassa o teto de 1000 linhas do PostgREST —
+  // pastas grandes teriam o excedente ignorado em silêncio no pool.
+  let allVideos: { id: string; public_url: string }[];
+  try {
+    allVideos = await fetchAllRows<{ id: string; public_url: string }>((from, to) =>
+      admin
+        .from("videos_library")
+        .select("id, public_url")
+        .eq("folder_id", campaign.video_folder_id)
+        .order("created_at", { ascending: true })
+        .range(from, to)
+    );
+  } catch (e) {
+    console.error(`[sync-distribute-accounts] Campanha ${campaign.id}: falha ao buscar vídeos da pasta, pulando ciclo: ${(e as Error).message}`);
     return 0;
   }
-  if (!allVideos?.length) return 0;
+  if (!allVideos.length) return 0;
 
   const maxVideos = campaign.video_count === -1
     ? allVideos.length
@@ -185,16 +191,16 @@ async function processCampaign(
   // lote clássico (que ficam de fora de dueAccountIds por já terem posts em
   // voo). Cada conta due tem no máximo maxVideos posts, então esta query é
   // sempre pequena, ao contrário de um scan pela campanha inteira.
-  const { data: historyRows, error: histErr } = await admin
-    .from("scheduled_posts")
-    .select("account_id, video_id")
-    .eq("campaign_id", campaign.id)
-    .in("account_id", dueAccountIds)
-    .not("video_id", "is", null)
-    .in("status", ["pending", "publishing", "published"]);
-
-  if (histErr) {
-    console.error(`[sync-distribute-accounts] Campanha ${campaign.id}: falha ao buscar histórico de vídeos, pulando ciclo: ${histErr.message}`);
+  // Via RPC agregado (lib/video-history): imune ao teto de 1000 linhas do
+  // PostgREST e — diferente do select por campaign_id que ficava aqui —
+  // atravessa TODAS as origens (Loop, Postar, Clonar, Automatizar). Restrito à
+  // campanha, a conta repetia na campanha nova o que já tinha postado por
+  // outras abas.
+  let usage: Awaited<ReturnType<typeof fetchVideoUsage>>;
+  try {
+    usage = await fetchVideoUsage(admin, dueAccountIds);
+  } catch (e) {
+    console.error(`[sync-distribute-accounts] Campanha ${campaign.id}: ${(e as Error).message} — pulando ciclo.`);
     return 0;
   }
 
@@ -203,15 +209,8 @@ async function processCampaign(
   // pelo vídeo de menor uso GLOBAL entre as contas due agora — evita que duas
   // contas due no mesmo ciclo recebam o mesmo vídeo.
   const postedByAccount = new Map<string, Set<string>>();
-  const usageByVideo = new Map<string, number>();
-  for (const row of (historyRows ?? []) as { account_id: string; video_id: string }[]) {
-    let set = postedByAccount.get(row.account_id);
-    if (!set) { set = new Set(); postedByAccount.set(row.account_id, set); }
-    if (!set.has(row.video_id)) {
-      set.add(row.video_id);
-      usageByVideo.set(row.video_id, (usageByVideo.get(row.video_id) ?? 0) + 1);
-    }
-  }
+  for (const [accountId, videos] of usage) postedByAccount.set(accountId, new Set(videos.keys()));
+  const usageByVideo = globalUsageByVideo(usage);
 
   const shuffledVideos = fisherYates(allVideos);
   const rows: object[] = [];
