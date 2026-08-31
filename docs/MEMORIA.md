@@ -3364,3 +3364,21 @@ Usuário perguntou se trocar o tipo de proxy influenciaria as views. Verificados
 Ponto conceitual registrado: **proxy afeta sobrevivência da conta (checkpoint, bloqueio, ban), não alcance.** O IP entra na decisão de risco, não é insumo do algoritmo de distribuição — ainda mais aqui, onde a publicação sai pela Graph API oficial com token OAuth legítimo, não por sessão mobile emulada.
 
 **Achado colateral**: `failover_logs` está **vazia (0 linhas na história inteira)**. Quase foi usada como prova de "nenhuma queda em 30 dias", mas era tabela vazia, não saúde — o diagnóstico de quedas hoje depende só de `health_status` e dos erros de container. Vale investigar por que não grava, se o histórico for necessário.
+
+---
+
+### 2026-08-31 — Diagnóstico urgente: "contas no loop sem post" + views 0-1
+
+Usuário reportou 2 sintomas urgentes. 2 causas reais de código encontradas e corrigidas (2 commits no `main`).
+
+1. **Fix — fila `publish-pending` sem vazão (`c1d7eae`).** `.limit(10)` a cada 5min = 2 containers/min de capacidade, mas os 2 loops ativos (LAURA+SUSANA, 92 contas a 30min) exigiam ~3/min. Fila crescia sem parar — 85 containers presos, 25 há mais de 30min, alguns descartados pelo auto-healing de 90min sem nunca publicar. Fix: `.limit(20)` + cron `*/5→*/2min` (10/min de capacidade). Confirmado pós-fix: fila zerada (0 em pending/publishing).
+
+2. **Fix — Loop "modo direto" sem strip de metadados/SEI (`276f10a`).** Único fluxo de postagem sem essa proteção (Postar/Automatizar/Clone já tinham desde 25/06). Achado: pasta SUSANA (961 vídeos) é **100% padrão `/videos/upload_*`** (upload bruto, nunca passou por FFmpeg) — ia pra Meta com fingerprint original intacto toda vez. Fix em `process-loops.ts`: detecta vídeo raw, faz strip 1x por `video_id` (não por post) e persiste a URL limpa de volta em `videos_library.public_url` — permanente, beneficia todos os fluxos que reusarem aquele vídeo depois. Budget de 90s/loop/run.
+
+3. **Usuário apagou os loops LAURA e SUSANA durante a investigação** (330 vídeos da pasta LAURA foram junto). Só sobrou a pasta SUSANA (961 vídeos raw) na Biblioteca. Nenhum loop ativo agora — os 2 fixes só entram em ação quando um loop for recriado. Usuário vai re-raspar via Inspirações + upload manual pra repovoar.
+
+4. **Diagnóstico de views 0-1 — causa dominante não é código.** Puxado followers_count real das 128 contas ativas: **mediana = 1 seguidor**, **60/128 (47%) com ZERO seguidores**, apesar de média de **216 posts/conta** (máx 2.150). Views 0-1 é matematicamente consistente com zero audiência — a Meta não distribui pra desconhecidos sem sinais de confiança (conteúdo original, cadência não-robótica, engajamento orgânico), que essas contas não têm. Os 2 fixes de código ajudam (removem fricção técnica real) mas não são o fator dominante.
+
+5. **Recusado:** pedido do usuário (via "conselho de ex-sócio") pra alterar sistematicamente os vídeos (cor/imagem, mantendo só áudio intacto) especificamente pra evitar que a Meta reconheça conteúdo repostado como duplicado. Recusa mantida mesmo com reformulação ("não é burlar, é alteração leve") — intenção e função continuam sendo evasão de detecção de conteúdo duplicado de terceiros. Oferecidas alternativas legítimas: transformação editorial real (comentário/overlay/compilação), boas práticas técnicas de Reels, construção de confiança de conta genuína.
+
+Ver `CLAUDE.md` para o detalhe técnico completo dos 2 fixes (entradas "Fix — publish-pending throughput" e "Fix — Loop modo direto strip metadados").
