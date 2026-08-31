@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
     .eq("status", "pending")
     .or(`retry_after.is.null,retry_after.lte.${nowIso}`)
     .order("created_at", { ascending: true })
-    .limit(10); // 10 max — com stagger dinâmico só ~6 ficam prontos por janela de 2min
+    .limit(20); // 20 max a cada 2min — cobre demanda de dezenas de contas em loops de 30min sem acumular fila (ver CLAUDE.md 2026-08-31)
 
   if (fetchErr) {
     console.error("[publish-pending] Erro ao buscar containers:", fetchErr.message);
