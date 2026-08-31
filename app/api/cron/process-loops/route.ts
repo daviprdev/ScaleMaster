@@ -6,10 +6,26 @@ import { getProxyForAccount, recordProxyFailure } from "@/lib/proxy";
 import { getAutoCaption } from "@/lib/auto-captions";
 import { markDeadAccounts } from "@/lib/account-health";
 import { fetchVideoUsage, postedSet, globalUsageByVideo, fetchAllRows } from "@/lib/video-history";
+import { downloadAndStripMetadata } from "@/lib/ffmpeg-process";
+import fs from "fs";
 import type { ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+// Vídeos upados direto pelo browser (/videos/upload_*) nunca passaram pelo
+// FFmpeg — contêm SEI NAL units tipo 5+6 (fingerprints Instagram/TikTok) e
+// metadados originais intactos. Mesmo padrão de detecção do publish-scheduled
+// (lib/ffmpeg-process.ts), replicado aqui pois o "modo direto" do Loop usava
+// a public_url original sem nenhuma limpeza — gap que não existia nos outros
+// 3 fluxos de postagem (Postar/Automatizar/Clone, via publish-scheduled).
+function needsStrip(url: string): boolean {
+  return url.includes("/videos/upload_");
+}
+
+// Orçamento de tempo reservado para strip por loop nesta execução — evita
+// estourar o maxDuration=300s quando há muitos vídeos raw novos no mesmo ciclo.
+const STRIP_BUDGET_MS = 90_000;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -829,12 +845,58 @@ async function processOneLoop(
 
     if (!hasActiveEffects) {
       // Caminho direto: sem FFmpeg, sem fila, sem espera de ciclo extra.
+      // Exceção: vídeos raw (/videos/upload_*) recebem strip de metadados/SEI
+      // uma única vez, com o resultado persistido de volta em videos_library
+      // (benefício permanente — próximos ciclos e outras contas/loops que
+      // usem o mesmo vídeo já pegam a URL limpa, sem re-stripar).
+      const strippedCache = new Map<string, string>(); // video_id → URL limpa (deste run)
+      const stripStart = Date.now();
       for (const account of dueAccounts) {
         const assignment = videoAssignments.get(account.id);
-        if (assignment) processedVideoUrls.set(account.id, assignment.video.public_url);
+        if (!assignment) continue;
+        const video = assignment.video;
+        let effectiveUrl = video.public_url;
+
+        if (needsStrip(effectiveUrl)) {
+          if (strippedCache.has(video.id)) {
+            effectiveUrl = strippedCache.get(video.id)!;
+          } else if (Date.now() - stripStart < STRIP_BUDGET_MS) {
+            try {
+              console.log(`[loop-cron] "${loop.name}": ✂ stripping vídeo raw ${video.id} (${video.filename})`);
+              const result = await downloadAndStripMetadata(video.public_url);
+              const buf = fs.readFileSync(result.outputPath);
+              result.cleanup();
+              const strippedPath = `videos/stripped_${video.id}.mp4`;
+              const { error: upErr } = await admin.storage
+                .from("videos-library")
+                .upload(strippedPath, buf, { contentType: "video/mp4", upsert: true });
+              if (!upErr) {
+                const { data: urlData } = admin.storage.from("videos-library").getPublicUrl(strippedPath);
+                effectiveUrl = urlData.publicUrl;
+                strippedCache.set(video.id, effectiveUrl);
+                await (admin as any)
+                  .from("videos_library")
+                  .update({ public_url: effectiveUrl })
+                  .eq("id", video.id);
+                console.log(`[loop-cron] "${loop.name}": ✅ strip concluído ${video.id} → limpo permanentemente.`);
+              } else {
+                console.warn(`[loop-cron] "${loop.name}": upload do strip falhou (${video.id}): ${upErr.message} — usando URL original.`);
+              }
+            } catch (stripErr) {
+              console.warn(
+                `[loop-cron] "${loop.name}": strip falhou (${video.id}): ` +
+                `${stripErr instanceof Error ? stripErr.message : stripErr} — usando URL original.`
+              );
+            }
+          } else {
+            console.warn(`[loop-cron] "${loop.name}": orçamento de strip esgotado — ${video.id} segue com URL original.`);
+          }
+        }
+
+        processedVideoUrls.set(account.id, effectiveUrl);
       }
       console.log(
-        `[loop-cron] "${loop.name}": sem efeitos ativos — ${processedVideoUrls.size} URL(s) originais usadas diretamente.`
+        `[loop-cron] "${loop.name}": sem efeitos ativos — ${processedVideoUrls.size} URL(s) prontas (${strippedCache.size} stripada(s) neste run).`
       );
     } else {
       // Caminho FFmpeg: usa a fila video_processing_jobs (requer tabela no banco).
