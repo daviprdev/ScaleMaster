@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { fetch as undiciFetch } from "undici";
+import { fetchAllRows } from "@/lib/video-history";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -142,19 +143,28 @@ export async function GET(
   const totalTarget = videosInFolder * Math.max(1, accountCount);
 
   // Todos os containers deste loop com info das contas
-  const { data: containers } = await (admin as any)
-    .from("pending_containers")
-    .select(`
-      id, account_id, status, media_id, error_message,
-      insights_likes, insights_comments, insights_plays, insights_reach,
-      insights_fetched_at, created_at,
-      instagram_accounts (
-        id, username, avatar_url, followers_count, meta_access_token
-      )
-    `)
-    .eq("loop_id", loopId)
-    .order("created_at", { ascending: false })
-    .limit(100000);
+  // Paginado: `.limit(100000)` não bypassa o teto de 1000 linhas do PostgREST —
+  // um loop antigo com mais de 1000 containers teria as métricas truncadas.
+  let containers: unknown[] = [];
+  try {
+    containers = await fetchAllRows((from, to) =>
+      (admin as any)
+        .from("pending_containers")
+        .select(`
+          id, account_id, status, media_id, error_message,
+          insights_likes, insights_comments, insights_plays, insights_reach,
+          insights_fetched_at, created_at,
+          instagram_accounts (
+            id, username, avatar_url, followers_count, meta_access_token
+          )
+        `)
+        .eq("loop_id", loopId)
+        .order("created_at", { ascending: false })
+        .range(from, to)
+    );
+  } catch (e) {
+    console.error(`[loops/analytics] falha ao paginar containers: ${(e as Error).message}`);
+  }
 
   const rows = (containers ?? []) as ContainerRow[];
   const now = Date.now();

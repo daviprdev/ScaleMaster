@@ -504,6 +504,7 @@ function AccountsDetailModal({
     fetch(`/api/automations/${automationId}/accounts`)
       .then((r) => r.json())
       .then((d) => setAccounts(d.accounts ?? []))
+      .catch(() => setAccounts([]))
       .finally(() => setLoading(false));
   }, [open, automationId]);
 
@@ -792,21 +793,30 @@ export default function AutomatizarPage() {
   const [accountFolders, setAccountFolders] = useState<AccountFolder[]>([]);
   const [videoFolders, setVideoFolders] = useState<VideoFolder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Automation | null>(null);
   const [accountsModal, setAccountsModal] = useState<{ id: string; name: string } | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    const [autoRes, afRes, vfRes] = await Promise.all([
-      fetch("/api/automations").then((r) => r.json()),
-      fetch("/api/accounts/folders").then((r) => r.json()),
-      fetch("/api/library/folders").then((r) => r.json()),
-    ]);
-    setAutomations(autoRes.automations ?? []);
-    setAccountFolders(afRes.folders ?? []);
-    setVideoFolders(vfRes.folders ?? []);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      // Sem o try/finally, qualquer falha de rede (ou resposta não-JSON, como o
+      // 403 do middleware) deixava a tela presa no skeleton para sempre.
+      const [autoRes, afRes, vfRes] = await Promise.all([
+        fetch("/api/automations").then((r) => r.json()),
+        fetch("/api/accounts/folders").then((r) => r.json()),
+        fetch("/api/library/folders").then((r) => r.json()),
+      ]);
+      setAutomations(autoRes.automations ?? []);
+      setAccountFolders(afRes.folders ?? []);
+      setVideoFolders(vfRes.folders ?? []);
+    } catch {
+      setLoadError("Não foi possível carregar as automações. Verifique sua conexão e tente novamente.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -865,6 +875,18 @@ export default function AutomatizarPage() {
           {[1, 2].map((i) => (
             <div key={i} className="glass-card rounded-2xl h-52 animate-pulse bg-white/[0.02]" />
           ))}
+        </div>
+      ) : loadError ? (
+        <div className="glass-card rounded-2xl flex flex-col items-center gap-4 py-16 text-center px-6">
+          <AlertCircle size={24} className="text-red-400/70" />
+          <p className="text-white/60 text-sm max-w-sm">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => loadAll()}
+            className="btn-ghost text-sm px-5 py-2.5 rounded-xl"
+          >
+            Tentar novamente
+          </button>
         </div>
       ) : automations.length === 0 ? (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}

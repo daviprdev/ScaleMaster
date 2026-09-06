@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, AUTO_CAPTION_TYPES, type AutoCaptionType } from "@/lib/auto-captions";
+import { fetchAllRows } from "@/lib/video-history";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -250,16 +251,24 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Campanhas de Automatizar não podem ser editadas aqui." }, { status: 400 });
   }
 
-  const { data: pendingRows, error: fetchErr } = await (admin as any)
-    .from("scheduled_posts")
-    .select("id, account_id, scheduled_at, clone_source_profile")
-    .eq("campaign_id", campaignId)
-    .eq("user_id", user.id)
-    .eq("status", "pending")
-    .order("scheduled_at", { ascending: true })
-    .limit(100000);
-
-  if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+  // Paginado: o PostgREST corta QUALQUER resposta em 1000 linhas e `.limit()`
+  // do cliente não bypassa esse teto — uma campanha com mais de 1000 posts
+  // pendentes teria só os 1000 primeiros reagendados, em silêncio.
+  let pendingRows: { id: string; account_id: string; scheduled_at: string; clone_source_profile: string | null }[];
+  try {
+    pendingRows = await fetchAllRows((from, to) =>
+      (admin as any)
+        .from("scheduled_posts")
+        .select("id, account_id, scheduled_at, clone_source_profile")
+        .eq("campaign_id", campaignId)
+        .eq("user_id", user.id)
+        .eq("status", "pending")
+        .order("scheduled_at", { ascending: true })
+        .range(from, to)
+    );
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
 
   if ((pendingRows ?? []).some((r: { clone_source_profile: string | null }) => r.clone_source_profile)) {
     return NextResponse.json({ error: "Campanhas de Clonar Perfil não podem ser editadas aqui." }, { status: 400 });

@@ -79,21 +79,29 @@ export async function GET() {
   if (ids.length) {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    const [pendingRes, publishedRes, nextRes] = await Promise.all([
-      admin.from("scheduled_posts").select("campaign_id").in("campaign_id", ids).in("status", ["pending", "publishing"]).limit(100000),
-      admin.from("scheduled_posts").select("campaign_id").in("campaign_id", ids).eq("status", "published").gte("scheduled_at", since24h).limit(100000),
-      admin.from("scheduled_posts").select("campaign_id, scheduled_at").in("campaign_id", ids).eq("status", "pending").gte("scheduled_at", new Date().toISOString()).order("scheduled_at", { ascending: true }).limit(100000),
-    ]);
-
-    for (const row of (pendingRes.data ?? [])) {
-      pendingCounts[row.campaign_id] = (pendingCounts[row.campaign_id] ?? 0) + 1;
-    }
-    for (const row of (publishedRes.data ?? [])) {
-      publishedToday[row.campaign_id] = (publishedToday[row.campaign_id] ?? 0) + 1;
-    }
-    for (const row of (nextRes.data ?? [])) {
-      if (!nextPostAt[row.campaign_id]) nextPostAt[row.campaign_id] = row.scheduled_at;
-    }
+    // Contagem via `count: "exact", head: true` por automação, em vez de puxar
+    // as linhas: o PostgREST corta qualquer resposta em 1000 linhas (o
+    // `.limit(100000)` daqui NÃO bypassava esse teto), então automações com
+    // muitos posts exibiam número de fila/publicados menor que o real. Como
+    // bônus, deixa de trafegar milhares de linhas só para contá-las.
+    const nowIso = new Date().toISOString();
+    await Promise.all(
+      ids.map(async (campaignId) => {
+        const [pendingRes, publishedRes, nextRes] = await Promise.all([
+          admin.from("scheduled_posts").select("id", { count: "exact", head: true })
+            .eq("campaign_id", campaignId).in("status", ["pending", "publishing"]),
+          admin.from("scheduled_posts").select("id", { count: "exact", head: true })
+            .eq("campaign_id", campaignId).eq("status", "published").gte("scheduled_at", since24h),
+          admin.from("scheduled_posts").select("scheduled_at")
+            .eq("campaign_id", campaignId).eq("status", "pending").gte("scheduled_at", nowIso)
+            .order("scheduled_at", { ascending: true }).limit(1),
+        ]);
+        pendingCounts[campaignId] = pendingRes.count ?? 0;
+        publishedToday[campaignId] = publishedRes.count ?? 0;
+        const next = (nextRes.data ?? [])[0] as { scheduled_at?: string } | undefined;
+        if (next?.scheduled_at) nextPostAt[campaignId] = next.scheduled_at;
+      })
+    );
   }
 
   const result = (automations ?? []).map((a) => ({

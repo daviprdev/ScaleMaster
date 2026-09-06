@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { isAllowedHost, fetchAllowlisted } from "@/lib/safe-media-fetch";
 
 export const runtime = "nodejs";
 
@@ -23,13 +24,10 @@ const ALLOWED_HOSTS = [
   "example.com",
 ];
 
+// Allowlist + bloqueio de IP privado/metadata; revalidada a cada redirect
+// dentro de fetchAllowlisted (ver lib/safe-media-fetch.ts).
 function isAllowed(raw: string): boolean {
-  try {
-    const { hostname } = new URL(raw);
-    return ALLOWED_HOSTS.some(h => hostname === h || hostname.endsWith(`.${h}`));
-  } catch {
-    return false;
-  }
+  return isAllowedHost(raw, ALLOWED_HOSTS);
 }
 
 // Headers that mimic an iPhone Safari client — Instagram CDN is less likely to
@@ -97,7 +95,7 @@ export async function GET(req: NextRequest) {
   console.log(`[proxy-download] fetching: ${url.slice(0, 100)}…`);
 
   try {
-    const upstream = await fetch(url, {
+    const upstream = await fetchAllowlisted(url, ALLOWED_HOSTS, {
       headers: VIDEO_FETCH_HEADERS,
       signal: AbortSignal.timeout(60_000), // 60 s — large reels can be slow
     });
@@ -163,7 +161,7 @@ export async function HEAD(req: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(url, {
+    const upstream = await fetchAllowlisted(url, ALLOWED_HOSTS, {
       method: "HEAD",
       headers: VIDEO_FETCH_HEADERS,
       signal: AbortSignal.timeout(10_000),

@@ -187,14 +187,30 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Marca como 'processing' atomicamente
-  const jobIds = (jobs as JobRow[]).map(j => j.id);
-  await (admin as any)
+  // CLAIM atômico: condiciona em status='queued' e processa SÓ o que esta
+  // invocação conseguiu reivindicar. Sem o `.eq("status","queued")`, duas
+  // execuções sobrepostas do cron (maxDuration=300s com schedule de 5 min)
+  // reivindicavam os mesmos jobs e rodavam o mesmo FFmpeg duas vezes.
+  const candidateIds = (jobs as JobRow[]).map(j => j.id);
+  const { data: claimedRows } = await (admin as any)
     .from("video_processing_jobs")
     .update({ status: "processing" })
-    .in("id", jobIds);
+    .in("id", candidateIds)
+    .eq("status", "queued")
+    .select("id");
 
-  console.log(`[process-videos] ${jobs.length} job(s) reclamado(s), processando até o orçamento de tempo…`);
+  const claimedIds = new Set(((claimedRows ?? []) as { id: string }[]).map(r => r.id));
+  const claimedJobs = (jobs as JobRow[]).filter(j => claimedIds.has(j.id));
+
+  if (claimedJobs.length === 0) {
+    console.log("[process-videos] Nenhum job reivindicado (outra execução pegou primeiro).");
+    return NextResponse.json({
+      ok: true, processed: 0, errors: 0,
+      variants_done: variantsDone, variants_failed: variantsFailed,
+    });
+  }
+
+  console.log(`[process-videos] ${claimedJobs.length}/${jobs.length} job(s) reivindicado(s), processando até o orçamento de tempo…`);
 
   let processed = 0;
   let errors    = 0;
@@ -203,9 +219,9 @@ export async function GET(req: NextRequest) {
   // ── Processa sequencialmente: cada encode tem CPU completo ──────────────────
   // Para de INICIAR novos jobs quando o orçamento estoura — o job em andamento
   // (se houver) sempre termina antes do maxDuration matar a função.
-  for (let i = 0; i < (jobs as JobRow[]).length; i++) {
+  for (let i = 0; i < claimedJobs.length; i++) {
     if (Date.now() - runStart > RUN_BUDGET_MS) {
-      const remaining = (jobs as JobRow[]).slice(i).map(j => j.id);
+      const remaining = claimedJobs.slice(i).map(j => j.id);
       await (admin as any)
         .from("video_processing_jobs")
         .update({ status: "queued" })
@@ -216,7 +232,7 @@ export async function GET(req: NextRequest) {
       break;
     }
 
-    const job = (jobs as JobRow[])[i];
+    const job = claimedJobs[i];
     const start = Date.now();
     try {
       const outputUrl = await processVideoForAccount(

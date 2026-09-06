@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { isAllowedHost, fetchAllowlisted } from "@/lib/safe-media-fetch";
 
 export const runtime = "nodejs";
 
@@ -12,15 +13,10 @@ const ALLOWED_HOSTS = [
   "supabase.co", // Supabase Storage (avatars bucket)
 ];
 
+// Allowlist + bloqueio de IP privado/metadata; revalidada a cada redirect
+// dentro de fetchAllowlisted (ver lib/safe-media-fetch.ts).
 function isAllowed(raw: string): boolean {
-  try {
-    const { hostname } = new URL(raw);
-    return ALLOWED_HOSTS.some(
-      (h) => hostname === h || hostname.endsWith(`.${h}`)
-    );
-  } catch {
-    return false;
-  }
+  return isAllowedHost(raw, ALLOWED_HOSTS);
 }
 
 export async function GET(req: NextRequest) {
@@ -41,7 +37,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(url, {
+    const upstream = await fetchAllowlisted(url, ALLOWED_HOSTS, {
       headers: {
         Referer: "https://www.instagram.com/",
         Origin: "https://www.instagram.com",
