@@ -13,6 +13,7 @@ import {
   type VideoProcessingMode,
 } from "@/lib/video-processing";
 import { isAccountDeadError, markDeadAccounts, type DeadAccountCandidate } from "@/lib/account-health";
+import { requireCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -88,14 +89,8 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 export async function GET(req: NextRequest) {
   const runStart = Date.now();
 
-  const cronSecret = process.env.CRON_SECRET;
-  const auth = req.headers.get("authorization");
-
-  if (!cronSecret) {
-    console.warn("[publish-scheduled] AVISO: CRON_SECRET não configurado — endpoint exposto.");
-  } else if (auth !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const cronAuth = requireCronAuth(req);
+  if (!cronAuth.ok) return cronAuth.response;
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ skipped: true, reason: "Supabase não configurado." });

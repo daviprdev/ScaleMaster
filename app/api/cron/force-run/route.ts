@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { hasValidCronSecret } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -14,14 +15,11 @@ export const maxDuration = 60;
 // de orçamento da Vercel). Agora exige CRON_SECRET ou papel de admin.
 
 async function isAuthorized(req: NextRequest): Promise<boolean> {
-  const url = new URL(req.url);
-  const secretParam = url.searchParams.get("secret");
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (secretParam && cronSecret && secretParam === cronSecret) return true;
-
-  const headerAuth = req.headers.get("authorization");
-  if (cronSecret && headerAuth === `Bearer ${cronSecret}`) return true;
+  // hasValidCronSecret é fail-closed: com CRON_SECRET ausente/vazio devolve
+  // false, então a rota exige sessão de admin em vez de liberar.
+  const secretParam = new URL(req.url).searchParams.get("secret");
+  if (hasValidCronSecret(secretParam, false)) return true;
+  if (hasValidCronSecret(req.headers.get("authorization"))) return true;
 
   try {
     const supabase = await createClient();

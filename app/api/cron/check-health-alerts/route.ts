@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { sendPushNotification } from "@/lib/web-push";
+import { requireCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -9,7 +10,6 @@ export const dynamic = "force-dynamic";
 // Mesmos limiares dos banners do dashboard (app/dashboard/layout.tsx) — o que
 // aparece no painel é exatamente o que vira push, sem lógica duplicada/divergente.
 const PROXY_OUTAGE_THRESHOLD = 3;
-const PROXY_OUTAGE_WINDOW_MS = 30 * 60 * 1000;
 const ALERT_COOLDOWN_MS = 60 * 60 * 1000; // não reenvia o mesmo tipo de alerta em menos de 1h
 
 interface AccountRow {
@@ -17,14 +17,11 @@ interface AccountRow {
   user_id: string;
   username: string;
   health_status: string;
-  last_proxy_error_at: string | null;
-  proxy_url: string | null;
   is_active: boolean;
 }
 
 interface SettingsRow {
   user_id: string;
-  proxy_alerts_enabled: boolean;
   account_alerts_enabled: boolean;
 }
 
@@ -45,19 +42,14 @@ async function wasRecentlyAlerted(admin: ReturnType<typeof getSupabaseAdmin>, us
 }
 
 export async function GET(req: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const auth = req.headers.get("authorization");
-  if (!cronSecret) {
-    console.warn("[cron] AVISO: CRON_SECRET nao configurado.");
-  } else if (auth !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const cronAuth = requireCronAuth(req);
+  if (!cronAuth.ok) return cronAuth.response;
 
   const admin = getSupabaseAdmin();
 
   const { data: accounts, error } = await admin
     .from("instagram_accounts")
-    .select("id, user_id, username, health_status, last_proxy_error_at, proxy_url, is_active")
+    .select("id, user_id, username, health_status, is_active")
     .eq("is_active", true);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -71,38 +63,15 @@ export async function GET(req: NextRequest) {
   const userIds = Array.from(byUser.keys());
   const { data: settingsRows } = await admin
     .from("notification_settings")
-    .select("user_id, proxy_alerts_enabled, account_alerts_enabled")
+    .select("user_id, account_alerts_enabled")
     .in("user_id", userIds.length ? userIds : ["00000000-0000-0000-0000-000000000000"]);
 
   const settingsMap = new Map((settingsRows as SettingsRow[] | null ?? []).map((s) => [s.user_id, s]));
 
   const results: Record<string, unknown>[] = [];
-  const proxyWindowStart = new Date(Date.now() - PROXY_OUTAGE_WINDOW_MS).toISOString();
 
   for (const [userId, userAccounts] of byUser) {
-    const settings = settingsMap.get(userId) ?? { proxy_alerts_enabled: true, account_alerts_enabled: true };
-
-    // ── Queda de proxy ──
-    if (settings.proxy_alerts_enabled) {
-      const failing = userAccounts.filter(
-        (a) => a.proxy_url && a.last_proxy_error_at && a.last_proxy_error_at >= proxyWindowStart
-      );
-      if (failing.length >= PROXY_OUTAGE_THRESHOLD) {
-        const already = await wasRecentlyAlerted(admin, userId, "proxy_outage", ALERT_COOLDOWN_MS);
-        if (!already) {
-          await sendPushNotification({
-            targetType: "user",
-            targetUserId: userId,
-            type: "system",
-            title: "🚨 Queda de proxy detectada 🚨",
-            body: `${failing.length} contas ativas com falha de proxy nos últimos 30 min.`,
-            url: "/dashboard/proxy-test",
-            extraData: { alertType: "proxy_outage", accountIds: failing.map((a) => a.id) },
-          });
-          results.push({ userId, alert: "proxy_outage", count: failing.length });
-        }
-      }
-    }
+    const settings = settingsMap.get(userId) ?? { account_alerts_enabled: true };
 
     // ── Queda de contas ──
     if (settings.account_alerts_enabled) {

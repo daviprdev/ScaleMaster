@@ -93,7 +93,7 @@ async function createMediaContainer(
     `caption_chars=${captionFinal.length}`
   );
 
-  // undiciFetch: bypassa o patch do Next.js e entrega `dispatcher` diretamente ao undici
+  // undiciFetch: evita o fetch global patcheado pelo Next.js (cache/retentativa)
   const res = await undiciFetch(`${GRAPH_API}/${igAccountId}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },

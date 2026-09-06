@@ -1,18 +1,17 @@
 /**
- * lib/proxy.ts — Proxy residencial dedicado por conta para chamadas à Meta Graph API.
+ * lib/proxy.ts — Proxy residencial dedicado por conta.
  *
- * Prioridade:
- *   1. instagram_accounts.proxy_url (AES-256-GCM) → proxy dedicado individual (estoque)
- *   2. null                                       → sem proxy (IP Vercel)
+ * ESCOPO ATUAL (2026-09-06): as chamadas à API OFICIAL da Meta/Instagram saem
+ * em conexão direta server-to-server e NÃO usam proxy. O que ainda usa:
  *
- * Política do projeto (2026-07-15): "sem proxy = sem sync/postagem" — nenhuma
- * chamada em nome de uma conta sai pelo IP datacenter da Vercel. Contas sem
- * proxy dedicado ficam paradas até receberem um do estoque (/dashboard/proxy-test),
- * não caem para IP direto.
+ *   - app/api/instagram/checker — consulta anônima ao endpoint web do
+ *     Instagram (não é API oficial); empresta o proxy de alguma conta.
+ *   - app/api/cron/process-instagram-logins — login via instagrapi no servidor
+ *     Python; exige proxy dedicado por conta.
+ *   - app/api/debug/proxy-* — diagnóstico dos proxies em si.
  *
- * O antigo fallback via PROXY_URL_TEMPLATE (sessão sticky por account_id no
- * Smartproxy) foi removido em 2026-06-14 — sticky session rotacionava o IP de
- * várias contas ao mesmo tempo e causava cascata. Ver CLAUDE.md.
+ * Junto com a mudança de rede caiu a política "sem proxy = sem sync": conta sem
+ * proxy sincroniza e publica normalmente pela Meta oficial.
  */
 
 import { ProxyAgent } from "undici";
@@ -80,49 +79,6 @@ export function getProxyForAccount(
 
   // 2. Sem proxy dedicado — política do projeto é não cair pro IP da Vercel.
   return null;
-}
-
-// ── Rastreamento de falha de proxy ───────────────────────────────────────────
-
-/**
- * Detecta erros de rede do proxy (túnel recusado, credencial inválida, timeout).
- * O undici reporta CONNECT 407 e conexão cortada como "fetch failed" genérico.
- */
-export function isProxyNetworkError(msg: string): boolean {
-  const lower = msg.toLowerCase();
-  return (
-    lower.includes("fetch failed") ||
-    lower.includes("[proxy]") ||
-    lower.includes("proxy dedicado falhou") ||
-    lower.includes("econnreset") ||
-    lower.includes("econnrefused") ||
-    lower.includes("socket hang up")
-  );
-}
-
-/**
- * Persiste a falha de proxy na conta para o ProxyOutageBanner do dashboard.
- * Sem isso, quedas do provedor (todas as contas ao mesmo tempo) ficam invisíveis
- * no painel — os crons apenas pulam as contas em silêncio (outage 2026-07-09).
- * Sempre await (fire-and-forget é cancelado pelo serverless da Vercel).
- */
-export async function recordProxyFailure(
-  admin: unknown,
-  accountId: string,
-  source: string,
-  message: string
-): Promise<void> {
-  try {
-    await (admin as { from: (t: string) => any })
-      .from("instagram_accounts")
-      .update({
-        last_proxy_error_at: new Date().toISOString(),
-        last_proxy_error: `[${source}] ${message}`.slice(0, 300),
-      })
-      .eq("id", accountId);
-  } catch (e) {
-    console.warn(`[proxy-health] Falha ao registrar erro de proxy (${accountId.slice(0, 8)}…): ${String(e)}`);
-  }
 }
 
 // ── proxyInit ─────────────────────────────────────────────────────────────────

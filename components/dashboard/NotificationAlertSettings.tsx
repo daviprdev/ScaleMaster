@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Loader2, ServerCrash, ShieldAlert, TrendingUp, DollarSign } from "lucide-react";
+import { Loader2, ShieldAlert, TrendingUp, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
@@ -126,14 +126,6 @@ export default function NotificationAlertSettings() {
 
   return (
     <div className="space-y-3">
-      <Row
-        icon={<ServerCrash size={16} />}
-        title="Queda de proxy"
-        description="Avisa quando 3+ contas ativas ficam com falha de proxy nos últimos 30 min."
-        checked={settings.proxy_alerts_enabled}
-        onChange={(v) => patch({ proxy_alerts_enabled: v })}
-        disabled={saving}
-      />
       <Row
         icon={<ShieldAlert size={16} />}
         title="Queda de contas"

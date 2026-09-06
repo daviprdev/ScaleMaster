@@ -49,14 +49,15 @@ export async function PATCH(
  * do Storage e as linhas de `videos_library` antes de excluir a pasta. Além de
  * destruir mídia que o usuário não pediu para excluir, isso tornava a operação
  * O(n) — com 961 vídeos a função estourava o tempo limite da Vercel e a
- * exclusão simplesmente nunca acontecia (a pasta "SUSANA" nunca saía da tela).
+ * exclusão simplesmente nunca acontecia.
  *
- * Efeitos colaterais tratados aqui:
- *   - Loops que usavam a pasta são PAUSADOS com motivo legível (sem isso
- *     ficariam ativos com folder_id = NULL, falhando em silêncio a cada ciclo).
- *   - Campanhas sincronizadas com a pasta (distribute_campaigns) são removidas
- *     pela FK CASCADE: para o mecanismo de matrícula de contas novas, mas os
- *     posts já agendados continuam intactos (não referenciam a pasta).
+ * Toda a mutação acontece dentro da RPC `delete_library_folder_safe`, que é uma
+ * função plpgsql — logo, UMA transação. Ownership, pausa dos Loops dependentes,
+ * coleta de métricas e o DELETE ficam no mesmo bloco atômico: se qualquer etapa
+ * falhar, nada é aplicado (sem Loop pausado com a pasta ainda existindo).
+ *
+ * Campanhas sincronizadas com a pasta são desligadas pela FK CASCADE; os posts
+ * já agendados continuam intactos (não referenciam a pasta).
  */
 export async function DELETE(
   _: NextRequest,
@@ -69,83 +70,42 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  // Ownership: nunca excluir pasta de outro usuário, mesmo conhecendo o UUID.
-  const { data: folder } = await supabase
-    .from("library_folders")
-    .select("id, name")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (!folder) return NextResponse.json({ error: "Pasta não encontrada." }, { status: 404 });
-
   const admin = getSupabaseAdmin();
 
-  // Quantos vídeos vão para "Sem pasta" (contagem exata, sem trazer as linhas).
-  const { count: videoCount } = await admin
-    .from("videos_library")
-    .select("id", { count: "exact", head: true })
-    .eq("folder_id", id);
-
-  // Loops que dependiam desta pasta: pausa ANTES do delete, enquanto ainda dá
-  // para identificá-los por folder_id (a FK zera a referência no delete).
-  let pausedLoops: string[] = [];
-  try {
-    const { data: paused } = await (admin as unknown as {
-      from: (t: string) => {
-        update: (v: Record<string, unknown>) => {
-          eq: (c: string, v: string) => {
-            eq: (c: string, v: string) => {
-              select: (s: string) => Promise<{ data: { name: string }[] | null }>;
-            };
-          };
-        };
-      };
-    })
-      .from("loops")
-      .update({
-        status: "paused",
-        paused_reason: `Pasta de mídia "${(folder as { name: string }).name}" foi removida.`,
-      })
-      .eq("folder_id", id)
-      .eq("status", "active")
-      .select("name");
-
-    pausedLoops = (paused ?? []).map((l) => l.name);
-  } catch (e) {
-    // Coluna paused_reason ausente não pode impedir a exclusão da pasta.
-    console.warn("[folder DELETE] falha ao pausar loops da pasta:", (e as Error).message);
-  }
-
-  // Campanhas sincronizadas que serão desligadas pela CASCADE — só para
-  // informar o usuário no retorno.
-  const { count: syncedCampaigns } = await admin
-    .from("distribute_campaigns")
-    .select("id", { count: "exact", head: true })
-    .eq("video_folder_id", id);
-
-  // DELETE da pasta. Os vídeos passam a folder_id = NULL pela própria FK —
-  // nenhum arquivo do Storage é tocado.
-  const { error } = await supabase
-    .from("library_folders")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", user.id);
+  // Uma única chamada = uma única transação no Postgres.
+  const { data, error } = await (admin as unknown as {
+    rpc: (fn: string, args: Record<string, unknown>) => Promise<{
+      data: {
+        ok: boolean;
+        error?: string;
+        folder_name?: string;
+        videos_moved?: number;
+        paused_loops?: string[];
+        synced_campaigns_removed?: number;
+      } | null;
+      error: { message: string } | null;
+    }>;
+  }).rpc("delete_library_folder_safe", { p_folder_id: id, p_user_id: user.id });
 
   if (error) {
-    console.error("[folder DELETE] erro ao excluir a pasta:", error.message);
+    console.error("[library] falha ao excluir pasta:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  if (!data?.ok) {
+    // Ownership é validado dentro da RPC — pasta de outro usuário cai aqui.
+    return NextResponse.json({ error: "Pasta não encontrada." }, { status: 404 });
+  }
+
   console.log(
-    `[library] pasta ${id.slice(0, 8)}… excluída | videos_movidos=${videoCount ?? 0} ` +
-    `loops_pausados=${pausedLoops.length} campanhas_sync_removidas=${syncedCampaigns ?? 0}`
+    `[library] pasta ${id.slice(0, 8)}… excluída | videos_movidos=${data.videos_moved ?? 0} ` +
+    `loops_pausados=${data.paused_loops?.length ?? 0} campanhas_sync_removidas=${data.synced_campaigns_removed ?? 0}`
   );
 
   return NextResponse.json({
     success: true,
-    videos_moved: videoCount ?? 0,
-    paused_loops: pausedLoops,
-    synced_campaigns_removed: syncedCampaigns ?? 0,
+    videos_moved: data.videos_moved ?? 0,
+    paused_loops: data.paused_loops ?? [],
+    synced_campaigns_removed: data.synced_campaigns_removed ?? 0,
   });
 }

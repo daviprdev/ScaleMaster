@@ -19,6 +19,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { fetchPostInsights } from "@/lib/meta-insights";
+import { requireCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -58,13 +59,8 @@ function isEligible(p: PostRow, nowMs: number): boolean {
 }
 
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const auth = request.headers.get("authorization");
-  if (!cronSecret) {
-    console.warn("[cron/sync-post-insights] CRON_SECRET não definido — requisição aceita sem auth.");
-  } else if (auth !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const cronAuth = requireCronAuth(request);
+  if (!cronAuth.ok) return cronAuth.response;
 
   const admin = getSupabaseAdmin();
 

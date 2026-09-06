@@ -26,6 +26,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { processVideoForAccount } from "@/lib/video-effects";
 import { prepareCleanMetadataVariant, cleanupStaleVariants } from "@/lib/video-processing";
+import { requireCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -61,13 +62,8 @@ interface JobRow {
 }
 
 export async function GET(req: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const auth = req.headers.get("authorization");
-  if (!cronSecret) {
-    console.warn("[cron] AVISO: CRON_SECRET nao configurado.");
-  } else if (auth !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const cronAuth = requireCronAuth(req);
+  if (!cronAuth.ok) return cronAuth.response;
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ skipped: true, reason: "Supabase não configurado." });

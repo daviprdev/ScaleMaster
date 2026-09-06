@@ -7,7 +7,6 @@ import { ImpersonationBanner } from "@/components/dashboard/ImpersonationBanner"
 import { AnnouncementBanner } from "@/components/dashboard/AnnouncementBanner";
 import { AccountHealthBanner, type AccountHealthError } from "@/components/dashboard/AccountHealthBanner";
 import { CascadeHealthBanner } from "@/components/dashboard/CascadeHealthBanner";
-import { ProxyOutageBanner } from "@/components/dashboard/ProxyOutageBanner";
 
 export default async function DashboardLayout({
   children,
@@ -132,38 +131,6 @@ export default async function DashboardLayout({
   }
 
   // Queda global de proxy: 3+ contas com falha de proxy nos últimos 30 min.
-  // Sinal de plano expirado / lista de IPs rotacionada no provedor — o pipeline
-  // inteiro para em silêncio (crons pulam contas sem marcar erro). Outage 2026-07-09.
-  let proxyOutageCount = 0;
-  let proxyOutageSince: string | null = null;
-  try {
-    const adminClient = getSupabaseAdmin();
-    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-    const { data: proxyFails } = await adminClient
-      .from("instagram_accounts")
-      .select("id, last_proxy_error_at")
-      .eq("user_id", user.id)
-      .eq("is_active", true)
-      .not("proxy_url", "is", null)
-      .gte("last_proxy_error_at", thirtyMinAgo);
-
-    const rows = (proxyFails ?? []) as { id: string; last_proxy_error_at: string }[];
-    if (rows.length >= 3) {
-      proxyOutageCount = rows.length;
-      const earliest = rows.reduce(
-        (min, r) => (r.last_proxy_error_at < min ? r.last_proxy_error_at : min),
-        rows[0].last_proxy_error_at
-      );
-      proxyOutageSince = new Intl.DateTimeFormat("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: "America/Sao_Paulo",
-      }).format(new Date(earliest));
-    }
-  } catch {
-    // coluna last_proxy_error_at pode não existir ainda — fallback gracioso
-  }
-
   return (
     <div className="flex flex-col h-dvh pt-safe pb-safe">
       {/* ── System banners ─────────────────────────────────────── */}
@@ -175,9 +142,6 @@ export default async function DashboardLayout({
       )}
       {announcementMessage && !impData && (
         <AnnouncementBanner message={announcementMessage} />
-      )}
-      {proxyOutageCount >= 3 && (
-        <ProxyOutageBanner count={proxyOutageCount} sinceLabel={proxyOutageSince} />
       )}
       {cascadeCount >= 4 && (
         <CascadeHealthBanner count={cascadeCount} />

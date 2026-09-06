@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetch as undiciFetch, ProxyAgent } from "undici";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt } from "@/lib/encrypt";
+import { requireCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -13,13 +14,8 @@ export const maxDuration = 60;
 // ANTES de atribuir às contas. Protegido por CRON_SECRET (não por sessão Supabase)
 // porque é uma checagem ad-hoc, não uma feature do produto.
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get("authorization");
-  if (!cronSecret) {
-    console.warn("[proxy-pool-check] CRON_SECRET não configurado — rota aberta.");
-  } else if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const cronAuth = requireCronAuth(request);
+  if (!cronAuth.ok) return cronAuth.response;
 
   const limit = Math.min(Number(new URL(request.url).searchParams.get("limit") ?? 50), 100);
 

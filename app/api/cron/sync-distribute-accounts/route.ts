@@ -24,6 +24,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 import { fetchVideoUsage, globalUsageByVideo, fetchAllRows } from "@/lib/video-history";
+import { requireCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -61,13 +62,8 @@ interface AccountState {
 }
 
 export async function GET(req: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const auth = req.headers.get("authorization");
-  if (!cronSecret) {
-    console.warn("[sync-distribute-accounts] AVISO: CRON_SECRET não configurado.");
-  } else if (auth !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const cronAuth = requireCronAuth(req);
+  if (!cronAuth.ok) return cronAuth.response;
 
   const admin = getSupabaseAdmin();
 

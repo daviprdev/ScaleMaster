@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { sendPushNotification } from "@/lib/web-push";
 import { getDailyProfitMessage } from "@/lib/daily-profit-messages";
+import { requireCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -32,13 +33,8 @@ function parseTimeToMinutes(hhmm: string): number | null {
 }
 
 export async function GET(req: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const auth = req.headers.get("authorization");
-  if (!cronSecret) {
-    console.warn("[cron] AVISO: CRON_SECRET nao configurado.");
-  } else if (auth !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const cronAuth = requireCronAuth(req);
+  if (!cronAuth.ok) return cronAuth.response;
 
   const admin = getSupabaseAdmin();
   const { dateKey, startUtc, endUtc, currentMinutes } = getBrtDayWindowUtc(new Date());

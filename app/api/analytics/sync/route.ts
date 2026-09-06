@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { fetch as undiciFetch } from "undici";
+import { hasValidCronSecret } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -45,13 +46,12 @@ async function fetchProfileFromAPI(
 // ─── POST: CRON_SECRET (all users) or user session (scoped) ──────────────────
 
 export async function POST(req: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const auth = req.headers.get("authorization");
-
   let userId: string | null = null;
   let isCronCall = false;
 
-  if (cronSecret && auth === `Bearer ${cronSecret}`) {
+  // hasValidCronSecret devolve false quando CRON_SECRET está ausente/vazio —
+  // sem env var a chamada cai no caminho de sessão, nunca fica aberta.
+  if (hasValidCronSecret(req.headers.get("authorization"))) {
     isCronCall = true;
   } else {
     try {

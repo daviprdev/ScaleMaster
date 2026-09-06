@@ -3,6 +3,7 @@ import { ApifyClient } from "apify-client";
 import { fetch as undiciFetch } from "undici";
 import { resolveApifyTokens } from "@/lib/apify-token-pool";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -98,13 +99,8 @@ export async function GET(req: NextRequest) {
   const elapsed = () => Date.now() - runStart;
   const budgetOk = (reserveMs = 3_000) => elapsed() < BUDGET_MS - reserveMs;
 
-  const cronSecret = process.env.CRON_SECRET;
-  const auth = req.headers.get("authorization");
-  if (!cronSecret) {
-    console.warn("[cron] AVISO: CRON_SECRET nao configurado.");
-  } else if (auth !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const cronAuth = requireCronAuth(req);
+  if (!cronAuth.ok) return cronAuth.response;
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ skipped: true, reason: "Supabase não configurado." });
   }

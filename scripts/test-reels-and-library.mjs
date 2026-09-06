@@ -215,10 +215,13 @@ async function main() {
     !/from\("videos_library"\)[\s\S]{0,200}\.delete\(\)/.test(folderRoute));
   check("TESTE 2: a rota NÃO apaga arquivos do Storage",
     !folderRoute.includes("storage") || !folderRoute.includes(".remove("));
-  check("Contagem de vídeos usa count exato (não traz as linhas)",
-    folderRoute.includes('count: "exact", head: true'));
-  check("TESTE 3: Loops da pasta são pausados com motivo legível",
-    folderRoute.includes('status: "paused"') && folderRoute.includes("paused_reason"));
+  // A contagem passou a acontecer dentro da RPC transacional (select count(*)),
+  // não mais na rota — o objetivo (não trafegar as linhas) continua garantido.
+  check("Contagem de vídeos é feita no banco, sem trazer as linhas",
+    src("supabase/library_folder_delete_fix.sql").includes("select count(*) into v_videos"));
+  check("TESTE 3: Loops da pasta são pausados com motivo legível (dentro da RPC)",
+    src("supabase/library_folder_delete_fix.sql").includes("status = 'paused'") &&
+      src("supabase/library_folder_delete_fix.sql").includes("paused_reason"));
   check("TESTE 5: ownership verificado antes de excluir",
     folderRoute.includes('.eq("user_id", user.id)') && folderRoute.includes("Pasta não encontrada"));
   check("TESTE 6: duplo-clique bloqueado no frontend",
@@ -229,11 +232,19 @@ async function main() {
     /handleDeleteFolder[\s\S]{0,2200}finally \{[\s\S]{0,120}setDeletingFolderLoading\(false\)/.test(libraryPage));
   check("Modal explica que os vídeos NÃO serão excluídos",
     libraryPage.includes("não excluirá os vídeos"));
-  check("Migration da pasta não altera FK nem apaga dados",
+  check("Migration da pasta não altera FK, não apaga vídeos nem toca no Storage",
     (() => {
       const sql = src("supabase/library_folder_delete_fix.sql").toLowerCase();
+      const semComentarios = sql
+        .split(/\r?\n/)
+        .filter((l) => !l.trim().startsWith("--"))
+        .join("\n");
       return sql.includes("add column if not exists paused_reason")
-        && !sql.includes("drop ") && !sql.includes("delete from");
+        // o único DELETE permitido é o da própria pasta
+        && !semComentarios.includes("delete from videos_library")
+        && !semComentarios.includes("storage")
+        && !/alter table[\s\S]*?(drop constraint|add constraint)[\s\S]*?fkey/.test(semComentarios)
+        && !semComentarios.includes("drop table");
     })());
 
   console.log(`\n${passed} passaram, ${failed} falharam\n`);

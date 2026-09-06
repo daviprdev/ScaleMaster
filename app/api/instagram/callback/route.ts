@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt } from "@/lib/encrypt";
 import { fetch as undiciFetch } from "undici";
-import { claimProxyForAccount } from "@/lib/proxy-pool";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -404,26 +403,11 @@ export async function GET(req: NextRequest) {
         .eq("ig_business_account_id", profile.id);
     }
 
-    // Estoque de proxies: conta sem proxy recebe um automaticamente no momento
-    // da conexão (claim atômico — sem reutilização entre conexões simultâneas).
-    // Conta reconectada que já tem proxy mantém o dela. Falha aqui NUNCA
-    // bloqueia a conexão — a conta só fica com a badge "sem proxy".
-    try {
-      const { data: connectedAcct } = await admin
-        .from("instagram_accounts")
-        .select("id, proxy_url")
-        .eq("user_id", userId)
-        .eq("ig_business_account_id", profile.id)
-        .maybeSingle();
-      if (connectedAcct?.id && !connectedAcct.proxy_url) {
-        const { assigned } = await claimProxyForAccount(admin, userId, connectedAcct.id);
-        if (assigned) {
-          console.log(`[ig/callback] @${profile.username}: proxy atribuído do estoque (verificado e vivo).`);
-        }
-      }
-    } catch (poolErr) {
-      console.warn(`[ig/callback] Estoque de proxies falhou (conexão segue):`, poolErr);
-    }
+    // Conta nova nasce SEM proxy (proxy_url = NULL). Desde que as chamadas
+    // oficiais da Meta passaram a sair em conexão direta, nenhum fluxo
+    // obrigatório da conta depende de proxy — só o login via instagrapi
+    // (Cofre de Logins), que reserva um do estoque no próprio fluxo dele.
+    // Atribuição manual continua disponível em /dashboard/proxy-test.
 
     const successUrl = isMagicLink
       ? `${APP_URL}/add/success`
