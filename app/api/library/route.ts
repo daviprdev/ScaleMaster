@@ -108,43 +108,40 @@ export async function DELETE(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const { id, storage_path } = await req.json() as {
-    id: string;
-    storage_path: string;
-  };
+  let body: { id?: string };
+  try {
+    body = await req.json() as { id?: string };
+  } catch {
+    return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
+  }
 
-  if (!id || !storage_path) {
-    return NextResponse.json(
-      { error: "Campos 'id' e 'storage_path' são obrigatórios." },
-      { status: 400 }
-    );
+  const id = body.id;
+  if (!id) {
+    return NextResponse.json({ error: "Campo 'id' é obrigatório." }, { status: 400 });
   }
 
   const admin = getSupabaseAdmin();
 
-  // Confirma dono antes de apagar qualquer coisa
+  // O storage_path é DERIVADO da linha do dono — nunca aceito do corpo da
+  // requisição. Antes a rota apagava o caminho que o cliente mandasse depois de
+  // conferir a posse apenas do `id`: bastava enviar um id próprio junto do
+  // storage_path de outro usuário para apagar o arquivo alheio.
   const { data: video } = await admin
     .from("videos_library")
-    .select("id")
+    .select("id, storage_path")
     .eq("id", id)
     .eq("user_id", user.id)
-    .maybeSingle();
+    .maybeSingle<{ id: string; storage_path: string | null }>();
 
   if (!video) {
     return NextResponse.json({ error: "Vídeo não encontrado." }, { status: 404 });
   }
 
-  const isDirectUrl = storage_path.startsWith("direct/");
-  if (!isDirectUrl) {
-    const { error: storageError } = await admin.storage
-      .from("videos-library")
-      .remove([storage_path]);
-
-    if (storageError && !storageError.message.toLowerCase().includes("not found")) {
-      console.error("[library DELETE] storage error:", storageError.message);
-    }
-  }
-
+  // Banco PRIMEIRO, Storage depois. Não existe transação entre Postgres e o
+  // Storage, então a ordem define qual estado sobra se a função morrer no meio:
+  //   banco → Storage : sobra ARQUIVO ÓRFÃO (invisível, recuperável pelo admin)
+  //   Storage → banco : sobra REGISTRO QUEBRADO (vídeo que não abre para o usuário)
+  // A segunda ordem é a que produziu o estado quebrado da Biblioteca.
   const { error: dbError } = await admin
     .from("videos_library")
     .delete()
@@ -153,6 +150,18 @@ export async function DELETE(req: NextRequest) {
 
   if (dbError) {
     return NextResponse.json({ error: dbError.message }, { status: 500 });
+  }
+
+  const path = video.storage_path;
+  if (path && !path.startsWith("direct/")) {
+    const { error: storageError } = await admin.storage
+      .from("videos-library")
+      .remove([path]);
+
+    if (storageError && !storageError.message.toLowerCase().includes("not found")) {
+      // Registro já saiu: o arquivo vira órfão, tratável pela limpeza de admin.
+      console.error("[library DELETE] arquivo ficou órfão no Storage:", storageError.message);
+    }
   }
 
   return NextResponse.json({ success: true });

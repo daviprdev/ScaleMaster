@@ -91,6 +91,30 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) {
+    // Compensação: o arquivo já subiu ao Storage antes desta rota ser chamada.
+    // Sem isso, todo INSERT que falha deixa um arquivo órfão permanente.
+    //
+    // Só removemos o arquivo desta operação, e apenas depois de confirmar que
+    // NENHUMA linha de videos_library o referencia — senão um cliente poderia
+    // mandar o storage_path de outro usuário, forçar a falha do INSERT e usar
+    // a compensação para apagar o arquivo alheio. Nunca é uma limpeza global.
+    const { count } = await admin
+      .from("videos_library")
+      .select("id", { count: "exact", head: true })
+      .eq("storage_path", storagePath);
+
+    if (!count && !storagePath.startsWith("direct/")) {
+      const { error: rollbackError } = await admin.storage
+        .from("videos-library")
+        .remove([storagePath]);
+      console.log(
+        `[library-record] INSERT falhou — compensação do arquivo recém-enviado: ` +
+        `${rollbackError ? "falhou (arquivo ficou órfão)" : "arquivo removido"}`
+      );
+    } else {
+      console.warn("[library-record] INSERT falhou; arquivo referenciado por outra linha — preservado.");
+    }
+
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
