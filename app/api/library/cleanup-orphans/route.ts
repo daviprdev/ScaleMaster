@@ -4,11 +4,35 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
-// POST /api/library/cleanup-orphans
-// Finds and permanently deletes all videos that have no valid folder (folder_id IS NULL
-// or points to a deleted folder). Used to unblock the anti-duplicate check after
-// a folder was deleted without cascading its videos.
+/**
+ * POST /api/library/cleanup-orphans
+ *
+ * Remove APENAS registros quebrados: linhas de `videos_library` cujo arquivo
+ * não existe mais no Storage. Nenhum arquivo é apagado por esta rota.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Comportamento anterior (removido em 2026-09-06) — era destrutivo:
+ *
+ *   const orphans = allVideos.filter(v => v.folder_id === null || …)
+ *   await admin.storage.from("videos-library").remove(storagePaths)  // 1º
+ *   await admin.from("videos_library").delete().in("id", orphanIds)  // 2º
+ *
+ * "Órfão" estava definido como `folder_id === null`, isto é, TODO vídeo em
+ * "Sem pasta" — que é um estado perfeitamente legítimo. Desde que a exclusão
+ * de pasta passou a mover os vídeos para "Sem pasta" em vez de apagá-los, este
+ * botão passou a ser exatamente o oposto dessa garantia: excluir a pasta
+ * preservava os vídeos e um clique aqui os destruía.
+ *
+ * Pior: apagava o Storage ANTES do banco (o projeto já documentou a regra
+ * inversa) e não tinha `maxDuration`. Com um volume grande, a função morria no
+ * meio — arquivos já apagados, linhas ainda no banco. É o estado encontrado em
+ * produção nesta auditoria: 961 linhas apontando para arquivos inexistentes.
+ *
+ * A rota agora só conserta esse estado; ela não pode causá-lo.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 export async function POST(_: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ deleted: 0, message: "Supabase não configurado." });
@@ -20,62 +44,79 @@ export async function POST(_: NextRequest) {
 
   const admin = getSupabaseAdmin();
 
-  // Collect all valid folder IDs for this user
-  const { data: validFolders } = await admin
-    .from("library_folders")
-    .select("id")
-    .eq("user_id", user.id);
+  type VideoRow = { id: string; storage_path: string | null };
 
-  const validFolderIds = new Set((validFolders ?? []).map(f => f.id as string));
+  // O PostgREST corta qualquer resposta em 1000 linhas — paginar é obrigatório.
+  const videos: VideoRow[] = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await admin
+      .from("videos_library")
+      .select("id, storage_path")
+      .eq("user_id", user.id)
+      .range(from, from + PAGE - 1);
 
-  // Fetch all videos for this user
-  const { data: allVideos, error: fetchError } = await admin
-    .from("videos_library")
-    .select("id, storage_path, folder_id")
-    .eq("user_id", user.id);
-
-  if (fetchError) {
-    return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const page = (data ?? []) as VideoRow[];
+    videos.push(...page);
+    if (page.length < PAGE) break;
   }
 
-  type VideoRow = { id: string; storage_path: string; folder_id: string | null };
-
-  // Orphaned = folder_id is null OR points to a folder that no longer exists
-  const orphans = ((allVideos ?? []) as VideoRow[]).filter(
-    v => v.folder_id === null || !validFolderIds.has(v.folder_id)
+  // Linhas sem arquivo próprio no bucket (URL externa) nunca são candidatas.
+  const candidates = videos.filter(
+    v => !!v.storage_path && !v.storage_path.startsWith("direct/")
   );
-
-  if (orphans.length === 0) {
-    return NextResponse.json({ deleted: 0, message: "Nenhum arquivo órfão encontrado." });
+  if (candidates.length === 0) {
+    return NextResponse.json({ deleted: 0, message: "Nenhum registro quebrado." });
   }
 
-  // Delete physical files from Storage
-  const storagePaths = orphans
-    .filter(v => v.storage_path && !v.storage_path.startsWith("direct/"))
-    .map(v => v.storage_path);
+  // Inventário do que existe de fato no Storage, por prefixo.
+  const prefixes = new Set(candidates.map(v => v.storage_path!.split("/")[0]));
+  const existing = new Set<string>();
 
-  if (storagePaths.length > 0) {
-    const { error: storageError } = await admin.storage
-      .from("videos-library")
-      .remove(storagePaths);
-    if (storageError) {
-      console.error("[cleanup-orphans] storage error:", storageError.message);
+  for (const prefix of prefixes) {
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await admin.storage
+        .from("videos-library")
+        .list(prefix, { limit: PAGE, offset });
+
+      if (error) {
+        // Sem inventário confiável, apagar seria um chute — aborta sem mutação.
+        console.error("[cleanup-orphans] falha ao listar Storage:", error.message);
+        return NextResponse.json(
+          { error: "Não foi possível ler o Storage para verificar os arquivos. Nada foi alterado." },
+          { status: 502 }
+        );
+      }
+
+      const page = data ?? [];
+      for (const obj of page) existing.add(`${prefix}/${obj.name}`);
+      if (page.length < PAGE) break;
     }
   }
 
-  // Delete DB records
-  const orphanIds = orphans.map(v => v.id);
-  const { error: dbError } = await admin
-    .from("videos_library")
-    .delete()
-    .in("id", orphanIds);
-
-  if (dbError) {
-    return NextResponse.json({ error: dbError.message }, { status: 500 });
+  const broken = candidates.filter(v => !existing.has(v.storage_path!));
+  if (broken.length === 0) {
+    return NextResponse.json({ deleted: 0, message: "Nenhum registro quebrado." });
   }
 
+  // Só o banco. O Storage não é tocado em nenhuma hipótese por esta rota.
+  const ids = broken.map(v => v.id);
+  for (let i = 0; i < ids.length; i += 500) {
+    const { error } = await admin
+      .from("videos_library")
+      .delete()
+      .in("id", ids.slice(i, i + 500));
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  console.log(
+    `[cleanup-orphans] ${broken.length} registro(s) sem arquivo removido(s) do banco | ` +
+    `arquivos no Storage preservados: ${existing.size}`
+  );
+
   return NextResponse.json({
-    deleted: orphans.length,
-    message: `${orphans.length} arquivo(s) órfão(s) removido(s) com sucesso.`,
+    deleted: broken.length,
+    message: `${broken.length} registro(s) sem arquivo removido(s). Nenhum arquivo foi apagado.`,
   });
 }

@@ -247,6 +247,36 @@ async function main() {
         && !semComentarios.includes("drop table");
     })());
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // A garantia "excluir pasta não apaga vídeos" só vale se nada logo depois
+  // apagar o que foi para "Sem pasta". O botão Limpar Órfãos fazia exatamente
+  // isso: tratava folder_id IS NULL como lixo e apagava Storage + banco.
+  // ───────────────────────────────────────────────────────────────────────────
+  console.log("\n== 4. Limpeza de registros quebrados não destrói mídia ==\n");
+
+  const cleanup = src("app/api/library/cleanup-orphans/route.ts");
+  const semComentarios = cleanup
+    .split(/\r?\n/)
+    .filter((l) => !l.trim().startsWith("*") && !l.trim().startsWith("//") && !l.trim().startsWith("/*"))
+    .join("\n");
+
+  check("NUNCA apaga arquivos do Storage",
+    !/storage[\s\S]{0,120}\.remove\(/.test(semComentarios));
+  check("'Sem pasta' (folder_id null) não é mais tratado como órfão",
+    !/folder_id\s*===\s*null/.test(semComentarios));
+  check("Órfão = linha cujo arquivo não existe no Storage",
+    semComentarios.includes("existing.has") && semComentarios.includes(".list("));
+  check("Falha ao listar o Storage aborta sem apagar nada",
+    /Nada foi alterado/.test(cleanup));
+  check("Leitura das linhas é paginada (teto de 1000 do PostgREST)",
+    semComentarios.includes(".range(from, from + PAGE - 1)"));
+  check("Rota tem maxDuration (não morre no meio da operação)",
+    /export const maxDuration/.test(cleanup));
+  check("Frontend exige confirmação de 2 cliques",
+    libraryPage.includes("confirmCleanup") && libraryPage.includes('"Confirmar?"'));
+  check("Botão não promete mais remover vídeos sem pasta",
+    !libraryPage.includes("Remove vídeos sem pasta"));
+
   console.log(`\n${passed} passaram, ${failed} falharam\n`);
   process.exit(failed === 0 ? 0 : 1);
 }

@@ -240,7 +240,9 @@ export async function PATCH(req: NextRequest) {
 
   const admin = getSupabaseAdmin() as ReturnType<typeof getSupabaseAdmin>;
 
-  // Automações têm motor e aba próprios (Automatizar) — não editáveis aqui.
+  // Campanhas herdadas do módulo Automatizar (removido em 2026-09-06): o motor
+  // delas não existe mais, então reagendar aqui não teria efeito. Continuam
+  // legíveis no histórico, mas bloqueadas para edição.
   const { data: autoRow } = await (admin as any)
     .from("automations")
     .select("id")
