@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/test-video-processing.mjs && node scripts/test-security.mjs && node scripts/test-reels-and-library.mjs && node scripts/test-hardening.mjs"
+    "test": "node scripts/test-video-processing.mjs && node scripts/test-security.mjs && node scripts/test-reels-and-library.mjs && node scripts/test-hardening.mjs && node scripts/test-library-integrity.mjs"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",

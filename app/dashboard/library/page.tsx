@@ -453,7 +453,7 @@ export default function LibraryPage() {
     setCleaningOrphans(true);
     setCleanupResult(null);
     try {
-      const res = await fetch("/api/library/cleanup-orphans", { method: "POST" });
+      const res = await fetch("/api/library/broken-records", { method: "POST" });
       const data = await res.json() as { deleted: number; error?: string };
       if (!res.ok) {
         setCleanupResult(data.error ?? `Erro (HTTP ${res.status})`);
@@ -770,7 +770,7 @@ export default function LibraryPage() {
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
             onClick={handleCleanupOrphans}
             disabled={cleaningOrphans}
-            title="Remove registros cujo arquivo não existe mais no Storage. Nenhum vídeo é apagado."
+            title="Remove registros da Biblioteca cujo arquivo já não existe no armazenamento. Nenhum vídeo é apagado."
             className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400/70 hover:text-amber-300 hover:bg-amber-500/15 hover:border-amber-500/35 text-xs font-medium transition-all duration-200 flex-shrink-0 disabled:opacity-50"
           >
             {cleaningOrphans
