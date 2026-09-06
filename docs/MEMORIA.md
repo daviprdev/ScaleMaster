@@ -3511,3 +3511,61 @@ como órfão e apagava Storage antes do banco, sem limite de tempo — ou seja, 
 produzir exatamente esse estado e podia apagar mídia válida. Não há registro histórico
 que comprove que foi ela quem apagou aqueles arquivos específicos, e isso fica como
 hipótese, não como fato.
+
+---
+
+## 2026-09-06 (parte 3) — Reset operacional de produção
+
+Decisão do usuário: recomeçar do zero com **contas novas, mídias novas e um Meta App
+novo**. Reset de DADOS operacionais apenas — nenhuma estrutura tocada, nenhuma linha
+de código de aplicação alterada.
+
+**A auditoria mudou o tamanho da tarefa.** Classifiquei as 39 tabelas do schema antes
+de qualquer DELETE e a maior parte dos alvos **já estava em 0** — resultado das
+limpezas das partes 1 e 2 desta mesma data e de exclusões que o usuário já havia
+feito. Sobraram apenas 16 linhas em 4 tabelas.
+
+**Removido do banco** (uma transação, com guarda que aborta se `auth.users`,
+`user_roles` ou `sales` estiverem vazias — proteção contra rodar num banco errado):
+
+| tabela | antes | depois |
+|---|---|---|
+| `account_logins` (credenciais das contas antigas) | 4 | 0 |
+| `scraped_profiles` (cache de Inspirações) | 9 | 0 |
+| `story_media` | 2 | 0 |
+| `magic_add_tokens` | 1 | 0 |
+
+**Removido do Storage:** 50 objetos / 73 MB no bucket `videos-library`
+(`videos/upload_*` 28 = 58 MB; `stories/<user_id>/*` 22 = 14,4 MB). Bucket agora em 0.
+
+Detalhe operacional que vale registrar: o script tem guarda de contagem amarrada à
+auditoria SQL, e ela **disparou de verdade** — `list` com prefixo `stories` devolveu 0
+porque os arquivos ficam aninhados em `stories/<user_id>/` (3 níveis) e a listagem
+rasa só enxerga a "pasta". O script abortou sem apagar nada nesse prefixo em vez de
+concluir "não há stories"; corrigi o prefixo e só então executei. Sem a guarda, o
+reset teria terminado com 22 arquivos silenciosamente para trás.
+
+**Preservado por decisão explícita, com motivo:**
+
+- `sales` (107) — receita. Nunca é resíduo operacional.
+- `notifications` (269) — 105 de venda; a tabela também é a fonte de idempotência do
+  push de lucro diário. Apagar poderia gerar reenvio duplicado.
+- `audit_logs` (36) — aprovação/rejeição/ban/impersonação de usuários. Finalidade de
+  segurança e auditoria administrativa, exatamente o caso que o usuário mandou preservar.
+- `proxy_pool` (140) — estoque comprado, reutilizável desde a reversão de 30/07.
+  0 atribuições órfãs (a FK `ON DELETE SET NULL` já havia liberado tudo).
+- `saved_captions` (5), `human_schedule_settings`, `notification_settings`,
+  `push_subscriptions` — configuração/conteúdo do usuário, não resíduo de conta.
+- `user_roles` (3), `user_sessions` (3), `auth.users` (3) — identidade e acesso.
+- Bucket `avatars` (1 objeto) — foto de perfil do admin.
+- `user_meta_apps` — **já estava vazia**, então nenhuma credencial de Meta App foi
+  tocada nem foi preciso adivinhar qual App era antigo ou novo.
+
+**Integridade pós-reset:** 0 posts órfãos, 0 containers órfãos, 0 jobs órfãos,
+0 loop_accounts órfãos, 0 variants, 0 proxy apontando para conta inexistente.
+
+**Estrutura confirmada intacta:** 39 tabelas, 41 policies RLS, 9 functions/RPCs
+(incluindo `delete_library_folder_safe`, `get_account_video_usage`,
+`get_campaign_summaries`), 10 triggers, 129 índices, 34 migrations, 3 buckets.
+
+`npm test` = 186 checagens, typecheck/lint/build limpos — sem alteração de código.
