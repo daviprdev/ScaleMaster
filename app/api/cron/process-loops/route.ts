@@ -6,26 +6,15 @@ import { getProxyForAccount, recordProxyFailure } from "@/lib/proxy";
 import { getAutoCaption } from "@/lib/auto-captions";
 import { markDeadAccounts } from "@/lib/account-health";
 import { fetchVideoUsage, postedSet, globalUsageByVideo, fetchAllRows } from "@/lib/video-history";
-import { downloadAndStripMetadata } from "@/lib/ffmpeg-process";
-import fs from "fs";
+import {
+  normalizeProcessingMode,
+  resolveMediaUrlForMode,
+  type VideoProcessingMode,
+} from "@/lib/video-processing";
 import type { ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-// Vídeos upados direto pelo browser (/videos/upload_*) nunca passaram pelo
-// FFmpeg — contêm SEI NAL units tipo 5+6 (fingerprints Instagram/TikTok) e
-// metadados originais intactos. Mesmo padrão de detecção do publish-scheduled
-// (lib/ffmpeg-process.ts), replicado aqui pois o "modo direto" do Loop usava
-// a public_url original sem nenhuma limpeza — gap que não existia nos outros
-// 3 fluxos de postagem (Postar/Automatizar/Clone, via publish-scheduled).
-function needsStrip(url: string): boolean {
-  return url.includes("/videos/upload_");
-}
-
-// Orçamento de tempo reservado para strip por loop nesta execução — evita
-// estourar o maxDuration=300s quando há muitos vídeos raw novos no mesmo ciclo.
-const STRIP_BUDGET_MS = 90_000;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,6 +62,7 @@ interface LoopRow {
   loop_accounts: LoopAccountRow[];
   auto_caption_enabled?: boolean;
   auto_caption_type?: string | null;
+  video_processing_mode?: string | null;
 }
 
 interface HumanScheduleRow {
@@ -235,6 +225,7 @@ async function createContainerForAccount(
     caption,
     video_id: videoId,
     cycle_number: cycleNumber,
+    video_processing_mode: normalizeProcessingMode(loop.video_processing_mode),
   };
   if (initialDelayMinutes > 0) {
     insertData.retry_after = new Date(Date.now() + initialDelayMinutes * 60_000).toISOString();
@@ -844,59 +835,75 @@ async function processOneLoop(
       loop.effect_blur   || loop.effect_noise  || loop.effect_anti_ai;
 
     if (!hasActiveEffects) {
-      // Caminho direto: sem FFmpeg, sem fila, sem espera de ciclo extra.
-      // Exceção: vídeos raw (/videos/upload_*) recebem strip de metadados/SEI
-      // uma única vez, com o resultado persistido de volta em videos_library
-      // (benefício permanente — próximos ciclos e outras contas/loops que
-      // usem o mesmo vídeo já pegam a URL limpa, sem re-stripar).
-      const strippedCache = new Map<string, string>(); // video_id → URL limpa (deste run)
-      const stripStart = Date.now();
+      // Caminho direto: sem efeito criativo ativo, nao existe re-encode.
+      //
+      // O que roda aqui depende EXCLUSIVAMENTE da escolha do usuario no loop:
+      //   original       -> a public_url do arquivo ORIGINAL vai direto pra Meta.
+      //                     Zero FFmpeg, zero download, zero escrita no Storage.
+      //   clean_metadata -> usa a VARIANTE (stream copy) preparada pelo cron
+      //                     process-videos. Enquanto ela nao existe, a conta
+      //                     apenas espera o proximo ciclo. Se o preparo falhar
+      //                     em definitivo, a conta NAO publica - o video
+      //                     original nunca entra no lugar da versao limpa.
+      //
+      // O original NUNCA e sobrescrito: videos_library.public_url permanece
+      // apontando para o arquivo como ele entrou no AutoScale.
+      const loopMode: VideoProcessingMode = normalizeProcessingMode(loop.video_processing_mode);
+      let waitingVariants = 0;
+      let failedVariants  = 0;
+
       for (const account of dueAccounts) {
         const assignment = videoAssignments.get(account.id);
         if (!assignment) continue;
         const video = assignment.video;
-        let effectiveUrl = video.public_url;
 
-        if (needsStrip(effectiveUrl)) {
-          if (strippedCache.has(video.id)) {
-            effectiveUrl = strippedCache.get(video.id)!;
-          } else if (Date.now() - stripStart < STRIP_BUDGET_MS) {
-            try {
-              console.log(`[loop-cron] "${loop.name}": ✂ stripping vídeo raw ${video.id} (${video.filename})`);
-              const result = await downloadAndStripMetadata(video.public_url);
-              const buf = fs.readFileSync(result.outputPath);
-              result.cleanup();
-              const strippedPath = `videos/stripped_${video.id}.mp4`;
-              const { error: upErr } = await admin.storage
-                .from("videos-library")
-                .upload(strippedPath, buf, { contentType: "video/mp4", upsert: true });
-              if (!upErr) {
-                const { data: urlData } = admin.storage.from("videos-library").getPublicUrl(strippedPath);
-                effectiveUrl = urlData.publicUrl;
-                strippedCache.set(video.id, effectiveUrl);
-                await (admin as any)
-                  .from("videos_library")
-                  .update({ public_url: effectiveUrl })
-                  .eq("id", video.id);
-                console.log(`[loop-cron] "${loop.name}": ✅ strip concluído ${video.id} → limpo permanentemente.`);
-              } else {
-                console.warn(`[loop-cron] "${loop.name}": upload do strip falhou (${video.id}): ${upErr.message} — usando URL original.`);
-              }
-            } catch (stripErr) {
-              console.warn(
-                `[loop-cron] "${loop.name}": strip falhou (${video.id}): ` +
-                `${stripErr instanceof Error ? stripErr.message : stripErr} — usando URL original.`
-              );
-            }
-          } else {
-            console.warn(`[loop-cron] "${loop.name}": orçamento de strip esgotado — ${video.id} segue com URL original.`);
-          }
+        const resolution = await resolveMediaUrlForMode(admin, {
+          mode: loopMode,
+          sourceUrl: video.public_url,
+          sourceVideoId: video.id,
+          userId: loop.user_id,
+          scope: `loop-cron "${loop.name}" @${account.username}`,
+        });
+
+        if (resolution.status === "pending") {
+          waitingVariants++;
+          continue;
         }
 
-        processedVideoUrls.set(account.id, effectiveUrl);
+        if (resolution.status === "error") {
+          // Falha terminal do preparo: a conta fica sem postar neste ciclo e o
+          // ORIGINAL nao e usado como substituto. Registra o motivo uma unica
+          // vez por ciclo para aparecer no Monitor sem inundar a tabela.
+          failedVariants++;
+          const cycleNumber = nextCycleByAccount.get(account.id) ?? 1;
+          const errorMsg = `[LIMPEZA DE METADADOS] ${resolution.reason}. Post nao enviado - o video original nao substitui a versao limpa.`;
+          try {
+            const { data: alreadyLogged } = await (admin as any)
+              .from("pending_containers")
+              .select("id")
+              .eq("loop_id", loop.id)
+              .eq("account_id", account.id)
+              .eq("cycle_number", cycleNumber)
+              .eq("status", "error")
+              .ilike("error_message", "[LIMPEZA DE METADADOS]%")
+              .limit(1);
+            if (!alreadyLogged?.length) {
+              await recordContainerError(admin, account, loop, "", errorMsg, video.id, cycleNumber);
+            }
+          } catch (logErr) {
+            console.warn(`[loop-cron] "${loop.name}": falha ao registrar erro de variante: ${String(logErr)}`);
+          }
+          console.error(`[loop-cron] "${loop.name}" @${account.username}: ${errorMsg}`);
+          continue;
+        }
+
+        processedVideoUrls.set(account.id, resolution.url);
       }
+
       console.log(
-        `[loop-cron] "${loop.name}": sem efeitos ativos — ${processedVideoUrls.size} URL(s) prontas (${strippedCache.size} stripada(s) neste run).`
+        `[loop-cron] "${loop.name}": modo ${loopMode} - ${processedVideoUrls.size} URL(s) pronta(s)` +
+        (waitingVariants > 0 ? `, ${waitingVariants} aguardando variante` : "") +
+        (failedVariants > 0 ? `, ${failedVariants} com falha de limpeza` : "") + "."
       );
     } else {
       // Caminho FFmpeg: usa a fila video_processing_jobs (requer tabela no banco).
@@ -1339,8 +1346,9 @@ export async function GET(req: NextRequest) {
   const now = new Date();
 
   // ── CLEANUP: Arquivos temporários (temp/vfx_*, vpf_*, strip_*, clone_*) ────
-  // video-effects.ts e publish-scheduled fazem upload para temp/ mas nunca
-  // deletam após o uso. Limpamos arquivos com mais de 2h a cada run.
+  // A fila de efeitos criativos e o prefetch do Clone sobem arquivos para temp/
+  // mas nunca deletam após o uso (strip_* é legado, do auto-strip removido em
+  // 2026-09-06). Limpamos arquivos com mais de 2h a cada run.
   // IMPORTANTE: cada prefixo é listado (e portanto apagado) SEPARADAMENTE via
   // `search`. Um list() único sobre toda a pasta temp/, ordenado por
   // created_at asc, ficava starved para sempre assim que um prefixo sem
@@ -1405,7 +1413,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, user_id, name, folder_id, account_folder_id, is_infinite, cycles, cycles_done, current_cycle,
       interval_minutes, account_stagger_seconds, media_limit, captions, effect_mirror, effect_invert,
-      effect_zoom, effect_blur, effect_noise, effect_anti_ai,
+      effect_zoom, effect_blur, effect_noise, effect_anti_ai, video_processing_mode,
       auto_caption_enabled, auto_caption_type,
       last_posted_at,
       loop_accounts (

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, getUniqueCaptions, type AutoCaptionType } from "@/lib/auto-captions";
 import { fetchVideoUsage, fetchAllRows } from "@/lib/video-history";
+import { normalizeProcessingMode } from "@/lib/video-processing";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,7 @@ interface DistributeBody {
   account_stagger_seconds?: number | null; // null = cálculo automático
   burst_mode?: boolean;           // Modo Ciclo: todos os vídeos agendados para agora
   sync_folder_ids?: string[];     // pastas de contas cujas contas novas devem entrar sozinhas na campanha
+  video_processing_mode?: string; // "original" (padrao) | "clean_metadata"
 }
 
 export async function POST(req: NextRequest) {
@@ -40,6 +42,9 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json() as DistributeBody;
   const { account_ids, folder_id, video_count, posts_per_day, start_at, captions, auto_caption_type, account_stagger_seconds, burst_mode, sync_folder_ids } = body;
+  // Decisao de processamento congelada no momento do agendamento: mudar a
+  // preferencia depois nao altera retroativamente posts ja criados.
+  const processingMode = normalizeProcessingMode(body.video_processing_mode);
 
   if (!account_ids?.length)
     return NextResponse.json({ error: "Selecione ao menos 1 conta." }, { status: 400 });
@@ -196,6 +201,7 @@ export async function POST(req: NextRequest) {
         scheduled_at: scheduledAt,
         status: "pending",
         campaign_id: campaignId,
+        video_processing_mode: processingMode,
       });
     }
   }
@@ -222,6 +228,7 @@ export async function POST(req: NextRequest) {
       auto_caption_type: isAutoCaption ? autoType : null,
       account_stagger_seconds: account_stagger_seconds ?? null,
       burst_mode: !!burst_mode,
+      video_processing_mode: processingMode,
     });
     if (syncErr) console.error("[distribute] erro ao salvar sync da campanha:", syncErr.message);
   }

@@ -25,6 +25,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { processVideoForAccount } from "@/lib/video-effects";
+import { prepareCleanMetadataVariant, cleanupStaleVariants } from "@/lib/video-processing";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -35,6 +36,13 @@ const FETCH_LIMIT = 40;
 // ~150s no pior caso (60s de download + 90s de timeout do FFmpeg), então paramos de
 // INICIAR novos jobs bem antes do limite para não estourar a função no meio de um encode.
 const RUN_BUDGET_MS = 200_000;
+
+// ── Fase 1: variantes clean_metadata ───────────────────────────────
+// Preparadas ANTES dos jobs de efeito: são stream copy (rápidas, ~5–20s) e
+// destravam posts que estão esperando em `pending`. Orçamento próprio para que
+// uma fila grande de variantes nunca deixe os efeitos sem tempo nenhum.
+const VARIANT_BUDGET_MS = 90_000;
+const VARIANT_FETCH_LIMIT = 10;
 
 interface JobRow {
   id:         string;
@@ -97,6 +105,66 @@ export async function GET(req: NextRequest) {
     console.warn("[process-videos] Falha no auto-healing:", String(e));
   }
 
+  // ══ FASE 1: variantes clean_metadata (opt-in do usuário) ════════════════
+  const runStartGlobal = Date.now();
+  let variantsDone = 0;
+  let variantsFailed = 0;
+
+  const { data: queuedVariants } = await (admin as any)
+    .from("video_variants")
+    .select("id, source_url, source_hash, attempts")
+    .eq("status", "queued")
+    .eq("processing_mode", "clean_metadata")
+    .order("created_at", { ascending: true })
+    .limit(VARIANT_FETCH_LIMIT);
+
+  for (const variant of ((queuedVariants ?? []) as { id: string; source_url: string; source_hash: string; attempts: number | null }[])) {
+    if (Date.now() - runStartGlobal > VARIANT_BUDGET_MS) {
+      console.log("[process-videos] ⏱️ Orçamento de variantes esgotado — restante fica pro próximo ciclo.");
+      break;
+    }
+
+    // Claim atômico: só uma invocação do cron processa cada variante.
+    const { data: claimed } = await (admin as any)
+      .from("video_variants")
+      .update({ status: "processing", updated_at: new Date().toISOString() })
+      .eq("id", variant.id)
+      .eq("status", "queued")
+      .select("id");
+    if (!claimed?.length) continue;
+
+    const result = await prepareCleanMetadataVariant(admin, variant);
+    if (result.ok) variantsDone++;
+    else {
+      variantsFailed++;
+      console.error(`[process-videos] ✗ variante ${variant.id.slice(0, 8)}: ${result.error.slice(0, 200)}`);
+    }
+  }
+
+  // Auto-healing de variantes presas em "processing" (função morta no meio).
+  try {
+    const variantStuckCutoff = new Date(now.getTime() - 15 * 60_000).toISOString();
+    await (admin as any)
+      .from("video_variants")
+      .update({ status: "queued" })
+      .eq("status", "processing")
+      .lt("updated_at", variantStuckCutoff);
+  } catch (e) {
+    console.warn("[process-videos] Falha no auto-healing de variantes:", String(e));
+  }
+
+  // Variantes são derivadas — sempre regeneráveis a partir do original.
+  // Poda as ociosas para o Storage não crescer indefinidamente.
+  try {
+    await cleanupStaleVariants(admin);
+  } catch (e) {
+    console.warn("[process-videos] Falha na limpeza de variantes ociosas:", String(e));
+  }
+
+  if (variantsDone || variantsFailed) {
+    console.log(`[process-videos] Variantes: ${variantsDone} pronta(s), ${variantsFailed} erro(s).`);
+  }
+
   // ── Busca e reclama até FETCH_LIMIT jobs ────────────────────────────────────
   const { data: jobs, error: fetchErr } = await (admin as any)
     .from("video_processing_jobs")
@@ -112,8 +180,11 @@ export async function GET(req: NextRequest) {
   }
 
   if (!jobs?.length) {
-    console.log("[process-videos] Fila vazia — nenhum job pendente.");
-    return NextResponse.json({ ok: true, processed: 0, errors: 0 });
+    console.log("[process-videos] Fila de efeitos vazia — nenhum job pendente.");
+    return NextResponse.json({
+      ok: true, processed: 0, errors: 0,
+      variants_done: variantsDone, variants_failed: variantsFailed,
+    });
   }
 
   // Marca como 'processing' atomicamente
@@ -127,7 +198,7 @@ export async function GET(req: NextRequest) {
 
   let processed = 0;
   let errors    = 0;
-  const runStart = Date.now();
+  const runStart = runStartGlobal;
 
   // ── Processa sequencialmente: cada encode tem CPU completo ──────────────────
   // Para de INICIAR novos jobs quando o orçamento estoura — o job em andamento
@@ -202,6 +273,9 @@ export async function GET(req: NextRequest) {
     `${remaining} job(s) restantes na fila.`
   );
 
-  return NextResponse.json({ ok: true, processed, errors, remaining });
+  return NextResponse.json({
+    ok: true, processed, errors, remaining,
+    variants_done: variantsDone, variants_failed: variantsFailed,
+  });
 }
 

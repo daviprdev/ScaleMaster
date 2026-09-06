@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Bot, Pencil, Trash2, X, ChevronDown, ChevronUp,
-  Folder, Film, Clock, Loader2, AlertCircle, Sparkles, Users, Search,
+  Folder, Film, Clock, Loader2, AlertCircle, Sparkles, Users, Search, SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 
 // Valor fixo enviado como auto_caption_type — não há mais seleção de categoria,
 // o pool em lib/auto-captions.ts é único e cobre temas livres.
@@ -26,6 +27,7 @@ interface Automation {
   captions: string[];
   auto_caption_enabled: boolean;
   auto_caption_type: string | null;
+  video_processing_mode?: string | null;
   account_folders: { id: string; name: string }[];
   video_folders: { id: string; name: string }[];
   account_count: number;
@@ -100,6 +102,7 @@ const DEFAULT_FORM = {
   captions: "",
   auto_caption_enabled: false,
   auto_caption_type: AUTO_CAPTION_TYPE_VALUE as string,
+  video_processing_mode: "original" as VideoProcessingMode,
   account_folder_ids: [] as string[],
   video_folder_ids: [] as string[],
 };
@@ -132,6 +135,8 @@ function AutomationModal({
           captions: editing.captions?.join("\n") ?? "",
           auto_caption_enabled: editing.auto_caption_enabled ?? false,
           auto_caption_type: editing.auto_caption_type ?? AUTO_CAPTION_TYPE_VALUE,
+          video_processing_mode:
+            editing.video_processing_mode === "clean_metadata" ? "clean_metadata" : "original",
           account_folder_ids: editing.account_folders.map((f) => f.id),
           video_folder_ids: editing.video_folders.map((f) => f.id),
         });
@@ -172,6 +177,7 @@ function AutomationModal({
         captions: form.auto_caption_enabled ? [] : form.captions.split("\n").map((c) => c.trim()).filter(Boolean),
         auto_caption_enabled: form.auto_caption_enabled,
         auto_caption_type: form.auto_caption_enabled ? form.auto_caption_type : null,
+        video_processing_mode: form.video_processing_mode,
         account_folder_ids: form.account_folder_ids,
         video_folder_ids: form.video_folder_ids,
       };
@@ -433,6 +439,20 @@ function AutomationModal({
                   />
                 </div>
               )}
+
+              {/* Processamento do vídeo */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <SlidersHorizontal size={13} className="text-white/35" />
+                  <span className="text-xs font-semibold uppercase tracking-widest text-white/35">
+                    Processamento do vídeo
+                  </span>
+                </div>
+                <VideoProcessingSelector
+                  value={form.video_processing_mode}
+                  onChange={(v) => setForm((p) => ({ ...p, video_processing_mode: v }))}
+                />
+              </div>
 
               {error && (
                 <p className="text-xs text-red-400 flex items-center gap-1.5">

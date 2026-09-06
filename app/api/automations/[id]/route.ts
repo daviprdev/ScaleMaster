@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { normalizeProcessingMode } from "@/lib/video-processing";
 
 export const runtime = "nodejs";
 
@@ -14,12 +15,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const {
     name, posts_per_day, offset_seconds, active, captions,
     auto_caption_enabled, auto_caption_type,
-    account_folder_ids, video_folder_ids,
+    account_folder_ids, video_folder_ids, video_processing_mode,
   } = body as {
     name?: string; posts_per_day?: number; offset_seconds?: number;
     active?: boolean; captions?: string[];
     auto_caption_enabled?: boolean; auto_caption_type?: string | null;
     account_folder_ids?: string[]; video_folder_ids?: string[];
+    video_processing_mode?: string;
   };
 
   const admin = getSupabaseAdmin();
@@ -36,6 +38,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (offset_seconds !== undefined) update.offset_seconds = offset_seconds;
   if (active !== undefined) update.active = active;
   if (captions !== undefined) update.captions = captions.map((c: string) => c.trim()).filter(Boolean);
+  // Só vale para posts criados DEPOIS: posts já agendados guardam a decisão
+  // que valia quando nasceram.
+  if (video_processing_mode !== undefined) update.video_processing_mode = normalizeProcessingMode(video_processing_mode);
   if (auto_caption_enabled !== undefined) {
     update.auto_caption_enabled = auto_caption_enabled;
     update.auto_caption_type = auto_caption_enabled ? (auto_caption_type ?? "curiosidades-gerais") : null;

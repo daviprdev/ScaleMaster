@@ -7,6 +7,7 @@ import {
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
+import { normalizeProcessingMode, resolveMediaUrlForMode } from "@/lib/video-processing";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -26,6 +27,7 @@ interface TemplateRow {
   interval_minutes: number;
   last_posted_at: string | null;
   status: "active" | "paused";
+  video_processing_mode: string | null;
 }
 
 interface TargetAccountRow {
@@ -64,7 +66,7 @@ export async function GET(req: NextRequest) {
 
   const { data: templates } = await admin
     .from("story_templates")
-    .select("id, user_id, media_url, media_type, interval_minutes, last_posted_at, status")
+    .select("id, user_id, media_url, media_type, interval_minutes, last_posted_at, status, video_processing_mode")
     .eq("status", "active");
 
   const eligible = ((templates ?? []) as TemplateRow[]).filter((t) => {
@@ -110,6 +112,46 @@ export async function GET(req: NextRequest) {
 
     const errors: string[] = [];
 
+    // Processamento de video: escolha explicita do usuario no template.
+    // original -> a midia hospedada vai direto pra Meta (zero FFmpeg).
+    // clean_metadata -> usa a variante preparada pelo cron process-videos; se
+    // ainda nao estiver pronta, o template espera o proximo ciclo (o claim ja
+    // foi feito, entao ele simplesmente reposta no intervalo seguinte).
+    const templateMode = normalizeProcessingMode(template.video_processing_mode);
+    const resolution = await resolveMediaUrlForMode(admin, {
+      mode: templateMode,
+      sourceUrl: template.media_url,
+      userId: template.user_id,
+      scope: `story-templates ${template.id.slice(0, 8)}`,
+    });
+
+    if (resolution.status === "pending") {
+      console.log(`[story-templates] template ${template.id.slice(0, 8)}: ${resolution.reason} - aguardando.`);
+      // Devolve o claim para que o template seja reprocessado no proximo ciclo
+      // em vez de perder a janela inteira do intervalo.
+      await admin
+        .from("story_templates")
+        .update({ last_posted_at: template.last_posted_at })
+        .eq("id", template.id);
+      continue;
+    }
+
+    if (resolution.status === "error") {
+      // Preparo da versao limpa falhou em definitivo: o template NAO reposta com
+      // a midia original. O claim e mantido (aguarda o proximo intervalo) e o
+      // motivo fica visivel em last_error na tela de Stories.
+      console.error(`[story-templates] template ${template.id.slice(0, 8)}: ${resolution.reason} - publicacao bloqueada.`);
+      await admin
+        .from("story_templates")
+        .update({
+          last_error: `[LIMPEZA DE METADADOS] ${resolution.reason}. Story nao publicado - a midia original nao substitui a versao limpa.`.slice(0, 500),
+        })
+        .eq("id", template.id);
+      continue;
+    }
+
+    const mediaUrlToPost = resolution.url;
+
     for (const row of (targets ?? []) as unknown as TargetAccountRow[]) {
       if (Date.now() - runStart > RUN_BUDGET_MS) {
         console.log(`[story-templates] ⏱ Budget esgotado no meio do template ${template.id} — contas restantes ficam pro próximo ciclo.`);
@@ -142,7 +184,7 @@ export async function GET(req: NextRequest) {
 
         const creationId = await createMediaContainerOnly(
           account.ig_business_account_id,
-          template.media_url,
+          mediaUrlToPost,
           "",
           token,
           proxy,

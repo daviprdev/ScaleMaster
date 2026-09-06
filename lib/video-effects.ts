@@ -1,16 +1,25 @@
 /**
- * video-effects.ts — Pipeline de processamento de vídeo anti-fingerprint
+ * video-effects.ts - Pipeline dos EFEITOS CRIATIVOS do Loop.
  *
- * Todo vídeo postado passa por processVideoForAccount() antes de ir para a Meta.
- * O FFmpeg roda na fila process-videos (não no cron de postagem) para não bloquear.
+ * ESCOPO (2026-09-06): roda EXCLUSIVAMENTE quando o usuario liga ao menos um
+ * efeito criativo no painel do Loop (espelhar, inverter, zoom, blur, ruido,
+ * anti-IA). Sem efeito ativo, nenhum job e enfileirado e este arquivo nunca e
+ * executado - o video original vai direto pra Meta.
  *
- * O que o pipeline faz por conta (parâmetros determinísticos via FNV-1a do account_id):
- *   - eq contrast/brightness/saturation ±2%   → quebra pHash colorimétrico
- *   - noise luma c0s=2–4                      → quebra pHash espacial
- *   - asetrate pitch ±1%                      → quebra Chromaprint/AudID
- *   - libx264 CRF 22 ultrafast                → novo bitstream limpo
- *   - -map_metadata -1 + creation_time fake   → remove rastreio + parece captura original
- *   - efeitos criativos do usuário (opcionais): hflip, negate, zoom, blur, noise+, antiAi
+ * E um conceito DIFERENTE de "Processamento do video" (original vs
+ * clean_metadata, em lib/video-processing.ts): efeito criativo altera imagem e
+ * audio, entao re-encoda por definicao. Limpeza de metadados nunca re-encoda.
+ *
+ * Chamado apenas pelo cron process-videos, que consome a fila
+ * video_processing_jobs preenchida pelo process-loops.
+ *
+ * O que o pipeline faz por conta (parametros deterministicos via FNV-1a do account_id):
+ *   - eq contrast/brightness/saturation +-2%
+ *   - noise luma c0s=2-4
+ *   - asetrate pitch +-1%
+ *   - libx264 CRF 22 ultrafast
+ *   - -map_metadata -1 (remove metadados da entrada; nada artificial e adicionado)
+ *   - efeitos criativos do usuario: hflip, negate, zoom, blur, noise+, antiAi
  */
 
 import ffmpeg from "fluent-ffmpeg";
@@ -23,16 +32,6 @@ import { fetch as undiciFetch } from "undici";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-
-export interface VideoEffectOptions {
-  mirror:     boolean;
-  invert:     boolean;
-  zoom:       boolean;
-  blur:       boolean;
-  noise:      boolean;
-  antiAi:     boolean;
-  accountId?: string;
-}
 
 // ── FNV-1a — hash determinístico por accountId ───────────────────────────────
 
@@ -78,15 +77,6 @@ function antiAiColorParams(accountId: string): { contrast: number; brightness: n
   };
 }
 
-// ── Data de criação fake (parece captura original) ────────────────────────────
-// Ausência de creation_time é sinal de "arquivo baixado". Injeta data realista.
-
-function randomCreationTime(): string {
-  const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
-  const ts = Date.now() - Math.floor(Math.random() * ninetyDaysMs);
-  return new Date(ts).toISOString();
-}
-
 // ── Upload para Supabase Storage (temp/) ─────────────────────────────────────
 
 async function uploadToTemp(filePath: string, uid: string): Promise<string> {
@@ -111,7 +101,7 @@ async function uploadToTemp(filePath: string, uid: string): Promise<string> {
  * Sempre re-encoda — nunca retorna URL original.
  *
  * Base (sempre ativo, parâmetros via FNV-1a do accountId):
- *   eq + noise luma + pitch shift de áudio + CRF 22 + fake creation_time
+ *   eq + noise luma + pitch shift de áudio + CRF 22
  *
  * Efeitos criativos (opcionais, ativados no painel do Loop):
  *   mirror, invert, zoom, blur, noise+, antiAi
@@ -184,10 +174,7 @@ export async function processVideoForAccount(
     // ── 4. Filtro de áudio: pitch único por conta (quebra Chromaprint/AudID) ─
     const newSampleRate = Math.round(44100 * pitchFactor);
 
-    // ── 5. Fake creation_time (parece captura original, não download) ─────────
-    const creationTime = randomCreationTime();
-
-    // ── 6. Encode ────────────────────────────────────────────────────────────
+    // ── 5. Encode ────────────────────────────────────────────────────────────
     const outputOptions: string[] = [
       "-map",      "0:v:0",           // extrai apenas a trilha de vídeo principal
       "-map",      "0:a:0?",          // extrai apenas a trilha de áudio principal (opcional)
@@ -200,8 +187,11 @@ export async function processVideoForAccount(
       "-bufsize",  "8M",
       "-c:a",      "aac",
       "-b:a",      "128k",
-      "-map_metadata", "-1",          // remove todos os metadados do container
-      "-metadata", `creation_time=${creationTime}`, // injeta data realista
+      // Remove os metadados do arquivo de ENTRADA (o FFmpeg os copiaria por
+      // padrao para a saida). Nao existe nenhum "-metadata" adicionado aqui:
+      // o pipeline nao inventa creation_time, UUID nem qualquer outro campo
+      // artificial — so aplica os efeitos que o usuario selecionou.
+      "-map_metadata", "-1",
       "-map_chapters", "-1",
       "-movflags", "+faststart",
       "-f",        "mp4",
@@ -249,32 +239,7 @@ export async function processVideoForAccount(
   }
 }
 
-// ── applyVideoEffects — wrapper de compatibilidade ───────────────────────────
-// Órfã hoje (zero call sites — confirmado via grep em 23/08/2026): chamadas em
-// publish-scheduled e posts/create foram removidas em 08/07 (ver CLAUDE.md,
-// "Fix — Views 0-200 no Automatizar"), que tirou o re-encode automático desses
-// dois fluxos. O processamento real do Loop passa por processVideoForAccount()
-// via a fila video_processing_jobs, não por esta função. Mantida por enquanto
-// caso algum caminho futuro precise do wrapper; não remover a lógica interna
-// (só o re-encode automático foi removido dos fluxos de postagem).
-// Se nenhum efeito criativo estiver ativo, retorna URL original sem re-encode.
-
-export async function applyVideoEffects(
-  videoUrl: string,
-  opts: VideoEffectOptions
-): Promise<string> {
-  const hasActiveEffect =
-    opts.mirror || opts.invert || opts.zoom ||
-    opts.blur   || opts.noise  || opts.antiAi;
-
-  if (!hasActiveEffect) return videoUrl;
-
-  return processVideoForAccount(videoUrl, opts.accountId ?? "", {
-    mirror: opts.mirror,
-    invert: opts.invert,
-    zoom:   opts.zoom,
-    blur:   opts.blur,
-    noise:  opts.noise,
-    antiAi: opts.antiAi,
-  });
-}
+// applyVideoEffects foi removido em 2026-09-06: era um wrapper orfao (zero call
+// sites desde 08/07/2026) e mantinha viva a ideia de que algum fluxo de
+// postagem chamaria efeitos automaticamente. Os efeitos continuam intactos em
+// processVideoForAccount, acionados so pela fila do Loop.

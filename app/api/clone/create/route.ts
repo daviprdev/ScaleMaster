@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
+import { normalizeProcessingMode } from "@/lib/video-processing";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,7 @@ interface CloneBody {
   start_at:           string;   // ISO datetime
   auto_caption_type?: string;
   profile_username?:  string;
+  video_processing_mode?: string; // "original" (padrao) | "clean_metadata"
 }
 
 function fisherYates<T>(arr: T[]): T[] {
@@ -47,6 +49,9 @@ export async function POST(req: NextRequest) {
   }
 
   const { account_ids, reels, reel_count, posts_per_day, start_at, auto_caption_type, profile_username } = body;
+  // Congelado por post: o Clone re-hospeda o reel do CDN sem alterar bytes; a
+  // limpeza opcional gera uma variante separada dessa copia re-hospedada.
+  const processingMode = normalizeProcessingMode(body.video_processing_mode);
   const isAutoCaption = !!auto_caption_type;
   const autoType = (auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
 
@@ -115,6 +120,7 @@ export async function POST(req: NextRequest) {
         status:               "pending",
         campaign_id:          campaignId,
         clone_source_profile: profile_username ?? null,
+        video_processing_mode: processingMode,
       });
     }
   }

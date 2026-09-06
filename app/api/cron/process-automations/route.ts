@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
 import { fetchVideoUsage, globalUsageByVideo, fetchAllRows } from "@/lib/video-history";
+import { normalizeProcessingMode } from "@/lib/video-processing";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
   // Busca automações ativas com suas relações
   const { data: automations, error } = await admin
     .from("automations")
-    .select("id, user_id, name, posts_per_day, captions, active, auto_caption_enabled, auto_caption_type")
+    .select("id, user_id, name, posts_per_day, captions, active, auto_caption_enabled, auto_caption_type, video_processing_mode")
     .eq("active", true);
 
   if (error) {
@@ -252,6 +253,9 @@ export async function GET(req: NextRequest) {
         status:       "pending",
         campaign_id:  automation.id,
         post_type:    "reel",
+        // Copia a decisao da automacao para o post concreto: alterar a
+        // automacao depois nao muda posts que ja foram agendados.
+        video_processing_mode: normalizeProcessingMode(automation.video_processing_mode),
       });
     });
 

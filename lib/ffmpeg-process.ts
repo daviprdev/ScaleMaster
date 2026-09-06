@@ -1,3 +1,47 @@
+/**
+ * ffmpeg-process.ts — Ponto ÚNICO de limpeza de metadados do projeto.
+ *
+ * REGRA ARQUITETURAL (2026-09-06): nenhuma mídia é transformada na ENTRADA.
+ * A Biblioteca guarda sempre o arquivo original. Esta função só roda quando o
+ * usuário escolheu explicitamente `video_processing_mode = "clean_metadata"`
+ * na configuração da publicação — ver lib/video-processing.ts.
+ *
+ * Pipeline (STREAM COPY — nunca re-encoda):
+ *   -map 0:v:0          — primeira trilha de vídeo; descarta data streams
+ *   -map 0:a:0?         — primeira trilha de áudio (opcional)
+ *   -c:v copy -c:a copy — stream copy: bitstream H.264/AAC preservado bit a bit
+ *   -map_metadata -1    — remove metadados do container (EXIF, GPS, encoder, título)
+ *   -map_chapters -1    — remove chapter markers
+ *   -movflags +faststart— move o átomo moov para o início do arquivo
+ *   -f mp4              — container MP4 estrito
+ *
+ * O QUE **NÃO** FAZEMOS AQUI, e por quê:
+ *
+ *   • `-bsf:v filter_units=remove_types=6` (remoção de SEI NAL units)
+ *     Removido em 2026-09-06. A justificativa histórica ("SEI = fingerprint
+ *     secreto da Meta") nunca foi comprovada — era uma hipótese. O único fato
+ *     de produção era: vídeos upados pelo browser davam ERROR/EXPIRED na Meta e
+ *     passavam a funcionar depois do pipeline. Só que esse mesmo pipeline também
+ *     aplica `+faststart`, e moov atom no fim do arquivo é uma causa conhecida e
+ *     documentada de rejeição por parte de quem consome o vídeo por URL remota —
+ *     explicação técnica concreta que não exige nenhuma hipótese sobre
+ *     fingerprint. Como SEI type 6 também carrega dados legítimos (closed
+ *     captions CEA-608/708, metadados HDR/mastering display, timecode, pic_timing
+ *     usado por alguns decoders), remover às cegas pode degradar o arquivo sem
+ *     benefício comprovado. Se um vídeo específico for rejeitado pela Meta e o
+ *     remux com faststart não resolver, o filtro pode voltar como opção
+ *     explícita — nunca como comportamento padrão.
+ *
+ *   • NAL type 5 (IDR keyframes) — NUNCA removido. Removê-lo destrói o vídeo.
+ *
+ *   • `-metadata creation_time=<data aleatória>` — removido. Injetar data falsa
+ *     é transformação deliberada de conteúdo, não limpeza.
+ *
+ *   • Qualquer re-encode (libx264/CRF/noise/hue/eq/volume/atempo/setpts/
+ *     unsharp/blur/crop/scale). Efeitos criativos têm pipeline próprio em
+ *     lib/video-effects.ts e só rodam quando o usuário liga um efeito no Loop.
+ */
+
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import * as fs from "fs";
@@ -14,37 +58,35 @@ export interface ProcessResult {
   cleanup: () => void;
 }
 
+/** Opções de saída da limpeza. Exportadas para auditoria/teste. */
+export const CLEAN_METADATA_OUTPUT_OPTIONS: string[] = [
+  "-map", "0:v:0",
+  "-map", "0:a:0?",
+  "-c:v", "copy",
+  "-c:a", "copy",
+  "-map_metadata", "-1",
+  "-map_chapters", "-1",
+  "-movflags", "+faststart",
+  "-f", "mp4",
+];
+
+const DOWNLOAD_TIMEOUT_MS = 45_000;
+const FFMPEG_TIMEOUT_MS = 60_000;
+
 /**
- * Downloads a video and re-packages it via pure stream extraction.
- *
- * Pipeline (Pure Extraction):
- *   -map 0:v:0                         — first video track only; discards data streams
- *   -map 0:a:0?                        — first audio track only (? = optional)
- *   -c:v copy -c:a copy                — stream copy; zero re-encoding, 100% quality
- *   -bsf:v filter_units=remove_types=6 — strips all SEI NAL units (H.264 NAL unit type 6).
- *                                        SEI NAL units carry SEI payload types:
- *                                          payload 5 (user_data_unregistered): CDN tracking UUIDs
- *                                          payload 4 (user_data_registered):   Instagram/TikTok fingerprints
- *                                        NAL unit type 5 = IDR keyframes — must NOT be removed.
- *                                        These survive -map_metadata because they are in the
- *                                        video bitstream, not in MP4 container atoms.
- *   -map_metadata -1                   — strips container-level metadata (EXIF, GPS, encoder)
- *   -map_chapters -1                   — removes chapter markers
- *   -movflags +faststart               — moov atom at front for progressive web playback
- *   -f mp4                             — strict MP4 container
+ * Baixa `videoUrl` e devolve uma cópia limpa em /tmp (stream copy).
+ * NÃO altera nada no banco nem no Storage — quem chama decide onde guardar.
  */
-export async function downloadAndStripMetadata(
-  videoUrl: string
-): Promise<ProcessResult> {
+export async function downloadAndCleanMetadata(videoUrl: string): Promise<ProcessResult> {
   const tmpDir = os.tmpdir();
   const uid = crypto.randomUUID();
-  const inputPath = path.join(tmpDir, `nexus_in_${uid}.mp4`);
-  const outputPath = path.join(tmpDir, `nexus_out_${uid}.mp4`);
+  const inputPath = path.join(tmpDir, `clean_in_${uid}.mp4`);
+  const outputPath = path.join(tmpDir, `clean_out_${uid}.mp4`);
 
   // undici bypasses Next.js 15's patched global fetch (which strips dispatcher
   // and can corrupt binary responses from Supabase Storage CDN redirects).
   const response = await undiciFetch(videoUrl, {
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new Error(`Falha ao baixar vídeo: HTTP ${response.status}`);
@@ -53,40 +95,33 @@ export async function downloadAndStripMetadata(
   if (buffer.byteLength < 1024) {
     throw new Error(`Arquivo muito pequeno para ser um vídeo válido: ${buffer.byteLength} bytes`);
   }
-  console.log(`[ffmpeg-process] Download OK: ${(buffer.byteLength / 1024).toFixed(0)} KB de ${videoUrl.split("/").pop()}`);
   fs.writeFileSync(inputPath, Buffer.from(buffer));
 
-  await new Promise<void>((resolve, reject) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const cmd = ffmpeg(inputPath)
-      .outputOptions([
-        "-map 0:v:0",
-        "-map 0:a:0?",
-        "-c:v",          "copy",
-        "-c:a",          "copy",
-        "-bsf:v",        "filter_units=remove_types=6",
-        "-map_metadata", "-1",
-        "-map_chapters", "-1",
-        "-movflags",     "+faststart",
-        "-f",            "mp4",
-      ])
-      .output(outputPath)
-      .on("end",   () => { clearTimeout(timer); resolve(); })
-      .on("error", (err: Error) => { clearTimeout(timer); reject(new Error(`FFmpeg: ${err.message}`)); });
-    cmd.run();
-    timer = setTimeout(() => {
-      try { (cmd as any).kill("SIGKILL"); } catch { /* ok */ }
-      reject(new Error("FFmpeg strip timeout (>15s)"));
-    }, 15_000);
-  });
-
-  const stats = fs.statSync(outputPath);
-
-  const cleanup = () => {
+  const cleanupAll = () => {
     for (const p of [inputPath, outputPath]) {
       try { fs.unlinkSync(p); } catch { /* ok */ }
     }
   };
 
-  return { outputPath, fileSize: stats.size, cleanup };
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const cmd = ffmpeg(inputPath)
+        .outputOptions(CLEAN_METADATA_OUTPUT_OPTIONS)
+        .output(outputPath)
+        .on("end", () => { clearTimeout(timer); resolve(); })
+        .on("error", (err: Error) => { clearTimeout(timer); reject(new Error(`FFmpeg: ${err.message}`)); });
+      cmd.run();
+      timer = setTimeout(() => {
+        try { (cmd as unknown as { kill: (s: string) => void }).kill("SIGKILL"); } catch { /* ok */ }
+        reject(new Error(`FFmpeg clean timeout (>${FFMPEG_TIMEOUT_MS / 1000}s)`));
+      }, FFMPEG_TIMEOUT_MS);
+    });
+  } catch (err) {
+    cleanupAll();
+    throw err;
+  }
+
+  const stats = fs.statSync(outputPath);
+  return { outputPath, fileSize: stats.size, cleanup: cleanupAll };
 }

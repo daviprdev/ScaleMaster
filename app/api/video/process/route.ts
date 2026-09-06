@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import * as fs from "fs";
 import * as path from "path";
-import { downloadAndStripMetadata } from "@/lib/ffmpeg-process";
+import { downloadOriginalMedia } from "@/lib/media-ingest";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,6 +29,10 @@ export const maxDuration = 300;
 //     owner: string
 //   }
 // }
+//
+// INGESTÃO SEM ALTERAÇÃO (2026-09-06): salva o arquivo ORIGINAL, byte a byte.
+// Nenhum FFmpeg roda aqui. A limpeza de metadados é opt-in na configuração da
+// publicação (video_processing_mode) e gera uma VARIANTE separada.
 // ─────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -80,23 +83,18 @@ export async function POST(req: NextRequest) {
   }
   const userId = user.id;
 
-  let cleanup: (() => void) | null = null;
-
   try {
-    // 1. Baixa e remove metadados via FFmpeg
-    const result = await downloadAndStripMetadata(videoUrl);
-    cleanup = result.cleanup;
+    // 1. Baixa os bytes ORIGINAIS (sem transformação)
+    const fileBuffer = await downloadOriginalMedia(videoUrl);
 
     // 2. Gera nome do arquivo no Storage
     const timestamp = Date.now();
     const baseName = filename
       ? filename.replace(/[^a-z0-9_-]/gi, "_")
       : `reel_${timestamp}`;
-    const storagePath = `videos/${baseName}_clean_${timestamp}.mp4`;
+    const storagePath = `videos/${baseName}_${timestamp}.mp4`;
 
-    // 3. Lê o arquivo processado e faz upload para o Supabase Storage
-    const fileBuffer = fs.readFileSync(result.outputPath);
-
+    // 3. Sobe os MESMOS bytes para o Supabase Storage
     const { error: uploadError } = await getSupabaseAdmin().storage
       .from("videos-library")
       .upload(storagePath, fileBuffer, {
@@ -124,7 +122,7 @@ export async function POST(req: NextRequest) {
         original_url: videoUrl,
         storage_path: storagePath,
         public_url: publicUrl,
-        file_size: result.fileSize,
+        file_size: fileBuffer.byteLength,
         owner_username: reelData?.owner ?? null,
         caption: reelData?.caption ?? null,
         views: reelData?.views ?? 0,
@@ -143,8 +141,5 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erro desconhecido";
     return NextResponse.json({ error: message }, { status: 500 });
-  } finally {
-    // Sempre limpa os arquivos temporários
-    cleanup?.();
   }
 }

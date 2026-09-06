@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { normalizeProcessingMode } from "@/lib/video-processing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -124,11 +125,13 @@ export async function POST(req: NextRequest) {
     auto_caption_type = null,
     account_folder_ids = [],
     video_folder_ids = [],
+    video_processing_mode,
   } = body as {
     name?: string; posts_per_day?: number; offset_seconds?: number;
     active?: boolean; captions?: string[];
     auto_caption_enabled?: boolean; auto_caption_type?: string | null;
     account_folder_ids?: string[]; video_folder_ids?: string[];
+    video_processing_mode?: string;
   };
 
   const admin = getSupabaseAdmin();
@@ -159,7 +162,7 @@ export async function POST(req: NextRequest) {
 
   const { data: automation, error } = await admin
     .from("automations")
-    .insert({ user_id: user.id, name: name.trim(), posts_per_day, offset_seconds, active, captions: captions.map((c: string) => c.trim()).filter(Boolean), auto_caption_enabled, auto_caption_type: auto_caption_enabled ? auto_caption_type : null })
+    .insert({ user_id: user.id, name: name.trim(), posts_per_day, offset_seconds, active, captions: captions.map((c: string) => c.trim()).filter(Boolean), auto_caption_enabled, auto_caption_type: auto_caption_enabled ? auto_caption_type : null, video_processing_mode: normalizeProcessingMode(video_processing_mode) })
     .select()
     .single();
 

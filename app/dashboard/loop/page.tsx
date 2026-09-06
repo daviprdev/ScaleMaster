@@ -9,10 +9,11 @@ import {
   Loader2, AlertCircle, ChevronDown, Info, Film, AlertTriangle,
   BarChart2, Heart, MessageCircle, Eye, Crown, TrendingUp, ChevronUp,
   Save, Library, BookMarked, Shuffle, CheckCircle2,
-  ZoomIn, Waves, Droplets, Shield, Sparkles,
+  ZoomIn, Waves, Droplets, Shield, Sparkles, SlidersHorizontal,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -62,6 +63,7 @@ interface Loop {
   effect_blur:     boolean;
   effect_noise:    boolean;
   effect_anti_ai:  boolean;
+  video_processing_mode?: string | null;
   status: "active" | "paused";
   created_at: string;
   loop_accounts?: LoopAccountData[];
@@ -90,6 +92,7 @@ interface FormData {
   autoCaptionEnabled: boolean;
   autoCaptionType: string;
   accountStaggerSeconds: number | null;
+  videoProcessingMode: VideoProcessingMode;
 }
 
 interface SavedCaption {
@@ -128,6 +131,7 @@ const DEFAULT_FORM: FormData = {
   autoCaptionEnabled: false,
   autoCaptionType: AUTO_CAPTION_TYPE_VALUE,
   accountStaggerSeconds: null,
+  videoProcessingMode: "original",
 };
 
 // ── Analytics types ───────────────────────────────────────────
@@ -1223,6 +1227,8 @@ function LoopFormModal({
         autoCaptionEnabled: editingLoop.auto_caption_enabled ?? false,
         autoCaptionType: editingLoop.auto_caption_type ?? AUTO_CAPTION_TYPE_VALUE,
         accountStaggerSeconds: (editingLoop as any).account_stagger_seconds ?? null,
+        videoProcessingMode:
+          editingLoop.video_processing_mode === "clean_metadata" ? "clean_metadata" : "original",
       };
     }
     return DEFAULT_FORM;
@@ -1620,9 +1626,22 @@ function LoopFormModal({
             )}
           </div>
 
-          {/* Efeitos */}
+          {/* Processamento do vídeo (limpeza — conceito separado dos efeitos) */}
           <div>
-            <SectionLabel icon={Contrast} label="Efeitos de Vídeo" />
+            <SectionLabel icon={SlidersHorizontal} label="Processamento do vídeo" />
+            <VideoProcessingSelector
+              value={form.videoProcessingMode}
+              onChange={v => update("videoProcessingMode", v)}
+            />
+          </div>
+
+          {/* Efeitos criativos — pipeline próprio, re-encodam por definição */}
+          <div>
+            <SectionLabel icon={Contrast} label="Efeitos Criativos" />
+            <p className="text-[11px] text-white/35 -mt-2 mb-3">
+              Alteram a imagem/áudio e por isso re-encodam o vídeo. Independentes do
+              processamento acima; sem nenhum efeito ativo, nenhum re-encode acontece.
+            </p>
             <div className="space-y-2.5">
               <div className="flex items-center justify-between p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
                 <div className="flex items-center gap-3">
@@ -1809,6 +1828,7 @@ export default function LoopPage() {
       auto_caption_enabled: form.autoCaptionEnabled,
       auto_caption_type: form.autoCaptionEnabled ? form.autoCaptionType : null,
       account_stagger_seconds: form.accountStaggerSeconds,
+      video_processing_mode: form.videoProcessingMode,
       account_ids: form.accountMode === "folder" ? [] : form.accountIds,
     };
 

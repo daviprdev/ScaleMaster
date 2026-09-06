@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { normalizeProcessingMode } from "@/lib/video-processing";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,9 +37,17 @@ export async function PATCH(
   const scalars = ["status", "name", "folder_id", "account_folder_id", "is_infinite", "cycles",
     "interval_minutes", "media_limit", "captions", "cover_image_url",
     "effect_mirror", "effect_invert", "effect_zoom", "effect_blur", "effect_noise", "effect_anti_ai",
-    "auto_caption_enabled", "auto_caption_type", "account_stagger_seconds"];
+    "auto_caption_enabled", "auto_caption_type", "account_stagger_seconds",
+    "video_processing_mode"];
   for (const key of scalars) {
     if (!(key in body)) continue;
+
+    if (key === "video_processing_mode") {
+      // Só afeta publicações CRIADAS a partir daqui — posts/containers já
+      // agendados guardam a decisão que valia no momento em que nasceram.
+      updatePayload[key] = normalizeProcessingMode(body[key]);
+      continue;
+    }
 
     if (key === "captions") {
       // Legenda vem EXCLUSIVAMENTE da configuração do loop (campo preenchido pelo usuário no UI).

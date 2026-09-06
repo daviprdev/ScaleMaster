@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { normalizeProcessingMode } from "@/lib/video-processing";
 
 export const runtime = "nodejs";
 
@@ -8,6 +9,7 @@ interface PostNowBody {
   account_ids: string[];
   media_url: string;
   media_type: "image" | "video";
+  video_processing_mode?: string; // "original" (padrao) | "clean_metadata"
 }
 
 // Publica 1 mídia como Story AGORA para as contas selecionadas. Reaproveita o
@@ -33,6 +35,9 @@ export async function POST(req: NextRequest) {
   }
 
   const { account_ids, media_url, media_type } = body;
+  // Imagens ignoram o modo na hora de publicar (nao ha stream copy de video),
+  // mas a escolha e persistida do mesmo jeito para auditoria.
+  const processingMode = normalizeProcessingMode(body.video_processing_mode);
 
   if (!account_ids?.length)
     return NextResponse.json({ error: "Selecione ao menos 1 conta." }, { status: 400 });
@@ -68,6 +73,7 @@ export async function POST(req: NextRequest) {
     status: "pending",
     campaign_id: null,
     post_type: "story",
+    video_processing_mode: processingMode,
   }));
 
   const { error } = await admin.from("scheduled_posts").insert(rows);

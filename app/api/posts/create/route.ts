@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount, proxyInit } from "@/lib/proxy";
+import { normalizeProcessingMode, resolveMediaUrlNow, isImageMedia } from "@/lib/video-processing";
 import { fetch as undiciFetch, type ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
@@ -68,9 +69,11 @@ export async function POST(req: NextRequest) {
     post_type: "reel" | "feed" | "story";
     scheduled_for: string | null;
     account_ids: string[];
+    video_processing_mode?: string;
   };
 
   const { media_url, caption, first_comment, post_type, scheduled_for, account_ids } = body;
+  const processingMode = normalizeProcessingMode(body.video_processing_mode);
 
   if (!media_url) return NextResponse.json({ error: "URL da mídia obrigatória." }, { status: 400 });
   if (!account_ids?.length) return NextResponse.json({ error: "Selecione ao menos uma conta." }, { status: 400 });
@@ -189,10 +192,33 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // SEM fingerprint automático: o re-encode degradava a qualidade e o
-    // Instagram suprimia o alcance (lição de 2026-06-18, repetida em 2026-07-08).
-    // A URL original vai direto para a Meta, igual ao process-loops.
-    const effectiveMediaUrl = media_url;
+    // Processamento de video: escolha explicita do usuario.
+    //   original       -> URL original direto pra Meta (zero FFmpeg). Padrao.
+    //   clean_metadata -> variante (stream copy) reutilizada entre contas.
+    // Aqui a preparacao e SINCRONA porque o usuario esta esperando a resposta —
+    // e a variante e deduplicada, entao so a primeira conta paga o custo.
+    // Nunca re-encoda. Se a limpeza falhar, a conta NAO publica: o video
+    // original nunca substitui a versao limpa que o usuario escolheu.
+    let effectiveMediaUrl = media_url;
+    if (!isImageMedia(media_url)) {
+      const prepared = await resolveMediaUrlNow(admin, {
+        mode: processingMode,
+        sourceUrl: media_url,
+        userId: user.id,
+        scope: `posts/create @${account.username}`,
+      });
+      if (!prepared.ok) {
+        const msg = `[LIMPEZA DE METADADOS] ${prepared.reason}. Nada foi publicado com o video original.`;
+        await admin
+          .from("single_post_accounts")
+          .update({ status: "failed", error_message: msg })
+          .eq("post_id", post.id)
+          .eq("account_id", account.id);
+        results.push({ account_id: account.id, username: account.username, status: "failed", error: msg });
+        continue;
+      }
+      effectiveMediaUrl = prepared.url;
+    }
 
     try {
       const result = await publishViaMetaAPI(

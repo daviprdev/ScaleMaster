@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import * as fs from "fs";
+import { randomUUID } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createClient } from "@/lib/supabase/server";
-import { sanitizeAndHashBust } from "@/utils/videoSanitizer";
+import { downloadOriginalMedia, buildLibraryStoragePath } from "@/lib/media-ingest";
 
 export const runtime = "nodejs";
 
 // 300 s on Vercel Pro; Hobby is capped at 60 s regardless of this setting.
-// Each video takes ~5–15 s (download + FFmpeg stream-copy + Storage upload).
-// Frontend sends batches of 3, so worst-case is ~45 s per request — safe on both plans.
+// Each video takes ~3–10 s (download + Storage upload — sem FFmpeg).
+// Frontend sends batches of 3, so worst-case is ~30 s per request — safe on both plans.
 export const maxDuration = 300;
 
 interface ReelPayload {
@@ -26,14 +26,18 @@ interface ReelPayload {
 // POST /api/inspirations/save-to-library
 // Body: { reels: ReelPayload[] }
 //
-// Full sanitization pipeline per reel:
-//   1. Download video buffer from CDN URL
-//   2. FFmpeg: strip ALL metadata (-map_metadata -1)          ← Level 1
-//   3. FFmpeg: inject UUID comment for unique file hash        ← Level 2 (Hash Busting)
-//   4. Upload sanitized buffer to Supabase Storage
-//   5. Insert record in videos_library with real storage_path
+// INGESTÃO SEM ALTERAÇÃO (2026-09-06): o arquivo salvo na Biblioteca é o
+// ORIGINAL baixado da fonte, byte a byte. Não roda FFmpeg, não remove
+// metadados/SEI, não injeta creation_time, não re-encoda.
+//   1. Download dos bytes originais do CDN
+//   2. Upload dos MESMOS bytes para o Supabase Storage
+//   3. Insert em videos_library apontando para o original
 //
-// Processed sequentially to avoid parallel FFmpeg processes hitting the timeout.
+// A limpeza de metadados existe, mas só na CONFIGURAÇÃO DA PUBLICAÇÃO
+// (video_processing_mode = "clean_metadata"), gerando uma VARIANTE separada
+// — ver lib/video-processing.ts. O original permanece imutável.
+//
+// Processed sequentially to avoid parallel downloads hitting the timeout.
 export async function POST(req: NextRequest) {
   const body = await req.json() as { reels: ReelPayload[] };
   const reels = Array.isArray(body.reels) ? body.reels : [];
@@ -66,19 +70,20 @@ export async function POST(req: NextRequest) {
 
   // Process one reel at a time — sequential to respect serverless memory/timeout limits
   for (const reel of valid) {
-    let cleanup: (() => void) | null = null;
     try {
       const baseName = `reel_${reel.owner || "unknown"}_${(reel.shortCode || reel.id).replace(/[^a-z0-9_-]/gi, "_")}`;
 
-      // ── Download → Strip metadata → Hash bust ────────────────
-      const result = await sanitizeAndHashBust(reel.videoUrl, baseName);
-      cleanup = result.cleanup;
+      // ── Download dos bytes ORIGINAIS (zero transformação) ─────────
+      const fileBuffer = await downloadOriginalMedia(reel.videoUrl);
+      const storagePath = buildLibraryStoragePath(baseName, randomUUID());
+      console.log(
+        `[save-to-library] original ${(fileBuffer.byteLength / 1_048_576).toFixed(1)} MB → ${storagePath}`
+      );
 
-      // ── Upload sanitized file to Supabase Storage ─────────────
-      const fileBuffer = fs.readFileSync(result.outputPath);
+      // ── Upload dos MESMOS bytes para o Supabase Storage ──────────
       const { error: uploadError } = await admin.storage
         .from("videos-library")
-        .upload(result.storagePath, fileBuffer, {
+        .upload(storagePath, fileBuffer, {
           contentType: "video/mp4",
           upsert: false,
         });
@@ -88,18 +93,18 @@ export async function POST(req: NextRequest) {
       // ── Get public URL ────────────────────────────────────────
       const { data: urlData } = admin.storage
         .from("videos-library")
-        .getPublicUrl(result.storagePath);
+        .getPublicUrl(storagePath);
 
       // ── Insert DB record ──────────────────────────────────────
       const { data, error: dbError } = await admin
         .from("videos_library")
         .insert({
           user_id: user.id,
-          filename: result.storagePath.split("/").pop()!,
+          filename: storagePath.split("/").pop()!,
           original_url: reel.videoUrl,
-          storage_path: result.storagePath,
+          storage_path: storagePath,
           public_url: urlData.publicUrl,
-          file_size: result.fileSize,
+          file_size: fileBuffer.byteLength,
           owner_username: reel.owner || null,
           caption: (reel.caption || "").slice(0, 500) || null,
           views: Number(reel.views) || 0,
@@ -119,8 +124,6 @@ export async function POST(req: NextRequest) {
         err instanceof Error ? err.message : err
       );
       errors++;
-    } finally {
-      cleanup?.();
     }
   }
 

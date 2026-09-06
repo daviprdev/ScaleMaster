@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { normalizeProcessingMode } from "@/lib/video-processing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,7 @@ interface CreateBody {
   source_account_id: string | null;
   account_ids: string[];
   interval_minutes?: number;
+  video_processing_mode?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -57,6 +59,7 @@ export async function POST(req: NextRequest) {
   if (!body) return NextResponse.json({ error: "Body inválido." }, { status: 400 });
 
   const { media_url, media_type, source_account_id, account_ids, interval_minutes } = body;
+  const processingMode = normalizeProcessingMode(body.video_processing_mode);
 
   if (!media_url) return NextResponse.json({ error: "Mídia obrigatória." }, { status: 400 });
   if (media_type !== "image" && media_type !== "video")
@@ -85,6 +88,7 @@ export async function POST(req: NextRequest) {
       interval_minutes: interval_minutes && interval_minutes > 0 ? interval_minutes : 1380,
       status: "active",
       last_posted_at: null,
+      video_processing_mode: processingMode,
     })
     .select("id")
     .single();

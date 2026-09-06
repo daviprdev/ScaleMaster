@@ -6,9 +6,10 @@ import {
   Users, Film, CalendarDays, Send, FolderOpen, X, Check,
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
   Shuffle, Zap, List, Library, Save, BookMarked, BarChart2,
-  RefreshCw, ChevronDown, Sparkles, Pencil,
+  RefreshCw, ChevronDown, Sparkles, Pencil, SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -1134,6 +1135,9 @@ export default function PostarPage() {
   const [captions, setCaptions] = useState<string[]>(["", ""]);
   const [autoCaptionEnabled, setAutoCaptionEnabled] = useState(false);
 
+  // Processamento do video (opt-in) - padrao: arquivo original, zero FFmpeg
+  const [videoProcessingMode, setVideoProcessingMode] = useState<VideoProcessingMode>("original");
+
   // Submit
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -1268,6 +1272,7 @@ export default function PostarPage() {
           account_stagger_seconds: accountStaggerSeconds,
           burst_mode: burstMode,
           sync_folder_ids: syncFolders ? fullySelectedFolders.map(g => g.id) : [],
+          video_processing_mode: videoProcessingMode,
         }),
       });
 
@@ -1956,6 +1961,15 @@ export default function PostarPage() {
               {!autoCaptionEnabled && (
                 <CaptionEditor captions={captions} onChange={setCaptions} />
               )}
+            </SectionCard>
+
+            {/* 5. Processamento do video */}
+            <SectionCard>
+              <SectionLabel Icon={SlidersHorizontal}>Processamento do vídeo</SectionLabel>
+              <VideoProcessingSelector
+                value={videoProcessingMode}
+                onChange={setVideoProcessingMode}
+              />
             </SectionCard>
 
             {/* Error */}

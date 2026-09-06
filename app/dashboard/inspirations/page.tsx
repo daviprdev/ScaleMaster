@@ -487,10 +487,11 @@ export default function InspiracoesPage() {
 
     const filename = `autoscale_reel_${reel.id || Date.now()}.mp4`;
     const encoded  = `url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(filename)}`;
-    // HEAD uses the lightweight proxy (no FFmpeg) — resolves in <500 ms
+    // HEAD: validação rápida da URL — resolve em <500 ms
     const headUrl  = `/api/proxy-download?${encoded}`;
-    // GET uses the sanitizing route — double-pass FFmpeg before delivery
-    const proxyUrl = `/api/proxy-sanitize-download?${encoded}`;
+    // GET: streaming puro do arquivo ORIGINAL. Zero FFmpeg (2026-09-06) — o
+    // download entrega exatamente os bytes da fonte, sem remux/strip/metadata.
+    const proxyUrl = `/api/proxy-download?${encoded}`;
 
     console.log(`[download] ${filename} ← ${videoUrl.slice(0, 80)}…`);
 
@@ -511,9 +512,9 @@ export default function InspiracoesPage() {
       );
     }
 
-    // Step 2 — Trigger native browser Save-As via the sanitized endpoint.
-    // The server runs double-pass FFmpeg before sending; the browser's native
-    // download bar shows progress without any blob in JS memory.
+    // Step 2 — Trigger native browser Save-As.
+    // O servidor só repassa os bytes originais (ou redireciona pro CDN); a barra
+    // de download nativa mostra o progresso sem blob nenhum na memória do JS.
     const a = document.createElement("a");
     a.style.display = "none";
     a.href = proxyUrl;

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import * as fs from "fs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   createMediaContainerOnly,
@@ -8,7 +7,12 @@ import {
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getProxyForAccount, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
-import { downloadAndStripMetadata } from "@/lib/ffmpeg-process";
+import {
+  normalizeProcessingMode,
+  resolveMediaUrlForMode,
+  isImageMedia,
+  type VideoProcessingMode,
+} from "@/lib/video-processing";
 import { isAccountDeadError, markDeadAccounts, type DeadAccountCandidate } from "@/lib/account-health";
 
 export const runtime = "nodejs";
@@ -21,21 +25,12 @@ const BATCH_SIZE = 20;
 // 1 min) se sobrepondo, então é seguro usar quase todo o maxDuration.
 const RUN_BUDGET_MS = 250_000;
 
-// Reserva de tempo para o strip pipeline por vídeo (download + FFmpeg + upload)
-const STRIP_RESERVE_MS = 30_000;
-
 // Cap de tentativas para ERROR/EXPIRED da Meta (vídeo permanentemente rejeitado,
 // ex: codec incompatível) — sem isso, o post é recriado como container novo e
 // falha de novo a cada execução do cron, pra sempre. Requer scheduled_posts.retry_count
 // — ver supabase/scheduled_posts_retry_cap.sql.
 const MAX_ERROR_EXPIRED_RETRIES = 5;
 
-
-// Vídeos com esse padrão foram upados direto pelo browser (sem FFmpeg strip).
-// Contêm SEI NAL units tipo 5+6 que a Meta API rejeita → ERROR/EXPIRED.
-function needsStrip(url: string): boolean {
-  return url.includes("/videos/upload_");
-}
 
 interface AccountRow {
   id: string;
@@ -59,6 +54,7 @@ interface PostRow {
   creation_id: string | null;
   post_type: string | null;
   retry_count: number | null;
+  video_processing_mode: string | null;
   instagram_accounts: AccountRow | null;
   videos_library: { public_url: string } | null;
 }
@@ -81,12 +77,6 @@ const TRANSIENT_PATTERNS = [
 
 function isCloneUrl(url: string): boolean {
   return url.includes("instagram.com/reel/") || url.includes("instagram.com/p/");
-}
-
-// Imagens de story não passam por FFmpeg — detecta pela extensão da URL.
-function isImageMedia(url: string): boolean {
-  const clean = url.toLowerCase().split("?")[0];
-  return clean.endsWith(".jpg") || clean.endsWith(".jpeg") || clean.endsWith(".png");
 }
 
 function isTransientError(msg: string): boolean {
@@ -181,7 +171,7 @@ export async function GET(req: NextRequest) {
   // IMPORTANTE: não buscamos posts com instagram.com URLs — esses são tratados
   // pelo prefetch-clone-urls que resolve as URLs para Supabase antes de publicar.
   const SELECT_FIELDS =
-    "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, " +
+    "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, video_processing_mode, " +
     "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url), " +
     "videos_library(public_url)";
 
@@ -341,66 +331,65 @@ export async function GET(req: NextRequest) {
       let creationId = post.creation_id;
 
       if (!creationId) {
+        // -- PROCESSAMENTO DE VIDEO: escolha explicita do usuario ------------
+        // A decisao foi copiada para a linha do post no momento do agendamento
+        // (nunca lida da configuracao atual - mudar a config depois nao altera
+        // retroativamente posts ja agendados).
+        //
+        //   original       -> a URL do arquivo original vai DIRETO pra Meta. Zero FFmpeg.
+        //   clean_metadata -> usa a variante (stream copy) preparada pelo cron
+        //                    process-videos. Se ainda nao estiver pronta, o post
+        //                    volta pra "pending" e tenta no proximo ciclo - nunca
+        //                    falha por causa disso, e o FFmpeg nunca roda aqui.
+        const mode: VideoProcessingMode = normalizeProcessingMode(post.video_processing_mode);
         let effectiveVideoUrl = rawVideoUrl;
 
-        // Imagens de story não precisam de FFmpeg (nem strip nem fingerprint).
         if (isImageMedia(rawVideoUrl)) {
-          console.log(`[publish-scheduled] 🖼 Imagem de story @${account.username} — pulando FFmpeg.`);
-        }
+          console.log(`[publish-scheduled] Imagem de story @${account.username} - sem processamento.`);
+        } else {
+          const resolution = await resolveMediaUrlForMode(admin, {
+            mode,
+            sourceUrl: rawVideoUrl,
+            sourceVideoId: post.video_id,
+            userId: post.user_id,
+            scope: `publish-scheduled @${account.username}`,
+          });
 
-        // ── Strip de metadados para vídeos sem processamento FFmpeg ──────
-        // Vídeos upados via browser (/videos/upload_*) contêm SEI NAL units
-        // tipo 5+6 (fingerprints Instagram/TikTok) que a Meta API rejeita →
-        // status_code=ERROR durante processamento do container.
-        // Solução: download + stream copy + strip antes de criar o container.
-        if (!isImageMedia(rawVideoUrl) && needsStrip(rawVideoUrl) && Date.now() - runStart < RUN_BUDGET_MS - STRIP_RESERVE_MS) {
-          const strippedPath = `temp/strip_${post.id}.mp4`;
-          // Tenta reusar versão já stripada (caso de retry)
-          const { data: existing } = await admin.storage
-            .from("videos-library")
-            .list("temp", { search: `strip_${post.id}` });
-          const alreadyExists = existing?.some(f => f.name === `strip_${post.id}.mp4`);
-
-          if (alreadyExists) {
-            const { data: urlData } = admin.storage.from("videos-library").getPublicUrl(strippedPath);
-            effectiveVideoUrl = urlData.publicUrl;
-            console.log(`[publish-scheduled] ♻ Strip reutilizado @${account.username}`);
-          } else {
-            try {
-              console.log(`[publish-scheduled] ✂ Stripping @${account.username} — ${rawVideoUrl.slice(-40)}`);
-              const result = await downloadAndStripMetadata(rawVideoUrl);
-              const buf = fs.readFileSync(result.outputPath);
-              result.cleanup();
-              const { error: upErr } = await admin.storage
-                .from("videos-library")
-                .upload(strippedPath, buf, { contentType: "video/mp4", upsert: true });
-              if (!upErr) {
-                const { data: urlData } = admin.storage.from("videos-library").getPublicUrl(strippedPath);
-                effectiveVideoUrl = urlData.publicUrl;
-                // Persiste URL limpa para que retentativas não precisem re-strip
-                await admin.from("scheduled_posts")
-                  .update({ video_url: effectiveVideoUrl })
-                  .eq("id", post.id);
-                console.log(`[publish-scheduled] ✅ Strip concluído @${account.username} → ${effectiveVideoUrl.slice(-40)}`);
-              } else {
-                console.warn(`[publish-scheduled] ⚠ Upload strip falhou @${account.username}: ${upErr.message} — usando URL original.`);
-              }
-            } catch (stripErr) {
-              console.warn(`[publish-scheduled] ⚠ Strip falhou @${account.username}: ${stripErr instanceof Error ? stripErr.message : stripErr} — usando URL original.`);
-            }
+          if (resolution.status === "pending") {
+            await admin
+              .from("scheduled_posts")
+              .update({ status: "pending", error_message: `[AGUARDANDO] ${resolution.reason}` })
+              .eq("id", post.id);
+            summary.skipped++;
+            console.log(
+              `[publish-scheduled] @${account.username} - ${resolution.reason}; publica quando a variante ficar pronta.`
+            );
+            continue;
           }
-        } else if (!isImageMedia(rawVideoUrl) && needsStrip(rawVideoUrl)) {
-          // Budget insuficiente para strip — prossegue com URL original.
-          // Melhor tentar do que pular: se Meta aceitar, publica; se rejeitar (SEI),
-          // retenta com strip na próxima execução (creation_id=null após ERROR).
-          console.warn(`[publish-scheduled] ⏱ Budget insuficiente para strip @${account.username} — prosseguindo com URL original.`);
-        }
 
-        // SEM fingerprint automático: re-encode (libx264 CRF 22 + maxrate 4M +
-        // noise + pitch shift) degradava a qualidade → Instagram re-transcodifica
-        // de fonte ruim → retenção baixa → alcance suprimido (0–200 views vs 25k
-        // do Loop, que sempre postou a URL original). Mesma lição de 2026-06-18.
-        // A URL original do Supabase vai direto para a Meta, igual ao process-loops.
+          if (resolution.status === "error") {
+            // O preparo da versao limpa falhou em definitivo. O post NAO e
+            // publicado com o video original: o usuario escolheu clean_metadata
+            // e essa escolha e soberana. A linha continua no banco com o motivo,
+            // para o usuario decidir (corrigir a midia ou mudar o modo para
+            // "Sem limpeza", que e uma acao explicita dele).
+            await admin
+              .from("scheduled_posts")
+              .update({
+                status: "failed",
+                error_message: `[LIMPEZA DE METADADOS] ${resolution.reason}. O post NAO foi publicado com o video original - mude o modo para "Sem limpeza" se quiser publicar assim.`,
+                creation_id: null,
+              })
+              .eq("id", post.id);
+            summary.failed++;
+            console.error(
+              `[publish-scheduled] @${account.username} - limpeza de metadados falhou: ${resolution.reason}`
+            );
+            continue;
+          }
+
+          effectiveVideoUrl = resolution.url;
+        }
 
         // Guarda de segurança: não deve acontecer com a nova arquitetura
         if (isCloneUrl(effectiveVideoUrl)) {
