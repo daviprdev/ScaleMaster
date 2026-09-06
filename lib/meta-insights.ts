@@ -6,9 +6,8 @@
  * sincronização em lote (app/api/cron/sync-post-insights/route.ts).
  */
 
+// Insights é endpoint oficial da Meta: conexão direta, sem proxy.
 import { fetch as undiciFetch } from "undici";
-import { proxyInit } from "@/lib/proxy";
-import type { ProxyAgent } from "undici";
 
 const GRAPH_API = "https://graph.instagram.com/v21.0";
 
@@ -23,12 +22,11 @@ export interface PostInsights {
 
 async function fetchBasicMetrics(
   mediaId: string,
-  token: string,
-  proxy: ProxyAgent | null
+  token: string
 ): Promise<{ likes: number | null; comments: number | null }> {
   const res = await undiciFetch(
     `${GRAPH_API}/${mediaId}?fields=like_count,comments_count&access_token=${encodeURIComponent(token)}`,
-    { ...proxyInit(proxy), signal: AbortSignal.timeout(15_000) } as any
+    { signal: AbortSignal.timeout(15_000) }
   );
   const data = (await res.json()) as {
     like_count?: number;
@@ -44,13 +42,12 @@ async function fetchBasicMetrics(
 
 async function fetchInsightsMetrics(
   mediaId: string,
-  token: string,
-  proxy: ProxyAgent | null
+  token: string
 ): Promise<{ reach: number | null; plays: number | null; shares: number | null; saved: number | null }> {
   const metrics = ["reach", "views", "shares", "saved"].join(",");
   const res = await undiciFetch(
     `${GRAPH_API}/${mediaId}/insights?metric=${metrics}&period=lifetime&access_token=${encodeURIComponent(token)}`,
-    { ...proxyInit(proxy), signal: AbortSignal.timeout(15_000) } as any
+    { signal: AbortSignal.timeout(15_000) }
   );
   const data = (await res.json()) as {
     data?: Array<{ name: string; values: Array<{ value: number }> }>;
@@ -78,12 +75,11 @@ async function fetchInsightsMetrics(
 
 export async function fetchPostInsights(
   mediaId: string,
-  token: string,
-  proxy: ProxyAgent | null
+  token: string
 ): Promise<PostInsights> {
   const [basic, advanced] = await Promise.all([
-    fetchBasicMetrics(mediaId, token, proxy),
-    fetchInsightsMetrics(mediaId, token, proxy),
+    fetchBasicMetrics(mediaId, token),
+    fetchInsightsMetrics(mediaId, token),
   ]);
 
   return {

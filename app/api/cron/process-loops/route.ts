@@ -2,7 +2,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
-import { getProxyForAccount, recordProxyFailure } from "@/lib/proxy";
 import { getAutoCaption } from "@/lib/auto-captions";
 import { markDeadAccounts } from "@/lib/account-health";
 import { fetchVideoUsage, postedSet, globalUsageByVideo, fetchAllRows } from "@/lib/video-history";
@@ -11,7 +10,6 @@ import {
   resolveMediaUrlForMode,
   type VideoProcessingMode,
 } from "@/lib/video-processing";
-import type { ProxyAgent } from "undici";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -206,15 +204,13 @@ async function createContainerForAccount(
   // Atraso inicial antes da primeira tentativa de publicação.
   // Usado para escalonar containers criados no mesmo ciclo e evitar
   // o burst simultâneo que dispara "User is performing too many actions".
-  initialDelayMinutes = 0,
-  proxy: ProxyAgent | null = null
+  initialDelayMinutes = 0
 ): Promise<void> {
   const creationId = await createMediaContainerOnly(
     account.ig_business_account_id!,
     videoUrl,
     caption,
-    tokenToUse,
-    proxy
+    tokenToUse
   );
   const insertData: Record<string, unknown> = {
     user_id: loop.user_id,
@@ -611,7 +607,7 @@ async function processOneLoop(
   if (loop.account_folder_id) {
     const { data: folderAccounts } = await (admin as any)
       .from("instagram_accounts")
-      .select("id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, health_status, failover_priority, proxy_url")
+      .select("id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, health_status, failover_priority")
       .eq("folder_id", loop.account_folder_id)
       .eq("user_id", loop.user_id)
       .eq("is_active", true)
@@ -1159,15 +1155,10 @@ async function processOneLoop(
 
         // meta_access_token é garantidamente non-null aqui: a FASE 2a só retorna
         // kind="ready" após checar `!account.meta_access_token` e pular a conta.
-        const proxy = getProxyForAccount(account.id, account.proxy_url);
         let tokenToUse: string = account.meta_access_token!;
         if (isTokenExpiringSoon(account.token_expires_at, 7)) {
           try {
-            const { token, expiresAt } = await refreshMetaToken(
-              account.meta_access_token!,
-              account.fb_page_id,
-              proxy
-            );
+            const { token, expiresAt } = await refreshMetaToken(account.meta_access_token!, account.fb_page_id);
             await (admin as any)
               .from("instagram_accounts")
               .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })
@@ -1201,23 +1192,17 @@ async function processOneLoop(
           await createContainerForAccount(
             admin, account, loop, videoUrl, caption, tokenToUse,
             videoIdToUse, accountCycleNumber,
-            initialDelayMinutes,
-            proxy
+            initialDelayMinutes
           );
-        } catch (proxyErr) {
-          const proxyMsg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
-          if (proxyMsg.toLowerCase() === "fetch failed" && proxy !== null) {
-            // Proxy dedicado falhou → pula esta conta neste ciclo sem gravar container de erro.
-            // Tentará novamente no próximo interval_minutes.
-            console.error(
-              `[loop-cron] ⛔ @${account.username}: proxy falhou (fetch failed) — ` +
-              `conta pulada neste ciclo.`
-            );
-            await recordProxyFailure(admin, account.id, "loop", proxyMsg);
+        } catch (createErr) {
+          const createMsg = createErr instanceof Error ? createErr.message : String(createErr);
+          // Falha de rede com a Meta (não é resposta de erro dela): pula a conta
+          // neste ciclo sem gravar container de erro — tenta no próximo intervalo.
+          if (createMsg.toLowerCase() === "fetch failed") {
+            console.error(`[loop-cron] @${account.username}: rede falhou ao criar container — conta pulada neste ciclo.`);
             continue;
-          } else {
-            throw proxyErr;
           }
+          throw createErr;
         }
 
         newContainerIdx++;
@@ -1421,7 +1406,7 @@ export async function GET(req: NextRequest) {
         instagram_accounts (
           id, username, is_active, meta_access_token,
           ig_business_account_id, token_expires_at, fb_page_id,
-          health_status, failover_priority, proxy_url
+          health_status, failover_priority
         )
       )
     `)

@@ -1,5 +1,5 @@
-import { fetch as undiciFetch, type ProxyAgent } from "undici";
-import { proxyInit } from "@/lib/proxy";
+// Renovação de token é chamada oficial da Meta: conexão direta, sem proxy.
+import { fetch as undiciFetch } from "undici";
 
 const GRAPH_FB = "https://graph.facebook.com/v19.0";
 const GRAPH_IG = "https://graph.instagram.com";
@@ -23,17 +23,15 @@ export interface TokenRefreshResult {
 export async function refreshMetaToken(
   currentToken: string,
   fbPageId?: string | null,
-  proxy: ProxyAgent | null = null,
   appCredentials?: { clientId: string; clientSecret: string } | null
 ): Promise<TokenRefreshResult> {
   return fbPageId
-    ? refreshFacebookToken(currentToken, proxy, appCredentials)
-    : refreshInstagramToken(currentToken, proxy);
+    ? refreshFacebookToken(currentToken, appCredentials)
+    : refreshInstagramToken(currentToken);
 }
 
 async function refreshInstagramToken(
-  currentToken: string,
-  proxy: ProxyAgent | null = null
+  currentToken: string
 ): Promise<TokenRefreshResult> {
   const params = new URLSearchParams({
     grant_type: "ig_refresh_token",
@@ -41,7 +39,7 @@ async function refreshInstagramToken(
   });
   const res = await undiciFetch(
     `${GRAPH_IG}/refresh_access_token?${params}`,
-    proxyInit(proxy, { signal: AbortSignal.timeout(45_000) }) as any
+    { signal: AbortSignal.timeout(45_000) }
   );
   const data = (await res.json()) as {
     access_token?: string;
@@ -60,7 +58,6 @@ async function refreshInstagramToken(
 
 async function refreshFacebookToken(
   currentToken: string,
-  proxy: ProxyAgent | null = null,
   appCredentials?: { clientId: string; clientSecret: string } | null
 ): Promise<TokenRefreshResult> {
   const clientId = appCredentials?.clientId ?? process.env.NEXT_PUBLIC_META_CLIENT_ID!;
@@ -73,7 +70,7 @@ async function refreshFacebookToken(
   });
   const res = await undiciFetch(
     `${GRAPH_FB}/oauth/access_token?${params}`,
-    proxyInit(proxy, { signal: AbortSignal.timeout(45_000) }) as any
+    { signal: AbortSignal.timeout(45_000) }
   );
   const data = (await res.json()) as {
     access_token?: string;

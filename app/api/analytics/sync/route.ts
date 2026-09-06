@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { fetch as undiciFetch } from "undici";
-import { getProxyForAccount, proxyInit } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -17,18 +16,16 @@ interface AccountRow {
   posts_count: number | null;
   meta_access_token: string | null;
   ig_business_account_id: string | null;
-  proxy_url?: string | null;
 }
 
 async function fetchProfileFromAPI(
   igId: string,
   token: string,
-  proxy: ReturnType<typeof getProxyForAccount>
 ): Promise<{ followers_count: number | null; posts_count: number | null }> {
   try {
     const res = await undiciFetch(
       `${GRAPH_API}/${igId}?fields=followers_count,media_count&access_token=${encodeURIComponent(token)}`,
-      { ...proxyInit(proxy), signal: AbortSignal.timeout(15_000) } as any
+      { signal: AbortSignal.timeout(15_000) }
     );
     const data = (await res.json()) as {
       followers_count?: number;
@@ -80,7 +77,7 @@ export async function POST(req: NextRequest) {
   // Fetch accounts
   let query = admin
     .from("instagram_accounts")
-    .select("id, user_id, username, followers_count, posts_count, meta_access_token, ig_business_account_id, proxy_url")
+    .select("id, user_id, username, followers_count, posts_count, meta_access_token, ig_business_account_id")
     .neq("health_status", "error");
 
   if (!isCronCall && userId) query = query.eq("user_id", userId);
@@ -102,11 +99,9 @@ export async function POST(req: NextRequest) {
 
       // Get fresh data from Meta API if credentials exist
       if (account.meta_access_token && account.ig_business_account_id) {
-        const proxy = getProxyForAccount(account.id, account.proxy_url ?? null);
         const fresh = await fetchProfileFromAPI(
           account.ig_business_account_id,
-          account.meta_access_token,
-          proxy
+          account.meta_access_token
         );
         if (fresh.followers_count !== null) {
           followersCount = fresh.followers_count;

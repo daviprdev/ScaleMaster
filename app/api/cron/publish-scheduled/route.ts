@@ -6,7 +6,6 @@ import {
   publishReadyContainer,
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
-import { getProxyForAccount, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
 import {
   normalizeProcessingMode,
   resolveMediaUrlForMode,
@@ -40,7 +39,6 @@ interface AccountRow {
   ig_business_account_id: string | null;
   token_expires_at: string | null;
   fb_page_id: string | null;
-  proxy_url: string | null;
 }
 
 interface PostRow {
@@ -172,7 +170,7 @@ export async function GET(req: NextRequest) {
   // pelo prefetch-clone-urls que resolve as URLs para Supabase antes de publicar.
   const SELECT_FIELDS =
     "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, video_processing_mode, " +
-    "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url), " +
+    "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id), " +
     "videos_library(public_url)";
 
   // Stories furam a fila: usuário espera publicação quase imediata ("Postar agora"),
@@ -283,8 +281,6 @@ export async function GET(req: NextRequest) {
 
     attemptedAccounts.add(account.id);
 
-    const proxy = getProxyForAccount(account.id, account.proxy_url ?? null);
-
     console.log(
       `[publish-scheduled] Processando post ${post.id} | @${account.username} | ` +
         `creation_id=${post.creation_id ?? "null"} | elapsed=${Math.round((Date.now() - runStart) / 1000)}s`
@@ -311,8 +307,7 @@ export async function GET(req: NextRequest) {
         try {
           const { token, expiresAt } = await refreshMetaToken(
             account.meta_access_token,
-            account.fb_page_id,
-            proxy
+            account.fb_page_id
           );
           await admin
             .from("instagram_accounts")
@@ -400,7 +395,7 @@ export async function GET(req: NextRequest) {
         }
 
         console.log(
-          `[publish-scheduled] Criando container @${account.username} | proxy=${proxy ? "sim" : "não"} | ${effectiveVideoUrl.slice(0, 70)}…`
+          `[publish-scheduled] Criando container @${account.username} | ${effectiveVideoUrl.slice(0, 70)}…`
         );
         const mediaType = post.post_type === "story" ? "STORIES" : "REELS";
         creationId = await createMediaContainerOnly(
@@ -408,7 +403,6 @@ export async function GET(req: NextRequest) {
           effectiveVideoUrl,
           caption,
           tokenToUse,
-          proxy,
           mediaType
         );
         await admin
@@ -423,7 +417,7 @@ export async function GET(req: NextRequest) {
       }
 
       // ── FASE 2: Poll status ───────────────────────────────────────────
-      const pollStatus = await pollContainerStatusOnce(creationId, tokenToUse, proxy);
+      const pollStatus = await pollContainerStatusOnce(creationId, tokenToUse);
 
       if (pollStatus === "in_progress") {
         await admin
@@ -484,8 +478,7 @@ export async function GET(req: NextRequest) {
       const mediaId = await publishReadyContainer(
         account.ig_business_account_id,
         creationId,
-        tokenToUse,
-        proxy
+        tokenToUse
       );
 
       await admin
@@ -525,10 +518,6 @@ export async function GET(req: NextRequest) {
           .from("scheduled_posts")
           .update(retryUpdate)
           .eq("id", post.id);
-        // Falha de proxy → registra na conta para o ProxyOutageBanner do dashboard.
-        if (account.proxy_url && isProxyNetworkError(msg)) {
-          await recordProxyFailure(admin, account.id, "publish-scheduled", msg);
-        }
         summary.skipped++;
       } else {
         console.error(`[publish-scheduled] ✗ @${account.username} (${post.id}):`, msg);

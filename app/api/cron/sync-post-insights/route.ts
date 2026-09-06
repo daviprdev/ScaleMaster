@@ -12,14 +12,12 @@
  *   2. Post recente (<30d) sincronizado há mais de 24h — ainda ganhando views
  *   3. Post antigo sincronizado há mais de 7 dias — refresh raro (views já estabilizaram)
  *
- * Mesma política "sem proxy = sem sync" do resto do pipeline: contas sem
- * proxy dedicado ou com health_status='error' são puladas, sem fallback
- * para o IP da Vercel.
+ * Contas com health_status='error' são puladas. As chamadas de insights são
+ * server-to-server diretas com a Meta (sem proxy).
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getProxyForAccount, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
 import { fetchPostInsights } from "@/lib/meta-insights";
 
 export const runtime = "nodejs";
@@ -42,14 +40,13 @@ interface PostRow {
   instagram_accounts: {
     id: string;
     meta_access_token: string | null;
-    proxy_url: string | null;
     health_status: string;
   } | null;
 }
 
 function isEligible(p: PostRow, nowMs: number): boolean {
   if (!p.instagram_accounts || p.instagram_accounts.health_status === "error") return false;
-  if (!p.instagram_accounts.meta_access_token || !p.instagram_accounts.proxy_url) return false;
+  if (!p.instagram_accounts.meta_access_token) return false;
 
   if (!p.insights_fetched_at) return true;
 
@@ -75,7 +72,7 @@ export async function GET(request: NextRequest) {
     .from("scheduled_posts")
     .select(
       "id, media_id, published_at, insights_fetched_at, " +
-      "instagram_accounts(id, meta_access_token, proxy_url, health_status)"
+      "instagram_accounts(id, meta_access_token, health_status)"
     )
     .eq("status", "published")
     .not("media_id", "is", null)
@@ -107,11 +104,9 @@ export async function GET(request: NextRequest) {
     if (i > 0) await new Promise((r) => setTimeout(r, DELAY_MS));
 
     const account = post.instagram_accounts!;
-    const proxy = getProxyForAccount(account.id, account.proxy_url);
-    if (!proxy) { skipped++; continue; }
 
     try {
-      const metrics = await fetchPostInsights(post.media_id, account.meta_access_token!, proxy);
+      const metrics = await fetchPostInsights(post.media_id, account.meta_access_token!);
       await admin
         .from("scheduled_posts")
         .update({
@@ -127,9 +122,6 @@ export async function GET(request: NextRequest) {
       synced++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (isProxyNetworkError(msg)) {
-        await recordProxyFailure(admin, account.id, "cron/sync-post-insights", msg);
-      }
       console.warn(`[cron/sync-post-insights] Falha no post ${post.id}:`, msg);
       skipped++;
     }

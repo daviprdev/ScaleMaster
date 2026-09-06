@@ -6,7 +6,6 @@ import {
   publishReadyContainer,
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
-import { getProxyForAccount, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
 import { normalizeProcessingMode, resolveMediaUrlForMode } from "@/lib/video-processing";
 
 export const runtime = "nodejs";
@@ -41,7 +40,6 @@ interface TargetAccountRow {
     meta_access_token: string | null;
     token_expires_at: string | null;
     fb_page_id: string | null;
-    proxy_url: string | null;
   } | null;
 }
 
@@ -106,7 +104,7 @@ export async function GET(req: NextRequest) {
     const { data: targets } = await admin
       .from("story_template_accounts")
       .select(
-        "account_id, instagram_accounts(id, username, is_active, health_status, ig_business_account_id, meta_access_token, token_expires_at, fb_page_id, proxy_url)"
+        "account_id, instagram_accounts(id, username, is_active, health_status, ig_business_account_id, meta_access_token, token_expires_at, fb_page_id)"
       )
       .eq("template_id", template.id);
 
@@ -166,12 +164,11 @@ export async function GET(req: NextRequest) {
       }
 
       try {
-        const proxy = getProxyForAccount(account.id, account.proxy_url);
         let token = account.meta_access_token;
 
         if (isTokenExpiringSoon(account.token_expires_at, 7)) {
           try {
-            const refreshed = await refreshMetaToken(token, account.fb_page_id, proxy);
+            const refreshed = await refreshMetaToken(token, account.fb_page_id);
             await admin
               .from("instagram_accounts")
               .update({ meta_access_token: refreshed.token, token_expires_at: refreshed.expiresAt.toISOString() })
@@ -187,7 +184,6 @@ export async function GET(req: NextRequest) {
           mediaUrlToPost,
           "",
           token,
-          proxy,
           "STORIES"
         );
 
@@ -195,22 +191,18 @@ export async function GET(req: NextRequest) {
         let finished = false;
         for (let i = 0; i < 4 && !finished; i++) {
           if (i > 0) await new Promise((r) => setTimeout(r, 4_000));
-          const pollStatus = await pollContainerStatusOnce(creationId, token, proxy);
+          const pollStatus = await pollContainerStatusOnce(creationId, token);
           if (pollStatus === "finished") finished = true;
           else if (pollStatus === "error") throw new Error("Container retornou erro no processamento.");
         }
         if (!finished) throw new Error("Timeout aguardando processamento do container.");
 
-        await publishReadyContainer(account.ig_business_account_id, creationId, token, proxy);
+        await publishReadyContainer(account.ig_business_account_id, creationId, token);
         summary.published++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(`@${account.username}: ${msg}`);
         summary.failed++;
-        // Falha de proxy → registra na conta para o ProxyOutageBanner do dashboard.
-        if (account.proxy_url && isProxyNetworkError(msg)) {
-          await recordProxyFailure(admin, account.id, "story-templates", msg);
-        }
       }
     }
 

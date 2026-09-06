@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt } from "@/lib/encrypt";
-import { fetch as undiciFetch, type ProxyAgent } from "undici";
-import { getProxyForAccount, proxyInit } from "@/lib/proxy";
+import { fetch as undiciFetch } from "undici";
 import { claimProxyForAccount } from "@/lib/proxy-pool";
 
 export const dynamic = "force-dynamic";
@@ -84,18 +83,18 @@ async function resolveCredentials(
   return { appId, appSecret, metaAppId: null };
 }
 
-// Wrapper de fetch com timeout e proxy opcional — usa undiciFetch para evitar caching do Next.js 15
+// OAuth e troca de token são chamadas oficiais da Meta: conexão direta
+// server-to-server, autenticada pelo App (não pela conta) — undiciFetch para
+// evitar o caching do fetch global do Next.js 15.
 async function fetchWithTimeout(
   url: string,
   options?: RequestInit,
-  timeoutMs = FETCH_TIMEOUT_MS,
-  proxy?: ProxyAgent | null
+  timeoutMs = FETCH_TIMEOUT_MS
 ): Promise<Response> {
   try {
     return await undiciFetch(url, {
       ...options,
       signal: AbortSignal.timeout(timeoutMs),
-      ...(proxy ? { dispatcher: proxy } : {}),
     } as any) as unknown as Response;
   } catch (err) {
     const name = (err as Error).name;
@@ -103,32 +102,6 @@ async function fetchWithTimeout(
       throw new Error(`Timeout (${timeoutMs / 1000}s) ao contactar a Meta API. Tente novamente.`);
     }
     throw err;
-  }
-}
-
-// Erro de rede do proxy (morto/instável) — a requisição nem chegou à Meta.
-function isProxyNetworkError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
-  return msg.includes("fetch failed") || msg.includes("timeout");
-}
-
-// Executa a chamada à Meta com o proxy atual; se o proxy falhar com erro de rede,
-// retenta sem proxy (IP Vercel — aceitável no onboarding, evento único de setup)
-// e desativa o proxy para as chamadas seguintes do mesmo request.
-async function callMetaWithFallback<T>(
-  label: string,
-  holder: { agent: ProxyAgent | null },
-  fn: (proxy: ProxyAgent | null) => Promise<T>
-): Promise<T> {
-  try {
-    return await fn(holder.agent);
-  } catch (err) {
-    if (!holder.agent || !isProxyNetworkError(err)) throw err;
-    console.warn(
-      `[ig/callback] ${label}: falha de rede via proxy (${(err as Error).message}) — retry sem proxy.`
-    );
-    holder.agent = null;
-    return fn(null);
   }
 }
 
@@ -145,8 +118,7 @@ function detectRateLimit(res: Response): void {
 async function exchangeCode(
   code: string,
   appId: string,
-  appSecret: string,
-  proxy?: ProxyAgent | null
+  appSecret: string
 ): Promise<{ token: string; igUserId: string }> {
   const body = new URLSearchParams({
     client_id: appId,
@@ -160,7 +132,7 @@ async function exchangeCode(
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
-  }, FETCH_TIMEOUT_MS, proxy);
+  });
 
   detectRateLimit(res);
 
@@ -199,8 +171,7 @@ async function exchangeCode(
 
 async function getLongLivedToken(
   shortToken: string,
-  appSecret: string,
-  proxy?: ProxyAgent | null
+  appSecret: string
 ): Promise<{ token: string; expiresAt: Date }> {
   const params = new URLSearchParams({
     grant_type: "ig_exchange_token",
@@ -208,7 +179,7 @@ async function getLongLivedToken(
     access_token: shortToken,
   });
 
-  const res = await fetchWithTimeout(`${GRAPH_IG}/access_token?${params.toString()}`, undefined, FETCH_TIMEOUT_MS, proxy);
+  const res = await fetchWithTimeout(`${GRAPH_IG}/access_token?${params.toString()}`);
 
   detectRateLimit(res);
 
@@ -237,12 +208,9 @@ async function getLongLivedToken(
   };
 }
 
-async function getIGProfile(token: string, proxy?: ProxyAgent | null) {
+async function getIGProfile(token: string) {
   const res = await fetchWithTimeout(
-    `${GRAPH_IG}/me?fields=id,username,name,profile_picture_url,media_count&access_token=${token}`,
-    undefined,
-    FETCH_TIMEOUT_MS,
-    proxy
+    `${GRAPH_IG}/me?fields=id,username,name,profile_picture_url,media_count&access_token=${encodeURIComponent(token)}`
   );
 
   detectRateLimit(res);
@@ -419,83 +387,10 @@ export async function GET(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
 
-  // Busca um proxy bootstrap (qualquer conta do usuário com proxy configurado).
-  // Isso roteia as chamadas de troca de token pela infra de proxy já em uso,
-  // evitando que o IP da Vercel seja exposto à Meta durante o onboarding da conta.
-  // Para usuários sem contas ainda (primeira conexão), cai no IP da Vercel —
-  // aceitável pois é um evento único de setup, não recorrente de postagem.
-  let bootstrapProxy: ProxyAgent | null = null;
   try {
-    // Sorteio aleatório entre todos os proxies do usuário — distribui o onboarding
-    // entre os IPs disponíveis em vez de concentrar sempre no mesmo (um proxy morto
-    // fixo derrubava todas as conexões; ver fix 2026-07-09).
-    const { data: proxyAccts } = await (admin as any)
-      .from("instagram_accounts")
-      .select("id, proxy_url")
-      .eq("user_id", userId)
-      .not("proxy_url", "is", null)
-      .neq("health_status", "error")
-      .limit(200);
-    const candidates = (proxyAccts ?? []).filter(
-      (a: { id?: string; proxy_url?: string }) => a.id && a.proxy_url
-    );
-    if (candidates.length > 0) {
-      const proxyAcct = candidates[Math.floor(Math.random() * candidates.length)];
-      bootstrapProxy = getProxyForAccount(proxyAcct.id, proxyAcct.proxy_url);
-      console.log(
-        `[ig/callback] proxy bootstrap sorteado de conta ${(proxyAcct.id as string).slice(0, 8)}… (${candidates.length} candidatos)`
-      );
-    } else {
-      console.log("[ig/callback] sem proxy bootstrap disponível — usando IP Vercel para exchange de token.");
-    }
-  } catch (e) {
-    console.warn("[ig/callback] falha ao buscar proxy bootstrap:", (e as Error).message);
-  }
-
-  // Holder mutável: se um proxy falhar com erro de rede, callMetaWithFallback
-  // zera o agent e as chamadas seguintes saem direto pelo IP da Vercel.
-  const proxyHolder: { agent: ProxyAgent | null } = { agent: bootstrapProxy };
-
-  try {
-    const { token: shortToken, igUserId } = await callMetaWithFallback(
-      "exchangeCode",
-      proxyHolder,
-      (p) => exchangeCode(code, credentials.appId, credentials.appSecret, p)
-    );
-
-    // Tenta obter o proxy específico da conta sendo (re)conectada.
-    // Se o ig_user_id retornar e a conta já existir no banco com proxy próprio,
-    // usamos esse proxy para as chamadas seguintes — mais preciso que o bootstrap.
-    if (igUserId) {
-      try {
-        const { data: existingAcct } = await (admin as any)
-          .from("instagram_accounts")
-          .select("id, proxy_url")
-          .eq("user_id", userId)
-          .eq("ig_business_account_id", igUserId)
-          .maybeSingle();
-        if (existingAcct?.id && existingAcct.proxy_url) {
-          const specificProxy = getProxyForAccount(existingAcct.id, existingAcct.proxy_url);
-          if (specificProxy) {
-            proxyHolder.agent = specificProxy;
-            console.log(`[ig/callback] proxy específico da conta @ig_id=${igUserId} encontrado.`);
-          }
-        }
-      } catch {
-        // Mantém bootstrap proxy
-      }
-    }
-
-    const { token: longToken, expiresAt } = await callMetaWithFallback(
-      "getLongLivedToken",
-      proxyHolder,
-      (p) => getLongLivedToken(shortToken, credentials.appSecret, p)
-    );
-    const profile = await callMetaWithFallback(
-      "getIGProfile",
-      proxyHolder,
-      (p) => getIGProfile(longToken, p)
-    );
+    const { token: shortToken } = await exchangeCode(code, credentials.appId, credentials.appSecret);
+    const { token: longToken, expiresAt } = await getLongLivedToken(shortToken, credentials.appSecret);
+    const profile = await getIGProfile(longToken);
 
     console.log(`[ig/callback] @${profile.username} (id:${profile.id}) → user ${userId}${isMagicLink ? " [magic-link]" : ""}`);
 

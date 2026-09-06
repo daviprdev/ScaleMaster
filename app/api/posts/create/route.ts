@@ -3,9 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
-import { getProxyForAccount, proxyInit } from "@/lib/proxy";
 import { normalizeProcessingMode, resolveMediaUrlNow, isImageMedia } from "@/lib/video-processing";
-import { fetch as undiciFetch, type ProxyAgent } from "undici";
+import { fetch as undiciFetch } from "undici";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -20,7 +19,6 @@ interface AccountRow {
   ig_business_account_id: string | null;
   token_expires_at: string | null;
   fb_page_id: string | null;
-  proxy_url: string | null;
 }
 
 interface PostAccountResult {
@@ -34,19 +32,18 @@ interface PostAccountResult {
 async function postFirstComment(
   mediaId: string,
   token: string,
-  comment: string,
-  proxy: ProxyAgent | null = null
+  comment: string
 ): Promise<void> {
   const formBody = [
     `message=${encodeURIComponent(comment)}`,
     `access_token=${encodeURIComponent(token)}`,
   ].join("&");
-  const res = await undiciFetch(`${GRAPH_IG}/${mediaId}/comments`, proxyInit(proxy, {
+  const res = await undiciFetch(`${GRAPH_IG}/${mediaId}/comments`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: formBody,
     signal: AbortSignal.timeout(30_000),
-  }) as any);
+  });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
@@ -130,7 +127,7 @@ export async function POST(req: NextRequest) {
   // Publish now: fetch account credentials
   const { data: accounts, error: accsErr } = await admin
     .from("instagram_accounts")
-    .select("id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id, proxy_url")
+    .select("id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id")
     .in("id", account_ids)
     .eq("user_id", user.id)
     .eq("is_active", true);
@@ -177,11 +174,10 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    const proxy = getProxyForAccount(account.id, account.proxy_url);
     let tokenToUse = account.meta_access_token;
     if (isTokenExpiringSoon(account.token_expires_at, 7)) {
       try {
-        const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id, proxy);
+        const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id);
         await admin
           .from("instagram_accounts")
           .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })
@@ -225,8 +221,7 @@ export async function POST(req: NextRequest) {
         account.ig_business_account_id,
         tokenToUse,
         effectiveMediaUrl,
-        caption ?? "",
-        proxy
+        caption ?? ""
       );
 
       if (result.status !== "ok") throw new Error(result.error ?? "Erro na Meta API.");
@@ -234,7 +229,7 @@ export async function POST(req: NextRequest) {
       // Post first comment if provided (non-critical)
       if (first_comment?.trim() && result.media_id) {
         try {
-          await postFirstComment(result.media_id, tokenToUse, first_comment.trim(), proxy);
+          await postFirstComment(result.media_id, tokenToUse, first_comment.trim());
         } catch {
           console.warn(`[posts/create] Falha ao postar primeiro comentário para @${account.username}.`);
         }

@@ -3,7 +3,6 @@ import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { fetch as undiciFetch } from "undici";
-import { getProxyForAccount, proxyInit } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -13,7 +12,6 @@ interface AccountRow {
   username: string;
   ig_business_account_id: string;
   meta_access_token: string;
-  proxy_url: string | null;
 }
 
 interface StoryItem {
@@ -60,7 +58,7 @@ export async function POST(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const { data: account } = await admin
     .from("instagram_accounts")
-    .select("id, username, ig_business_account_id, meta_access_token, proxy_url")
+    .select("id, username, ig_business_account_id, meta_access_token")
     .eq("id", account_id)
     .eq("user_id", user.id)
     .single();
@@ -72,13 +70,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Conta sem credenciais Meta. Reconecte em Contas." }, { status: 422 });
   }
 
-  const proxy = getProxyForAccount(acc.id, acc.proxy_url);
   const url =
     `https://graph.instagram.com/v21.0/${acc.ig_business_account_id}/stories` +
     `?fields=id,media_type,media_url,timestamp` +
     `&access_token=${encodeURIComponent(acc.meta_access_token)}`;
 
-  const res = await undiciFetch(url, { ...proxyInit(proxy), signal: AbortSignal.timeout(15_000) } as any);
+  const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) });
   const json = await res.json() as { data?: StoryItem[]; error?: { message: string } };
 
   if (!res.ok || json.error) {

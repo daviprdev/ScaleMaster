@@ -18,7 +18,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { refreshMetaToken } from "@/lib/meta-refresh";
-import { getProxyForAccount } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -32,7 +31,6 @@ interface AccountRow {
   meta_access_token: string;
   fb_page_id:       string | null;
   token_expires_at: string | null;
-  proxy_url?:       string | null;
 }
 
 export async function GET(req: NextRequest) {
@@ -54,7 +52,7 @@ export async function GET(req: NextRequest) {
   // Busca contas que precisam de renovação
   const { data: accounts, error } = await (admin as any)
     .from("instagram_accounts")
-    .select("id, username, user_id, meta_access_token, fb_page_id, token_expires_at, proxy_url")
+    .select("id, username, user_id, meta_access_token, fb_page_id, token_expires_at")
     .neq("health_status", "error")
     .not("meta_access_token", "is", null)
     .or(`token_expires_at.is.null,token_expires_at.lt.${threshold}`)
@@ -89,11 +87,9 @@ export async function GET(req: NextRequest) {
     await Promise.allSettled(
       chunk.map(async (acc) => {
         try {
-          const proxy = getProxyForAccount(acc.id, acc.proxy_url ?? null);
           const { token, expiresAt } = await refreshMetaToken(
             acc.meta_access_token,
             acc.fb_page_id,
-            proxy,
           );
 
           await (admin as any)

@@ -203,14 +203,12 @@ async function businessDiscoveryFallback(
   helper: HelperAccount
 ): Promise<CheckerResult | null> {
   try {
-    const proxyAgent = getProxyForAccount(helper.id, helper.proxy_url);
     const fields = `business_discovery.username(${username}){username,followers_count,media_count,profile_picture_url}`;
     const url = `${GRAPH}/${helper.ig_business_account_id}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(helper.meta_access_token)}`;
 
-    const res = await undiciFetch(
-      url,
-      proxyInit(proxyAgent, { signal: AbortSignal.timeout(12_000) }) as any
-    );
+    // Graph API oficial: conexão direta (o proxy fica só para a consulta
+    // anônima ao endpoint web do Instagram, que não é API oficial).
+    const res = await undiciFetch(url, { signal: AbortSignal.timeout(12_000) });
     const json = (await res.json()) as {
       business_discovery?: { username?: string; followers_count?: number; profile_picture_url?: string };
       error?: { message?: string };

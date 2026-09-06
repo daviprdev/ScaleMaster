@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { fetch as undiciFetch } from "undici";
-import { getProxyForAccount, proxyInit } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -34,29 +33,26 @@ interface GraphStoriesEdge {
   error?: { message: string; code: number };
 }
 
-// Faz fetch pelo proxy da conta. Sem fallback para IP Vercel (2026-07-15):
-// nenhuma requisição em nome da conta sai pelo IP datacenter — proxy morto
-// propaga o erro e o refresh falha com mensagem clara em vez de vazar o IP.
+// Chamadas oficiais da Meta Graph API: conexão direta server-to-server
+// (sem proxy residencial — ver decisão de arquitetura no CLAUDE.md).
 // Timeout 12s por chamada — suficiente para a API da Meta responder normalmente
 // e ainda cabe dentro do maxDuration=30 junto com as demais operações da rota.
-async function fetchViaProxy(
+async function fetchMeta(
   url: string,
-  proxy: ReturnType<typeof getProxyForAccount>
 ): Promise<Response> {
-  return await undiciFetch(url, proxyInit(proxy, { signal: AbortSignal.timeout(12_000) }) as any) as unknown as Response;
+  return await undiciFetch(url, { signal: AbortSignal.timeout(12_000) }) as unknown as Response;
 }
 
 async function fetchMetaProfile(
   igId: string,
   token: string,
-  proxy: ReturnType<typeof getProxyForAccount>
 ): Promise<{ profile: GraphProfile; lastPostAt: string | null; activeStoriesCount: number; activeStoriesExpiringFirstAt: string | null }> {
   const profileUrl =
     `${GRAPH}/${igId}` +
     `?fields=followers_count,media_count,name,profile_picture_url,username` +
     `&access_token=${encodeURIComponent(token)}`;
 
-  const profileRes = await fetchViaProxy(profileUrl, proxy);
+  const profileRes = await fetchMeta(profileUrl);
   const profile = (await profileRes.json()) as GraphProfile;
 
   if (profile.error) return { profile, lastPostAt: null, activeStoriesCount: 0, activeStoriesExpiringFirstAt: null };
@@ -73,7 +69,7 @@ async function fetchMetaProfile(
         `${GRAPH}/${igId}/media` +
         `?fields=timestamp&limit=1` +
         `&access_token=${encodeURIComponent(token)}`;
-      const mediaRes = await fetchViaProxy(mediaUrl, proxy);
+      const mediaRes = await fetchMeta(mediaUrl);
       const mediaData = (await mediaRes.json()) as GraphMediaEdge;
       lastPostAt = mediaData.data?.[0]?.timestamp ?? null;
     })(),
@@ -85,7 +81,7 @@ async function fetchMetaProfile(
         `${GRAPH}/${igId}/stories` +
         `?fields=id,timestamp` +
         `&access_token=${encodeURIComponent(token)}`;
-      const storiesRes = await fetchViaProxy(storiesUrl, proxy);
+      const storiesRes = await fetchMeta(storiesUrl);
       if (!storiesRes.ok) return;
       const storiesData = (await storiesRes.json()) as GraphStoriesEdge;
       if (!storiesData.error && Array.isArray(storiesData.data)) {
@@ -120,7 +116,7 @@ export async function POST(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const { data: account } = await admin
     .from("instagram_accounts")
-    .select("id, username, user_id, ig_business_account_id, meta_access_token, proxy_url")
+    .select("id, username, user_id, ig_business_account_id, meta_access_token")
     .eq("id", accountId)
     .eq("user_id", user.id)
     .single();
@@ -139,26 +135,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const encryptedProxy = (account as Record<string, unknown>).proxy_url as string | null;
-  const proxy = getProxyForAccount(accountId, encryptedProxy);
-
-  // Sem proxy = sem sync: nenhuma requisição em nome da conta sai pelo IP
-  // datacenter da Vercel (política 2026-07-15, igual ao pipeline de postagem).
-  if (!proxy) {
-    return NextResponse.json(
-      { error: "Conta sem proxy configurado — sincronização bloqueada para não expor o IP do servidor. Configure um proxy no menu ⋯ → Configurar Proxy." },
-      { status: 422 }
-    );
-  }
-
   let profileResult: Awaited<ReturnType<typeof fetchMetaProfile>>;
   try {
-    profileResult = await fetchMetaProfile(igId, token, proxy);
+    profileResult = await fetchMetaProfile(igId, token);
   } catch (err) {
     const msg = (err as Error).message ?? String(err);
-    console.warn(`[accounts/refresh] Proxy falhou para @${(account as Record<string, unknown>).username}: ${msg.slice(0, 120)}`);
+    console.warn(`[accounts/refresh] Meta não respondeu para @${(account as Record<string, unknown>).username}: ${msg.slice(0, 120)}`);
     return NextResponse.json(
-      { error: "Proxy da conta não respondeu — sincronização adiada (o IP do servidor não é usado como fallback). Verifique o proxy em /dashboard/proxy-test." },
+      { error: "A Meta não respondeu agora — tente sincronizar novamente em instantes." },
       { status: 502 }
     );
   }

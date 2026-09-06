@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { fetch as undiciFetch } from "undici";
-import { getProxyForAccount, proxyInit } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 
@@ -10,7 +9,6 @@ interface AccountRow {
   id: string;
   ig_business_account_id: string;
   meta_access_token: string;
-  proxy_url?: string | null;
 }
 
 interface StoryItem {
@@ -22,13 +20,12 @@ async function fetchStoriesForAccount(
   acc: AccountRow
 ): Promise<{ id: string; stories: StoryItem[] }> {
   try {
-    const proxy = getProxyForAccount(acc.id, acc.proxy_url ?? null);
     const url =
       `https://graph.instagram.com/v21.0/${acc.ig_business_account_id}/stories` +
       `?fields=id,timestamp` +
       `&access_token=${encodeURIComponent(acc.meta_access_token)}`;
 
-    const res = await undiciFetch(url, { ...proxyInit(proxy), signal: AbortSignal.timeout(8_000) } as any);
+    const res = await undiciFetch(url, { signal: AbortSignal.timeout(8_000) });
     if (!res.ok) return { id: acc.id, stories: [] };
     const json = await res.json() as Record<string, unknown>;
     if ((json as any).error || !Array.isArray((json as any).data)) return { id: acc.id, stories: [] };
@@ -49,14 +46,11 @@ export async function GET() {
   const admin = getSupabaseAdmin();
   const { data: accounts } = await admin
     .from("instagram_accounts")
-    .select("id, ig_business_account_id, meta_access_token, proxy_url")
+    .select("id, ig_business_account_id, meta_access_token")
     .eq("user_id", user.id)
     .neq("health_status", "error")
     .not("ig_business_account_id", "is", null)
-    .not("meta_access_token", "is", null)
-    // Política sem-proxy-sem-sync: conta sem proxy dedicado não gera NENHUMA
-    // requisição à Meta em nome dela (antes saía pelo IP datacenter da Vercel).
-    .not("proxy_url", "is", null);
+    .not("meta_access_token", "is", null);
 
   if (!accounts || accounts.length === 0) {
     return NextResponse.json({ stories: {} });

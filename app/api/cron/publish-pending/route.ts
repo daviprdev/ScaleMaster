@@ -5,7 +5,6 @@ import {
   publishReadyContainer,
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
-import { getProxyForAccount, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
 import { isAccountDeadError, markDeadAccounts, type DeadAccountCandidate } from "@/lib/account-health";
 
 export const runtime = "nodejs";
@@ -24,7 +23,6 @@ interface AccountRow {
   meta_access_token: string | null;
   token_expires_at: string | null;
   fb_page_id: string | null;
-  proxy_url?: string | null;
 }
 
 interface PendingContainerRow {
@@ -91,7 +89,7 @@ export async function GET(req: NextRequest) {
       id, user_id, account_id, ig_business_account_id,
       creation_id, caption, created_at, retry_after,
       instagram_accounts (
-        id, username, meta_access_token, token_expires_at, fb_page_id, proxy_url
+        id, username, meta_access_token, token_expires_at, fb_page_id
       )
     `)
     .eq("status", "pending")
@@ -174,16 +172,11 @@ export async function GET(req: NextRequest) {
     attemptedAccounts.add(account.id);
 
     try {
-      let proxy = getProxyForAccount(account.id, account.proxy_url);
       let tokenToUse = account.meta_access_token;
 
       if (isTokenExpiringSoon(account.token_expires_at, 7)) {
         try {
-          const { token, expiresAt } = await refreshMetaToken(
-            account.meta_access_token,
-            account.fb_page_id,
-            proxy
-          );
+          const { token, expiresAt } = await refreshMetaToken(account.meta_access_token, account.fb_page_id);
           await (admin as any)
             .from("instagram_accounts")
             .update({ meta_access_token: token, token_expires_at: expiresAt.toISOString() })
@@ -194,18 +187,8 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Poll via proxy dedicado da conta (se configurado).
-      let pollStatus: Awaited<ReturnType<typeof pollContainerStatusOnce>>;
-      try {
-        pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse, proxy);
-      } catch (pollErr) {
-        const pollMsg = pollErr instanceof Error ? pollErr.message : String(pollErr);
-        if (pollMsg.toLowerCase() === "fetch failed" && proxy !== null) {
-          // Proxy dedicado falhou → sem fallback para IP da Vercel; relança para backoff.
-          throw new Error(`[PROXY] Proxy dedicado falhou no poll (fetch failed) @${account.username}.`);
-        }
-        throw pollErr;
-      }
+      // Chamada oficial da Meta: conexão direta (sem proxy).
+      const pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse);
 
       if (pollStatus === "in_progress") {
         // Throttle de poll: aguarda 2 min antes do próximo check.
@@ -241,21 +224,15 @@ export async function GET(req: NextRequest) {
       }
       publishAttemptsInThisRun++;
 
-      // Publish via proxy dedicado da conta (se configurado).
       let mediaId = "";
       try {
         mediaId = await publishReadyContainer(
           container.ig_business_account_id,
           container.creation_id,
-          tokenToUse,
-          proxy
+          tokenToUse
         );
       } catch (pubErr) {
         const pubMsg = pubErr instanceof Error ? pubErr.message : String(pubErr);
-        if (pubMsg.toLowerCase() === "fetch failed" && proxy !== null) {
-          // Proxy dedicado falhou → sem fallback para IP da Vercel; relança para backoff.
-          throw new Error(`[PROXY] Proxy dedicado falhou no publish (fetch failed) @${account.username}.`);
-        }
         throw pubErr;
       }
 
@@ -313,10 +290,6 @@ export async function GET(req: NextRequest) {
           `[publish-pending] ⏸ @${account?.username ?? "?"} container ${container.id}: ` +
           `erro transitório — retry em 5min. Motivo: ${msg.slice(0, 120)}`
         );
-        // Falha de proxy → registra na conta para o ProxyOutageBanner do dashboard.
-        if (account?.proxy_url && isProxyNetworkError(msg)) {
-          await recordProxyFailure(admin, account.id, "publish-pending", msg);
-        }
         await (admin as any)
           .from("pending_containers")
           .update({ status: "pending", retry_after: retryAfter })

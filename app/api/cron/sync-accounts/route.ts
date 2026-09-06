@@ -10,7 +10,7 @@
  *   - Busca contas com profile_refreshed_at IS NULL ou > STALE_MINUTES atrás
  *   - Processa em lotes de 3 com 2s de delay entre lotes (anti-rate-limit)
  *   - Erros de token genuíno: marca health_status='error' + registra em failover_logs
- *   - Erros de infra/rede/proxy: loga e segue (não marca como error)
+ *   - Erros de infra/rede: loga e segue (não marca como error)
  *   - Cascata (≥70% & ≥5 contas): não marca nenhuma — é problema no App/Meta
  */
 
@@ -18,7 +18,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { refreshMetaToken } from "@/lib/meta-refresh";
 import { fetch as undiciFetch } from "undici";
-import { getProxyForAccount, proxyInit, isProxyNetworkError, recordProxyFailure } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -87,15 +86,7 @@ function isCheckpointError(code: number, message: string): boolean {
 
 async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmin>) {
   let activeToken = acc.meta_access_token;
-  const proxy = getProxyForAccount(acc.id, acc.proxy_url);
-
-  // Política sem-proxy = sem-sync (2026-07-15): nenhuma requisição de sync sai
-  // pelo IP da Vercel. Se a conta não tem proxy (ou o decrypt/URL falhou), pula
-  // o ciclo em silêncio — sem marcar erro. Mesma regra do pipeline de postagem.
-  if (!proxy) {
-    console.warn(`[cron/sync-accounts] @${acc.username} sem proxy utilizável — sync pulado.`);
-    return { id: acc.id, user_id: acc.user_id, ok: false };
-  }
+  // Chamadas oficiais da Meta: conexão direta server-to-server (sem proxy).
 
   const fetchProfile = async (token: string) => {
     const url =
@@ -103,15 +94,11 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       `?fields=followers_count,media_count,name,profile_picture_url` +
       `&access_token=${encodeURIComponent(token)}`;
     try {
-      const res = await undiciFetch(url, proxyInit(proxy, { signal: AbortSignal.timeout(15_000) }) as any);
+      const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) });
       return (await res.json()) as Record<string, unknown>;
     } catch (err) {
-      // Proxy morto → NÃO cai para IP Vercel. Registra a falha (ProxyOutageBanner)
-      // e pula o ciclo — a conta tenta de novo no próximo sync.
-      const msg = (err as Error).message ?? String(err);
-      if (isProxyNetworkError(msg)) {
-        await recordProxyFailure(admin, acc.id, "cron/sync-accounts", msg);
-      }
+      // Falha de rede com a Meta: propaga para o classificador de erro do run,
+      // que trata rede/infra como transitório (nunca marca a conta como error).
       throw err;
     }
   };
@@ -137,7 +124,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       if (TOKEN_ERROR_CODES.has(err.code)) {
         // Tenta renovar antes de marcar como error
         try {
-          const { token: newToken, expiresAt } = await refreshMetaToken(activeToken, acc.fb_page_id, proxy);
+          const { token: newToken, expiresAt } = await refreshMetaToken(activeToken, acc.fb_page_id);
           await admin.from("instagram_accounts")
             .update({ meta_access_token: newToken, token_expires_at: expiresAt.toISOString() })
             .eq("id", acc.id);
@@ -166,7 +153,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
     if (!isNewAccount) try {
       const mediaRes = await undiciFetch(
         `${GRAPH}/${acc.ig_business_account_id}/media?fields=timestamp&limit=1&access_token=${encodeURIComponent(activeToken)}`,
-        proxyInit(proxy, { signal: AbortSignal.timeout(10_000) }) as any
+        { signal: AbortSignal.timeout(10_000) }
       );
       const mediaData = (await mediaRes.json()) as { data?: Array<{ timestamp: string }> };
       lastPostAt = mediaData.data?.[0]?.timestamp ?? null;
@@ -200,13 +187,10 @@ export async function GET(request: NextRequest) {
   const cutoff = new Date(Date.now() - STALE_MS).toISOString();
   const { data: accounts, error } = await admin
     .from("instagram_accounts")
-    .select("id, username, user_id, ig_business_account_id, meta_access_token, fb_page_id, proxy_url, connected_at, profile_refreshed_at")
+    .select("id, username, user_id, ig_business_account_id, meta_access_token, fb_page_id, connected_at, profile_refreshed_at")
     .neq("health_status", "error")
     .not("ig_business_account_id", "is", null)
     .not("meta_access_token", "is", null)
-    // Sem proxy = sem sync: contas sem proxy dedicado ficam fora da fila —
-    // nenhuma requisição em nome delas sai pelo IP datacenter da Vercel.
-    .not("proxy_url", "is", null)
     .or(`profile_refreshed_at.is.null,profile_refreshed_at.lte.${cutoff}`)
     .order("profile_refreshed_at", { ascending: true, nullsFirst: true })
     .limit(200);

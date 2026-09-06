@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getProxyForAccount } from "@/lib/proxy";
 import { fetchPostInsights, type PostInsights } from "@/lib/meta-insights";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +13,6 @@ interface PostWithAccount {
     id: string;
     meta_access_token: string | null;
     ig_business_account_id: string | null;
-    proxy_url?: string | null;
   } | null;
 }
 
@@ -32,7 +30,7 @@ export async function POST(req: NextRequest) {
     .from("scheduled_posts")
     .select(
       "id, media_id, account_id, " +
-      "instagram_accounts(id, meta_access_token, ig_business_account_id, proxy_url)"
+      "instagram_accounts(id, meta_access_token, ig_business_account_id)"
     )
     .eq("id", body.post_id)
     .eq("user_id", user.id)
@@ -52,9 +50,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Token ou media_id indisponível." }, { status: 422 });
   }
 
-  const proxy = getProxyForAccount(account.id, account.proxy_url ?? null);
 
-  const metrics: PostInsights = await fetchPostInsights(post.media_id, account.meta_access_token, proxy);
+  const metrics: PostInsights = await fetchPostInsights(post.media_id, account.meta_access_token);
 
   // Cast required — new insight columns not yet in generated Supabase types
   await admin
