@@ -3448,3 +3448,66 @@ Suíte de reels/biblioteca: 34 → 42 checagens (`npm test` = 150).
 **Nenhuma mutação executada contra produção nesta sessão.** As 961 linhas quebradas
 continuam no banco aguardando decisão. Também continuam no bucket 294 derivados
 `videos/stripped_*` (1817 MB) órfãos do auto-strip removido em `ec7b659`.
+
+---
+
+## 2026-09-06 (parte 2) — Limpeza de produção e as 4 operações da Biblioteca
+
+Encerramento do resíduo. Limpeza **executada em produção**, autorizada explicitamente.
+
+**Números reais, recalculados antes de qualquer mutação (não reaproveitados do histórico):**
+
+| | Antes | Depois |
+|---|---|---|
+| `videos_library` total | 961 | 0 |
+| registros quebrados | 961 (100%) | 0 |
+| objetos no bucket | 344 | 50 |
+| `videos/stripped_*` | 294 (1817 MB) | 0 |
+| bucket | ~1890 MB | 73 MB |
+
+**Parte 1 — 961 linhas quebradas.** DELETE que re-verifica a condição na própria query
+(`not exists` contra `storage.objects`), então nunca poderia apagar linha cujo arquivo
+existisse. Impacto medido ANTES: 0 linhas afetadas em `scheduled_posts`,
+`pending_containers`, `video_variants` e `video_processing_jobs` — nenhum histórico
+destruído. (As FKs já eram `SET NULL`, exceto `video_processing_jobs` que é CASCADE,
+mas estava vazia.)
+
+**Parte 2 — 294 `stripped_*`.** Órfãos do auto-strip removido em `ec7b659`. Verificado
+que 0 tinham referência em qualquer coluna de mídia do schema (`videos_library`,
+`video_variants`, `scheduled_posts`, `story_media`, `story_templates`, `single_posts`,
+`video_processing_jobs`, `loops`) e que 0 estavam dentro do grace period de 24h.
+Apagados via **Storage API** em lotes de 50 — nunca por SQL em `storage.objects`, que
+removeria só o metadado e deixaria o espaço consumido de forma invisível. O script
+abortava se a contagem divergisse de 294, amarrando a execução à auditoria SQL.
+
+**Preservados de propósito:** 28 `videos/upload_*` (58 MB) e 20 `stories/*` sem
+referência. Estão fora do escopo autorizado e são mídia real, não derivados —
+apagá-los seria destruir conteúdo, não resíduo. Ficam para a rota de admin.
+
+**Parte 3 — as 4 operações separadas.** `lib/library-integrity.ts` passa a ser a
+definição canônica (`isBrokenRecord` / `isOrphanFile`), usada pelas duas rotas de
+limpeza. `cleanup-orphans` virou `/api/library/broken-records` (usuário, só banco) e
+nasceu `/api/admin/storage-orphans` (**admin-only, sem cron**, só Storage, com grace
+period e referências derivadas server-side).
+
+**Duas fragilidades corrigidas no caminho:**
+1. O DELETE de vídeo único conferia a posse apenas do `id` mas apagava o
+   `storage_path` que o cliente mandasse — enviar um id próprio com o path de outro
+   usuário apagava arquivo alheio. Agora o path vem da linha do dono, e a ordem virou
+   banco→Storage (falhar no meio deixa órfão recuperável, não registro quebrado).
+2. `library/record`: INSERT que falha depois do upload deixava arquivo órfão
+   permanente. Agora compensa removendo o arquivo daquela operação — e só depois de
+   confirmar que nenhuma linha o referencia, senão a própria compensação viraria vetor
+   para apagar arquivo de outro usuário.
+
+**TESTE 8 validado contra a RPC de PRODUÇÃO:** pasta com 1500 vídeos + loop dependente
+→ pasta removida, 1500 vídeos sobreviveram com `folder_id=NULL` e `storage_path`
+intacto, loop pausado com motivo legível, chamada com usuário errado rejeitada.
+Dados de teste removidos em seguida. `npm test` = 186 checagens (nova suíte
+`test-library-integrity.mjs` com 44, cobrindo TESTE 1-10).
+
+**Sobre a causa dos 961:** a antiga `cleanup-orphans` considerava `folder_id = NULL`
+como órfão e apagava Storage antes do banco, sem limite de tempo — ou seja, **podia**
+produzir exatamente esse estado e podia apagar mídia válida. Não há registro histórico
+que comprove que foi ela quem apagou aqueles arquivos específicos, e isso fica como
+hipótese, não como fato.
