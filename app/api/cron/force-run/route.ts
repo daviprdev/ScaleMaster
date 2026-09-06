@@ -6,7 +6,12 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 // ─── Auth helper ─────────────────────────────────────────────────────────────
-// Accepts either user session (UI button) or ?secret= query param (curl/CLI).
+// Esta rota é GLOBAL, não escopada por usuário: o GET expõe o estado da fila de
+// TODOS os usuários (contagens, mensagens de erro, ids de posts travados) e o
+// POST dispara o pipeline de crons inteiro com o CRON_SECRET do servidor.
+// Antes bastava estar logado — qualquer usuário aprovado conseguia ler dados de
+// outros e forçar o processamento de todo mundo (abuso de rate limit da Meta e
+// de orçamento da Vercel). Agora exige CRON_SECRET ou papel de admin.
 
 async function isAuthorized(req: NextRequest): Promise<boolean> {
   const url = new URL(req.url);
@@ -15,22 +20,31 @@ async function isAuthorized(req: NextRequest): Promise<boolean> {
 
   if (secretParam && cronSecret && secretParam === cronSecret) return true;
 
+  const headerAuth = req.headers.get("authorization");
+  if (cronSecret && headerAuth === `Bearer ${cronSecret}`) return true;
+
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) return true;
-  } catch {
-    // ignore
-  }
+    if (!user) return false;
 
-  return false;
+    const { data: roleRow } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    return (roleRow as { role?: string } | null)?.role === "admin";
+  } catch {
+    return false;
+  }
 }
 
 // ─── GET — diagnóstico do estado atual da fila ────────────────────────────────
 
 export async function GET(req: NextRequest) {
   if (!(await isAuthorized(req))) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    return NextResponse.json({ error: "Acesso restrito ao administrador." }, { status: 403 });
   }
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -92,7 +106,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (!(await isAuthorized(req))) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    return NextResponse.json({ error: "Acesso restrito ao administrador." }, { status: 403 });
   }
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {

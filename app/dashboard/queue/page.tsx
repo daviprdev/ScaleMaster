@@ -301,6 +301,7 @@ export default function QueuePage() {
 
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagResult, setDiagResult] = useState<DiagResult | null>(null);
+  const [diagError, setDiagError] = useState<string | null>(null);
   const [diagOpen, setDiagOpen] = useState(false);
 
   const [forceLoading, setForceLoading] = useState(false);
@@ -334,11 +335,15 @@ export default function QueuePage() {
     setDiagOpen(true);
     try {
       const res = await fetch("/api/cron/force-run");
-      if (!res.ok) return;
-      const data = await res.json() as DiagResult;
+      const data = await res.json() as DiagResult & { error?: string };
+      if (!res.ok) {
+        setDiagError(data.error ?? `Falha ao carregar o diagnóstico (HTTP ${res.status}).`);
+        return;
+      }
+      setDiagError(null);
       setDiagResult(data);
     } catch {
-      // silent
+      setDiagError("Erro de rede ao carregar o diagnóstico.");
     } finally {
       setDiagLoading(false);
     }
@@ -350,12 +355,17 @@ export default function QueuePage() {
     setForceResult(null);
     try {
       const res = await fetch("/api/cron/force-run", { method: "POST" });
-      const data = await res.json() as ForceRunResult;
+      const data = await res.json() as ForceRunResult & { error?: string };
+      if (!res.ok) {
+        setDiagError(data.error ?? `Falha ao disparar o processamento (HTTP ${res.status}).`);
+        return;
+      }
+      setDiagError(null);
       setForceResult(data);
       // Refresh stats after force run
       await fetchStats(true);
     } catch {
-      // silent
+      setDiagError("Erro de rede ao disparar o processamento.");
     } finally {
       setForceLoading(false);
     }
@@ -434,7 +444,7 @@ export default function QueuePage() {
 
       {/* ── Diagnostic Panel ────────────────────────────────── */}
       <AnimatePresence>
-        {diagOpen && (diagLoading || diagResult) && (
+        {diagOpen && (diagLoading || diagResult || diagError) && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -464,6 +474,8 @@ export default function QueuePage() {
                 <Loader2 size={14} className="animate-spin" />
                 Consultando banco de dados...
               </div>
+            ) : diagError ? (
+              <p className="text-xs text-red-400/80">{diagError}</p>
             ) : diagResult ? (
               <DiagPanel diag={diagResult} />
             ) : null}
@@ -473,7 +485,7 @@ export default function QueuePage() {
 
       {/* ── Force Run Result Panel ───────────────────────────── */}
       <AnimatePresence>
-        {forceOpen && (forceLoading || forceResult) && (
+        {forceOpen && (forceLoading || forceResult || diagError) && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -503,6 +515,8 @@ export default function QueuePage() {
                 <Loader2 size={14} className="animate-spin text-[var(--matrix)]" />
                 Processando fila... aguarde até 55s
               </div>
+            ) : diagError ? (
+              <p className="text-xs text-red-400/80">{diagError}</p>
             ) : forceResult ? (
               <ForceRunPanel result={forceResult} />
             ) : null}

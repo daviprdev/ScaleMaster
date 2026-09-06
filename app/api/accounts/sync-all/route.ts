@@ -82,7 +82,6 @@ interface SyncResult {
   ok: boolean;
   tokenError?: boolean;
   infraError?: boolean; // erro de infra da Meta — transitório, não marca como error
-  noProxy?: boolean; // conta sem proxy configurado — skip por design, não é erro
   tokenRefreshed?: boolean; // token foi renovado com sucesso durante o sync
   errorCode?: number;
   errorMessage?: string;
