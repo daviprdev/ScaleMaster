@@ -3407,3 +3407,44 @@ Sessão longa, 7 commits no `main`. Resumo do que mudou e do que uma sessão fut
 
 **Pendências deixadas em aberto:** cron `sync-accounts` continua **sem schedule** (decisão de produto); ~30 rotas com `await req.json()` sem guarda (500 em vez de 400); `next`/`postcss` com advisory que exige upgrade major; as 961 linhas mortas da Biblioteca.
 
+
+---
+
+## 2026-09-06 — Auditoria de verificação das três entregas do dia
+
+Sessão de conferência, não de implementação: as três alterações pedidas (seletor
+`share_to_feed`, remoção do módulo Automatizar, exclusão segura de pasta) já
+estavam nos commits `0a7c5b9` e `0ed1eab`. A auditoria confirmou as três contra o
+código real e contra o banco de produção — e encontrou uma regressão que anulava
+a terceira.
+
+**Confirmado em produção:** colunas `share_to_feed` nullable em `loops`,
+`distribute_campaigns`, `scheduled_posts` e `pending_containers` (sem default,
+sem backfill); RPC `delete_library_folder_safe` presente com ownership + pausa de
+Loops + DELETE numa transação; FKs `videos_library.folder_id` e `loops.folder_id`
+em `ON DELETE SET NULL`; tabelas de automação **vazias** (0 automações, 0 ativas,
+0 posts gerados). Documentação oficial da Meta reconferida: `share_to_feed` existe,
+vale só para `media_type=REELS`, e **não documenta valor default** — o que sustenta
+a decisão de deixar NULL nos registros antigos em vez de assumir um valor.
+
+**Regressão encontrada — `POST /api/library/cleanup-orphans`.** Definia órfão como
+`folder_id === null`, ou seja **todo vídeo em "Sem pasta"**, e apagava o Storage
+antes do banco, sem `maxDuration`, atrás de um botão sem confirmação. Como a
+exclusão de pasta agora move os vídeos justamente para "Sem pasta", os dois
+comportamentos se anulavam: a pasta preservava os vídeos e o botão os destruía.
+
+Essa rota é também a explicação mais provável para as **961 linhas mortas** já
+registradas na sessão anterior: 0 das 961 têm objeto correspondente em
+`storage.objects`, e descasamento de formato de `storage_path` foi descartado
+(o formato é idêntico). Apagar Storage antes do banco, sem limite de tempo,
+produz exatamente esse estado ao morrer no meio.
+
+Corrigido: a rota só remove **registros quebrados** (linha sem arquivo no
+inventário do Storage) e **nunca apaga arquivo**; falha ao listar o Storage aborta
+sem mutação; leitura paginada via `.range()`; `maxDuration=60`; DELETE em lotes.
+UI: "Limpar Registros Quebrados", tooltip correto, confirmação de 2 cliques.
+Suíte de reels/biblioteca: 34 → 42 checagens (`npm test` = 150).
+
+**Nenhuma mutação executada contra produção nesta sessão.** As 961 linhas quebradas
+continuam no banco aguardando decisão. Também continuam no bucket 294 derivados
+`videos/stripped_*` (1817 MB) órfãos do auto-strip removido em `ec7b659`.
