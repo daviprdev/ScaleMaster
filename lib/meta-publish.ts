@@ -23,6 +23,22 @@ function sanitizeCaption(raw: string): string {
     .slice(0, 2200);
 }
 
+/**
+ * Onde o Reel aparece no perfil (parâmetro `share_to_feed` da Meta).
+ *
+ * Referência oficial (POST /{ig-user-id}/media):
+ *   "When true, indicates that the reel can appear in both the Feed and Reels
+ *    tabs. When false, indicates the reel can only appear in the Reels tab."
+ *
+ * Só existe para media_type=REELS — nunca é enviado em STORIES.
+ *
+ *   true      → Reels + grade
+ *   false     → somente Reels
+ *   null/undef→ parâmetro NÃO enviado (comportamento anterior à feature; a Meta
+ *               não documenta qual é o default, então não assumimos nenhum).
+ */
+export type ShareToFeed = boolean | null | undefined;
+
 export interface MetaPublishResult {
   status: "ok" | "error";
   media_id?: string;
@@ -34,7 +50,8 @@ async function createMediaContainer(
   videoUrl: string,
   caption: string,
   token: string,
-  mediaType: "REELS" | "STORIES" = "REELS"
+  mediaType: "REELS" | "STORIES" = "REELS",
+  shareToFeed: ShareToFeed = null
 ): Promise<string> {
   // Sanitiza + normaliza: escopo LOCAL à chamada — nunca compartilhado entre contas.
   // Nunca envia undefined/"undefined" — causaria posts sem legenda de forma silenciosa.
@@ -52,14 +69,25 @@ async function createMediaContainer(
   const isImageStory = mediaType === "STORIES" && /\.(jpg|jpeg|png)(\?|$)/i.test(videoUrl);
   const mediaUrlKey = isImageStory ? "image_url" : "video_url";
 
+  // share_to_feed: SOMENTE para Reels e SOMENTE quando há uma escolha booleana
+  // persistida. O teste `typeof === "boolean"` é proposital — um `if (shareToFeed)`
+  // faria o valor `false` (somente Reels) sumir do payload em silêncio.
+  const sendsShareToFeed = mediaType === "REELS" && typeof shareToFeed === "boolean";
+
   const formParts = [
     `media_type=${mediaType}`,
     `${mediaUrlKey}=${encodeURIComponent(videoUrl)}`,
     ...(captionFinal && mediaType !== "STORIES" ? [`caption=${encodeURIComponent(captionFinal)}`] : []),
+    ...(sendsShareToFeed ? [`share_to_feed=${String(shareToFeed)}`] : []),
     `access_token=${encodeURIComponent(token)}`,
   ];
   const formBody = formParts.join("&");
 
+  if (mediaType === "REELS") {
+    console.log(
+      `[meta-reel] share_to_feed=${sendsShareToFeed ? String(shareToFeed) : "não enviado"}`
+    );
+  }
   console.log(
     `[meta] container ig=${igAccountId.slice(0, 10)}… type=${mediaType} ` +
     `caption_chars=${captionFinal.length}`
@@ -187,9 +215,10 @@ export async function createMediaContainerOnly(
   videoUrl: string,
   caption: string,
   token: string,
-  mediaType: "REELS" | "STORIES" = "REELS"
+  mediaType: "REELS" | "STORIES" = "REELS",
+  shareToFeed: ShareToFeed = null
 ): Promise<string> {
-  return createMediaContainer(igAccountId, videoUrl, caption, token, mediaType);
+  return createMediaContainer(igAccountId, videoUrl, caption, token, mediaType, shareToFeed);
 }
 
 export type ContainerPollStatus = "finished" | "in_progress" | "error";
@@ -238,14 +267,17 @@ export async function publishViaMetaAPI(
   igBusinessAccountId: string,
   metaAccessToken: string,
   videoUrl: string,
-  caption: string
+  caption: string,
+  shareToFeed: ShareToFeed = null
 ): Promise<MetaPublishResult> {
   try {
     const creationId = await createMediaContainer(
       igBusinessAccountId,
       videoUrl,
       caption,
-      metaAccessToken
+      metaAccessToken,
+      "REELS",
+      shareToFeed
     );
     // 4 tentativas × 6s = 5s inicial + 3×6s = 23s máx de espera.
     // Se a Meta não processar em 23s, retorna erro "não terminou de processar"

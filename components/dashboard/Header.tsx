@@ -57,10 +57,6 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     title: "Cofre de Logins",
     subtitle: "Armazenamento criptografado de credenciais de acesso",
   },
-  "/dashboard/automatizar": {
-    title: "Automatizar Contas",
-    subtitle: "Motor de publicação automática por pasta",
-  },
 };
 
 export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void }) {

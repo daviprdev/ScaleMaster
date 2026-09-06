@@ -81,6 +81,9 @@ export default function LibraryPage() {
   const [movingLoading, setMovingLoading] = useState(false);
 
   const [deletingFolder, setDeletingFolder] = useState<LibraryFolder | null>(null);
+  const [deletingFolderLoading, setDeletingFolderLoading] = useState(false);
+  const [deleteFolderError, setDeleteFolderError] = useState<string | null>(null);
+  const [deleteFolderResult, setDeleteFolderResult] = useState<string | null>(null);
   const [cleaningOrphans, setCleaningOrphans] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<string | null>(null);
 
@@ -394,11 +397,45 @@ export default function LibraryPage() {
   };
 
   const handleDeleteFolder = async (folder: LibraryFolder) => {
-    const res = await fetch(`/api/library/folders/${folder.id}`, { method: "DELETE" });
-    if (res.ok) {
+    if (deletingFolderLoading) return; // trava o duplo-clique
+    setDeletingFolderLoading(true);
+    setDeleteFolderError(null);
+    try {
+      const res = await fetch(`/api/library/folders/${folder.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({})) as {
+        error?: string;
+        videos_moved?: number;
+        paused_loops?: string[];
+        synced_campaigns_removed?: number;
+      };
+
+      if (!res.ok) {
+        setDeleteFolderError(data.error ?? `Não foi possível excluir a pasta (HTTP ${res.status}).`);
+        return;
+      }
+
+      const parts: string[] = [];
+      if (data.videos_moved) parts.push(`${data.videos_moved} vídeo(s) movido(s) para Sem pasta`);
+      if (data.paused_loops?.length) {
+        parts.push(
+          data.paused_loops.length === 1
+            ? `1 Loop que utilizava esta pasta foi pausado`
+            : `${data.paused_loops.length} Loops que utilizavam esta pasta foram pausados`
+        );
+      }
+      if (data.synced_campaigns_removed) {
+        parts.push(`${data.synced_campaigns_removed} campanha(s) sincronizada(s) desligada(s)`);
+      }
+      setDeleteFolderResult(parts.length ? parts.join(" · ") : "Pasta excluída.");
+      setTimeout(() => setDeleteFolderResult(null), 6000);
+
       await fetchFolders();
       if (currentFolder?.id === folder.id) navigateToFolder(null);
       setDeletingFolder(null);
+    } catch {
+      setDeleteFolderError("Erro de rede ao excluir a pasta. Tente novamente.");
+    } finally {
+      setDeletingFolderLoading(false);
     }
   };
 
@@ -603,19 +640,38 @@ export default function LibraryPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-white">Excluir pasta</h3>
-                  <p className="text-xs text-white/40">Todos os vídeos dentro serão permanentemente deletados</p>
+                  <p className="text-xs text-white/40">Os vídeos não serão excluídos</p>
                 </div>
               </div>
               <p className="text-sm text-white/60">
                 Tem certeza que deseja excluir <span className="text-white font-medium">&ldquo;{deletingFolder.name}&rdquo;</span>?
               </p>
+              <p className="text-xs text-white/40 leading-relaxed">
+                Excluir esta pasta não excluirá os vídeos. Eles serão movidos para{" "}
+                <span className="text-white/70">Sem pasta</span>. Loops que usavam esta pasta
+                serão pausados.
+              </p>
+              {deleteFolderError && (
+                <p className="text-xs text-red-400 leading-relaxed">{deleteFolderError}</p>
+              )}
               <div className="flex gap-3">
-                <button onClick={() => setDeletingFolder(null)} className="btn-ghost flex-1 text-sm py-2.5">Cancelar</button>
                 <button
-                  onClick={() => handleDeleteFolder(deletingFolder)}
-                  className="flex-1 text-sm py-2.5 rounded-xl bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30 transition-all duration-200"
+                  type="button"
+                  onClick={() => { setDeletingFolder(null); setDeleteFolderError(null); }}
+                  disabled={deletingFolderLoading}
+                  className="btn-ghost flex-1 text-sm py-2.5 disabled:opacity-40"
                 >
-                  Excluir
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteFolder(deletingFolder)}
+                  disabled={deletingFolderLoading}
+                  className="flex-1 flex items-center justify-center gap-2 text-sm py-2.5 rounded-xl bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deletingFolderLoading
+                    ? <><Loader2 size={14} className="animate-spin" /> Excluindo…</>
+                    : "Excluir"}
                 </button>
               </div>
             </motion.div>
@@ -684,6 +740,19 @@ export default function LibraryPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <AnimatePresence>
+            {deleteFolderResult && (
+              <motion.span
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#00FF41]/10 border border-[#00FF41]/25 text-[#00FF41]/80 text-xs font-medium"
+              >
+                <CheckCircle2 size={13} /> {deleteFolderResult}
+              </motion.span>
+            )}
+          </AnimatePresence>
+
           <motion.button
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
             onClick={handleCleanupOrphans}

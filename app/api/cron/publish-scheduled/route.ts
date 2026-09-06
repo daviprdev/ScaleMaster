@@ -53,6 +53,7 @@ interface PostRow {
   post_type: string | null;
   retry_count: number | null;
   video_processing_mode: string | null;
+  share_to_feed: boolean | null;
   instagram_accounts: AccountRow | null;
   videos_library: { public_url: string } | null;
 }
@@ -169,7 +170,7 @@ export async function GET(req: NextRequest) {
   // IMPORTANTE: não buscamos posts com instagram.com URLs — esses são tratados
   // pelo prefetch-clone-urls que resolve as URLs para Supabase antes de publicar.
   const SELECT_FIELDS =
-    "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, video_processing_mode, " +
+    "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, video_processing_mode, share_to_feed, " +
     "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id), " +
     "videos_library(public_url)";
 
@@ -398,12 +399,14 @@ export async function GET(req: NextRequest) {
           `[publish-scheduled] Criando container @${account.username} | ${effectiveVideoUrl.slice(0, 70)}…`
         );
         const mediaType = post.post_type === "story" ? "STORIES" : "REELS";
+        // share_to_feed só existe para Reels; o helper ignora em STORIES.
         creationId = await createMediaContainerOnly(
           account.ig_business_account_id,
           effectiveVideoUrl,
           caption,
           tokenToUse,
-          mediaType
+          mediaType,
+          typeof post.share_to_feed === "boolean" ? post.share_to_feed : null
         );
         await admin
           .from("scheduled_posts")

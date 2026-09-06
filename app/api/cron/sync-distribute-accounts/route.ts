@@ -50,6 +50,7 @@ interface DistributeCampaignRow {
   account_stagger_seconds: number | null;
   burst_mode: boolean;
   video_processing_mode: string | null;
+  share_to_feed: boolean | null;
 }
 
 interface AccountState {
@@ -72,7 +73,7 @@ export async function GET(req: NextRequest) {
 
   const { data: campaigns, error } = await admin
     .from("distribute_campaigns")
-    .select("id, user_id, account_folder_ids, video_folder_id, video_count, posts_per_day, captions, auto_caption_enabled, auto_caption_type, account_stagger_seconds, burst_mode, video_processing_mode");
+    .select("id, user_id, account_folder_ids, video_folder_id, video_count, posts_per_day, captions, auto_caption_enabled, auto_caption_type, account_stagger_seconds, burst_mode, video_processing_mode, share_to_feed");
 
   if (error) {
     console.error("[sync-distribute-accounts] Erro ao buscar campanhas:", error.message);
@@ -248,6 +249,7 @@ async function processCampaign(
       campaign_id: campaign.id,
       // Conta nova matriculada herda a decisao da campanha (congelada por post).
       video_processing_mode: normalizeProcessingMode(campaign.video_processing_mode),
+      share_to_feed: typeof campaign.share_to_feed === "boolean" ? campaign.share_to_feed : null,
     });
   });
 

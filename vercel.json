@@ -33,10 +33,6 @@
       "schedule": "*/30 * * * *"
     },
     {
-      "path": "/api/cron/process-automations",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/cron/sync-distribute-accounts",
       "schedule": "*/10 * * * *"
     },

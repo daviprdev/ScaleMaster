@@ -38,9 +38,16 @@ export async function PATCH(
     "interval_minutes", "media_limit", "captions", "cover_image_url",
     "effect_mirror", "effect_invert", "effect_zoom", "effect_blur", "effect_noise", "effect_anti_ai",
     "auto_caption_enabled", "auto_caption_type", "account_stagger_seconds",
-    "video_processing_mode"];
+    "video_processing_mode", "share_to_feed"];
   for (const key of scalars) {
     if (!(key in body)) continue;
+
+    if (key === "share_to_feed") {
+      // Só afeta containers criados a partir daqui — os já enviados guardam o
+      // valor que valia na época. Booleano explícito ou null (não enviar).
+      updatePayload[key] = typeof body[key] === "boolean" ? body[key] : null;
+      continue;
+    }
 
     if (key === "video_processing_mode") {
       // Só afeta publicações CRIADAS a partir daqui — posts/containers já

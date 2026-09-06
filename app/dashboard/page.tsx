@@ -16,7 +16,6 @@ import {
   RefreshCw,
   Trash2,
   Send,
-  Bot,
   Repeat2,
   ImagePlay,
   Eye,
@@ -298,7 +297,6 @@ export default function DashboardPage() {
 
   const quickActions = [
     { label: "Postar", href: "/dashboard/postar", icon: Send, desc: "Distribuição de conteúdo", color: "#00FF41" },
-    { label: "Automatizar", href: "/dashboard/automatizar", icon: Bot, desc: "Publicação por pasta", color: "#00E5FF" },
     { label: "Loop", href: "/dashboard/loop", icon: Repeat2, desc: "Ciclo contínuo", color: "#00FF41" },
     { label: "Stories", href: "/dashboard/stories", icon: ImagePlay, desc: "Postar e importar", color: "#00E5FF" },
   ];

@@ -6,10 +6,11 @@ import {
   Users, Film, CalendarDays, Send, FolderOpen, X, Check,
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
   Shuffle, Zap, List, Library, Save, BookMarked, BarChart2,
-  RefreshCw, ChevronDown, Sparkles, Pencil, SlidersHorizontal,
+  RefreshCw, ChevronDown, Sparkles, Pencil, SlidersHorizontal, LayoutGrid,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
+import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -1138,6 +1139,9 @@ export default function PostarPage() {
   // Processamento do video (opt-in) - padrao: arquivo original, zero FFmpeg
   const [videoProcessingMode, setVideoProcessingMode] = useState<VideoProcessingMode>("original");
 
+  // Onde o Reel aparece no perfil (share_to_feed da Meta). Padrão: Reels + grade.
+  const [shareToFeed, setShareToFeed] = useState(true);
+
   // Submit
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -1273,6 +1277,7 @@ export default function PostarPage() {
           burst_mode: burstMode,
           sync_folder_ids: syncFolders ? fullySelectedFolders.map(g => g.id) : [],
           video_processing_mode: videoProcessingMode,
+          share_to_feed: shareToFeed,
         }),
       });
 
@@ -1963,7 +1968,13 @@ export default function PostarPage() {
               )}
             </SectionCard>
 
-            {/* 5. Processamento do video */}
+            {/* 5. Exibição do Reel */}
+            <SectionCard>
+              <SectionLabel Icon={LayoutGrid}>Exibição do Reel</SectionLabel>
+              <ReelPlacementSelector value={shareToFeed} onChange={setShareToFeed} />
+            </SectionCard>
+
+            {/* 6. Processamento do video */}
             <SectionCard>
               <SectionLabel Icon={SlidersHorizontal}>Processamento do vídeo</SectionLabel>
               <VideoProcessingSelector

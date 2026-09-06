@@ -21,6 +21,7 @@ interface CloneBody {
   auto_caption_type?: string;
   profile_username?:  string;
   video_processing_mode?: string; // "original" (padrao) | "clean_metadata"
+  share_to_feed?: boolean;        // true = Reels + grade | false = somente Reels
 }
 
 function fisherYates<T>(arr: T[]): T[] {
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
   // Congelado por post: o Clone re-hospeda o reel do CDN sem alterar bytes; a
   // limpeza opcional gera uma variante separada dessa copia re-hospedada.
   const processingMode = normalizeProcessingMode(body.video_processing_mode);
+  const shareToFeed = typeof body.share_to_feed === "boolean" ? body.share_to_feed : null;
   const isAutoCaption = !!auto_caption_type;
   const autoType = (auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
 
@@ -121,6 +123,7 @@ export async function POST(req: NextRequest) {
         campaign_id:          campaignId,
         clone_source_profile: profile_username ?? null,
         video_processing_mode: processingMode,
+        share_to_feed:         shareToFeed,
       });
     }
   }

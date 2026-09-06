@@ -352,9 +352,11 @@ async function main() {
     publishScheduled.includes("normalizeProcessingMode(post.video_processing_mode)") &&
       !publishScheduled.includes('from("loops")') &&
       !publishScheduled.includes('from("automations")'));
+  // (o cron process-automations saiu do produto em 2026-09-06 junto com o
+  //  módulo Automatizar — a checagem cobre os fluxos que restaram)
   check("TESTE 5: a decisão é copiada para o post concreto no agendamento",
     src("app/api/posts/distribute/route.ts").includes("video_processing_mode: processingMode") &&
-      src("app/api/cron/process-automations/route.ts").includes("normalizeProcessingMode(automation.video_processing_mode)") &&
+      src("app/api/cron/sync-distribute-accounts/route.ts").includes("normalizeProcessingMode(campaign.video_processing_mode)") &&
       processLoops.includes("video_processing_mode: normalizeProcessingMode(loop.video_processing_mode)"));
 
   // TESTE 6 — efeitos criativos seguem funcionando, em pipeline próprio.

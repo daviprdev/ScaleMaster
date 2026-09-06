@@ -9,11 +9,12 @@ import {
   Loader2, AlertCircle, ChevronDown, Info, Film, AlertTriangle,
   BarChart2, Heart, MessageCircle, Eye, Crown, TrendingUp, ChevronUp,
   Save, Library, BookMarked, Shuffle, CheckCircle2,
-  ZoomIn, Waves, Droplets, Shield, Sparkles, SlidersHorizontal,
+  ZoomIn, Waves, Droplets, Shield, Sparkles, SlidersHorizontal, LayoutGrid,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
+import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ interface Loop {
   effect_noise:    boolean;
   effect_anti_ai:  boolean;
   video_processing_mode?: string | null;
+  share_to_feed?: boolean | null;
   status: "active" | "paused";
   created_at: string;
   loop_accounts?: LoopAccountData[];
@@ -93,6 +95,7 @@ interface FormData {
   autoCaptionType: string;
   accountStaggerSeconds: number | null;
   videoProcessingMode: VideoProcessingMode;
+  shareToFeed: boolean;
 }
 
 interface SavedCaption {
@@ -132,6 +135,7 @@ const DEFAULT_FORM: FormData = {
   autoCaptionType: AUTO_CAPTION_TYPE_VALUE,
   accountStaggerSeconds: null,
   videoProcessingMode: "original",
+  shareToFeed: true,
 };
 
 // ── Analytics types ───────────────────────────────────────────
@@ -1229,6 +1233,9 @@ function LoopFormModal({
         accountStaggerSeconds: (editingLoop as any).account_stagger_seconds ?? null,
         videoProcessingMode:
           editingLoop.video_processing_mode === "clean_metadata" ? "clean_metadata" : "original",
+        // Loop antigo sem escolha persistida (null) abre marcado como
+        // "Reels + grade", mas só passa a enviar o parâmetro quando salvo.
+        shareToFeed: editingLoop.share_to_feed !== false,
       };
     }
     return DEFAULT_FORM;
@@ -1626,6 +1633,15 @@ function LoopFormModal({
             )}
           </div>
 
+          {/* Exibição do Reel (share_to_feed da Meta) */}
+          <div>
+            <SectionLabel icon={LayoutGrid} label="Exibição do Reel" />
+            <ReelPlacementSelector
+              value={form.shareToFeed}
+              onChange={v => update("shareToFeed", v)}
+            />
+          </div>
+
           {/* Processamento do vídeo (limpeza — conceito separado dos efeitos) */}
           <div>
             <SectionLabel icon={SlidersHorizontal} label="Processamento do vídeo" />
@@ -1829,6 +1845,7 @@ export default function LoopPage() {
       auto_caption_type: form.autoCaptionEnabled ? form.autoCaptionType : null,
       account_stagger_seconds: form.accountStaggerSeconds,
       video_processing_mode: form.videoProcessingMode,
+      share_to_feed: form.shareToFeed,
       account_ids: form.accountMode === "folder" ? [] : form.accountIds,
     };
 

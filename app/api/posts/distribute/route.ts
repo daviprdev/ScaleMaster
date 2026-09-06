@@ -29,6 +29,7 @@ interface DistributeBody {
   burst_mode?: boolean;           // Modo Ciclo: todos os vídeos agendados para agora
   sync_folder_ids?: string[];     // pastas de contas cujas contas novas devem entrar sozinhas na campanha
   video_processing_mode?: string; // "original" (padrao) | "clean_metadata"
+  share_to_feed?: boolean;        // true = Reels + grade | false = somente Reels
 }
 
 export async function POST(req: NextRequest) {
@@ -45,6 +46,9 @@ export async function POST(req: NextRequest) {
   // Decisao de processamento congelada no momento do agendamento: mudar a
   // preferencia depois nao altera retroativamente posts ja criados.
   const processingMode = normalizeProcessingMode(body.video_processing_mode);
+  // Só persiste quando veio um booleano de verdade — undefined mantém o
+  // comportamento anterior (parâmetro não enviado à Meta).
+  const shareToFeed = typeof body.share_to_feed === "boolean" ? body.share_to_feed : null;
 
   if (!account_ids?.length)
     return NextResponse.json({ error: "Selecione ao menos 1 conta." }, { status: 400 });
@@ -202,6 +206,7 @@ export async function POST(req: NextRequest) {
         status: "pending",
         campaign_id: campaignId,
         video_processing_mode: processingMode,
+        share_to_feed: shareToFeed,
       });
     }
   }
@@ -229,6 +234,7 @@ export async function POST(req: NextRequest) {
       account_stagger_seconds: account_stagger_seconds ?? null,
       burst_mode: !!burst_mode,
       video_processing_mode: processingMode,
+      share_to_feed: shareToFeed,
     });
     if (syncErr) console.error("[distribute] erro ao salvar sync da campanha:", syncErr.message);
   }

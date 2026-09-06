@@ -67,10 +67,12 @@ export async function POST(req: NextRequest) {
     scheduled_for: string | null;
     account_ids: string[];
     video_processing_mode?: string;
+    share_to_feed?: boolean;
   };
 
   const { media_url, caption, first_comment, post_type, scheduled_for, account_ids } = body;
   const processingMode = normalizeProcessingMode(body.video_processing_mode);
+  const shareToFeed = typeof body.share_to_feed === "boolean" ? body.share_to_feed : null;
 
   if (!media_url) return NextResponse.json({ error: "URL da mídia obrigatória." }, { status: 400 });
   if (!account_ids?.length) return NextResponse.json({ error: "Selecione ao menos uma conta." }, { status: 400 });
@@ -221,7 +223,9 @@ export async function POST(req: NextRequest) {
         account.ig_business_account_id,
         tokenToUse,
         effectiveMediaUrl,
-        caption ?? ""
+        caption ?? "",
+        // Story não aceita share_to_feed; publishViaMetaAPI só publica REELS.
+        post_type === "story" ? null : shareToFeed
       );
 
       if (result.status !== "ok") throw new Error(result.error ?? "Erro na Meta API.");

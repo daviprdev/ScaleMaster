@@ -61,6 +61,7 @@ interface LoopRow {
   auto_caption_enabled?: boolean;
   auto_caption_type?: string | null;
   video_processing_mode?: string | null;
+  share_to_feed?: boolean | null;
 }
 
 interface HumanScheduleRow {
@@ -206,11 +207,17 @@ async function createContainerForAccount(
   // o burst simultâneo que dispara "User is performing too many actions".
   initialDelayMinutes = 0
 ): Promise<void> {
+  // share_to_feed sai da configuração do loop e é registrado no container —
+  // alterar o loop depois não muda o que já foi enviado à Meta.
+  const shareToFeed = typeof loop.share_to_feed === "boolean" ? loop.share_to_feed : null;
+
   const creationId = await createMediaContainerOnly(
     account.ig_business_account_id!,
     videoUrl,
     caption,
-    tokenToUse
+    tokenToUse,
+    "REELS",
+    shareToFeed
   );
   const insertData: Record<string, unknown> = {
     user_id: loop.user_id,
@@ -222,6 +229,7 @@ async function createContainerForAccount(
     video_id: videoId,
     cycle_number: cycleNumber,
     video_processing_mode: normalizeProcessingMode(loop.video_processing_mode),
+    share_to_feed: shareToFeed,
   };
   if (initialDelayMinutes > 0) {
     insertData.retry_after = new Date(Date.now() + initialDelayMinutes * 60_000).toISOString();
@@ -1398,7 +1406,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, user_id, name, folder_id, account_folder_id, is_infinite, cycles, cycles_done, current_cycle,
       interval_minutes, account_stagger_seconds, media_limit, captions, effect_mirror, effect_invert,
-      effect_zoom, effect_blur, effect_noise, effect_anti_ai, video_processing_mode,
+      effect_zoom, effect_blur, effect_noise, effect_anti_ai, video_processing_mode, share_to_feed,
       auto_caption_enabled, auto_caption_type,
       last_posted_at,
       loop_accounts (

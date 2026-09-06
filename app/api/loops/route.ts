@@ -28,7 +28,7 @@ export async function GET() {
       id, user_id, folder_id, account_folder_id, name, is_infinite, cycles, interval_minutes,
       account_stagger_seconds, media_limit, captions, cover_image_url,
       effect_mirror, effect_invert, effect_zoom, effect_blur, effect_noise, effect_anti_ai,
-      auto_caption_enabled, auto_caption_type, video_processing_mode,
+      auto_caption_enabled, auto_caption_type, video_processing_mode, share_to_feed,
       status, created_at,
       loop_accounts ( account_id, instagram_accounts ( id, username, display_name, avatar_url ) ),
       library_folders ( id, name )
@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
     auto_caption_type?: string | null;
     account_stagger_seconds?: number | null;
     video_processing_mode?: string;
+    share_to_feed?: boolean;
     account_ids: string[];
   };
 
@@ -140,6 +141,7 @@ export async function POST(req: NextRequest) {
       auto_caption_type:    autoEnabled ? (body.auto_caption_type ?? "curiosidades-gerais") : null,
       account_stagger_seconds: body.account_stagger_seconds ?? null,
       video_processing_mode: normalizeProcessingMode(body.video_processing_mode),
+      share_to_feed: typeof body.share_to_feed === "boolean" ? body.share_to_feed : null,
       status: "active",
     })
     .select()

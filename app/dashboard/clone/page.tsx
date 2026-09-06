@@ -6,10 +6,11 @@ import {
   Search, Users, Play, Eye, TrendingUp,
   CheckCircle2, Copy, ChevronRight, Zap,
   AlertCircle, Loader2, Sparkles, Download, Clock, Trash2,
-  BarChart2, Bookmark, SlidersHorizontal,
+  BarChart2, Bookmark, SlidersHorizontal, LayoutGrid,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
+import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -160,6 +161,8 @@ export default function ClonePage() {
   // Processamento do video (opt-in). O reel e sempre re-hospedado sem alteracao;
   // a limpeza, quando escolhida, gera uma variante separada dessa copia.
   const [videoProcessingMode, setVideoProcessingMode] = useState<VideoProcessingMode>("original");
+  // Onde o Reel aparece no perfil (share_to_feed da Meta). Padrão: Reels + grade.
+  const [shareToFeed, setShareToFeed] = useState(true);
 
   // Submit
   const [submitting, setSubmitting]   = useState(false);
@@ -381,6 +384,7 @@ export default function ClonePage() {
           auto_caption_type: autoCaptionEnabled ? AUTO_CAPTION_TYPE_VALUE : undefined,
           profile_username:  profile?.username ?? query.replace(/^@/, "").trim(),
           video_processing_mode: videoProcessingMode,
+          share_to_feed: shareToFeed,
         }),
       });
       const data = await res.json();
@@ -903,6 +907,15 @@ export default function ClonePage() {
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+
+          {/* Exibição do Reel */}
+          <div className="glass-card p-4 rounded-2xl">
+            <div className="flex items-center gap-2 mb-3">
+              <LayoutGrid size={13} className="text-white/35" />
+              <p className="text-xs font-bold uppercase tracking-widest text-white/50">Exibição do Reel</p>
+            </div>
+            <ReelPlacementSelector value={shareToFeed} onChange={setShareToFeed} />
           </div>
 
           {/* Processamento do vídeo */}

@@ -27,7 +27,6 @@ import {
   Globe,
   Copy,
   ImagePlay,
-  Bot,
   Lock,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
@@ -58,7 +57,6 @@ const navGroups: NavGroup[] = [
     label: "PUBLICAÇÃO",
     items: [
       { label: "Postar", href: "/dashboard/postar", icon: Send },
-      { label: "Automatizar", href: "/dashboard/automatizar", icon: Bot },
       { label: "Loop", href: "/dashboard/loop", icon: Repeat2 },
       { label: "Clonar Perfil", href: "/dashboard/clone", icon: Copy },
       { label: "Stories", href: "/dashboard/stories", icon: ImagePlay },
