@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { isBrokenRecord } from "@/lib/library-integrity";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * POST /api/library/cleanup-orphans
+ * POST /api/library/broken-records
  *
  * Remove APENAS registros quebrados: linhas de `videos_library` cujo arquivo
  * não existe mais no Storage. Nenhum arquivo é apagado por esta rota.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * Comportamento anterior (removido em 2026-09-06) — era destrutivo:
+ * Comportamento anterior (removido em 2026-09-06) — era destrutivo e ambiguo:
  *
  *   const orphans = allVideos.filter(v => v.folder_id === null || …)
  *   await admin.storage.from("videos-library").remove(storagePaths)  // 1º
@@ -82,7 +83,7 @@ export async function POST(_: NextRequest) {
 
       if (error) {
         // Sem inventário confiável, apagar seria um chute — aborta sem mutação.
-        console.error("[cleanup-orphans] falha ao listar Storage:", error.message);
+        console.error("[library-cleanup] falha ao listar Storage:", error.message);
         return NextResponse.json(
           { error: "Não foi possível ler o Storage para verificar os arquivos. Nada foi alterado." },
           { status: 502 }
@@ -95,7 +96,8 @@ export async function POST(_: NextRequest) {
     }
   }
 
-  const broken = candidates.filter(v => !existing.has(v.storage_path!));
+  // Definição canônica em lib/library-integrity.ts — folder_id NUNCA entra aqui.
+  const broken = candidates.filter(v => isBrokenRecord(v, existing));
   if (broken.length === 0) {
     return NextResponse.json({ deleted: 0, message: "Nenhum registro quebrado." });
   }
@@ -111,8 +113,8 @@ export async function POST(_: NextRequest) {
   }
 
   console.log(
-    `[cleanup-orphans] ${broken.length} registro(s) sem arquivo removido(s) do banco | ` +
-    `arquivos no Storage preservados: ${existing.size}`
+    `[library-cleanup] broken_db_rows=${broken.length} ` +
+    `storage_objects_preserved=${existing.size} storage_objects_removed=0`
   );
 
   return NextResponse.json({
