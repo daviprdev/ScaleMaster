@@ -5,10 +5,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, Send, X, Check, Loader2, AlertCircle, CheckCircle2,
   ImagePlay, RefreshCw, Trash2, Upload, Image, Film, XCircle,
-  Play, Pause, Download, Sparkles, SlidersHorizontal,
+  Play, Pause, Download, Sparkles, SlidersHorizontal, Link2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
+import { StoryLinkSelector, EMPTY_STORY_LINK, type StoryLinkValue } from "@/components/dashboard/StoryLinkSelector";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -668,6 +669,8 @@ export default function StoriesPage() {
   // Processamento do video (opt-in). Imagens ignoram na publicacao (nao ha
   // stream copy de video), mas a escolha e persistida junto com o post.
   const [videoProcessingMode, setVideoProcessingMode] = useState<VideoProcessingMode>("original");
+  // Link divulgado junto do Story (registro + cópia — a API não anexa sticker).
+  const [storyLink, setStoryLink] = useState<StoryLinkValue>(EMPTY_STORY_LINK);
   const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
 
   // History
@@ -873,6 +876,12 @@ export default function StoriesPage() {
     if (!media || media.status !== "done" || !media.url) { setPublishError("Adicione uma mídia."); return; }
     if (!selectedFolderId) { setPublishError("Escolha um modelo."); return; }
     if (selectedAccountIds.length === 0) { setPublishError("Selecione ao menos 1 conta."); return; }
+    if (storyLink.mode === "managed" && !storyLink.managedLinkId) {
+      setPublishError("Escolha o link gerenciado ou volte para \"Sem link\"."); return;
+    }
+    if (storyLink.mode === "direct" && !storyLink.directUrl.trim()) {
+      setPublishError("Informe a URL do link ou volte para \"Sem link\"."); return;
+    }
 
     setPublishError(null);
     setPublishing(true);
@@ -885,6 +894,11 @@ export default function StoriesPage() {
           media_url: media.url,
           media_type: media.media_type,
           video_processing_mode: videoProcessingMode,
+          // O servidor deriva a URL pública a partir do slug quando é link
+          // gerenciado — o que for mandado aqui em story_link_url é ignorado
+          // nesse caso.
+          managed_link_id: storyLink.mode === "managed" ? storyLink.managedLinkId : null,
+          story_link_url: storyLink.mode === "direct" ? storyLink.directUrl.trim() || null : null,
         }),
       });
       const data = await res.json() as { success?: boolean; error?: string; accounts?: number };
@@ -1100,6 +1114,12 @@ export default function StoriesPage() {
                 })}
               </div>
             )}
+          </SectionCard>
+
+          {/* Link do Story */}
+          <SectionCard>
+            <SectionLabel Icon={Link2}>Link do Story</SectionLabel>
+            <StoryLinkSelector value={storyLink} onChange={setStoryLink} />
           </SectionCard>
 
           {/* Processamento do vídeo */}
