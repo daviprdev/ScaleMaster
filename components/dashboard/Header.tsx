@@ -53,6 +53,10 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     title: "Horário Humano",
     subtitle: "Anti-shadowban — publique em horários naturais",
   },
+  "/dashboard/links": {
+    title: "Links Gerenciáveis",
+    subtitle: "Crie links curtos, altere destinos e acompanhe cliques",
+  },
   "/dashboard/logins": {
     title: "Cofre de Logins",
     subtitle: "Armazenamento criptografado de credenciais de acesso",

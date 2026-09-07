@@ -27,6 +27,7 @@ import {
   Globe,
   Copy,
   ImagePlay,
+  Link2,
   Lock,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
@@ -67,6 +68,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Inspirações", href: "/dashboard/inspirations", icon: Sparkles },
       { label: "Biblioteca",  href: "/dashboard/library",      icon: FolderOpen },
+      { label: "Links",       href: "/dashboard/links",        icon: Link2 },
     ],
   },
   {
