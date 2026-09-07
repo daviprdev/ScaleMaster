@@ -3653,8 +3653,9 @@ caminho crítico.
 
 **Segurança**
 
-- Sem open redirect: a rota só recebe o slug, o destino vem do banco. Nenhum
-  `?url=`.
+- Nenhum redirect controlado por parâmetro de URL: o destino é previamente
+  persistido por usuário autenticado, validado no servidor e resolvido
+  exclusivamente pelo slug. A rota não aceita `?url=`.
 - Sem cloaking: um slug = um destino para todo visitante. O User-Agent só vira
   categoria de analytics e nunca volta para o cálculo da URL final. Não há
   ramificação por bot, país ou referrer — e o teste tem guarda estrutural

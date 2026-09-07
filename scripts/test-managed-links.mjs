@@ -1,15 +1,18 @@
 /**
  * Links Gerenciáveis — testes de regressão.
  *
- * Os testes de VALIDAÇÃO e de MONTAGEM DE URL são comportamentais: compilam
- * `lib/managed-links.ts` e executam as funções de verdade. Os demais são
- * guardas estruturais sobre a rota pública, as rotas privadas e a migration —
- * o que garante que uma refatoração futura não reintroduza open redirect,
- * cloaking, cache do destino antigo ou coleta de dado pessoal.
+ * Três camadas:
  *
- * O comportamento do banco (302 real, contador atômico sob 100 cliques,
- * isolamento da falha de analytics, IDOR no analytics) foi verificado
- * diretamente contra o Postgres de produção na implementação — ver relatório.
+ *   1. COMPORTAMENTAL (lib) — compila `lib/managed-links.ts` e executa as
+ *      funções de verdade: validação de destino, slug, categorias e merge.
+ *   2. COMPORTAMENTAL (banco, seção 17) — semeia links reais e chama a RPC,
+ *      provando a regra de contagem e o acordo entre as duas implementações da
+ *      validação de destino (TypeScript e SQL). Só roda quando há credencial em
+ *      `.env.local`; sem ela a seção é pulada com aviso.
+ *   3. ESTRUTURAL — guardas sobre a rota pública, as rotas privadas e a
+ *      migration, para que uma refatoração futura não reintroduza redirect
+ *      controlado por parâmetro, cloaking, cache do destino antigo, coleta de
+ *      dado pessoal ou credencial serializada para o browser.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -45,6 +48,62 @@ function compilarLib(relPath) {
     { stdio: "pipe", shell: process.platform === "win32" }
   );
   return path.join(out, path.basename(relPath).replace(/\.ts$/, ".js"));
+}
+
+/**
+ * Lê .env.local se existir. Os testes de comportamento do banco (secao 14) só
+ * rodam quando ha credencial disponivel; sem ela sao pulados com aviso, para
+ * que `npm test` continue funcionando em qualquer maquina.
+ */
+function carregarEnv() {
+  const arq = path.join(ROOT, ".env.local");
+  if (!fs.existsSync(arq)) return {};
+  const out = {};
+  for (const linha of fs.readFileSync(arq, "utf8").split(/\r?\n/)) {
+    const m = linha.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
+    if (!m) continue;
+    out[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+  }
+  return out;
+}
+
+/** Cliente PostgREST minimo com a service_role — sem dependencia nova. */
+function criarClienteDb(url, key) {
+  const base = url.replace(/\/+$/, "");
+  const headers = {
+    apikey: key,
+    Authorization: `Bearer ${key}`,
+    "Content-Type": "application/json",
+  };
+  return {
+    async rpc(nome, args) {
+      const res = await fetch(`${base}/rest/v1/rpc/${nome}`, {
+        method: "POST", headers, body: JSON.stringify(args),
+      });
+      if (!res.ok) throw new Error(`rpc ${nome}: ${res.status} ${await res.text()}`);
+      return res.json();
+    },
+    async insert(tabela, linhas) {
+      const res = await fetch(`${base}/rest/v1/${tabela}`, {
+        method: "POST",
+        headers: { ...headers, Prefer: "return=representation" },
+        body: JSON.stringify(linhas),
+      });
+      if (!res.ok) throw new Error(`insert ${tabela}: ${res.status} ${await res.text()}`);
+      return res.json();
+    },
+    async select(tabela, query) {
+      const res = await fetch(`${base}/rest/v1/${tabela}?${query}`, { headers });
+      if (!res.ok) throw new Error(`select ${tabela}: ${res.status} ${await res.text()}`);
+      return res.json();
+    },
+    async remove(tabela, query) {
+      const res = await fetch(`${base}/rest/v1/${tabela}?${query}`, {
+        method: "DELETE", headers,
+      });
+      if (!res.ok) throw new Error(`delete ${tabela}: ${res.status} ${await res.text()}`);
+    },
+  };
 }
 
 async function main() {
@@ -174,7 +233,7 @@ async function main() {
   check("link arquivado devolve 404 (exclusão suave)",
     /out_status === "archived"[\s\S]{0,300}htmlResponse\(404/.test(redirectRoute));
   check("destino inválido no banco não vira redirect",
-    /if \(!check\.ok\)[\s\S]{0,300}htmlResponse\(410/.test(redirectRoute));
+    /if \(!row\.out_destination_valid \|\| !check\.ok\)[\s\S]{0,400}htmlResponse\(410/.test(redirectRoute));
 
   // Open redirect
   check("SEM OPEN REDIRECT: a rota não lê nenhum parâmetro de URL de destino",
@@ -230,7 +289,7 @@ async function main() {
   check("sem `void promise` de analytics (serverless mataria depois da resposta)",
     !/void\s+\w*\.?(from|insert|rpc)/.test(redirectCodigo));
   check("clique só é registrado quando o link de fato redireciona",
-    migration.includes("IF v_status = 'active' THEN"));
+    migration.includes("IF v_status = 'active' AND v_valid THEN"));
 
   // ══════════════════════════════════════════════════════════════════════════
   console.log("\n== 5. UTM e repasse de parâmetros ==\n");
@@ -495,6 +554,265 @@ async function main() {
     page.includes('rel="noopener noreferrer nofollow"'));
   check("Sidebar tem a entrada de Links",
     src("components/dashboard/Sidebar.tsx").includes('href: "/dashboard/links"'));
+
+
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n== 13. Credenciais nunca chegam ao browser ==\n");
+
+  // /api/accounts/list e consumido direto por seis telas do dashboard. Tudo que
+  // entra no SELECT vira JSON no browser.
+  const accountsList = src("app/api/accounts/list/route.ts");
+  const selectAccountsList = (accountsList.match(/\.select\(([\s\S]*?)\)/) ?? ["", ""])[1];
+
+  check("/api/accounts/list NAO seleciona access_token",
+    !/\baccess_token\b/.test(selectAccountsList));
+  check("/api/accounts/list NAO seleciona meta_access_token",
+    !/meta_access_token/.test(selectAccountsList));
+  check("/api/accounts/list NAO seleciona proxy_url",
+    !/proxy_url/.test(selectAccountsList));
+  check("/api/accounts/list NAO devolve credencial em lugar nenhum da resposta",
+    !/access_token|proxy_url|app_secret|password/i.test(semComentarios(accountsList)));
+  check("/api/accounts/list continua entregando o que a UI usa",
+    ["id", "username", "display_name", "avatar_url", "is_active",
+     "ig_business_account_id", "health_status", "folder_id"]
+      .every((campo) => selectAccountsList.includes(campo)));
+
+  // Rotas consumidas por Client Component nao podem serializar credencial.
+  const rotasDeBrowser = [
+    "app/api/accounts/list/route.ts",
+    "app/api/apps/route.ts",
+    "app/api/proxy-pool/route.ts",
+    "app/api/links/route.ts",
+    "app/api/links/[id]/route.ts",
+    "app/api/links/[id]/analytics/route.ts",
+  ];
+  for (const rota of rotasDeBrowser) {
+    const conteudo = semComentarios(src(rota));
+    const selects = conteudo.match(/\.select\(([\s\S]*?)\)/g) ?? [];
+    const temCredencial = selects.some((sel) =>
+      /\baccess_token\b|meta_access_token|ig_app_secret|refresh_token/.test(sel));
+    check(`${rota.replace("app/api/", "")}: nenhum SELECT traz credencial`, !temCredencial);
+  }
+
+  // O modulo Links nao toca em credencial nenhuma.
+  const arquivosLinks = [
+    "app/r/[slug]/route.ts", "app/api/links/route.ts",
+    "app/api/links/[id]/route.ts", "app/api/links/[id]/analytics/route.ts",
+    "lib/managed-links.ts", "lib/managed-links-db.ts", "lib/link-base-url.ts",
+    "app/dashboard/links/page.tsx", "app/dashboard/links/[id]/page.tsx",
+    "components/dashboard/StoryLinkSelector.tsx",
+  ];
+  for (const arq of arquivosLinks) {
+    check(`${arq}: sem token/segredo`,
+      !/\baccess_token\b|meta_access_token|ig_app_secret|refresh_token|proxy_url/
+        .test(semComentarios(src(arq))));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n== 14. Ordem: validar antes de contar ==\n");
+
+  const posValida = migration.indexOf("is_valid_link_destination(v_dest)");
+  const posConta = migration.indexOf("SET click_count = ml.click_count + 1");
+  check("a RPC valida o destino ANTES de incrementar o contador",
+    posValida > 0 && posConta > 0 && posValida < posConta);
+  check("o incremento so acontece com status active E destino valido",
+    migration.includes("IF v_status = 'active' AND v_valid THEN"));
+  check("existe a funcao de validade no banco",
+    migration.includes("CREATE OR REPLACE FUNCTION public.is_valid_link_destination"));
+  check("is_valid_link_destination tambem e revogada de anon/authenticated",
+    /REVOKE ALL ON FUNCTION public\.is_valid_link_destination/.test(migration));
+
+  // Savepoints separados: contador e linha de detalhe sao coisas diferentes.
+  const trechoAtivo = migration.slice(
+    migration.indexOf("IF v_status = 'active' AND v_valid THEN"),
+    migration.indexOf("out_link_id           := v_id"));
+  check("contador e detalhe tem blocos EXCEPTION separados",
+    (trechoAtivo.match(/EXCEPTION WHEN OTHERS THEN/g) ?? []).length === 2);
+  check("falha no contador nao derruba a funcao", trechoAtivo.includes("v_counted := false"));
+  check("falha no detalhe nao derruba a funcao", trechoAtivo.includes("v_logged := false"));
+
+  check("a rota usa o veredito do banco para decidir o 410",
+    redirectRoute.includes("!row.out_destination_valid"));
+  check("a rota loga se o clique foi contado",
+    redirectRoute.includes("click_counted="));
+  check("a RPC devolve destination_valid, click_counted e click_logged",
+    migration.includes("out_destination_valid  boolean") &&
+    migration.includes("out_click_counted      boolean") &&
+    migration.includes("out_click_logged       boolean"));
+
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n== 15. country e best-effort de analytics ==\n");
+
+  // As UNICAS linhas de codigo que mencionam country devem ser a leitura do
+  // header e a passagem para o analytics. Qualquer terceira linha e sinal de
+  // que o pais comecou a influenciar alguma decisao.
+  const linhasCountry = semComentarios(redirectRoute)
+    .split("\n")
+    .filter((l) => l.includes("country"));
+  check("country e lido uma vez e passado so para o analytics",
+    linhasCountry.length === 2 &&
+    linhasCountry[0].includes('req.headers.get("x-vercel-ip-country")') &&
+    linhasCountry[1].trim() === "p_country: country,");
+  check("country nao participa de nenhuma decisao (sem if/ternario)",
+    !/if\s*\([^)]*country|country\s*(===|!==|==|!=)|country\s*\?/.test(semComentarios(redirectRoute)));
+  check("country nao entra no calculo do destino",
+    !/country[\s\S]{0,150}(finalUrl|out_destination|buildRedirectUrl)/
+      .test(semComentarios(redirectRoute)));
+  check("o banco so aceita codigo de 2 letras",
+    migration.includes("char_length(country) <= 2"));
+
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n== 16. Redacao precisa sobre redirect por parametro ==\n");
+
+  const claude = src("CLAUDE.md");
+  check("a rota descreve o mecanismo em vez de afirmar impossibilidade",
+    redirectRoute.includes("não existe redirect controlado") &&
+    redirectRoute.includes("resolvido exclusivamente pelo slug"));
+  check("CLAUDE.md descreve o mecanismo",
+    claude.includes("Nenhum redirect é controlado por parâmetro de URL") &&
+    claude.includes("previamente persistido por usuário autenticado"));
+  check("nenhuma doc do modulo afirma 'open redirect impossível'",
+    !/open redirect[^.\n]{0,20}impossível/i.test(claude + src("docs/MEMORIA.md")));
+  check("CLAUDE.md documenta que click_count so conta redirect bem-sucedido",
+    claude.includes("`click_count` conta redirect bem-sucedido"));
+  check("CLAUDE.md documenta country como best-effort",
+    claude.includes("`country` é analytics best-effort"));
+  check("CLAUDE.md proibe credencial serializada para o browser",
+    claude.includes("Credencial nunca é serializada para o browser"));
+
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n== 17. Comportamento real do banco ==\n");
+
+  const env = carregarEnv();
+  const dbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
+  const dbKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!dbUrl || !dbKey) {
+    console.log("  SKIP  sem credencial de banco (.env.local ausente) — secao pulada");
+  } else {
+    const db = criarClienteDb(dbUrl, dbKey);
+    const marca = "zt" + Math.random().toString(36).slice(2, 7);
+    let semeou = false;
+
+    try {
+      const donos = await db.select("managed_links", "select=user_id&limit=1");
+      // Precisa de um user_id valido; usa o primeiro usuario existente.
+      const usuarios = donos.length
+        ? [{ id: donos[0].user_id }]
+        : await db.select("user_roles", "select=user_id&limit=1")
+            .then((r) => r.map((x) => ({ id: x.user_id })));
+
+      if (!usuarios.length) {
+        console.log("  SKIP  nenhum usuario no banco para semear os testes");
+      } else {
+        const dono = usuarios[0].id;
+
+        const semeados = await db.insert("managed_links", [
+          { user_id: dono, slug: marca + "AT", destination_url: "https://exemplo-teste.com/ok", status: "active" },
+          { user_id: dono, slug: marca + "PA", destination_url: "https://exemplo-teste.com/ok", status: "paused" },
+          { user_id: dono, slug: marca + "AR", destination_url: "https://exemplo-teste.com/ok", status: "archived" },
+          // Passa no CHECK do banco (^https?://) mas reprova em
+          // is_valid_link_destination — e exatamente o caso "destino invalido".
+          { user_id: dono, slug: marca + "IN", destination_url: "https://127.0.0.1/interno", status: "active" },
+        ]);
+        semeou = semeados.length === 4;
+
+        const contador = async (slug) => {
+          const [linha] = await db.select("managed_links", `slug=eq.${slug}&select=click_count,id`);
+          return linha;
+        };
+        const linhasDeClique = async (id) =>
+          (await db.select("managed_link_clicks", `link_id=eq.${id}&select=id`)).length;
+
+        // active valido → +1
+        const rAtivo = (await db.rpc("resolve_managed_link", {
+          p_slug: marca + "AT", p_device_type: "mobile", p_browser_family: "Chrome",
+        }))[0];
+        const cAtivo = await contador(marca + "AT");
+        check("TESTE: active valido → click_count +1",
+          cAtivo.click_count === 1 && rAtivo.out_click_counted === true);
+        check("TESTE: active valido → 1 linha em managed_link_clicks",
+          (await linhasDeClique(cAtivo.id)) === 1 && rAtivo.out_click_logged === true);
+        check("TESTE: active valido devolve o destino",
+          rAtivo.out_destination === "https://exemplo-teste.com/ok" &&
+          rAtivo.out_destination_valid === true);
+
+        // paused → +0
+        const rPausado = (await db.rpc("resolve_managed_link", { p_slug: marca + "PA" }))[0];
+        const cPausado = await contador(marca + "PA");
+        check("TESTE: paused → click_count +0",
+          cPausado.click_count === 0 && rPausado.out_click_counted === false);
+        check("TESTE: paused → nenhuma linha de clique",
+          (await linhasDeClique(cPausado.id)) === 0);
+
+        // archived → +0
+        const rArquivado = (await db.rpc("resolve_managed_link", { p_slug: marca + "AR" }))[0];
+        const cArquivado = await contador(marca + "AR");
+        check("TESTE: archived → click_count +0",
+          cArquivado.click_count === 0 && rArquivado.out_click_counted === false);
+        check("TESTE: archived → nenhuma linha de clique",
+          (await linhasDeClique(cArquivado.id)) === 0);
+
+        // destino invalido → +0
+        const rInvalido = (await db.rpc("resolve_managed_link", { p_slug: marca + "IN" }))[0];
+        const cInvalido = await contador(marca + "IN");
+        check("TESTE: destino invalido → click_count +0",
+          cInvalido.click_count === 0 && rInvalido.out_click_counted === false);
+        check("TESTE: destino invalido → nenhuma linha de clique",
+          (await linhasDeClique(cInvalido.id)) === 0);
+        check("TESTE: destino invalido e sinalizado para a rota",
+          rInvalido.out_destination_valid === false && rInvalido.out_status === "active");
+
+        // inexistente → nenhuma linha
+        const rNada = await db.rpc("resolve_managed_link", { p_slug: "naoexiste" + marca });
+        check("TESTE: slug inexistente → RPC devolve zero linhas", rNada.length === 0);
+
+        // falha SO no INSERT de analytics → contador soma e destino volta
+        const rFalha = (await db.rpc("resolve_managed_link", {
+          p_slug: marca + "AT", p_device_type: "categoria-invalida",
+        }))[0];
+        const cFalha = await contador(marca + "AT");
+        check("TESTE: falha so no INSERT de analytics → destino ainda e devolvido",
+          rFalha.out_destination === "https://exemplo-teste.com/ok");
+        check("TESTE: falha so no INSERT de analytics → click_logged=false",
+          rFalha.out_click_logged === false);
+        check("TESTE: falha so no INSERT de analytics → contador continua somando",
+          rFalha.out_click_counted === true && cFalha.click_count === 2);
+        check("TESTE: falha so no INSERT de analytics → nenhuma linha nova de detalhe",
+          (await linhasDeClique(cFalha.id)) === 1);
+
+        // Acordo entre as duas implementacoes de validacao.
+        const corpus = [
+          "https://exemplo.com/a", "http://exemplo.com/a", "https://sub.exemplo.com:8443/a?b=1#c",
+          "https://fcbarcelona.com/loja", "https://fdny.org/x", "https://exemplo.com/a?u=x@y.com",
+          "javascript:alert(1)", "file:///etc/passwd", "data:text/html,<script>",
+          "ftp://exemplo.com/a", "chrome://settings", "about:blank",
+          "https://usuario:senha@site.com/a", "https://usuario@site.com/a",
+          "http://localhost/x", "http://app.localhost/x", "http://127.0.0.1/x",
+          "http://0.0.0.0/x", "http://[::1]/x", "http://[fd00::1]/x",
+          "http://169.254.169.254/latest/meta-data/", "http://10.0.0.5/x",
+          "http://192.168.1.1/x", "http://172.20.0.1/x", "http://172.32.0.1/x",
+          "http://100.64.0.1/x", "http://100.128.0.1/x", "http://db.internal/x",
+          "http://impressora.local/x", "nao-e-url", "https://",
+          "https://exemplo.com/" + "a".repeat(2100),
+        ];
+        let divergencias = 0;
+        for (const url of corpus) {
+          const ts = validateDestinationUrl(url).ok;
+          const sql = await db.rpc("is_valid_link_destination", { p_url: url });
+          if (ts !== sql) {
+            divergencias++;
+            console.log(`        divergencia: ${url.slice(0, 60)} — ts=${ts} sql=${sql}`);
+          }
+        }
+        check(`TS e SQL concordam em ${corpus.length} URLs do corpus`, divergencias === 0);
+      }
+    } finally {
+      if (semeou) await db.remove("managed_links", `slug=like.${marca}*`);
+      const sobrou = await db.select("managed_links", `slug=like.${marca}*&select=id`);
+      check("dados de teste removidos do banco", sobrou.length === 0);
+    }
+  }
 
   console.log(`\n${passed} passaram, ${failed} falharam\n`);
   process.exit(failed === 0 ? 0 : 1);
