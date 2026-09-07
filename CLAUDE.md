@@ -166,6 +166,10 @@ ENCRYPTION_SECRET=qualquer-string-secreta-aqui
 | `/api/schedule` | POST | Cria postagens agendadas. Body: `{ video_id, account_ids, caption, scheduled_at }` |
 | `/api/schedule` | GET | Lista postagens agendadas com joins |
 | `/api/logins` | GET/POST/DELETE | Cofre de credenciais de login (Logins Vault) |
+| `/r/[slug]` | GET | **Rota pública** do redirecionador. 302 para o `destination_url` ativo. Sem sessão, sem cache, `noindex` |
+| `/api/links` | GET/POST | Lista e cria Links Gerenciáveis |
+| `/api/links/[id]` | GET/PATCH/DELETE | Detalhe + histórico, edição (destino/status/vínculos) e exclusão definitiva |
+| `/api/links/[id]/analytics` | GET | Agregação de cliques por RPC (`?days=7`, `30` ou `90`) |
 | `/api/queue/stats` | GET | Estatísticas da fila de publicação em tempo real |
 | `/api/failover/accounts` | GET/PATCH/PUT | Gerenciar health e prioridade de contas para failover |
 | `/api/failover/logs` | GET | Histórico de eventos de failover |
@@ -443,6 +447,8 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 | **Reset operacional de produção (2026-09-06)** | Recomeço do zero com contas, mídias e campanhas novas, para receber um Meta App novo. **Auditoria antes de qualquer DELETE:** as 39 tabelas do schema foram classificadas uma a uma; a maior parte dos alvos (`instagram_accounts`, `account_folders`, `library_folders`, `videos_library`, `loops`, `loop_accounts`, `scheduled_posts`, `pending_containers`, `video_variants`, `video_processing_jobs`, `distribute_campaigns`, `automations` + N:N, `story_templates`, `story_template_accounts`, `failover_logs`, `single_posts`, `login_jobs`, `account_analytics_history`) **já estava em 0** das limpezas anteriores. **Removido (16 linhas, uma transação com guarda que aborta se `auth.users`/`user_roles`/`sales` estiverem vazias):** `account_logins` 4 (credenciais das contas antigas), `scraped_profiles` 9 (cache de Inspirações), `story_media` 2, `magic_add_tokens` 1. **Storage:** 50 objetos / 73 MB removidos via Storage API em lotes (`videos/upload_*` 28 = 58 MB, `stories/<user>/*` 22 = 14,4 MB); bucket `videos-library` = 0 objetos. Script com guarda de contagem — abortou corretamente quando `stories/` retornou 0 na listagem rasa (arquivos estão aninhados em `stories/<user_id>/`, 3 níveis) e só prosseguiu com o prefixo correto. **Preservado por decisão explícita:** `sales` 107 (receita), `notifications` 269 (inclui idempotência do lucro diário), `audit_logs` 36 (aprovação/ban/impersonação — finalidade de segurança/compliance), `proxy_pool` 140 (estoque comprado, 0 atribuições órfãs), `saved_captions` 5, `human_schedule_settings`, `notification_settings`, `push_subscriptions`, `user_sessions`, `user_roles` 3, `auth.users` 3, e o bucket `avatars` (foto do admin). `user_meta_apps` já estava vazia — nenhuma credencial de App foi tocada nem adivinhada. **Integridade pós-reset:** 0 órfãos em posts/containers/jobs/loop_accounts/variants/proxy. **Estrutura intacta:** 39 tabelas, 41 policies RLS, 9 functions/RPCs (incl. `delete_library_folder_safe`, `get_account_video_usage`, `get_campaign_summaries`), 10 triggers, 129 índices, 34 migrations, 3 buckets. Nenhuma linha de código de aplicação alterada. | ✅ Aplicado |
 | **Fix — Verificador de Perfis: via oficial primeiro + proxy do estoque (2026-09-06)** | Sintoma: toda verificação devolvia "Instagram limitou as verificações anônimas". Duas causas, ambas consequência do reset operacional de produção (mesma data): (1) a rota emprestava proxy APENAS de `instagram_accounts.proxy_url` e a tabela ficou com 0 linhas — a consulta anônima passou a sair pelo IP datacenter da Vercel, que o Instagram bloqueia de imediato (HTTP 429); os 140 proxies LIVRES em `proxy_pool` eram ignorados. (2) O fallback oficial (Business Discovery) exige uma conta conectada com token Meta — também 0, por isso a mensagem aparecia sem o sufixo "não foi possível confirmar via API oficial", o que denunciou `helper = null`. **Achado maior, medido e não suposto:** a consulta anônima a `web_profile_info` responde **HTTP 401 para 100% dos usernames — inclusive `@instagram` — a partir de IP residencial limpo com cookie `csrftoken` válido**, ou seja, o bloqueio de 2026-07-21 deixou de ser variável por IP/rate-limit e virou exigência generalizada de sessão autenticada. Rotacionar proxy não cura isso. Correções: **via oficial passou a ser a PRIMÁRIA** (era fallback) — resolve em 1 chamada, sem anti-bot, e evita queimar 12s de timeout + 900ms de pausa por username antes de tentar o caminho que hoje sempre falha; a anônima virou complementar, ativada sob demanda (só sai se a oficial não confirmar) e é a única que enxerga conta pessoal e sabe dizer "não existe". Fontes de proxy da anônima ampliadas: contas conectadas → entradas LIVRES do `proxy_pool` (empréstimo efêmero, **não** reivindica a entrada, sorteadas para não queimar sempre as mesmas). Rotação de IP: erro de bloqueio (429/401/HTML/não-JSON, marcados com flag interna `blocked`) troca de proxy e refaz a MESMA consulta, em vez de perder o lote inteiro por um IP queimado. Sem conta E sem proxy → 422 com instrução acionável, no lugar de N linhas de erro confuso. Mensagens finais dizem exatamente o que faltou. `buildAgentFromEncrypted` adicionada em `lib/proxy.ts` (agent a partir de ciphertext que não pertence a uma conta). **Estado real da feature:** com 0 contas conectadas ela não produz resultado útil por nenhuma via — a oficial precisa de conta com token, e a anônima está 401. Ao conectar uma conta, volta a funcionar para perfis Business/Creator; perfil pessoal permanece inverificável enquanto o 401 durar. Proxies do estoque confirmados vivos em produção (8/8, IPs residenciais de SP, `AS10753 Level 3`). | ✅ Aplicado |
 
+| **Feat — Links Gerenciáveis (2026-09-07)** | Encurtador próprio com destino trocável. Rota pública `GET /r/{slug}` (fora do matcher do middleware, zero custo de sessão) resolve tudo em UMA ida ao banco: a RPC `resolve_managed_link` faz lookup + incremento atômico de `click_count` + INSERT do clique numa transação curta, com o registro do clique isolado num bloco `EXCEPTION` — analytics que falha não impede o redirect, e nada de `void promise` (serverless mataria a promise depois da resposta). **302 Found** (nunca 301, que ficaria cacheado com o destino antigo) + `Cache-Control: private, no-store` + `X-Robots-Tag: noindex, nofollow`; pausado = 410 sem revelar o destino, arquivado/inexistente = 404. Slug base62 de 7 chars via `crypto.randomBytes` com amostragem por rejeição (sem viés de módulo), retentativa em colisão `23505`, slug customizado normalizado para minúsculas com 3–50 chars e 38 palavras reservadas. **Sem open redirect** (a rota não aceita `?url=`; o destino vem do banco) e **sem cloaking** (o User-Agent só vira categoria de analytics e nunca volta ao cálculo do destino). Destino validado em `lib/managed-links.ts`: só http/https, sem `user:senha@`, sem localhost/rede privada/metadata de nuvem, sem caractere de controle (CR/LF = header splitting), teto de 2048 chars, com CHECK equivalente no banco. `forward_query_params` (default false) mescla a query pública via `URLSearchParams` com **precedência do destino** — o visitante não sobrescreve parâmetro do dono. Tabelas `managed_links` (status `active/paused/archived` no lugar de `is_active`), `managed_link_history` e `managed_link_clicks`, todas com RLS; `resolve_managed_link`, `get_managed_link_overview` e `get_managed_link_analytics` são SECURITY DEFINER com EXECUTE revogado de anon/authenticated. Privacidade: zero IP (nem hash), zero User-Agent bruto, do Referer só o hostname. UI `/dashboard/links` (4 cards de resumo, lista com copiar/editar/pausar/arquivar/excluir em 2 cliques) e `/dashboard/links/[id]` (série diária, quebras por origem/dispositivo/navegador/utm, 50 cliques recentes, histórico). Stories ganhou o seletor "Sem link / Link direto / Link gerenciado" — a URL vai para `scheduled_posts.story_link_url` **derivada do slug no servidor**, nunca o `destination_url`; a UI diz explicitamente que a Content Publishing API não aceita link sticker. Migration `supabase/managed_links.sql` (aplicada). `scripts/test-managed-links.mjs`: 165 checagens. | ✅ Concluída |
+
 **SQL pendente (executar no Supabase):**
 ```sql
 -- Legendas Automáticas no Loop (supabase/auto_captions.sql)
@@ -602,6 +608,65 @@ Regra permanente. Vale para qualquer fluxo novo que toque em mídia.
 Arquivos-chave: `lib/library-integrity.ts` (definições canônicas), `supabase/library_folder_delete_fix.sql` (RPC), `app/api/library/broken-records/route.ts`, `app/api/admin/storage-orphans/route.ts`, `scripts/test-library-integrity.mjs`.
 
 ---
+
+---
+
+## Decisão arquitetural — Links Gerenciáveis (2026-09-07)
+
+Regra permanente. Vale para qualquer evolução do módulo de links.
+
+- **Um slug, um destino, para todos.** O redirecionador NUNCA escolhe destino
+  por User-Agent, referrer, país, idioma ou "parece um crawler". Não existe
+  cloaking, mascaramento para burlar plataforma nem página diferente para bot.
+  O User-Agent é lido só para virar categoria de analytics, e o resultado dessa
+  leitura jamais entra no cálculo da URL final.
+- **Nunca aceitar destino pela URL.** A rota pública recebe SÓ o slug. Um
+  `/r?url=...` seria open redirect — não existe e não pode passar a existir.
+- **O slug é imutável.** Ele já foi divulgado. Editar link significa editar
+  destino, nome, status ou vínculos; nunca o slug. Excluir de vez libera o slug
+  para reuso, e por isso a ação padrão da UI é **arquivar**, não excluir.
+- **302, nunca 301.** O destino é mutável por definição; 301 ficaria cacheado no
+  navegador do visitante apontando para o destino velho. Junto vai
+  `Cache-Control: private, no-store` — nem CDN nem browser seguram o destino
+  anterior — e `X-Robots-Tag: noindex, nofollow`.
+- **Um round-trip resolve tudo.** `resolve_managed_link` faz lookup, incremento
+  e INSERT do clique numa transação curta. O contador é somado dentro do próprio
+  UPDATE (`click_count = click_count + 1`): nunca ler-somar-gravar no
+  TypeScript, que perderia cliques concorrentes.
+- **Analytics nunca bloqueia o redirect** — e nunca vira `void promise`. Em
+  serverless a função congela ao responder e a promise solta morre; por isso o
+  registro acontece ANTES da resposta, dentro de um bloco `EXCEPTION` que isola
+  a falha. Se o clique não puder ser gravado, o visitante é redirecionado do
+  mesmo jeito.
+- **Analytics sem dado pessoal.** Nada de IP (nem hasheado), nada de User-Agent
+  completo, nada de URL de referer inteira — só hostname, categoria de
+  dispositivo, família de navegador, país (2 letras) e UTM. "Cliques únicos"
+  ficou fora do MVP justamente porque exigiria derivar identidade do visitante.
+- **Toda contagem é agregada no banco.** `managed_link_clicks` cresce sem teto e
+  o PostgREST corta em 1000 linhas em silêncio (lição de 2026-08-29). Nenhuma
+  tela pagina clique a clique: as RPCs `get_managed_link_overview` e
+  `get_managed_link_analytics` devolvem os números já somados.
+- **Repasse de parâmetro tem precedência do destino.** Com
+  `forward_query_params`, o que já está no `destination_url` vence o que veio na
+  URL pública — a query do visitante é controlável por terceiros e não pode
+  sobrescrever configuração do dono. Merge sempre por `URLSearchParams`, nunca
+  por concatenação de string.
+- **O domínio nunca é hardcodado.** `NEXT_PUBLIC_REDIRECT_BASE_URL` é a fonte da
+  verdade; sem ela a UI avisa e usa a origem atual.
+- **Vínculo com conta e campanha é organização, não posse.** Não muda o redirect
+  e não pode virar requisito. Campanha não tem FK porque não existe tabela
+  canônica de campanhas neste schema — a validação de dono é feita na API.
+- **Story recebe a URL pública, nunca o destino.** O servidor deriva `/r/{slug}`
+  a partir do slug; o que o frontend mandar é ignorado quando há link
+  gerenciado. É isso que permite trocar o destino depois sem refazer nada. A
+  Content Publishing API do Instagram **não aceita link sticker** — a UI diz
+  isso explicitamente em vez de fingir que o sticker é anexado sozinho.
+
+Arquivos-chave: `lib/managed-links.ts` (validação, slug, categorias, merge),
+`lib/managed-links-db.ts` (ownership de conta/campanha), `lib/link-base-url.ts`
+(domínio no client), `app/r/[slug]/route.ts` (rota pública),
+`supabase/managed_links.sql` (tabelas, RLS, RPCs),
+`scripts/test-managed-links.mjs` (165 checagens).
 
 ## Diretrizes para o Claude
 

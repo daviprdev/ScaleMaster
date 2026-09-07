@@ -3618,3 +3618,116 @@ Business/Creator; perfil pessoal segue inverificável enquanto o 401 durar.
 Proxies do estoque confirmados vivos em produção (8/8, residenciais de SP).
 
 `npm test` = 186 checagens, typecheck e build limpos.
+
+
+---
+
+## Links Gerenciáveis (2026-09-07)
+
+Encurtador próprio do AutoScale: `https://go.DOMINIO/r/{slug}` → 302 →
+`destination_url` atual. O link público nunca muda; o destino pode ser trocado
+quantas vezes o dono quiser.
+
+**Rota pública — `GET /r/[slug]`**
+
+Uma única ida ao banco resolve tudo. A RPC `resolve_managed_link` faz o lookup,
+o incremento atômico de `click_count` e o INSERT do clique numa transação
+curta, com o registro do clique dentro de um bloco `EXCEPTION` — se o analytics
+falhar, o savepoint volta só essa parte e a função ainda devolve o destino.
+Confirmado contra o Postgres de produção com um trigger de falha proposital: o
+destino voltou, `click_logged=false`, zero linha gravada.
+
+Não usa `void promise` de propósito: em serverless a função congela ao
+responder e a promise solta morre, o que perderia cliques em silêncio. Também
+não usa `waitUntil` — exigiria dependência nova para ganhar menos do que o
+round-trip único já entrega.
+
+**302, nunca 301.** O destino muda; um 301 ficaria cacheado no navegador do
+visitante apontando para o endereço velho. Junto vão
+`Cache-Control: private, no-store, max-age=0, must-revalidate` e
+`X-Robots-Tag: noindex, nofollow` (inclusive nas páginas de erro).
+Pausado = 410 sem revelar o destino; arquivado e inexistente = 404.
+
+O middleware não cobre `/r/*`, então nenhuma sessão do Supabase é carregada no
+caminho crítico.
+
+**Segurança**
+
+- Sem open redirect: a rota só recebe o slug, o destino vem do banco. Nenhum
+  `?url=`.
+- Sem cloaking: um slug = um destino para todo visitante. O User-Agent só vira
+  categoria de analytics e nunca volta para o cálculo da URL final. Não há
+  ramificação por bot, país ou referrer — e o teste tem guarda estrutural
+  contra isso reaparecer.
+- Destino: só http/https; `javascript:`, `data:`, `file:`, `ftp:`, `chrome:`,
+  `about:` e `vbscript:` rejeitados; `user:senha@host` rejeitado; localhost,
+  loopback, faixas privadas, CGNAT e metadata de nuvem (169.254.169.254)
+  bloqueados; caractere de controle (CR/LF = header splitting) barrado antes do
+  `new URL()`, já que o parser WHATWG removeria em silêncio. CHECK equivalente
+  no banco como última linha de defesa.
+- IDOR: toda query por id leva `.eq("user_id", user.id)` junto — na leitura, no
+  UPDATE e no DELETE. Link alheio devolve 404 (não 403, que confirmaria a
+  existência). O analytics valida o dono dentro da própria RPC.
+- `old_destination_url` do histórico é sempre lido do banco, nunca aceito do
+  frontend.
+- Rate limit: 60 links/hora e 5000 links/usuário, contados no banco.
+
+**Banco** — `supabase/managed_links.sql` (aplicada)
+
+`managed_links`, `managed_link_history` e `managed_link_clicks`, todas com RLS.
+Escolhi `status (active|paused|archived)` no lugar do `is_active boolean`
+sugerido: arquivar preserva histórico e analytics e mantém o slug reservado,
+que é o comportamento certo para um link já divulgado. As três RPCs são
+SECURITY DEFINER com `search_path` fixo e EXECUTE revogado de anon e
+authenticated — verificado por `has_function_privilege`.
+
+RLS verificada de verdade, alternando `role` e `request.jwt.claims` no Postgres:
+usuário A vê 1 link / 1 histórico / 1 clique e zero do usuário B; B o inverso;
+anônimo não vê nada.
+
+Toda contagem é agregada por RPC. `managed_link_clicks` cresce sem teto e o
+PostgREST corta em 1000 linhas em silêncio — nenhuma tela pagina clique a
+clique.
+
+**Privacidade**
+
+Zero IP (nem hasheado), zero User-Agent bruto, zero URL de referer completa. Do
+User-Agent sobram `desktop|mobile|tablet|other` e a família do navegador; do
+Referer, só o hostname (a URL de origem pode carregar token ou termo de busca).
+"Cliques únicos" ficou fora do MVP porque exigiria derivar identidade do
+visitante — decisão explícita, não esquecimento.
+
+**UTM e repasse**
+
+`forward_query_params` (default false). Quando ligado, o merge é por
+`URLSearchParams` com precedência do destino: parâmetro que já existe no
+`destination_url` vence o que veio na URL pública, porque a query do visitante é
+controlável por terceiros. Confirmado em HTTP real: `/r/slug?plano=hack` com
+destino `?plano=pro` saiu como `plano=pro`.
+
+**Stories**
+
+Seletor "Sem link / Link direto / Link gerenciado". Com link gerenciado, o
+servidor DERIVA a URL pública a partir do slug e ignora qualquer URL mandada
+pelo frontend — o Story guarda `/r/{slug}`, nunca o `destination_url`.
+
+Limitação dita na cara do usuário na própria UI: a Content Publishing API do
+Instagram **não aceita link sticker** (mesma limitação que impede legenda em
+Story). O que a integração entrega é o registro de qual link está sendo
+divulgado, o analytics correspondente e o botão de copiar. Nada de OAuth,
+token, proxy, Meta App ou `video_processing_mode` foi tocado.
+
+**Medições**
+
+- RPC dentro do Postgres: ~3 ms.
+- Redirect ponta a ponta da máquina de desenvolvimento (Brasil → Supabase
+  sa-east-1 pela internet pública, `next start`): mediana 86 ms, p95 132 ms em
+  20 requisições. O log `[managed-link]` reporta `elapsed_ms` com mediana de
+  79 ms para lookup + clique.
+- 100 cliques em sequência sobre o mesmo link: `click_count` = 101 e 101 linhas
+  de clique, sem perda.
+
+**Validação:** `npm run typecheck`, `npm test` (351 checagens no total, 165 delas
+novas), `npm run lint` (nenhum aviso nos arquivos novos) e `npm run build`
+limpos. Dados de teste removidos do banco ao final — as três tabelas ficaram em
+zero.
