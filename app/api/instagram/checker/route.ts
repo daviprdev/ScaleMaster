@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { fetch as undiciFetch, ProxyAgent } from "undici";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getProxyForAccount, proxyInit } from "@/lib/proxy";
+import { buildAgentFromEncrypted, proxyInit } from "@/lib/proxy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +23,8 @@ interface CheckerResult {
   username: string;
   status: "active" | "not_found" | "error";
   message: string;
+  /** Interno: erro que indica bloqueio do IP (429/401/HTML), não "não existe". */
+  blocked?: boolean;
   full_name?: string;
   is_private?: boolean;
   is_verified?: boolean;
@@ -125,7 +127,8 @@ async function checkOneAnonymous(
       return {
         username,
         status: "error",
-        message: "Instagram limitou as verificações anônimas — tente novamente em alguns minutos",
+        blocked: true,
+        message: "Instagram limitou as verificações anônimas neste IP",
       };
     }
 
@@ -133,7 +136,8 @@ async function checkOneAnonymous(
       return {
         username,
         status: "error",
-        message: "Instagram exigiu login para essa consulta (proteção anti-bot reforçada)",
+        blocked: true,
+        message: "Instagram exigiu login para essa consulta neste IP (proteção anti-bot)",
       };
     }
 
@@ -142,6 +146,7 @@ async function checkOneAnonymous(
       return {
         username,
         status: "error",
+        blocked: true,
         message: `Instagram respondeu ${res.status}${bodyText ? `: ${bodyText.slice(0, 140)}` : ""}`,
       };
     }
@@ -151,6 +156,7 @@ async function checkOneAnonymous(
       return {
         username,
         status: "error",
+        blocked: true,
         message: "Resposta inesperada do Instagram (possível bloqueio temporário)",
       };
     }
@@ -191,14 +197,14 @@ async function checkOneAnonymous(
 }
 
 /**
- * Fallback oficial via Meta Graph API (Business Discovery) — usa o token de
- * uma conta já conectada no SaaS para consultar dados públicos de OUTRA conta.
- * Não sofre bloqueio anti-bot (é tráfego autenticado da própria Meta), mas só
- * enxerga contas Business/Creator — não confirma nem descarta contas pessoais.
- * Retorna null quando o resultado é ambíguo (não dá pra saber se não existe
- * ou se só não é Business/Creator).
+ * Via oficial (Meta Graph API — Business Discovery): usa o token de uma conta
+ * já conectada no SaaS para consultar dados públicos de OUTRA conta. Não sofre
+ * bloqueio anti-bot (é tráfego autenticado da própria Meta), mas só enxerga
+ * contas Business/Creator — não confirma nem descarta contas pessoais.
+ * Retorna null quando o resultado é ambíguo (não dá para distinguir "não
+ * existe" de "existe mas não é Business/Creator").
  */
-async function businessDiscoveryFallback(
+async function checkViaBusinessDiscovery(
   username: string,
   helper: HelperAccount
 ): Promise<CheckerResult | null> {
@@ -267,32 +273,13 @@ export async function POST(req: Request) {
 
   const admin = getSupabaseAdmin();
 
-  // Empresta o proxy residencial de alguma conta do usuário para a consulta
-  // anônima — checar direto pelo IP datacenter da Vercel esbarra em bloqueio
-  // do Instagram quase de imediato. Não é vinculado a nenhuma conta específica.
-  let proxyAgent: ProxyAgent | null = null;
-  try {
-    const { data: candidates } = await admin
-      .from("instagram_accounts")
-      .select("id, proxy_url")
-      .eq("user_id", user.id)
-      .not("proxy_url", "is", null)
-      .limit(5);
-    const pool = (candidates ?? []) as { id: string; proxy_url: string | null }[];
-    if (pool.length > 0) {
-      const pick = pool[Math.floor(Math.random() * pool.length)];
-      proxyAgent = getProxyForAccount(pick.id, pick.proxy_url);
-    }
-  } catch {
-    proxyAgent = null;
-  }
-
-  // Sessão anônima (cookie csrftoken) — sem ela o Instagram responde 400 para
-  // qualquer username, mesmo real. Buscada uma vez e reaproveitada no lote.
-  const session = await fetchIgSession(proxyAgent);
-
-  // Conta auxiliar com token Meta válido, para o fallback oficial via
-  // Business Discovery quando a consulta anônima é bloqueada (401/429/erro).
+  // ── Via 1 (primária): Meta Graph API — Business Discovery ──────────────────
+  // Desde 2026-07-21 o endpoint web anônimo do Instagram passou a responder 401
+  // ("login required") de forma generalizada — verificado inclusive para
+  // @instagram a partir de IP residencial limpo, ou seja, não é rate-limit nem
+  // qualidade de IP. A via confiável hoje é a API oficial, que usa o token de
+  // uma conta já conectada no SaaS. Limitação conhecida: só enxerga contas
+  // Business/Creator — não confirma nem descarta contas pessoais.
   let helper: HelperAccount | null = null;
   try {
     const { data: helperCandidates } = await admin
@@ -311,28 +298,135 @@ export async function POST(req: Request) {
     helper = null;
   }
 
+  // ── Via 2 (complementar): consulta anônima ao endpoint web ─────────────────
+  // Mantida porque é a única que enxerga conta pessoal, e porque a proteção
+  // anti-bot varia com o tempo/IP. Sai sempre por proxy residencial: pelo IP
+  // datacenter da Vercel o bloqueio é imediato. Empresta o proxy das contas
+  // conectadas e, na falta delas, um que esteja LIVRE no estoque — emprestar
+  // NÃO reivindica a entrada, o proxy segue disponível para a próxima conta.
+  const proxyCandidates: { id: string; encrypted: string; from: "conta" | "estoque" }[] = [];
+
+  try {
+    const { data: fromAccounts } = await admin
+      .from("instagram_accounts")
+      .select("id, proxy_url")
+      .eq("user_id", user.id)
+      .not("proxy_url", "is", null)
+      .limit(5);
+    for (const row of (fromAccounts ?? []) as { id: string; proxy_url: string }[]) {
+      proxyCandidates.push({ id: row.id, encrypted: row.proxy_url, from: "conta" });
+    }
+  } catch {
+    // segue para o estoque
+  }
+
+  if (proxyCandidates.length === 0) {
+    try {
+      const { data: fromPool } = await admin
+        .from("proxy_pool")
+        .select("id, proxy_url")
+        .eq("user_id", user.id)
+        .is("assigned_account_id", null)
+        .limit(20);
+      const pool = (fromPool ?? []) as { id: string; proxy_url: string }[];
+      // Ordem aleatória — não queimar sempre as mesmas entradas do estoque.
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      for (const row of pool.slice(0, 5)) {
+        proxyCandidates.push({ id: row.id, encrypted: row.proxy_url, from: "estoque" });
+      }
+    } catch {
+      // sem proxy nenhum
+    }
+  }
+
+  if (!helper && proxyCandidates.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Verificação indisponível: não há conta conectada (para a consulta oficial) nem proxy cadastrado (para a consulta anônima). Conecte uma conta do Instagram ou adicione proxies ao estoque em Proxies.",
+      },
+      { status: 422 }
+    );
+  }
+
+  // Sessão anônima (cookie csrftoken) — sem ela o Instagram responde 400 para
+  // qualquer username. Uma por proxy: ao trocar de IP, a anterior não vale.
+  // Ativada sob demanda: se a via oficial resolver tudo, nem chega a sair.
+  let candidateIdx = 0;
+  let agent: ProxyAgent | null = null;
+  let session: IgSession | null = null;
+  let anonymousReady = false;
+
+  async function activateNextCandidate(): Promise<boolean> {
+    while (candidateIdx < proxyCandidates.length) {
+      const candidate = proxyCandidates[candidateIdx++];
+      const built = buildAgentFromEncrypted(
+        candidate.encrypted,
+        `checker/${candidate.from}:${candidate.id.slice(0, 8)}…`
+      );
+      if (!built) continue;
+      agent = built;
+      session = await fetchIgSession(built);
+      anonymousReady = true;
+      return true;
+    }
+    return false;
+  }
+
   const results: CheckerResult[] = [];
   for (let i = 0; i < usernames.length; i++) {
     const username = usernames[i];
-    let result = await checkOneAnonymous(username, proxyAgent, session);
+    let result: CheckerResult | null = null;
+    let usouAnonima = false;
 
-    if (result.status === "error" && helper) {
-      const fallback = await businessDiscoveryFallback(username, helper);
-      if (fallback) {
-        result = fallback;
-      } else {
-        result = {
-          ...result,
-          message: `${result.message} · Não foi possível confirmar via API oficial (perfil pode ser pessoal, oculto ou indisponível)`,
-        };
+    // 1. Via oficial primeiro — rápida, sem anti-bot. Só responde de forma
+    //    conclusiva quando a conta é Business/Creator e existe.
+    if (helper) {
+      result = await checkViaBusinessDiscovery(username, helper);
+    }
+
+    // 2. Via anônima — única que enxerga conta pessoal e sabe dizer "não existe".
+    if (!result && (anonymousReady || (await activateNextCandidate()))) {
+      usouAnonima = true;
+      result = await checkOneAnonymous(username, agent, session);
+
+      // IP queimado: troca de proxy e refaz a MESMA consulta, em vez de perder
+      // o lote inteiro por causa de um único IP bloqueado.
+      while (result.blocked && (await activateNextCandidate())) {
+        result = await checkOneAnonymous(username, agent, session);
       }
     }
 
+    // 3. Nenhuma via conclusiva — explica exatamente o que faltou.
+    if (!result) {
+      result = {
+        username,
+        status: "error",
+        message: helper
+          ? "Não confirmada pela API oficial (perfil pode ser pessoal, oculto ou inexistente) e não há proxy para a consulta anônima"
+          : "Sem proxy utilizável para a consulta anônima",
+      };
+    } else if (result.status === "error") {
+      result = {
+        ...result,
+        message: helper
+          ? `${result.message} · Também não foi confirmada pela API oficial (perfil pode ser pessoal, oculto ou indisponível)`
+          : `${result.message} · Conecte uma conta do Instagram para habilitar a confirmação pela API oficial`,
+      };
+    }
+
     results.push(result);
-    if (i < usernames.length - 1) {
+    // Pausa só entre consultas anônimas — a API oficial não precisa disso.
+    if (usouAnonima && i < usernames.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, DELAY_MS + Math.random() * 400));
     }
   }
 
-  return NextResponse.json({ results });
+  // `blocked` é sinalização interna de rotação de IP — não vai para o cliente.
+  return NextResponse.json({
+    results: results.map(({ blocked: _blocked, ...rest }) => rest),
+  });
 }

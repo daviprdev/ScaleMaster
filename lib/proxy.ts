@@ -90,3 +90,30 @@ export function proxyInit(
   if (!agent) return base ?? {};
   return { ...(base ?? {}), dispatcher: agent } as RequestInit;
 }
+
+// ── buildAgentFromEncrypted ──────────────────────────────────────────────────
+
+/**
+ * Constrói um ProxyAgent a partir de um proxy_url cifrado (AES-256-GCM) que
+ * NÃO pertence a uma conta — hoje usado pelo verificador de perfis, que
+ * empresta um proxy livre do estoque (`proxy_pool`) sem reivindicá-lo.
+ *
+ * `label` entra só no log (id da entrada do estoque, por exemplo). Retorna
+ * null se a decriptação ou a URL falharem.
+ */
+export function buildAgentFromEncrypted(
+  encryptedUrl: string,
+  label: string
+): ProxyAgent | null {
+  try {
+    const raw = decrypt(encryptedUrl);
+    const agent = buildProxyAgent(raw, label);
+    if (agent) {
+      console.log(`[proxy] ${label} → emprestado | ${proxyLabels.get(agent)}`);
+    }
+    return agent;
+  } catch (e) {
+    console.warn(`[proxy] Falha ao descriptografar proxy de ${label}: ${String(e)}`);
+    return null;
+  }
+}

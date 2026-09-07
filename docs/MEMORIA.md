@@ -3569,3 +3569,52 @@ reset teria terminado com 22 arquivos silenciosamente para trás.
 `get_campaign_summaries`), 10 triggers, 129 índices, 34 migrations, 3 buckets.
 
 `npm test` = 186 checagens, typecheck/lint/build limpos — sem alteração de código.
+
+---
+
+## Fix — Verificador de Perfis: via oficial primeiro + proxy do estoque (2026-09-06)
+
+**Sintoma:** toda verificação devolvia "Instagram limitou as verificações
+anônimas — tente novamente em alguns minutos".
+
+**Causas (ambas consequência do reset operacional de produção do mesmo dia):**
+
+1. A rota emprestava proxy apenas de `instagram_accounts.proxy_url`, e a tabela
+   ficou com 0 linhas. A consulta anônima passou a sair pelo IP datacenter da
+   Vercel, bloqueado de imediato (429). Os 140 proxies LIVRES em `proxy_pool`
+   eram ignorados pela rota.
+2. O fallback oficial (Business Discovery) exige conta conectada com token Meta
+   — também 0. Por isso a mensagem apareceu SEM o sufixo "não foi possível
+   confirmar via API oficial", o que denunciou `helper = null`.
+
+**Achado maior (medido, não suposto):** a consulta anônima a `web_profile_info`
+responde HTTP 401 para 100% dos usernames — inclusive `@instagram` — a partir de
+IP residencial limpo com cookie `csrftoken` válido. O bloqueio de 2026-07-21
+deixou de ser variável por IP/rate-limit e virou exigência generalizada de
+sessão autenticada. Rotacionar proxy não cura isso.
+
+**Correções:**
+
+- Via oficial (Business Discovery) promovida a PRIMÁRIA. Resolve em 1 chamada,
+  sem anti-bot, e evita gastar 12s de timeout + 900ms de pausa por username no
+  caminho que hoje sempre falha.
+- Via anônima virou complementar e sob demanda (só sai se a oficial não
+  confirmar). Continua sendo a única que enxerga conta pessoal e que sabe
+  afirmar "não existe".
+- Fontes de proxy ampliadas: contas conectadas → entradas LIVRES do
+  `proxy_pool`. Empréstimo efêmero: NÃO reivindica a entrada, e as candidatas
+  são sorteadas para não queimar sempre as mesmas.
+- Rotação de IP: erro de bloqueio (429/401/HTML/não-JSON, marcado com flag
+  interna `blocked`) troca de proxy e refaz a MESMA consulta, em vez de perder o
+  lote inteiro por causa de um único IP queimado.
+- Sem conta E sem proxy → 422 com instrução acionável, no lugar de N linhas de
+  erro confuso. As mensagens finais dizem exatamente o que faltou.
+- `buildAgentFromEncrypted` em `lib/proxy.ts`: agent a partir de ciphertext que
+  não pertence a nenhuma conta.
+
+**Estado real da feature:** com 0 contas conectadas ela não produz resultado
+útil por nenhuma via. Ao conectar uma conta, volta a funcionar para perfis
+Business/Creator; perfil pessoal segue inverificável enquanto o 401 durar.
+Proxies do estoque confirmados vivos em produção (8/8, residenciais de SP).
+
+`npm test` = 186 checagens, typecheck e build limpos.

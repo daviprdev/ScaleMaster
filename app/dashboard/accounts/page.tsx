@@ -2781,7 +2781,7 @@ export default function AccountsPage() {
                     <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 space-y-1">
                       <p className="text-[11px] text-white/40">Cole @usuários do Instagram — um por linha ou separados por vírgula.</p>
                       <p className="text-[11px] text-white/25">
-                        Verifica se o perfil está ativo publicamente. Contas banidas, removidas ou que nunca existiram aparecem como &quot;não encontrada&quot; — o Instagram não distingue o motivo publicamente. Até {CHECKER_MAX} por vez.
+                        Verifica primeiro pela API oficial da Meta (exige ao menos uma conta conectada e só enxerga perfis Business/Creator) e depois pela consulta pública, que hoje é frequentemente bloqueada pelo Instagram. Contas banidas, removidas ou que nunca existiram aparecem como &quot;não encontrada&quot; — o Instagram não distingue o motivo publicamente. Até {CHECKER_MAX} por vez.
                       </p>
                     </div>
                     <textarea

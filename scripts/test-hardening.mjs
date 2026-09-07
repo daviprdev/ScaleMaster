@@ -279,8 +279,15 @@ async function main() {
   check("Nenhum guard 'sem proxy = skip' em fluxo oficial", comGuard.length === 0, comGuard.join(", "));
 
   // Módulos que legitimamente ainda usam proxy.
-  check("checker (endpoint web não-oficial) mantém proxy",
-    src("app/api/instagram/checker/route.ts").includes("getProxyForAccount"));
+  // A consulta anônima do checker sai por proxy (conta conectada ou estoque);
+  // a via oficial (Business Discovery) segue em conexão direta.
+  {
+    const checker = src("app/api/instagram/checker/route.ts");
+    check("checker (endpoint web não-oficial) mantém proxy",
+      checker.includes("proxyInit") &&
+      checker.includes("buildAgentFromEncrypted") &&
+      checker.includes("proxy_pool"));
+  }
   check("login via instagrapi mantém exigência de proxy dedicado",
     src("app/api/cron/process-instagram-logins/route.ts").includes("proxy_url"));
   check("estoque proxy_pool preservado", exists("lib/proxy-pool.ts") && exists("app/api/proxy-pool/route.ts"));
