@@ -182,21 +182,121 @@ CREATE POLICY "users_read_own_link_clicks" ON public.managed_link_clicks
     )
   );
 
--- ── 6. RPC do redirect ──────────────────────────────────────────────────────
+-- ── 6. Validade do destino, no banco ────────────────────────────────────────
+-- Espelha lib/managed-links.ts → validateDestinationUrl(). Existe porque o
+-- clique só pode ser contado DEPOIS de saber que o visitante vai mesmo ser
+-- redirecionado — e essa decisão precisa acontecer dentro da mesma transação
+-- que incrementa o contador, senão sobra a janela em que um destino inválido
+-- soma +1 e devolve 410.
+--
+-- As duas implementações têm de concordar sempre; `scripts/test-managed-links.mjs`
+-- roda as duas sobre o mesmo corpus e falha se divergirem em qualquer URL.
+
+CREATE OR REPLACE FUNCTION public.is_valid_link_destination(p_url text)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = public
+AS $$
+DECLARE
+  v_rest      text;
+  v_authority text;
+  v_host      text;
+  v_octets    text[];
+  a int; b int;
+BEGIN
+  IF p_url IS NULL THEN RETURN false; END IF;
+  IF char_length(p_url) < 8 OR char_length(p_url) > 2048 THEN RETURN false; END IF;
+
+  -- Caracteres de controle (CR/LF = header splitting).
+  IF p_url ~ '[\x00-\x1F\x7F]' THEN RETURN false; END IF;
+
+  -- Só http/https: barra javascript:, data:, file:, ftp:, chrome:, about:…
+  IF p_url !~* '^https?://' THEN RETURN false; END IF;
+
+  v_rest := regexp_replace(p_url, '^https?://', '', 'i');
+  v_authority := (regexp_match(v_rest, '^([^/?#]*)'))[1];
+
+  IF v_authority IS NULL OR v_authority = '' THEN RETURN false; END IF;
+
+  -- Credencial embutida (user:senha@host). Nenhum host legítimo tem '@'.
+  IF position('@' in v_authority) > 0 THEN RETURN false; END IF;
+
+  -- Host sem a porta. Literal IPv6 vem entre colchetes.
+  IF left(v_authority, 1) = '[' THEN
+    v_host := lower((regexp_match(v_authority, '^\[([^\]]*)\]'))[1]);
+  ELSE
+    v_host := lower(split_part(v_authority, ':', 1));
+  END IF;
+
+  IF v_host IS NULL OR v_host = '' THEN RETURN false; END IF;
+
+  -- Loopback e nomes de rede interna.
+  IF v_host = 'localhost'
+     OR v_host LIKE '%.localhost'
+     OR v_host LIKE '%.internal'
+     OR v_host LIKE '%.local'
+     OR v_host = '0.0.0.0'
+     OR v_host = '::1'
+  THEN RETURN false; END IF;
+
+  -- ULA IPv6 (fc00::/7). O ':' é obrigatório: sem ele, fcbarcelona.com e
+  -- fdny.org cairiam aqui como se fossem rede interna.
+  IF position(':' in v_host) > 0 AND v_host ~ '^f[cd][0-9a-f:]*$' THEN
+    RETURN false;
+  END IF;
+
+  -- Faixas IPv4 privadas / link-local / metadata de nuvem / CGNAT.
+  v_octets := regexp_match(v_host, '^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$');
+  IF v_octets IS NOT NULL THEN
+    a := v_octets[1]::int;
+    b := v_octets[2]::int;
+    IF a = 0 OR a = 10 OR a = 127
+       OR (a = 169 AND b = 254)
+       OR (a = 172 AND b BETWEEN 16 AND 31)
+       OR (a = 192 AND b = 168)
+       OR (a = 100 AND b BETWEEN 64 AND 127)
+    THEN RETURN false; END IF;
+  END IF;
+
+  RETURN true;
+END;
+$$;
+
+-- ── 7. RPC do redirect ──────────────────────────────────────────────────────
 -- UMA ida ao banco resolve o destino E registra o clique.
+--
+-- ORDEM (nesta sequência, sempre):
+--   1. busca o link pelo slug
+--   2. valida status = 'active'
+--   3. valida o destino
+--   4. só então conta o clique
+--   5. devolve o destino para a rota emitir o 302
+--
+-- `click_count` é o contador de REDIRECTS BEM-SUCEDIDOS. Visita a link pausado,
+-- arquivado, inexistente ou com destino inválido não entra nele e não vira
+-- linha em managed_link_clicks — não existe métrica de "visita rejeitada", e
+-- se um dia existir tem de ser coluna/tabela própria, nunca misturada aqui.
 --
 -- Por que RPC e não duas queries do lado do Node:
 --   a) `click_count = click_count + 1` dentro de um único UPDATE é atômico
 --      (lock de linha). Ler-somar-gravar no app perderia cliques concorrentes.
 --   b) Serverless mata promise solta depois da resposta — `void insert(...)`
 --      perderia cliques. Aqui tudo acontece antes do redirect, num round-trip.
---   c) O bloco EXCEPTION isola a falha de analytics: se o INSERT/UPDATE
---      estourar (tabela cheia, constraint, timeout de lock), o savepoint faz
---      rollback só dessa parte e a função AINDA devolve o destino. Analytics
---      nunca impede o redirecionamento.
+--   c) Os dois blocos EXCEPTION isolam a falha de analytics: o redirect nunca
+--      depende dela.
+--
+-- Os savepoints são SEPARADOS de propósito. O contador de redirects e a linha
+-- de detalhe são coisas diferentes: se o INSERT de detalhe falhar (tabela
+-- cheia, constraint, lock), o redirect aconteceu e portanto o contador
+-- continua valendo. Consequência aceita e documentada: em falha do detalhe,
+-- `click_count` pode ficar maior que `count(*)` em managed_link_clicks.
 --
 -- Não recebe nem grava IP, User-Agent bruto ou URL de referer completa: quem
 -- reduz esses dados a categorias é a rota, antes de chamar aqui.
+
+DROP FUNCTION IF EXISTS public.resolve_managed_link(
+  text, text, text, text, text, text, text, text);
 
 CREATE OR REPLACE FUNCTION public.resolve_managed_link(
   p_slug            text,
@@ -209,11 +309,13 @@ CREATE OR REPLACE FUNCTION public.resolve_managed_link(
   p_utm_campaign    text DEFAULT NULL
 )
 RETURNS TABLE (
-  out_link_id       uuid,
-  out_destination   text,
-  out_status        text,
-  out_forward       boolean,
-  out_click_logged  boolean
+  out_link_id            uuid,
+  out_destination        text,
+  out_status             text,
+  out_forward            boolean,
+  out_destination_valid  boolean,
+  out_click_counted      boolean,
+  out_click_logged       boolean
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -224,8 +326,11 @@ DECLARE
   v_dest    text;
   v_status  text;
   v_forward boolean;
+  v_valid   boolean := false;
+  v_counted boolean := false;
   v_logged  boolean := false;
 BEGIN
+  -- 1. Busca
   SELECT l.id, l.destination_url, l.status, l.forward_query_params
     INTO v_id, v_dest, v_status, v_forward
     FROM public.managed_links l
@@ -236,14 +341,22 @@ BEGIN
     RETURN;                       -- zero linhas → a rota devolve 404
   END IF;
 
-  -- Só clique que de fato redireciona entra no analytics.
-  IF v_status = 'active' THEN
+  -- 2 e 3. Status e destino, ANTES de qualquer escrita.
+  v_valid := public.is_valid_link_destination(v_dest);
+
+  -- 4. Só clique que de fato redireciona entra na contagem.
+  IF v_status = 'active' AND v_valid THEN
     BEGIN
       UPDATE public.managed_links AS ml
          SET click_count = ml.click_count + 1,
              last_clicked_at = now()
        WHERE ml.id = v_id;
+      v_counted := true;
+    EXCEPTION WHEN OTHERS THEN
+      v_counted := false;         -- nunca bloqueia o redirect
+    END;
 
+    BEGIN
       INSERT INTO public.managed_link_clicks (
         link_id, referrer_host, device_type, browser_family, country,
         utm_source, utm_medium, utm_campaign
@@ -257,18 +370,20 @@ BEGIN
         left(p_utm_medium, 200),
         left(p_utm_campaign, 200)
       );
-
       v_logged := true;
     EXCEPTION WHEN OTHERS THEN
-      v_logged := false;          -- falha de analytics nunca bloqueia o redirect
+      v_logged := false;          -- idem: detalhe é best-effort
     END;
   END IF;
 
-  out_link_id      := v_id;
-  out_destination  := v_dest;
-  out_status       := v_status;
-  out_forward      := v_forward;
-  out_click_logged := v_logged;
+  -- 5. Devolve o destino.
+  out_link_id           := v_id;
+  out_destination       := v_dest;
+  out_status            := v_status;
+  out_forward           := v_forward;
+  out_destination_valid := v_valid;
+  out_click_counted     := v_counted;
+  out_click_logged      := v_logged;
   RETURN NEXT;
 END;
 $$;
@@ -280,7 +395,11 @@ REVOKE ALL ON FUNCTION public.resolve_managed_link(
 GRANT EXECUTE ON FUNCTION public.resolve_managed_link(
   text, text, text, text, text, text, text, text) TO service_role;
 
--- ── 7. RPCs de agregação ────────────────────────────────────────────────────
+REVOKE ALL ON FUNCTION public.is_valid_link_destination(text)
+  FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.is_valid_link_destination(text) TO service_role;
+
+-- ── 8. RPCs de agregação ────────────────────────────────────────────────────
 -- managed_link_clicks cresce sem teto. Nada de trazer linha de clique para o
 -- browser: o PostgREST corta em 1000 silenciosamente (lição já registrada em
 -- 2026-08-29) e o front não deve somar milhões de linhas. Toda contagem é
@@ -408,7 +527,7 @@ REVOKE ALL ON FUNCTION public.get_managed_link_analytics(uuid, uuid, int)
   FROM public, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.get_managed_link_analytics(uuid, uuid, int) TO service_role;
 
--- ── 8. Story: qual link foi divulgado ───────────────────────────────────────
+-- ── 9. Story: qual link foi divulgado ───────────────────────────────────────
 -- Snapshot da URL PÚBLICA do redirect (nunca o destination_url) no post de
 -- Story, para saber depois qual link estava sendo divulgado. É registro: a
 -- Content Publishing API do Instagram não aceita link sticker por API.

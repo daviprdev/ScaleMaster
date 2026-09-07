@@ -156,7 +156,11 @@ function isPrivateHostname(hostname: string): boolean {
   ) return true;
 
   if (hostname === "::1" || hostname === "[::1]") return true;
-  if (hostname.startsWith("fc") || hostname.startsWith("fd")) return true;
+
+  // ULA IPv6 (fc00::/7). O `:` é obrigatório na checagem: sem ele, qualquer
+  // domínio começado em "fc"/"fd" — fcbarcelona.com, fdny.org — seria barrado
+  // como se fosse endereço de rede interna.
+  if (hostname.includes(":") && /^\[?f[cd][0-9a-f:]*\]?$/.test(hostname)) return true;
 
   const v4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (!v4) return false;

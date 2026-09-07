@@ -21,13 +21,19 @@ export const dynamic = "force-dynamic";
  * URL. O User-Agent só é lido para virar uma categoria de analytics, e essa
  * categoria nunca volta para o cálculo do destino.
  *
- * SEM OPEN REDIRECT: a rota não aceita `?url=`. O único dado de entrada que
- * escolhe destino é o slug, e o destino vem persistido do banco.
+ * REDIRECT NÃO CONTROLADO POR PARÂMETRO: não existe redirect controlado
+ * diretamente por parâmetro de URL. O destino é previamente persistido por
+ * usuário autenticado, validado no servidor na escrita e na leitura, e
+ * resolvido exclusivamente pelo slug. A rota não aceita `?url=` nem qualquer
+ * outro parâmetro que escolha destino.
  *
  * CAMINHO CRÍTICO (Story → link → destino): UMA ida ao banco resolve tudo.
- * A RPC `resolve_managed_link` faz lookup + incremento atômico + insert de
- * clique em uma transação curta, com o analytics isolado num bloco EXCEPTION
- * — se o registro do clique falhar, o redirect acontece do mesmo jeito.
+ * A RPC `resolve_managed_link` executa, nesta ordem: busca pelo slug →
+ * valida `status = 'active'` → valida o destino → só então conta o clique →
+ * devolve o destino. Visita a link pausado, arquivado, inexistente ou com
+ * destino inválido NÃO entra em `click_count` nem vira linha de analytics.
+ * O registro do clique fica em blocos EXCEPTION separados (contador e linha
+ * de detalhe), então falha de analytics nunca impede o redirect.
  *
  * Por que não `void insert(...)` depois da resposta: em serverless a função é
  * congelada assim que a resposta sai e a promise solta morre — cliques seriam
@@ -83,6 +89,9 @@ interface ResolveRow {
   out_destination: string;
   out_status: "active" | "paused" | "archived";
   out_forward: boolean;
+  /** Veredito de `is_valid_link_destination`, calculado ANTES de contar. */
+  out_destination_valid: boolean;
+  out_click_counted: boolean;
   out_click_logged: boolean;
 }
 
@@ -112,6 +121,10 @@ export async function GET(
   const browser = browserFamilyFromUserAgent(req.headers.get("user-agent"));
   const refHost = referrerHost(req.headers.get("referer"));
   // País vem pronto do edge da Vercel (só o código ISO de 2 letras).
+  // ANALYTICS BEST-EFFORT E MAIS NADA: header de borda é falsificável e pode
+  // vir ausente/errado. Nunca usar para autorização, decisão de segurança,
+  // destino diferente ou cloaking — o valor entra no INSERT do clique e não é
+  // lido em nenhum outro ponto desta rota.
   const country = req.headers.get("x-vercel-ip-country");
 
   let row: ResolveRow | null = null;
@@ -152,12 +165,18 @@ export async function GET(
     return htmlResponse(410, "Link temporariamente indisponível", "Este link está pausado no momento. Tente novamente mais tarde.");
   }
 
-  // Revalida o destino na saída. Se algo gravou lixo na coluna (ou uma
-  // constraint futura for afrouxada), é melhor devolver erro do que emitir um
-  // Location inválido ou perigoso.
+  // Destino inválido: o banco já sabia disso ANTES de contar (a RPC gate o
+  // clique em `is_valid_link_destination`), então aqui não há +1 para desfazer.
+  // A revalidação em TypeScript continua como segunda camada — se algo gravou
+  // lixo na coluna ou as duas implementações divergirem, é melhor devolver erro
+  // do que emitir um Location inválido ou perigoso.
   const check = validateDestinationUrl(row.out_destination);
-  if (!check.ok) {
-    console.error(`[managed-link] destino inválido link=${row.out_link_id.slice(0, 8)} motivo=${check.error}`);
+  if (!row.out_destination_valid || !check.ok) {
+    const motivo = check.ok ? "reprovado pelo banco" : check.error;
+    console.error(
+      `[managed-link] destino inválido link=${row.out_link_id.slice(0, 8)} ` +
+      `motivo=${motivo} contado=${row.out_click_counted}`
+    );
     return htmlResponse(410, "Link indisponível", "Este link está com uma configuração inválida. Avise quem o divulgou.");
   }
 
@@ -165,7 +184,8 @@ export async function GET(
 
   console.log(
     `[managed-link] redirect link=${row.out_link_id.slice(0, 8)} slug=${slug} status=302 ` +
-    `forward=${row.out_forward} click_logged=${row.out_click_logged} elapsed_ms=${Date.now() - t0}`
+    `forward=${row.out_forward} click_counted=${row.out_click_counted} ` +
+    `click_logged=${row.out_click_logged} elapsed_ms=${Date.now() - t0}`
   );
 
   return NextResponse.redirect(finalUrl, {
