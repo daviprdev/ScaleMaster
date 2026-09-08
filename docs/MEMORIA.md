@@ -3964,36 +3964,19 @@ final no transporte que bloqueia a requisição à Meta em vez de consertar.
 
 ## 2026-09-08 — Salvar na Biblioteca: 120 de 124 Reels reprovados
 
-Primeira importação de verdade pelo botão novo "Salvar na Biblioteca" (o
-caminho que preserva a legenda original): 124 Reels, 4 salvos.
+Causa: o actor `apify/instagram-scraper` devolve `videoDuration` fracionário
+e `videos_library.duration` é `integer` — o INSERT morria com
+`invalid input syntax for type integer: "18.266666"`. Passaram só os 4 de
+duração redonda. Latente desde sempre: nenhum outro caminho de ingestão
+gravava a duração do Apify.
 
-O log de produção deu a resposta em uma linha, repetida 120 vezes:
-`DB: invalid input syntax for type integer: "18.266666"`.
+Fix: `toIntegerColumn()` em `lib/media-ingest.ts`, aplicado às 4 colunas
+inteiras em `save-to-library` e em `video/process` (mesmo bug latente).
 
-O actor `apify/instagram-scraper` devolve `videoDuration` fracionário e
-`videos_library.duration` é `integer`. `Number(reel.duration) || 0`
-preservava a fração e o Postgres recusava o INSERT inteiro — os 4 que
-passaram foram os de duração redonda. O bug estava latente desde sempre:
-nenhum outro caminho de ingestão ativo gravava a duração vinda do Apify
-(`library/record` grava `duration: 0` fixo), então só apareceu quando este
-fluxo passou a ser usado em massa.
+Colateral maior: o upload precede o INSERT, então cada falha deixava
+arquivo órfão — 124 (233,6 MB). `save-to-library` ganhou a compensação que
+`library/record` já tinha (remove só o arquivo da iteração, após confirmar
+zero referências). Os 124 foram removidos via Storage API; bucket ficou com
+4 arquivos / 4 linhas / 0 registros quebrados.
 
-`toIntegerColumn()` (`lib/media-ingest.ts`) passou a coagir as 4 colunas
-inteiras, em `save-to-library` e em `video/process` — que tinha o mesmo bug
-esperando alguém chamá-lo.
-
-O estrago colateral foi maior que o bug: o upload ao Storage precede o
-INSERT (a `public_url` só existe depois de subir), então cada falha deixava
-um arquivo órfão permanente. 124 arquivos, 233,6 MB, invisíveis na UI e sem
-ninguém para removê-los — exatamente o padrão que estourou a quota em
-08/08. `save-to-library` ganhou a compensação que `library/record` já tinha:
-remove só o arquivo daquela iteração, e apenas depois de confirmar que
-nenhuma linha o referencia.
-
-Limpeza executada com autorização: 0 referências verificadas em todas as 11
-colunas de mídia do schema, remoção via Storage API em lotes. Bucket ficou
-com 4 arquivos e 4 linhas — 0 registros quebrados.
-
-`scripts/test-reels-and-library.mjs`: 37 → 48 checagens; as do helper
-compilam e executam `lib/media-ingest.ts` de verdade, não regex sobre o
-fonte. `npm test` 568 checagens verdes, build OK. Commit `68e9177`.
+Testes 37 → 48 (`npm test` 568 verdes). Commits `68e9177`, `bd44317`.
