@@ -139,22 +139,24 @@ async function main() {
   console.log("\n== 2. Exclusão de pasta atômica ==\n");
 
   const folderRoute = src("app/api/library/folders/[id]/route.ts");
-  const rpcSql = src("supabase/library_folder_delete_fix.sql");
+  const rpcSql = src("supabase/library_folder_delete_cascade.sql");
 
-  check("Rota usa a RPC transacional delete_library_folder_safe",
-    folderRoute.includes('rpc("delete_library_folder_safe"'));
-  check("Rota NÃO faz mais UPDATE/DELETE soltos (duas operações independentes)",
-    !folderRoute.includes('.from("loops")') && !folderRoute.includes('.from("library_folders")\n    .delete()'));
+  check("Rota usa a RPC transacional delete_library_folder_cascade",
+    folderRoute.includes('rpc("delete_library_folder_cascade"'));
+  check("Rota remove o Storage DEPOIS da RPC (atômica no banco + limpeza física)",
+    folderRoute.indexOf("delete_library_folder_cascade") <
+      folderRoute.search(/storage[\s\S]{0,160}\.remove\(/));
   check("RPC declarada na migration versionada",
-    rpcSql.includes("create or replace function public.delete_library_folder_safe"));
+    rpcSql.includes("create or replace function public.delete_library_folder_cascade"));
   check("RPC é plpgsql (executa dentro de uma transação)",
     rpcSql.includes("language plpgsql"));
   check("RPC valida ownership antes de qualquer mutação",
     /select name into v_name[\s\S]{0,200}user_id = p_user_id/.test(rpcSql));
   check("RPC pausa loops e registra o motivo",
     rpcSql.includes("status = 'paused'") && rpcSql.includes("paused_reason"));
-  check("RPC não apaga vídeos nem toca no Storage",
-    !/delete from videos_library/i.test(rpcSql) && !/storage/i.test(rpcSql.replace(/--.*/g, "")));
+  check("RPC apaga os vídeos e a pasta, e devolve storage_paths",
+    /delete from videos_library/i.test(rpcSql) && /delete from library_folders/i.test(rpcSql) &&
+      rpcSql.includes("storage_paths"));
   check("RPC não é executável por anon/authenticated",
     rpcSql.includes("revoke all on function") && rpcSql.includes("grant execute on function") &&
     rpcSql.includes("to service_role"));

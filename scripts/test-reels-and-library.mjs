@@ -215,46 +215,35 @@ async function main() {
     return true;
   })());
 
-  console.log("\n== 3. Exclusão segura de pasta da Biblioteca ==\n");
+  console.log("\n== 3. Exclusão de pasta apaga TUDO (reversão 2026-09-08) ==\n");
 
   const folderRoute = src("app/api/library/folders/[id]/route.ts");
   const libraryPage = src("app/dashboard/library/page.tsx");
+  const rpcCascade = src("supabase/library_folder_delete_cascade.sql").toLowerCase();
 
-  check("TESTE 2 (pasta cheia): a rota NÃO apaga vídeos do banco",
-    !/from\("videos_library"\)[\s\S]{0,200}\.delete\(\)/.test(folderRoute));
-  check("TESTE 2: a rota NÃO apaga arquivos do Storage",
-    !folderRoute.includes("storage") || !folderRoute.includes(".remove("));
-  // A contagem passou a acontecer dentro da RPC transacional (select count(*)),
-  // não mais na rota — o objetivo (não trafegar as linhas) continua garantido.
-  check("Contagem de vídeos é feita no banco, sem trazer as linhas",
-    src("supabase/library_folder_delete_fix.sql").includes("select count(*) into v_videos"));
-  check("TESTE 3: Loops da pasta são pausados com motivo legível (dentro da RPC)",
-    src("supabase/library_folder_delete_fix.sql").includes("status = 'paused'") &&
-      src("supabase/library_folder_delete_fix.sql").includes("paused_reason"));
-  check("TESTE 5: ownership verificado antes de excluir",
-    folderRoute.includes('.eq("user_id", user.id)') && folderRoute.includes("Pasta não encontrada"));
-  check("TESTE 6: duplo-clique bloqueado no frontend",
+  check("Rota usa a RPC cascade (não a antiga safe)",
+    folderRoute.includes("delete_library_folder_cascade") &&
+      !folderRoute.includes("delete_library_folder_safe"));
+  check("Rota remove os arquivos do Storage após o banco",
+    /storage[\s\S]{0,160}\.remove\(/.test(folderRoute) &&
+      folderRoute.indexOf("delete_library_folder_cascade") <
+        folderRoute.search(/storage[\s\S]{0,160}\.remove\(/));
+  check("RPC apaga vídeos, apaga pasta e devolve storage_paths",
+    rpcCascade.includes("delete from videos_library") &&
+      rpcCascade.includes("delete from library_folders") &&
+      rpcCascade.includes("storage_paths"));
+  check("Loops da pasta são pausados com motivo legível (dentro da RPC)",
+    rpcCascade.includes("status = 'paused'") && rpcCascade.includes("paused_reason"));
+  check("Ownership verificado antes de excluir",
+    folderRoute.includes('.eq("user_id", user.id)') || folderRoute.includes("p_user_id"));
+  check("Duplo-clique bloqueado no frontend",
     libraryPage.includes("if (deletingFolderLoading) return;"));
-  check("TESTE 7: erro real aparece na UI (não só no console)",
+  check("Erro real aparece na UI (não só no console)",
     libraryPage.includes("deleteFolderError") && libraryPage.includes("{deleteFolderError}"));
   check("Frontend usa try/finally (loading nunca fica preso)",
     /handleDeleteFolder[\s\S]{0,2200}finally \{[\s\S]{0,120}setDeletingFolderLoading\(false\)/.test(libraryPage));
-  check("Modal explica que os vídeos NÃO serão excluídos",
-    libraryPage.includes("não excluirá os vídeos"));
-  check("Migration da pasta não altera FK, não apaga vídeos nem toca no Storage",
-    (() => {
-      const sql = src("supabase/library_folder_delete_fix.sql").toLowerCase();
-      const semComentarios = sql
-        .split(/\r?\n/)
-        .filter((l) => !l.trim().startsWith("--"))
-        .join("\n");
-      return sql.includes("add column if not exists paused_reason")
-        // o único DELETE permitido é o da própria pasta
-        && !semComentarios.includes("delete from videos_library")
-        && !semComentarios.includes("storage")
-        && !/alter table[\s\S]*?(drop constraint|add constraint)[\s\S]*?fkey/.test(semComentarios)
-        && !semComentarios.includes("drop table");
-    })());
+  check("Modal avisa que os vídeos SERÃO apagados de vez",
+    libraryPage.includes("Todos os vídeos desta pasta serão apagados"));
 
   // A limpeza de registros quebrados e de arquivos orfaos do Storage tem suite
   // propria e mais completa: scripts/test-library-integrity.mjs.

@@ -90,35 +90,42 @@ async function main() {
   check("data de criação inválida → nunca remove",
     isOrphanFile("videos/x.mp4", new Set(), "data-invalida", agora) === false);
 
-  console.log("\n== 2. Excluir pasta nunca apaga mídia ==\n");
+  console.log("\n== 2. Excluir pasta apaga TUDO (reversão 2026-09-08) ==\n");
 
-  const rpc = src("supabase/library_folder_delete_fix.sql");
+  // Decisão do dono: excluir pasta apaga a pasta E os vídeos (banco + Storage).
+  // A RPC vigente é delete_library_folder_cascade; a antiga
+  // delete_library_folder_safe (mover para NULL) NÃO é mais usada pela rota.
+  const rpc = src("supabase/library_folder_delete_cascade.sql");
   const corpoRpc = rpc
     .split(/\r?\n/)
     .filter((l) => !l.trim().startsWith("--"))
     .join("\n")
     .toLowerCase();
 
-  // TESTE 7 / 8 — a garantia estrutural que cobre pasta de qualquer tamanho.
-  check("TESTE 7/8: RPC não apaga videos_library (qualquer tamanho de pasta)",
-    !corpoRpc.includes("delete from videos_library"));
-  check("TESTE 7/8: RPC não toca no Storage",
-    !corpoRpc.includes("storage"));
-  check("TESTE 7/8: RPC não lista arquivos da pasta para apagar",
-    !corpoRpc.includes("storage.objects"));
-  check("RPC só apaga a própria pasta",
-    (corpoRpc.match(/delete from/g) ?? []).length === 1 &&
-      corpoRpc.includes("delete from library_folders"));
+  check("TESTE 7/8: RPC APAGA os vídeos da pasta (videos_library)",
+    corpoRpc.includes("delete from videos_library"));
+  check("TESTE 7/8: RPC apaga também a própria pasta",
+    corpoRpc.includes("delete from library_folders"));
+  check("TESTE 7/8: RPC devolve storage_paths para a rota remover os arquivos",
+    corpoRpc.includes("storage_paths"));
+  check("RPC coleta os paths ANTES de apagar as linhas",
+    corpoRpc.indexOf("array_agg(storage_path)") < corpoRpc.indexOf("delete from videos_library"));
+  check("RPC exclui direct/ da lista de arquivos (URL externa, sem Storage)",
+    corpoRpc.includes("not like 'direct/%'"));
   check("RPC valida ownership antes de qualquer mutação",
     corpoRpc.includes("where id = p_folder_id and user_id = p_user_id"));
   check("Loop dependente é pausado com motivo legível",
     corpoRpc.includes("status = 'paused'") && corpoRpc.includes("paused_reason"));
 
   const folderRoute = src("app/api/library/folders/[id]/route.ts");
-  check("Rota de pasta não apaga videos_library",
-    !/from\("videos_library"\)[\s\S]{0,200}\.delete\(\)/.test(folderRoute));
-  check("Rota de pasta não chama storage.remove",
-    !/storage[\s\S]{0,120}\.remove\(/.test(folderRoute));
+  check("Rota de pasta chama a RPC cascade (não a antiga safe)",
+    folderRoute.includes("delete_library_folder_cascade") &&
+      !folderRoute.includes("delete_library_folder_safe"));
+  check("Rota de pasta remove os arquivos do Storage",
+    /storage[\s\S]{0,160}\.remove\(/.test(folderRoute));
+  check("Rota remove Storage DEPOIS do banco (RPC roda antes do remove)",
+    folderRoute.indexOf("delete_library_folder_cascade") <
+      folderRoute.search(/storage[\s\S]{0,160}\.remove\(/));
 
   console.log("\n== 3. As quatro operações são distintas ==\n");
 
@@ -201,8 +208,8 @@ async function main() {
     libraryPage.includes("cujo arquivo já não existe no armazenamento"));
   check("Operação destrutiva exige 2 cliques",
     libraryPage.includes("confirmCleanup") && libraryPage.includes('"Confirmar?"'));
-  check("Modal de pasta avisa que os vídeos NÃO serão excluídos",
-    libraryPage.includes("não excluirá os vídeos"));
+  check("Modal de pasta avisa que os vídeos SERÃO apagados de vez",
+    libraryPage.includes("Todos os vídeos desta pasta serão apagados"));
 
   console.log(`\n${passed} passaram, ${failed} falharam\n`);
   process.exit(failed === 0 ? 0 : 1);
