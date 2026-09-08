@@ -1,0 +1,89 @@
+# AutoScale — stack de deploy para VPS própria.
+#
+# Serviços:
+#   web            → Next.js 15 (Dockerfile da raiz)
+#   python-server  → FastAPI + instagrapi (python_server/Dockerfile já existente)
+#   caddy          → reverse proxy com TLS automático na frente do web
+#   cron           → busybox crond disparando os 13 endpoints de cron do vercel.json
+#
+# Banco/Auth/Storage continuam no Supabase (não há serviço de banco aqui).
+# Todas as variáveis vêm do arquivo .env (ver .env.example).
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* precisam existir em TEMPO DE BUILD (inlinadas no bundle).
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+        NEXT_PUBLIC_REDIRECT_BASE_URL: ${NEXT_PUBLIC_REDIRECT_BASE_URL}
+        NEXT_PUBLIC_META_CLIENT_ID: ${NEXT_PUBLIC_META_CLIENT_ID}
+        NEXT_PUBLIC_INSTAGRAM_APP_ID: ${NEXT_PUBLIC_INSTAGRAM_APP_ID}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Dentro do compose o web fala com o FastAPI pelo nome do serviço.
+      PYTHON_SERVER_URL: ${PYTHON_SERVER_URL:-http://python-server:8000}
+    expose:
+      - "3000"
+    depends_on:
+      - python-server
+    networks:
+      - autoscale
+
+  python-server:
+    build:
+      context: ./python_server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: "8000"
+    expose:
+      - "8000"
+    networks:
+      - autoscale
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+    networks:
+      - autoscale
+
+  cron:
+    build:
+      context: ./cron
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      CRON_SECRET: ${CRON_SECRET}
+      WEB_INTERNAL_URL: ${WEB_INTERNAL_URL:-http://web:3000}
+    depends_on:
+      - web
+    networks:
+      - autoscale
+
+networks:
+  autoscale:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

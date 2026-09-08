@@ -1,0 +1,27 @@
+# Dependências e artefatos — reinstalados/rebuildados dentro da imagem
+node_modules
+.next
+out
+
+# Segredos e ambiente local
+.env
+.env.local
+.env.*.local
+
+# Ferramentas de dev / editor / VCS
+.git
+.gitignore
+.claude
+.obsidian
+.vscode
+*.log
+npm-debug.log*
+
+# Servidor Python tem sua própria imagem (python_server/Dockerfile)
+python_server
+
+# Infra de deploy (não precisa ir para dentro da imagem do web)
+Caddyfile
+docker-compose.yml
+README-DEPLOY.md
+cron

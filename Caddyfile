@@ -1,0 +1,17 @@
+# AutoScale — reverse proxy com TLS automático (Let's Encrypt).
+# O domínio e o e-mail vêm de variáveis de ambiente (definidas no .env).
+#
+#   DOMAIN      = seu-dominio.com
+#   ACME_EMAIL  = voce@exemplo.com   (para os avisos do Let's Encrypt)
+#
+# Caddy obtém e renova o certificado sozinho, desde que as portas 80/443
+# estejam publicadas e o DNS do domínio aponte para a VPS.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}

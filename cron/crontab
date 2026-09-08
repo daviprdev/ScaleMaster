@@ -1,0 +1,24 @@
+# AutoScale — crontab (reproduz EXATAMENTE os 13 crons do vercel.json)
+#
+# Formato padrão de 5 campos (min hora dia mês dia-da-semana), em UTC — igual
+# ao comportamento dos Cron Jobs da Vercel. Cada linha chama run-cron.sh, que
+# faz um GET autenticado (Authorization: Bearer $CRON_SECRET) no serviço "web".
+#
+# A saída é redirecionada para o stdout do PID 1 (crond) para aparecer em
+# `docker compose logs cron`.
+#
+# schedule        endpoint
+
+*/5 * * * *   /usr/local/bin/run-cron.sh /api/cron/prefetch-clone-urls        > /proc/1/fd/1 2>&1
+*/5 * * * *   /usr/local/bin/run-cron.sh /api/cron/process-videos             > /proc/1/fd/1 2>&1
+*/5 * * * *   /usr/local/bin/run-cron.sh /api/cron/process-loops              > /proc/1/fd/1 2>&1
+*/2 * * * *   /usr/local/bin/run-cron.sh /api/cron/publish-pending            > /proc/1/fd/1 2>&1
+* * * * *     /usr/local/bin/run-cron.sh /api/cron/publish-scheduled          > /proc/1/fd/1 2>&1
+0 2 * * *     /usr/local/bin/run-cron.sh /api/analytics/sync                  > /proc/1/fd/1 2>&1
+0 */12 * * *  /usr/local/bin/run-cron.sh /api/cron/refresh-tokens             > /proc/1/fd/1 2>&1
+*/30 * * * *  /usr/local/bin/run-cron.sh /api/cron/story-templates            > /proc/1/fd/1 2>&1
+*/10 * * * *  /usr/local/bin/run-cron.sh /api/cron/sync-distribute-accounts   > /proc/1/fd/1 2>&1
+*/10 * * * *  /usr/local/bin/run-cron.sh /api/cron/process-instagram-logins   > /proc/1/fd/1 2>&1
+*/5 * * * *   /usr/local/bin/run-cron.sh /api/cron/sync-post-insights         > /proc/1/fd/1 2>&1
+*/15 * * * *  /usr/local/bin/run-cron.sh /api/cron/daily-profit-notification  > /proc/1/fd/1 2>&1
+*/10 * * * *  /usr/local/bin/run-cron.sh /api/cron/check-health-alerts        > /proc/1/fd/1 2>&1

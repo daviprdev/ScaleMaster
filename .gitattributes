@@ -1,0 +1,5 @@
+# Scripts executados dentro de containers Linux precisam de fim de linha LF,
+# mesmo quando editados no Windows.
+cron/run-cron.sh    text eol=lf
+cron/entrypoint.sh  text eol=lf
+cron/crontab        text eol=lf
