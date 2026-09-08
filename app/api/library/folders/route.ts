@@ -33,7 +33,14 @@ export async function GET() {
     })
   );
 
-  return NextResponse.json({ folders: foldersWithCount });
+  // Vídeos sem pasta (folder_id IS NULL) — os que sobram após excluir uma pasta.
+  const { count: unfiledCount } = await supabase
+    .from("videos_library")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .is("folder_id", null);
+
+  return NextResponse.json({ folders: foldersWithCount, unfiled_count: unfiledCount ?? 0 });
 }
 
 export async function POST(req: NextRequest) {

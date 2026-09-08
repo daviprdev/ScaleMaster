@@ -41,6 +41,11 @@ export interface LibraryFolder {
   video_count?: number;
 }
 
+// Pasta virtual "Sem pasta": id sentinela "root" — o servidor traduz para
+// folder_id IS NULL. É onde caem os vídeos quando uma pasta é excluída.
+const UNFILED_ID = "root";
+const UNFILED_FOLDER: LibraryFolder = { id: UNFILED_ID, name: "Sem pasta", created_at: "" };
+
 function formatBytes(bytes: number) {
   if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
   return `${(bytes / 1_000).toFixed(0)} KB`;
@@ -69,8 +74,10 @@ export default function LibraryPage() {
 
   // ── Pastas ──────────────────────────────────────────────────
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
+  const [unfiledCount, setUnfiledCount] = useState(0);
   const [foldersLoading, setFoldersLoading] = useState(true);
   const [currentFolder, setCurrentFolder] = useState<LibraryFolder | null>(null);
+  const isUnfiled = currentFolder?.id === UNFILED_ID;
 
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -96,8 +103,9 @@ export default function LibraryPage() {
   const fetchFolders = useCallback(async () => {
     setFoldersLoading(true);
     const res = await fetch("/api/library/folders");
-    const data = await res.json() as { folders: LibraryFolder[] };
+    const data = await res.json() as { folders: LibraryFolder[]; unfiled_count?: number };
     setFolders(data.folders ?? []);
+    setUnfiledCount(data.unfiled_count ?? 0);
     setFoldersLoading(false);
   }, []);
 
@@ -136,8 +144,10 @@ export default function LibraryPage() {
       fetchVideos(folder.id, 0, false);
     } else {
       setVideos([]);
+      // Recarrega contagens (inclui "Sem pasta") ao voltar para a raiz.
+      fetchFolders();
     }
-  }, [fetchVideos]);
+  }, [fetchVideos, fetchFolders]);
 
   const handleLoadMore = useCallback(() => {
     fetchVideos(currentFolder?.id ?? null, page + 1, true);
@@ -794,7 +804,8 @@ export default function LibraryPage() {
       {currentFolder && (
       <>
 
-      {/* Upload zone */}
+      {/* Upload zone — oculto em "Sem pasta" (não existe pasta de destino) */}
+      {!isUnfiled && (
       <motion.div
         initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
         onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
@@ -822,6 +833,19 @@ export default function LibraryPage() {
           </p>
         </div>
       </motion.div>
+      )}
+
+      {/* Banner explicativo em "Sem pasta" */}
+      {isUnfiled && (
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3">
+          <p className="text-xs text-amber-300/80 leading-relaxed">
+            Estes vídeos ficaram sem pasta (a pasta que os continha foi excluída). Eles
+            continuam ocupando espaço e bloqueiam o re-upload dos mesmos arquivos.
+            Selecione e <span className="text-amber-200 font-medium">mova</span> para uma
+            pasta ou <span className="text-amber-200 font-medium">exclua</span> de vez.
+          </p>
+        </div>
+      )}
 
       {/* Upload queue */}
       <AnimatePresence>
@@ -975,7 +999,7 @@ export default function LibraryPage() {
           )}
 
           {/* Grade de pastas */}
-          {!foldersLoading && folders.length > 0 && (
+          {!foldersLoading && (folders.length > 0 || unfiledCount > 0) && (
             <motion.div
               initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
               className="space-y-3"
@@ -990,12 +1014,19 @@ export default function LibraryPage() {
                     onRename={() => { setRenamingFolder(folder); setRenameValue(folder.name); }}
                   />
                 ))}
+                {unfiledCount > 0 && (
+                  <UnfiledCard
+                    count={unfiledCount}
+                    index={folders.length}
+                    onClick={() => navigateToFolder(UNFILED_FOLDER)}
+                  />
+                )}
               </div>
             </motion.div>
           )}
 
           {/* Empty state — nenhuma pasta criada */}
-          {!foldersLoading && folders.length === 0 && (
+          {!foldersLoading && folders.length === 0 && unfiledCount === 0 && (
             <motion.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }}
               className="flex flex-col items-center justify-center py-28 gap-6 text-center"
@@ -1131,6 +1162,31 @@ function CheckMark() {
     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" className="ml-auto text-violet-400">
       <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+// ── UnfiledCard ───────────────────────────────────────────────
+// Pasta virtual "Sem pasta": vídeos que ficaram sem pasta após exclusão.
+// Sem rename/delete — não é uma pasta de verdade.
+function UnfiledCard({ count, index, onClick }: { count: number; index: number; onClick: () => void }) {
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 10, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ delay: index * 0.05 }}
+      whileHover={{ y: -3, scale: 1.02 }}
+      onClick={onClick}
+      className="relative rounded-xl border border-dashed border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-700/[0.06] p-4 cursor-pointer transition-all duration-200 hover:border-amber-500/50 hover:shadow-[0_4px_20px_rgba(245,158,11,0.15)]"
+    >
+      <div className="w-10 h-10 mb-3 flex items-center justify-center text-amber-400">
+        <FolderOpen size={36} strokeWidth={1.5} />
+      </div>
+      <p className="text-xs font-semibold text-white/80 truncate leading-tight">Sem pasta</p>
+      <p className="text-[10px] text-amber-400/70 mt-0.5">
+        {count} vídeo{count !== 1 ? "s" : ""} solto{count !== 1 ? "s" : ""}
+      </p>
+    </motion.div>
   );
 }
 
