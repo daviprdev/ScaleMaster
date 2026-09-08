@@ -37,3 +37,6 @@ next-env.d.ts
 # Editor / tools
 .obsidian/
 .claude/
+
+# Builds temporários das suítes de teste (scripts/test-*.mjs)
+.tmp-test-build-*/

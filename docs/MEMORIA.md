@@ -3732,3 +3732,113 @@ token, proxy, Meta App ou `video_processing_mode` foi tocado.
 novas), `npm run lint` (nenhum aviso nos arquivos novos) e `npm run build`
 limpos. Dados de teste removidos do banco ao final — as três tabelas ficaram em
 zero.
+
+
+---
+
+## Legenda original de Reels (2026-09-07)
+
+O texto da publicação passa a viajar junto do vídeo raspado, e a publicação
+escolhe a fonte da legenda: original, personalizada ou nenhuma.
+
+**Scraper**
+
+O actor em uso é `apify/instagram-scraper` — não o
+`apify~instagram-reel-scraper` que o CLAUDE.md citava (a troca já estava feita
+no código; a doc é que estava velha). Campos confirmados na referência oficial
+do actor e batendo com o que a produção já lia: `caption`, `ownerUsername`,
+`url` (permalink), `shortCode`, `videoUrl`, `type`.
+
+Não consegui capturar um payload ao vivo: o `APIFY_API_TOKEN` do `.env.local`
+responde 401 (`user-or-token-not-found`) — testado direto contra
+`/v2/users/me`. Então a confirmação veio de duas fontes independentes em vez
+de uma observação: a doc oficial do actor e o código de produção que já
+funciona com esses nomes.
+
+`lib/scraped-reel.ts` virou o único ponto que interpreta o payload. Antes,
+cada rota lia `item.caption` por conta própria com regras diferentes — e a de
+Inspirações truncava em 120 caracteres antes de qualquer coisa.
+
+**O que estava se perdendo**
+
+Duas truncagens em série destruíam a legenda: 120 chars no poller de
+Inspirações e 500 no save-to-library. As duas saíram. Emoji, quebra de linha,
+acento, hashtag e @menção passam intactos — verificado contra o Postgres real,
+inclusive `#ação` e `chr(10)` dentro do texto.
+
+Três estados agora são distinguíveis: `null` = não capturada, `""` = o Reel
+não tinha legenda, texto = legenda. Ressalva honesta: não deu para observar um
+Reel real SEM legenda, então não está confirmado se o actor manda `caption: ""`
+ou omite o campo. Os dois casos são tratados; qual deles acontece de fato,
+ainda não sei.
+
+**Banco: reuso, não duplicata**
+
+`videos_library` já tinha `caption` e `owner_username`, gravados pelo
+save-to-library. Criar `original_caption`/`source_username` ao lado seria
+duplicar conceito, então as duas foram reaproveitadas e ganharam COMMENT
+explicando a semântica. Só `source_url` é nova — `original_url` existe mas
+guarda a URL do arquivo no CDN, que expira, e não o permalink.
+
+`caption_mode` (NULLABLE, CHECK de três valores) entrou em `loops`,
+`distribute_campaigns`, `scheduled_posts` e `pending_containers`. NULL =
+`custom` = comportamento histórico. Zero backfill: as 127 linhas de
+`videos_library` em produção continuam com `caption = NULL`, e nenhuma
+configuração existente muda de conduta.
+
+**Padrões, e por que cada um**
+
+Loop e Postar assumem `custom`, que é o que eles sempre fizeram (pool digitado
+ou legenda automática). Clone assume `original`, porque `caption: reel.caption`
+já era o código dele — mudar para `custom` é que seria alterar comportamento
+histórico. O modal "Postar agora" assume `custom` porque a caixa de texto já
+vinha pré-preenchida com a legenda do vídeo.
+
+**Snapshot**
+
+A legenda é resolvida no ponto em que o vídeo concreto é escolhido e o texto
+final vai para `scheduled_posts.caption` / `pending_containers.caption`.
+`publish-scheduled` continua só lendo — não descobre vídeo, não relê
+configuração, não chama Apify. Provado no banco: mudar
+`videos_library.caption` depois do post criado não altera o snapshot.
+
+**Sem fallback**
+
+`original` sem legenda publica SEM legenda. Nunca cai para custom, automática,
+IA ou legenda de outro vídeo. Em publicação individual a UI barra e pede outro
+modo; em Loop/Postar com pasta mista a UI avisa que vídeos sem legenda saem sem
+legenda.
+
+**Limite da Meta**
+
+Referência oficial (IG User Media, consultada hoje): "Maximum 2200 characters,
+30 hashtags, and 20 @ tags". Acima de 2200 vira erro antes de agendar — no
+Loop, a conta é pulada com o motivo registrado como erro de container, visível
+no Monitor. O `slice(2200)` de `sanitizeCaption` fica como última rede do
+transporte, nunca como política.
+
+**Hashtags e @menções**
+
+Implementados, com regex Unicode (`\p{L}\p{N}\p{M}`) — `/#\w+/` quebraria
+em `#ação`, `#português` e `#日本語`. @menção usa ASCII restrito porque
+username do Instagram é assim. Default false nos dois: crédito ao criador não
+some sem o usuário pedir.
+
+**Achado que muda o plano**
+
+O botão "Adicionar à Biblioteca" das Inspirações NÃO existia na UI — a rota
+`/api/inspirations/save-to-library` estava órfã e o card só tinha "Baixar
+vídeo". Ou seja: todo Reel raspado entrava na Biblioteca via download + upload
+manual, e a legenda morria no caminho. Sem esse botão a feature seria inerte em
+Loop e Postar, então ele foi adicionado — leva vídeo e legenda juntos. Os
+vídeos caem em "Sem pasta", que é estado válido.
+
+**Testes**
+
+`scripts/test-reel-captions.mjs`: 96 checagens. Inclui interceptação do HTTP
+real com MockAgent do undici, provando que `POST /{ig-user-id}/media` sai com
+`media_type=REELS` e a legenda original — comparando o valor DECODIFICADO, não
+a representação do encoding. Nenhum Reel real foi publicado. Fixtures no banco
+de produção criados e removidos; 0 resíduo.
+
+`npm test` = 505 checagens. typecheck, lint e build limpos.

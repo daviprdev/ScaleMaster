@@ -23,7 +23,7 @@ Contém as instruções, contexto e estado atual do projeto.
 | Estilização | Tailwind CSS |
 | Componentes | Shadcn UI (a instalar) + Framer Motion |
 | Backend/BaaS | Supabase (PostgreSQL + Auth + Storage) |
-| Scraping | Apify — Actor `apify~instagram-reel-scraper` |
+| Scraping | Apify — Actor `apify/instagram-scraper` (com `directUrls` + `resultsType: "posts"`) |
 | Vídeo | FFmpeg via `fluent-ffmpeg` + `@ffmpeg-installer/ffmpeg` |
 | Deploy | Vercel (Next.js) + Railway (FastAPI Python) |
 
@@ -449,6 +449,8 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 
 | **Feat — Links Gerenciáveis (2026-09-07)** | Encurtador próprio com destino trocável. Rota pública `GET /r/{slug}` (fora do matcher do middleware, zero custo de sessão) resolve tudo em UMA ida ao banco: a RPC `resolve_managed_link` executa na ordem busca → valida status → valida destino → **só então** conta o clique → devolve o destino, com contador e linha de detalhe em blocos `EXCEPTION` separados — analytics que falha não impede o redirect, e nada de `void promise` (serverless mataria a promise depois da resposta). **302 Found** (nunca 301, que ficaria cacheado com o destino antigo) + `Cache-Control: private, no-store` + `X-Robots-Tag: noindex, nofollow`; pausado = 410 sem revelar o destino, arquivado/inexistente = 404. Slug base62 de 7 chars via `crypto.randomBytes` com amostragem por rejeição (sem viés de módulo), retentativa em colisão `23505`, slug customizado normalizado para minúsculas com 3–50 chars e 38 palavras reservadas. **Sem redirect controlado por parâmetro** (o destino é persistido por usuário autenticado, validado no servidor e resolvido só pelo slug; a rota não aceita `?url=`) e **sem cloaking** (o User-Agent só vira categoria de analytics e nunca volta ao cálculo do destino). Destino validado em `lib/managed-links.ts`: só http/https, sem `user:senha@`, sem localhost/rede privada/metadata de nuvem, sem caractere de controle (CR/LF = header splitting), teto de 2048 chars, com CHECK equivalente no banco. `forward_query_params` (default false) mescla a query pública via `URLSearchParams` com **precedência do destino** — o visitante não sobrescreve parâmetro do dono. Tabelas `managed_links` (status `active/paused/archived` no lugar de `is_active`), `managed_link_history` e `managed_link_clicks`, todas com RLS; `resolve_managed_link`, `get_managed_link_overview` e `get_managed_link_analytics` são SECURITY DEFINER com EXECUTE revogado de anon/authenticated. Privacidade: zero IP (nem hash), zero User-Agent bruto, do Referer só o hostname. UI `/dashboard/links` (4 cards de resumo, lista com copiar/editar/pausar/arquivar/excluir em 2 cliques) e `/dashboard/links/[id]` (série diária, quebras por origem/dispositivo/navegador/utm, 50 cliques recentes, histórico). Stories ganhou o seletor "Sem link / Link direto / Link gerenciado" — a URL vai para `scheduled_posts.story_link_url` **derivada do slug no servidor**, nunca o `destination_url`; a UI diz explicitamente que a Content Publishing API não aceita link sticker. Migration `supabase/managed_links.sql` (aplicada). `scripts/test-managed-links.mjs`: 165 checagens. | ✅ Concluída |
 
+| **Feat — Legenda original de Reels (2026-09-07)** | Captura o TEXTO da publicação junto do vídeo raspado e deixa a publicação escolher a fonte da legenda. **Actor real: `apify/instagram-scraper`** (não o `apify~instagram-reel-scraper` do histórico antigo); campos confirmados na referência oficial e já usados em produção: `caption`, `ownerUsername`, `url`, `shortCode`, `videoUrl`. Novo `lib/scraped-reel.ts` é o único ponto que interpreta o payload — nada de `item.caption || item.text` espalhado. **A truncagem sumiu**: o poller de Inspirações cortava em 120 chars e o save-to-library em 500; agora o texto vai inteiro, com emoji, quebra de linha, acento, hashtag e @menção preservados. Três estados distinguidos: `null` = não capturada, `""` = Reel sem legenda, texto = legenda. **Reuso em vez de duplicata**: `videos_library.caption` e `owner_username` já existiam e foram reaproveitadas (com COMMENT explicando a semântica); só `source_url` é nova — `original_url` guarda a URL do CDN, que expira. `lib/reel-captions.ts` concentra os três modos (`original` \| `custom` \| `none`) e a resolução; `caption_mode` (NULLABLE) em `loops` e `distribute_campaigns`, com NULL = `custom` = comportamento histórico — **sem backfill**. Clone tem padrão próprio `original`, porque era o que ele já fazia (`caption: reel.caption`). **Snapshot**: a legenda é resolvida no momento em que o vídeo concreto é escolhido e gravada em `scheduled_posts.caption` / `pending_containers.caption`; `publish-scheduled` continua só lendo — mudar o vídeo na Biblioteca ou a configuração do Loop não altera post já criado. **Sem fallback silencioso**: `original` sem legenda publica SEM legenda, nunca troca por custom/automática. **Limite de 2200 chars** (referência oficial da Meta, consultada 2026-09-07): legenda acima disso vira ERRO antes de agendar — nunca truncagem silenciosa. Toggles opcionais de remover hashtags/@menções (default false nos dois) com regex Unicode (`\p{L}\p{N}\p{M}`) que trata `#ação`, `#português` e `#日本語`. UI: `CaptionModeSelector` em Postar, Loop, Clonar e no modal Postar agora; legenda visível na Biblioteca e nas Inspirações, sempre como TEXTO (zero `dangerouslySetInnerHTML`). Stories não foi tocado. Migration `supabase/original_reel_captions.sql` (aplicada). `scripts/test-reel-captions.mjs`: 96 checagens, incluindo interceptação do POST real à Meta via MockAgent do undici. | ✅ Concluída |
+
 **SQL pendente (executar no Supabase):**
 ```sql
 -- Legendas Automáticas no Loop (supabase/auto_captions.sql)
@@ -689,6 +691,66 @@ Arquivos-chave: `lib/managed-links.ts` (validação, slug, categorias, merge),
 (domínio no client), `app/r/[slug]/route.ts` (rota pública),
 `supabase/managed_links.sql` (tabelas, RLS, RPCs),
 `scripts/test-managed-links.mjs` (165 checagens).
+
+---
+
+## Decisão arquitetural — Legenda original de Reels (2026-09-07)
+
+Regra permanente. Vale para qualquer fluxo novo que ingira ou publique Reel.
+
+- **Mídia e legenda são coisas separadas.** Esta feature não altera bytes de
+  vídeo, Storage, `video_processing_mode`, FFmpeg, efeitos nem metadata de
+  arquivo. É só texto.
+- **O scraper preserva a legenda inteira.** Nada de truncar, traduzir, resumir,
+  reescrever, remover hashtag/@menção ou trocar emoji na ingestão. Quem corta
+  para caber na tela é o CSS, não o banco.
+- **Um único lugar interpreta o Apify:** `lib/scraped-reel.ts`. Se um campo
+  novo for preciso, ele entra ali — nunca `item.caption || item.text`
+  espalhado por rota.
+- **Três estados, e a diferença importa:** `null` = legenda não capturada
+  (upload manual, ingestão antiga, campo ausente no payload); `""` = o Reel
+  não tinha legenda; texto = legenda. `String(x ?? "")` apaga essa distinção e
+  por isso não é usado.
+- **Vídeo e legenda andam juntos.** A associação é por linha/índice, do item do
+  dataset até o post concreto. Nunca existe "a legenda do perfil" nem "a
+  legenda do primeiro Reel" aplicada aos demais.
+- **Snapshot é obrigatório.** A legenda é resolvida quando o vídeo concreto é
+  escolhido e gravada em `scheduled_posts.caption` /
+  `pending_containers.caption`. `publish-scheduled` só LÊ esse texto: não
+  descobre vídeo, não relê configuração, não chama Apify. Editar o vídeo na
+  Biblioteca ou o Loop depois não muda post que já nasceu.
+- **Sem fallback silencioso.** `caption_mode=original` com legenda
+  indisponível publica SEM legenda. Nunca cai para legenda personalizada,
+  automática, de IA ou de outro vídeo. Em publicação individual (Postar agora)
+  a UI barra e pede outro modo; em Loop/Postar com pasta mista a UI avisa que
+  vídeos sem legenda saem sem legenda.
+- **NULL preserva o passado.** `caption_mode` nulo = `custom` = o que o
+  fluxo já fazia (pool digitado ou legenda automática). Clone é a exceção
+  documentada: o padrão dele é `original`, porque publicar a legenda do Reel
+  sempre foi o comportamento daquele fluxo. Nenhum backfill.
+- **Limite de 2200 caracteres é erro, não corte.** Referência oficial da Meta
+  (IG User Media): "Maximum 2200 characters, 30 hashtags, and 20 @ tags". Acima
+  disso a publicação é barrada com mensagem, antes de agendar ou de chamar a
+  Meta. O `slice(2200)` de `sanitizeCaption` permanece como última rede de
+  proteção do transporte, nunca como política.
+- **Atribuição não some sozinha.** Hashtags e @menções — inclusive crédito ao
+  criador — só são removidas se o usuário ligar o toggle. Default é false nos
+  dois, e a remoção usa classes Unicode (`\p{L}\p{N}\p{M}`), não `\w`,
+  para não quebrar `#ação` ou `#日本語`.
+- **Legenda é conteúdo externo.** Renderizada sempre como texto em JSX. Nunca
+  `dangerouslySetInnerHTML`. Quebra de linha vem de `whitespace-pre-wrap`,
+  não de HTML.
+- **Ownership no servidor.** Buscar `videos_library.caption` sempre com
+  `.eq("user_id", user.id)` na mesma query. Em modo `original` o texto vem do
+  banco e o que o cliente mandou é ignorado.
+- **Stories fora.** A Content Publishing API não usa caption em Story; nenhuma
+  lógica desta feature entra nesse fluxo.
+
+Arquivos-chave: `lib/scraped-reel.ts` (payload do Apify),
+`lib/reel-captions.ts` (modos, resolução, limite, Unicode),
+`components/dashboard/CaptionModeSelector.tsx` (UI),
+`supabase/original_reel_captions.sql` (migration),
+`scripts/test-reel-captions.mjs` (96 checagens).
 
 ## Diretrizes para o Claude
 
