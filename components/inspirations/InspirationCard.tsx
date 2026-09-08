@@ -417,6 +417,59 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered, saveFold
                 </p>
               )}
 
+              {/* AÇÃO PRINCIPAL — Salvar na Biblioteca (leva vídeo + legenda
+                  original). É este caminho que faz o modo "legenda original"
+                  do Loop funcionar. Fica em destaque (verde, no topo). */}
+              {hasVideo && (
+                <motion.button
+                  type="button"
+                  onClick={handleSaveToLibrary}
+                  whileTap={saveState === "saving" || saveState === "done" ? {} : { scale: 0.96 }}
+                  disabled={saveState === "saving" || saveState === "done" || !saveFolderId}
+                  title={!saveFolderId ? "Selecione uma pasta de destino acima" : undefined}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-200 disabled:cursor-not-allowed"
+                  style={
+                    saveState === "done" ? {
+                      background: "rgba(0,255,65,0.14)",
+                      border: "0.5px solid rgba(0,255,65,0.4)",
+                      color: "rgba(0,255,65,0.95)",
+                    } : saveState === "error" ? {
+                      background: "rgba(255,59,48,0.08)",
+                      border: "0.5px solid rgba(255,59,48,0.3)",
+                      color: "rgba(255,100,90,0.9)",
+                    } : saveState === "saving" ? {
+                      background: "rgba(0,255,65,0.06)",
+                      border: "0.5px solid rgba(0,255,65,0.2)",
+                      color: "rgba(0,255,65,0.5)",
+                    } : !saveFolderId ? {
+                      background: "rgba(255,255,255,0.04)",
+                      border: "0.5px solid rgba(255,255,255,0.12)",
+                      color: "rgba(255,255,255,0.4)",
+                    } : {
+                      background: "rgba(0,255,65,0.12)",
+                      border: "0.5px solid rgba(0,255,65,0.4)",
+                      color: "rgba(0,255,65,0.95)",
+                      boxShadow: "0 0 16px rgba(0,255,65,0.16)",
+                    }
+                  }
+                >
+                  {saveState === "saving" && <><Loader2 size={13} className="animate-spin" />Salvando...</>}
+                  {saveState === "done" && <><CheckCircle2 size={13} />Na Biblioteca</>}
+                  {saveState === "error" && <><AlertCircle size={13} />Tentar de novo</>}
+                  {saveState === "idle" && (
+                    !saveFolderId
+                      ? <><FolderPlus size={13} />Escolha uma pasta</>
+                      : <><FolderPlus size={13} />Salvar na Biblioteca</>
+                  )}
+                </motion.button>
+              )}
+
+              {saveState === "error" && saveError && (
+                <p className="text-[10px]" style={{ color: "rgba(255,120,120,0.9)" }}>{saveError}</p>
+              )}
+
+              {/* AÇÃO SECUNDÁRIA — Baixar para o dispositivo (SEM legenda).
+                  Só útil para editar o vídeo fora do app. */}
               {/* URL expired/blocked → show Re-buscar instead of retry */}
               {processState === "error" && isUrlExpiredError(errorMsg) ? (
                 <>
@@ -429,7 +482,7 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered, saveFold
                     onClick={handleRefetch}
                     whileTap={refetchState === "loading" ? {} : { scale: 0.96 }}
                     disabled={refetchState === "loading"}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-200"
+                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-medium transition-all duration-200"
                     style={
                       refetchState === "loading" ? {
                         background: "rgba(255,180,0,0.06)",
@@ -445,8 +498,8 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered, saveFold
                     }
                   >
                     {refetchState === "loading"
-                      ? <><Loader2 size={13} className="animate-spin" />Buscando nova URL...</>
-                      : <><RefreshCw size={13} />Re-buscar URL do vídeo</>
+                      ? <><Loader2 size={12} className="animate-spin" />Buscando nova URL...</>
+                      : <><RefreshCw size={12} />Re-buscar URL do vídeo</>
                     }
                   </motion.button>
                 </>
@@ -455,74 +508,34 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered, saveFold
                   onClick={handleProcess}
                   whileTap={busy ? {} : { scale: 0.96 }}
                   disabled={busy}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-200"
+                  title="Baixa o arquivo para o seu dispositivo (sem legenda). Para postar com a legenda original, use Salvar na Biblioteca."
+                  className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-medium transition-all duration-200"
                   style={
                     processState === "done" ? {
-                      background: "rgba(0,255,65,0.1)",
-                      border: "0.5px solid rgba(0,255,65,0.35)",
-                      color: "rgba(0,255,65,0.9)",
+                      background: "rgba(0,255,65,0.08)",
+                      border: "0.5px solid rgba(0,255,65,0.25)",
+                      color: "rgba(0,255,65,0.8)",
                     } : processState === "error" ? {
                       background: "rgba(255,59,48,0.08)",
                       border: "0.5px solid rgba(255,59,48,0.3)",
                       color: "rgba(255,100,90,0.9)",
                     } : busy ? {
-                      background: "rgba(255,255,255,0.04)",
-                      border: "0.5px solid rgba(255,255,255,0.1)",
-                      color: "rgba(255,255,255,0.35)",
+                      background: "rgba(255,255,255,0.03)",
+                      border: "0.5px solid rgba(255,255,255,0.08)",
+                      color: "rgba(255,255,255,0.3)",
                       cursor: "not-allowed",
                     } : {
-                      background: "rgba(0,255,65,0.1)",
-                      border: "0.5px solid rgba(0,255,65,0.3)",
-                      color: "rgba(0,255,65,0.9)",
-                      boxShadow: "0 0 14px rgba(0,255,65,0.12)",
+                      background: "rgba(255,255,255,0.04)",
+                      border: "0.5px solid rgba(255,255,255,0.12)",
+                      color: "rgba(255,255,255,0.5)",
                     }
                   }
-                  onMouseEnter={(e) => {
-                    if (!busy && processState === "idle") {
-                      (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,255,65,0.18)";
-                      (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 22px rgba(0,255,65,0.22)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!busy && processState === "idle") {
-                      (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,255,65,0.1)";
-                      (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 14px rgba(0,255,65,0.12)";
-                    }
-                  }}
                 >
-                  {processState === "downloading" && <><Loader2 size={13} className="animate-spin" />Baixando...</>}
-                  {processState === "done" && <><CheckCircle2 size={13} />Download concluído!</>}
-                  {processState === "error" && <><Download size={13} />Tentar novamente</>}
-                  {processState === "idle" && <><Download size={13} />Baixar vídeo</>}
+                  {processState === "downloading" && <><Loader2 size={12} className="animate-spin" />Baixando...</>}
+                  {processState === "done" && <><CheckCircle2 size={12} />Download concluído!</>}
+                  {processState === "error" && <><Download size={12} />Tentar novamente</>}
+                  {processState === "idle" && <><Download size={12} />Baixar no dispositivo</>}
                 </motion.button>
-              )}
-
-              {hasVideo && (
-                <button
-                  type="button"
-                  onClick={handleSaveToLibrary}
-                  disabled={saveState === "saving" || saveState === "done" || !saveFolderId}
-                  title={!saveFolderId ? "Selecione uma pasta de destino acima" : undefined}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                  style={{
-                    background: "rgba(0,229,255,0.08)",
-                    border: "1px solid rgba(0,229,255,0.22)",
-                    color: "rgba(0,229,255,0.9)",
-                  }}
-                >
-                  {saveState === "saving" && <><Loader2 size={12} className="animate-spin" />Salvando...</>}
-                  {saveState === "done" && <><CheckCircle2 size={12} />Na Biblioteca</>}
-                  {saveState === "error" && <><AlertCircle size={12} />Tentar de novo</>}
-                  {saveState === "idle" && (
-                    !saveFolderId
-                      ? <><FolderPlus size={12} />Escolha uma pasta</>
-                      : <><FolderPlus size={12} />Salvar na Biblioteca</>
-                  )}
-                </button>
-              )}
-
-              {saveState === "error" && saveError && (
-                <p className="text-[10px]" style={{ color: "rgba(255,120,120,0.9)" }}>{saveError}</p>
               )}
 
               {temLegenda && (

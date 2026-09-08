@@ -21,6 +21,7 @@ import {
   Instagram,
   Eye,
   Plus,
+  FolderPlus,
 } from "lucide-react";
 import { InspirationGrid } from "@/components/inspirations/InspirationGrid";
 import { LibraryFolderSelect } from "@/components/inspirations/LibraryFolderSelect";
@@ -332,9 +333,14 @@ export default function InspiracoesPage() {
   const [bulkProgress, setBulkProgress] = useState<{ done: number; errors: number; total: number } | null>(null);
   const [bulkResult, setBulkResult] = useState<{ saved: number; errors: number } | null>(null);
 
+  // Salvar todos na Biblioteca (com legenda) — separado do download-para-dispositivo.
+  const [bulkSaveProgress, setBulkSaveProgress] = useState<{ done: number; total: number } | null>(null);
+  const [bulkSaveResult, setBulkSaveResult] = useState<{ saved: number; errors: number } | null>(null);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const _searchingRef = useRef(false);
   const _bulkRef = useRef(false);
+  const _bulkSaveRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/inspirations/history", { cache: "no-store" })
@@ -565,6 +571,70 @@ export default function InspiracoesPage() {
     _bulkRef.current = false;
   };
 
+  // Salvar TODOS na Biblioteca — este é o caminho que preserva a legenda
+  // original (videos_library.caption). Diferente de "Baixar todos", que só
+  // baixa o arquivo para o dispositivo (sem legenda). Envia em lotes de 3,
+  // igual ao contrato do backend save-to-library.
+  const handleBulkSaveToLibrary = async () => {
+    if (_bulkSaveRef.current || sortedReels.length === 0) return;
+    if (!saveFolderId) {
+      setError("Selecione uma pasta de destino antes de salvar na Biblioteca.");
+      return;
+    }
+    _bulkSaveRef.current = true;
+    setBulkSaveResult(null);
+    setError("");
+
+    const valid = sortedReels.filter(
+      (r) => r.videoUrl && r.videoUrl.trim() !== "" && r.videoUrl !== "undefined"
+    );
+    const total = valid.length;
+    let saved = 0;
+    let errors = sortedReels.length - valid.length;
+    const BATCH = 3;
+
+    for (let i = 0; i < total; i += BATCH) {
+      const batch = valid.slice(i, i + BATCH);
+      setBulkSaveProgress({ done: i, total });
+      try {
+        const res = await fetch("/api/inspirations/save-to-library", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            folderId: saveFolderId,
+            reels: batch.map((r) => ({
+              id: r.id,
+              shortCode: r.shortCode,
+              videoUrl: r.videoUrl,
+              caption: r.caption,
+              originalCaption: r.originalCaption,
+              sourceUrl: r.sourceUrl,
+              views: r.views,
+              likes: r.likes,
+              comments: r.comments,
+              duration: r.duration,
+              owner: r.owner,
+            })),
+          }),
+        });
+        const data = (await res.json()) as { saved?: number; errors?: number; error?: string };
+        if (!res.ok || data.error) throw new Error(data.error ?? "Falha ao salvar.");
+        saved += data.saved ?? 0;
+        errors += data.errors ?? 0;
+      } catch (err) {
+        errors += batch.length;
+        console.warn(
+          `[bulk-save] lote ${i / BATCH + 1} falhou:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+
+    setBulkSaveProgress(null);
+    setBulkSaveResult({ saved, errors });
+    _bulkSaveRef.current = false;
+  };
+
   const isSearching = showModal && !modalDone;
 
   return (
@@ -699,15 +769,42 @@ export default function InspiracoesPage() {
               <div className="flex items-center gap-2">
                 <LibraryFolderSelect value={saveFolderId} onChange={setSaveFolderId} />
 
+                {/* Ação PRINCIPAL: salvar na Biblioteca com a legenda original.
+                    É este caminho que preenche videos_library.caption e faz o
+                    modo "legenda original" do Loop funcionar. */}
+                <motion.button
+                  onClick={handleBulkSaveToLibrary}
+                  disabled={bulkSaveProgress !== null || !saveFolderId}
+                  whileTap={bulkSaveProgress !== null ? {} : { scale: 0.96 }}
+                  title={!saveFolderId ? "Selecione uma pasta de destino ao lado" : undefined}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:cursor-not-allowed"
+                  style={
+                    bulkSaveProgress !== null
+                      ? { background: "rgba(0,255,65,0.06)", border: "0.5px solid rgba(0,255,65,0.15)", color: "rgba(0,255,65,0.4)" }
+                      : !saveFolderId
+                      ? { background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.35)" }
+                      : { background: "rgba(0,255,65,0.12)", border: "0.5px solid rgba(0,255,65,0.4)", color: "rgba(0,255,65,0.95)", boxShadow: "0 0 16px rgba(0,255,65,0.15)" }
+                  }
+                >
+                  {bulkSaveProgress !== null ? (
+                    <><Loader2 size={11} className="animate-spin" />Salvando {Math.min(bulkSaveProgress.done + 1, bulkSaveProgress.total)} de {bulkSaveProgress.total}...</>
+                  ) : (
+                    <><FolderPlus size={12} />Salvar todos na Biblioteca</>
+                  )}
+                </motion.button>
+
+                {/* Ação secundária: baixar o arquivo para o dispositivo (SEM
+                    legenda). Só útil para editar o vídeo fora do app. */}
                 <motion.button
                   onClick={handleBulkDownload}
                   disabled={bulkProgress !== null}
                   whileTap={bulkProgress !== null ? {} : { scale: 0.96 }}
+                  title="Baixa os arquivos para o seu dispositivo (sem legenda). Para postar com a legenda original, use Salvar na Biblioteca."
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all"
                   style={
                     bulkProgress !== null
-                      ? { background: "rgba(0,229,255,0.06)", border: "0.5px solid rgba(0,229,255,0.15)", color: "rgba(0,229,255,0.4)", cursor: "not-allowed" }
-                      : { background: "rgba(0,229,255,0.08)", border: "0.5px solid rgba(0,229,255,0.2)", color: "rgba(0,229,255,0.8)" }
+                      ? { background: "rgba(255,255,255,0.03)", border: "0.5px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.3)", cursor: "not-allowed" }
+                      : { background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.45)" }
                   }
                 >
                   {bulkProgress !== null ? (
@@ -730,6 +827,30 @@ export default function InspiracoesPage() {
                 </button>
               </div>
             </motion.div>
+
+            {/* Bulk SAVE result banner (Biblioteca — com legenda) */}
+            <AnimatePresence>
+              {bulkSaveResult && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm"
+                  style={
+                    bulkSaveResult.saved === 0
+                      ? { background: "rgba(255,59,48,0.08)", border: "0.5px solid rgba(255,59,48,0.2)", color: "rgba(255,100,90,0.9)" }
+                      : { background: "rgba(0,255,65,0.07)", border: "0.5px solid rgba(0,255,65,0.2)", color: "rgba(0,255,65,0.9)" }
+                  }
+                >
+                  {bulkSaveResult.saved === 0 ? <AlertCircle size={15} /> : <CheckCircle2 size={15} />}
+                  {bulkSaveResult.saved === 0
+                    ? "Nenhum vídeo salvo na Biblioteca. Verifique as URLs dos reels."
+                    : bulkSaveResult.errors > 0
+                    ? `${bulkSaveResult.saved} vídeos salvos na Biblioteca com legenda (${bulkSaveResult.errors} erros).`
+                    : `${bulkSaveResult.saved} vídeos salvos na Biblioteca com a legenda original!`}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Bulk result banner */}
             <AnimatePresence>
