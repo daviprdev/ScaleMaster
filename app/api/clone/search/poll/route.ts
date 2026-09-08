@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
 import { resolveApifyTokens } from "@/lib/apify-token-pool";
 import { createClient } from "@/lib/supabase/server";
+import { normalizeScrapedReel } from "@/lib/scraped-reel";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { fetch as undiciFetch } from "undici";
 
@@ -19,15 +20,7 @@ async function findRunClient(runId: string) {
   return null;
 }
 
-function resolveVideoUrl(item: Record<string, unknown>): string {
-  return (
-    (item.videoUrl as string | undefined) ||
-    (item.video_url as string | undefined) ||
-    (item.videoPlayUrl as string | undefined) ||
-    (item.playVideoUrl as string | undefined) ||
-    ""
-  );
-}
+// resolveVideoUrl e a leitura do payload vivem em lib/scraped-reel.ts.
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
@@ -80,18 +73,26 @@ export async function GET(req: NextRequest) {
     }
 
     // Extrai reels com video URL (filtra só no .filter final — mais inclusivo)
+    // Normalização central (lib/scraped-reel.ts). Cada Reel carrega a SUA
+    // legenda: o índice do map amarra caption ao vídeo, e o objeto viaja
+    // inteiro até o agendamento — nunca há uma legenda "do perfil".
     const reels = (list as Record<string, unknown>[])
-      .map((item, i) => ({
-        id:           String(item.id ?? item.shortCode ?? i),
-        shortCode:    String(item.shortCode ?? ""),
-        thumbnailUrl: ((item.displayUrl ?? item.thumbnailUrl) as string) ?? null,
-        videoUrl:     resolveVideoUrl(item),
-        caption:      String(item.caption ?? ""),
-        views:        Number(item.videoViewCount ?? 0),
-        likes:        Number(item.likesCount ?? 0),
-        comments:     Number(item.commentsCount ?? 0),
-        duration:     Number(item.videoDuration ?? 0),
-      }))
+      .map((item, i) => {
+        const reel = normalizeScrapedReel(item, username, i);
+        return {
+          id:              reel.id,
+          shortCode:       reel.shortCode,
+          thumbnailUrl:    reel.thumbnailUrl,
+          videoUrl:        reel.videoUrl,
+          caption:         reel.originalCaption ?? "",
+          originalCaption: reel.originalCaption,
+          sourceUrl:       reel.sourceUrl,
+          views:           reel.views,
+          likes:           reel.likes,
+          comments:        reel.comments,
+          duration:        reel.duration,
+        };
+      })
       .filter(r => r.videoUrl && r.shortCode); // precisa de ambos para funcionar
 
     if (!reels.length) {

@@ -3,6 +3,7 @@ import { ApifyClient } from "apify-client";
 import { resolveApifyTokens } from "@/lib/apify-token-pool";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { normalizeScrapedReel, resolveVideoUrl } from "@/lib/scraped-reel";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -22,16 +23,6 @@ const GRADIENTS = [
   "from-orange-500 to-amber-700",
 ];
 
-function resolveVideoUrl(item: Record<string, unknown>): string {
-  return (
-    (item.videoUrl as string | undefined) ||
-    (item.video_url as string | undefined) ||
-    (item.videoPlayUrl as string | undefined) ||
-    (item.playVideoUrl as string | undefined) ||
-    ""
-  );
-}
-
 function processItems(items: unknown[], username: string, offset = 0) {
   return (items as Record<string, unknown>[])
     .filter((item) => item.type === "Video" || resolveVideoUrl(item))
@@ -40,17 +31,26 @@ function processItems(items: unknown[], username: string, offset = 0) {
       if (i === 0) {
         console.log(`[poll] @${username} first videoUrl: ${videoUrl ? `${videoUrl.slice(0, 70)}…` : "(empty)"}`);
       }
+      // Normalização central (lib/scraped-reel.ts) — um único lugar interpreta
+      // o payload do Apify. A legenda vai INTEIRA: o `.slice(0, 120)` que
+      // existia aqui era truncagem para exibição, mas destruía o texto antes
+      // de ele chegar à Biblioteca. Quem corta para caber no card é o CSS.
+      const reel = normalizeScrapedReel(item, username, i);
       return {
-        id: String(item.id ?? item.shortCode ?? i),
-        shortCode: String(item.shortCode ?? ""),
-        thumbnailUrl: ((item.displayUrl ?? item.thumbnailUrl) as string) ?? null,
+        id: reel.id,
+        shortCode: reel.shortCode,
+        thumbnailUrl: reel.thumbnailUrl,
         videoUrl,
-        caption: String(item.caption ?? "").slice(0, 120),
-        views: Number(item.videoViewCount ?? 0),
-        likes: Number(item.likesCount ?? 0),
-        comments: Number(item.commentsCount ?? 0),
-        duration: Number(item.videoDuration ?? 0),
-        owner: String(item.ownerUsername ?? username),
+        // null (não capturada) vira "" só na fronteira com a UI; o valor cru
+        // segue em originalCaption para o save-to-library distinguir os casos.
+        caption: reel.originalCaption ?? "",
+        originalCaption: reel.originalCaption,
+        sourceUrl: reel.sourceUrl,
+        views: reel.views,
+        likes: reel.likes,
+        comments: reel.comments,
+        duration: reel.duration,
+        owner: reel.sourceUsername ?? username,
         gradient: GRADIENTS[(i + offset) % GRADIENTS.length],
       };
     });

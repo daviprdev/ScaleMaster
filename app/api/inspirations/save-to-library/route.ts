@@ -15,12 +15,36 @@ interface ReelPayload {
   id: string;
   shortCode: string;
   videoUrl: string;
+  /** Compat: o que a UI já mandava. "" quando não há legenda. */
   caption: string;
+  /**
+   * Legenda ORIGINAL crua vinda da normalização (lib/scraped-reel.ts).
+   * null = o payload do Apify não trouxe o campo; "" = Reel sem legenda.
+   * Quando ausente (payload antigo), cai para `caption`.
+   */
+  originalCaption?: string | null;
+  /** Permalink da publicação original. */
+  sourceUrl?: string | null;
   views: number;
   likes: number;
   comments: number;
   duration: number;
   owner: string;
+}
+
+/**
+ * Legenda que vai para o banco.
+ *
+ * NÃO trunca, não traduz, não resume, não reescreve, não mexe em emoji,
+ * hashtag ou @menção. O `.slice(0, 500)` que existia aqui cortava a legenda
+ * original pela metade — e antes dele o poller já tinha cortado em 120.
+ *
+ * Preserva a distinção de três estados: null (não capturada) continua null,
+ * "" (Reel sem legenda) continua "".
+ */
+function captionParaBanco(reel: ReelPayload): string | null {
+  if (reel.originalCaption !== undefined) return reel.originalCaption;
+  return typeof reel.caption === "string" ? reel.caption : null;
 }
 
 // POST /api/inspirations/save-to-library
@@ -106,13 +130,14 @@ export async function POST(req: NextRequest) {
           public_url: urlData.publicUrl,
           file_size: fileBuffer.byteLength,
           owner_username: reel.owner || null,
-          caption: (reel.caption || "").slice(0, 500) || null,
+          caption: captionParaBanco(reel),
+          source_url: reel.sourceUrl ?? null,
           views: Number(reel.views) || 0,
           likes: Number(reel.likes) || 0,
           comments: Number(reel.comments) || 0,
           duration: Number(reel.duration) || 0,
         } as never)
-        .select("id, filename, public_url, owner_username, created_at")
+        .select("id, filename, public_url, owner_username, caption, source_url, created_at")
         .single();
 
       if (dbError) throw new Error(`DB: ${dbError.message}`);
