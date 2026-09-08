@@ -27,22 +27,13 @@ export async function GET(req: NextRequest) {
   const from = page * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
-  // Sentinela "root" = vídeos sem pasta (folder_id IS NULL). É onde caem os
-  // vídeos quando a pasta que os continha é excluída (FK ON DELETE SET NULL).
-  // Sem isto, esses vídeos ficam inalcançáveis pela UI, mas continuam bloqueando
-  // re-upload (a checagem de duplicata é de acervo inteiro, não por pasta).
-  const isUnfiled = folderId === "root";
-
-  let query = getSupabaseAdmin()
+  const { data, error } = await getSupabaseAdmin()
     .from("videos_library")
     .select("*")
+    .eq("folder_id", folderId)
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .range(from, to);
-
-  query = isUnfiled ? query.is("folder_id", null) : query.eq("folder_id", folderId);
-
-  const { data, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
