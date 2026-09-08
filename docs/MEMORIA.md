@@ -3974,3 +3974,46 @@ final no transporte que bloqueia a requisição à Meta em vez de consertar.
   entrarem pelo botão novo "Salvar na Biblioteca" das Inspirações.
 - Aprovação do `instagram_business_manage_insights` na Meta continua pendente
   (card "Views Totais" segue em 0).
+
+---
+
+### 2026-09-08 — Seleção visual de vídeos + ordem das mídias na aba Postar
+
+Branch isolada `feat/postar-selecao-ordem-midias` (a partir de `main`, sem os
+commits de `infra/vps-deploy`). **Não pushado.** 2 commits: `feat:` da feature +
+`docs:` de redação.
+
+**Feature.** Seletor visual inline na aba Postar (`/dashboard/postar`),
+recolhível e fechado por padrão, dentro do card "Pasta de Mídia". Grade de
+miniaturas (`<video>` lazy via IntersectionObserver) com seleção por **ordem de
+clique** — badge 1,2,3… na miniatura; desmarcar renumera; reselecionar vai para
+o fim. "Selecionar todas" (mantém os já escolhidos e acrescenta o resto, via
+`GET /api/library?idsOnly=1` owner-scoped), "Limpar", paginação preservando a
+seleção, e limpeza automática ao trocar de pasta.
+
+**Ordem das mídias** (nova seção, só aparece com seleção):
+- "Na ordem que escolhi" → sequência **LITERAL, idêntica para todas as contas**
+  (`C→A→F→C→A→F`, sem offset por conta). `videoForSequence(pool, round)`.
+- "Aleatória" → só os selecionados, embaralha 1×; congelado no snapshot de
+  `scheduled_posts` (retry não reembaralha).
+
+**Backend** (`app/api/posts/distribute/route.ts`): novo `lib/media-order.ts`
+(helpers puros). Com seleção, valida ownership/pasta/existência num só ponto
+(mapa a partir do `allVideos` já filtrado por `user_id`+`folder_id`; id fora do
+mapa → 400). Sem seleção, caminho **legado intacto** (pasta inteira, quadrado
+latino por menor uso). `[]`/ausente = legado (nunca "todos"). "Sincronizar com a
+pasta" fica desativado quando há seleção manual (incompatíveis). Legenda continua
+ligada ao vídeo pelo próprio objeto (`resolveCaption`) — ordem nunca separa vídeo
+e legenda. Quantidade: selecionou 3 + "Todos" → 3 posts/conta; selecionou 3 +
+"20" → 20 posts/conta ciclando.
+
+**Redação (commit `docs:`).** A defasagem por conta / distribuir vídeos
+diferentes entre contas na mesma janela deixou de ser tratada como "supressão de
+alcance documentada pela Meta" — reenquadrada como ⚠️ estratégia interna de
+diversidade / hipótese operacional em `process-loops` (comentário), `CLAUDE.md` e
+neste arquivo, + legenda de convenção (✅ documentado / 🧪 empírico / ⚠️ interno).
+Mantidos por serem realmente documentados: erro `#368` (rate limit) e App Review /
+Advanced Access de `instagram_business_manage_insights`.
+
+**Testes.** `scripts/test-media-order.mjs` (47 checagens) + no `npm test`.
+typecheck / test / lint / build todos verdes.
