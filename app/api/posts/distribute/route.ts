@@ -8,6 +8,11 @@ import {
 } from "@/lib/reel-captions";
 import { fetchVideoUsage, fetchAllRows } from "@/lib/video-history";
 import { normalizeProcessingMode } from "@/lib/video-processing";
+import {
+  hasExplicitSelection, normalizeMediaOrder, resolveSelectedVideos,
+  buildSelectedPool, videoForRound as pickVideoForRound,
+  videoForSequence as pickVideoInSequence,
+} from "@/lib/media-order";
 
 export const runtime = "nodejs";
 
@@ -36,6 +41,10 @@ interface DistributeBody {
   sync_folder_ids?: string[];     // pastas de contas cujas contas novas devem entrar sozinhas na campanha
   video_processing_mode?: string; // "original" (padrao) | "clean_metadata"
   share_to_feed?: boolean;        // true = Reels + grade | false = somente Reels
+  // Seleção explícita de vídeos (ordem de clique). Ausente/vazio = sem seleção
+  // = comportamento LEGADO (pasta inteira). Nunca [] com dois significados.
+  selected_video_ids?: string[];
+  media_order?: string;           // "selected" (ordem de clique) | "random"
 }
 
 export async function POST(req: NextRequest) {
@@ -116,54 +125,92 @@ export async function POST(req: NextRequest) {
   if (!allVideos.length)
     return NextResponse.json({ error: "Nenhum vídeo encontrado na pasta." }, { status: 400 });
 
-  const maxVideos = video_count === -1
-    ? allVideos.length
-    : Math.min(video_count, allVideos.length);
+  // ── Seleção explícita de vídeos (ordem de clique) vs. LEGADO ────────────────
+  // hasSelection separa os dois mundos de forma inequívoca: array não vazio =
+  // seleção; ausente/vazio = pasta inteira (comportamento histórico intacto).
+  const hasSelection = hasExplicitSelection(body.selected_video_ids);
+  const mediaOrder = normalizeMediaOrder(body.media_order);
 
-  // Histórico por conta atravessando TODAS as origens (Postar/Clonar/Automatizar
-  // via scheduled_posts + Loop via pending_containers). Antes, o subconjunto era
-  // slice(0, N) fixo por created_at — toda campanha nova começava SEMPRE pelos
-  // mesmos N vídeos mais antigos da pasta, repetindo o que a conta já postou.
-  //
-  // Lido pelo RPC agregado, NÃO por selects diretos: o PostgREST corta toda
-  // resposta em 1000 linhas e o `.limit(100000)` que ficava aqui não bypassava
-  // esse teto — com dezenas de milhares de linhas de histórico, a maior parte
-  // (inclusive a mais recente) ficava invisível e o pool oferecia vídeos que a
-  // conta já tinha postado.
-  //
-  // account_id → (video_id → vezes postado)
-  let postedCount: Map<string, Map<string, number>>;
-  try {
-    postedCount = await fetchVideoUsage(admin, account_ids);
-  } catch (e) {
-    console.error(`[distribute] ${(e as Error).message}`);
-    return NextResponse.json(
-      { error: "Falha ao ler o histórico de vídeos das contas. Tente novamente." },
-      { status: 503 }
-    );
+  let sharedPool: { id: string; public_url: string; caption: string | null }[];
+  let maxVideos: number;
+
+  if (hasSelection) {
+    // Valida dono/pasta/existência num só ponto: allVideos já vem filtrado por
+    // user_id + folder_id, então um id fora do mapa é vídeo alheio, de outra
+    // pasta ou inexistente. O id cru do browser nunca é confiado.
+    const byId = new Map(allVideos.map(v => [v.id, v] as const));
+    const resolved = resolveSelectedVideos(body.selected_video_ids!, byId);
+    if (!resolved.ok) {
+      return NextResponse.json(
+        {
+          error: `Vídeo selecionado inválido (${resolved.invalidId.slice(0, 8)}): ` +
+            `não pertence a esta pasta ou não existe mais. Recarregue a lista e tente de novo.`,
+        },
+        { status: 400 }
+      );
+    }
+    // Pool = EXATAMENTE os selecionados. "selected" mantém a ordem de clique;
+    // "random" embaralha uma vez (congelado depois pelo snapshot em
+    // scheduled_posts — retry nunca reembaralha). Nenhum vídeo fora da seleção.
+    sharedPool = buildSelectedPool(resolved.videos, mediaOrder, fisherYates);
+    // Posts por conta: -1 (Todos) = cada selecionado uma vez; nº explícito cicla
+    // pela seleção (C → A → F → C → A → F…).
+    maxVideos = video_count === -1 ? sharedPool.length : Math.max(1, video_count);
+  } else {
+    // ── LEGADO (inalterado) ───────────────────────────────────────────────────
+    maxVideos = video_count === -1
+      ? allVideos.length
+      : Math.min(video_count, allVideos.length);
+
+    // Histórico por conta atravessando TODAS as origens (Postar/Clonar/Automatizar
+    // via scheduled_posts + Loop via pending_containers). Antes, o subconjunto era
+    // slice(0, N) fixo por created_at — toda campanha nova começava SEMPRE pelos
+    // mesmos N vídeos mais antigos da pasta, repetindo o que a conta já postou.
+    //
+    // Lido pelo RPC agregado, NÃO por selects diretos: o PostgREST corta toda
+    // resposta em 1000 linhas e o `.limit(100000)` que ficava aqui não bypassava
+    // esse teto — com dezenas de milhares de linhas de histórico, a maior parte
+    // (inclusive a mais recente) ficava invisível e o pool oferecia vídeos que a
+    // conta já tinha postado.
+    //
+    // account_id → (video_id → vezes postado)
+    let postedCount: Map<string, Map<string, number>>;
+    try {
+      postedCount = await fetchVideoUsage(admin, account_ids);
+    } catch (e) {
+      console.error(`[distribute] ${(e as Error).message}`);
+      return NextResponse.json(
+        { error: "Falha ao ler o histórico de vídeos das contas. Tente novamente." },
+        { status: 503 }
+      );
+    }
+
+    // Pool compartilhado ordenado por menor uso GLOBAL entre as contas selecionadas
+    // (prioriza vídeo nunca postado por nenhuma delas), com desempate aleatório.
+    const globalUsage = (videoId: string) => {
+      let total = 0;
+      for (const accountId of account_ids) total += postedCount.get(accountId)?.get(videoId) ?? 0;
+      return total;
+    };
+    sharedPool = fisherYates(allVideos).sort((a, b) => globalUsage(a.id) - globalUsage(b.id));
   }
 
-  // Pool compartilhado ordenado por menor uso GLOBAL entre as contas selecionadas
-  // (prioriza vídeo nunca postado por nenhuma delas), com desempate aleatório.
-  const globalUsage = (videoId: string) => {
-    let total = 0;
-    for (const accountId of account_ids) total += postedCount.get(accountId)?.get(videoId) ?? 0;
-    return total;
-  };
-  const sharedPool = fisherYates(allVideos).sort((a, b) => globalUsage(a.id) - globalUsage(b.id));
   const poolSize = sharedPool.length;
 
-  // Atribuição em "quadrado latino": na rodada r, a conta de índice `ai` recebe
-  // sharedPool[(ai + r) % poolSize]. Isso garante que, na MESMA rodada (mesmo
-  // horário relativo entre as contas), nenhuma conta repete vídeo com outra —
-  // desde que nº de contas <= tamanho do pool. E cada conta percorre até
-  // poolSize vídeos distintos ao longo das rodadas, sem repetir os próprios.
-  // Corrige o caso real (81 contas / 330 vídeos) em que o sorteio independente
-  // por conta fazia o mesmo vídeo sair em várias contas na mesma janela de
-  // horas — padrão de conteúdo duplicado que a Meta suprime no alcance.
-  function videoForRound(accountIndex: number, round: number) {
-    return sharedPool[(accountIndex + round) % poolSize];
-  }
+  // "Na ordem que escolhi": sequência LITERAL, IGUAL para todas as contas —
+  // pool[round] a partir de C, sem offset por conta. É a intenção explícita do
+  // usuário e tem prioridade sobre a estratégia de diversidade.
+  const respectExactOrder = hasSelection && mediaOrder === "selected";
+
+  // Nos demais casos (ALEATÓRIA e LEGADO/pasta inteira), quadrado latino:
+  // pool[(ai + r) % poolSize] — conta 0 na ordem do pool, as seguintes defasadas.
+  // Evitar o mesmo vídeo em várias contas na mesma janela é ESTRATÉGIA INTERNA de
+  // diversidade do AutoScale (hipótese operacional), NÃO uma regra documentada da
+  // Meta — por isso não se aplica ao modo explícito acima.
+  const videoForRound = (accountIndex: number, round: number) =>
+    respectExactOrder
+      ? pickVideoInSequence(sharedPool, round)
+      : pickVideoForRound(sharedPool, accountIndex, round);
 
   const campaignId = randomUUID();
   // Distribui uniformemente ao longo de 24h (ignorado em burst_mode)
@@ -263,7 +310,13 @@ export async function POST(req: NextRequest) {
   // Sincronização com pasta(s) de contas: persiste a config da campanha para que
   // o cron sync-distribute-accounts possa matricular contas novas adicionadas
   // depois, sem precisar recriar a distribuição.
-  if (Array.isArray(sync_folder_ids) && sync_folder_ids.length > 0) {
+  //
+  // INCOMPATÍVEL com seleção explícita de vídeos: a sincronização matricula
+  // contas NOVAS ao longo do tempo escolhendo vídeo por menor uso na pasta
+  // inteira — não há como preservar a ordem/seleção manual entre ciclos do cron.
+  // Uma seleção é um lote fixo e ordenado; por isso, quando há seleção, a
+  // sincronização é ignorada (a UI também esconde o toggle nesse caso).
+  if (!hasSelection && Array.isArray(sync_folder_ids) && sync_folder_ids.length > 0) {
     const { error: syncErr } = await admin.from("distribute_campaigns").insert({
       id: campaignId,
       user_id: user.id,

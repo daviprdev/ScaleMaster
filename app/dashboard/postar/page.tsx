@@ -7,6 +7,7 @@ import {
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
   Shuffle, Zap, List, Library, Save, BookMarked, BarChart2,
   RefreshCw, ChevronDown, Sparkles, Pencil, SlidersHorizontal, LayoutGrid,
+  ListOrdered,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
@@ -125,12 +126,16 @@ function DistributePreview({
   postsPerDay,
   startDatetime,
   captionCount,
+  orderMode,
 }: {
   videosPerAccount: number;
   totalAccounts: number;
   postsPerDay: number;
   startDatetime: string;
   captionCount: number;
+  // "exact" = seleção manual em "Na ordem que escolhi"; "random" = seleção
+  // aleatória; "auto" = sem seleção (pasta inteira, ordem aleatória por conta).
+  orderMode: "exact" | "random" | "auto";
 }) {
   const intervalMinutes = Math.floor((24 * 60) / Math.max(1, postsPerDay));
   const days = videosPerAccount > 0 ? Math.ceil(videosPerAccount / Math.max(1, postsPerDay)) : 0;
@@ -203,9 +208,13 @@ function DistributePreview({
           </div>
 
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#00FF41]/5 border border-[#00FF41]/20">
-            <Shuffle size={12} className="text-[#00FF41] flex-shrink-0" />
+            {orderMode === "exact" ? <ListOrdered size={12} className="text-[#00FF41] flex-shrink-0" /> : <Shuffle size={12} className="text-[#00FF41] flex-shrink-0" />}
             <p className="text-[10px] text-[#00FF41]/80">
-              Cada conta recebe os vídeos em ordem aleatória única
+              {orderMode === "exact"
+                ? "Todas as contas seguem a ordem que você escolheu"
+                : orderMode === "random"
+                  ? "Vídeos selecionados em ordem aleatória"
+                  : "Cada conta recebe os vídeos em ordem aleatória única"}
             </p>
           </div>
 
@@ -558,6 +567,80 @@ function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: R
     <div className="flex items-center gap-2 mb-4">
       <Icon size={14} className="text-white/35" />
       <span className="text-xs font-semibold uppercase tracking-widest text-white/35">{children}</span>
+    </div>
+  );
+}
+
+// ── Seleção visual de vídeos ────────────────────────────────────────────────
+
+interface FolderVideo {
+  id: string;
+  public_url: string;
+  filename: string;
+  caption: string | null;
+}
+
+// Monta o <video> só quando o card está perto/na viewport e o desmonta ao sair —
+// mesma técnica do VideoCard da Biblioteca, evita centenas de <video> vivos.
+function useInViewToggle(rootMargin = "250px 0px") {
+  const ref = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") { setInView(true); return; }
+    const obs = new IntersectionObserver(([e]) => setInView(e.isIntersecting), { rootMargin, threshold: 0 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [rootMargin]);
+  return { ref, inView };
+}
+
+function VideoSelectItem({
+  video, order, onToggle,
+}: {
+  video: FolderVideo;
+  order: number;           // 0 = não selecionado; 1,2,3… = posição do clique
+  onToggle: (id: string) => void;
+}) {
+  const { ref, inView } = useInViewToggle();
+  const [err, setErr] = useState(false);
+  const selected = order > 0;
+  return (
+    <div ref={ref} className="relative" style={{ aspectRatio: "9/16" }}>
+      <button
+        type="button"
+        onClick={() => onToggle(video.id)}
+        title={video.caption || video.filename}
+        className="absolute inset-0 rounded-xl overflow-hidden group w-full h-full"
+        style={{
+          border: selected ? "1.5px solid rgba(0,255,65,0.6)" : "0.5px solid rgba(255,255,255,0.09)",
+          boxShadow: selected ? "0 0 0 1px rgba(0,255,65,0.15), 0 4px 16px rgba(0,255,65,0.14)" : undefined,
+          transition: "border-color 0.15s, box-shadow 0.15s",
+        }}
+      >
+        {inView && !err && video.public_url ? (
+          <video
+            src={`${video.public_url}#t=0.001`}
+            muted
+            playsInline
+            preload="metadata"
+            className="absolute inset-0 w-full h-full object-cover"
+            onError={() => setErr(true)}
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/[0.03]">
+            <Film size={18} className="text-white/15" />
+          </div>
+        )}
+        <div className={cn("absolute inset-0 transition-colors pointer-events-none", selected ? "bg-[#00FF41]/10" : "bg-black/25 group-hover:bg-black/10")} />
+        {selected ? (
+          <span className="absolute top-1.5 left-1.5 min-w-[22px] h-[22px] px-1 rounded-full bg-[#00FF41] text-black text-[11px] font-bold flex items-center justify-center shadow z-10">
+            {order}
+          </span>
+        ) : (
+          <span className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full border border-white/45 bg-black/40 z-10" />
+        )}
+      </button>
     </div>
   );
 }
@@ -1166,6 +1249,16 @@ export default function PostarPage() {
   const [folderVideoCount, setFolderVideoCount] = useState<number>(0);
   const [folderOpen, setFolderOpen] = useState(false);
 
+  // Seleção visual de vídeos (opt-in). selectedVideoIds guarda a ORDEM de clique.
+  const [videoSelectOpen, setVideoSelectOpen] = useState(false);
+  const [folderVideos, setFolderVideos] = useState<FolderVideo[]>([]);
+  const [videoPage, setVideoPage] = useState(0);
+  const [videoHasMore, setVideoHasMore] = useState(false);
+  const [loadingVideos, setLoadingVideos] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
+  const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
+  const [mediaOrder, setMediaOrder] = useState<"selected" | "random">("selected");
+
   // Distribution
   const [videoCount, setVideoCount] = useState<number>(20);      // -1 = todos
   const [postsPerDay, setPostsPerDay] = useState<number>(2);
@@ -1237,11 +1330,84 @@ export default function PostarPage() {
     setFolderVideoCount(folder?.video_count ?? 0);
   }, [selectedFolderId, folders]);
 
+  // ── Seleção visual de vídeos ─────────────────────────────────────────────────
+
+  const loadFolderVideos = useCallback(async (page: number) => {
+    if (!selectedFolderId) return;
+    setLoadingVideos(true);
+    try {
+      const res = await fetch(`/api/library?folderId=${encodeURIComponent(selectedFolderId)}&page=${page}`);
+      const d = await res.json() as { videos?: FolderVideo[]; hasMore?: boolean };
+      setFolderVideos(prev => page === 0 ? (d.videos ?? []) : [...prev, ...(d.videos ?? [])]);
+      setVideoHasMore(!!d.hasMore);
+      setVideoPage(page);
+    } catch {
+      /* silencioso — a grade fica com o que já carregou */
+    } finally {
+      setLoadingVideos(false);
+    }
+  }, [selectedFolderId]);
+
+  // Trocar de pasta LIMPA a seleção da pasta anterior (nunca misturar pastas) e
+  // recarrega a grade do zero.
+  useEffect(() => {
+    setSelectedVideoIds([]);
+    setFolderVideos([]);
+    setVideoPage(0);
+    setVideoHasMore(false);
+    setVideoSelectOpen(false);
+    setMediaOrder("selected");
+    if (selectedFolderId) loadFolderVideos(0);
+  }, [selectedFolderId, loadFolderVideos]);
+
+  // Ordem de clique → posição (1,2,3…). Recalculada só quando a seleção muda.
+  const selectionOrder = useMemo(() => {
+    const m = new Map<string, number>();
+    selectedVideoIds.forEach((id, i) => m.set(id, i + 1));
+    return m;
+  }, [selectedVideoIds]);
+
+  // Toggle preservando ordem: novo clique vai para o FIM; desmarcar remove e os
+  // demais renumeram sozinhos (a ordem é a própria ordem do array).
+  const toggleVideo = useCallback((id: string) => {
+    setSelectedVideoIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }, []);
+
+  // "Selecionar todas": mantém os já escolhidos na ordem de clique e acrescenta
+  // os restantes depois. Busca TODOS os ids da pasta (não só as páginas
+  // carregadas) via idsOnly — owner-scoped no servidor.
+  const handleSelectAllVideos = useCallback(async () => {
+    if (!selectedFolderId || selectingAll) return;
+    setSelectingAll(true);
+    try {
+      const res = await fetch(`/api/library?folderId=${encodeURIComponent(selectedFolderId)}&idsOnly=1`);
+      const d = await res.json() as { ids?: string[] };
+      const allIds = d.ids ?? [];
+      setSelectedVideoIds(prev => {
+        const set = new Set(prev);
+        return [...prev, ...allIds.filter(id => !set.has(id))];
+      });
+    } catch {
+      /* silencioso */
+    } finally {
+      setSelectingAll(false);
+    }
+  }, [selectedFolderId, selectingAll]);
+
+  const clearVideoSelection = useCallback(() => setSelectedVideoIds([]), []);
+
   // ── Computed ───────────────────────────────────────────────────────────────
 
+  // Com seleção explícita, o pool é o tamanho da seleção; "Todos" (-1) = cada
+  // selecionado uma vez, um número explícito cicla a seleção. Sem seleção, é o
+  // comportamento legado (pasta inteira). Espelha exatamente o maxVideos do backend.
+  const hasVideoSelection = selectedVideoIds.length > 0;
+  const effectivePoolCount = hasVideoSelection ? selectedVideoIds.length : folderVideoCount;
   const videosPerAccount = videoCount === -1
-    ? folderVideoCount
-    : Math.min(videoCount, folderVideoCount);
+    ? effectivePoolCount
+    : hasVideoSelection
+      ? videoCount
+      : Math.min(videoCount, folderVideoCount);
 
   const validCaptions = captions.filter(c => c.trim().length > 0);
   const selectedFolder = folders.find(f => f.id === selectedFolderId);
@@ -1321,12 +1487,17 @@ export default function PostarPage() {
           auto_caption_type: autoCaptionEnabled ? AUTO_CAPTION_TYPE_VALUE : undefined,
           account_stagger_seconds: accountStaggerSeconds,
           burst_mode: burstMode,
-          sync_folder_ids: syncFolders ? fullySelectedFolders.map(g => g.id) : [],
+          // Sincronização com pasta é incompatível com seleção manual de vídeos.
+          sync_folder_ids: (syncFolders && !hasVideoSelection) ? fullySelectedFolders.map(g => g.id) : [],
           video_processing_mode: videoProcessingMode,
           share_to_feed: shareToFeed,
           caption_mode: captionMode,
           caption_strip_hashtags: stripHashtags,
           caption_strip_mentions: stripMentions,
+          // Seleção explícita (ordem de clique) + ordem de publicação. Só vão
+          // quando há seleção — ausência = comportamento legado (pasta inteira).
+          selected_video_ids: hasVideoSelection ? selectedVideoIds : undefined,
+          media_order: hasVideoSelection ? mediaOrder : undefined,
         }),
       });
 
@@ -1606,7 +1777,7 @@ export default function PostarPage() {
                 </p>
               )}
 
-              {fullySelectedFolders.length > 0 && (
+              {fullySelectedFolders.length > 0 && !hasVideoSelection && (
                 <div className="mt-3 p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02]">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -1693,6 +1864,127 @@ export default function PostarPage() {
                 </div>
               )}
 
+              {/* Seleção visual de vídeos — recolhível, fechada por padrão */}
+              {selectedFolderId && folderVideoCount > 0 && (
+                <div className="mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setVideoSelectOpen(v => !v)}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/[0.03] border border-white/[0.07] hover:border-white/15 transition-colors"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <ChevronDown size={14} className={cn("text-white/30 transition-transform flex-shrink-0", videoSelectOpen && "rotate-180")} />
+                      <span className="text-sm text-white/70">Vídeos da pasta</span>
+                      <span className="text-xs text-white/30 font-mono">({folderVideoCount})</span>
+                    </div>
+                    {hasVideoSelection && (
+                      <span className="text-[11px] text-[#00FF41] font-mono flex-shrink-0">
+                        {selectedVideoIds.length} selecionado{selectedVideoIds.length !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {videoSelectOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.18 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="pt-3">
+                          <div className="flex items-center justify-between gap-2 mb-3">
+                            <p className="text-[11px] text-white/35 leading-snug">
+                              Clique para selecionar — a ordem dos cliques vira a ordem de publicação.
+                            </p>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <button
+                                type="button"
+                                onClick={handleSelectAllVideos}
+                                disabled={selectingAll}
+                                className="text-[11px] text-[#00FF41]/70 hover:text-[#00FF41] transition-colors disabled:opacity-40"
+                              >
+                                {selectingAll ? "..." : "Selecionar todas"}
+                              </button>
+                              {hasVideoSelection && (
+                                <>
+                                  <span className="text-white/15 text-[11px]">·</span>
+                                  <button
+                                    type="button"
+                                    onClick={clearVideoSelection}
+                                    className="text-[11px] text-white/30 hover:text-white/60 transition-colors"
+                                  >
+                                    Limpar
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                            {folderVideos.map(v => (
+                              <VideoSelectItem
+                                key={v.id}
+                                video={v}
+                                order={selectionOrder.get(v.id) ?? 0}
+                                onToggle={toggleVideo}
+                              />
+                            ))}
+                          </div>
+
+                          {loadingVideos && (
+                            <div className="flex justify-center py-4">
+                              <Loader2 size={16} className="animate-spin text-white/30" />
+                            </div>
+                          )}
+                          {videoHasMore && !loadingVideos && (
+                            <button
+                              type="button"
+                              onClick={() => loadFolderVideos(videoPage + 1)}
+                              className="w-full mt-3 py-2.5 rounded-xl border border-white/10 text-white/40 text-xs hover:border-white/20 hover:text-white/70 transition-all"
+                            >
+                              Carregar mais vídeos
+                            </button>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* ORDEM DAS MÍDIAS — só quando há seleção */}
+                  {hasVideoSelection && (
+                    <div className="mt-4">
+                      <p className="text-xs text-white/40 font-medium mb-2 uppercase tracking-wider">Ordem das mídias</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {([
+                          { key: "selected", label: "Na ordem que escolhi", desc: "Publica na sequência dos cliques", Icon: ListOrdered },
+                          { key: "random", label: "Aleatória", desc: "Embaralha só os selecionados", Icon: Shuffle },
+                        ] as const).map(({ key, label, desc, Icon }) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setMediaOrder(key)}
+                            className={cn(
+                              "flex flex-col items-start gap-1 p-3 rounded-xl border text-left transition-all",
+                              mediaOrder === key
+                                ? "border-[#00FF41]/40 bg-[#00FF41]/8"
+                                : "border-white/[0.07] bg-white/[0.02] hover:border-white/15"
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Icon size={13} className={mediaOrder === key ? "text-[#00FF41]" : "text-white/40"} />
+                              <span className={cn("text-sm font-medium", mediaOrder === key ? "text-[#00FF41]" : "text-white/60")}>{label}</span>
+                            </div>
+                            <span className="text-[10px] text-white/30">{desc}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Quantidade */}
               {burstMode ? (
                 <div className="flex items-center gap-2 px-3.5 py-3 rounded-xl bg-[#00E5FF]/[0.04] border border-[#00E5FF]/15">
@@ -1707,7 +1999,9 @@ export default function PostarPage() {
                 <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Quantos vídeos postar</p>
                 <div className="flex gap-2">
                   {VIDEO_COUNT_PRESETS.map(({ label, value }) => {
-                    const isDisabled = value !== -1 && value > folderVideoCount && folderVideoCount > 0;
+                    // Com seleção, qualquer quantidade é válida (cicla a seleção),
+                    // então nada é desabilitado por tamanho de pasta.
+                    const isDisabled = !hasVideoSelection && value !== -1 && value > folderVideoCount && folderVideoCount > 0;
                     return (
                       <button
                         key={value}
@@ -1729,9 +2023,13 @@ export default function PostarPage() {
                 </div>
                 {selectedFolderId && folderVideoCount > 0 && (
                   <p className="mt-2 text-[11px] text-white/30">
-                    {videosPerAccount === folderVideoCount
-                      ? `Todos os ${folderVideoCount} vídeos da pasta serão usados`
-                      : `${videosPerAccount} de ${folderVideoCount} vídeos serão usados`}
+                    {hasVideoSelection
+                      ? videoCount === -1
+                        ? `Cada conta receberá os ${selectedVideoIds.length} vídeos selecionados`
+                        : `Ciclando os ${selectedVideoIds.length} vídeos selecionados → ${videosPerAccount} posts por conta`
+                      : videosPerAccount === folderVideoCount
+                        ? `Todos os ${folderVideoCount} vídeos da pasta serão usados`
+                        : `${videosPerAccount} de ${folderVideoCount} vídeos serão usados`}
                   </p>
                 )}
               </div>
@@ -1955,7 +2253,11 @@ export default function PostarPage() {
                           <span className="text-[#00E5FF] font-semibold">{selectedAccountIds.length}</span> conta{selectedAccountIds.length !== 1 ? "s" : ""} ={" "}
                           <span className="text-white font-semibold">{totalPosts}</span> posts ao longo de{" "}
                           <span className="text-white font-semibold">{days}</span> dia{days !== 1 ? "s" : ""}.
-                          {" "}Cada conta recebe os vídeos em ordem aleatória única.
+                          {" "}{hasVideoSelection
+                            ? mediaOrder === "random"
+                              ? "Usando só os vídeos selecionados, em ordem aleatória."
+                              : "Todas as contas seguem a ordem que você escolheu."
+                            : "Cada conta recebe os vídeos em ordem aleatória única."}
                         </p>
                       );
                     })()}
@@ -2099,12 +2401,17 @@ export default function PostarPage() {
               postsPerDay={postsPerDay}
               startDatetime={startDatetime}
               captionCount={validCaptions.length}
+              orderMode={hasVideoSelection ? (mediaOrder === "random" ? "random" : "exact") : "auto"}
             />
 
             <div className="mt-4 glass-card rounded-2xl p-4 space-y-2.5">
               <p className="text-[10px] text-white/25 uppercase tracking-wider">Como funciona</p>
               {[
-                { icon: Shuffle, text: "Cada conta recebe os vídeos em uma ordem aleatória diferente" },
+                hasVideoSelection
+                  ? mediaOrder === "random"
+                    ? { icon: Shuffle, text: "Somente os vídeos selecionados, em ordem aleatória" }
+                    : { icon: ListOrdered, text: "Todas as contas seguem a ordem que você escolheu" }
+                  : { icon: Shuffle, text: "Cada conta recebe os vídeos em uma ordem aleatória diferente" },
                 { icon: CalendarDays, text: "Posts distribuídos uniformemente ao longo do dia" },
                 { icon: Clock, text: accountStaggerSeconds ? `${accountStaggerSeconds}s de stagger entre contas` : "Stagger automático entre contas — sem burst simultâneo" },
               ].map(({ icon: Icon, text }) => (

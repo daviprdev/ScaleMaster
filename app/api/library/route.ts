@@ -23,6 +23,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "folderId é obrigatório." }, { status: 400 });
   }
 
+  // idsOnly=1 → devolve TODOS os ids da pasta (owner-scoped), em ordem de
+  // exibição (created_at desc). Usado pelo "Selecionar todas" da aba Postar:
+  // a grade é paginada, mas selecionar todas precisa alcançar vídeos ainda não
+  // carregados. Paginado internamente para não bater no teto de 1000 do
+  // PostgREST. Sempre filtrado por user_id — nunca devolve id de outro usuário.
+  if (req.nextUrl.searchParams.get("idsOnly") === "1") {
+    const admin = getSupabaseAdmin();
+    const ids: string[] = [];
+    const step = 1000;
+    for (let start = 0; ; start += step) {
+      const { data, error } = await admin
+        .from("videos_library")
+        .select("id")
+        .eq("folder_id", folderId)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .range(start, start + step - 1);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      const rows = (data ?? []) as Array<{ id: string }>;
+      ids.push(...rows.map(r => r.id));
+      if (rows.length < step) break;
+    }
+    return NextResponse.json({ ids });
+  }
+
   const page = Math.max(0, parseInt(req.nextUrl.searchParams.get("page") ?? "0", 10) || 0);
   const from = page * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
