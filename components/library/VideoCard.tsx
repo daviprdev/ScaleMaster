@@ -15,6 +15,7 @@ import {
   FolderInput,
   Film,
   Check,
+  FileText,
 } from "lucide-react";
 
 export interface LibraryVideo {
@@ -30,6 +31,8 @@ export interface LibraryVideo {
   file_size: number;
   created_at: string;
   folder_id?: string | null;
+  /** Permalink da publicação original, quando o vídeo veio de scraper. */
+  source_url?: string | null;
   gradient?: string;
 }
 
@@ -107,6 +110,7 @@ export function VideoCard({
   onSelect,
 }: VideoCardProps) {
   const [hovered, setHovered] = useState(false);
+  const [captionOpen, setCaptionOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const { ref: cardRef, inView } = useInView("300px 0px");
@@ -222,6 +226,53 @@ export function VideoCard({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Legenda original ── */}
+      {/* Só um indicador no card; o texto inteiro fica atrás de um clique
+          para não poluir a grade. */}
+      {typeof video.caption === "string" && video.caption !== "" && (
+        <>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setCaptionOpen(true); }}
+            title="Ver legenda original"
+            className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors hover:brightness-125"
+            style={{
+              background: "rgba(0,0,0,0.70)",
+              color: "rgba(0,229,255,0.85)",
+              backdropFilter: "blur(4px)",
+            }}
+          >
+            <FileText size={9} /> legenda
+          </button>
+
+          <AnimatePresence>
+            {captionOpen && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={(e) => { e.stopPropagation(); setCaptionOpen(false); }}
+                className="absolute inset-0 z-30 p-3 flex flex-col cursor-pointer"
+                style={{ background: "rgba(0,0,0,0.92)", backdropFilter: "blur(6px)" }}
+              >
+                <p className="text-[9px] uppercase tracking-widest text-white/30 font-semibold mb-1.5 flex-shrink-0">
+                  Legenda original
+                </p>
+                <div className="flex-1 overflow-y-auto">
+                  {/* Conteúdo EXTERNO: renderizado como texto puro. Nada de
+                      dangerouslySetInnerHTML — o React escapa e
+                      whitespace-pre-wrap preserva as quebras de linha. */}
+                  <p className="text-[11px] text-white/65 whitespace-pre-wrap break-words leading-relaxed">
+                    {video.caption}
+                  </p>
+                </div>
+                <p className="text-[9px] text-white/25 mt-2 flex-shrink-0">Clique para fechar</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
 
       {/* ── Top-right badge: duration ── */}
       <div className="absolute top-2.5 right-2.5 z-10 pointer-events-none">

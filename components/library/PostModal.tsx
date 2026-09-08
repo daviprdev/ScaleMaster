@@ -13,6 +13,8 @@ import {
 import { cn } from "@/lib/utils";
 import type { LibraryVideo } from "./VideoCard";
 import type { PostResult } from "@/app/api/posts/publish/route";
+import { CaptionModeSelector, OriginalCaptionText } from "@/components/dashboard/CaptionModeSelector";
+import { hasOriginalCaption, type CaptionMode } from "@/lib/reel-captions";
 
 interface Account {
   id: string;
@@ -33,6 +35,11 @@ export function PostModal({ video, onClose }: PostModalProps) {
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [caption, setCaption] = useState(video.caption ?? "");
+  // Padrão histórico deste modal: a caixa de texto vinha pré-preenchida com
+  // a legenda do vídeo e era ela que ia para a Meta — ou seja, "custom".
+  // Manter isso e deixar o modo Original como escolha explícita.
+  const [captionMode, setCaptionMode] = useState<CaptionMode>("custom");
+  const temOriginal = hasOriginalCaption(video.caption);
   const [posting, setPosting] = useState(false);
   const [results, setResults] = useState<PostResult[] | null>(null);
 
@@ -66,6 +73,9 @@ export function PostModal({ video, onClose }: PostModalProps) {
           video_id: video.id,
           account_ids: selectedIds,
           caption,
+          // Em modo original o servidor busca a legenda no banco e ignora
+          // o texto acima — o cliente não decide o conteúdo.
+          caption_mode: captionMode,
         }),
       });
       const data = await res.json() as { results?: PostResult[]; error?: string };
@@ -243,14 +253,37 @@ export function PostModal({ video, onClose }: PostModalProps) {
                 <p className="text-xs font-semibold text-white/50 uppercase tracking-wider">
                   Legenda
                 </p>
-                <textarea
-                  value={caption}
-                  onChange={e => setCaption(e.target.value)}
-                  placeholder="Escreva a legenda do post..."
-                  rows={3}
-                  className="w-full input-glass rounded-xl px-3.5 py-3 text-sm resize-none"
+
+                <CaptionModeSelector
+                  value={captionMode}
+                  onChange={setCaptionMode}
+                  showStripToggles={false}
+                  originalHint={
+                    temOriginal
+                      ? <>Publica a legenda capturada junto do Reel, sem alterações.</>
+                      : <>Este vídeo não tem legenda original disponível. Escolha{" "}
+                          <strong>Personalizada</strong> ou <strong>Sem legenda</strong>.</>
+                  }
                 />
-                <p className="text-[10px] text-white/20 text-right">{caption.length} caracteres</p>
+
+                {captionMode === "original" && (
+                  <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-3.5 py-3 max-h-32 overflow-y-auto">
+                    <OriginalCaptionText caption={video.caption} />
+                  </div>
+                )}
+
+                {captionMode === "custom" && (
+                  <>
+                    <textarea
+                      value={caption}
+                      onChange={e => setCaption(e.target.value)}
+                      placeholder="Escreva a legenda do post..."
+                      rows={3}
+                      className="w-full input-glass rounded-xl px-3.5 py-3 text-sm resize-none"
+                    />
+                    <p className="text-[10px] text-white/20 text-right">{caption.length} caracteres</p>
+                  </>
+                )}
               </div>
 
               {/* Post button */}

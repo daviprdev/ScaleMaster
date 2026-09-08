@@ -6,11 +6,13 @@ import {
   Search, Users, Play, Eye, TrendingUp,
   CheckCircle2, Copy, ChevronRight, Zap,
   AlertCircle, Loader2, Sparkles, Download, Clock, Trash2,
-  BarChart2, Bookmark, SlidersHorizontal, LayoutGrid,
+  BarChart2, Bookmark, SlidersHorizontal, LayoutGrid, FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
+import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
+import type { CaptionMode } from "@/lib/reel-captions";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -163,6 +165,11 @@ export default function ClonePage() {
   const [videoProcessingMode, setVideoProcessingMode] = useState<VideoProcessingMode>("original");
   // Onde o Reel aparece no perfil (share_to_feed da Meta). Padrão: Reels + grade.
   const [shareToFeed, setShareToFeed] = useState(true);
+  // Clone SEMPRE publicou a legenda original do Reel — manter esse padrão
+  // é o que evita mudar comportamento histórico sem o usuário pedir.
+  const [captionMode, setCaptionMode] = useState<CaptionMode>("original");
+  const [stripHashtags, setStripHashtags] = useState(false);
+  const [stripMentions, setStripMentions] = useState(false);
 
   // Submit
   const [submitting, setSubmitting]   = useState(false);
@@ -385,6 +392,9 @@ export default function ClonePage() {
           profile_username:  profile?.username ?? query.replace(/^@/, "").trim(),
           video_processing_mode: videoProcessingMode,
           share_to_feed: shareToFeed,
+          caption_mode: captionMode,
+          caption_strip_hashtags: stripHashtags,
+          caption_strip_mentions: stripMentions,
         }),
       });
       const data = await res.json();
@@ -907,6 +917,30 @@ export default function ClonePage() {
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+
+          {/* Legenda */}
+          <div className="glass-card p-4 rounded-2xl">
+            <div className="flex items-center gap-2 mb-3">
+              <FileText size={13} className="text-white/35" />
+              <p className="text-xs font-bold uppercase tracking-widest text-white/50">Legenda</p>
+            </div>
+            <CaptionModeSelector
+              value={captionMode}
+              onChange={setCaptionMode}
+              stripHashtags={stripHashtags}
+              stripMentions={stripMentions}
+              onStripHashtagsChange={setStripHashtags}
+              onStripMentionsChange={setStripMentions}
+              originalHint={
+                <>
+                  Cada Reel clonado leva a legenda da publicação original dele.{" "}
+                  <span className="text-amber-300/80">
+                    Reels sem legenda serão publicados sem legenda.
+                  </span>
+                </>
+              }
+            />
           </div>
 
           {/* Exibição do Reel */}

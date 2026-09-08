@@ -9,12 +9,14 @@ import {
   Loader2, AlertCircle, ChevronDown, Info, Film, AlertTriangle,
   BarChart2, Heart, MessageCircle, Eye, Crown, TrendingUp, ChevronUp,
   Save, Library, BookMarked, Shuffle, CheckCircle2,
-  ZoomIn, Waves, Droplets, Shield, Sparkles, SlidersHorizontal, LayoutGrid,
+  ZoomIn, Waves, Droplets, Shield, Sparkles, SlidersHorizontal, LayoutGrid, FileText,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
+import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
+import type { CaptionMode } from "@/lib/reel-captions";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -66,6 +68,9 @@ interface Loop {
   effect_anti_ai:  boolean;
   video_processing_mode?: string | null;
   share_to_feed?: boolean | null;
+  caption_mode?: string | null;
+  caption_strip_hashtags?: boolean | null;
+  caption_strip_mentions?: boolean | null;
   status: "active" | "paused";
   created_at: string;
   loop_accounts?: LoopAccountData[];
@@ -96,6 +101,9 @@ interface FormData {
   accountStaggerSeconds: number | null;
   videoProcessingMode: VideoProcessingMode;
   shareToFeed: boolean;
+  captionMode: CaptionMode;
+  captionStripHashtags: boolean;
+  captionStripMentions: boolean;
 }
 
 interface SavedCaption {
@@ -136,6 +144,10 @@ const DEFAULT_FORM: FormData = {
   accountStaggerSeconds: null,
   videoProcessingMode: "original",
   shareToFeed: true,
+  // "custom" = pool digitado/automático = comportamento histórico do Loop.
+  captionMode: "custom",
+  captionStripHashtags: false,
+  captionStripMentions: false,
 };
 
 // ── Analytics types ───────────────────────────────────────────
@@ -1236,6 +1248,10 @@ function LoopFormModal({
         // Loop antigo sem escolha persistida (null) abre marcado como
         // "Reels + grade", mas só passa a enviar o parâmetro quando salvo.
         shareToFeed: editingLoop.share_to_feed !== false,
+        // Loop antigo (coluna NULL) abre como "custom": é o que ele já fazia.
+        captionMode: (editingLoop.caption_mode ?? "custom") as CaptionMode,
+        captionStripHashtags: editingLoop.caption_strip_hashtags === true,
+        captionStripMentions: editingLoop.caption_strip_mentions === true,
       };
     }
     return DEFAULT_FORM;
@@ -1633,6 +1649,27 @@ function LoopFormModal({
             )}
           </div>
 
+          {/* Legenda: de onde sai o texto de cada publicação */}
+          <div>
+            <SectionLabel icon={FileText} label="Legenda" />
+            <CaptionModeSelector
+              value={form.captionMode}
+              onChange={v => update("captionMode", v)}
+              stripHashtags={form.captionStripHashtags}
+              stripMentions={form.captionStripMentions}
+              onStripHashtagsChange={v => update("captionStripHashtags", v)}
+              onStripMentionsChange={v => update("captionStripMentions", v)}
+              originalHint={
+                  <>
+                    Cada vídeo usará sua própria legenda original.{" "}
+                    <span className="text-amber-300/80">
+                      Vídeos sem legenda original serão publicados sem legenda.
+                    </span>
+                  </>
+              }
+            />
+          </div>
+
           {/* Exibição do Reel (share_to_feed da Meta) */}
           <div>
             <SectionLabel icon={LayoutGrid} label="Exibição do Reel" />
@@ -1846,6 +1883,9 @@ export default function LoopPage() {
       account_stagger_seconds: form.accountStaggerSeconds,
       video_processing_mode: form.videoProcessingMode,
       share_to_feed: form.shareToFeed,
+      caption_mode: form.captionMode,
+      caption_strip_hashtags: form.captionStripHashtags,
+      caption_strip_mentions: form.captionStripMentions,
       account_ids: form.accountMode === "folder" ? [] : form.accountIds,
     };
 

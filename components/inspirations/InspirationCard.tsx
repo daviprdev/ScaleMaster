@@ -15,6 +15,8 @@ import {
   Film,
   Lock,
   RefreshCw,
+  FileText,
+  FolderPlus,
 } from "lucide-react";
 
 export interface InspirationReel {
@@ -22,7 +24,12 @@ export interface InspirationReel {
   shortCode: string;
   thumbnailUrl: string | null;
   videoUrl: string;
+  /** Legenda para exibição ("" quando não há). */
   caption: string;
+  /** Forma crua: null = o Apify não trouxe o campo; "" = Reel sem legenda. */
+  originalCaption?: string | null;
+  /** Permalink da publicação original. */
+  sourceUrl?: string | null;
   views: number;
   likes: number;
   comments: number;
@@ -59,11 +66,56 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered }: Inspir
   const [refetchState, setRefetchState] = useState<RefetchState>("idle");
   const [refetchError, setRefetchError] = useState("");
   const [currentVideoUrl, setCurrentVideoUrl] = useState(reel.videoUrl);
+  const [captionOpen, setCaptionOpen] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "done" | "error">("idle");
+  const [saveError, setSaveError] = useState("");
+
+  const temLegenda = typeof reel.caption === "string" && reel.caption !== "";
 
   const hasVideo = !!currentVideoUrl && currentVideoUrl !== "undefined";
 
   const isUrlExpiredError = (msg: string) =>
     msg.includes("expirada") || msg.includes("bloqueada") || msg.includes("403") || msg.includes("502");
+
+  // Salvar na Biblioteca: leva o vídeo E a legenda original juntos. É o
+  // caminho que faz `videos_library.caption` existir — sem ele, um Reel
+  // raspado só entra na Biblioteca via download + upload manual, e aí a
+  // legenda se perde no meio.
+  const handleSaveToLibrary = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (saveState === "saving" || saveState === "done") return;
+    setSaveState("saving");
+    setSaveError("");
+    try {
+      const res = await fetch("/api/inspirations/save-to-library", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reels: [{
+            id: reel.id,
+            shortCode: reel.shortCode,
+            videoUrl: currentVideoUrl,
+            caption: reel.caption,
+            originalCaption: reel.originalCaption,
+            sourceUrl: reel.sourceUrl,
+            views: reel.views,
+            likes: reel.likes,
+            comments: reel.comments,
+            duration: reel.duration,
+            owner: reel.owner,
+          }],
+        }),
+      });
+      const data = await res.json() as { saved?: number; errors?: number; error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? "Falha ao salvar.");
+      if (!data.saved) throw new Error("O CDN recusou o vídeo. Refaça a busca.");
+      setSaveState("done");
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Erro ao salvar.");
+      setSaveState("error");
+      setTimeout(() => setSaveState("idle"), 5000);
+    }
+  };
 
   const handleProcess = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -435,6 +487,56 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered }: Inspir
                   {processState === "idle" && <><Download size={13} />Baixar vídeo</>}
                 </motion.button>
               )}
+
+              {hasVideo && (
+                <button
+                  type="button"
+                  onClick={handleSaveToLibrary}
+                  disabled={saveState === "saving" || saveState === "done"}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all disabled:opacity-70"
+                  style={{
+                    background: "rgba(0,229,255,0.08)",
+                    border: "1px solid rgba(0,229,255,0.22)",
+                    color: "rgba(0,229,255,0.9)",
+                  }}
+                >
+                  {saveState === "saving" && <><Loader2 size={12} className="animate-spin" />Salvando...</>}
+                  {saveState === "done" && <><CheckCircle2 size={12} />Na Biblioteca</>}
+                  {saveState === "error" && <><AlertCircle size={12} />Tentar de novo</>}
+                  {saveState === "idle" && <><FolderPlus size={12} />Salvar na Biblioteca</>}
+                </button>
+              )}
+
+              {saveState === "error" && saveError && (
+                <p className="text-[10px]" style={{ color: "rgba(255,120,120,0.9)" }}>{saveError}</p>
+              )}
+
+              {temLegenda && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setCaptionOpen(v => !v); }}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium text-white/40 hover:text-white/70 transition-colors"
+                >
+                  <FileText size={11} />{captionOpen ? "Ocultar legenda" : "Ver legenda"}
+                </button>
+              )}
+
+              <AnimatePresence>
+                {captionOpen && temLegenda && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    {/* Conteúdo externo: só texto. Nunca dangerouslySetInnerHTML. */}
+                    <p className="max-h-28 overflow-y-auto text-[10px] leading-relaxed whitespace-pre-wrap break-words px-2 py-2 rounded-lg"
+                      style={{ color: "rgba(255,255,255,0.6)", background: "rgba(0,0,0,0.5)" }}>
+                      {reel.caption}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </motion.div>
         )}

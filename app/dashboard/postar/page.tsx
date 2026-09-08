@@ -11,6 +11,8 @@ import {
 import { cn } from "@/lib/utils";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
+import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
+import type { CaptionMode } from "@/lib/reel-captions";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -1141,6 +1143,11 @@ export default function PostarPage() {
 
   // Onde o Reel aparece no perfil (share_to_feed da Meta). Padrão: Reels + grade.
   const [shareToFeed, setShareToFeed] = useState(true);
+  // "custom" preserva o comportamento histórico desta aba (pool digitado
+  // ou legenda automática). Só muda se o usuário escolher outro modo.
+  const [captionMode, setCaptionMode] = useState<CaptionMode>("custom");
+  const [stripHashtags, setStripHashtags] = useState(false);
+  const [stripMentions, setStripMentions] = useState(false);
 
   // Submit
   const [submitting, setSubmitting] = useState(false);
@@ -1278,6 +1285,9 @@ export default function PostarPage() {
           sync_folder_ids: syncFolders ? fullySelectedFolders.map(g => g.id) : [],
           video_processing_mode: videoProcessingMode,
           share_to_feed: shareToFeed,
+          caption_mode: captionMode,
+          caption_strip_hashtags: stripHashtags,
+          caption_strip_mentions: stripMentions,
         }),
       });
 
@@ -1915,11 +1925,30 @@ export default function PostarPage() {
               </AnimatePresence>
             </SectionCard>
 
-            {/* 4. Legendas */}
+            {/* 4. Legenda */}
             <SectionCard>
-              <SectionLabel Icon={List}>Legendas Dinâmicas</SectionLabel>
+              <SectionLabel Icon={List}>Legenda</SectionLabel>
 
-              {/* Toggle Legendas Automáticas */}
+              <CaptionModeSelector
+                className="mb-4"
+                value={captionMode}
+                onChange={setCaptionMode}
+                stripHashtags={stripHashtags}
+                stripMentions={stripMentions}
+                onStripHashtagsChange={setStripHashtags}
+                onStripMentionsChange={setStripMentions}
+                originalHint={
+                  <>
+                    Cada vídeo usará a legenda capturada junto do próprio Reel.{" "}
+                    <span className="text-amber-300/80">
+                      Vídeos sem legenda original serão publicados sem legenda.
+                    </span>
+                  </>
+                }
+              />
+
+              {/* Legendas automáticas só existem dentro do modo Personalizada */}
+              {captionMode === "custom" && (
               <div className="mb-3 p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
@@ -1962,8 +1991,9 @@ export default function PostarPage() {
                   )}
                 </AnimatePresence>
               </div>
+              )}
 
-              {!autoCaptionEnabled && (
+              {captionMode === "custom" && !autoCaptionEnabled && (
                 <CaptionEditor captions={captions} onChange={setCaptions} />
               )}
             </SectionCard>
