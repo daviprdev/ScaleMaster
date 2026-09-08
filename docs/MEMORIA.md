@@ -3919,3 +3919,45 @@ bloqueio no transporte com zero requests. Nenhum Reel real publicado.
 
 `npm test` = 552 checagens. typecheck, lint e build limpos. Sem migration: é
 só lógica.
+
+---
+
+## Resumo da sessão — 2026-09-07/08
+
+Três entregas, todas com migration aplicada, suíte própria e docs.
+
+**1. Links Gerenciáveis** — encurtador próprio (`/r/{slug}` → 302 → destino
+trocável). RPC única resolve destino + contador atômico + clique, com analytics
+isolado em `EXCEPTION` (falha de analytics nunca impede o redirect). Sem
+cloaking, sem redirect por parâmetro, sem cache do destino antigo. Analytics sem
+IP e sem User-Agent bruto. 223 checagens.
+
+**2. Hardening dos Links** — `/api/accounts/list` devolvia `access_token` (sessão
+instagrapi serializada) para seis telas de browser, herança morta da Fase 15;
+removido. Ordem do redirect corrigida: valida status **e destino** antes de
+contar, então pausado/arquivado/inexistente/destino inválido não somam clique.
+Contador e linha de detalhe ganharam savepoints separados.
+
+**3. Legenda original de Reels** — o texto da publicação passa a viajar junto do
+vídeo. Actor real é `apify/instagram-scraper` (a doc citava outro). Duas
+truncagens em série (120 + 500 chars) destruíam a legenda na ingestão: removidas.
+`caption_mode` (original | custom | none) com NULL = comportamento histórico e
+snapshot no post concreto — mudar vídeo ou configuração depois não altera post
+já criado. Sem fallback silencioso. 143 checagens.
+
+**4. Limites de legenda** — `sanitizeCaption` cortava em 2200 em silêncio.
+Política agora é **validar, nunca truncar**: validador central, constantes
+únicas (2200/30/20), hashtags e menções promovidas a validação real, e defesa
+final no transporte que bloqueia a requisição à Meta em vez de consertar.
+
+**Estado:** `npm test` = 552 checagens; typecheck, lint e build limpos.
+
+**Aberto para a próxima sessão:**
+- Token Apify local está 401 — impede confirmar o payload de um Reel sem legenda.
+- `NEXT_PUBLIC_REDIRECT_BASE_URL` e o domínio `go.` ainda não configurados na
+  Vercel (links funcionam pela origem atual até lá).
+- `videos_library` em produção: 127 vídeos, todos com `caption = NULL`, porque
+  entraram por upload manual. A legenda só começa a existir nos vídeos que
+  entrarem pelo botão novo "Salvar na Biblioteca" das Inspirações.
+- Aprovação do `instagram_business_manage_insights` na Meta continua pendente
+  (card "Views Totais" segue em 0).
