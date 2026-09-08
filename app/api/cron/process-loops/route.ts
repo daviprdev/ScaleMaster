@@ -490,8 +490,10 @@ async function assignVideosForLoop(
   // qualquer conta do loop saem do sorteio até metade da pasta ter circulado.
   //
   // Sem ele, o mesmo vídeo saía em 16 contas diferentes dentro de 2h (medido em
-  // produção) — conteúdo idêntico publicado em massa na mesma janela é o padrão
-  // que a Meta suprime no alcance, e era a causa direta das views baixas. O
+  // produção) — conteúdo idêntico publicado em massa na mesma janela é tratado
+  // internamente como risco de repetição/baixa diversidade. ⚠️ Hipótese
+  // operacional do AutoScale (comportamento observado no projeto) para as views
+  // baixas — NÃO uma supressão de alcance documentada pela Meta. O
   // balanceamento por `usageByVideo` sozinho não resolve: ele compara o uso
   // ACUMULADO, então vídeos empatados no mínimo continuam podendo sair juntos.
   //

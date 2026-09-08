@@ -14,6 +14,19 @@ Registro cronológico de decisões, problemas encontrados, soluções adotadas e
 
 ---
 
+## Convenção — afirmações sobre a Meta
+
+Ao registrar comportamento atribuído à Meta/Instagram, classifique a fonte:
+✅ **Documentado pela Meta** (doc oficial ou código de erro da API) ·
+🧪 **Confirmado empiricamente no AutoScale** (medido em produção, sem doc que
+explique a causa) · ⚠️ **Hipótese / estratégia interna** (decisão operacional do
+projeto, não confirmada pela Meta). Nunca promover hipótese a fato oficial sem
+fonte. Em especial, distribuir vídeos diferentes entre contas na mesma janela é
+⚠️ estratégia interna de diversidade — não uma supressão de alcance documentada
+pela Meta.
+
+---
+
 ## Decisões de Arquitetura
 
 ### Por que Next.js 15 e não 14?
@@ -3207,7 +3220,7 @@ Vídeos postados via aba Postar saindo com 0, 2, 5 views no máximo.
 - Cadência: 60 min entre posts por conta, exatamente como configurado — não era "modo rajada" (bug já visto antes).
 - Contas: 81/81 `health_status=online`, 79/81 com proxy dedicado — saúde de conta não era a causa.
 - Sem re-encode FFmpeg automático rodando (regra permanente confirmada no código).
-- Causa real: a pasta de mídia da campanha ativa tinha só **330 vídeos** para **81 contas**, com `video_count="Todos"` (330 × 81 = 26.730 posts batendo exato). Já no 1º dia, 1 vídeo específico saiu em **11 contas diferentes** dentro de uma janela de 9h. A aba Postar não aplica nenhuma variação por conta (isso só existe no Loop via efeitos) — o mesmo arquivo, byte-a-byte idêntico, saindo em dezenas de contas em curto espaço de tempo é o padrão clássico que o sistema de detecção de conteúdo duplicado da Meta reconhece e suprime no alcance, independente de proxy/token/saúde de conta.
+- Causa real: a pasta de mídia da campanha ativa tinha só **330 vídeos** para **81 contas**, com `video_count="Todos"` (330 × 81 = 26.730 posts batendo exato). Já no 1º dia, 1 vídeo específico saiu em **11 contas diferentes** dentro de uma janela de 9h. A aba Postar não aplica nenhuma variação por conta (isso só existe no Loop via efeitos) — o mesmo arquivo, byte-a-byte idêntico, saindo em dezenas de contas em curto espaço de tempo é o padrão que o AutoScale trata internamente como risco de repetição/baixa diversidade — ⚠️ hipótese operacional (comportamento observado no projeto), não uma supressão de alcance documentada pela Meta, e independente de proxy/token/saúde de conta.
 
 #### Fix aplicado
 `app/api/posts/distribute/route.ts` sorteava vídeo de forma independente por conta (fisher-yates + menor uso próprio, sem nenhuma coordenação entre contas). Substituído por **pool compartilhado + atribuição tipo quadrado latino**: vídeos ordenados por menor uso GLOBAL entre as contas selecionadas; na rodada `r`, a conta de índice `ai` recebe `pool[(ai + r) % poolSize]`. Isso garante:
@@ -3330,7 +3343,7 @@ Usuário reportou "conta postando o mesmo vídeo 6× seguidas" e views muito bai
 
    Medido em produção antes do fix (SQL direto, janela de 7 dias):
    - `_michellyibrahim.129`: mesmo vídeo **7× seguidas** em 3h30, com 330 vídeos na pasta
-   - vídeo `17cde4cd`: saiu em **16 contas diferentes dentro de 2h** — conteúdo duplicado em massa na mesma janela é o padrão que a Meta suprime no alcance, e é a explicação das views baixas (mesma lição já documentada para o Postar em 28/07 e para o Clone em 28/08, nunca aplicada ao Loop)
+   - vídeo `17cde4cd`: saiu em **16 contas diferentes dentro de 2h** — conteúdo duplicado em massa na mesma janela é tratado internamente como risco de repetição/baixa diversidade — ⚠️ hipótese operacional do AutoScale (não documentada pela Meta) e a explicação adotada para as views baixas (mesma lição já registrada para o Postar em 28/07 e para o Clone em 28/08, nunca aplicada ao Loop)
 
 2. **Fix 1 — RPC agregado.** Nova função `get_account_video_usage(p_account_ids uuid[], p_since timestamptz)` retorna **UM** valor `jsonb` (`{account_id: {video_id: usos}}`) unindo as 3 origens: `pending_containers` (Loop) + `scheduled_posts` (Postar/Clonar/Automatizar) + `video_processing_jobs` (vídeos reservados no modo efeitos). Uma linha só → teto de linhas não se aplica. `lib/video-history.ts` novo encapsula (`fetchVideoUsage`, `postedSet`, `globalUsageByVideo`) e **lança** em caso de erro — postar repetido é pior que pular o ciclo. Índices `(account_id, video_id)` criados nas 3 tabelas: 1.3s → **43ms** quente.
 
