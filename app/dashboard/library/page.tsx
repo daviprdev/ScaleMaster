@@ -405,7 +405,7 @@ export default function LibraryPage() {
       const res = await fetch(`/api/library/folders/${folder.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({})) as {
         error?: string;
-        videos_moved?: number;
+        videos_deleted?: number;
         paused_loops?: string[];
         synced_campaigns_removed?: number;
       };
@@ -416,7 +416,7 @@ export default function LibraryPage() {
       }
 
       const parts: string[] = [];
-      if (data.videos_moved) parts.push(`${data.videos_moved} vídeo(s) movido(s) para Sem pasta`);
+      if (data.videos_deleted) parts.push(`${data.videos_deleted} vídeo(s) excluído(s) definitivamente`);
       if (data.paused_loops?.length) {
         parts.push(
           data.paused_loops.length === 1
@@ -652,17 +652,17 @@ export default function LibraryPage() {
                   <Trash2 size={18} className="text-red-400" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-white">Excluir pasta</h3>
-                  <p className="text-xs text-white/40">Os vídeos não serão excluídos</p>
+                  <h3 className="text-sm font-semibold text-white">Excluir pasta e vídeos</h3>
+                  <p className="text-xs text-red-400/70">Ação permanente e irreversível</p>
                 </div>
               </div>
               <p className="text-sm text-white/60">
                 Tem certeza que deseja excluir <span className="text-white font-medium">&ldquo;{deletingFolder.name}&rdquo;</span>?
               </p>
               <p className="text-xs text-white/40 leading-relaxed">
-                Excluir esta pasta não excluirá os vídeos. Eles serão movidos para{" "}
-                <span className="text-white/70">Sem pasta</span>. Loops que usavam esta pasta
-                serão pausados.
+                <span className="text-red-400/90 font-medium">Todos os vídeos desta pasta serão apagados</span>{" "}
+                de vez — do banco e do armazenamento. Não há como recuperar. Loops que usavam
+                esta pasta serão pausados e campanhas sincronizadas, desligadas.
               </p>
               {deleteFolderError && (
                 <p className="text-xs text-red-400 leading-relaxed">{deleteFolderError}</p>
