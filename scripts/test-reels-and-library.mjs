@@ -41,6 +41,31 @@ function run(bin, args) {
 }
 
 /**
+ * Compila lib/media-ingest.ts e devolve o módulo real — o teste do
+ * toIntegerColumn é comportamental, não regex sobre o fonte.
+ */
+async function loadMediaIngest() {
+  const buildDir = path.join(repoRoot, "node_modules", ".cache", "asc-ingest-test");
+  fs.rmSync(buildDir, { recursive: true, force: true });
+  fs.mkdirSync(buildDir, { recursive: true });
+
+  const tsconfigPath = path.join(buildDir, "tsconfig.test.json");
+  fs.writeFileSync(tsconfigPath, JSON.stringify({
+    compilerOptions: {
+      target: "es2022", module: "es2022", moduleResolution: "node",
+      outDir: buildDir, rootDir: repoRoot, skipLibCheck: true, noEmitOnError: false,
+    },
+    files: [path.join(repoRoot, "lib/media-ingest.ts")],
+  }));
+  await run("npx", ["tsc", "-p", tsconfigPath]).catch(() => {});
+  fs.writeFileSync(path.join(buildDir, "package.json"), JSON.stringify({ type: "module" }));
+
+  const outFile = path.join(buildDir, "lib", "media-ingest.js");
+  if (!fs.existsSync(outFile)) throw new Error("falha ao compilar lib/media-ingest.ts");
+  return import(pathToFileURL(outFile).href);
+}
+
+/**
  * Compila lib/meta-publish.ts com um stub de undici, para capturar o corpo real
  * do POST /media sem tocar na rede.
  */
@@ -247,6 +272,52 @@ async function main() {
 
   // A limpeza de registros quebrados e de arquivos orfaos do Storage tem suite
   // propria e mais completa: scripts/test-library-integrity.mjs.
+
+  console.log("\n== 4. Ingestão: duração fracionária do Apify (fix 2026-09-08) ==\n");
+
+  // O actor apify/instagram-scraper devolve videoDuration fracionário
+  // (18.266666) e videos_library.duration é INTEGER — o INSERT inteiro morria
+  // com "invalid input syntax for type integer". Reprovou 120 de 124 Reels.
+  const ingest = await loadMediaIngest();
+  const { toIntegerColumn } = ingest;
+
+  check("Duração fracionária vira inteiro (18.266666 -> 18)",
+    toIntegerColumn(18.266666) === 18, String(toIntegerColumn(18.266666)));
+  check("Arredonda para cima quando passa de .5 (13.7 -> 14)",
+    toIntegerColumn(13.7) === 14, String(toIntegerColumn(13.7)));
+  check("Inteiro passa intacto", toIntegerColumn(42) === 42);
+  check("String numérica do payload é aceita", toIntegerColumn("9.5") === 10);
+  check("undefined/null viram 0",
+    toIntegerColumn(undefined) === 0 && toIntegerColumn(null) === 0);
+  check("NaN e Infinity viram 0",
+    toIntegerColumn(NaN) === 0 && toIntegerColumn(Infinity) === 0);
+  check("Negativo é clampado em 0 (colunas de contagem)",
+    toIntegerColumn(-3) === 0);
+  check("Resultado é sempre inteiro seguro para coluna integer",
+    [0.4, 1e6 + 0.5, "7.99", true].every((v) => Number.isInteger(toIntegerColumn(v))));
+
+  const saveRoute = src("app/api/inspirations/save-to-library/route.ts");
+  const processRoute = src("app/api/video/process/route.ts");
+
+  check("save-to-library coage as 4 colunas inteiras pelo helper",
+    ["views", "likes", "comments", "duration"].every((c) =>
+      saveRoute.includes(`${c}: toIntegerColumn(`)));
+  check("save-to-library não manda mais float cru para o Postgres",
+    !/duration: Number\(reel\.duration\)/.test(saveRoute));
+  check("video/process coage duration pelo mesmo helper",
+    /duration: toIntegerColumn\(/.test(processRoute));
+
+  // O upload precede o INSERT (a public_url só existe depois de subir), então
+  // um INSERT que falha deixa arquivo órfão permanente — foram 124 de uma vez.
+  check("save-to-library declara uploadedPath FORA do try",
+    /let uploadedPath: string \| null = null;[\s\S]{0,200}try \{/.test(saveRoute));
+  check("save-to-library compensa o arquivo no catch",
+    /catch \(err\)[\s\S]{0,1600}if \(uploadedPath\)[\s\S]{0,900}\.remove\(\[uploadedPath\]\)/.test(saveRoute));
+  check("Compensação só remove após confirmar zero referências",
+    /if \(uploadedPath\)[\s\S]{0,700}count: "exact"[\s\S]{0,400}if \(!count\)[\s\S]{0,300}\.remove\(/.test(saveRoute));
+  check("Compensação é do arquivo da iteração, nunca limpeza global",
+    saveRoute.includes(".remove([uploadedPath])") &&
+      !/\.remove\(orph|\.remove\(all/.test(saveRoute));
 
   console.log(`\n${passed} passaram, ${failed} falharam\n`);
   process.exit(failed === 0 ? 0 : 1);

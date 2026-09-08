@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createClient } from "@/lib/supabase/server";
-import { downloadOriginalMedia, buildLibraryStoragePath } from "@/lib/media-ingest";
+import {
+  downloadOriginalMedia,
+  buildLibraryStoragePath,
+  toIntegerColumn,
+} from "@/lib/media-ingest";
 
 export const runtime = "nodejs";
 
@@ -126,6 +130,10 @@ export async function POST(req: NextRequest) {
 
   // Process one reel at a time — sequential to respect serverless memory/timeout limits
   for (const reel of valid) {
+    // Precisa viver fora do try: se o INSERT falhar, o arquivo JÁ subiu e
+    // vira lixo permanente no Storage sem alguém para removê-lo.
+    let uploadedPath: string | null = null;
+
     try {
       const baseName = `reel_${reel.owner || "unknown"}_${(reel.shortCode || reel.id).replace(/[^a-z0-9_-]/gi, "_")}`;
 
@@ -145,6 +153,7 @@ export async function POST(req: NextRequest) {
         });
 
       if (uploadError) throw new Error(`Storage: ${uploadError.message}`);
+      uploadedPath = storagePath;
 
       // ── Get public URL ────────────────────────────────────────
       const { data: urlData } = admin.storage
@@ -165,10 +174,13 @@ export async function POST(req: NextRequest) {
           owner_username: reel.owner || null,
           caption: captionParaBanco(reel),
           source_url: reel.sourceUrl ?? null,
-          views: Number(reel.views) || 0,
-          likes: Number(reel.likes) || 0,
-          comments: Number(reel.comments) || 0,
-          duration: Number(reel.duration) || 0,
+          // Colunas inteiras no Postgres. O Apify manda `videoDuration`
+          // fracionário (18.266666) e `Number(...)` preservava a fração,
+          // fazendo o INSERT inteiro falhar — ver toIntegerColumn.
+          views: toIntegerColumn(reel.views),
+          likes: toIntegerColumn(reel.likes),
+          comments: toIntegerColumn(reel.comments),
+          duration: toIntegerColumn(reel.duration),
         } as never)
         .select("id, filename, public_url, owner_username, caption, source_url, created_at")
         .single();
@@ -182,6 +194,35 @@ export async function POST(req: NextRequest) {
         err instanceof Error ? err.message : err
       );
       errors++;
+
+      // COMPENSAÇÃO — mesma regra de app/api/library/record: o upload precede
+      // o INSERT (a public_url só existe depois de subir), então uma falha no
+      // meio deixaria um arquivo órfão permanente. Em 2026-09-08 foram 124 de
+      // uma vez. Removemos APENAS o arquivo desta iteração, e só depois de
+      // confirmar que nenhuma linha o referencia — nunca uma limpeza global.
+      if (uploadedPath) {
+        try {
+          const { count } = await admin
+            .from("videos_library")
+            .select("id", { count: "exact", head: true })
+            .eq("storage_path", uploadedPath);
+
+          if (!count) {
+            const { error: rollbackError } = await admin.storage
+              .from("videos-library")
+              .remove([uploadedPath]);
+            console.log(
+              `[save-to-library] compensação de ${uploadedPath}: ` +
+              `${rollbackError ? "falhou (arquivo ficou órfão)" : "arquivo removido"}`
+            );
+          }
+        } catch (cleanupErr) {
+          console.error(
+            `[save-to-library] compensação de ${uploadedPath} falhou:`,
+            cleanupErr instanceof Error ? cleanupErr.message : cleanupErr
+          );
+        }
+      }
     }
   }
 

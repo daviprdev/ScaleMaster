@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as path from "path";
-import { downloadOriginalMedia } from "@/lib/media-ingest";
+import { downloadOriginalMedia, toIntegerColumn } from "@/lib/media-ingest";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createClient } from "@/lib/supabase/server";
 
@@ -125,10 +125,11 @@ export async function POST(req: NextRequest) {
         file_size: fileBuffer.byteLength,
         owner_username: reelData?.owner ?? null,
         caption: reelData?.caption ?? null,
-        views: reelData?.views ?? 0,
-        likes: reelData?.likes ?? 0,
-        comments: reelData?.comments ?? 0,
-        duration: reelData?.duration ?? 0,
+        // Colunas inteiras no Postgres — a duração do Apify é fracionária.
+        views: toIntegerColumn(reelData?.views),
+        likes: toIntegerColumn(reelData?.likes),
+        comments: toIntegerColumn(reelData?.comments),
+        duration: toIntegerColumn(reelData?.duration),
       })
       .select()
       .single();

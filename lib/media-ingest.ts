@@ -56,3 +56,23 @@ export function buildLibraryStoragePath(baseName: string, uid: string): string {
   const safe = baseName.replace(/[^a-z0-9_-]/gi, "_").slice(0, 60);
   return `videos/${safe}_${Date.now()}_${uid.slice(0, 8)}.mp4`;
 }
+
+/**
+ * Coerção para as colunas INTEIRAS de `videos_library`
+ * (`duration` integer; `views`, `likes`, `comments` bigint).
+ *
+ * O actor `apify/instagram-scraper` devolve `videoDuration` FRACIONÁRIO
+ * (ex.: 18.266666) e o Postgres rejeita o INSERT inteiro com
+ * `invalid input syntax for type integer`. Em 2026-09-08 isso reprovou 120 de
+ * 124 Reels numa única importação — os 4 que passaram foram os de duração
+ * redonda. Só não estourou antes porque nenhum caminho de ingestão ativo
+ * gravava a duração vinda do Apify.
+ *
+ * Arredondar é correto para o dado: a duração é exibida em segundos inteiros.
+ * Não vale para nenhum campo cujo valor fracionário importe.
+ */
+export function toIntegerColumn(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.round(n));
+}
