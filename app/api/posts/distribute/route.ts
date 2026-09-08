@@ -3,6 +3,9 @@ import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, getUniqueCaptions, type AutoCaptionType } from "@/lib/auto-captions";
+import {
+  normalizeCaptionMode, resolveCaption, captionTooLongMessage,
+} from "@/lib/reel-captions";
 import { fetchVideoUsage, fetchAllRows } from "@/lib/video-history";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 
@@ -25,6 +28,9 @@ interface DistributeBody {
   start_at: string;               // ISO datetime (ignorado em burst_mode)
   captions: string[];
   auto_caption_type?: string;     // se presente, ignora captions e gera automaticamente
+  caption_mode?: string;          // original | custom | none (ausente = custom)
+  caption_strip_hashtags?: boolean;
+  caption_strip_mentions?: boolean;
   account_stagger_seconds?: number | null; // null = cálculo automático
   burst_mode?: boolean;           // Modo Ciclo: todos os vídeos agendados para agora
   sync_folder_ids?: string[];     // pastas de contas cujas contas novas devem entrar sozinhas na campanha
@@ -77,6 +83,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Modo de legenda. Ausente = "custom" = comportamento histórico desta aba
+  // (pool digitado ou legenda automática) — nenhuma campanha existente muda.
+  const captionMode = normalizeCaptionMode(body.caption_mode);
+  const stripHashtags = body.caption_strip_hashtags === true;
+  const stripMentions = body.caption_strip_mentions === true;
+
   const isAutoCaption = !!auto_caption_type;
   const validCaptions = isAutoCaption ? [] : (captions ?? []).map(c => c.trim()).filter(Boolean);
 
@@ -85,12 +97,12 @@ export async function POST(req: NextRequest) {
 
   // Paginado: `.limit(10000)` não bypassa o teto de 1000 linhas do PostgREST —
   // uma pasta com mais de 1000 vídeos teria o excedente ignorado em silêncio.
-  let allVideos: { id: string; public_url: string }[];
+  let allVideos: { id: string; public_url: string; caption: string | null }[];
   try {
-    allVideos = await fetchAllRows<{ id: string; public_url: string }>((from, to) =>
+    allVideos = await fetchAllRows<{ id: string; public_url: string; caption: string | null }>((from, to) =>
       admin
         .from("videos_library")
-        .select("id, public_url")
+        .select("id, public_url, caption")
         .eq("folder_id", folder_id)
         .eq("user_id", user.id)
         .order("created_at", { ascending: true })
@@ -161,6 +173,9 @@ export async function POST(req: NextRequest) {
   const startTime = burst_mode ? Date.now() : new Date(start_at).getTime();
 
   const rows: object[] = [];
+  // Vídeos que o modo "original" encontrou sem legenda — publicam SEM legenda
+  // (sem fallback) e o total volta na resposta para a UI poder avisar.
+  const semLegendaOriginal = new Set<string>();
 
   // Stagger entre contas: customizável ou proporcional ao intervalo (máx. 5 min).
   // Custom: exato, sem jitter — conta[i] posta em i × stagger_s segundos.
@@ -190,18 +205,42 @@ export async function POST(req: NextRequest) {
       // Burst: 2s entre vídeos só para ordenação estável na fila (scheduled_at ASC)
       const slotMs = burst_mode ? vi * 2_000 : vi * intervalMinutes * 60_000;
       const scheduledAt = new Date(startTime + slotMs + staggerMs).toISOString();
-      const caption = isAutoCaption
+      // Legenda do mecanismo histórico (pool ou automática). Só é usada
+      // quando o modo é "custom".
+      const customCaption = isAutoCaption
         ? getAutoCaption(autoType)
         : validCaptions.length > 0
           ? validCaptions[Math.floor(Math.random() * validCaptions.length)]
           : "";
+
+      // SNAPSHOT: a legenda é resolvida AQUI, com o vídeo concreto já
+      // escolhido, e o texto final vai para a linha. Vídeo A recebe a legenda
+      // de A porque `video` é o vídeo daquela iteração. Editar o vídeo na
+      // Biblioteca depois não muda este post.
+      const resolucao = resolveCaption({
+        mode: captionMode,
+        originalCaption: video.caption,
+        customCaption,
+        stripHashtags,
+        stripMentions,
+      });
+
+      if (resolucao.overLimit) {
+        // Erro ANTES de agendar — nada é truncado em silêncio.
+        return NextResponse.json(
+          { error: captionTooLongMessage(resolucao.length, `vídeo ${video.id.slice(0, 8)}`) },
+          { status: 400 }
+        );
+      }
+      if (resolucao.missingOriginal) semLegendaOriginal.add(video.id);
 
       rows.push({
         user_id: user.id,
         account_id: accountId,
         video_id: video.id,
         video_url: video.public_url,
-        caption,
+        caption: resolucao.caption,
+        caption_mode: captionMode,
         scheduled_at: scheduledAt,
         status: "pending",
         campaign_id: campaignId,
@@ -231,6 +270,9 @@ export async function POST(req: NextRequest) {
       captions: isAutoCaption ? [] : validCaptions,
       auto_caption_enabled: isAutoCaption,
       auto_caption_type: isAutoCaption ? autoType : null,
+      caption_mode: captionMode,
+      caption_strip_hashtags: stripHashtags,
+      caption_strip_mentions: stripMentions,
       account_stagger_seconds: account_stagger_seconds ?? null,
       burst_mode: !!burst_mode,
       video_processing_mode: processingMode,
@@ -250,5 +292,9 @@ export async function POST(req: NextRequest) {
     days: burst_mode ? 1 : Math.ceil(maxVideos / posts_per_day),
     first_slot: times[0],
     last_slot: times[times.length - 1],
+    caption_mode: captionMode,
+    // Quantos vídeos distintos entraram sem legenda original (modo "original").
+    // Publicam sem legenda — a UI usa isto para avisar depois de agendar.
+    videos_sem_legenda_original: semLegendaOriginal.size,
   });
 }

@@ -3,6 +3,10 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getAutoCaption } from "@/lib/auto-captions";
+import {
+  normalizeCaptionMode, resolveCaption, captionTooLongMessage,
+  type CaptionMode,
+} from "@/lib/reel-captions";
 import { markDeadAccounts } from "@/lib/account-health";
 import { fetchVideoUsage, postedSet, globalUsageByVideo, fetchAllRows } from "@/lib/video-history";
 import {
@@ -63,6 +67,9 @@ interface LoopRow {
   auto_caption_type?: string | null;
   video_processing_mode?: string | null;
   share_to_feed?: boolean | null;
+  caption_mode?: string | null;
+  caption_strip_hashtags?: boolean | null;
+  caption_strip_mentions?: boolean | null;
 }
 
 interface HumanScheduleRow {
@@ -78,6 +85,12 @@ interface VideoRow {
   public_url: string;
   filename: string;
   file_size: number | null;
+  /**
+   * Legenda ORIGINAL do Reel de onde este vídeo veio (videos_library.caption).
+   * null = não capturada (upload manual ou ingestão antiga); "" = o Reel não
+   * tinha legenda. Só é lida quando o Loop está em caption_mode="original".
+   */
+  caption: string | null;
 }
 
 // Resultado da fase de atribuição atômica: vídeo reservado + flag de ciclo reset.
@@ -231,6 +244,9 @@ async function createContainerForAccount(
     cycle_number: cycleNumber,
     video_processing_mode: normalizeProcessingMode(loop.video_processing_mode),
     share_to_feed: shareToFeed,
+    // Auditoria: qual modo produziu o texto acima. A publicação usa `caption`
+    // e nunca recalcula a partir daqui.
+    caption_mode: normalizeCaptionMode(loop.caption_mode),
   };
   if (initialDelayMinutes > 0) {
     insertData.retry_after = new Date(Date.now() + initialDelayMinutes * 60_000).toISOString();
@@ -651,7 +667,7 @@ async function processOneLoop(
     allVideoRows = await fetchAllRows<VideoRow>((from, to) =>
       (admin as any)
         .from("videos_library")
-        .select("id, public_url, filename, file_size")
+        .select("id, public_url, filename, file_size, caption")
         .eq("folder_id", loop.folder_id)
         .order("created_at", { ascending: true })
         .range(from, to)
@@ -1045,25 +1061,72 @@ async function processOneLoop(
           `vídeo: "${assignment.video.filename}" (${fileSizeMB}) | cicloReset: ${assignment.isCycleReset}`
         );
 
-        let caption: string;
-        if (isAutoCaption) {
-          caption = getAutoCaption(
-            (loop.auto_caption_type ?? "curiosidades-gerais") as import("@/lib/auto-captions").AutoCaptionType
+        // ── Legenda ─────────────────────────────────────────────────────
+        // O modo decide a FONTE do texto; a resolução acontece aqui, com o
+        // vídeo já escolhido, e o resultado é gravado no container (snapshot).
+        // Mudar o Loop ou a legenda do vídeo depois não altera o que já saiu.
+        const captionMode: CaptionMode = normalizeCaptionMode(loop.caption_mode);
+
+        // "custom" é o comportamento histórico: pool digitado no painel ou
+        // legenda automática. Preservado exatamente como era.
+        let customCaption = "";
+        if (captionMode === "custom") {
+          if (isAutoCaption) {
+            customCaption = getAutoCaption(
+              (loop.auto_caption_type ?? "curiosidades-gerais") as import("@/lib/auto-captions").AutoCaptionType
+            );
+            console.log(
+              `[auto-caption] @${account.username} | tipo: ${loop.auto_caption_type} | ` +
+              `"${customCaption.slice(0, 80)}${customCaption.length > 80 ? "…" : ""}"`
+            );
+          } else {
+            customCaption = selectDynamicCaption(loopCaptionsRaw);
+            const xStatus = customCaption
+              ? `"${customCaption.slice(0, 80)}${customCaption.length > 80 ? "…" : ""}"`
+              : "VAZIA!!!";
+            console.log(
+              `[RAIO-X] @${account.username} | Pool: ${loopCaptionsRaw.length} variação(ões) | ` +
+              `Sorteada: ${xStatus} | CicloReset: ${assignment.isCycleReset}`
+            );
+          }
+        }
+
+        const resolucao = resolveCaption({
+          mode: captionMode,
+          originalCaption: assignment.video.caption,
+          customCaption,
+          stripHashtags: loop.caption_strip_hashtags === true,
+          stripMentions: loop.caption_strip_mentions === true,
+        });
+
+        // Legenda maior que o limite da Meta NÃO é cortada em silêncio: a conta
+        // é pulada e o motivo fica registrado como erro de container, visível na
+        // aba Loop do Monitor.
+        if (resolucao.overLimit) {
+          const motivo = captionTooLongMessage(resolucao.length, assignment.video.filename);
+          console.error(`[caption] @${account.username} | ${motivo}`);
+          await recordContainerError(
+            admin, account, loop, "", motivo, assignment.video.id, accountCycleNumber
           );
+          return { kind: "skip", account, reason: "legenda acima do limite da Meta" };
+        }
+
+        if (resolucao.missingOriginal) {
+          // SEM FALLBACK: publica sem legenda. Nunca troca por custom/automática.
           console.log(
-            `[auto-caption] @${account.username} | tipo: ${loop.auto_caption_type} | ` +
-            `"${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}"`
+            `[caption] @${account.username} | modo=original | vídeo "${assignment.video.filename}" ` +
+            `sem legenda original → publicando SEM legenda (sem fallback)`
           );
         } else {
-          caption = selectDynamicCaption(loopCaptionsRaw);
-          const xStatus = caption
-            ? `"${caption.slice(0, 80)}${caption.length > 80 ? "…" : ""}"`
-            : "VAZIA!!!";
           console.log(
-            `[RAIO-X] @${account.username} | Pool: ${loopCaptionsRaw.length} variação(ões) | ` +
-            `Sorteada: ${xStatus} | CicloReset: ${assignment.isCycleReset}`
+            `[caption] @${account.username} | modo=${captionMode} | ${resolucao.length} chars` +
+            (captionMode === "original"
+              ? ` | fonte: legenda do próprio vídeo (${assignment.video.filename})`
+              : "")
           );
         }
+
+        const caption = resolucao.caption;
 
         // URL processada pelo process-videos (fingerprint único por conta).
         // Se não está pronta, a conta foi pulada antes — este ponto nunca é atingido sem URL.
@@ -1404,6 +1467,7 @@ export async function GET(req: NextRequest) {
       interval_minutes, account_stagger_seconds, media_limit, captions, effect_mirror, effect_invert,
       effect_zoom, effect_blur, effect_noise, effect_anti_ai, video_processing_mode, share_to_feed,
       auto_caption_enabled, auto_caption_type,
+      caption_mode, caption_strip_hashtags, caption_strip_mentions,
       last_posted_at,
       loop_accounts (
         account_id,

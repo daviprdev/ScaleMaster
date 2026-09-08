@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeProcessingMode } from "@/lib/video-processing";
+import { normalizeCaptionMode } from "@/lib/reel-captions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -38,9 +39,22 @@ export async function PATCH(
     "interval_minutes", "media_limit", "captions", "cover_image_url",
     "effect_mirror", "effect_invert", "effect_zoom", "effect_blur", "effect_noise", "effect_anti_ai",
     "auto_caption_enabled", "auto_caption_type", "account_stagger_seconds",
-    "video_processing_mode", "share_to_feed"];
+    "video_processing_mode", "share_to_feed",
+    "caption_mode", "caption_strip_hashtags", "caption_strip_mentions"];
   for (const key of scalars) {
     if (!(key in body)) continue;
+
+    if (key === "caption_mode") {
+      // Só afeta containers criados a partir daqui — os já enviados
+      // guardam o texto que valia na época (snapshot).
+      updatePayload[key] = normalizeCaptionMode(body[key]);
+      continue;
+    }
+
+    if (key === "caption_strip_hashtags" || key === "caption_strip_mentions") {
+      updatePayload[key] = body[key] === true;
+      continue;
+    }
 
     if (key === "share_to_feed") {
       // Só afeta containers criados a partir daqui — os já enviados guardam o

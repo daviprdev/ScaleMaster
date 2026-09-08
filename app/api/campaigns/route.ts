@@ -188,6 +188,14 @@ export async function DELETE(req: NextRequest) {
 
 interface EditCampaignBody {
   campaign_id?: string;
+  /**
+   * ATENÇÃO — nome colidente, conceito diferente: aqui `caption_mode` é o
+   * seletor ANTIGO desta edição de campanha ("manual" = pool digitado,
+   * "auto" = legenda gerada). Não confundir com a coluna
+   * `distribute_campaigns.caption_mode` ("original" | "custom" | "none"),
+   * que decide a FONTE do texto. Este campo só existe no corpo desta
+   * requisição e nunca é gravado em coluna alguma.
+   */
   caption_mode?: "manual" | "auto";
   captions?: string[];
   auto_caption_type?: string;
@@ -297,7 +305,20 @@ export async function PATCH(req: NextRequest) {
     const startTime = Date.now() + 30_000;
     const autoType = (body.auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
 
-    const updates: { id: string; user_id: string; caption: string; scheduled_at: string }[] = [];
+    // Campanha que publica a legenda ORIGINAL de cada vídeo (ou nenhuma) não
+    // pode ter o texto reescrito aqui: o snapshot de cada post carrega a
+    // legenda do vídeo dele. Nesse caso a edição só reagenda — a legenda
+    // fica intacta, em vez de ser substituída pelo pool sem o usuário pedir.
+    const { data: distRow } = await (admin as any)
+      .from("distribute_campaigns")
+      .select("caption_mode")
+      .eq("id", campaignId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    const modoDaCampanha = (distRow as { caption_mode?: string | null } | null)?.caption_mode ?? "custom";
+    const reescreveLegenda = modoDaCampanha === "custom";
+
+    const updates: { id: string; user_id: string; caption?: string; scheduled_at: string }[] = [];
     accountIds.forEach((accId, ai) => {
       const staggerMs = staggerSeconds != null ? ai * staggerSeconds * 1_000 : ai * autoStaggerMs;
       const accRows = byAccount.get(accId)!;
@@ -313,7 +334,11 @@ export async function PATCH(req: NextRequest) {
         // "null value in column user_id violates not-null constraint" em
         // produção). O valor é sempre o mesmo já existente na linha (as
         // pendingRows já vieram filtradas por user_id = user.id acima).
-        updates.push({ id: row.id, user_id: user.id, caption, scheduled_at: scheduledAt });
+        updates.push(
+          reescreveLegenda
+            ? { id: row.id, user_id: user.id, caption, scheduled_at: scheduledAt }
+            : { id: row.id, user_id: user.id, scheduled_at: scheduledAt }
+        );
       });
     });
 

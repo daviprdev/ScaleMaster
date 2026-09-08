@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeProcessingMode } from "@/lib/video-processing";
+import { normalizeCaptionMode } from "@/lib/reel-captions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,6 +30,7 @@ export async function GET() {
       account_stagger_seconds, media_limit, captions, cover_image_url,
       effect_mirror, effect_invert, effect_zoom, effect_blur, effect_noise, effect_anti_ai,
       auto_caption_enabled, auto_caption_type, video_processing_mode, share_to_feed,
+      caption_mode, caption_strip_hashtags, caption_strip_mentions,
       status, created_at,
       loop_accounts ( account_id, instagram_accounts ( id, username, display_name, avatar_url ) ),
       library_folders ( id, name )
@@ -68,6 +70,9 @@ export async function POST(req: NextRequest) {
     account_stagger_seconds?: number | null;
     video_processing_mode?: string;
     share_to_feed?: boolean;
+    caption_mode?: string;
+    caption_strip_hashtags?: boolean;
+    caption_strip_mentions?: boolean;
     account_ids: string[];
   };
 
@@ -142,6 +147,11 @@ export async function POST(req: NextRequest) {
       account_stagger_seconds: body.account_stagger_seconds ?? null,
       video_processing_mode: normalizeProcessingMode(body.video_processing_mode),
       share_to_feed: typeof body.share_to_feed === "boolean" ? body.share_to_feed : null,
+      // Modo de legenda. Ausente = "custom" = pool/automática, que é o
+      // comportamento de sempre do Loop.
+      caption_mode: normalizeCaptionMode(body.caption_mode),
+      caption_strip_hashtags: body.caption_strip_hashtags === true,
+      caption_strip_mentions: body.caption_strip_mentions === true,
       status: "active",
     })
     .select()

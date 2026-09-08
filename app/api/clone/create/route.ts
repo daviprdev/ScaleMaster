@@ -3,13 +3,20 @@ import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
+import {
+  normalizeCaptionMode, resolveCaption, captionTooLongMessage,
+  DEFAULT_CAPTION_MODE_CLONE,
+} from "@/lib/reel-captions";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 
 export const runtime = "nodejs";
 
 interface ReelItem {
   shortCode: string;
+  /** Legenda do PRÓPRIO Reel — vem amarrada a ele desde a normalização. */
   caption:   string;
+  /** Forma crua: null = o Apify não trouxe o campo; "" = Reel sem legenda. */
+  originalCaption?: string | null;
 }
 
 interface CloneBody {
@@ -22,6 +29,9 @@ interface CloneBody {
   profile_username?:  string;
   video_processing_mode?: string; // "original" (padrao) | "clean_metadata"
   share_to_feed?: boolean;        // true = Reels + grade | false = somente Reels
+  caption_mode?: string;          // original (padrão AQUI) | custom | none
+  caption_strip_hashtags?: boolean;
+  caption_strip_mentions?: boolean;
 }
 
 function fisherYates<T>(arr: T[]): T[] {
@@ -54,6 +64,14 @@ export async function POST(req: NextRequest) {
   // limpeza opcional gera uma variante separada dessa copia re-hospedada.
   const processingMode = normalizeProcessingMode(body.video_processing_mode);
   const shareToFeed = typeof body.share_to_feed === "boolean" ? body.share_to_feed : null;
+  // Clone SEMPRE publicou a legenda original do Reel raspado — era
+  // `caption: reel.caption` aqui. Por isso o padrão deste fluxo é
+  // "original", e não "custom": mudar seria alterar comportamento
+  // histórico sem o usuário pedir.
+  const captionMode = normalizeCaptionMode(body.caption_mode, DEFAULT_CAPTION_MODE_CLONE);
+  const stripHashtags = body.caption_strip_hashtags === true;
+  const stripMentions = body.caption_strip_mentions === true;
+
   const isAutoCaption = !!auto_caption_type;
   const autoType = (auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
 
@@ -112,12 +130,32 @@ export async function POST(req: NextRequest) {
       const reel        = sharedPool[(ai + ri) % poolSize];
       const scheduledAt = new Date(startTime + ri * intervalMs + staggerMs).toISOString();
 
+      // SNAPSHOT por Reel. `reel` é o item concreto desta iteração, então
+      // a legenda que sai daqui é a DELE — Reel A leva a legenda A mesmo
+      // depois do rehost do vídeo para o Supabase, porque a linha de
+      // scheduled_posts já nasce com o texto dentro. O rehost troca a URL,
+      // nunca a legenda.
+      const resolucao = resolveCaption({
+        mode: captionMode,
+        originalCaption: reel.originalCaption !== undefined ? reel.originalCaption : reel.caption,
+        customCaption: isAutoCaption ? getAutoCaption(autoType) : "",
+        stripHashtags,
+        stripMentions,
+      });
+      if (resolucao.overLimit) {
+        return NextResponse.json(
+          { error: captionTooLongMessage(resolucao.length, "Reel " + reel.shortCode) },
+          { status: 400 }
+        );
+      }
+
       rows.push({
         user_id:              user.id,
         account_id:           accountId,
         video_id:             null,
         video_url:            `https://www.instagram.com/reel/${reel.shortCode}/`,
-        caption:              isAutoCaption ? getAutoCaption(autoType) : reel.caption,
+        caption:              resolucao.caption,
+        caption_mode:         captionMode,
         scheduled_at:         scheduledAt,
         status:               "pending",
         campaign_id:          campaignId,

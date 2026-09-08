@@ -22,6 +22,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
+import { normalizeCaptionMode, resolveCaption } from "@/lib/reel-captions";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 import { fetchVideoUsage, globalUsageByVideo, fetchAllRows } from "@/lib/video-history";
 import { requireCronAuth } from "@/lib/cron-auth";
@@ -48,6 +49,9 @@ interface DistributeCampaignRow {
   captions: string[];
   auto_caption_enabled: boolean;
   auto_caption_type: string | null;
+  caption_mode: string | null;
+  caption_strip_hashtags: boolean | null;
+  caption_strip_mentions: boolean | null;
   account_stagger_seconds: number | null;
   burst_mode: boolean;
   video_processing_mode: string | null;
@@ -69,7 +73,7 @@ export async function GET(req: NextRequest) {
 
   const { data: campaigns, error } = await admin
     .from("distribute_campaigns")
-    .select("id, user_id, account_folder_ids, video_folder_id, video_count, posts_per_day, captions, auto_caption_enabled, auto_caption_type, account_stagger_seconds, burst_mode, video_processing_mode, share_to_feed");
+    .select("id, user_id, account_folder_ids, video_folder_id, video_count, posts_per_day, captions, auto_caption_enabled, auto_caption_type, caption_mode, caption_strip_hashtags, caption_strip_mentions, account_stagger_seconds, burst_mode, video_processing_mode, share_to_feed");
 
   if (error) {
     console.error("[sync-distribute-accounts] Erro ao buscar campanhas:", error.message);
@@ -121,12 +125,12 @@ async function processCampaign(
 
   // Paginado: `.limit(10000)` não bypassa o teto de 1000 linhas do PostgREST —
   // pastas grandes teriam o excedente ignorado em silêncio no pool.
-  let allVideos: { id: string; public_url: string }[];
+  let allVideos: { id: string; public_url: string; caption: string | null }[];
   try {
-    allVideos = await fetchAllRows<{ id: string; public_url: string }>((from, to) =>
+    allVideos = await fetchAllRows<{ id: string; public_url: string; caption: string | null }>((from, to) =>
       admin
         .from("videos_library")
-        .select("id, public_url")
+        .select("id, public_url, caption")
         .eq("folder_id", campaign.video_folder_id)
         .order("created_at", { ascending: true })
         .range(from, to)
@@ -183,6 +187,7 @@ async function processCampaign(
     : 0;
 
   const isAutoCaption = !!campaign.auto_caption_enabled && !!campaign.auto_caption_type;
+  const captionMode = normalizeCaptionMode(campaign.caption_mode);
   const validCaptions = (campaign.captions ?? []).filter(c => c.trim());
   const autoType = (campaign.auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
 
@@ -228,18 +233,39 @@ async function processCampaign(
       ? i * campaign.account_stagger_seconds * 1_000
       : i * staggerPerAccountMs;
     const scheduledAt = new Date(now + staggerMs).toISOString();
-    const caption = isAutoCaption
+    const customCaption = isAutoCaption
       ? getAutoCaption(autoType)
       : validCaptions.length > 0
         ? validCaptions[Math.floor(Math.random() * validCaptions.length)]
         : "";
+
+    // Mesma resolução do distribute: o vídeo já está escolhido, então a
+    // legenda sai do próprio vídeo quando o modo é "original". Legenda acima
+    // do limite da Meta não é cortada — a conta apenas não é matriculada
+    // neste ciclo, e o motivo fica no log.
+    const resolucao = resolveCaption({
+      mode: captionMode,
+      originalCaption: video.caption,
+      customCaption,
+      stripHashtags: campaign.caption_strip_hashtags === true,
+      stripMentions: campaign.caption_strip_mentions === true,
+    });
+    if (resolucao.overLimit) {
+      console.error(
+        "[sync-distribute] campanha " + campaign.id.slice(0, 8) +
+        " conta " + accountId.slice(0, 8) + ": legenda com " + resolucao.length +
+        " chars acima do limite da Meta — conta não matriculada."
+      );
+      return;
+    }
 
     rows.push({
       user_id: campaign.user_id,
       account_id: accountId,
       video_id: video.id,
       video_url: video.public_url,
-      caption,
+      caption: resolucao.caption,
+      caption_mode: captionMode,
       scheduled_at: scheduledAt,
       status: "pending",
       campaign_id: campaign.id,
