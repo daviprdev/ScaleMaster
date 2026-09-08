@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import {
-  normalizeCaptionMode, resolveCaption, captionTooLongMessage,
+  normalizeCaptionMode, resolveCaption, captionRejectionMessage,
 } from "@/lib/reel-captions";
 
 export const runtime = "nodejs";
@@ -86,9 +86,12 @@ export async function POST(req: NextRequest) {
     stripMentions: body.caption_strip_mentions === true,
   });
 
-  if (resolucao.overLimit) {
+  if (!resolucao.validation.valid) {
     return NextResponse.json(
-      { error: captionTooLongMessage(resolucao.length) },
+      {
+        error: captionRejectionMessage(resolucao.validation),
+        code: resolucao.validation.error?.code,
+      },
       { status: 400 }
     );
   }

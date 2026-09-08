@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, getUniqueCaptions, type AutoCaptionType } from "@/lib/auto-captions";
 import {
-  normalizeCaptionMode, resolveCaption, captionTooLongMessage,
+  normalizeCaptionMode, resolveCaption, captionRejectionMessage,
 } from "@/lib/reel-captions";
 import { fetchVideoUsage, fetchAllRows } from "@/lib/video-history";
 import { normalizeProcessingMode } from "@/lib/video-processing";
@@ -225,10 +225,14 @@ export async function POST(req: NextRequest) {
         stripMentions,
       });
 
-      if (resolucao.overLimit) {
-        // Erro ANTES de agendar — nada é truncado em silêncio.
+      // Erro ANTES de agendar — comprimento, hashtags e menções. Nada é
+      // truncado nem removido em silêncio.
+      if (!resolucao.validation.valid) {
         return NextResponse.json(
-          { error: captionTooLongMessage(resolucao.length, `vídeo ${video.id.slice(0, 8)}`) },
+          {
+            error: captionRejectionMessage(resolucao.validation, `vídeo ${video.id.slice(0, 8)}`),
+            code: resolucao.validation.error?.code,
+          },
           { status: 400 }
         );
       }

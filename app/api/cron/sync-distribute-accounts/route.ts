@@ -250,11 +250,12 @@ async function processCampaign(
       stripHashtags: campaign.caption_strip_hashtags === true,
       stripMentions: campaign.caption_strip_mentions === true,
     });
-    if (resolucao.overLimit) {
+    if (!resolucao.validation.valid) {
       console.error(
         "[sync-distribute] campanha " + campaign.id.slice(0, 8) +
-        " conta " + accountId.slice(0, 8) + ": legenda com " + resolucao.length +
-        " chars acima do limite da Meta — conta não matriculada."
+        " conta " + accountId.slice(0, 8) + ": " + resolucao.validation.error?.code +
+        " (chars=" + resolucao.length + " hashtags=" + resolucao.hashtags +
+        " mentions=" + resolucao.mentions + ") — conta não matriculada."
       );
       return;
     }

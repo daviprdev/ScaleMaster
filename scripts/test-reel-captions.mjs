@@ -46,6 +46,17 @@ function compilar(relPaths) {
      "--skipLibCheck"],
     { stdio: "pipe", shell: process.platform === "win32" }
   );
+
+  // O tsc emite `from "./reel-captions"` sem extensão; o loader ESM do Node
+  // exige `./reel-captions.js`. Só o build de teste precisa disso — no Next o
+  // bundler resolve sozinho.
+  for (const arquivo of fs.readdirSync(out).filter((f) => f.endsWith(".js"))) {
+    const p = path.join(out, arquivo);
+    fs.writeFileSync(
+      p,
+      fs.readFileSync(p, "utf8").replace(/from "(\.\/[^"]+?)"/g, 'from "$1.js"')
+    );
+  }
   return out;
 }
 
@@ -79,7 +90,9 @@ async function main() {
   const {
     resolveCaption, normalizeCaptionMode, stripHashtags, stripMentions,
     countHashtags, countMentions, hasOriginalCaption,
-    META_CAPTION_MAX_LENGTH, DEFAULT_CAPTION_MODE, DEFAULT_CAPTION_MODE_CLONE,
+    validateInstagramCaption, captionLength, InvalidCaptionError,
+    INSTAGRAM_CAPTION_MAX_LENGTH, INSTAGRAM_CAPTION_MAX_HASHTAGS, INSTAGRAM_CAPTION_MAX_MENTIONS,
+    DEFAULT_CAPTION_MODE, DEFAULT_CAPTION_MODE_CLONE,
   } = caps;
 
   const pollInsp = src("app/api/inspirations/scrape/poll/route.ts");
@@ -199,24 +212,26 @@ async function main() {
   // ══════════════════════════════════════════════════════════════════════════
   console.log("\n== 3. Limite da Meta ==\n");
 
-  check("limite oficial documentado é 2200 caracteres",
-    META_CAPTION_MAX_LENGTH === 2200);
+  check("limites oficiais centralizados: 2200 / 30 / 20",
+    INSTAGRAM_CAPTION_MAX_LENGTH === 2200 &&
+    INSTAGRAM_CAPTION_MAX_HASHTAGS === 30 &&
+    INSTAGRAM_CAPTION_MAX_MENTIONS === 20);
   const longa = resolveCaption({ mode: "original", originalCaption: "a".repeat(2201) });
   check("TESTE 13: legenda acima do limite é SINALIZADA, não truncada",
-    longa.overLimit === true && longa.caption.length === 2201);
+    longa.validation.valid === false && longa.caption.length === 2201);
   check("TESTE 13: no limite exato não dispara erro",
-    resolveCaption({ mode: "original", originalCaption: "a".repeat(2200) }).overLimit === false);
+    resolveCaption({ mode: "original", originalCaption: "a".repeat(2200) }).validation.valid === true);
   check("emoji conta como 1 caractere (code points, não UTF-16)",
     resolveCaption({ mode: "original", originalCaption: "😂😂😂" }).length === 3);
 
   check("TESTE 13: distribute devolve erro ANTES de agendar",
-    /resolucao\.overLimit[\s\S]{0,300}status: 400/.test(distribute));
+    /!resolucao\.validation\.valid[\s\S]{0,400}status: 400/.test(distribute));
   check("TESTE 13: clone devolve erro ANTES de agendar",
-    /resolucao\.overLimit[\s\S]{0,300}status: 400/.test(cloneCreate));
+    /!resolucao\.validation\.valid[\s\S]{0,400}status: 400/.test(cloneCreate));
   check("TESTE 13: publicação imediata devolve erro antes da Meta",
-    /resolucao\.overLimit[\s\S]{0,300}status: 400/.test(publishNow));
+    /!resolucao\.validation\.valid[\s\S]{0,400}status: 400/.test(publishNow));
   check("TESTE 13: Loop registra erro e pula a conta, sem cortar",
-    loops.includes("captionTooLongMessage") && loops.includes("recordContainerError"));
+    loops.includes("captionRejectionMessage") && loops.includes("recordContainerError"));
 
   // ══════════════════════════════════════════════════════════════════════════
   console.log("\n== 4. Hashtags e @menções (opcionais) ==\n");
@@ -259,7 +274,7 @@ async function main() {
   // ══════════════════════════════════════════════════════════════════════════
   console.log("\n== 5. Payload real enviado à Meta ==\n");
 
-  const metaDir = compilar(["lib/meta-publish.ts"]);
+  const metaDir = compilar(["lib/meta-publish.ts", "lib/reel-captions.ts"]);
   const meta = await import(pathToFileURL(path.join(metaDir, "meta-publish.js")).href);
 
   const agent = new MockAgent();
@@ -435,6 +450,200 @@ async function main() {
   const migrationSemComentarios = migration.replace(/^\s*--.*$/gm, "");
   check("a migration não altera coluna de mídia",
     !/storage_path|public_url|video_processing_mode|file_size/.test(migrationSemComentarios));
+
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n== 10. Limites do Instagram: validar, nunca truncar ==\n");
+
+  const hashtagsRepetidas = (n) =>
+    Array.from({ length: n }, (_, i) => `#tag${i}`).join(" ");
+  const mencoesRepetidas = (n) =>
+    Array.from({ length: n }, (_, i) => `@perfil${i}`).join(" ");
+
+  // LIMITE 1/2 — comprimento
+  const noLimite = "a".repeat(2200);
+  const acimaDoLimite = "a".repeat(2201);
+  check("LIMITE 1: 2200 caracteres → válida",
+    validateInstagramCaption(noLimite).valid === true);
+  check("LIMITE 2: 2201 caracteres → inválida",
+    validateInstagramCaption(acimaDoLimite).valid === false &&
+    validateInstagramCaption(acimaDoLimite).error.code === "CAPTION_TOO_LONG");
+  check("LIMITE 2: NUNCA truncada para 2200 (o texto volta inteiro)",
+    resolveCaption({ mode: "original", originalCaption: acimaDoLimite })
+      .caption.length === 2201);
+  check("LIMITE 2: mensagem diz o número real e o máximo",
+    validateInstagramCaption(acimaDoLimite).error.message ===
+      "Legenda possui 2201 caracteres. Máximo permitido: 2200.");
+
+  // LIMITE 3/4 — hashtags
+  check("LIMITE 3: 30 hashtags → válida",
+    validateInstagramCaption(hashtagsRepetidas(30)).valid === true &&
+    validateInstagramCaption(hashtagsRepetidas(30)).hashtagCount === 30);
+  const h31 = validateInstagramCaption(hashtagsRepetidas(31));
+  check("LIMITE 4: 31 hashtags → inválida",
+    h31.valid === false && h31.error.code === "CAPTION_TOO_MANY_HASHTAGS");
+  check("LIMITE 4: mensagem de hashtags é a pedida",
+    h31.error.message === "Legenda possui 31 hashtags. O Instagram permite no máximo 30.");
+  check("LIMITE 4: hashtags NÃO são removidas automaticamente",
+    resolveCaption({ mode: "original", originalCaption: hashtagsRepetidas(31) })
+      .caption === hashtagsRepetidas(31));
+
+  // LIMITE 5/6 — menções
+  check("LIMITE 5: 20 menções → válida",
+    validateInstagramCaption(mencoesRepetidas(20)).valid === true &&
+    validateInstagramCaption(mencoesRepetidas(20)).mentionCount === 20);
+  const m21 = validateInstagramCaption(mencoesRepetidas(21));
+  check("LIMITE 6: 21 menções → inválida",
+    m21.valid === false && m21.error.code === "CAPTION_TOO_MANY_MENTIONS");
+  check("LIMITE 6: mensagem de menções é a pedida",
+    m21.error.message === "Legenda possui 21 menções. O Instagram permite no máximo 20.");
+  check("LIMITE 6: menções NÃO são removidas automaticamente",
+    resolveCaption({ mode: "original", originalCaption: mencoesRepetidas(21) })
+      .caption === mencoesRepetidas(21));
+
+  // LIMITE 7/8 — vale para original E para custom
+  check("LIMITE 7: original acima do limite → resolução inválida",
+    resolveCaption({ mode: "original", originalCaption: acimaDoLimite })
+      .validation.valid === false);
+  check("LIMITE 8: custom acima do limite também é bloqueada (sem exceção)",
+    resolveCaption({ mode: "custom", customCaption: acimaDoLimite })
+      .validation.valid === false);
+  check("LIMITE 8: custom com 31 hashtags também é bloqueada",
+    resolveCaption({ mode: "custom", customCaption: hashtagsRepetidas(31) })
+      .validation.valid === false);
+
+  // LIMITE 9 — none nunca é barrada
+  check("LIMITE 9: none não valida conteúdo e resolve para vazio",
+    resolveCaption({ mode: "none", originalCaption: acimaDoLimite, customCaption: acimaDoLimite })
+      .validation.valid === true &&
+    resolveCaption({ mode: "none", originalCaption: acimaDoLimite }).caption === "");
+
+  // LIMITE 10/11 — strip acontece ANTES da validação
+  const com34 = `texto ${hashtagsRepetidas(34)}`;
+  check("LIMITE 10: 34 hashtags SEM strip → inválida",
+    resolveCaption({ mode: "original", originalCaption: com34 }).validation.valid === false);
+  const stripped34 = resolveCaption({
+    mode: "original", originalCaption: com34, stripHashtags: true,
+  });
+  check("LIMITE 10: 34 hashtags COM strip explícito → válida",
+    stripped34.validation.valid === true && stripped34.hashtags === 0);
+  const com25 = `crédito ${mencoesRepetidas(25)}`;
+  check("LIMITE 11: 25 menções SEM strip → inválida",
+    resolveCaption({ mode: "original", originalCaption: com25 }).validation.valid === false);
+  const stripped25 = resolveCaption({
+    mode: "original", originalCaption: com25, stripMentions: true,
+  });
+  check("LIMITE 11: 25 menções COM strip explícito → válida",
+    stripped25.validation.valid === true && stripped25.mentions === 0);
+  check("LIMITE 10/11: a validação é do TEXTO FINAL, não do original",
+    stripped34.length === captionLength(stripped34.caption));
+
+  // LIMITE 12/13 — Unicode intacto
+  const emojisNoLimite = "😂".repeat(2200);
+  check("LIMITE 12: 2200 emojis contam como 2200 (code points, não UTF-16)",
+    captionLength(emojisNoLimite) === 2200 &&
+    validateInstagramCaption(emojisNoLimite).valid === true);
+  check("LIMITE 12: 2201 emojis → inválida, e a string não é corrompida",
+    validateInstagramCaption("😂".repeat(2201)).valid === false &&
+    resolveCaption({ mode: "original", originalCaption: "😂".repeat(2201) })
+      .caption === "😂".repeat(2201));
+  const perto = "a".repeat(2197) + "😂é\n";
+  check("LIMITE 13: emoji, acento e quebra de linha perto do limite sobrevivem",
+    resolveCaption({ mode: "original", originalCaption: perto }).caption === perto &&
+    captionLength(perto) === 2200);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n== 11. Transporte: defesa final ==\n");
+
+  const agent2 = new MockAgent();
+  agent2.disableNetConnect();
+  setGlobalDispatcher(agent2);
+  const pool2 = agent2.get("https://graph.instagram.com");
+
+  let requestsFeitos = 0;
+  pool2
+    .intercept({ path: /\/v21\.0\/[^/]+\/media$/, method: "POST" })
+    .reply(200, () => { requestsFeitos++; return { id: "creation_ok" }; })
+    .times(5);
+
+  // Válida → o request acontece
+  await meta.createMediaContainerOnly(
+    "17841400000000000", "https://cdn/ok.mp4", "legenda normal 😂", "TOKEN", "REELS", null
+  );
+  check("LIMITE 14: legenda válida → POST /media acontece", requestsFeitos === 1);
+
+  // LIMITE 14 — legado inválido chega ao transporte: bloqueia, zero request
+  const cenarios = [
+    ["comprimento", acimaDoLimite, "CAPTION_TOO_LONG"],
+    ["hashtags", hashtagsRepetidas(31), "CAPTION_TOO_MANY_HASHTAGS"],
+    ["menções", mencoesRepetidas(21), "CAPTION_TOO_MANY_MENTIONS"],
+  ];
+  for (const [rotulo, texto, code] of cenarios) {
+    const antes = requestsFeitos;
+    let erro = null;
+    try {
+      await meta.createMediaContainerOnly(
+        "17841400000000000", "https://cdn/x.mp4", texto, "TOKEN", "REELS", null
+      );
+    } catch (e) { erro = e; }
+    // `instanceof` não serve aqui: o teste importa a lib de um build e o
+    // meta-publish de outro, então são duas classes distintas em memória.
+    // O contrato observável é o par name+code.
+    check(`LIMITE 14 (${rotulo}): transporte lança InvalidCaptionError`,
+      erro !== null && erro.name === "InvalidCaptionError" && erro.code === code);
+    check(`LIMITE 14 (${rotulo}): ZERO requests à Meta`, requestsFeitos === antes);
+  }
+
+  await agent2.close();
+
+  // O corte permitido no arquivo é o da RESPOSTA da Meta em mensagem de erro
+  // (`rawText.slice(0, 300)`); o proibido é qualquer corte na legenda.
+  check("LIMITE 14: o transporte não corta a legenda",
+    !/\b(caption|captionFinal|raw)\s*\.\s*(slice|substring|substr)\s*\(/
+      .test(semComentarios(src("lib/meta-publish.ts"))));
+
+  // ══════════════════════════════════════════════════════════════════════════
+  console.log("\n== 12. Nenhuma truncagem silenciosa sobrou ==\n");
+
+  const arquivosDeCaption = [
+    "lib/meta-publish.ts", "lib/reel-captions.ts", "lib/scraped-reel.ts",
+    "app/api/posts/distribute/route.ts", "app/api/posts/publish/route.ts",
+    "app/api/clone/create/route.ts", "app/api/cron/process-loops/route.ts",
+    "app/api/cron/publish-scheduled/route.ts",
+    "app/api/cron/sync-distribute-accounts/route.ts",
+    "app/api/inspirations/save-to-library/route.ts",
+  ];
+  for (const arq of arquivosDeCaption) {
+    const codigo = semComentarios(src(arq));
+    // Truncagem de texto de legenda: slice/substring/substr aplicados a uma
+    // variável de caption. Logs cortam com `.slice(0, 80)` DENTRO de template
+    // string — esses são permitidos e não tocam no que vai para a Meta.
+    const suspeitos = [
+      ...codigo.matchAll(/\b(caption[A-Za-z]*|resolucao\.caption)\s*\.\s*(slice|substring|substr)\s*\(/g),
+    ].filter((m) => {
+      // permite o corte de log dentro de crase
+      const antes = codigo.slice(Math.max(0, m.index - 120), m.index);
+      return !antes.includes("`") && !antes.includes("console.");
+    });
+    check(`${arq.split("/").pop()}: nenhuma truncagem de caption`, suspeitos.length === 0);
+  }
+
+  check("LIMITE 15: o literal 2200 não é repetido fora da lib de limites",
+    !/2200/.test(semComentarios(src("lib/meta-publish.ts"))) &&
+    !/2200/.test(semComentarios(src("app/api/posts/distribute/route.ts"))) &&
+    !/2200/.test(semComentarios(src("app/dashboard/postar/page.tsx"))));
+  check("LIMITE 15: as constantes vivem só em lib/reel-captions.ts",
+    src("lib/reel-captions.ts").includes("INSTAGRAM_CAPTION_MAX_LENGTH = 2200") &&
+    src("lib/reel-captions.ts").includes("INSTAGRAM_CAPTION_MAX_HASHTAGS = 30") &&
+    src("lib/reel-captions.ts").includes("INSTAGRAM_CAPTION_MAX_MENTIONS = 20"));
+  check("LIMITE 15: a UI não corta mais o texto digitado",
+    !/next\[i\] = val\.slice/.test(src("app/dashboard/postar/page.tsx")));
+  check("sanitizeCaption só faz transformações de transporte",
+    /\.trim\(\);/.test(src("lib/meta-publish.ts")) &&
+    !/sanitizeCaption[\s\S]{0,400}(slice|substring|replace\(HASHTAG|replace\(MENTION)/
+      .test(semComentarios(src("lib/meta-publish.ts"))));
+  check("erros de legenda não vazam o texto para o log",
+    !/console\.(error|log)\([^)]*\bcaption(Final)?\b[^)]*\)/
+      .test(semComentarios(src("lib/meta-publish.ts")).replace(/caption_chars=\$\{[^}]+\}/g, "")));
 
   console.log(`\n${passed} passaram, ${failed} falharam\n`);
   process.exit(failed === 0 ? 0 : 1);

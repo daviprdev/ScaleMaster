@@ -4,7 +4,7 @@ import { createMediaContainerOnly } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { getAutoCaption } from "@/lib/auto-captions";
 import {
-  normalizeCaptionMode, resolveCaption, captionTooLongMessage,
+  normalizeCaptionMode, resolveCaption, captionRejectionMessage,
   type CaptionMode,
 } from "@/lib/reel-captions";
 import { markDeadAccounts } from "@/lib/account-health";
@@ -1099,16 +1099,20 @@ async function processOneLoop(
           stripMentions: loop.caption_strip_mentions === true,
         });
 
-        // Legenda maior que o limite da Meta NÃO é cortada em silêncio: a conta
-        // é pulada e o motivo fica registrado como erro de container, visível na
-        // aba Loop do Monitor.
-        if (resolucao.overLimit) {
-          const motivo = captionTooLongMessage(resolucao.length, assignment.video.filename);
-          console.error(`[caption] @${account.username} | ${motivo}`);
+        // Legenda fora dos limites do Instagram (tamanho, hashtags ou menções)
+        // NÃO é cortada nem podada em silêncio: a conta é pulada e o motivo
+        // fica registrado como erro de container, visível na aba Loop do
+        // Monitor. A validação é do TEXTO FINAL — depois do strip, se ligado.
+        if (!resolucao.validation.valid) {
+          const motivo = captionRejectionMessage(resolucao.validation, assignment.video.filename);
+          console.error(
+            `[caption] @${account.username} | ${resolucao.validation.error?.code} | ` +
+            `chars=${resolucao.length} hashtags=${resolucao.hashtags} mentions=${resolucao.mentions}`
+          );
           await recordContainerError(
             admin, account, loop, "", motivo, assignment.video.id, accountCycleNumber
           );
-          return { kind: "skip", account, reason: "legenda acima do limite da Meta" };
+          return { kind: "skip", account, reason: "legenda fora dos limites do Instagram" };
         }
 
         if (resolucao.missingOriginal) {

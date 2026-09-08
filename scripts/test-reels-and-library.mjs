@@ -55,7 +55,12 @@ async function loadMetaPublish() {
       target: "es2022", module: "es2022", moduleResolution: "node",
       outDir: buildDir, rootDir: repoRoot, skipLibCheck: true, noEmitOnError: false,
     },
-    files: [path.join(repoRoot, "lib/meta-publish.ts")],
+    // reel-captions entra junto: meta-publish importa dela a validacao que
+    // barra legenda fora dos limites antes de montar o payload.
+    files: [
+      path.join(repoRoot, "lib/meta-publish.ts"),
+      path.join(repoRoot, "lib/reel-captions.ts"),
+    ],
   }));
   await run("npx", ["tsc", "-p", tsconfigPath]).catch(() => {});
   fs.writeFileSync(path.join(buildDir, "package.json"), JSON.stringify({ type: "module" }));
@@ -79,7 +84,11 @@ export async function fetch(url, init) {
   };
 }
 `);
-  const js = fs.readFileSync(outFile, "utf8").replace(/from ["']undici["']/g, 'from "./undici-stub.js"');
+  const js = fs.readFileSync(outFile, "utf8")
+    .replace(/from ["']undici["']/g, 'from "./undici-stub.js"')
+    // O tsc emite `from "./reel-captions"` sem extensao; o loader ESM do Node
+    // exige o `.js`. So o build de teste precisa disso.
+    .replace(/from "(\.\/[^"]+?)"/g, (m, p) => (p.endsWith(".js") ? m : `from "${p}.js"`));
   fs.writeFileSync(outFile, js);
 
   const mod = await import(pathToFileURL(outFile).href);

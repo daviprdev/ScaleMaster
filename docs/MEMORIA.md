@@ -3842,3 +3842,80 @@ a representação do encoding. Nenhum Reel real foi publicado. Fixtures no banco
 de produção criados e removidos; 0 resíduo.
 
 `npm test` = 505 checagens. typecheck, lint e build limpos.
+
+
+---
+
+## Limites de legenda: validar, nunca truncar (2026-09-08)
+
+Hardening curto sobre a feature de legenda original, antes do merge.
+
+**O que estava errado**
+
+`sanitizeCaption`, em `lib/meta-publish.ts`, terminava com `.slice(0, 2200)`.
+Era a última coisa a tocar no texto antes do payload, e cortava em silêncio:
+uma legenda de 2400 caracteres virava um post publicado com 2200 e nenhum aviso
+para ninguém. Dependiam disso todos os caminhos que chamam
+`createMediaContainerOnly`/`publishViaMetaAPI` — Loop, Postar, Clone,
+publicação imediata e o cron `publish-scheduled`.
+
+A varredura achou só essa. As outras ocorrências de `.slice()` perto de caption
+são corte de log (`.slice(0, 80)` dentro de template string, que inclusive é
+bom: não vaza a legenda inteira) e `String(raw.caption ?? "").slice(0, 120)` em
+`/api/apify/scrape` — rota legada sem chamador na UI, que não alcança
+publicação. Não foi tocada.
+
+**Validador central**
+
+`validateInstagramCaption(caption)` devolve
+`{ valid, length, hashtagCount, mentionCount, error?: { code, message } }`.
+Códigos: `CAPTION_TOO_LONG`, `CAPTION_TOO_MANY_HASHTAGS`,
+`CAPTION_TOO_MANY_MENTIONS`.
+
+Constantes `INSTAGRAM_CAPTION_MAX_LENGTH` (2200), `_MAX_HASHTAGS` (30) e
+`_MAX_MENTIONS` (20) são a única fonte desses números. Há teste que falha se
+alguém reintroduzir o literal 2200 em rota ou na UI.
+
+Hashtags e menções eram só contadores; agora bloqueiam de verdade — e sem
+remover nada por conta própria.
+
+**Ordem**
+
+resolve modo → strip (se o usuário ligou) → **valida** → snapshot. Validar
+antes do strip reprovaria justamente a legenda que o usuário mandou podar: 34
+hashtags com `stripHashtags: true` resolvem para 0 e passam.
+
+**Unidade de contagem**
+
+Code points (`[...text].length`), não UTF-16. `"😂".length` é 2 em JavaScript,
+o que faria uma legenda cheia de emoji ser recusada cedo demais. Não é grapheme
+cluster — 👨‍👩‍👧 com ZWJ ainda conta como vários; chegar lá exigiria
+`Intl.Segmenter` e só mudaria o resultado em legendas feitas quase só de emoji
+composto. Escolha registrada no código.
+
+**Defesa final**
+
+`assertCaptionValid` roda imediatamente antes de montar o payload e lança
+`InvalidCaptionError`. Se um fluxo legado gravar legenda inválida no banco, o
+transporte bloqueia em vez de cortar — provado com MockAgent: **zero requests à
+Meta** nos três cenários de violação. `sanitizeCaption` ficou restrito ao que é
+necessário para o texto atravessar HTTP: bytes nulos, controles C0 e trim
+externo.
+
+**UI**
+
+Sem redesign. O `CaptionEditor` da aba Postar fazia `val.slice(0, 2200)` a cada
+tecla — colar uma legenda longa descartava o excedente sem avisar. Saiu; agora
+o contador mostra caracteres, hashtags e menções, ficando vermelho ao estourar,
+e o servidor é a autoridade. O `maxLength={2200}` nativo do textarea do Loop
+ficou como está (atributo de UX, explicitamente permitido).
+
+**Testes**
+
+96 → 143 checagens. Os 15 casos pedidos, incluindo 2200 válido / 2201 inválido
+sem truncagem, 30 e 31 hashtags, 20 e 21 menções, custom sem exceção, `none`
+sem validação de conteúdo, strip antes da validação, emoji no limite e o
+bloqueio no transporte com zero requests. Nenhum Reel real publicado.
+
+`npm test` = 552 checagens. typecheck, lint e build limpos. Sem migration: é
+só lógica.

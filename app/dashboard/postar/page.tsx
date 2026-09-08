@@ -12,7 +12,13 @@ import { cn } from "@/lib/utils";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
 import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
-import type { CaptionMode } from "@/lib/reel-captions";
+import {
+  validateInstagramCaption,
+  INSTAGRAM_CAPTION_MAX_LENGTH,
+  INSTAGRAM_CAPTION_MAX_HASHTAGS,
+  INSTAGRAM_CAPTION_MAX_MENTIONS,
+  type CaptionMode,
+} from "@/lib/reel-captions";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -89,7 +95,9 @@ const VIDEO_COUNT_PRESETS = [
 
 const POSTS_PER_DAY_OPTIONS = [1, 2, 3, 4, 6, 8, 12, 24, 36, 48, 72];
 
-const MAX_CAPTION_CHARS = 2200;
+// Limites centralizados em lib/reel-captions.ts — o número não é repetido
+// aqui nem em nenhuma rota.
+const MAX_CAPTION_CHARS = INSTAGRAM_CAPTION_MAX_LENGTH;
 
 // Valor fixo enviado como auto_caption_type — não há mais seleção de categoria,
 // o pool em lib/auto-captions.ts é único e cobre temas livres.
@@ -264,8 +272,11 @@ function CaptionEditor({
   }, []);
 
   const update = (i: number, val: string) => {
+    // Sem `.slice()`: colar uma legenda longa não pode descartar o excedente
+    // em silêncio. O contador fica vermelho e o servidor recusa — a política
+    // é validar, não truncar.
     const next = [...captions];
-    next[i] = val.slice(0, MAX_CAPTION_CHARS);
+    next[i] = val;
     onChange(next);
   };
 
@@ -340,9 +351,37 @@ function CaptionEditor({
                   className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm placeholder-white/20 resize-none focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all leading-relaxed"
                 />
                 <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
-                  <span className={cn("text-[10px] transition-colors", cap.length > MAX_CAPTION_CHARS * 0.9 ? "text-yellow-400" : "text-white/20")}>
-                    {cap.length}/{MAX_CAPTION_CHARS}
-                  </span>
+                  {(() => {
+                    const v = validateInstagramCaption(cap);
+                    const cor = (excedeu: boolean, perto: boolean) =>
+                      excedeu ? "text-red-400" : perto ? "text-yellow-400" : "text-white/20";
+                    return (
+                      <span className="flex items-center gap-2 text-[10px] transition-colors">
+                        <span className={cor(
+                          v.length > INSTAGRAM_CAPTION_MAX_LENGTH,
+                          v.length > INSTAGRAM_CAPTION_MAX_LENGTH * 0.9
+                        )}>
+                          {v.length}/{INSTAGRAM_CAPTION_MAX_LENGTH}
+                        </span>
+                        {v.hashtagCount > 0 && (
+                          <span className={cor(
+                            v.hashtagCount > INSTAGRAM_CAPTION_MAX_HASHTAGS,
+                            v.hashtagCount > INSTAGRAM_CAPTION_MAX_HASHTAGS * 0.9
+                          )}>
+                            {v.hashtagCount}/{INSTAGRAM_CAPTION_MAX_HASHTAGS} #
+                          </span>
+                        )}
+                        {v.mentionCount > 0 && (
+                          <span className={cor(
+                            v.mentionCount > INSTAGRAM_CAPTION_MAX_MENTIONS,
+                            v.mentionCount > INSTAGRAM_CAPTION_MAX_MENTIONS * 0.9
+                          )}>
+                            {v.mentionCount}/{INSTAGRAM_CAPTION_MAX_MENTIONS} @
+                          </span>
+                        )}
+                      </span>
+                    );
+                  })()}
                   {captions.length > 1 && (
                     <button
                       onClick={() => remove(i)}

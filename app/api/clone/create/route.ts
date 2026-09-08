@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
 import {
-  normalizeCaptionMode, resolveCaption, captionTooLongMessage,
+  normalizeCaptionMode, resolveCaption, captionRejectionMessage,
   DEFAULT_CAPTION_MODE_CLONE,
 } from "@/lib/reel-captions";
 import { normalizeProcessingMode } from "@/lib/video-processing";
@@ -142,9 +142,12 @@ export async function POST(req: NextRequest) {
         stripHashtags,
         stripMentions,
       });
-      if (resolucao.overLimit) {
+      if (!resolucao.validation.valid) {
         return NextResponse.json(
-          { error: captionTooLongMessage(resolucao.length, "Reel " + reel.shortCode) },
+          {
+            error: captionRejectionMessage(resolucao.validation, "Reel " + reel.shortCode),
+            code: resolucao.validation.error?.code,
+          },
           { status: 400 }
         );
       }

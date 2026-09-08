@@ -81,10 +81,17 @@ function sanitize(body) {
 async function main() {
   console.log("\n== 1. share_to_feed: payload real por valor ==\n");
 
-  const buildDir = await compile(["lib/meta-publish.ts"], "asc-hardening-meta", true);
+  // reel-captions entra junto: meta-publish importa dela a validação que barra
+  // legenda fora dos limites antes de montar o payload.
+  const buildDir = await compile(
+    ["lib/meta-publish.ts", "lib/reel-captions.ts"], "asc-hardening-meta", true);
   const outFile = path.join(buildDir, "lib", "meta-publish.js");
   fs.writeFileSync(outFile,
-    fs.readFileSync(outFile, "utf8").replace(/from ["']undici["']/g, 'from "./undici-stub.js"'));
+    fs.readFileSync(outFile, "utf8")
+      .replace(/from ["']undici["']/g, 'from "./undici-stub.js"')
+      // O tsc emite `from "./reel-captions"` sem extensão; o loader ESM do Node
+      // exige o `.js`. Só o build de teste precisa disso.
+      .replace(/from "(\.\/[^"]+?)"/g, (m, p) => (p.endsWith(".js") ? m : `from "${p}.js"`)));
   const meta = await import(pathToFileURL(outFile).href);
   const stub = await import(pathToFileURL(path.join(buildDir, "lib", "undici-stub.js")).href);
   const calls = stub.__calls;

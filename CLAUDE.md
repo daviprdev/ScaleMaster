@@ -451,6 +451,8 @@ Todas as tabelas têm RLS habilitado. Scripts em `supabase/schema.sql` e `supaba
 
 | **Feat — Legenda original de Reels (2026-09-07)** | Captura o TEXTO da publicação junto do vídeo raspado e deixa a publicação escolher a fonte da legenda. **Actor real: `apify/instagram-scraper`** (não o `apify~instagram-reel-scraper` do histórico antigo); campos confirmados na referência oficial e já usados em produção: `caption`, `ownerUsername`, `url`, `shortCode`, `videoUrl`. Novo `lib/scraped-reel.ts` é o único ponto que interpreta o payload — nada de `item.caption || item.text` espalhado. **A truncagem sumiu**: o poller de Inspirações cortava em 120 chars e o save-to-library em 500; agora o texto vai inteiro, com emoji, quebra de linha, acento, hashtag e @menção preservados. Três estados distinguidos: `null` = não capturada, `""` = Reel sem legenda, texto = legenda. **Reuso em vez de duplicata**: `videos_library.caption` e `owner_username` já existiam e foram reaproveitadas (com COMMENT explicando a semântica); só `source_url` é nova — `original_url` guarda a URL do CDN, que expira. `lib/reel-captions.ts` concentra os três modos (`original` \| `custom` \| `none`) e a resolução; `caption_mode` (NULLABLE) em `loops` e `distribute_campaigns`, com NULL = `custom` = comportamento histórico — **sem backfill**. Clone tem padrão próprio `original`, porque era o que ele já fazia (`caption: reel.caption`). **Snapshot**: a legenda é resolvida no momento em que o vídeo concreto é escolhido e gravada em `scheduled_posts.caption` / `pending_containers.caption`; `publish-scheduled` continua só lendo — mudar o vídeo na Biblioteca ou a configuração do Loop não altera post já criado. **Sem fallback silencioso**: `original` sem legenda publica SEM legenda, nunca troca por custom/automática. **Limite de 2200 chars** (referência oficial da Meta, consultada 2026-09-07): legenda acima disso vira ERRO antes de agendar — nunca truncagem silenciosa. Toggles opcionais de remover hashtags/@menções (default false nos dois) com regex Unicode (`\p{L}\p{N}\p{M}`) que trata `#ação`, `#português` e `#日本語`. UI: `CaptionModeSelector` em Postar, Loop, Clonar e no modal Postar agora; legenda visível na Biblioteca e nas Inspirações, sempre como TEXTO (zero `dangerouslySetInnerHTML`). Stories não foi tocado. Migration `supabase/original_reel_captions.sql` (aplicada). `scripts/test-reel-captions.mjs`: 96 checagens, incluindo interceptação do POST real à Meta via MockAgent do undici. | ✅ Concluída |
 
+| **Fix — Limites de legenda do Instagram: validar, nunca truncar (2026-09-08)** | `sanitizeCaption` (`lib/meta-publish.ts`) terminava com `.slice(0, 2200)` — a última linha do transporte cortava a legenda em silêncio e publicava um texto pela metade, sem ninguém saber. Removido. Novo validador central `validateInstagramCaption()` em `lib/reel-captions.ts` devolve `{ valid, length, hashtagCount, mentionCount, error: { code, message } }` com códigos `CAPTION_TOO_LONG`, `CAPTION_TOO_MANY_HASHTAGS` e `CAPTION_TOO_MANY_MENTIONS`. Constantes centralizadas (`INSTAGRAM_CAPTION_MAX_LENGTH/HASHTAGS/MENTIONS` = 2200/30/20, da referência oficial da Meta) — o literal não se repete em nenhuma rota nem na UI. **Hashtags e menções foram promovidas de contador a validação real**: 31 hashtags ou 21 menções barram a publicação, e nada é removido automaticamente. `resolveCaption` passou a devolver `validation` em vez de `overLimit`, e a validação é sempre do **TEXTO FINAL** — depois dos toggles de strip, então 34 hashtags + `stripHashtags: true` resolve para 0 e é válida. **Defesa final no transporte**: `assertCaptionValid` roda imediatamente antes de montar o payload e LANÇA `InvalidCaptionError` — uma legenda inválida vinda de fluxo legado ou gravada direto no banco não vira request à Meta (testado: zero requests no MockAgent). Comprimento contado em **code points** (`[...text].length`), então emoji = 1 caractere. `sanitizeCaption` ficou restrito a transformações de transporte (bytes nulos, controles C0, trim externo) e está proibido de cortar ou podar. UI: o `CaptionEditor` da aba Postar parou de fazer `val.slice()` ao digitar/colar e agora mostra contador de caracteres, hashtags e menções, em vermelho ao estourar. `scripts/test-reel-captions.mjs`: 96 → 143 checagens. | ✅ Aplicado |
+
 **SQL pendente (executar no Supabase):**
 ```sql
 -- Legendas Automáticas no Loop (supabase/auto_captions.sql)
@@ -728,11 +730,32 @@ Regra permanente. Vale para qualquer fluxo novo que ingira ou publique Reel.
   fluxo já fazia (pool digitado ou legenda automática). Clone é a exceção
   documentada: o padrão dele é `original`, porque publicar a legenda do Reel
   sempre foi o comportamento daquele fluxo. Nenhum backfill.
-- **Limite de 2200 caracteres é erro, não corte.** Referência oficial da Meta
-  (IG User Media): "Maximum 2200 characters, 30 hashtags, and 20 @ tags". Acima
-  disso a publicação é barrada com mensagem, antes de agendar ou de chamar a
-  Meta. O `slice(2200)` de `sanitizeCaption` permanece como última rede de
-  proteção do transporte, nunca como política.
+- **CAPTION NUNCA É TRUNCADA SILENCIOSAMENTE.** É a regra mais dura desta
+  feature. Os três limites da referência oficial da Meta (IG User Media —
+  "Maximum 2200 characters, 30 hashtags, and 20 @ tags") são **validados**, e
+  legenda fora deles **bloqueia a publicação com erro explícito**. Nada de
+  `slice`, `substring`, `truncate` ou remoção automática de hashtag/@menção em
+  nenhum ponto do caminho da legenda — nem como "última rede de proteção".
+- **Um validador central:** `validateInstagramCaption()` em
+  `lib/reel-captions.ts`, com os códigos `CAPTION_TOO_LONG`,
+  `CAPTION_TOO_MANY_HASHTAGS` e `CAPTION_TOO_MANY_MENTIONS`. As constantes
+  `INSTAGRAM_CAPTION_MAX_LENGTH/HASHTAGS/MENTIONS` são a única fonte desses
+  números — não repetir 2200/30/20 em rota, cron ou UI.
+- **A validação é do TEXTO FINAL.** A ordem é: resolve o modo → aplica o strip
+  de hashtags/@menções, se o usuário ligou → **valida** → snapshot. Validar
+  antes do strip reprovaria justamente a legenda que o usuário mandou podar.
+- **Vale para `original` e para `custom`.** Legenda digitada não ganha exceção.
+  `none` não valida conteúdo (resolve para vazio, e a caption é omitida do
+  payload).
+- **O transporte tem defesa final.** `assertCaptionValid` roda imediatamente
+  antes de montar o payload e lança `InvalidCaptionError`: se um fluxo legado
+  gravar legenda inválida, a requisição à Meta não sai. O transporte bloqueia —
+  nunca conserta. `sanitizeCaption` só remove bytes nulos, caracteres de
+  controle C0 e espaço externo.
+- **Comprimento em code points** (`[...text].length`), para emoji contar como 1
+  caractere. Não é grapheme cluster (uma família com ZWJ ainda conta como
+  vários): escolha consciente, documentada em `captionLength`.
+- **Erro não vaza a legenda no log** — só o código e os números.
 - **Atribuição não some sozinha.** Hashtags e @menções — inclusive crédito ao
   criador — só são removidas se o usuário ligar o toggle. Default é false nos
   dois, e a remoção usa classes Unicode (`\p{L}\p{N}\p{M}`), não `\w`,

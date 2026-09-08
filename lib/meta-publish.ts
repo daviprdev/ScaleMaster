@@ -6,21 +6,57 @@ const GRAPH_API = "https://graph.instagram.com/v21.0";
 // undici.fetch em vez do fetch global do Next.js: o patch de cache do Next
 // pode alterar/reter respostas que aqui precisam ser lidas cruas.
 import { fetch as undiciFetch } from "undici";
+// Import relativo (e não `@/lib/...`) de propósito: a suíte de testes compila
+// este arquivo isolado com `tsc`, fora do resolver de paths do Next.
+import { validateInstagramCaption, InvalidCaptionError } from "./reel-captions";
 
 /**
- * Remove caracteres que corrompem envios em lote silenciosamente:
- *   - Bytes nulos ( ) — causam truncamento na maioria dos parsers HTTP
- *   - Caracteres de controle C0 (exceto \t=0x09, \n=0x0A, \r=0x0D que são válidos em legendas)
- * Aplica trim + limite de 2200 chars da Meta API.
- * Chamada por conta, antes do encodeURIComponent, para isolar cada legenda.
+ * Sanitização de TRANSPORTE — e nada além disso.
+ *
+ * Faz apenas duas transformações, ambas necessárias para o texto atravessar
+ * HTTP intacto e ambas explicitamente permitidas:
+ *   - remove bytes nulos (`\x00`), que truncam a string na maioria dos parsers;
+ *   - remove caracteres de controle C0, exceto \t \n \r, que são válidos em
+ *     legenda e precisam sobreviver.
+ *   - `trim()` do espaço EXTERNO (a Meta ignora, e evita legenda "vazia" que
+ *     é só espaço virar um `caption=%20`).
+ *
+ * NÃO é um "consertador". Proibido aqui: slice/truncate, remoção automática de
+ * hashtags ou @menções, normalização de espaços internos, troca de aspas,
+ * lowercase. Legenda fora dos limites do Instagram NÃO é ajustada — é recusada
+ * por `assertCaptionValid` logo abaixo.
+ *
+ * Emojis, acentos, quebras de linha e o resto do Unicode passam intactos.
  */
 function sanitizeCaption(raw: string): string {
   return raw
     .replace(/\x00/g, "")
     // eslint-disable-next-line no-control-regex
     .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
-    .trim()
-    .slice(0, 2200);
+    .trim();
+}
+
+/**
+ * DEFESA FINAL, imediatamente antes de montar o payload.
+ *
+ * As rotas já validam ao resolver a legenda, mas um fluxo legado (ou uma linha
+ * gravada direto no banco) pode chegar aqui com uma legenda inválida. Nesse
+ * caso o transporte BLOQUEIA — não corta, não conserta, não publica pela
+ * metade. Lançar aqui é o que garante que a requisição à Meta nem sai.
+ *
+ * O log não inclui a legenda: só os números que explicam a recusa.
+ */
+function assertCaptionValid(caption: string, igAccountId: string): void {
+  if (caption === "") return;                 // "sem legenda" é válido
+  const validation = validateInstagramCaption(caption);
+  if (validation.valid) return;
+
+  console.error(
+    `[meta] legenda recusada no transporte ig=${igAccountId.slice(0, 10)}… ` +
+    `code=${validation.error?.code} chars=${validation.length} ` +
+    `hashtags=${validation.hashtagCount} mentions=${validation.mentionCount}`
+  );
+  throw new InvalidCaptionError(validation);
 }
 
 /**
@@ -56,6 +92,12 @@ async function createMediaContainer(
   // Sanitiza + normaliza: escopo LOCAL à chamada — nunca compartilhado entre contas.
   // Nunca envia undefined/"undefined" — causaria posts sem legenda de forma silenciosa.
   const captionFinal = sanitizeCaption(typeof caption === "string" ? caption : "");
+
+  // Bloqueia ANTES de qualquer coisa: nenhuma requisição à Meta é montada nem
+  // enviada com legenda fora dos limites. Stories não levam caption, então o
+  // texto nem chega a ser enviado — mas validar aqui também evita que uma
+  // legenda inválida "passe" só porque o destino a ignoraria.
+  if (mediaType !== "STORIES") assertCaptionValid(captionFinal, igAccountId);
 
   // Form-encoded body — único formato documentado pela Meta Graph API para o endpoint
   // POST /{ig-user-id}/media (todos os exemplos oficiais usam curl -d, i.e. form-encoded).

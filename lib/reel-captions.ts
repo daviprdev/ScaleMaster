@@ -21,10 +21,13 @@
  * Referência oficial (Instagram Platform → IG User Media, POST
  * /{ig-user-id}/media), consultada em 2026-09-07:
  *   "Maximum 2200 characters, 30 hashtags, and 20 @ tags."
+ *
+ * Estas são as ÚNICAS fontes desses números no projeto. Nenhuma rota deve
+ * repetir 2200/30/20 literal.
  */
-export const META_CAPTION_MAX_LENGTH = 2200;
-export const META_CAPTION_MAX_HASHTAGS = 30;
-export const META_CAPTION_MAX_MENTIONS = 20;
+export const INSTAGRAM_CAPTION_MAX_LENGTH = 2200;
+export const INSTAGRAM_CAPTION_MAX_HASHTAGS = 30;
+export const INSTAGRAM_CAPTION_MAX_MENTIONS = 20;
 
 // ── Modos ───────────────────────────────────────────────────────────────────
 
@@ -90,6 +93,112 @@ export function countMentions(text: string): number {
   return (text.match(MENTION_RE) ?? []).length;
 }
 
+// ── Validação (a política: VALIDAR, NUNCA TRUNCAR) ──────────────────────────
+
+export type CaptionErrorCode =
+  | "CAPTION_TOO_LONG"
+  | "CAPTION_TOO_MANY_HASHTAGS"
+  | "CAPTION_TOO_MANY_MENTIONS";
+
+export interface CaptionValidation {
+  valid: boolean;
+  /** Tamanho em CODE POINTS — ver comentário em `captionLength`. */
+  length: number;
+  hashtagCount: number;
+  mentionCount: number;
+  error?: { code: CaptionErrorCode; message: string };
+}
+
+/**
+ * Unidade de contagem: CODE POINTS Unicode (`[...text].length`), não unidades
+ * UTF-16.
+ *
+ * `"😂".length` é 2 em JavaScript porque emoji fora do BMP ocupa dois surrogate
+ * halves; contar assim faria uma legenda com muitos emojis ser recusada antes
+ * da hora. Code point conta cada emoji como 1, que é a leitura intuitiva e a
+ * mais próxima do que o Instagram mostra.
+ *
+ * Não é grapheme cluster: uma família 👨‍👩‍👧 (com ZWJ) ainda conta como vários.
+ * Chegar em cluster exigiria `Intl.Segmenter` e complicaria sem ganho real
+ * perto do limite de 2200 — a diferença só apareceria em legendas feitas quase
+ * só de emojis compostos. Fica registrado como escolha consciente.
+ *
+ * Em nenhum caso o texto é alterado para caber: contar é só medir.
+ */
+export function captionLength(text: string): number {
+  return [...text].length;
+}
+
+/**
+ * VALIDADOR CENTRAL. Todo caminho que envia legenda passa por aqui — rotas de
+ * agendamento, cron do Loop, publicação imediata e o transporte da Meta.
+ *
+ * Nunca modifica o texto. Devolve o veredito e os números; quem chama decide
+ * como reportar. Legenda vazia é válida (é o modo "sem legenda").
+ */
+export function validateInstagramCaption(caption: string): CaptionValidation {
+  const length = captionLength(caption);
+  const hashtagCount = countHashtags(caption);
+  const mentionCount = countMentions(caption);
+
+  const base: CaptionValidation = { valid: true, length, hashtagCount, mentionCount };
+
+  if (length > INSTAGRAM_CAPTION_MAX_LENGTH) {
+    return {
+      ...base,
+      valid: false,
+      error: {
+        code: "CAPTION_TOO_LONG",
+        message:
+          `Legenda possui ${length} caracteres. ` +
+          `Máximo permitido: ${INSTAGRAM_CAPTION_MAX_LENGTH}.`,
+      },
+    };
+  }
+
+  if (hashtagCount > INSTAGRAM_CAPTION_MAX_HASHTAGS) {
+    return {
+      ...base,
+      valid: false,
+      error: {
+        code: "CAPTION_TOO_MANY_HASHTAGS",
+        message:
+          `Legenda possui ${hashtagCount} hashtags. ` +
+          `O Instagram permite no máximo ${INSTAGRAM_CAPTION_MAX_HASHTAGS}.`,
+      },
+    };
+  }
+
+  if (mentionCount > INSTAGRAM_CAPTION_MAX_MENTIONS) {
+    return {
+      ...base,
+      valid: false,
+      error: {
+        code: "CAPTION_TOO_MANY_MENTIONS",
+        message:
+          `Legenda possui ${mentionCount} menções. ` +
+          `O Instagram permite no máximo ${INSTAGRAM_CAPTION_MAX_MENTIONS}.`,
+      },
+    };
+  }
+
+  return base;
+}
+
+/**
+ * Erro do transporte: última barreira antes de montar o payload da Meta.
+ * Existe como classe própria para o chamador conseguir distinguir "legenda
+ * recusada aqui" de "a Meta recusou".
+ */
+export class InvalidCaptionError extends Error {
+  readonly code: CaptionErrorCode;
+  constructor(validation: CaptionValidation) {
+    super(validation.error?.message ?? "Legenda inválida.");
+    this.name = "InvalidCaptionError";
+    this.code = validation.error?.code ?? "CAPTION_TOO_LONG";
+  }
+}
+
 /**
  * Faxina APENAS do buraco deixado pela remoção. Tirar "#foo" de "a #foo b"
  * deixa "a  b"; juntar esses dois espaços é consequência direta da operação
@@ -134,11 +243,15 @@ export interface CaptionResolution {
   mode: CaptionMode;
   /** `original` pedido, mas o vídeo não tem legenda original disponível. */
   missingOriginal: boolean;
+  /**
+   * Veredito sobre o TEXTO FINAL — ou seja, DEPOIS de aplicar os toggles de
+   * remoção. Uma legenda com 34 hashtags e `stripHashtags: true` resolve para
+   * 0 hashtags e é válida; validar antes do strip reprovaria sem motivo.
+   */
+  validation: CaptionValidation;
   length: number;
   hashtags: number;
   mentions: number;
-  /** Passou de 2200 caracteres — publicação deve ser barrada, não truncada. */
-  overLimit: boolean;
 }
 
 /**
@@ -172,25 +285,32 @@ export function resolveCaption(input: CaptionResolutionInput): CaptionResolution
     }
   }
 
+  // A ordem importa: strip (quando o usuário pediu) já aconteceu acima, então
+  // o que se valida aqui é exatamente o texto que será enviado.
+  const validation = validateInstagramCaption(caption);
+
   return {
     caption,
     mode,
     missingOriginal,
-    length: [...caption].length,   // conta por code point: emoji = 1 caractere
-    hashtags: countHashtags(caption),
-    mentions: countMentions(caption),
-    overLimit: [...caption].length > META_CAPTION_MAX_LENGTH,
+    validation,
+    length: validation.length,
+    hashtags: validation.hashtagCount,
+    mentions: validation.mentionCount,
   };
 }
 
-/** Mensagem única de legenda longa — mesma frase na API e na UI. */
-export function captionTooLongMessage(length: number, contexto?: string): string {
+/**
+ * Mensagem de recusa, com o contexto de qual mídia causou o problema.
+ * A frase do limite vem do validador — não é reescrita aqui.
+ */
+export function captionRejectionMessage(
+  validation: CaptionValidation,
+  contexto?: string
+): string {
   const alvo = contexto ? ` (${contexto})` : "";
-  return (
-    `Legenda original excede o limite permitido pelo Instagram${alvo}: ` +
-    `${length} de ${META_CAPTION_MAX_LENGTH} caracteres. ` +
-    `Edite a legenda ou escolha outro modo — o texto não é cortado automaticamente.`
-  );
+  const detalhe = validation.error?.message ?? "Legenda inválida.";
+  return `${detalhe}${alvo} O texto não é cortado automaticamente — ajuste a legenda ou escolha outro modo.`;
 }
 
 /** Um vídeo tem legenda original aproveitável? */
