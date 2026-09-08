@@ -11,6 +11,12 @@ export const runtime = "nodejs";
 // Frontend sends batches of 3, so worst-case is ~30 s per request — safe on both plans.
 export const maxDuration = 300;
 
+interface SaveBody {
+  reels: ReelPayload[];
+  /** Pasta de destino OBRIGATÓRIA — sem ela o vídeo cairia em "Sem pasta". */
+  folderId?: string | null;
+}
+
 interface ReelPayload {
   id: string;
   shortCode: string;
@@ -63,11 +69,26 @@ function captionParaBanco(reel: ReelPayload): string | null {
 //
 // Processed sequentially to avoid parallel downloads hitting the timeout.
 export async function POST(req: NextRequest) {
-  const body = await req.json() as { reels: ReelPayload[] };
+  let body: SaveBody;
+  try {
+    body = await req.json() as SaveBody;
+  } catch {
+    return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
+  }
   const reels = Array.isArray(body.reels) ? body.reels : [];
 
   if (reels.length === 0) {
     return NextResponse.json({ error: "Lista de reels vazia." }, { status: 400 });
+  }
+
+  // Pasta de destino é OBRIGATÓRIA. A Biblioteca não tem mais "Sem pasta" — todo
+  // vídeo precisa nascer dentro de uma pasta, senão fica invisível na UI.
+  const folderId = typeof body.folderId === "string" ? body.folderId.trim() : "";
+  if (!folderId) {
+    return NextResponse.json(
+      { error: "Selecione uma pasta de destino antes de salvar." },
+      { status: 400 }
+    );
   }
 
   // Mock mode — no Supabase configured
@@ -83,6 +104,17 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = getSupabaseAdmin();
+
+  // A pasta precisa existir E pertencer ao usuário (evita gravar em pasta alheia).
+  const { data: folder } = await admin
+    .from("library_folders")
+    .select("id")
+    .eq("id", folderId)
+    .eq("user_id", user.id)
+    .maybeSingle<{ id: string }>();
+  if (!folder) {
+    return NextResponse.json({ error: "Pasta não encontrada." }, { status: 404 });
+  }
   const savedRecords: unknown[] = [];
   let errors = 0;
 
@@ -124,6 +156,7 @@ export async function POST(req: NextRequest) {
         .from("videos_library")
         .insert({
           user_id: user.id,
+          folder_id: folderId,
           filename: storagePath.split("/").pop()!,
           original_url: reel.videoUrl,
           storage_path: storagePath,

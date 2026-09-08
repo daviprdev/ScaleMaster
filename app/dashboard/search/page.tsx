@@ -20,6 +20,7 @@ import {
   Film,
 } from "lucide-react";
 import { InspirationGrid } from "@/components/inspirations/InspirationGrid";
+import { LibraryFolderSelect } from "@/components/inspirations/LibraryFolderSelect";
 import type { InspirationReel } from "@/components/inspirations/InspirationCard";
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -228,6 +229,7 @@ export default function InspiracoesPage() {
   const [error, setError] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("views");
   const [showFilters, setShowFilters] = useState(false);
+  const [saveFolderId, setSaveFolderId] = useState("");
 
   const [showModal, setShowModal] = useState(false);
   const [modalDone, setModalDone] = useState(false);
@@ -510,6 +512,8 @@ export default function InspiracoesPage() {
               </div>
 
               <div className="flex items-center gap-2">
+                <LibraryFolderSelect value={saveFolderId} onChange={setSaveFolderId} />
+
                 <motion.button
                   onClick={handleBulkDownload}
                   disabled={bulkProgress !== null}
@@ -585,7 +589,7 @@ export default function InspiracoesPage() {
 
             {/* Reels grid */}
             {reels.length > 0 && (
-              <InspirationGrid reels={sortedReels} onProcess={handleProcess} />
+              <InspirationGrid reels={sortedReels} onProcess={handleProcess} saveFolderId={saveFolderId} />
             )}
 
             {reels.length === 0 && (

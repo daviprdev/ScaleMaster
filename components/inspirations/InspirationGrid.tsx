@@ -7,9 +7,10 @@ interface InspirationGridProps {
   reels: InspirationReel[];
   onProcess: (reel: InspirationReel) => Promise<void>;
   onVideoUrlRecovered?: (id: string, videoUrl: string) => void;
+  saveFolderId?: string;
 }
 
-export function InspirationGrid({ reels, onProcess, onVideoUrlRecovered }: InspirationGridProps) {
+export function InspirationGrid({ reels, onProcess, onVideoUrlRecovered, saveFolderId }: InspirationGridProps) {
   return (
     <AnimatePresence mode="popLayout">
       <motion.div
@@ -22,6 +23,7 @@ export function InspirationGrid({ reels, onProcess, onVideoUrlRecovered }: Inspi
             reel={reel}
             onProcess={onProcess}
             onVideoUrlRecovered={onVideoUrlRecovered}
+            saveFolderId={saveFolderId}
           />
         ))}
       </motion.div>

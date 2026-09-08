@@ -45,6 +45,8 @@ interface InspirationCardProps {
   reel: InspirationReel;
   onProcess: (reel: InspirationReel) => Promise<void>;
   onVideoUrlRecovered?: (id: string, videoUrl: string) => void;
+  /** Pasta de destino escolhida na página. Sem ela, salvar fica bloqueado. */
+  saveFolderId?: string;
 }
 
 function fmt(n: number): string {
@@ -58,7 +60,7 @@ function fmtDur(s: number): string {
   return `${m}:${(s % 60).toString().padStart(2, "0")}`;
 }
 
-export function InspirationCard({ reel, onProcess, onVideoUrlRecovered }: InspirationCardProps) {
+export function InspirationCard({ reel, onProcess, onVideoUrlRecovered, saveFolderId }: InspirationCardProps) {
   const [hovered, setHovered] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [processState, setProcessState] = useState<ProcessState>("idle");
@@ -84,6 +86,12 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered }: Inspir
   const handleSaveToLibrary = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (saveState === "saving" || saveState === "done") return;
+    if (!saveFolderId) {
+      setSaveError("Selecione uma pasta de destino acima.");
+      setSaveState("error");
+      setTimeout(() => setSaveState("idle"), 4000);
+      return;
+    }
     setSaveState("saving");
     setSaveError("");
     try {
@@ -91,6 +99,7 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered }: Inspir
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          folderId: saveFolderId,
           reels: [{
             id: reel.id,
             shortCode: reel.shortCode,
@@ -492,8 +501,9 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered }: Inspir
                 <button
                   type="button"
                   onClick={handleSaveToLibrary}
-                  disabled={saveState === "saving" || saveState === "done"}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all disabled:opacity-70"
+                  disabled={saveState === "saving" || saveState === "done" || !saveFolderId}
+                  title={!saveFolderId ? "Selecione uma pasta de destino acima" : undefined}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                   style={{
                     background: "rgba(0,229,255,0.08)",
                     border: "1px solid rgba(0,229,255,0.22)",
@@ -503,7 +513,11 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered }: Inspir
                   {saveState === "saving" && <><Loader2 size={12} className="animate-spin" />Salvando...</>}
                   {saveState === "done" && <><CheckCircle2 size={12} />Na Biblioteca</>}
                   {saveState === "error" && <><AlertCircle size={12} />Tentar de novo</>}
-                  {saveState === "idle" && <><FolderPlus size={12} />Salvar na Biblioteca</>}
+                  {saveState === "idle" && (
+                    !saveFolderId
+                      ? <><FolderPlus size={12} />Escolha uma pasta</>
+                      : <><FolderPlus size={12} />Salvar na Biblioteca</>
+                  )}
                 </button>
               )}
 

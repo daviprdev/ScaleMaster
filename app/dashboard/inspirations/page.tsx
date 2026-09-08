@@ -23,6 +23,7 @@ import {
   Plus,
 } from "lucide-react";
 import { InspirationGrid } from "@/components/inspirations/InspirationGrid";
+import { LibraryFolderSelect } from "@/components/inspirations/LibraryFolderSelect";
 import type { InspirationReel } from "@/components/inspirations/InspirationCard";
 
 type SortKey = "views" | "likes" | "comments" | "duration";
@@ -323,6 +324,7 @@ export default function InspiracoesPage() {
   const [error, setError] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("views");
   const [showFilters, setShowFilters] = useState(false);
+  const [saveFolderId, setSaveFolderId] = useState("");
 
   const [showModal, setShowModal] = useState(false);
   const [modalDone, setModalDone] = useState(false);
@@ -695,6 +697,8 @@ export default function InspiracoesPage() {
               </div>
 
               <div className="flex items-center gap-2">
+                <LibraryFolderSelect value={saveFolderId} onChange={setSaveFolderId} />
+
                 <motion.button
                   onClick={handleBulkDownload}
                   disabled={bulkProgress !== null}
@@ -783,6 +787,7 @@ export default function InspiracoesPage() {
       <InspirationGrid
         reels={sortedReels}
         onProcess={handleProcess}
+        saveFolderId={saveFolderId}
         onVideoUrlRecovered={(id, videoUrl) =>
           setReels((prev) => prev.map((r) => r.id === id ? { ...r, videoUrl } : r))
         }
