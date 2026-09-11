@@ -22,7 +22,10 @@ import {
   Eye,
   Plus,
   FolderPlus,
+  Cpu,
+  BookUser,
 } from "lucide-react";
+import Link from "next/link";
 import { InspirationGrid } from "@/components/inspirations/InspirationGrid";
 import { LibraryFolderSelect } from "@/components/inspirations/LibraryFolderSelect";
 import type { InspirationReel } from "@/components/inspirations/InspirationCard";
@@ -66,8 +69,15 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(h / 24)}d atrás`;
 }
 
+interface ReaderAccountLite {
+  id: string;
+  username: string;
+  status: "unverified" | "online" | "error";
+  has_proxy: boolean;
+}
+
 // ── Importing Modal ───────────────────────────────────────────────
-function ImportingModal({ username, done }: { username: string; done: boolean }) {
+function ImportingModal({ username, done, sourceLabel }: { username: string; done: boolean; sourceLabel: string }) {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
@@ -119,7 +129,7 @@ function ImportingModal({ username, done }: { username: string; done: boolean })
           Importando <span className="gradient-text">@{username}</span>
         </h3>
         <p className="text-xs text-center mb-6" style={{ color: "var(--text-muted)" }}>
-          Buscando todos os vídeos via Apify...
+          Buscando todos os vídeos via {sourceLabel}...
         </p>
 
         {/* Progress bar */}
@@ -141,7 +151,7 @@ function ImportingModal({ username, done }: { username: string; done: boolean })
         {/* Steps */}
         <div className="space-y-3">
           {[
-            { label: "Buscando posts via Apify API", done: done || progress > 50 },
+            { label: `Buscando posts via ${sourceLabel}`, done: done || progress > 50 },
             { label: "Processando dados dos vídeos", done: done || progress > 80 },
             { label: "Salvando no histórico", done },
           ].map((step, i) => (
@@ -323,6 +333,11 @@ export default function InspiracoesPage() {
   const [activeUsername, setActiveUsername] = useState("");
   const [reels, setReels] = useState<InspirationReel[]>([]);
   const [error, setError] = useState("");
+
+  // Fonte da busca: Apify (padrão) ou conta leitora dedicada (instagrapi).
+  const [source, setSource] = useState<"apify" | "reader">("apify");
+  const [readerAccounts, setReaderAccounts] = useState<ReaderAccountLite[]>([]);
+  const [selectedReaderId, setSelectedReaderId] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("views");
   const [showFilters, setShowFilters] = useState(false);
   const [saveFolderId, setSaveFolderId] = useState("");
@@ -359,6 +374,56 @@ export default function InspiracoesPage() {
       .catch(() => {});
   };
 
+  // Carrega as contas leitoras disponíveis para a fonte "conta dedicada".
+  useEffect(() => {
+    fetch("/api/reader-accounts", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { accounts: [] }))
+      .then((data) => {
+        const accts: ReaderAccountLite[] = data.accounts ?? [];
+        setReaderAccounts(accts);
+        // Pré-seleciona a primeira conta pronta (online + com proxy).
+        const ready = accts.find((a) => a.status !== "error" && a.has_proxy);
+        if (ready) setSelectedReaderId(ready.id);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Busca via conta leitora: enfileira o job e faz polling até concluir.
+  const searchViaReader = async (target: string) => {
+    if (!selectedReaderId) {
+      throw new Error("Selecione uma conta leitora (com proxy) para buscar.");
+    }
+    const startRes = await fetch("/api/inspirations/scrape-account", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ readerAccountId: selectedReaderId, targetUsername: target, limit: 120 }),
+    });
+    const startData = await startRes.json();
+    if (!startRes.ok || !startData.jobId) {
+      throw new Error(startData.error || "Falha ao iniciar a busca via conta leitora.");
+    }
+
+    // A raspagem roda no cron (a cada ~10 min na 1ª calibração) — polling mais
+    // longo que o da Apify, que é síncrono via Apify runs.
+    const MAX_POLLS = 90; // 90 × 5s = 7.5 min
+    for (let i = 0; i < MAX_POLLS; i++) {
+      await new Promise<void>((r) => setTimeout(r, 5000));
+      const pollRes = await fetch(
+        `/api/inspirations/scrape-account/poll?jobId=${encodeURIComponent(startData.jobId)}`,
+        { cache: "no-store" }
+      );
+      const poll = await pollRes.json();
+      if (poll.status === "done") {
+        return (poll.reels ?? []) as InspirationReel[];
+      }
+      if (poll.status === "error") {
+        throw new Error(poll.error || "Falha na raspagem via conta leitora.");
+      }
+      // running → continua
+    }
+    throw new Error("A raspagem via conta leitora está demorando. A fila processa em background — tente ver o histórico em instantes.");
+  };
+
   const handleSearch = async (query?: string) => {
     if (_searchingRef.current) return;
     const target = (query ?? username).replace(/^@/, "").trim();
@@ -370,6 +435,31 @@ export default function InspiracoesPage() {
     setBulkResult(null);
     setModalDone(false);
     setShowModal(true);
+
+    // ── Fonte: conta leitora dedicada (instagrapi via fila) ───────
+    if (source === "reader") {
+      try {
+        const fetchedReels = await searchViaReader(target);
+        if (fetchedReels.length === 0) {
+          throw new Error(`Nenhum Reel encontrado para @${target}.`);
+        }
+        setModalDone(true);
+        setTimeout(() => {
+          setShowModal(false);
+          setActiveUsername(target);
+          setReels(fetchedReels);
+          setView("grid");
+          refreshHistory();
+        }, 700);
+      } catch (err) {
+        setShowModal(false);
+        setError(err instanceof Error ? err.message : "Erro desconhecido.");
+      } finally {
+        _searchingRef.current = false;
+      }
+      return;
+    }
+
     try {
       // ── Step 1: start N Apify runs (one per token) in parallel ───
       const startText = await fetch("/api/inspirations/scrape", {
@@ -640,7 +730,7 @@ export default function InspiracoesPage() {
   return (
     <>
       <AnimatePresence>
-        {showModal && <ImportingModal username={username} done={modalDone} />}
+        {showModal && <ImportingModal username={username} done={modalDone} sourceLabel={source === "reader" ? "conta dedicada" : "Apify"} />}
       </AnimatePresence>
 
       <div className="space-y-6 max-w-full">
@@ -687,9 +777,62 @@ export default function InspiracoesPage() {
                 Buscar inspirações no Instagram
               </span>
             </div>
-            <p className="text-xs mb-5" style={{ color: "rgba(255,255,255,0.28)" }}>
+            <p className="text-xs mb-4" style={{ color: "rgba(255,255,255,0.28)" }}>
               Digite o @ de qualquer perfil público para visualizar os Reels e preparar downloads
             </p>
+
+            {/* Source selector — Apify vs conta leitora dedicada */}
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <div className="flex items-center gap-1 p-1 rounded-xl"
+                style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.08)" }}>
+                {([
+                  { key: "apify" as const, label: "Apify", icon: Cpu },
+                  { key: "reader" as const, label: "Conta dedicada", icon: BookUser },
+                ]).map((opt) => (
+                  <button
+                    key={opt.key}
+                    onClick={() => setSource(opt.key)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                    style={
+                      source === opt.key
+                        ? { background: "rgba(0,255,65,0.12)", border: "0.5px solid rgba(0,255,65,0.35)", color: "rgba(0,255,65,0.95)" }
+                        : { background: "transparent", border: "0.5px solid transparent", color: "rgba(255,255,255,0.4)" }
+                    }
+                  >
+                    <opt.icon size={12} />{opt.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Reader account picker — só quando a fonte é conta dedicada */}
+              {source === "reader" && (
+                readerAccounts.length === 0 ? (
+                  <Link href="/dashboard/contas-leitoras"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all"
+                    style={{ background: "rgba(255,180,0,0.08)", border: "0.5px solid rgba(255,180,0,0.25)", color: "rgba(255,200,0,0.85)" }}>
+                    <AlertCircle size={12} />Cadastre uma conta leitora
+                  </Link>
+                ) : (
+                  <select
+                    value={selectedReaderId}
+                    onChange={(e) => setSelectedReaderId(e.target.value)}
+                    className="px-3 py-1.5 rounded-lg text-xs outline-none"
+                    style={{ background: "rgba(0,0,0,0.5)", border: "0.5px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.75)" }}
+                  >
+                    <option value="">Escolha a conta leitora…</option>
+                    {readerAccounts.map((a) => {
+                      const usable = a.status !== "error" && a.has_proxy;
+                      return (
+                        <option key={a.id} value={a.id} disabled={!usable}>
+                          @{a.username}
+                          {!a.has_proxy ? " (sem proxy)" : a.status === "error" ? " (com erro)" : a.status === "unverified" ? " (não conectada)" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )
+              )}
+            </div>
 
             {/* Input row */}
             <div className="flex gap-3">

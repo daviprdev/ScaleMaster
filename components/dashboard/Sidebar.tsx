@@ -29,6 +29,7 @@ import {
   ImagePlay,
   Link2,
   Lock,
+  BookUser,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -66,9 +67,10 @@ const navGroups: NavGroup[] = [
   {
     label: "CONTEÚDO",
     items: [
-      { label: "Inspirações", href: "/dashboard/inspirations", icon: Sparkles },
-      { label: "Biblioteca",  href: "/dashboard/library",      icon: FolderOpen },
-      { label: "Links",       href: "/dashboard/links",        icon: Link2 },
+      { label: "Inspirações",     href: "/dashboard/inspirations",    icon: Sparkles },
+      { label: "Contas Leitoras", href: "/dashboard/contas-leitoras", icon: BookUser },
+      { label: "Biblioteca",      href: "/dashboard/library",         icon: FolderOpen },
+      { label: "Links",           href: "/dashboard/links",           icon: Link2 },
     ],
   },
   {

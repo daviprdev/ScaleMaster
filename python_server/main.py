@@ -20,6 +20,7 @@ from fastapi import Depends, FastAPI, HTTPException, Header
 from pydantic import BaseModel
 
 from instagram_login import perform_login
+from instagram_scraper import fetch_user_reels
 
 # ---------------------------------------------------------------------------
 # Config — lidas na inicialização; crash imediato se ausentes
@@ -80,6 +81,29 @@ class InstagramLoginResponse(BaseModel):
     profile_pic_url: str | None = None
     followers_count: int | None = None
     media_count: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class ScrapeProfileRequest(BaseModel):
+    # Credenciais da conta LEITORA (pool separado das contas de postagem).
+    username: str
+    password: str
+    proxy_url: str
+    device_seed: str
+    totp_secret: str | None = None
+    existing_settings: dict | None = None
+    # Perfil-alvo a raspar + limite de itens.
+    target_username: str
+    limit: int = 120
+
+
+class ScrapeProfileResponse(BaseModel):
+    success: bool
+    settings: dict | None = None
+    ig_user_id: str | None = None
+    reels: list[dict] | None = None
+    result_count: int | None = None
     error_code: str | None = None
     error_message: str | None = None
 
@@ -262,6 +286,25 @@ async def instagram_login(
         req.existing_settings,
     )
     return InstagramLoginResponse(success=result.success, **result.data)
+
+
+@app.post("/instagram/scrape-profile", response_model=ScrapeProfileResponse)
+async def instagram_scrape_profile(
+    req: ScrapeProfileRequest,
+    _: None = Depends(verify_secret),
+) -> ScrapeProfileResponse:
+    result = await asyncio.to_thread(
+        fetch_user_reels,
+        req.username,
+        req.password,
+        req.proxy_url,
+        req.device_seed,
+        req.target_username,
+        req.limit,
+        req.totp_secret,
+        req.existing_settings,
+    )
+    return ScrapeProfileResponse(success=result.success, **result.data)
 
 
 @app.get("/health")

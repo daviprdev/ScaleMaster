@@ -3980,3 +3980,105 @@ zero referências). Os 124 foram removidos via Storage API; bucket ficou com
 4 arquivos / 4 linhas / 0 registros quebrados.
 
 Testes 37 → 48 (`npm test` 568 verdes). Commits `68e9177`, `bd44317`.
+
+## 2026-09-11 — Diagnóstico: views baixas + qualidade dos Reels (sem mudança de código)
+
+Sessão só de investigação em produção (SQL via MCP). Nenhum código alterado.
+
+**App/Meta:** App ID global = `1011659591297709` (`.env.local`; confirmar se
+prod na Vercel é o mesmo). SaaS usa Instagram Business Login
+(`www.instagram.com/oauth/authorize`) + BYOC por usuário (`user_meta_apps`).
+App NÃO está queimado — API 100% funcional (publica + insights leem). Decisão:
+NÃO trocar de app agora (não é causa das views).
+
+**Views baixas (causa real, medida):** 1.221 posts/7d, mediana de plays = 0,
+51% com ZERO view. Causas, todas estruturais — nenhuma é o app nem o pipeline:
+(1) 20 contas TODAS de 4 dias postando ~16/dia (volume industrial em conta
+nova = teto de alcance ~0); (2) 127 Reels raspados de UM único perfil
+(`victoriacoroas`), repostados verbatim com a legenda original (conteúdo não
+original → rebaixado); (3) mesmo conteúdo circulando nas 20 contas. Modo de
+processamento de TODOS os posts = `original` (sem re-encode) → descarta a
+hipótese de degradação por FFmpeg. Usuário decidiu NÃO mexer em volume/intervalo.
+
+**Fingerprint/limpeza de metadados (decisão geral):** veredito = manter
+`original`. Re-encode automático já derrubou views 2× no histórico (18/06 e
+08/07). `clean_metadata` é stream-copy (não degrada) mas não muda pixel/áudio
+→ não escapa do match de conteúdo duplicado → inútil pro caso. Se algum dia
+voltar a alterar, só o pacote leve-de-alta-qualidade (metadado + hflip + crop,
+CRF 18-20, SEM speed/pitch/maxrate) e sempre com A/B medido.
+
+**Qualidade dos Reels baixados (Inspirações → Salvar na Biblioteca):** causa
+confirmada = o `apify/instagram-scraper` devolve só a variante **720p
+progressive baseline** (selo `CLIPS.C3.720` na URL); bitrate mediano medido
+= **1,19 Mbps** (720p vertical deveria ser ~3,5-5 Mbps). Pipeline nosso está
+limpo (download byte a byte, sem perda). O actor oficial NÃO tem seletor de
+resolução e retorna 1 só `videoUrl`. Conserto = trocar a FONTE por actor
+1080p-capable (ex.: `alpha-scraper/instagram-video-scraper-downloader`,
+`resolution:"1080p"`, ~US$4,99/1000). Usuário escolheu TESTAR antes de trocar.
+Teste pronto em `_quality_test.mjs` (roda actor 1080p em 5 Reels reais +
+ffprobe vs baseline 720p) — PENDENTE de token Apify válido (o do `.env.local`
+está 401; pool real `APIFY_API_TOKENS` só na Vercel). Baseline 720p dos 5:
+2.38/1.60/1.72/1.79/1.20 Mbps.
+
+## 2026-09-11 — Contas Leitoras: raspagem via instagrapi nas Inspirações
+
+Nova automação de aquisição de conteúdo por contas dedicadas (instagrapi),
+complementando a Apify na aba Inspirações. Motivação: a Apify nunca traz a
+lista completa de reels de um perfil e não enxerga conteúdo privado.
+
+**Isolamento de risco (decisão do usuário):** contas leitoras são um pool
+SEPARADO das contas de postagem. Nova tabela `reader_accounts` (independente de
+`instagram_accounts` e `account_logins`) — se uma leitora cair, o pipeline de
+postagem não é afetado. Senha/2FA/proxy/sessão em AES-256-GCM; `device_seed` =
+a própria PK; `session_settings` guarda `client.get_settings()` para reconectar
+sem logar de novo. Proxy é COLADO por conta (não vem do estoque `proxy_pool`,
+cujo FK aponta para `instagram_accounts`) — isolamento total de IP.
+
+**Fila `scrape_jobs` + cron `process-scrape-jobs` (`*/5`)** replicam o MESMO
+padrão de `login_jobs`/`process-instagram-logins`: claim atômico, auto-healing
+de job preso em `processing` (>10min), backoff exponencial, transitório vs
+permanente, jitter anti-burst por tentativa, regra "sem proxy = sem chamada".
+Coluna `verify` distingue job de conexão da conta (target = próprio username,
+não polui o histórico) do job de raspagem real.
+
+**python_server:** `authenticate_client` extraído de `perform_login`
+(login+challenge_resolve compartilhado, BUILD `chgv3` do login preservado).
+Novo módulo `instagram_scraper.fetch_user_reels`: reusa a sessão salva (só faz
+login completo se `get_timeline_feed` acusar sessão morta), resolve o alvo via
+`user_id_from_username` e pagina com `user_clips(amount=limit)`. Endpoint
+`POST /instagram/scrape-profile`. Erros classificados: `target_not_found` /
+`target_private` (permanente do alvo, conta ok), `bad_password` /
+`banned_or_disabled` / `checkpoint_required` (marca a leitora `error`),
+`session_expired` (zera a sessão + retry), demais transitórios. API instagrapi
+validada contra a lib instalada (2.5.18): `user_clips`, `user_id_from_username`,
+`get_timeline_feed` e todos os campos do `Media` conferidos.
+
+**Integração:** o cron grava o resultado em `scraped_profiles` (a MESMA tabela
+da Apify) → o perfil raspado aparece no histórico/grid das Inspirações e o
+"Salvar na Biblioteca" funciona sem mudança. `lib/instagrapi-reel.ts` é o único
+interpretador do payload do python (espelha `lib/scraped-reel.ts`), com saída
+idêntica ao poll da Apify. Legenda vai inteira (sem truncar) — regra de
+ingestão sem alteração.
+
+**UI:** toggle de fonte (Apify | Conta dedicada) + seletor de conta na barra de
+busca das Inspirações (`handleSearch` faz branch para enfileirar+pollar quando
+`source==="reader"`). Nova página `/dashboard/contas-leitoras` (cadastro,
+proxy por conta, botão Conectar/Revalidar) + link na Sidebar (CONTEÚDO) e no
+mapa de títulos do Header.
+
+**Rotas novas:** `POST/GET/PATCH/DELETE /api/reader-accounts`,
+`POST /api/reader-accounts/[id]/verify`, `POST /api/inspirations/scrape-account`,
+`GET /api/inspirations/scrape-account/poll`.
+
+**Limites honestos:** perfil privado só é raspável se a conta leitora já o
+seguir de verdade (não há auto-follow, não é contornável). Ingestão sem
+alteração de vídeo — a automação só busca/lista; baixar/salvar segue no fluxo
+existente. Migration `supabase/reader_accounts.sql` aplicada via MCP; RLS e
+constraints confirmados no banco. typecheck + build limpos.
+
+**PENDENTE (fora do meu alcance):** teste end-to-end real exige (a) deploy do
+python_server no Railway com o módulo novo, (b) uma conta leitora real com
+credenciais + proxy dedicado, (c) `ENCRYPTION_SECRET`/`PYTHON_SERVER_*` no
+ambiente. Sem credenciais reais não dá para logar no Instagram — validei a
+sintaxe/compilação Python, a API instagrapi contra a lib instalada, o
+typecheck/build e o schema no banco.

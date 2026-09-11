@@ -188,6 +188,70 @@ def _classify_error(exc: Exception) -> tuple[str, str]:
     return "unknown", msg
 
 
+def authenticate_client(
+    cl: Client,
+    username: str,
+    password: str,
+    totp_secret: str | None,
+    proxy_ip: str,
+    proxy_country: str,
+    settings: dict,
+    build: str,
+) -> tuple[str, str] | None:
+    """
+    Executa login + auto-resolve de challenge numa Client JÁ configurada
+    (proxy + settings aplicados pelo chamador). Retorna None em sucesso, ou
+    (error_code, error_message) em falha.
+
+    Extraído de perform_login para ser compartilhado com a raspagem
+    (instagram_scraper.fetch_user_reels), que precisa reconectar quando a
+    sessão salva expira — sem duplicar a lógica delicada de challenge_resolve.
+    """
+    verification_code = ""
+    if totp_secret:
+        import pyotp
+
+        verification_code = pyotp.TOTP(totp_secret).now()
+
+    # A lib nunca deve bloquear esperando input() num servidor headless — os
+    # handlers padrão (manual_input_code / manual_change_password) fazem
+    # exatamente isso. Sobrescritos para falhar rápido (retornar vazio) sempre
+    # que o challenge realmente exigir código de email/SMS ou nova senha —
+    # esses casos exigem acesso humano à conta e não são automatizáveis aqui.
+    cl.challenge_code_handler = lambda _username, _choice=None: ""
+    cl.change_password_handler = lambda _username: ""
+
+    geo = proxy_country or settings.get("country")
+
+    try:
+        cl.login(username, password, verification_code=verification_code, relogin=False)
+    except ChallengeRequired:
+        # Alguns challenges de "dispositivo/local novo" (delta_login_review,
+        # scraping_warning, add_birthday, step vazio) são resolvidos sozinhos
+        # pela própria lib via challenge_resolve, sem precisar de código —
+        # equivalente ao "Fui eu" que o app mostra. Só os que realmente
+        # exigem código (email/SMS) ou ação manual continuam falhando aqui,
+        # graças aos handlers fail-fast acima.
+        try:
+            cl.challenge_resolve(cl.last_json)
+        except Exception as challenge_exc:
+            import traceback
+
+            error_code, error_message = _classify_error(challenge_exc)
+            tb = traceback.format_exc(limit=4).replace("\n", " | ")
+            return error_code, f"[{build}][proxy_ip={proxy_ip}][geo={geo}][resolve_fail] {error_message} :: {tb}"[:500]
+        try:
+            cl.relogin()
+        except Exception as relogin_exc:
+            error_code, error_message = _classify_error(relogin_exc)
+            return error_code, f"[{build}][proxy_ip={proxy_ip}][geo={geo}][pos_challenge] {error_message}"[:500]
+    except Exception as exc:  # instagrapi lança tipos variados conforme a versão
+        error_code, error_message = _classify_error(exc)
+        return error_code, f"[{build}][proxy_ip={proxy_ip}][geo={geo}][{type(exc).__name__}] {error_message}"[:500]
+
+    return None
+
+
 def perform_login(
     username: str,
     password: str,
@@ -213,20 +277,6 @@ def perform_login(
     settings = existing_settings or build_deterministic_settings(device_seed, proxy_country)
     cl.set_settings(settings)
 
-    verification_code = ""
-    if totp_secret:
-        import pyotp
-
-        verification_code = pyotp.TOTP(totp_secret).now()
-
-    # A lib nunca deve bloquear esperando input() num servidor headless — os
-    # handlers padrão (manual_input_code / manual_change_password) fazem
-    # exatamente isso. Sobrescritos para falhar rápido (retornar vazio) sempre
-    # que o challenge realmente exigir código de email/SMS ou nova senha —
-    # esses casos exigem acesso humano à conta e não são automatizáveis aqui.
-    cl.challenge_code_handler = lambda _username, _choice=None: ""
-    cl.change_password_handler = lambda _username: ""
-
     # Marcador de build — prefixado em toda mensagem de erro retornada por esta
     # função. Só serve pra confirmar, sem ambiguidade, se este código (versão
     # com auto-resolve de challenge) está mesmo rodando no worker no momento
@@ -234,43 +284,12 @@ def perform_login(
     # mais recente" (que pode estar com o build ainda não substituído no ar).
     BUILD = "chgv3"
 
-    try:
-        cl.login(username, password, verification_code=verification_code, relogin=False)
-    except ChallengeRequired as exc:
-        # Alguns challenges de "dispositivo/local novo" (delta_login_review,
-        # scraping_warning, add_birthday, step vazio) são resolvidos sozinhos
-        # pela própria lib via challenge_resolve, sem precisar de código —
-        # equivalente ao "Fui eu" que o app mostra. Só os que realmente
-        # exigem código (email/SMS) ou ação manual continuam falhando aqui,
-        # graças aos handlers fail-fast acima.
-        try:
-            cl.challenge_resolve(cl.last_json)
-        except Exception as challenge_exc:
-            import traceback
-
-            error_code, error_message = _classify_error(challenge_exc)
-            tb = traceback.format_exc(limit=4).replace("\n", " | ")
-            return LoginResult(
-                False,
-                error_code=error_code,
-                error_message=f"[{BUILD}][proxy_ip={proxy_ip}][geo={proxy_country or settings.get('country')}][resolve_fail] {error_message} :: {tb}"[:500],
-            )
-        try:
-            cl.relogin()
-        except Exception as relogin_exc:
-            error_code, error_message = _classify_error(relogin_exc)
-            return LoginResult(
-                False,
-                error_code=error_code,
-                error_message=f"[{BUILD}][proxy_ip={proxy_ip}][geo={proxy_country or settings.get('country')}][pos_challenge] {error_message}"[:500],
-            )
-    except Exception as exc:  # instagrapi lança tipos variados conforme a versão
-        error_code, error_message = _classify_error(exc)
-        return LoginResult(
-            False,
-            error_code=error_code,
-            error_message=f"[{BUILD}][proxy_ip={proxy_ip}][geo={proxy_country or settings.get('country')}][{type(exc).__name__}] {error_message}"[:500],
-        )
+    err = authenticate_client(
+        cl, username, password, totp_secret, proxy_ip, proxy_country, settings, BUILD
+    )
+    if err is not None:
+        error_code, error_message = err
+        return LoginResult(False, error_code=error_code, error_message=error_message)
 
     try:
         info = cl.account_info()
