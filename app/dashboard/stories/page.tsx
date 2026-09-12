@@ -8,6 +8,7 @@ import {
   Play, Pause, Download, Sparkles, SlidersHorizontal, Link2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 import { StoryLinkSelector, EMPTY_STORY_LINK, type StoryLinkValue } from "@/components/dashboard/StoryLinkSelector";
 
@@ -790,19 +791,46 @@ export default function StoriesPage() {
     };
     setMedia(item);
 
-    const formData = new FormData();
-    formData.append("file", file);
+    const fail = (error: string) =>
+      setMedia(prev => prev && prev.previewUrl === previewUrl ? { ...prev, status: "error", error } : prev);
+
+    // O arquivo vai DIRETO ao Supabase Storage via URL assinada — passar pela
+    // Vercel estourava o limite de 4,5 MB do corpo e todo vídeo falhava.
     try {
-      const res = await fetch("/api/stories/upload", { method: "POST", body: formData });
-      const data = await res.json() as { url?: string; storage_path?: string; error?: string };
-      if (!res.ok || data.error) {
-        setMedia(prev => prev && prev.previewUrl === previewUrl ? { ...prev, status: "error", error: data.error ?? "Falha no upload" } : prev);
-      } else {
-        setMedia(prev => prev && prev.previewUrl === previewUrl ? { ...prev, url: data.url!, storage_path: data.storage_path!, status: "done" } : prev);
-        fetchMediaLibrary();
+      const signRes = await fetch("/api/stories/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: file.type, size: file.size }),
+      });
+      const sign = await signRes.json().catch(() => ({})) as { storage_path?: string; token?: string; error?: string };
+      if (!signRes.ok || !sign.storage_path || !sign.token) {
+        fail(sign.error ?? `Falha ao preparar upload (HTTP ${signRes.status})`);
+        return;
       }
-    } catch {
-      setMedia(prev => prev && prev.previewUrl === previewUrl ? { ...prev, status: "error", error: "Erro de conexão" } : prev);
+
+      const { error: upErr } = await createClient().storage
+        .from("videos-library")
+        .uploadToSignedUrl(sign.storage_path, sign.token, file, { contentType: file.type });
+      if (upErr) {
+        fail(`Falha no envio: ${upErr.message}`);
+        return;
+      }
+
+      const doneRes = await fetch("/api/stories/upload/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storage_path: sign.storage_path, filename: file.name }),
+      });
+      const data = await doneRes.json().catch(() => ({})) as { url?: string; storage_path?: string; error?: string };
+      if (!doneRes.ok || !data.url) {
+        fail(data.error ?? `Falha ao confirmar upload (HTTP ${doneRes.status})`);
+        return;
+      }
+
+      setMedia(prev => prev && prev.previewUrl === previewUrl ? { ...prev, url: data.url!, storage_path: data.storage_path!, status: "done" } : prev);
+      fetchMediaLibrary();
+    } catch (err) {
+      fail(err instanceof Error ? `Erro de conexão: ${err.message}` : "Erro de conexão");
     }
   }, [media, fetchMediaLibrary]);
 

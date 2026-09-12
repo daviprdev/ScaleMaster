@@ -2,14 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { STORY_MAX_IMAGE_SIZE, STORY_MAX_VIDEO_SIZE, STORY_VALID_TYPES } from "@/lib/story-upload";
 
 export const runtime = "nodejs";
-// Aumenta limite para uploads de vídeo (padrão Next.js é 4MB)
-export const maxDuration = 60;
 
-const VALID_TYPES = ["image/jpeg", "image/jpg", "image/png", "video/mp4", "video/quicktime"];
-const MAX_IMAGE_SIZE = 8 * 1024 * 1024;   // 8 MB
-const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB
+// O arquivo NÃO passa por esta função: a Vercel corta o corpo da requisição
+// em 4,5 MB (413 FUNCTION_PAYLOAD_TOO_LARGE), o que derrubava todo upload de
+// vídeo. Esta rota só emite uma URL de upload assinada para um caminho que o
+// SERVIDOR escolhe; o navegador envia os bytes direto ao Supabase Storage e
+// depois chama /api/stories/upload/complete para validar e registrar.
+
+const VALID_TYPES = STORY_VALID_TYPES;
+const MAX_IMAGE_SIZE = STORY_MAX_IMAGE_SIZE;
+const MAX_VIDEO_SIZE = STORY_MAX_VIDEO_SIZE;
 
 export async function POST(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -20,66 +25,39 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
-  let formData: FormData;
+  let body: { type?: string; size?: number };
   try {
-    formData = await req.formData();
+    body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Falha ao ler o arquivo." }, { status: 400 });
+    return NextResponse.json({ error: "Requisição inválida." }, { status: 400 });
   }
 
-  const file = formData.get("file") as File | null;
-  if (!file) return NextResponse.json({ error: "Nenhum arquivo enviado." }, { status: 400 });
+  const type = String(body.type ?? "");
+  const size = Number(body.size ?? 0);
 
-  if (!VALID_TYPES.includes(file.type)) {
-    return NextResponse.json({ error: `Tipo inválido: ${file.type}. Use JPG, PNG ou MP4.` }, { status: 400 });
+  if (!VALID_TYPES.includes(type)) {
+    return NextResponse.json({ error: `Tipo inválido: ${type || "desconhecido"}. Use JPG, PNG ou MP4.` }, { status: 400 });
   }
 
-  const isImage = file.type.startsWith("image/");
+  const isImage = type.startsWith("image/");
   const maxSize = isImage ? MAX_IMAGE_SIZE : MAX_VIDEO_SIZE;
-  if (file.size > maxSize) {
+  if (!Number.isFinite(size) || size <= 0 || size > maxSize) {
     return NextResponse.json({
-      error: `Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)} MB). Máximo: ${maxSize / 1024 / 1024} MB.`,
+      error: `Arquivo muito grande (${(size / 1024 / 1024).toFixed(1)} MB). Máximo: ${maxSize / 1024 / 1024} MB.`,
     }, { status: 400 });
   }
 
-  const ext = file.type === "image/png" ? ".png" : isImage ? ".jpg" : ".mp4";
+  const ext = type === "image/png" ? ".png" : isImage ? ".jpg" : ".mp4";
   const storagePath = `stories/${user.id}/${randomUUID()}${ext}`;
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-
   const admin = getSupabaseAdmin();
-  const { error: uploadErr } = await admin.storage
+  const { data, error } = await admin.storage
     .from("videos-library")
-    .upload(storagePath, buffer, { contentType: file.type, upsert: false });
+    .createSignedUploadUrl(storagePath);
 
-  if (uploadErr) {
-    return NextResponse.json({ error: `Falha no upload: ${uploadErr.message}` }, { status: 500 });
+  if (error || !data) {
+    return NextResponse.json({ error: `Falha ao preparar upload: ${error?.message ?? "sem resposta"}` }, { status: 500 });
   }
 
-  const { data: urlData } = admin.storage.from("videos-library").getPublicUrl(storagePath);
-
-  // Salva na biblioteca de mídia de Stories — permite reusar a mesma foto/vídeo
-  // em outro dia sem precisar subir o arquivo de novo.
-  let mediaId: string | null = null;
-  const { data: mediaRow, error: mediaErr } = await admin
-    .from("story_media")
-    .insert({
-      user_id: user.id,
-      storage_path: storagePath,
-      public_url: urlData.publicUrl,
-      media_type: isImage ? "image" : "video",
-    })
-    .select("id")
-    .single();
-  if (mediaErr) console.error("[stories/upload] erro ao salvar na biblioteca:", mediaErr.message);
-  else mediaId = mediaRow?.id ?? null;
-
-  return NextResponse.json({
-    url: urlData.publicUrl,
-    media_type: isImage ? "image" : "video",
-    filename: file.name,
-    storage_path: storagePath,
-    size: file.size,
-    media_id: mediaId,
-  });
+  return NextResponse.json({ storage_path: storagePath, token: data.token });
 }
