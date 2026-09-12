@@ -5,11 +5,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, Send, X, Check, Loader2, AlertCircle, CheckCircle2,
   ImagePlay, RefreshCw, Trash2, Upload, Image, Film, XCircle,
-  Play, Pause, Download, Sparkles, SlidersHorizontal, Link2,
+  Play, Pause, Download, Sparkles, Link2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
-import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 import { StoryLinkSelector, EMPTY_STORY_LINK, type StoryLinkValue } from "@/components/dashboard/StoryLinkSelector";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -496,7 +495,6 @@ function ImportTemplateModal({
   const [imported, setImported] = useState<{ media_url: string; media_type: "image" | "video"; source_account_id: string; source_username: string } | null>(null);
   const [targetAccountIds, setTargetAccountIds] = useState<string[]>([]);
   const [intervalMinutes, setIntervalMinutes] = useState(1380);
-  const [templateProcessingMode, setTemplateProcessingMode] = useState<VideoProcessingMode>("original");
   const [creating, setCreating] = useState(false);
 
   const handleImport = async () => {
@@ -533,7 +531,8 @@ function ImportTemplateModal({
           source_account_id: imported.source_account_id,
           account_ids: targetAccountIds,
           interval_minutes: intervalMinutes,
-          video_processing_mode: templateProcessingMode,
+          // Stories não oferecem limpeza de metadados: sempre o arquivo original.
+          video_processing_mode: "original",
         }),
       });
       const data = await res.json() as { success?: boolean; error?: string };
@@ -578,16 +577,6 @@ function ImportTemplateModal({
                   );
                 })}
               </div>
-              {imported?.media_type === "video" && (
-                <div>
-                  <p className="text-xs text-white/40 font-medium mb-2 uppercase tracking-wider">Processamento do vídeo</p>
-                  <VideoProcessingSelector
-                    value={templateProcessingMode}
-                    onChange={setTemplateProcessingMode}
-                    compact
-                  />
-                </div>
-              )}
               {importError && (
                 <p className="flex items-center gap-1.5 text-xs text-red-400"><AlertCircle size={12} /> {importError}</p>
               )}
@@ -667,9 +656,6 @@ export default function StoriesPage() {
   // Publish
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
-  // Processamento do video (opt-in). Imagens ignoram na publicacao (nao ha
-  // stream copy de video), mas a escolha e persistida junto com o post.
-  const [videoProcessingMode, setVideoProcessingMode] = useState<VideoProcessingMode>("original");
   // Link divulgado junto do Story (registro + cópia — a API não anexa sticker).
   const [storyLink, setStoryLink] = useState<StoryLinkValue>(EMPTY_STORY_LINK);
   const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
@@ -921,7 +907,8 @@ export default function StoriesPage() {
           account_ids: selectedAccountIds,
           media_url: media.url,
           media_type: media.media_type,
-          video_processing_mode: videoProcessingMode,
+          // Stories não oferecem limpeza de metadados: sempre o arquivo original.
+          video_processing_mode: "original",
           // O servidor deriva a URL pública a partir do slug quando é link
           // gerenciado — o que for mandado aqui em story_link_url é ignorado
           // nesse caso.
@@ -1148,20 +1135,6 @@ export default function StoriesPage() {
           <SectionCard>
             <SectionLabel Icon={Link2}>Link do Story</SectionLabel>
             <StoryLinkSelector value={storyLink} onChange={setStoryLink} />
-          </SectionCard>
-
-          {/* Processamento do vídeo */}
-          <SectionCard>
-            <SectionLabel Icon={SlidersHorizontal}>Processamento do vídeo</SectionLabel>
-            <VideoProcessingSelector
-              value={videoProcessingMode}
-              onChange={setVideoProcessingMode}
-            />
-            {media?.media_type === "image" && (
-              <p className="mt-2.5 text-[10px] text-white/30">
-                Esta mídia é uma imagem — a limpeza de metadados só se aplica a vídeo.
-              </p>
-            )}
           </SectionCard>
 
           {/* Nota */}
