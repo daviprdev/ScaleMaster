@@ -128,17 +128,19 @@ export async function GET() {
       .gt("scheduled_at", nowIso)
       .order("scheduled_at", { ascending: true })
       .limit(4),
-    // Views de Postar/Clonar/Stories + Loop, agregadas no banco (uma linha —
-    // sem o teto de 1000 do PostgREST). Antes só scheduled_posts entrava.
+    // Views REAIS das contas (insight de conta da Meta, por dia) — o mesmo
+    // número do painel profissional do Instagram. Somar só os posts que o SaaS
+    // registrou subestimava: a conta tem posts que o SaaS não conhece
+    // (medido: 18.835 na conta vs 13 somando posts do SaaS).
     (admin as unknown as {
       rpc: (fn: string, args: Record<string, unknown>) => Promise<{
         data: {
-          total: number; tracked_posts: number; total_posts: number;
-          last_synced_at: string | null; loop_total: number; posts_total: number;
+          total: number; last_7d: number; last_30d: number;
+          accounts_total: number; accounts_synced: number; last_synced_at: string | null;
         } | null;
         error: { message: string } | null;
       }>;
-    }).rpc("get_views_summary", { p_user_id: user.id }),
+    }).rpc("get_account_views_summary", { p_user_id: user.id }),
     admin
       .from("sales")
       .select("amount, created_at")
@@ -190,13 +192,9 @@ export async function GET() {
     .slice(0, 5);
 
   if (viewsPostsRes.error) {
-    console.error("[dashboard/stats] get_views_summary falhou:", viewsPostsRes.error.message);
+    console.error("[dashboard/stats] get_account_views_summary falhou:", viewsPostsRes.error.message);
   }
   const viewsSummary = viewsPostsRes.data;
-  const viewsTotal = Number(viewsSummary?.total ?? 0);
-  const viewsTracked = Number(viewsSummary?.tracked_posts ?? 0);
-  const viewsTotalPosts = Number(viewsSummary?.total_posts ?? 0);
-  const viewsLastSyncedAt = viewsSummary?.last_synced_at ?? null;
 
   const salesRows = (salesRes.data ?? []) as { amount: number | null; created_at: string }[];
   const todayStartIso = brtMidnightUtc(0).toISOString();
@@ -235,10 +233,12 @@ export async function GET() {
       loop: loopPublishedTodayRes.count ?? 0,
     },
     views: {
-      total: viewsTotal,
-      tracked_posts: viewsTracked,
-      total_posts: viewsTotalPosts,
-      last_synced_at: viewsLastSyncedAt,
+      total: Number(viewsSummary?.total ?? 0),
+      last_7d: Number(viewsSummary?.last_7d ?? 0),
+      last_30d: Number(viewsSummary?.last_30d ?? 0),
+      accounts_total: Number(viewsSummary?.accounts_total ?? 0),
+      accounts_synced: Number(viewsSummary?.accounts_synced ?? 0),
+      last_synced_at: viewsSummary?.last_synced_at ?? null,
     },
     queue: {
       pending: (queuePendingScheduledRes.count ?? 0) + (queuePendingContainersRes.count ?? 0),

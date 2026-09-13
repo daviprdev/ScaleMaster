@@ -40,8 +40,10 @@ interface DashboardStats {
   posts_today: { published: number; scheduled: number; loop: number };
   views: {
     total: number;
-    tracked_posts: number;
-    total_posts: number;
+    last_7d: number;
+    last_30d: number;
+    accounts_total: number;
+    accounts_synced: number;
     last_synced_at: string | null;
   };
   queue: { pending: number };
@@ -219,9 +221,9 @@ export default function DashboardPage() {
           label: "Views Totais",
           value: formatCompact(stats.views.total),
           change:
-            stats.views.total_posts > 0
-              ? `${stats.views.tracked_posts}/${stats.views.total_posts} posts sincronizados`
-              : "Contas ativas e conectadas",
+            stats.views.accounts_total > 0 && stats.views.accounts_synced < stats.views.accounts_total
+              ? `${stats.views.accounts_synced}/${stats.views.accounts_total} contas sincronizadas`
+              : `${formatCompact(stats.views.last_7d)} nos últimos 7 dias`,
           icon: Eye,
           iconColor: "#00E5FF",
           glow: "rgba(0,229,255,0.22)",

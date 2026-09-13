@@ -340,10 +340,23 @@ async function main() {
       src("app/api/loops/[id]/analytics/route.ts").includes("insightsUpdatePayload(") &&
       src("app/api/meta/insights/route.ts").includes("insightsUpdatePayload("));
     const stats = src("app/api/dashboard/stats/route.ts");
-    check("Dashboard soma views via RPC agregada (Postar + Loop)",
-      stats.includes('rpc("get_views_summary"') && !stats.includes("viewsRows"));
+    check("Dashboard usa views REAIS de conta (insight de conta), não soma de posts",
+      stats.includes('rpc("get_account_views_summary"') && !stats.includes("viewsRows"));
     check("get_views_summary sem EXECUTE público",
       src("supabase/views_summary_rpc.sql").includes("revoke execute on function public.get_views_summary(uuid) from public, anon, authenticated"));
+    check("get_account_views_summary sem EXECUTE público",
+      src("supabase/account_views_daily.sql").includes("revoke execute on function public.get_account_views_summary(uuid) from public, anon, authenticated"));
+
+    const mav = src("lib/meta-account-views.ts");
+    check("views de conta por dia alinhado à meia-noite UTC (janelas desalinhadas contam em dobro)",
+      mav.includes("Math.floor(nowMs / 1000 / DAY_S) * DAY_S") && mav.includes("metric_type=total_value"));
+    check("falha intermitente da Meta (code=10) não descarta os dias já obtidos",
+      mav.includes("result.failures++") && mav.includes("export interface DailyViewsResult"));
+    const cronViews = src("app/api/cron/sync-account-views/route.ts");
+    check("backfill só é marcado concluído sem dias recusados",
+      cronViews.includes("needsBackfill && backfillFailures === 0"));
+    check("cron sync-account-views agendado no vercel.json",
+      src("vercel.json").includes('"/api/cron/sync-account-views"'));
 
     const upload = src("app/api/stories/upload/route.ts");
     check("upload de Story não recebe o arquivo pela Vercel (limite 4,5 MB)",
