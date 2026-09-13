@@ -30,7 +30,10 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-const RESYNC_AFTER_MS = 25 * 60_000;
+// 1×/hora por conta: suficiente para o "Views Hoje" subir ao longo do dia (a
+// Meta libera o dado do dia com atraso de qualquer forma) e ~3 consultas/hora
+// por conta no máximo.
+const RESYNC_AFTER_MS = 60 * 60_000;
 const ACCOUNT_LIMIT = 60;
 const CONCURRENCY = 3;
 const RUN_BUDGET_MS = 95_000;

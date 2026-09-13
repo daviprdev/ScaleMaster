@@ -40,8 +40,13 @@ interface DashboardStats {
   posts_today: { published: number; scheduled: number; loop: number };
   views: {
     total: number;
+    today: number;
+    yesterday: number;
     last_7d: number;
     last_30d: number;
+    month: number;
+    prev_month: number;
+    today_has_data: boolean;
     accounts_total: number;
     accounts_synced: number;
     last_synced_at: string | null;
@@ -151,6 +156,83 @@ function AmbientGlow({ color }: { color: string }) {
   );
 }
 
+// ── Views das contas por período ─────────────────────────────────
+type ViewsPeriod = "today" | "yesterday" | "last_7d" | "last_30d" | "month";
+
+const VIEWS_PERIODS: { key: ViewsPeriod; label: string; hint: string }[] = [
+  { key: "today",     label: "Hoje",     hint: "Dia atual — zera às 21h (Brasília)" },
+  { key: "yesterday", label: "Ontem",    hint: "Dia anterior completo" },
+  { key: "last_7d",   label: "7 dias",   hint: "Últimos 7 dias, incluindo hoje" },
+  { key: "last_30d",  label: "30 dias",  hint: "Últimos 30 dias, incluindo hoje" },
+  { key: "month",     label: "Este mês", hint: "Desde o dia 1º — zera todo mês" },
+];
+
+function ViewsPeriodCard({ views }: { views: DashboardStats["views"] }) {
+  const [period, setPeriod] = useState<ViewsPeriod>("today");
+  const current = VIEWS_PERIODS.find((p) => p.key === period)!;
+  const value = Number(views[period]) || 0;
+  const color = "#00E5FF";
+  const glow = "rgba(0,229,255,0.22)";
+
+  return (
+    <div className="glass-card ticks p-5 group relative overflow-hidden">
+      <AmbientGlow color={glow} />
+
+      <div className="flex items-start justify-between gap-3 mb-4 relative z-10 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: "rgba(255,255,255,0.04)", border: `0.5px solid ${color}33`, boxShadow: `0 0 14px ${glow}` }}
+          >
+            <Eye size={18} style={{ color }} strokeWidth={1.5} />
+          </div>
+          <div>
+            <div className="text-xs text-white/50 font-medium">Views das Contas</div>
+            <div className="text-[10px] text-white/25">Contas ativas e conectadas</div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1 flex-wrap">
+          {VIEWS_PERIODS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              title={p.hint}
+              onClick={() => setPeriod(p.key)}
+              className="text-[10px] px-2.5 py-1 rounded-full border transition-colors"
+              style={
+                period === p.key
+                  ? { background: "rgba(0,229,255,0.12)", borderColor: "rgba(0,229,255,0.4)", color }
+                  : { background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.4)" }
+              }
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div
+        className="text-3xl font-black mb-0.5 relative z-10"
+        style={{ color, textShadow: `0 0 20px ${glow}` }}
+      >
+        {value.toLocaleString("pt-BR")}
+      </div>
+      <div className="text-[10px] text-white/30 relative z-10">
+        {period === "today" && !views.today_has_data
+          ? "A Meta libera as views do dia com algumas horas de atraso — o número aparece ao longo do dia."
+          : current.hint}
+      </div>
+
+      {period === "month" && (
+        <div className="text-[10px] text-white/30 mt-2 pt-2 border-t border-white/[0.06] relative z-10">
+          Mês anterior: <span className="text-white/50 font-medium">{(Number(views.prev_month) || 0).toLocaleString("pt-BR")}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [stats, setStats]           = useState<DashboardStats | null>(null);
@@ -218,12 +300,11 @@ export default function DashboardPage() {
           glow: "rgba(0,229,255,0.22)",
         },
         {
-          label: "Views Totais",
-          value: formatCompact(stats.views.total),
-          change:
-            stats.views.accounts_total > 0 && stats.views.accounts_synced < stats.views.accounts_total
-              ? `${stats.views.accounts_synced}/${stats.views.accounts_total} contas sincronizadas`
-              : `${formatCompact(stats.views.last_7d)} nos últimos 7 dias`,
+          label: "Views Hoje",
+          value: formatCompact(stats.views.today),
+          change: stats.views.today_has_data
+            ? `Ontem: ${formatCompact(stats.views.yesterday)} · zera às 21h`
+            : `Aguardando a Meta liberar o dia · ontem: ${formatCompact(stats.views.yesterday)}`,
           icon: Eye,
           iconColor: "#00E5FF",
           glow: "rgba(0,229,255,0.22)",
@@ -360,7 +441,12 @@ export default function DashboardPage() {
             ))}
       </motion.div>
 
-      {/* Simple stat cards: Contas Conectadas / Postagens Hoje / Views Totais / Fila */}
+      {/* Views das contas por período (Hoje / Ontem / 7d / 30d / Este mês) */}
+      <motion.div variants={fadeUp}>
+        {loading || !stats ? <StatSkeleton /> : <ViewsPeriodCard views={stats.views} />}
+      </motion.div>
+
+      {/* Simple stat cards: Contas Conectadas / Postagens Hoje / Views Hoje / Fila */}
       <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {loading || !simpleCards
           ? Array.from({ length: 4 }).map((_, i) => (

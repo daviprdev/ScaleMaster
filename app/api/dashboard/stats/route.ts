@@ -135,7 +135,8 @@ export async function GET() {
     (admin as unknown as {
       rpc: (fn: string, args: Record<string, unknown>) => Promise<{
         data: {
-          total: number; last_7d: number; last_30d: number;
+          total: number; today: number; yesterday: number; last_7d: number; last_30d: number;
+          month: number; prev_month: number; today_has_data: boolean;
           accounts_total: number; accounts_synced: number; last_synced_at: string | null;
         } | null;
         error: { message: string } | null;
@@ -233,9 +234,16 @@ export async function GET() {
       loop: loopPublishedTodayRes.count ?? 0,
     },
     views: {
+      // Dias UTC (a Meta só soma sem sobreposição nessa granularidade): o dia
+      // vira às 21h de Brasília.
       total: Number(viewsSummary?.total ?? 0),
+      today: Number(viewsSummary?.today ?? 0),
+      yesterday: Number(viewsSummary?.yesterday ?? 0),
       last_7d: Number(viewsSummary?.last_7d ?? 0),
       last_30d: Number(viewsSummary?.last_30d ?? 0),
+      month: Number(viewsSummary?.month ?? 0),
+      prev_month: Number(viewsSummary?.prev_month ?? 0),
+      today_has_data: Boolean(viewsSummary?.today_has_data),
       accounts_total: Number(viewsSummary?.accounts_total ?? 0),
       accounts_synced: Number(viewsSummary?.accounts_synced ?? 0),
       last_synced_at: viewsSummary?.last_synced_at ?? null,

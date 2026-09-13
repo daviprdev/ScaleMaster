@@ -347,6 +347,15 @@ async function main() {
     check("get_account_views_summary sem EXECUTE público",
       src("supabase/account_views_daily.sql").includes("revoke execute on function public.get_account_views_summary(uuid) from public, anon, authenticated"));
 
+    {
+      const sql = src("supabase/account_views_periods.sql");
+      check("resumo de views devolve hoje/ontem/7d/30d/mês/mês anterior",
+        ["'today'", "'yesterday'", "'last_7d'", "'last_30d'", "'month'", "'prev_month'", "'today_has_data'"].every((k) => sql.includes(k)));
+      const dash = src("app/dashboard/page.tsx");
+      check("Dashboard tem card de views com seletor de período",
+        dash.includes("function ViewsPeriodCard") && dash.includes('label: "Views Hoje"'));
+    }
+
     const mav = src("lib/meta-account-views.ts");
     check("views de conta por dia alinhado à meia-noite UTC (janelas desalinhadas contam em dobro)",
       mav.includes("Math.floor(nowMs / 1000 / DAY_S) * DAY_S") && mav.includes("metric_type=total_value"));
