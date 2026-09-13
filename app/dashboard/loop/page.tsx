@@ -196,16 +196,22 @@ const RANKING_SORTS: { key: RankingSort; label: string; hint: string }[] = [
 type RankingAccount = LoopAnalytics["account_ranking"][number];
 
 function rankingValue(acc: RankingAccount, sort: RankingSort): number {
+  const plays = Number(acc.total_plays) || 0;
+  const posts = Number(acc.posts_count) || 0;
   switch (sort) {
-    case "views": return acc.total_plays;
-    case "avg":   return acc.posts_count > 0 ? Math.round(acc.total_plays / acc.posts_count) : 0;
-    case "likes": return acc.total_likes;
+    case "views": return plays;
+    case "avg":   return posts > 0 ? Math.round(plays / posts) : 0;
+    case "likes": return Number(acc.total_likes) || 0;
+    default:      return plays; // sort desconhecido (estado antigo) → views do loop
   }
 }
 
 // ── Helpers ───────────────────────────────────────────────────
 
-function formatNumber(n: number): string {
+function formatNumber(n: number | null | undefined): string {
+  // Nunca "undefined"/"NaN" na tela: página antiga em cache + API nova (ou
+  // campo ausente) caíam em String(undefined).
+  if (typeof n !== "number" || !Number.isFinite(n)) n = 0;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
@@ -418,7 +424,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
             const isChampion = idx === 0 && value > 0;
             const unit = rankingSort === "likes" ? "curtidas" : rankingSort === "avg" ? "views/vídeo" : "views";
             // Postou pelo loop mas a Meta ainda não devolveu as views de nenhum vídeo.
-            const pendingSync = acc.posts_count > 0 && acc.synced_posts === 0;
+            const pendingSync = acc.posts_count > 0 && (acc.synced_posts ?? 0) === 0;
             const engagementLabel = acc.posts_count === 0
               ? "sem posts"
               : pendingSync
