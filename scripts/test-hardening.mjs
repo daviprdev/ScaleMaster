@@ -301,6 +301,39 @@ async function main() {
     src("app/api/cron/process-instagram-logins/route.ts").includes("proxy_url"));
   check("estoque proxy_pool preservado", exists("lib/proxy-pool.ts") && exists("app/api/proxy-pool/route.ts"));
 
+  // ── Auditoria 2026-09-12 ────────────────────────────────────────────────────
+  console.log("\n== Auditoria 2026-09-12 ==");
+  {
+    const tpl = src("app/api/stories/templates/route.ts");
+    check("templates de Story: embed instagram_accounts com FK explícita (sem PGRST201)",
+      tpl.includes("instagram_accounts!story_templates_source_account_id_fkey(") &&
+      !/"instagram_accounts\(username\), "/.test(tpl));
+
+    check("force-run não ordena scheduled_posts por coluna inexistente",
+      !src("app/api/cron/force-run/route.ts").includes('.order("updated_at"'));
+
+    for (const f of ["app/api/cron/process-scrape-jobs/route.ts", "app/api/cron/process-instagram-logins/route.ts"]) {
+      const s = src(f);
+      check(`${path.basename(path.dirname(f))}: claim carimba retry_after`,
+        /update\(\{ status: "processing", retry_after: new Date\(\)\.toISOString\(\) \}\)/.test(s));
+      check(`${path.basename(path.dirname(f))}: auto-healing mede desde o claim, não created_at`,
+        !/\.eq\("status", "processing"\)\s*\n\s*\.lt\("created_at"/.test(s) &&
+        s.includes("retry_after.lt.${healCutoff}"));
+    }
+
+    const sql = src("supabase/revoke_public_rpc_execute.sql");
+    for (const fn of ["delete_library_folder_cascade", "get_campaign_summaries", "get_account_video_usage"]) {
+      check(`RPC ${fn} sem EXECUTE para anon/authenticated`, sql.includes(`public.${fn}(`));
+    }
+
+    const upload = src("app/api/stories/upload/route.ts");
+    check("upload de Story não recebe o arquivo pela Vercel (limite 4,5 MB)",
+      !upload.includes("formData()") && upload.includes("createSignedUploadUrl"));
+    const complete = src("app/api/stories/upload/complete/route.ts");
+    check("confirmação de upload valida dono do caminho e metadados do Storage",
+      complete.includes("stories/${user.id}/") && complete.includes("meta.mimetype") && complete.includes(".remove(["));
+  }
+
   console.log(`\n${passed} passaram, ${failed} falharam\n`);
   process.exit(failed === 0 ? 0 : 1);
 }

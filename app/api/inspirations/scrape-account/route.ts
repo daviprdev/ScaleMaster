@@ -25,7 +25,10 @@ export async function POST(req: NextRequest) {
   }
 
   const readerAccountId = body.readerAccountId?.trim();
-  const targetUsername = body.targetUsername?.trim().replace(/^@/, "");
+  // Username do Instagram é case-insensitive: normaliza para minúsculas para
+  // que "Perfil" e "perfil" caiam na MESMA linha de scraped_profiles
+  // (unique user_id+username) em vez de duplicar o histórico.
+  const targetUsername = body.targetUsername?.trim().replace(/^@/, "").toLowerCase();
   const limit = Math.min(Math.max(Number(body.limit) || 120, 1), 300);
 
   if (!readerAccountId) {
@@ -33,6 +36,9 @@ export async function POST(req: NextRequest) {
   }
   if (!targetUsername) {
     return NextResponse.json({ error: "Informe o perfil-alvo." }, { status: 400 });
+  }
+  if (!/^[a-z0-9._]{1,30}$/.test(targetUsername)) {
+    return NextResponse.json({ error: "Username do Instagram inválido." }, { status: 400 });
   }
 
   // Ownership + pré-condições (RLS garante que só vem conta do próprio usuário).

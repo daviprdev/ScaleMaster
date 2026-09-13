@@ -4082,3 +4082,25 @@ credenciais + proxy dedicado, (c) `ENCRYPTION_SECRET`/`PYTHON_SERVER_*` no
 ambiente. Sem credenciais reais não dá para logar no Instagram — validei a
 sintaxe/compilação Python, a API instagrapi contra a lib instalada, o
 typecheck/build e o schema no banco.
+
+---
+
+## 2026-09-12 — Upload de Stories + auditoria geral
+
+- **Stories — upload de vídeo:** o arquivo passava pela Vercel (limite 4,5 MB
+  no corpo) e todo vídeo falhava como "Erro de conexão". Agora é URL assinada:
+  servidor escolhe o caminho, navegador sobe direto ao Supabase, rota
+  `/complete` valida pelos metadados do Storage. Seletor "Processamento do
+  vídeo" removido da aba Stories (sempre `original`).
+- **Decisão do dono:** no Modo Ciclo (Postar), contas vizinhas repetirem quase o
+  mesmo lote em minutos é INTENCIONAL — não corrigir.
+- **Auditoria:** RPCs `delete_library_folder_cascade` e `get_campaign_summaries`
+  estavam executáveis com a anon key (apagar/ler dados de outro usuário) —
+  EXECUTE revogado (`supabase/revoke_public_rpc_execute.sql`). Lista de
+  templates de Story dava 500 sempre (embed ambíguo PGRST201) — FK explícita.
+  force-run ordenava por coluna inexistente. Auto-healing de scrape/login jobs
+  media desde `created_at` e podia rodar o mesmo job 2× — agora desde o claim.
+- **Método reaproveitável:** todas as 277 consultas `.select()` do código foram
+  validadas contra o PostgREST de produção com `limit=0`, e colunas de escrita/
+  filtros contra o OpenAPI do banco. Pegou 2 bugs que typecheck/testes não pegam.
+- **Pendente (config):** ativar Leaked Password Protection no Supabase Auth.

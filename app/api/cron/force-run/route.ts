@@ -73,7 +73,9 @@ export async function GET(req: NextRequest) {
     .from("scheduled_posts")
     .select("id, error_message, scheduled_at, account_id")
     .eq("status", "failed")
-    .order("updated_at", { ascending: false })
+    // scheduled_posts não tem updated_at — ordenar por ela fazia a query
+    // falhar em silêncio e a amostra de falhas vir sempre vazia.
+    .order("scheduled_at", { ascending: false })
     .limit(5);
 
   // Stuck in "publishing" for > 10 min = zombie

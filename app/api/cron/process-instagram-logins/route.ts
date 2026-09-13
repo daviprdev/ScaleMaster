@@ -99,7 +99,10 @@ export async function GET(req: NextRequest) {
         error_message: "[AUTO-HEALING] Job preso >10 min em processing — devolvido à fila.",
       })
       .eq("status", "processing")
-      .lt("created_at", healCutoff)
+      // Mede desde o CLAIM (retry_after é carimbado no claim), não desde
+      // created_at — job re-tentado após backoff já nasce "velho" e seria
+      // devolvido à fila enquanto ainda roda.
+      .or(`retry_after.is.null,retry_after.lt.${healCutoff}`)
       .select("id");
 
     if (healErr) {
@@ -150,7 +153,8 @@ export async function GET(req: NextRequest) {
     // Claim atômico — mesmo idiom CAS de publish-pending.
     const { data: claimed } = await (admin as any)
       .from("login_jobs")
-      .update({ status: "processing" })
+      // retry_after vira o carimbo do claim (ver AUTO-HEALING acima).
+      .update({ status: "processing", retry_after: new Date().toISOString() })
       .eq("id", job.id)
       .eq("status", "queued")
       .select("id");

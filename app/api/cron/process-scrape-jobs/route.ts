@@ -107,7 +107,12 @@ export async function GET(req: NextRequest) {
         error_message: "[AUTO-HEALING] Job preso >10 min em processing — devolvido à fila.",
       })
       .eq("status", "processing")
-      .lt("created_at", healCutoff)
+      // Mede desde o CLAIM (retry_after é carimbado no claim), não desde a
+      // criação: um job re-tentado após backoff já nasce "velho" por
+      // created_at e era devolvido à fila ENQUANTO rodava — a invocação
+      // seguinte (cron */5, run de até 300s) raspava de novo com a mesma
+      // conta leitora, em paralelo.
+      .or(`retry_after.is.null,retry_after.lt.${healCutoff}`)
       .select("id");
 
     if (healErr) {
@@ -151,7 +156,9 @@ export async function GET(req: NextRequest) {
     // Claim atômico — só uma invocação concorrente vence.
     const { data: claimed } = await (admin as any)
       .from("scrape_jobs")
-      .update({ status: "processing" })
+      // retry_after vira o carimbo do claim: o AUTO-HEALING mede "preso" a
+      // partir daqui, não de created_at.
+      .update({ status: "processing", retry_after: new Date().toISOString() })
       .eq("id", job.id)
       .eq("status", "queued")
       .select("id");

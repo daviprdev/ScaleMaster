@@ -30,7 +30,10 @@ export async function GET() {
     .from("story_templates")
     .select(
       "id, media_url, media_type, interval_minutes, last_posted_at, last_error, status, created_at, source_account_id, " +
-      "instagram_accounts(username), " +
+      // FK explícita: story_templates chega em instagram_accounts por DOIS
+      // caminhos (source_account_id e a tabela N:N story_template_accounts).
+      // Sem o hint, o PostgREST devolve PGRST201 e a lista inteira dava 500.
+      "instagram_accounts!story_templates_source_account_id_fkey(username), " +
       "story_template_accounts(account_id, instagram_accounts(username, avatar_url))"
     )
     .eq("user_id", user.id)
