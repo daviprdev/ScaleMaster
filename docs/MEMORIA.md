@@ -4104,3 +4104,32 @@ typecheck/build e o schema no banco.
   validadas contra o PostgREST de produção com `limit=0`, e colunas de escrita/
   filtros contra o OpenAPI do banco. Pegou 2 bugs que typecheck/testes não pegam.
 - **Pendente (config):** ativar Leaked Password Protection no Supabase Auth.
+
+---
+
+## 2026-09-13 — Views reais, ranking do Loop e Inspirações duráveis
+
+- **Views na Dashboard = insight de CONTA da Meta**, não soma de posts do SaaS
+  (o SaaS só conhece ~30 de ~120 posts por conta). Tabela
+  `account_views_daily` (conta × dia UTC) + cron `sync-account-views`
+  (1×/hora por conta, backfill de 90 dias). Não precisou mexer no Meta App.
+- **Dashboard:** card "Views Hoje" (zera todo dia; mostra "Ontem" enquanto a
+  Meta não libera o dia) + card "Views das Contas" com Hoje / Ontem / 7 dias /
+  30 dias / Este mês. Limitações da Meta: o dia é UTC (vira às 21h de
+  Brasília) e o dia corrente chega com horas de atraso; `code=10` nesse
+  endpoint é intermitente (tratar como retry).
+- **Views por post:** cron `sync-post-insights` passou a cobrir o Loop
+  (`pending_containers`); Story pede só métricas válidas; falha nunca grava 0
+  por cima de view real. Bug: faltavam `insights_shares/insights_saved` em
+  `pending_containers` e todo UPDATE era rejeitado — colunas criadas.
+- **Ranking do Loop:** views dos vídeos que AQUELE loop postou em cada conta
+  (Views / Média por vídeo / Curtidas) — não views totais da conta (decisão do
+  dono). Frequência das views de vídeo mantida (<2d a cada 4h, 2–14d diário).
+- **Inspirações duráveis:** busca registrada em `inspiration_scrape_searches`
+  ao iniciar; poll e cron `finalize-inspiration-scrapes` salvam no histórico
+  mesmo se a página fechar; busca em andamento do mesmo perfil é reaproveitada;
+  recover (admin) importa runs órfãos da Apify sem gastar. Recuperados:
+  @lidacibotelho2026ofc (462), @anickassianeofc (61). `/dashboard/search`
+  (cópia quebrada) virou redirect.
+- **Pendente:** 1 token da Apify na Vercel com erro de autenticação; ativar
+  Leaked Password Protection no Supabase Auth.
