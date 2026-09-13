@@ -168,7 +168,8 @@ const VIEWS_PERIODS: { key: ViewsPeriod; label: string; hint: string }[] = [
 ];
 
 function ViewsPeriodCard({ views }: { views: DashboardStats["views"] }) {
-  const [period, setPeriod] = useState<ViewsPeriod>("today");
+  // Abre em "Hoje" quando a Meta já liberou o dia; senão em "Ontem" (evita 0).
+  const [period, setPeriod] = useState<ViewsPeriod>(views.today_has_data ? "today" : "yesterday");
   const current = VIEWS_PERIODS.find((p) => p.key === period)!;
   const value = Number(views[period]) || 0;
   const color = "#00E5FF";
@@ -299,16 +300,25 @@ export default function DashboardPage() {
           iconColor: "#00E5FF",
           glow: "rgba(0,229,255,0.22)",
         },
-        {
-          label: "Views Hoje",
-          value: formatCompact(stats.views.today),
-          change: stats.views.today_has_data
-            ? `Ontem: ${formatCompact(stats.views.yesterday)} · zera às 21h`
-            : `Aguardando a Meta liberar o dia · ontem: ${formatCompact(stats.views.yesterday)}`,
-          icon: Eye,
-          iconColor: "#00E5FF",
-          glow: "rgba(0,229,255,0.22)",
-        },
+        // Enquanto a Meta não libera o dia corrente (algumas horas após virar às
+        // 21h de Brasília), mostra ONTEM em vez de um 0 que parece erro.
+        stats.views.today_has_data
+          ? {
+              label: "Views Hoje",
+              value: formatCompact(stats.views.today),
+              change: `Ontem: ${formatCompact(stats.views.yesterday)} · zera às 21h`,
+              icon: Eye,
+              iconColor: "#00E5FF",
+              glow: "rgba(0,229,255,0.22)",
+            }
+          : {
+              label: "Views Ontem",
+              value: formatCompact(stats.views.yesterday),
+              change: "Hoje ainda sem dados — a Meta libera com algumas horas de atraso",
+              icon: Eye,
+              iconColor: "#00E5FF",
+              glow: "rgba(0,229,255,0.22)",
+            },
         {
           label: "Fila",
           value: String(stats.queue.pending),
