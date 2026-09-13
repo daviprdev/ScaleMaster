@@ -128,13 +128,17 @@ export async function GET() {
       .gt("scheduled_at", nowIso)
       .order("scheduled_at", { ascending: true })
       .limit(4),
-    admin
-      .from("scheduled_posts")
-      .select("insights_plays, insights_fetched_at, instagram_accounts!inner(is_active, health_status)")
-      .eq("user_id", user.id)
-      .eq("status", "published")
-      .eq("instagram_accounts.is_active", true)
-      .neq("instagram_accounts.health_status", "error"),
+    // Views de Postar/Clonar/Stories + Loop, agregadas no banco (uma linha —
+    // sem o teto de 1000 do PostgREST). Antes só scheduled_posts entrava.
+    (admin as unknown as {
+      rpc: (fn: string, args: Record<string, unknown>) => Promise<{
+        data: {
+          total: number; tracked_posts: number; total_posts: number;
+          last_synced_at: string | null; loop_total: number; posts_total: number;
+        } | null;
+        error: { message: string } | null;
+      }>;
+    }).rpc("get_views_summary", { p_user_id: user.id }),
     admin
       .from("sales")
       .select("amount, created_at")
@@ -185,22 +189,14 @@ export async function GET() {
     )
     .slice(0, 5);
 
-  const viewsRows = (viewsPostsRes.data ?? []) as unknown as {
-    insights_plays: number | null;
-    insights_fetched_at: string | null;
-  }[];
-  let viewsTotal = 0;
-  let viewsTracked = 0;
-  let viewsLastSyncedAt: string | null = null;
-  for (const row of viewsRows) {
-    if (row.insights_plays !== null) {
-      viewsTotal += row.insights_plays;
-      viewsTracked++;
-    }
-    if (row.insights_fetched_at && (!viewsLastSyncedAt || row.insights_fetched_at > viewsLastSyncedAt)) {
-      viewsLastSyncedAt = row.insights_fetched_at;
-    }
+  if (viewsPostsRes.error) {
+    console.error("[dashboard/stats] get_views_summary falhou:", viewsPostsRes.error.message);
   }
+  const viewsSummary = viewsPostsRes.data;
+  const viewsTotal = Number(viewsSummary?.total ?? 0);
+  const viewsTracked = Number(viewsSummary?.tracked_posts ?? 0);
+  const viewsTotalPosts = Number(viewsSummary?.total_posts ?? 0);
+  const viewsLastSyncedAt = viewsSummary?.last_synced_at ?? null;
 
   const salesRows = (salesRes.data ?? []) as { amount: number | null; created_at: string }[];
   const todayStartIso = brtMidnightUtc(0).toISOString();
@@ -241,7 +237,7 @@ export async function GET() {
     views: {
       total: viewsTotal,
       tracked_posts: viewsTracked,
-      total_posts: viewsRows.length,
+      total_posts: viewsTotalPosts,
       last_synced_at: viewsLastSyncedAt,
     },
     queue: {

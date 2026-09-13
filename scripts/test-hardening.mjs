@@ -326,6 +326,25 @@ async function main() {
       check(`RPC ${fn} sem EXECUTE para anon/authenticated`, sql.includes(`public.${fn}(`));
     }
 
+    // Views Totais: Loop incluído, sem apagar valor real, story sem `saved`.
+    const cronIns = src("app/api/cron/sync-post-insights/route.ts");
+    check("sync-post-insights sincroniza posts do Loop (pending_containers)",
+      cronIns.includes('base("pending_containers"'));
+    check("sync-post-insights filtra elegibilidade no banco (não em JS sobre lote fixo)",
+      cronIns.includes("reelEligibility(") && !cronIns.includes("function isEligible"));
+    const libIns = src("lib/meta-insights.ts");
+    check("insights de Story não pedem métrica `saved` (Meta recusa a chamada inteira)",
+      /story:\s*"views,reach,shares"/.test(libIns));
+    check("gravação de insights omite métricas nulas (falha não zera views)",
+      libIns.includes("export function insightsUpdatePayload") &&
+      src("app/api/loops/[id]/analytics/route.ts").includes("insightsUpdatePayload(") &&
+      src("app/api/meta/insights/route.ts").includes("insightsUpdatePayload("));
+    const stats = src("app/api/dashboard/stats/route.ts");
+    check("Dashboard soma views via RPC agregada (Postar + Loop)",
+      stats.includes('rpc("get_views_summary"') && !stats.includes("viewsRows"));
+    check("get_views_summary sem EXECUTE público",
+      src("supabase/views_summary_rpc.sql").includes("revoke execute on function public.get_views_summary(uuid) from public, anon, authenticated"));
+
     const upload = src("app/api/stories/upload/route.ts");
     check("upload de Story não recebe o arquivo pela Vercel (limite 4,5 MB)",
       !upload.includes("formData()") && upload.includes("createSignedUploadUrl"));

@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { fetch as undiciFetch } from "undici";
 import { fetchAllRows } from "@/lib/video-history";
+import { fetchPostInsights, insightsUpdatePayload } from "@/lib/meta-insights";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
 
-const GRAPH = "https://graph.instagram.com/v21.0";
 const INSIGHTS_CACHE_MS = 30 * 60_000; // refresca a cada 30 min
 
 // ---------------------------------------------------------------------------
@@ -36,50 +35,6 @@ interface ContainerRow {
   } | null;
 }
 
-interface InsightValues {
-  likes: number;
-  comments: number;
-  plays: number;
-  reach: number;
-}
-
-// ---------------------------------------------------------------------------
-// Busca métricas reais de um media_id via Meta Graph API
-// ---------------------------------------------------------------------------
-
-async function fetchMediaInsights(
-  mediaId: string,
-  token: string
-): Promise<InsightValues> {
-  let likes = 0, comments = 0, plays = 0, reach = 0;
-
-  try {
-    const url = `${GRAPH}/${mediaId}?fields=like_count,comments_count&access_token=${encodeURIComponent(token)}`;
-    const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) });
-    const data = (await res.json()) as Record<string, unknown>;
-    if (!data.error) {
-      likes = (data.like_count as number) ?? 0;
-      comments = (data.comments_count as number) ?? 0;
-    }
-  } catch { /* non-critical */ }
-
-  try {
-    const url = `${GRAPH}/${mediaId}/insights?metric=views,reach&access_token=${encodeURIComponent(token)}`;
-    const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) });
-    const data = (await res.json()) as {
-      data?: Array<{ name: string; values?: Array<{ value: number }>; value?: number }>;
-    };
-    if (data.data && !("error" in data)) {
-      for (const m of data.data) {
-        const val = (m.values?.[0]?.value ?? m.value) ?? 0;
-        if (m.name === "views") plays = val;
-        if (m.name === "reach") reach = val;
-      }
-    }
-  } catch { /* non-critical — não disponível para todas as mídias */ }
-
-  return { likes, comments, plays, reach };
-}
 
 // ---------------------------------------------------------------------------
 // Handler principal
@@ -184,26 +139,24 @@ export async function GET(
     const batch = needsInsights.slice(0, 10);
     await Promise.allSettled(
       batch.map(async (c) => {
-        const ins = await fetchMediaInsights(
+        const ins = await fetchPostInsights(
           c.media_id!,
-          c.instagram_accounts!.meta_access_token!
+          c.instagram_accounts!.meta_access_token!,
+          "reel"
         );
+        // Só grava o que a Meta devolveu: antes, falha virava 0 por cima das
+        // views reais já salvas.
+        const payload = insightsUpdatePayload(ins);
         await (admin as any)
           .from("pending_containers")
-          .update({
-            insights_likes: ins.likes,
-            insights_comments: ins.comments,
-            insights_plays: ins.plays,
-            insights_reach: ins.reach,
-            insights_fetched_at: new Date().toISOString(),
-          })
+          .update(payload)
           .eq("id", c.id);
         // Patch em memória para retornar dados frescos já nesta resposta
-        c.insights_likes = ins.likes;
-        c.insights_comments = ins.comments;
-        c.insights_plays = ins.plays;
-        c.insights_reach = ins.reach;
-        c.insights_fetched_at = new Date().toISOString();
+        if (ins.likes !== null) c.insights_likes = ins.likes;
+        if (ins.comments !== null) c.insights_comments = ins.comments;
+        if (ins.plays !== null) c.insights_plays = ins.plays;
+        if (ins.reach !== null) c.insights_reach = ins.reach;
+        c.insights_fetched_at = payload.insights_fetched_at as string;
       })
     );
   }

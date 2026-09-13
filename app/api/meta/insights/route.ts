@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { fetchPostInsights, type PostInsights } from "@/lib/meta-insights";
+import { fetchPostInsights, insightsUpdatePayload, type PostInsights } from "@/lib/meta-insights";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +9,7 @@ interface PostWithAccount {
   id: string;
   media_id: string | null;
   account_id: string;
+  post_type: string | null;
   instagram_accounts: {
     id: string;
     meta_access_token: string | null;
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
-  const body = (await req.json()) as { post_id?: string };
+  const body = (await req.json().catch(() => ({}))) as { post_id?: string };
   if (!body.post_id) return NextResponse.json({ error: "post_id obrigatório." }, { status: 400 });
 
   const admin = getSupabaseAdmin();
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
   const { data: rawPost, error: postErr } = await admin
     .from("scheduled_posts")
     .select(
-      "id, media_id, account_id, " +
+      "id, media_id, account_id, post_type, " +
       "instagram_accounts(id, meta_access_token, ig_business_account_id)"
     )
     .eq("id", body.post_id)
@@ -51,20 +52,16 @@ export async function POST(req: NextRequest) {
   }
 
 
-  const metrics: PostInsights = await fetchPostInsights(post.media_id, account.meta_access_token);
+  const metrics: PostInsights = await fetchPostInsights(
+    post.media_id,
+    account.meta_access_token,
+    post.post_type === "story" ? "story" : "reel"
+  );
 
-  // Cast required — new insight columns not yet in generated Supabase types
+  // Só grava métricas obtidas — falha na Meta não apaga views já salvas.
   await admin
     .from("scheduled_posts")
-    .update({
-      insights_likes: metrics.likes,
-      insights_comments: metrics.comments,
-      insights_reach: metrics.reach,
-      insights_plays: metrics.plays,
-      insights_shares: metrics.shares,
-      insights_saved: metrics.saved,
-      insights_fetched_at: new Date().toISOString(),
-    } as unknown as Record<string, unknown>)
+    .update(insightsUpdatePayload(metrics) as never)
     .eq("id", body.post_id);
 
   return NextResponse.json({ ok: true, metrics });
