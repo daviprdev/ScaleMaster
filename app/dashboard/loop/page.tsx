@@ -179,31 +179,27 @@ interface LoopAnalytics {
     total_comments: number;
     total_plays: number;
     engagement_score: number;
-    /** Views reais da conta (insight de conta da Meta). null = ainda não sincronizado. */
-    account_views_total: number | null;
-    account_views_7d: number | null;
-    account_views_24h: number | null;
+    /** Posts publicados pelo loop que já têm views lidas da Meta. */
+    synced_posts: number;
   }>;
 }
 
-type RankingSort = "views_total" | "views_7d" | "views_24h" | "loop_views" | "likes";
+// O ranking considera SÓ os vídeos que este loop publicou em cada conta.
+type RankingSort = "views" | "avg" | "likes";
 
 const RANKING_SORTS: { key: RankingSort; label: string; hint: string }[] = [
-  { key: "views_total", label: "Total",   hint: "Views reais da conta (todos os posts)" },
-  { key: "views_7d",    label: "7 dias",  hint: "Views reais da conta nos últimos 7 dias" },
-  { key: "loop_views",  label: "No loop", hint: "Views só dos posts publicados por este loop" },
-  { key: "likes",       label: "Curtidas", hint: "Curtidas dos posts deste loop" },
+  { key: "views", label: "Views",       hint: "Soma das views dos vídeos postados por este loop" },
+  { key: "avg",   label: "Média/vídeo", hint: "Views por vídeo postado por este loop" },
+  { key: "likes", label: "Curtidas",    hint: "Curtidas dos vídeos postados por este loop" },
 ];
 
 type RankingAccount = LoopAnalytics["account_ranking"][number];
 
-function rankingValue(acc: RankingAccount, sort: RankingSort): number | null {
+function rankingValue(acc: RankingAccount, sort: RankingSort): number {
   switch (sort) {
-    case "views_total": return acc.account_views_total;
-    case "views_7d":    return acc.account_views_7d;
-    case "views_24h":   return acc.account_views_24h;
-    case "loop_views":  return acc.total_plays;
-    case "likes":       return acc.total_likes;
+    case "views": return acc.total_plays;
+    case "avg":   return acc.posts_count > 0 ? Math.round(acc.total_plays / acc.posts_count) : 0;
+    case "likes": return acc.total_likes;
   }
 }
 
@@ -261,7 +257,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
   const [data, setData] = useState<LoopAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [rankingSort, setRankingSort] = useState<RankingSort>("views_total");
+  const [rankingSort, setRankingSort] = useState<RankingSort>("views");
 
   useEffect(() => {
     fetch(`/api/loops/${loopId}/analytics`)
@@ -393,7 +389,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
           <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
             <div className="flex items-center gap-1.5 text-[10px] text-white/30 uppercase tracking-wide">
               <TrendingUp size={10} />
-              Ranking de {rankingSort === "likes" ? "Curtidas" : "Views"}
+              Ranking do loop — {rankingSort === "likes" ? "Curtidas" : "Views"}
             </div>
             <div className="flex items-center gap-1 flex-wrap">
               {RANKING_SORTS.map((s) => (
@@ -416,14 +412,18 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
           </div>
           <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-1.5 pr-0.5">
           {[...account_ranking]
-            .sort((a, b) => (rankingValue(b, rankingSort) ?? -1) - (rankingValue(a, rankingSort) ?? -1))
+            .sort((a, b) => rankingValue(b, rankingSort) - rankingValue(a, rankingSort) || b.total_plays - a.total_plays)
             .map((acc, idx) => {
             const value = rankingValue(acc, rankingSort);
-            const isChampion = idx === 0 && (value ?? 0) > 0;
-            const unit = rankingSort === "likes" ? "curtidas" : "views";
-            const engagementLabel = value === null
-              ? "sincronizando…"
-              : `${formatNumber(value)} ${unit}`;
+            const isChampion = idx === 0 && value > 0;
+            const unit = rankingSort === "likes" ? "curtidas" : rankingSort === "avg" ? "views/vídeo" : "views";
+            // Postou pelo loop mas a Meta ainda não devolveu as views de nenhum vídeo.
+            const pendingSync = acc.posts_count > 0 && acc.synced_posts === 0;
+            const engagementLabel = acc.posts_count === 0
+              ? "sem posts"
+              : pendingSync
+                ? "sincronizando…"
+                : `${formatNumber(value)} ${unit}`;
 
             return (
               <div
@@ -475,7 +475,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
                   </p>
                   <p className="text-[9px] text-white/20">
                     {acc.followers_count != null && acc.followers_count > 0 && `${formatNumber(acc.followers_count)} seguidores · `}
-                    {acc.posts_count} post{acc.posts_count !== 1 ? "s" : ""} no loop
+                    {acc.posts_count} vídeo{acc.posts_count !== 1 ? "s" : ""} do loop
                   </p>
                 </div>
 

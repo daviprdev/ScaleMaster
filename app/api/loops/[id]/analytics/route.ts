@@ -200,10 +200,8 @@ export async function GET(
     total_comments: number;
     total_plays: number;
     engagement_score: number;
-    /** Views REAIS da conta (insight de conta) — não só dos posts deste loop. */
-    account_views_total: number | null;
-    account_views_7d: number | null;
-    account_views_24h: number | null;
+    /** Posts publicados pelo loop que já têm views lidas da Meta. */
+    synced_posts: number;
   }>();
 
   const blankEntry = (a: { id: string; username: string; avatar_url: string | null; followers_count: number | null }) => ({
@@ -216,9 +214,7 @@ export async function GET(
     total_comments: 0,
     total_plays: 0,
     engagement_score: 0,
-    account_views_total: null,
-    account_views_7d: null,
-    account_views_24h: null,
+    synced_posts: 0,
   });
 
   for (const a of loopAccounts) accMap.set(a.id, blankEntry(a));
@@ -238,6 +234,7 @@ export async function GET(
       entry.total_likes    += row.insights_likes    ?? 0;
       entry.total_comments += row.insights_comments ?? 0;
       entry.total_plays    += row.insights_plays    ?? 0;
+      if (row.insights_fetched_at) entry.synced_posts++;
     }
 
     // Peso: plays × 1, likes × 2, comments × 3 (engajamento ativo vale mais)
@@ -247,28 +244,10 @@ export async function GET(
       entry.total_comments * 3;
   }
 
-  // Views reais por conta, agregadas no banco (uma linha — sem teto de 1000).
-  if (accMap.size > 0) {
-    const { data: viewsByAccount, error: viewsErr } = await (admin as any)
-      .rpc("get_account_views_by_account", { p_account_ids: Array.from(accMap.keys()) });
-    if (viewsErr) {
-      console.error(`[loops/analytics] get_account_views_by_account falhou: ${viewsErr.message}`);
-    } else {
-      for (const [accountId, v] of Object.entries((viewsByAccount ?? {}) as Record<string, { total: number | null; last_7d: number | null; last_24h: number | null }>)) {
-        const entry = accMap.get(accountId);
-        if (!entry) continue;
-        entry.account_views_total = Number(v.total ?? 0);
-        entry.account_views_7d = Number(v.last_7d ?? 0);
-        entry.account_views_24h = Number(v.last_24h ?? 0);
-      }
-    }
-  }
-
-  // Ordem padrão: views reais da conta; desempate por views dos posts do loop.
+  // Ranking = views dos vídeos que ESTE loop publicou em cada conta (não as
+  // views totais da conta). Desempate: curtidas.
   const ranking = Array.from(accMap.values()).sort(
-    (a, b) =>
-      (b.account_views_total ?? -1) - (a.account_views_total ?? -1) ||
-      b.total_plays - a.total_plays
+    (a, b) => b.total_plays - a.total_plays || b.total_likes - a.total_likes
   );
 
   return NextResponse.json({

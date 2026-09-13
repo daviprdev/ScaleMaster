@@ -356,12 +356,14 @@ async function main() {
     check("backfill só é marcado concluído sem dias recusados",
       cronViews.includes("needsBackfill && backfillFailures === 0"));
     const loopAn = src("app/api/loops/[id]/analytics/route.ts");
-    check("ranking do Loop usa views reais agregadas no banco (sem teto de 1000)",
-      loopAn.includes('rpc("get_account_views_by_account"') && loopAn.includes("account_views_total"));
+    check("ranking do Loop ordena pelas views dos vídeos DO LOOP (não views da conta)",
+      loopAn.includes("b.total_plays - a.total_plays") && !loopAn.includes("account_views_total"));
     check("ranking do Loop inclui contas que ainda não postaram pelo loop",
       loopAn.includes("for (const a of loopAccounts) accMap.set(a.id, blankEntry(a))"));
-    check("get_account_views_by_account sem EXECUTE público",
-      src("supabase/account_views_by_account.sql").includes("from public, anon, authenticated"));
+    // insightsUpdatePayload grava as 6 métricas nas DUAS tabelas de post — sem
+    // as colunas, o PostgREST rejeita o UPDATE inteiro e o Loop fica sem views.
+    check("pending_containers tem insights_shares/insights_saved (usados por insightsUpdatePayload)",
+      src("supabase/pending_containers_insights_shares_saved.sql").includes("insights_saved"));
     check("cron sync-account-views agendado no vercel.json",
       src("vercel.json").includes('"/api/cron/sync-account-views"'));
 
