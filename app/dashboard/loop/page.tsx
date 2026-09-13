@@ -179,7 +179,32 @@ interface LoopAnalytics {
     total_comments: number;
     total_plays: number;
     engagement_score: number;
+    /** Views reais da conta (insight de conta da Meta). null = ainda não sincronizado. */
+    account_views_total: number | null;
+    account_views_7d: number | null;
+    account_views_24h: number | null;
   }>;
+}
+
+type RankingSort = "views_total" | "views_7d" | "views_24h" | "loop_views" | "likes";
+
+const RANKING_SORTS: { key: RankingSort; label: string; hint: string }[] = [
+  { key: "views_total", label: "Total",   hint: "Views reais da conta (todos os posts)" },
+  { key: "views_7d",    label: "7 dias",  hint: "Views reais da conta nos últimos 7 dias" },
+  { key: "loop_views",  label: "No loop", hint: "Views só dos posts publicados por este loop" },
+  { key: "likes",       label: "Curtidas", hint: "Curtidas dos posts deste loop" },
+];
+
+type RankingAccount = LoopAnalytics["account_ranking"][number];
+
+function rankingValue(acc: RankingAccount, sort: RankingSort): number | null {
+  switch (sort) {
+    case "views_total": return acc.account_views_total;
+    case "views_7d":    return acc.account_views_7d;
+    case "views_24h":   return acc.account_views_24h;
+    case "loop_views":  return acc.total_plays;
+    case "likes":       return acc.total_likes;
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -236,6 +261,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
   const [data, setData] = useState<LoopAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [rankingSort, setRankingSort] = useState<RankingSort>("views_total");
 
   useEffect(() => {
     fetch(`/api/loops/${loopId}/analytics`)
@@ -364,16 +390,40 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
       {/* ── Ranking de contas ── */}
       {account_ranking.length > 0 && (
         <div className="space-y-1.5">
-          <div className="flex items-center gap-1.5 text-[10px] text-white/30 uppercase tracking-wide mb-2">
-            <TrendingUp size={10} />
-            Ranking de Curtidas
+          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-[10px] text-white/30 uppercase tracking-wide">
+              <TrendingUp size={10} />
+              Ranking de {rankingSort === "likes" ? "Curtidas" : "Views"}
+            </div>
+            <div className="flex items-center gap-1 flex-wrap">
+              {RANKING_SORTS.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  title={s.hint}
+                  onClick={() => setRankingSort(s.key)}
+                  className={cn(
+                    "text-[9px] px-2 py-0.5 rounded-full border transition-colors",
+                    rankingSort === s.key
+                      ? "bg-cyan-500/15 border-cyan-400/40 text-cyan-300"
+                      : "bg-white/[0.03] border-white/[0.08] text-white/35 hover:text-white/60"
+                  )}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="max-h-64 overflow-y-auto custom-scrollbar space-y-1.5 pr-0.5">
-          {account_ranking.map((acc, idx) => {
-            const isChampion = idx === 0 && acc.total_likes > 0;
-            const engagementLabel = acc.total_likes > 0
-              ? `${formatNumber(acc.total_likes)} curtidas`
-              : `${acc.posts_count} post${acc.posts_count !== 1 ? "s" : ""}`;
+          {[...account_ranking]
+            .sort((a, b) => (rankingValue(b, rankingSort) ?? -1) - (rankingValue(a, rankingSort) ?? -1))
+            .map((acc, idx) => {
+            const value = rankingValue(acc, rankingSort);
+            const isChampion = idx === 0 && (value ?? 0) > 0;
+            const unit = rankingSort === "likes" ? "curtidas" : "views";
+            const engagementLabel = value === null
+              ? "sincronizando…"
+              : `${formatNumber(value)} ${unit}`;
 
             return (
               <div
@@ -423,11 +473,10 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
                   )}>
                     @{acc.username}
                   </p>
-                  {acc.followers_count != null && acc.followers_count > 0 && (
-                    <p className="text-[9px] text-white/20">
-                      {formatNumber(acc.followers_count)} seguidores
-                    </p>
-                  )}
+                  <p className="text-[9px] text-white/20">
+                    {acc.followers_count != null && acc.followers_count > 0 && `${formatNumber(acc.followers_count)} seguidores · `}
+                    {acc.posts_count} post{acc.posts_count !== 1 ? "s" : ""} no loop
+                  </p>
                 </div>
 
                 {/* Score */}

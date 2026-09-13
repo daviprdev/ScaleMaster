@@ -77,23 +77,29 @@ export async function GET(
   // Conta contas vinculadas ao loop.
   // Modo pasta (account_folder_id): busca dinamicamente de instagram_accounts.
   // Modo específico: conta de loop_accounts (tabela estática N:N).
-  let accountCount: number;
+  // Lista (não só a contagem): o ranking inclui contas do loop que ainda não
+  // publicaram nada por ele, com as views reais da conta.
+  interface LoopAccount { id: string; username: string; avatar_url: string | null; followers_count: number | null }
+  let loopAccounts: LoopAccount[] = [];
   if (loop.account_folder_id) {
-    const { count } = await (admin as any)
+    const { data } = await (admin as any)
       .from("instagram_accounts")
-      .select("id", { count: "exact", head: true })
+      .select("id, username, avatar_url, followers_count")
       .eq("folder_id", loop.account_folder_id)
       .eq("user_id", user.id)
       .eq("is_active", true)
       .neq("health_status", "error");
-    accountCount = count ?? 0;
+    loopAccounts = (data ?? []) as LoopAccount[];
   } else {
-    const { count } = await (admin as any)
+    const { data } = await (admin as any)
       .from("loop_accounts")
-      .select("account_id", { count: "exact", head: true })
+      .select("instagram_accounts(id, username, avatar_url, followers_count, user_id)")
       .eq("loop_id", loopId);
-    accountCount = count ?? 0;
+    loopAccounts = ((data ?? []) as { instagram_accounts: (LoopAccount & { user_id: string }) | null }[])
+      .map((r) => r.instagram_accounts)
+      .filter((a): a is LoopAccount & { user_id: string } => !!a && a.user_id === user.id);
   }
+  const accountCount = loopAccounts.length;
 
   const totalTarget = videosInFolder * Math.max(1, accountCount);
 
@@ -194,24 +200,35 @@ export async function GET(
     total_comments: number;
     total_plays: number;
     engagement_score: number;
+    /** Views REAIS da conta (insight de conta) — não só dos posts deste loop. */
+    account_views_total: number | null;
+    account_views_7d: number | null;
+    account_views_24h: number | null;
   }>();
+
+  const blankEntry = (a: { id: string; username: string; avatar_url: string | null; followers_count: number | null }) => ({
+    account_id: a.id,
+    username: a.username,
+    avatar_url: a.avatar_url,
+    followers_count: a.followers_count,
+    posts_count: 0,
+    total_likes: 0,
+    total_comments: 0,
+    total_plays: 0,
+    engagement_score: 0,
+    account_views_total: null,
+    account_views_7d: null,
+    account_views_24h: null,
+  });
+
+  for (const a of loopAccounts) accMap.set(a.id, blankEntry(a));
 
   for (const row of rows) {
     const acc = row.instagram_accounts;
     if (!acc) continue;
 
     if (!accMap.has(row.account_id)) {
-      accMap.set(row.account_id, {
-        account_id: row.account_id,
-        username: acc.username,
-        avatar_url: acc.avatar_url,
-        followers_count: acc.followers_count,
-        posts_count: 0,
-        total_likes: 0,
-        total_comments: 0,
-        total_plays: 0,
-        engagement_score: 0,
-      });
+      accMap.set(row.account_id, blankEntry({ ...acc, id: row.account_id }));
     }
 
     const entry = accMap.get(row.account_id)!;
@@ -230,8 +247,29 @@ export async function GET(
       entry.total_comments * 3;
   }
 
-  const ranking = Array.from(accMap.values())
-    .sort((a, b) => b.total_likes - a.total_likes);
+  // Views reais por conta, agregadas no banco (uma linha — sem teto de 1000).
+  if (accMap.size > 0) {
+    const { data: viewsByAccount, error: viewsErr } = await (admin as any)
+      .rpc("get_account_views_by_account", { p_account_ids: Array.from(accMap.keys()) });
+    if (viewsErr) {
+      console.error(`[loops/analytics] get_account_views_by_account falhou: ${viewsErr.message}`);
+    } else {
+      for (const [accountId, v] of Object.entries((viewsByAccount ?? {}) as Record<string, { total: number | null; last_7d: number | null; last_24h: number | null }>)) {
+        const entry = accMap.get(accountId);
+        if (!entry) continue;
+        entry.account_views_total = Number(v.total ?? 0);
+        entry.account_views_7d = Number(v.last_7d ?? 0);
+        entry.account_views_24h = Number(v.last_24h ?? 0);
+      }
+    }
+  }
+
+  // Ordem padrão: views reais da conta; desempate por views dos posts do loop.
+  const ranking = Array.from(accMap.values()).sort(
+    (a, b) =>
+      (b.account_views_total ?? -1) - (a.account_views_total ?? -1) ||
+      b.total_plays - a.total_plays
+  );
 
   return NextResponse.json({
     loop: {
