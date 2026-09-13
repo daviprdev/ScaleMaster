@@ -24,13 +24,24 @@ import {
   FolderPlus,
   Cpu,
   BookUser,
+  History,
 } from "lucide-react";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 import { InspirationGrid } from "@/components/inspirations/InspirationGrid";
 import { LibraryFolderSelect } from "@/components/inspirations/LibraryFolderSelect";
 import type { InspirationReel } from "@/components/inspirations/InspirationCard";
 
 type SortKey = "views" | "likes" | "comments" | "duration";
+
+interface PendingSearch {
+  id: string;
+  username: string;
+  status: "running" | "done" | "error";
+  reel_count: number | null;
+  error_message: string | null;
+  created_at: string;
+}
 
 interface ScrapedProfile {
   id: string;
@@ -374,6 +385,74 @@ export default function InspiracoesPage() {
       .catch(() => {});
   };
 
+  // ── Buscas duráveis ────────────────────────────────────────────────────
+  // A busca é registrada no servidor e finalizada por ele (polling desta
+  // página OU cron). Ao voltar para a página, retoma o acompanhamento das que
+  // ainda estão rodando e atualiza o histórico quando terminam.
+  const [pendingSearches, setPendingSearches] = useState<PendingSearch[]>([]);
+  const [dismissedErrors, setDismissedErrors] = useState<Set<string>>(new Set());
+  const _runningCountRef = useRef(0);
+
+  const loadPending = () =>
+    fetch("/api/inspirations/scrape/pending", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { searches: [] }))
+      .then((data) => {
+        const list = (data.searches ?? []) as PendingSearch[];
+        const running = list.filter((s) => s.status === "running").length;
+        // Alguma terminou desde a última checagem → histórico mudou.
+        if (running < _runningCountRef.current) refreshHistory();
+        _runningCountRef.current = running;
+        setPendingSearches(list);
+      })
+      .catch(() => {});
+
+  const runningSearches = pendingSearches.filter((s) => s.status === "running");
+  const failedSearches = pendingSearches.filter((s) => s.status === "error" && !dismissedErrors.has(s.id));
+
+  useEffect(() => { loadPending(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (runningSearches.length === 0) return;
+    const t = setInterval(loadPending, 15_000);
+    return () => clearInterval(t);
+  }, [runningSearches.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Recuperar buscas perdidas (admin) ──────────────────────────────────
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [recoverMsg, setRecoverMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sb = createClient();
+    sb.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return;
+      const { data } = await sb.from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
+      setIsAdmin((data as { role?: string } | null)?.role === "admin");
+    });
+  }, []);
+
+  const handleRecover = async () => {
+    if (recovering) return;
+    setRecovering(true);
+    setRecoverMsg(null);
+    try {
+      const res = await fetch("/api/inspirations/scrape/recover", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Falha (HTTP ${res.status})`);
+      const imported = (data.imported ?? []) as { username: string; reels: number }[];
+      setRecoverMsg(
+        imported.length
+          ? `Recuperado: ${imported.map((i) => `@${i.username} (${i.reels} vídeos)`).join(", ")}`
+          : "Nenhuma busca perdida encontrada nos últimos 4 dias."
+      );
+      if (imported.length) refreshHistory();
+    } catch (err) {
+      setRecoverMsg(err instanceof Error ? err.message : "Falha ao recuperar buscas.");
+    } finally {
+      setRecovering(false);
+    }
+  };
+
   // Carrega as contas leitoras disponíveis para a fonte "conta dedicada".
   useEffect(() => {
     fetch("/api/reader-accounts", { cache: "no-store" })
@@ -472,33 +551,28 @@ export default function InspiracoesPage() {
       try { startData = JSON.parse(startText); } catch {
         throw new Error("Erro ao iniciar a busca. Tente novamente.");
       }
-      if (!startData.runIds && !startData.runId) {
+      const searchId = startData.searchId as string | undefined;
+      if (!searchId) {
         throw new Error((startData.error as string) || "Erro ao iniciar busca.");
       }
+      loadPending();
 
-      // Support both new (runIds[]) and legacy (runId) response format
-      let runIds: string = Array.isArray(startData.runIds)
-        ? (startData.runIds as string[]).join(",")
-        : String(startData.runId ?? "");
-      let fallbackStarted = "";
-      const limit = Number(startData.limit ?? 500);
-
-      // ── Step 2: poll every 5s until all runs finish ───────────────
-      const MAX_POLLS = 60; // 60 × 5s = 5 min max
+      // ── Step 2: acompanha a busca registrada no servidor ──────────
+      // Fechar a página NÃO perde nada: o servidor finaliza e salva no
+      // histórico. Aqui só esperamos um tempo razoável com o modal aberto;
+      // perfis grandes seguem em segundo plano.
+      const MAX_POLLS = 60; // 60 × 5s = 5 min com o modal aberto
       for (let i = 0; i < MAX_POLLS; i++) {
         await new Promise<void>((r) => setTimeout(r, 5000));
 
-        const params = new URLSearchParams({
-          runIds,
-          username: target,
-          limit: String(limit),
-          ...(fallbackStarted ? { fallbackStarted } : {}),
-        });
-        const pollText = await fetch(`/api/inspirations/scrape/poll?${params}`).then((r) => r.text());
+        const pollText = await fetch(
+          `/api/inspirations/scrape/poll?searchId=${encodeURIComponent(searchId)}`,
+          { cache: "no-store" }
+        ).then((r) => r.text());
 
         let poll: Record<string, unknown>;
         try { poll = JSON.parse(pollText); } catch {
-          throw new Error("Erro ao verificar progresso. Tente novamente.");
+          continue; // falha momentânea de rede — a busca segue no servidor
         }
 
         if (poll.status === "done") {
@@ -517,17 +591,16 @@ export default function InspiracoesPage() {
           return;
         }
 
-        if (poll.status === "running") {
-          if (poll.runIds)         runIds         = poll.runIds as string;
-          if (poll.fallbackStarted) fallbackStarted = poll.fallbackStarted as string;
-          continue;
-        }
+        if (poll.status === "running") continue;
 
         // non-running, non-done → error
         throw new Error((poll.error as string) || "Erro desconhecido.");
       }
 
-      throw new Error("A busca demorou mais que o esperado. Tente novamente.");
+      // Perfil grande: libera a tela, a busca continua no servidor e o aviso
+      // "buscando em segundo plano" (pendingSearches) fica visível.
+      setShowModal(false);
+      loadPending();
     } catch (err) {
       setShowModal(false);
       setError(err instanceof Error ? err.message : "Erro desconhecido.");
@@ -864,6 +937,58 @@ export default function InspiracoesPage() {
             </div>
           </div>
         </motion.div>
+
+        {/* ── Buscas em segundo plano ─────────────────────────────────── */}
+        {runningSearches.length > 0 && (
+          <div
+            className="flex items-start gap-3 px-4 py-3 rounded-xl text-sm"
+            style={{ background: "rgba(0,229,255,0.06)", border: "0.5px solid rgba(0,229,255,0.2)", color: "rgba(0,229,255,0.85)" }}
+          >
+            <Loader2 size={15} className="animate-spin mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p>
+                Buscando {runningSearches.map((s) => `@${s.username}`).join(", ")} em segundo plano.
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: "rgba(0,229,255,0.55)" }}>
+                Pode sair da página — o resultado é salvo no histórico sozinho quando terminar. Não precisa pesquisar de novo.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {failedSearches.map((s) => (
+          <div
+            key={s.id}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm"
+            style={{ background: "rgba(255,159,10,0.07)", border: "0.5px solid rgba(255,159,10,0.2)", color: "rgba(255,180,80,0.9)" }}
+          >
+            <AlertCircle size={15} className="flex-shrink-0" />
+            <span className="flex-1">@{s.username}: {s.error_message ?? "a busca falhou."}</span>
+            <button
+              onClick={() => setDismissedErrors((prev) => new Set(prev).add(s.id))}
+              style={{ color: "rgba(255,255,255,0.3)" }}
+              className="hover:text-white/60 transition-colors"
+            >✕</button>
+          </div>
+        ))}
+
+        {isAdmin && view === "history" && (
+          <div className="flex items-center justify-end gap-3 flex-wrap">
+            {recoverMsg && (
+              <span className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>{recoverMsg}</span>
+            )}
+            <button
+              onClick={handleRecover}
+              disabled={recovering}
+              title="Importa buscas que terminaram na Apify nos últimos 4 dias e não foram salvas. Não gasta créditos."
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-50"
+              style={{ border: "0.5px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.55)" }}
+            >
+              {recovering ? <Loader2 size={12} className="animate-spin" /> : <History size={12} />}
+              {recovering ? "Recuperando…" : "Recuperar buscas perdidas"}
+            </button>
+          </div>
+        )}
 
         {/* ── Error toast ────────────────────────────────────────────── */}
         <AnimatePresence>

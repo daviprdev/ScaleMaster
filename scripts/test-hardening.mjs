@@ -367,6 +367,28 @@ async function main() {
     check("cron sync-account-views agendado no vercel.json",
       src("vercel.json").includes('"/api/cron/sync-account-views"'));
 
+    // Inspirações: busca durável — sair da página não pode perder o resultado.
+    {
+      const start = src("app/api/inspirations/scrape/route.ts");
+      check("busca de Inspirações é registrada no banco ao iniciar",
+        start.includes('.from("inspiration_scrape_searches")') && start.includes("searchId: search.id"));
+      check("busca em andamento do mesmo perfil é reaproveitada (não paga de novo)",
+        start.includes('.eq("status", "running")') && start.includes("resumed: true"));
+      const lib = src("lib/inspiration-scrape.ts");
+      check("salvamento no histórico é aguardado (sem fire-and-forget que a Vercel mata)",
+        lib.includes("await saveToHistory(") && !src("app/api/inspirations/scrape/poll/route.ts").includes(".catch(console.error)"));
+      check("advanceSearch usa claim atômico (página e cron não avançam juntos)",
+        lib.includes("processing_until.is.null,processing_until.lt."));
+      check("dataset da Apify lido com paginação (perfis 500+)",
+        lib.includes("listItems({ offset, limit: PAGE })"));
+      check("cron finalize-inspiration-scrapes agendado",
+        src("vercel.json").includes('"/api/cron/finalize-inspiration-scrapes"'));
+      check("poll exige login e dono da busca",
+        src("app/api/inspirations/scrape/poll/route.ts").includes('.eq("user_id", user.id)'));
+      check("recuperação de buscas órfãs é admin-only",
+        src("app/api/inspirations/scrape/recover/route.ts").includes('role?.role !== "admin"'));
+    }
+
     const upload = src("app/api/stories/upload/route.ts");
     check("upload de Story não recebe o arquivo pela Vercel (limite 4,5 MB)",
       !upload.includes("formData()") && upload.includes("createSignedUploadUrl"));

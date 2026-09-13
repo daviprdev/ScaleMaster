@@ -95,7 +95,10 @@ async function main() {
     DEFAULT_CAPTION_MODE, DEFAULT_CAPTION_MODE_CLONE,
   } = caps;
 
-  const pollInsp = src("app/api/inspirations/scrape/poll/route.ts");
+  // A normalização da busca de Inspirações saiu do poller para
+  // lib/inspiration-scrape.ts (busca durável, 2026-09-13) — poll e cron usam a
+  // mesma função.
+  const pollInsp = src("app/api/inspirations/scrape/poll/route.ts") + src("lib/inspiration-scrape.ts");
   const pollClone = src("app/api/clone/search/poll/route.ts");
   const saveLib = src("app/api/inspirations/save-to-library/route.ts");
   const distribute = src("app/api/posts/distribute/route.ts");
