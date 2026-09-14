@@ -4133,3 +4133,27 @@ typecheck/build e o schema no banco.
   (cópia quebrada) virou redirect.
 - **Pendente:** 1 token da Apify na Vercel com erro de autenticação; ativar
   Leaked Password Protection no Supabase Auth.
+
+## 2026-09-14 — Fix: mídia de Stories não ficava salva na Biblioteca
+
+- **Sintoma:** na aba Stories, o arquivo enviado não ficava na Biblioteca de
+  mídia ("mídias já enviadas antes") — usuário tinha que re-upar toda vez.
+- **Causa raiz:** `story_media` só era gravado se toda a cadeia desse certo
+  (URL assinada → navegador envia bytes DIRETO ao Storage → `/upload/complete`
+  faz INSERT best-effort). Se o upload direto falhava, `complete` nunca rodava.
+  Bucket `videos-library` rejeitava `image/jpg` (allowlist só tem `image/jpeg`)
+  → upload direto falhava silenciosamente. Produção: só 1 objeto `stories/` e
+  1 `complete` (200) em 2 dias apesar de várias tentativas.
+- **Fix (commit `2309ad3`, pushed):** (1) `post-now` grava a mídia em
+  `story_media` ao POSTAR o Story (rede de segurança — postar prova que o
+  arquivo é do usuário; toda mídia postada fica reutilizável); (2) `complete`
+  virou upsert idempotente; (3) frontend normaliza `image/jpg`→`image/jpeg`
+  antes do upload direto; (4) índice único `story_media(user_id, storage_path)`
+  para o `onConflict`; recarrega a biblioteca após postar. Helper
+  `storyStoragePathFromPublicUrl` em `lib/story-upload.ts`. Migration:
+  `supabase/story_media_unique.sql` (aplicada).
+- **Diagnóstico à parte:** os stories PUBLICADOS sempre ficaram salvos
+  (`scheduled_posts` post_type='story', Histórico 200 em produção) — o que não
+  persistia era a MÍDIA na biblioteca, não o post. Gap conhecido não corrigido:
+  stories postados pelo cron `story-templates` não geram registro em
+  `scheduled_posts` (não aparecem no Histórico).
