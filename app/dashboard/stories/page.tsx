@@ -794,9 +794,13 @@ export default function StoriesPage() {
         return;
       }
 
+      // A allowlist do bucket só aceita `image/jpeg` — enviar `image/jpg` (rótulo
+      // não-canônico que alguns navegadores usam) fazia o Storage rejeitar o
+      // upload, então a mídia nunca era salva. Normaliza antes de enviar.
+      const uploadContentType = file.type === "image/jpg" ? "image/jpeg" : file.type;
       const { error: upErr } = await createClient().storage
         .from("videos-library")
-        .uploadToSignedUrl(sign.storage_path, sign.token, file, { contentType: file.type });
+        .uploadToSignedUrl(sign.storage_path, sign.token, file, { contentType: uploadContentType });
       if (upErr) {
         fail(`Falha no envio: ${upErr.message}`);
         return;
@@ -923,6 +927,9 @@ export default function StoriesPage() {
       handleRemoveMedia();
       setSelectedAccountIds([]);
       fetchHistory();
+      // A mídia postada agora fica salva na biblioteca (post-now grava em
+      // story_media) — recarrega para o usuário poder reusar sem re-subir.
+      fetchMediaLibrary();
     } catch {
       setPublishError("Erro de conexão. Tente novamente.");
     } finally {

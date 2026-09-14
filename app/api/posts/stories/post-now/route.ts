@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 import { validateDestinationUrl, isUuid, publicLinkUrl } from "@/lib/managed-links";
+import { storyStoragePathFromPublicUrl } from "@/lib/story-upload";
 
 export const runtime = "nodejs";
 
@@ -116,6 +117,27 @@ export async function POST(req: NextRequest) {
 
   const { error } = await admin.from("scheduled_posts").insert(rows);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Garante que a mídia postada fique salva na biblioteca de Stories para reuso.
+  // O registro em `story_media` acontece no upload, mas se aquele passo falhou (o
+  // arquivo vai direto ao Storage pelo navegador), o usuário precisava re-subir o
+  // mesmo arquivo toda vez. Postar um Story é prova de que a mídia existe e é do
+  // usuário — então gravamos aqui também. Best-effort: nunca bloqueia a postagem.
+  const storagePath = storyStoragePathFromPublicUrl(media_url, user.id);
+  if (storagePath) {
+    const { error: mediaErr } = await admin
+      .from("story_media")
+      .upsert(
+        {
+          user_id: user.id,
+          storage_path: storagePath,
+          public_url: media_url,
+          media_type,
+        },
+        { onConflict: "user_id,storage_path", ignoreDuplicates: true }
+      );
+    if (mediaErr) console.error("[stories/post-now] erro ao salvar mídia na biblioteca:", mediaErr.message);
+  }
 
   return NextResponse.json({ success: true, accounts: validAccountIds.length });
 }

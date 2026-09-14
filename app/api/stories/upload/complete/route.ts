@@ -69,12 +69,15 @@ export async function POST(req: NextRequest) {
   let mediaId: string | null = null;
   const { data: mediaRow, error: mediaErr } = await admin
     .from("story_media")
-    .insert({
-      user_id: user.id,
-      storage_path: storagePath,
-      public_url: urlData.publicUrl,
-      media_type: mediaType,
-    })
+    .upsert(
+      {
+        user_id: user.id,
+        storage_path: storagePath,
+        public_url: urlData.publicUrl,
+        media_type: mediaType,
+      },
+      { onConflict: "user_id,storage_path", ignoreDuplicates: false }
+    )
     .select("id")
     .single();
   if (mediaErr) console.error("[stories/upload/complete] erro ao salvar na biblioteca:", mediaErr.message);
