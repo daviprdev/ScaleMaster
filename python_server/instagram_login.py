@@ -218,6 +218,31 @@ def _classify_error(exc: Exception) -> tuple[str, str]:
     return "unknown", msg
 
 
+def _caa_hint(exc: Exception) -> str:
+    """Textos legíveis da resposta Bloks do CAA (ex.: "senha incorreta",
+    "confirme que é você") — a exceção guarda o outcome como atributos."""
+    found: list[str] = []
+
+    def walk(value, depth=0):
+        if depth > 12 or len(found) >= 6:
+            return
+        if isinstance(value, str):
+            text = value.strip()
+            # Frase humana: tem espaço, letras, sem cara de JSON/código Bloks.
+            if 12 <= len(text) <= 200 and " " in text and not any(c in text for c in "{}()\\=") and text not in found:
+                found.append(text)
+        elif isinstance(value, dict):
+            for child in value.values():
+                walk(child, depth + 1)
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                walk(child, depth + 1)
+
+    for attr in ("result", "two_step", "instagram_message", "reason"):
+        walk(getattr(exc, attr, None))
+    return " / ".join(found)[:240]
+
+
 def authenticate_client(
     cl: Client,
     username: str,
@@ -254,7 +279,27 @@ def authenticate_client(
     geo = proxy_country or settings.get("country")
 
     try:
-        cl.login(username, password, verification_code=verification_code, relogin=False)
+        try:
+            cl.login(username, password, verification_code=verification_code, relogin=False)
+        except ClientError as caa_exc:
+            # instagrapi 3.x usa o fluxo Bloks/CAA por padrão. Quando o CAA não
+            # devolve sessão, a mensagem é genérica ("CAA login did not return
+            # a session") e esconde o motivo. Tenta o endpoint legado (o mesmo
+            # do 2.x, que funcionava) antes de desistir; se também falhar, o
+            # erro final carrega o texto que o Instagram mostrou no CAA.
+            if "caa" not in str(caa_exc).lower() or type(caa_exc) is not ClientError:
+                raise
+            hint = _caa_hint(caa_exc)
+            try:
+                cl.login_legacy(username, password, verification_code=verification_code, relogin=False)
+            except ChallengeRequired:
+                raise
+            except Exception as legacy_exc:
+                error_code, error_message = _classify_error(legacy_exc)
+                return error_code, (
+                    f"[{build}][proxy_ip={proxy_ip}][geo={geo}][caa+legacy] "
+                    f"legacy: {error_message} | caa: {caa_exc}{f' ({hint})' if hint else ''}"
+                )[:500]
     except ChallengeRequired:
         # Alguns challenges de "dispositivo/local novo" (delta_login_review,
         # scraping_warning, add_birthday, step vazio) são resolvidos sozinhos
