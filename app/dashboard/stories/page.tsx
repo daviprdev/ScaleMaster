@@ -28,6 +28,20 @@ interface FolderItem {
   name: string;
 }
 
+/**
+ * Força o <video> a pintar o primeiro frame como capa.
+ *
+ * Um <video preload="metadata"> sem `poster` renderiza um quadro PRETO: o
+ * browser carrega só os metadados e não decodifica nenhum frame. Anexar o
+ * media fragment `#t=0.1` faz o browser buscar (seek) 0,1s e pintar esse
+ * frame — vira a miniatura, sem precisar reproduzir. Funciona tanto em URLs
+ * do Storage (que suportam Range) quanto em blob: de upload local.
+ */
+function videoPoster(src: string): string {
+  if (!src) return src;
+  return src.includes("#") ? src : `${src}#t=0.1`;
+}
+
 interface UploadedMedia {
   file: File | null;
   previewUrl: string;
@@ -152,7 +166,7 @@ function SingleMediaUpload({
     return (
       <div className="relative group rounded-2xl overflow-hidden border border-white/10 bg-black/30" style={{ aspectRatio: "9/16", maxHeight: 320 }}>
         {isVideo ? (
-          <video src={media.previewUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+          <video src={videoPoster(media.previewUrl)} className="w-full h-full object-cover" muted playsInline preload="metadata" />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={media.previewUrl} alt={media.file?.name ?? ""} className="w-full h-full object-cover" />
@@ -274,7 +288,7 @@ function MediaLibrary({
             style={{ aspectRatio: "9/16" }}
           >
             {isVideo ? (
-              <video src={item.public_url} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+              <video src={videoPoster(item.public_url)} className="w-full h-full object-cover" muted playsInline preload="metadata" />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={item.public_url} alt="" className="w-full h-full object-cover" />
@@ -442,7 +456,7 @@ function TemplatesSection({
               <div key={t.id} className="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
                 <div className="relative bg-black/30" style={{ aspectRatio: "9/16", maxHeight: 160 }}>
                   {isVideo ? (
-                    <video src={t.media_url} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                    <video src={videoPoster(t.media_url)} className="w-full h-full object-cover" muted playsInline preload="metadata" />
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={t.media_url} alt="" className="w-full h-full object-cover" />
