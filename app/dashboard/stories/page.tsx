@@ -29,17 +29,43 @@ interface FolderItem {
 }
 
 /**
- * Força o <video> a pintar o primeiro frame como capa.
+ * Miniatura de vídeo que NÃO fica preta.
  *
  * Um <video preload="metadata"> sem `poster` renderiza um quadro PRETO: o
- * browser carrega só os metadados e não decodifica nenhum frame. Anexar o
- * media fragment `#t=0.1` faz o browser buscar (seek) 0,1s e pintar esse
- * frame — vira a miniatura, sem precisar reproduzir. Funciona tanto em URLs
- * do Storage (que suportam Range) quanto em blob: de upload local.
+ * browser carrega só os metadados e não decodifica nenhum frame. O truque do
+ * media fragment `#t=0.1` na URL nem sempre pinta (depende do browser/preload).
+ * Aqui forçamos via JS: ao ter os metadados, damos um seek para ~0,1s — o
+ * browser decodifica e pinta esse frame como capa, sem precisar dar play.
+ * Funciona com URLs do Storage (suportam Range) e com blob: de upload local.
  */
-function videoPoster(src: string): string {
-  if (!src) return src;
-  return src.includes("#") ? src : `${src}#t=0.1`;
+function VideoThumb({ src, className }: { src: string; className?: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  const seekToFrame = useCallback(() => {
+    const v = ref.current;
+    if (!v) return;
+    try {
+      // Pequeno offset evita o frame 0 (às vezes preto/keyframe vazio).
+      const t = v.duration && isFinite(v.duration) ? Math.min(0.1, v.duration / 2) : 0.1;
+      if (v.currentTime < t) v.currentTime = t;
+    } catch {
+      /* alguns browsers barram seek antes de "canplay" — o onLoadedData retenta */
+    }
+  }, []);
+
+  return (
+    <video
+      ref={ref}
+      src={src}
+      className={className}
+      muted
+      playsInline
+      preload="metadata"
+      // dois gatilhos: metadados prontos e primeiro frame carregado.
+      onLoadedMetadata={seekToFrame}
+      onLoadedData={seekToFrame}
+    />
+  );
 }
 
 interface UploadedMedia {
@@ -166,7 +192,7 @@ function SingleMediaUpload({
     return (
       <div className="relative group rounded-2xl overflow-hidden border border-white/10 bg-black/30" style={{ aspectRatio: "9/16", maxHeight: 320 }}>
         {isVideo ? (
-          <video src={videoPoster(media.previewUrl)} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+          <VideoThumb src={media.previewUrl} className="w-full h-full object-cover" />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={media.previewUrl} alt={media.file?.name ?? ""} className="w-full h-full object-cover" />
@@ -288,7 +314,7 @@ function MediaLibrary({
             style={{ aspectRatio: "9/16" }}
           >
             {isVideo ? (
-              <video src={videoPoster(item.public_url)} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+              <VideoThumb src={item.public_url} className="w-full h-full object-cover" />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={item.public_url} alt="" className="w-full h-full object-cover" />
@@ -456,7 +482,7 @@ function TemplatesSection({
               <div key={t.id} className="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
                 <div className="relative bg-black/30" style={{ aspectRatio: "9/16", maxHeight: 160 }}>
                   {isVideo ? (
-                    <video src={videoPoster(t.media_url)} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                    <VideoThumb src={t.media_url} className="w-full h-full object-cover" />
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={t.media_url} alt="" className="w-full h-full object-cover" />
