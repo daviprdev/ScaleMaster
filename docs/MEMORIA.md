@@ -4157,3 +4157,45 @@ typecheck/build e o schema no banco.
   persistia era a MÍDIA na biblioteca, não o post. Gap conhecido não corrigido:
   stories postados pelo cron `story-templates` não geram registro em
   `scheduled_posts` (não aparecem no Histórico).
+
+## 2026-09-15 — Fix: salvar em massa na Biblioteca + capa preta de Stories
+
+- **Salvar 400+ reels salvava <20 (URLs do CDN expiradas).** Logs de produção:
+  `Download falhou: HTTP 403` em massa no `save-to-library`. **Não era o bug de
+  duração fracionária** (esse fix segue aplicado). As URLs de vídeo do fbcdn são
+  ASSINADAS e expiram em poucas horas; num perfil grande a maioria já estava
+  morta quando o "Salvar todos" rodava (o usuário raspou e mandou salvar bem
+  depois). Os poucos que passaram tinham URL ainda fresca.
+- **Fix (commit `9542399`, pushed):** (1) novo `POST
+  /api/inspirations/refresh-urls` renova VÁRIOS reels numa ÚNICA run de Apify
+  (`directUrls` = `/reel/{shortCode}/`, cap 50/chamada) — em vez de 1 run por
+  reel como o `refetch-reel`, que a 400 reels torraria o orçamento de tokens
+  (a dor do usuário); (2) `save-to-library` devolve `failures[]` por reel
+  classificando `expired` (403/fetch failed/arquivo pequeno) vs `other`;
+  (3) `handleBulkSaveToLibrary` ganhou 2 passes — passe 1 salva com as URLs da
+  raspagem; só os que falharam por EXPIRAÇÃO são renovados em chunks de 30 e
+  retentados. URLs frescas → ZERO Apify extra; expiradas → ~ceil(N/30) runs, só
+  quando necessário. Cards refletem a URL renovada; botão mostra fase
+  "Renovando URLs".
+- **Regra durável:** URL do fbcdn = efêmera. Todo fluxo que guarde/reuse
+  `videoUrl` de raspagem precisa de um caminho de renovação em LOTE (não 1 run
+  por item) antes de depender dela. Recuperar o que já expirou não é grátis —
+  a Apify precisa devolver URL nova —, mas em lote é ~1 ordem de grandeza mais
+  barato que re-raspar o perfil inteiro ou 1 run por reel.
+
+- **Capa preta na Biblioteca de Stories (mídias já enviadas).** As miniaturas de
+  VÍDEO renderizavam quadro preto; ao selecionar, o preview também. Fotos
+  (`<img>`) OK. Causa: `<video preload="metadata">` sem `poster` carrega só os
+  metadados e não decodifica frame nenhum → preto. URLs confirmadas acessíveis
+  (HTTP 200 + Range 206), então era só renderização.
+- **Fix (commits `3b1cbf4` → `8e57a78`, pushed):** 1ª tentativa foi anexar o
+  media fragment `#t=0.1` à URL (`videoPoster`) — NÃO bastou (não pinta em todo
+  browser/preload). Solução final: componente `VideoThumb` que no
+  `onLoadedMetadata`/`onLoadedData` seta `currentTime≈0.1` via ref, forçando o
+  browser a decodificar e pintar esse frame como capa (sem play). Aplicado nos
+  3 pontos (preview, biblioteca, templates). Só mexe no `src` de exibição —
+  `media.url` (usado na publicação) fica intacto.
+- **Suspeita de cache PWA:** o usuário reportou "não mudou" após o 1º deploy —
+  o JS antigo pode ter ficado em cache no PWA (padrão já visto neste projeto).
+  Se um fix de front não aparecer, orientar hard refresh / fechar-reabrir o app
+  antes de assumir que o código está errado.
