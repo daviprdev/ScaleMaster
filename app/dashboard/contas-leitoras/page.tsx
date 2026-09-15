@@ -32,6 +32,8 @@ interface ReaderAccount {
   has_proxy: boolean;
   has_totp: boolean;
   verifying: boolean;
+  verify_error: string | null;
+  verify_retry_at: string | null;
 }
 
 function timeAgo(dateStr: string | null): string {
@@ -332,6 +334,15 @@ export default function ContasLeitorasPage() {
                       </span>
                     )}
                   </div>
+
+                  {a.verifying && (
+                    <p className="text-[11px] leading-snug px-2 py-1.5 rounded"
+                      style={{ background: "rgba(255,184,0,0.06)", color: "rgba(255,200,90,0.85)" }}>
+                      {a.verify_error
+                        ? `Falhou, nova tentativa ${a.verify_retry_at ? `às ${new Date(a.verify_retry_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "em breve"}: ${a.verify_error.slice(0, 140)}`
+                        : "Na fila: a conexão começa em até 5 minutos."}
+                    </p>
+                  )}
 
                   {a.status === "error" && a.last_error && (
                     <p className="text-[11px] leading-snug px-2 py-1.5 rounded"

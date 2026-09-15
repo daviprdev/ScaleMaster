@@ -47,6 +47,7 @@ interface ScrapeProfileResponse {
     | "checkpoint_required"
     | "rate_limited"
     | "network_error"
+    | "app_outdated"
     | "unknown";
   error_message?: string;
 }
@@ -74,7 +75,10 @@ interface JobRow {
 const PERMANENT_TARGET_ERRORS = new Set(["target_not_found", "target_private"]);
 // Problema na própria conta leitora: marca a conta como 'error' (precisa de
 // reconexão manual) e encerra o job.
-const READER_DEAD_ERRORS = new Set(["bad_password", "banned_or_disabled", "checkpoint_required"]);
+// app_outdated: o Instagram recusou a versão do app do servidor Python — retry
+// não resolve (precisa atualizar python_server). Encerra com erro visível em
+// vez de deixar a UI "conectando…" em backoff silencioso.
+const READER_DEAD_ERRORS = new Set(["bad_password", "banned_or_disabled", "checkpoint_required", "app_outdated"]);
 
 function backoffMinutes(retryCount: number): number {
   return Math.min(10 * 2 ** retryCount, 180);

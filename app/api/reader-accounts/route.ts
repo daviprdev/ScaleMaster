@@ -28,7 +28,7 @@ export async function GET() {
       .order("created_at", { ascending: false }),
     supabase
       .from("scrape_jobs")
-      .select("reader_account_id, verify, status")
+      .select("reader_account_id, verify, status, error_message, retry_after")
       .eq("user_id", user.id)
       .in("status", ["queued", "processing"]),
   ]);
@@ -37,9 +37,12 @@ export async function GET() {
     return NextResponse.json({ error: accountsResult.error.message }, { status: 500 });
   }
 
-  const verifyingIds = new Set(
-    (jobsResult.data ?? []).filter((j) => j.verify).map((j) => j.reader_account_id as string)
-  );
+  // Job de verificação ativo por conta — inclui o erro da última tentativa
+  // para a UI não ficar "conectando…" sem explicar o backoff.
+  const verifyJobs = new Map<string, { error_message: string | null; retry_after: string | null; status: string }>();
+  for (const j of jobsResult.data ?? []) {
+    if (j.verify) verifyJobs.set(j.reader_account_id as string, j as { error_message: string | null; retry_after: string | null; status: string });
+  }
 
   const accounts = (accountsResult.data ?? []).map((a) => {
     const { proxy_url, totp_secret_enc, ...safe } = a as Record<string, unknown>;
@@ -47,7 +50,11 @@ export async function GET() {
       ...safe,
       has_proxy: !!proxy_url,
       has_totp: !!totp_secret_enc,
-      verifying: verifyingIds.has(a.id as string),
+      verifying: verifyJobs.has(a.id as string),
+      verify_error: verifyJobs.get(a.id as string)?.error_message ?? null,
+      verify_retry_at: verifyJobs.get(a.id as string)?.status === "queued"
+        ? verifyJobs.get(a.id as string)?.retry_after ?? null
+        : null,
     };
   });
 
@@ -108,7 +115,7 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(
-    { account: { ...data, has_proxy: !!proxyEnc, has_totp: !!totp, verifying: false } },
+    { account: { ...data, has_proxy: !!proxyEnc, has_totp: !!totp, verifying: false, verify_error: null, verify_retry_at: null } },
     { status: 201 }
   );
 }

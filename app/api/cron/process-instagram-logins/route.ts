@@ -42,7 +42,7 @@ interface InstagramLoginResponse {
   profile_pic_url?: string | null;
   followers_count?: number | null;
   media_count?: number | null;
-  error_code?: "bad_password" | "banned_or_disabled" | "checkpoint_required" | "rate_limited" | "network_error" | "unknown";
+  error_code?: "bad_password" | "banned_or_disabled" | "checkpoint_required" | "rate_limited" | "network_error" | "app_outdated" | "unknown";
   error_message?: string;
 }
 

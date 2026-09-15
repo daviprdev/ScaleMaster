@@ -26,6 +26,7 @@ from instagram_login import (
     _classify_error,
     _lookup_proxy_geo,
     build_deterministic_settings,
+    refresh_app_version,
 )
 
 BUILD = "scrapev1"
@@ -114,7 +115,11 @@ def fetch_user_reels(
 
     proxy_ip, proxy_country = _lookup_proxy_geo(cl)
 
-    settings = existing_settings or build_deterministic_settings(device_seed, proxy_country)
+    settings = (
+        refresh_app_version(existing_settings)
+        if existing_settings
+        else build_deterministic_settings(device_seed, proxy_country)
+    )
     cl.set_settings(settings)
 
     # ── 1. Garante sessão válida ────────────────────────────────────────────

@@ -53,11 +53,35 @@ _DEVICE_POOL: list[dict] = [
 # exatamente com o que o instagrapi conhece (instagrapi/config.py APP_SETTINGS);
 # combos inventados deixam bloks_versioning_id vazio e o login falha com
 # "Client.bloks_versioning_id is empty (hash is expected)".
+#
+# 2026-09-15: o Instagram passou a recusar login de versões antigas do app
+# ("Sua versão do Instagram está desatualizada") — 364/385/428 foram
+# rejeitadas. Fica SÓ a versão mais nova que o instagrapi instalado conhece
+# (3.0.2 → 446). Um aparelho real atualiza o app; isso não é troca de device.
+# Ao subir o instagrapi, trocar esta tripla pela DEFAULT_APP_VERSION nova.
 _APP_VERSIONS: list[tuple[str, str, str]] = [
-    ("428.0.0.47.67", "961145276", "7189b949425f9bf80ea8bd880cf5a3080b292d9b1c4b38a18d112f7c4b71e7a8"),
-    ("364.0.0.35.86", "374010953", "8ccf54aad76788a6ca03ddfc33afcdcf692f2f5a3ba814ea73d5facba7fa2c2d"),
-    ("385.0.0.47.74", "378906843", "a8973d49a9cc6a6f65a4997c10216ce2a06f65a517010e64885e92029bb19221"),
+    ("446.0.0.49.77", "385211303", "935a519904e9017324cdedb64a283a3c2c1a3d5b0bbc698b451f5aef72cc11df"),
 ]
+
+
+def refresh_app_version(settings: dict) -> dict:
+    """
+    Atualiza SÓ a versão do app numa sessão salva (mantém uuids, modelo,
+    país e cookies). Sessões gravadas com versão antiga seriam recusadas pelo
+    Instagram no próximo login/relogin — equivalente a o usuário atualizar o
+    app no mesmo celular.
+    """
+    app_version, version_code, bloks_versioning_id = _APP_VERSIONS[0]
+    device = dict(settings.get("device_settings") or {})
+    device["app_version"] = app_version
+    device["version_code"] = version_code
+    device["bloks_versioning_id"] = bloks_versioning_id
+    updated = dict(settings)
+    updated["device_settings"] = device
+    # user_agent salvo embute a versão antiga; o instagrapi o regenera a
+    # partir de device_settings quando ausente.
+    updated.pop("user_agent", None)
+    return updated
 
 
 def _seeded_uuid(rng: random.Random) -> str:
@@ -150,6 +174,12 @@ def _classify_error(exc: Exception) -> tuple[str, str]:
     """
     msg = str(exc)
     lower = msg.lower()
+
+    # Versão do app recusada pelo Instagram — retry não resolve; precisa
+    # atualizar _APP_VERSIONS/instagrapi. Erro explícito em vez de backoff
+    # silencioso (a UI ficava "conectando…" para sempre).
+    if "desatualizada" in lower or "outdated" in lower or "update your app" in lower or "atualize seu aplicativo" in lower:
+        return "app_outdated", msg
 
     # AccountSuspended (instagrapi >= algumas versões 2.x, ausente em outras —
     # detectado por nome da classe em vez de import direto pra não quebrar em
@@ -274,7 +304,11 @@ def perform_login(
     # é o que a doc do instagrapi orienta a NUNCA fazer.
     proxy_ip, proxy_country = _lookup_proxy_geo(cl)
 
-    settings = existing_settings or build_deterministic_settings(device_seed, proxy_country)
+    settings = (
+        refresh_app_version(existing_settings)
+        if existing_settings
+        else build_deterministic_settings(device_seed, proxy_country)
+    )
     cl.set_settings(settings)
 
     # Marcador de build — prefixado em toda mensagem de erro retornada por esta
