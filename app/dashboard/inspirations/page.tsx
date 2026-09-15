@@ -362,6 +362,9 @@ export default function InspiracoesPage() {
   // Salvar todos na Biblioteca (com legenda) — separado do download-para-dispositivo.
   const [bulkSaveProgress, setBulkSaveProgress] = useState<{ done: number; total: number } | null>(null);
   const [bulkSaveResult, setBulkSaveResult] = useState<{ saved: number; errors: number } | null>(null);
+  // Fase do salvamento: "saving" (baixando+subindo) ou "refreshing" (renovando
+  // URLs expiradas do CDN via Apify antes de retentar). null = ocioso.
+  const [bulkSavePhase, setBulkSavePhase] = useState<"saving" | "refreshing" | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const _searchingRef = useRef(false);
@@ -746,54 +749,149 @@ export default function InspiracoesPage() {
     }
     _bulkSaveRef.current = true;
     setBulkSaveResult(null);
+    setBulkSavePhase("saving");
     setError("");
 
+    // URL efetiva por reel (id → url). Começa com a URL da raspagem e é
+    // atualizada quando renovamos URLs expiradas via /refresh-urls.
+    const urlById = new Map<string, string>();
+    for (const r of sortedReels) urlById.set(r.id, r.videoUrl);
+
+    const BATCH = 3;
+
+    type Failure = { id: string; shortCode: string; reason: "expired" | "other" };
+
+    // Salva uma lista em lotes de 3. Devolve total salvo + falhas por reel.
+    const runSave = async (
+      list: InspirationReel[]
+    ): Promise<{ saved: number; failures: Failure[] }> => {
+      let saved = 0;
+      const failures: Failure[] = [];
+      for (let i = 0; i < list.length; i += BATCH) {
+        const batch = list.slice(i, i + BATCH);
+        setBulkSaveProgress({ done: i, total: list.length });
+        try {
+          const res = await fetch("/api/inspirations/save-to-library", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              folderId: saveFolderId,
+              reels: batch.map((r) => ({
+                id: r.id,
+                shortCode: r.shortCode,
+                videoUrl: urlById.get(r.id) ?? r.videoUrl,
+                caption: r.caption,
+                originalCaption: r.originalCaption,
+                sourceUrl: r.sourceUrl,
+                views: r.views,
+                likes: r.likes,
+                comments: r.comments,
+                duration: r.duration,
+                owner: r.owner,
+              })),
+            }),
+          });
+          const data = (await res.json()) as {
+            saved?: number;
+            failures?: Failure[];
+            error?: string;
+          };
+          if (!res.ok || data.error) throw new Error(data.error ?? "Falha ao salvar.");
+          saved += data.saved ?? 0;
+          if (Array.isArray(data.failures)) failures.push(...data.failures);
+        } catch (err) {
+          // Falha do lote inteiro (rede/500): marca cada reel como "other".
+          for (const r of batch) failures.push({ id: r.id, shortCode: r.shortCode, reason: "other" });
+          console.warn(
+            `[bulk-save] lote ${i / BATCH + 1} falhou:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+      return { saved, failures };
+    };
+
+    // ── Passe 1 — tenta salvar com as URLs da raspagem ──────────────
     const valid = sortedReels.filter(
       (r) => r.videoUrl && r.videoUrl.trim() !== "" && r.videoUrl !== "undefined"
     );
-    const total = valid.length;
     let saved = 0;
-    let errors = sortedReels.length - valid.length;
-    const BATCH = 3;
+    let otherErrors = sortedReels.length - valid.length;
 
-    for (let i = 0; i < total; i += BATCH) {
-      const batch = valid.slice(i, i + BATCH);
-      setBulkSaveProgress({ done: i, total });
-      try {
-        const res = await fetch("/api/inspirations/save-to-library", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            folderId: saveFolderId,
-            reels: batch.map((r) => ({
-              id: r.id,
-              shortCode: r.shortCode,
-              videoUrl: r.videoUrl,
-              caption: r.caption,
-              originalCaption: r.originalCaption,
-              sourceUrl: r.sourceUrl,
-              views: r.views,
-              likes: r.likes,
-              comments: r.comments,
-              duration: r.duration,
-              owner: r.owner,
-            })),
-          }),
-        });
-        const data = (await res.json()) as { saved?: number; errors?: number; error?: string };
-        if (!res.ok || data.error) throw new Error(data.error ?? "Falha ao salvar.");
-        saved += data.saved ?? 0;
-        errors += data.errors ?? 0;
-      } catch (err) {
-        errors += batch.length;
-        console.warn(
-          `[bulk-save] lote ${i / BATCH + 1} falhou:`,
-          err instanceof Error ? err.message : err
+    const p1 = await runSave(valid);
+    saved += p1.saved;
+
+    const expired = p1.failures.filter((f) => f.reason === "expired");
+    otherErrors += p1.failures.filter((f) => f.reason === "other").length;
+
+    // ── Passe 2 — renova URLs expiradas do CDN e retenta ────────────
+    // As URLs assinadas do fbcdn morrem em poucas horas; num perfil grande a
+    // maioria já expirou quando o usuário manda salvar. Renovamos em chunks
+    // (uma run de Apify por chunk, vários reels por run) — só os que
+    // realmente falharam por expiração. Se nada expirou, zero Apify aqui.
+    let stillExpired = 0;
+    if (expired.length > 0) {
+      setBulkSavePhase("refreshing");
+      const expiredReels = expired
+        .map((f) => sortedReels.find((r) => r.id === f.id))
+        .filter((r): r is InspirationReel => Boolean(r?.shortCode));
+
+      const CHUNK = 30;
+      const recovered: InspirationReel[] = [];
+      for (let i = 0; i < expiredReels.length; i += CHUNK) {
+        const group = expiredReels.slice(i, i + CHUNK);
+        setBulkSaveProgress({ done: i, total: expiredReels.length });
+        try {
+          const res = await fetch("/api/inspirations/refresh-urls", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ shortCodes: group.map((r) => r.shortCode) }),
+          });
+          const data = (await res.json()) as { urls?: Record<string, string>; error?: string };
+          if (res.ok && data.urls) {
+            for (const r of group) {
+              const fresh = data.urls[r.shortCode];
+              if (fresh) {
+                urlById.set(r.id, fresh);
+                recovered.push(r);
+              }
+            }
+          } else {
+            console.warn(`[bulk-save] refresh-urls: ${data.error ?? res.status}`);
+            if (res.status === 429 || res.status === 503) {
+              setError(data.error ?? "Sem tokens de Apify disponíveis para renovar as URLs.");
+              break;
+            }
+          }
+        } catch (err) {
+          console.warn(
+            `[bulk-save] refresh chunk ${i / CHUNK + 1} falhou:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+
+      // Reflete as URLs novas nos cards (o botão individual passa a funcionar).
+      if (recovered.length > 0) {
+        setReels((prev) =>
+          prev.map((r) => (urlById.has(r.id) ? { ...r, videoUrl: urlById.get(r.id)! } : r))
         );
+      }
+
+      // Retenta apenas os que conseguimos renovar.
+      stillExpired = expiredReels.length - recovered.length;
+      if (recovered.length > 0) {
+        setBulkSavePhase("saving");
+        const p2 = await runSave(recovered);
+        saved += p2.saved;
+        // Falhas na retentativa (URL renovada mas ainda assim falhou) contam como erro.
+        stillExpired += p2.failures.length;
       }
     }
 
+    const errors = otherErrors + stillExpired;
     setBulkSaveProgress(null);
+    setBulkSavePhase(null);
     setBulkSaveResult({ saved, errors });
     _bulkSaveRef.current = false;
   };
@@ -1055,7 +1153,11 @@ export default function InspiracoesPage() {
                   }
                 >
                   {bulkSaveProgress !== null ? (
-                    <><Loader2 size={11} className="animate-spin" />Salvando {Math.min(bulkSaveProgress.done + 1, bulkSaveProgress.total)} de {bulkSaveProgress.total}...</>
+                    bulkSavePhase === "refreshing" ? (
+                      <><Loader2 size={11} className="animate-spin" />Renovando URLs {Math.min(bulkSaveProgress.done + 1, bulkSaveProgress.total)} de {bulkSaveProgress.total}...</>
+                    ) : (
+                      <><Loader2 size={11} className="animate-spin" />Salvando {Math.min(bulkSaveProgress.done + 1, bulkSaveProgress.total)} de {bulkSaveProgress.total}...</>
+                    )
                   ) : (
                     <><FolderPlus size={12} />Salvar todos na Biblioteca</>
                   )}

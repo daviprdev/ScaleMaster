@@ -121,12 +121,21 @@ export async function POST(req: NextRequest) {
   }
   const savedRecords: unknown[] = [];
   let errors = 0;
+  // Falhas por reel, para o frontend decidir o que renovar. `expired` = URL do
+  // CDN morta (HTTP 403 / fetch failed) → recuperável via /refresh-urls numa
+  // única run de Apify. `other` = erro que renovar a URL não resolve.
+  const failures: { id: string; shortCode: string; reason: "expired" | "other" }[] = [];
 
   // Filter reels with no usable video URL before processing
   const valid = reels.filter(r =>
     r.videoUrl && r.videoUrl.trim() !== "" && r.videoUrl !== "undefined"
   );
-  errors += reels.length - valid.length;
+  for (const r of reels) {
+    if (!r.videoUrl || r.videoUrl.trim() === "" || r.videoUrl === "undefined") {
+      errors++;
+      failures.push({ id: r.id, shortCode: r.shortCode, reason: "expired" });
+    }
+  }
 
   // Process one reel at a time — sequential to respect serverless memory/timeout limits
   for (const reel of valid) {
@@ -189,11 +198,17 @@ export async function POST(req: NextRequest) {
 
       savedRecords.push(data);
     } catch (err) {
-      console.error(
-        `[save-to-library] reel ${reel.shortCode || reel.id}:`,
-        err instanceof Error ? err.message : err
-      );
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[save-to-library] reel ${reel.shortCode || reel.id}:`, msg);
       errors++;
+      // URL assinada do CDN morta → renovável numa run de Apify. Storage/DB e
+      // demais erros não se resolvem trocando a URL.
+      const expired = /HTTP 403|fetch failed|muito pequeno/i.test(msg);
+      failures.push({
+        id: reel.id,
+        shortCode: reel.shortCode,
+        reason: expired ? "expired" : "other",
+      });
 
       // COMPENSAÇÃO — mesma regra de app/api/library/record: o upload precede
       // o INSERT (a public_url só existe depois de subir), então uma falha no
@@ -230,5 +245,6 @@ export async function POST(req: NextRequest) {
     saved: savedRecords.length,
     errors,
     records: savedRecords,
+    failures,
   });
 }
