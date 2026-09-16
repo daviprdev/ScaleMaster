@@ -57,6 +57,10 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     title: "Links Gerenciáveis",
     subtitle: "Crie links curtos, altere destinos e acompanhe cliques",
   },
+  "/dashboard/onboarding": {
+    title: "Onboarding",
+    subtitle: "Convite, foto, profissional e link mágico automatizados",
+  },
   "/dashboard/contas-leitoras": {
     title: "Contas Leitoras",
     subtitle: "Contas dedicadas à raspagem de conteúdo (isoladas das de postagem)",

@@ -30,6 +30,7 @@ import {
   Link2,
   Lock,
   BookUser,
+  UserPlus,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -53,6 +54,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, exact: true },
       { label: "Contas", href: "/dashboard/accounts", icon: Users },
+      { label: "Onboarding", href: "/dashboard/onboarding", icon: UserPlus },
     ],
   },
   {

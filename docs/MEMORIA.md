@@ -4236,3 +4236,26 @@ typecheck/build e o schema no banco.
   - Nada foi testado contra conta real: depende do deploy do python_server.
   - `magic_link` só detecta a conexão; a visita automática é a fase 2/3.
 
+
+## Sessão 2026-09-16 — Fase Onboarding 3/3 (antecipada): página /dashboard/onboarding
+
+- **Entregue:** página `app/dashboard/onboarding/page.tsx` + link "Onboarding"
+  na Sidebar (VISÃO GERAL) e título no Header; `lib/onboarding-import.ts`
+  (leitura de planilha no browser).
+- **Importação:** CSV (separador `;`, `,` ou tab detectado; aspas RFC 4180; BOM;
+  linha `sep=`) e XLSX via `read-excel-file/universal` (import dinâmico — o
+  `/browser` usa Web Worker e complica o bundle). Cabeçalho com aliases
+  (usuario/senha/proxy…); sem cabeçalho reconhecido assume a ordem do modelo.
+  Colunas opcionais `two_factor`, `photo_url`, `magic_link` também são lidas.
+  Validação local só dá feedback — a definitiva é do POST. Envio em lotes de
+  200 (teto da rota); recusas do servidor mostradas com a linha da planilha.
+  Modelo baixável: CSV com `;` e BOM (abre direto no Excel pt-BR).
+- **Autenticação:** a página chama a rota com `fetch` same-origin — o cookie da
+  sessão Supabase vai junto, igual às outras páginas. O "Nao autenticado" só
+  aparece em chamada sem cookie (curl).
+- **Lista:** polling 10s (pausa com aba oculta), filtros Todos/Em andamento/
+  Atenção/Concluídos, trilha das 5 etapas com estado por chip, botão **Pular
+  etapa** quando a etapa atual está `needs_manual`, **Tentar de novo** quando o
+  job está parado em erro, e **Log** expansível com o `reason` de cada etapa +
+  `error_message`.
+- **Não validado contra conta real** (depende do python_server no Railway).
