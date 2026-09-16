@@ -4199,3 +4199,40 @@ typecheck/build e o schema no banco.
   o JS antigo pode ter ficado em cache no PWA (padrão já visto neste projeto).
   Se um fix de front não aparecer, orientar hard refresh / fechar-reabrir o app
   antes de assumir que o código está errado.
+
+## 2026-09-16 — Fase Onboarding 1/3: fundação (tabela + fila + python_server)
+
+- **Objetivo:** automatizar o onboarding manual de contas (logar → aceitar
+  convite do App → trocar foto → virar Profissional → link mágico). Estratégia:
+  instagrapi no python_server existente, sem navegador/RPA, replicando o padrão
+  `reader_accounts`/`scrape_jobs`/`login_jobs`.
+- **Ordem é regra, não detalhe:** o link mágico é OAuth do Instagram Business
+  Login e só funciona em conta Business/Creator. Por isso
+  `invite → photo → professional → verify_professional → magic_link`.
+- **Entregue:** tabela `onboarding_jobs` (aplicada via MCP), `lib/onboarding.ts`
+  (etapas, `nextStage`, `withStage`, progresso, normalização de username),
+  `python_server/onboarding.py` + 4 endpoints `/onboarding/*`, cron
+  `process-onboarding-jobs` (`*/2`), rotas `GET/POST /api/onboarding/jobs` e
+  `PATCH /api/onboarding/jobs/[id]`.
+- **Decisões:**
+  - `session_settings` ficou `text` (ciphertext), não `jsonb` — igual a
+    `reader_accounts`; jsonb só guardaria o ciphertext como string.
+  - Contador de falhas (`retry_count`) é POR ETAPA: zera ao avançar. 3 falhas
+    na mesma etapa = erro permanente.
+  - Erros que retry não resolve (senha errada, checkpoint, suspensa, app
+    desatualizado, `needs_manual`, foto inválida) encerram o job na hora.
+  - Espera (propagação do tipo de conta, aguardando conexão) NÃO conta como
+    falha.
+  - `device_seed` = id do job. Fica estável por conta durante todo o onboarding.
+  - Pausa de 30–90s entre etapas do mesmo job: nada de rajada de ações.
+  - PATCH `skip` existe para destravar etapa `needs_manual` depois que o humano
+    fez a ação à mão.
+- **Riscos em aberto:**
+  - **Convite de testador:** nenhum endpoint documentado. Os caminhos no código
+    são hipóteses NÃO verificadas; o esperado hoje é `needs_manual` com status
+    HTTP e trecho da resposta no motivo. Próximo passo: capturar o tráfego real
+    de Configurações → Apps e sites → Convites de testador e preencher
+    `IG_TESTER_INVITES_LIST_URL`/`IG_TESTER_INVITE_ACCEPT_URL` no Railway.
+  - Nada foi testado contra conta real: depende do deploy do python_server.
+  - `magic_link` só detecta a conexão; a visita automática é a fase 2/3.
+

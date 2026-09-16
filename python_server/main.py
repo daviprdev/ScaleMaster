@@ -6,6 +6,7 @@ automatizado de contas Instagram via instagrapi, fora da Vercel.
 Endpoints:
   POST /video/effects       — aplica efeitos de vídeo e faz upload para Supabase
   POST /instagram/login     — login automatizado via instagrapi (device + proxy dedicados)
+  POST /onboarding/*         — etapas do onboarding automatizado (onboarding.py)
   GET  /health               — liveness check para Railway
 """
 
@@ -21,6 +22,12 @@ from pydantic import BaseModel
 
 from instagram_login import perform_login
 from instagram_scraper import fetch_user_reels
+from onboarding import (
+    accept_app_invite,
+    change_profile_photo,
+    check_professional,
+    switch_to_professional,
+)
 
 # ---------------------------------------------------------------------------
 # Config — lidas na inicialização; crash imediato se ausentes
@@ -104,6 +111,40 @@ class ScrapeProfileResponse(BaseModel):
     ig_user_id: str | None = None
     reels: list[dict] | None = None
     result_count: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class OnboardingRequest(BaseModel):
+    # Credenciais da conta em onboarding + sessao salva (reconecta sem logar).
+    username: str
+    password: str
+    proxy_url: str
+    device_seed: str
+    totp_secret: str | None = None
+    session_settings: dict | None = None
+
+
+class AcceptInviteRequest(OnboardingRequest):
+    app_id: str | None = None
+
+
+class ChangePhotoRequest(OnboardingRequest):
+    photo_url: str
+
+
+class SwitchProfessionalRequest(OnboardingRequest):
+    to_account_type: int = 3
+
+
+class OnboardingResponse(BaseModel):
+    success: bool
+    session_settings: dict | None = None
+    ig_user_id: str | None = None
+    account_type: str | None = None
+    is_professional: bool | None = None
+    accepted: list[str] | None = None
+    pending_found: int | None = None
     error_code: str | None = None
     error_message: str | None = None
 
@@ -305,6 +346,84 @@ async def instagram_scrape_profile(
         req.existing_settings,
     )
     return ScrapeProfileResponse(success=result.success, **result.data)
+
+
+
+def _onboarding_response(result) -> OnboardingResponse:
+    data = dict(result.data)
+    data["session_settings"] = data.pop("settings", None)
+    return OnboardingResponse(success=result.success, **data)
+
+
+@app.post("/onboarding/accept-invite", response_model=OnboardingResponse)
+async def onboarding_accept_invite(
+    req: AcceptInviteRequest,
+    _: None = Depends(verify_secret),
+) -> OnboardingResponse:
+    result = await asyncio.to_thread(
+        accept_app_invite,
+        req.username,
+        req.password,
+        req.proxy_url,
+        req.device_seed,
+        req.totp_secret,
+        req.session_settings,
+        req.app_id,
+    )
+    return _onboarding_response(result)
+
+
+@app.post("/onboarding/change-photo", response_model=OnboardingResponse)
+async def onboarding_change_photo(
+    req: ChangePhotoRequest,
+    _: None = Depends(verify_secret),
+) -> OnboardingResponse:
+    result = await asyncio.to_thread(
+        change_profile_photo,
+        req.username,
+        req.password,
+        req.proxy_url,
+        req.device_seed,
+        req.photo_url,
+        req.totp_secret,
+        req.session_settings,
+    )
+    return _onboarding_response(result)
+
+
+@app.post("/onboarding/switch-professional", response_model=OnboardingResponse)
+async def onboarding_switch_professional(
+    req: SwitchProfessionalRequest,
+    _: None = Depends(verify_secret),
+) -> OnboardingResponse:
+    result = await asyncio.to_thread(
+        switch_to_professional,
+        req.username,
+        req.password,
+        req.proxy_url,
+        req.device_seed,
+        req.totp_secret,
+        req.session_settings,
+        req.to_account_type,
+    )
+    return _onboarding_response(result)
+
+
+@app.post("/onboarding/check-professional", response_model=OnboardingResponse)
+async def onboarding_check_professional(
+    req: OnboardingRequest,
+    _: None = Depends(verify_secret),
+) -> OnboardingResponse:
+    result = await asyncio.to_thread(
+        check_professional,
+        req.username,
+        req.password,
+        req.proxy_url,
+        req.device_seed,
+        req.totp_secret,
+        req.session_settings,
+    )
+    return _onboarding_response(result)
 
 
 @app.get("/health")
