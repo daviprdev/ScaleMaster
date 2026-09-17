@@ -7,6 +7,7 @@ Endpoints:
   POST /video/effects       — aplica efeitos de vídeo e faz upload para Supabase
   POST /instagram/login     — login automatizado via instagrapi (device + proxy dedicados)
   POST /onboarding/*         — etapas do onboarding automatizado (onboarding.py)
+  POST /test-browser-login   — login via navegador (Playwright), motor paralelo ao instagrapi
   GET  /health               — liveness check para Railway
 """
 
@@ -22,6 +23,8 @@ from pydantic import BaseModel
 
 from instagram_login import perform_login
 from instagram_scraper import fetch_user_reels
+import session_store
+from browser_engine import STATUS_CHECKPOINT, STATUS_SUCCESS, STATUS_WRONG_PASSWORD, browser_login
 from onboarding import (
     accept_app_invite,
     change_profile_photo,
@@ -47,6 +50,15 @@ BUCKET: str = "videos-library"
 
 def verify_secret(authorization: str | None = Header(default=None)) -> None:
     if SERVER_SECRET and authorization != f"Bearer {SERVER_SECRET}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def verify_secret_strict(authorization: str | None = Header(default=None)) -> None:
+    """Fail-closed: endpoints que recebem senha e devolvem screenshot da conta
+    nunca ficam abertos, mesmo se PYTHON_SERVER_SECRET não estiver definido."""
+    if not SERVER_SECRET:
+        raise HTTPException(status_code=503, detail="PYTHON_SERVER_SECRET não configurado")
+    if authorization != f"Bearer {SERVER_SECRET}":
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -147,6 +159,34 @@ class OnboardingResponse(BaseModel):
     pending_found: int | None = None
     error_code: str | None = None
     error_message: str | None = None
+
+
+class BrowserLoginRequest(BaseModel):
+    username: str
+    password: str
+    # Objeto {server, username, password} ou string (URL / host:porta:user:pass).
+    proxy: dict | str
+    totp_secret: str | None = None
+    # Dono da conta no SaaS — necessário para carregar/salvar a sessão.
+    user_id: str | None = None
+    use_saved_session: bool = True
+    save_session: bool = True
+    headless: bool | None = None
+    include_screenshot: bool = True
+
+
+class BrowserLoginResponse(BaseModel):
+    status: str
+    message: str
+    screenshot: str | None = None
+    session_saved: bool = False
+    session_reused: bool = False
+    session_note: str | None = None
+    checkpoint: dict | None = None
+    proxy_ip: str | None = None
+    proxy_country: str | None = None
+    elapsed_ms: int = 0
+    attempt_log: list[dict] = []
 
 
 # ---------------------------------------------------------------------------
@@ -426,6 +466,82 @@ async def onboarding_check_professional(
     return _onboarding_response(result)
 
 
+@app.post("/test-browser-login", response_model=BrowserLoginResponse)
+async def test_browser_login(
+    req: BrowserLoginRequest,
+    _: None = Depends(verify_secret_strict),
+) -> BrowserLoginResponse:
+    import json as _json
+
+    username = req.username.strip().lstrip("@").lower()
+    notes: list[str] = []
+    saved = None
+
+    if req.user_id and req.use_saved_session:
+        try:
+            saved = await session_store.load_session(req.user_id, username)
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"não carregou sessão salva: {exc}")
+
+    outcome = await browser_login(
+        username,
+        req.password,
+        req.proxy,
+        totp_secret=req.totp_secret,
+        storage_state=(saved or {}).get("storage_state"),
+        fingerprint=(saved or {}).get("fingerprint"),
+        headless=req.headless,
+        capture_screenshot=req.include_screenshot,
+    )
+
+    session_saved = False
+    if req.user_id and req.save_session:
+        try:
+            if outcome.status == STATUS_SUCCESS and outcome.storage_state:
+                await session_store.save_session(
+                    req.user_id, username, outcome.storage_state, outcome.fingerprint,
+                    outcome.proxy_ip, logged_in_now=not outcome.session_reused,
+                )
+                session_saved = True
+            elif saved and saved.get("storage_state") and outcome.status in (STATUS_WRONG_PASSWORD, STATUS_CHECKPOINT):
+                await session_store.mark_session(
+                    req.user_id, username,
+                    "invalid" if outcome.status == STATUS_WRONG_PASSWORD else "expired",
+                    outcome.message,
+                )
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"sessão não salva: {exc}")
+    elif not req.user_id:
+        notes.append("user_id não informado — sessão não foi carregada nem salva")
+
+    # Log estruturado da tentativa — sem senha, sem credencial de proxy.
+    print(_json.dumps({
+        "evt": "browser_login",
+        "username": username,
+        "status": outcome.status,
+        "exit_ip": outcome.proxy_ip,
+        "country": outcome.proxy_country,
+        "elapsed_ms": outcome.elapsed_ms,
+        "session_reused": outcome.session_reused,
+        "session_saved": session_saved,
+        "steps": [s["step"] for s in outcome.log],
+    }, ensure_ascii=False))
+
+    return BrowserLoginResponse(
+        status=outcome.status,
+        message=outcome.message,
+        screenshot=outcome.screenshot_b64,
+        session_saved=session_saved,
+        session_reused=outcome.session_reused,
+        session_note="; ".join(notes) or None,
+        checkpoint=outcome.checkpoint,
+        proxy_ip=outcome.proxy_ip,
+        proxy_country=outcome.proxy_country,
+        elapsed_ms=outcome.elapsed_ms,
+        attempt_log=outcome.log,
+    )
+
+
 @app.get("/health")
 async def health() -> dict:
     try:
@@ -434,4 +550,12 @@ async def health() -> dict:
         instagrapi_version = importlib.metadata.version("instagrapi")
     except Exception as e:
         instagrapi_version = f"erro: {e}"
-    return {"status": "ok", "instagrapi_version": instagrapi_version}
+    try:
+        playwright_version = importlib.metadata.version("playwright")
+    except Exception as e:
+        playwright_version = f"erro: {e}"
+    return {
+        "status": "ok",
+        "instagrapi_version": instagrapi_version,
+        "playwright_version": playwright_version,
+    }

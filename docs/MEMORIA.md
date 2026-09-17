@@ -4259,3 +4259,19 @@ typecheck/build e o schema no banco.
   job está parado em erro, e **Log** expansível com o `reason` de cada etapa +
   `error_message`.
 - **Não validado contra conta real** (depende do python_server no Railway).
+
+
+## Sessão 2026-09-16 — Motor Browser (Playwright), Fases 1–3
+
+- **Por quê:** instagrapi falhando no login (`app_outdated` / "CAA login did not
+  return a session"). Motor paralelo; nada do instagrapi foi alterado.
+- **Medido, não suposto:** login web do Instagram agora é a mutation GraphQL
+  `caa_login_web` (`/api/graphql`); inputs `name="email"`/`name="pass"`; texto de
+  senha errada "As informações de login que você inseriu estão incorretas".
+  Chromium headless novo: `navigator.webdriver=false`, sem "HeadlessChrome" nos
+  client hints. Imagem Docker 1,0 → 1,99 GB; ~415 MB RAM por sessão.
+- **Sessão salva** em `ig_browser_sessions` (não em `instagram_accounts`, porque
+  a conta em onboarding só vira linha lá no fim do fluxo). Criptografia
+  compatível byte a byte com `lib/encrypt.ts` (verificado Python→Node).
+- **Pendências:** `ENCRYPTION_SECRET` no Railway; teste com conta real
+  (helena_santosq76); Fases 4/5 planejadas em `docs/BROWSER-ENGINE.md`.
