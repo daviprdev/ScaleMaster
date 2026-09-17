@@ -4285,3 +4285,7 @@ typecheck/build e o schema no banco.
 - A chave efetiva é `sha256(ENCRYPTION_SECRET)` — a hex nova é usada como
   string, sem mudança de código no Next nem no python_server.
 - Railway só usa a chave em `ig_browser_sessions`; Vercel em todo o resto.
+- **Chave antiga não está com ninguém** (confirmado 2026-09-17: fora do
+  `.env.local`, docs e anotações). A rotação é feita pela rota temporária
+  `/api/internal/rotate-encryption-secret`, que lê a antiga do runtime da
+  Vercel. Ligada só enquanto existir `KEY_ROTATION_TOKEN`; remover depois.
