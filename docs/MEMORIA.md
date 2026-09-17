@@ -4275,3 +4275,13 @@ typecheck/build e o schema no banco.
   compatível byte a byte com `lib/encrypt.ts` (verificado Python→Node).
 - **Pendências:** `ENCRYPTION_SECRET` no Railway; teste com conta real
   (helena_santosq76); Fases 4/5 planejadas em `docs/BROWSER-ENGINE.md`.
+
+## Rotação da ENCRYPTION_SECRET (2026-09-17)
+
+- Script `scripts/rotate-encryption-secret.mjs` (transação única, dry-run por
+  padrão, `--commit`, `--verify`). Inventário de 15 colunas cifradas; hoje só
+  `proxy_pool` (140), `user_meta_apps` (3), `reader_accounts` (15 valores) e
+  `onboarding_jobs` (2) têm dados.
+- A chave efetiva é `sha256(ENCRYPTION_SECRET)` — a hex nova é usada como
+  string, sem mudança de código no Next nem no python_server.
+- Railway só usa a chave em `ig_browser_sessions`; Vercel em todo o resto.
