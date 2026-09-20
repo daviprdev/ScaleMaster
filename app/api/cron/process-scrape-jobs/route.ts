@@ -26,9 +26,18 @@ export const maxDuration = 300;
 
 const RUN_LIMIT = 3;
 const MAX_TRANSIENT_RETRIES = 6;
-// maxDuration=300, mas RUN_LIMIT=3 jobs sequenciais de até 130s cada podem
-// somar ~394s — corta o loop antes de estourar o timeout real da Vercel.
-const RUN_BUDGET_MS = 250_000;
+// Um job pode pedir TODOS os reels do perfil (limit_items = 0), então a
+// duração varia muito: ~10s num perfil pequeno, minutos num perfil com
+// milhares de reels. Em vez de um teto fixo por job, cada um recebe o tempo
+// que AINDA sobra do run — e só começa se sobrar o mínimo. Assim um perfil
+// grande pode usar quase o run inteiro sem que a Vercel mate a função no meio
+// (o que deixaria o job preso em 'processing' até o auto-healing).
+const HARD_RUN_MS = 285_000; // maxDuration=300 menos folga de resposta
+const MIN_JOB_MS = 45_000;   // não começa job novo com menos que isso
+const MAX_SCRAPE_MS = 240_000;
+// Reserva dentro do timeout HTTP para login/resolução do alvo e serialização:
+// o Python para de paginar ANTES do fetch abortar e devolve o que já coletou.
+const SCRAPE_OVERHEAD_MS = 25_000;
 const STUCK_PROCESSING_MS = 10 * 60_000;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -38,6 +47,7 @@ interface ScrapeProfileResponse {
   ig_user_id?: string | null;
   reels?: RawInstagrapiReel[] | null;
   result_count?: number | null;
+  truncated?: boolean | null;
   error_code?:
     | "target_not_found"
     | "target_private"
@@ -150,11 +160,13 @@ export async function GET(req: NextRequest) {
   let attempts = 0;
 
   for (const job of jobs) {
-    const elapsed = Date.now() - runStart;
-    if (elapsed > RUN_BUDGET_MS) {
-      console.log(`[scrape-cron] ⏱ Budget esgotado (${Math.round(elapsed / 1000)}s) — resto no próximo ciclo.`);
+    const remainingMs = HARD_RUN_MS - (Date.now() - runStart);
+    if (remainingMs < MIN_JOB_MS) {
+      console.log(`[scrape-cron] ⏱ Budget esgotado (restam ${Math.round(remainingMs / 1000)}s) — resto no próximo ciclo.`);
       break;
     }
+    const scrapeTimeoutMs = Math.min(MAX_SCRAPE_MS, remainingMs);
+    const scrapeBudgetSec = Math.max(20, Math.floor((scrapeTimeoutMs - SCRAPE_OVERHEAD_MS) / 1000));
 
     summary.checked++;
 
@@ -217,8 +229,10 @@ export async function GET(req: NextRequest) {
         totp_secret: totpSecret || undefined,
         existing_settings: existingSettings || undefined,
         target_username: job.target_username,
+        // 0 = todos os reels do perfil (o Python pagina até o fim).
         limit: job.limit_items,
-      }, 130_000);
+        time_budget_seconds: scrapeBudgetSec,
+      }, scrapeTimeoutMs);
 
       if (result.success) {
         // Persiste a sessão renovada (device fingerprint + cookies) e marca a
@@ -258,7 +272,10 @@ export async function GET(req: NextRequest) {
           processed_at: new Date().toISOString(),
         }).eq("id", job.id);
 
-        console.log(`[scrape-cron] ✅ @${job.target_username}: ${reels.length} reels via leitora @${reader.username}${job.verify ? " (verify)" : ""}.`);
+        console.log(
+          `[scrape-cron] ✅ @${job.target_username}: ${reels.length} reels via leitora @${reader.username}` +
+          `${job.verify ? " (verify)" : ""}${result.truncated ? " [PARCIAL — orçamento de tempo esgotado; o perfil tem mais reels]" : ""}.`
+        );
         summary.done++;
         continue;
       }

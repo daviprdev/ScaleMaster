@@ -113,9 +113,13 @@ class ScrapeProfileRequest(BaseModel):
     device_seed: str
     totp_secret: str | None = None
     existing_settings: dict | None = None
-    # Perfil-alvo a raspar + limite de itens.
+    # Perfil-alvo a raspar + limite de itens (0 = TODOS os reels do perfil).
     target_username: str
-    limit: int = 120
+    limit: int = 0
+    # Freio de tempo da paginação: estourado, devolve o que já coletou com
+    # truncated=True (o chamador tem timeout HTTP próprio, menor que o do
+    # Railway — é ele quem define este valor).
+    time_budget_seconds: int = 100
 
 
 class ScrapeProfileResponse(BaseModel):
@@ -124,6 +128,9 @@ class ScrapeProfileResponse(BaseModel):
     ig_user_id: str | None = None
     reels: list[dict] | None = None
     result_count: int | None = None
+    # True quando a paginação parou por orçamento de tempo / teto de páginas —
+    # o perfil tem mais reels do que os devolvidos.
+    truncated: bool | None = None
     error_code: str | None = None
     error_message: str | None = None
 
@@ -417,6 +424,7 @@ async def instagram_scrape_profile(
         req.limit,
         req.totp_secret,
         req.existing_settings,
+        req.time_budget_seconds,
     )
     return ScrapeProfileResponse(success=result.success, **result.data)
 

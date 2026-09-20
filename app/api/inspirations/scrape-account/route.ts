@@ -29,7 +29,13 @@ export async function POST(req: NextRequest) {
   // que "Perfil" e "perfil" caiam na MESMA linha de scraped_profiles
   // (unique user_id+username) em vez de duplicar o histórico.
   const targetUsername = body.targetUsername?.trim().replace(/^@/, "").toLowerCase();
-  const limit = Math.min(Math.max(Number(body.limit) || 120, 1), 300);
+  // limit = 0 → TODOS os reels do perfil (a conta leitora pagina até o fim,
+  // diferente da Apify). Qualquer outro valor vira um teto entre 1 e 5000.
+  // Ausente/NaN cai em 0 (todos) — o padrão da fonte dedicada é trazer tudo.
+  const rawLimit = Number(body.limit);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0
+    ? Math.min(Math.floor(rawLimit), 5000)
+    : 0;
 
   if (!readerAccountId) {
     return NextResponse.json({ error: "Selecione uma conta leitora." }, { status: 400 });

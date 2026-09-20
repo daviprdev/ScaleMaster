@@ -13,11 +13,18 @@ por conta do login: device fingerprint determinístico + proxy dedicado. A
 identidade de device NUNCA é regerada numa sessão já estabelecida (orientação
 da doc do instagrapi).
 
+LIMITE DE ITENS: `limit <= 0` significa TODOS os reels do perfil — a paginação
+segue enquanto o Instagram devolver cursor. `time_budget_seconds` é o freio
+real: ao estourá-lo a busca para e devolve o que já coletou (`truncated=True`),
+em vez de morrer no timeout HTTP e perder tudo.
+
 LIMITE DE PRIVACIDADE (honesto, não contornável): um perfil privado só é
 raspável se a conta leitora JÁ o seguir de verdade. Não seguimos ninguém
 automaticamente nem simulamos acesso — perfil privado sem follow retorna erro
 `target_private`.
 """
+
+import time
 
 from instagrapi import Client
 
@@ -29,7 +36,15 @@ from instagram_login import (
     refresh_app_version,
 )
 
-BUILD = "scrapev1"
+BUILD = "scrapev2"
+
+# Tamanho de página do endpoint privado clips/user/ (o mesmo default do
+# instagrapi). Paginamos nós mesmos para poder respeitar um orçamento de tempo
+# e devolver o que já foi coletado — user_clips(amount=0) percorreria o perfil
+# inteiro sem noção do timeout HTTP, e um estouro perderia TODOS os reels.
+PAGE_SIZE = 50
+# Teto de segurança contra cursor que nunca termina (PAGE_SIZE * 400 = 20k).
+MAX_PAGES = 400
 
 
 class ScrapeResult:
@@ -108,6 +123,7 @@ def fetch_user_reels(
     limit: int,
     totp_secret: str | None = None,
     existing_settings: dict | None = None,
+    time_budget_seconds: int = 100,
 ) -> ScrapeResult:
     cl = Client()
     cl.delay_range = [1, 3]
@@ -141,10 +157,54 @@ def fetch_user_reels(
             return ScrapeResult(False, error_code=error_code, error_message=error_message)
 
     # ── 2. Resolve o alvo e busca os reels (paginação real) ─────────────────
+    # limit <= 0 → todos os reels do perfil. A paginação é nossa (não
+    # user_clips(amount=...)) para respeitar o orçamento de tempo: estourado o
+    # prazo, devolvemos o que já veio em vez de perder a busca inteira no
+    # timeout HTTP. O instagrapi já dorme delay_range [1,3] a cada requisição
+    # privada — nenhum sleep extra é necessário entre as páginas.
+    wanted = max(0, int(limit))
+    deadline = time.monotonic() + max(20, int(time_budget_seconds))
+    truncated = False
+    pages = 0
+    seen_pks: set[str] = set()
+    medias = []
+
     try:
         target_id = cl.user_id_from_username(target_username)
-        # user_clips pagina internamente até `amount` (não só a primeira página).
-        medias = cl.user_clips(target_id, amount=max(1, limit))
+
+        next_cursor = ""
+        while True:
+            page, next_cursor = cl.user_clips_paginated_v1(
+                target_id, amount=PAGE_SIZE, end_cursor=next_cursor
+            )
+            pages += 1
+
+            for m in page:
+                pk = str(getattr(m, "pk", "") or "")
+                # Dedup por pk: cursor repetido não infla o resultado.
+                if pk and pk in seen_pks:
+                    continue
+                if pk:
+                    seen_pks.add(pk)
+                medias.append(m)
+
+            # Sem cursor = fim do perfil (a lista está completa).
+            if not next_cursor:
+                break
+            # Página vazia com cursor: o Instagram não tem mais o que devolver.
+            if not page:
+                break
+            if wanted and len(medias) >= wanted:
+                break
+            if pages >= MAX_PAGES:
+                truncated = True
+                break
+            if time.monotonic() >= deadline:
+                truncated = True
+                break
+
+        if wanted:
+            medias = medias[:wanted]
     except Exception as exc:
         error_code, error_message = _classify_scrape_error(exc)
         return ScrapeResult(
@@ -159,10 +219,17 @@ def fetch_user_reels(
     reels = [_media_to_reel(m) for m in medias]
     reels = [r for r in reels if r["video_url"]]
 
+    print(
+        f"[{BUILD}] @{target_username}: {len(reels)} reels em {pages} página(s)"
+        f" (limite={wanted or 'todos'}, truncado={truncated})",
+        flush=True,
+    )
+
     return ScrapeResult(
         True,
         settings=cl.get_settings(),
         ig_user_id=(str(cl.user_id) if cl.user_id else None),
         reels=reels,
         result_count=len(reels),
+        truncated=truncated,
     )

@@ -82,7 +82,9 @@ CREATE TABLE IF NOT EXISTS public.scrape_jobs (
   user_id            uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   reader_account_id  uuid        NOT NULL REFERENCES public.reader_accounts(id) ON DELETE CASCADE,
   target_username    text        NOT NULL,
-  limit_items        integer     NOT NULL DEFAULT 120,
+  -- 0 = TODOS os reels do perfil (a conta leitora pagina até o fim, que é a
+  -- vantagem sobre a Apify). >0 = teto de itens. Jobs de verificação usam 1.
+  limit_items        integer     NOT NULL DEFAULT 0,
   -- verify=true: job de verificação/conexão da própria conta leitora (target =
   -- username da leitora). Estabelece a sessão sem poluir o histórico de
   -- Inspirações (o cron pula o upsert em scraped_profiles nesse caso).

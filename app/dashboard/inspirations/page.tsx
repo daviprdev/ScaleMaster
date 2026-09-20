@@ -349,6 +349,9 @@ export default function InspiracoesPage() {
   const [source, setSource] = useState<"apify" | "reader">("apify");
   const [readerAccounts, setReaderAccounts] = useState<ReaderAccountLite[]>([]);
   const [selectedReaderId, setSelectedReaderId] = useState("");
+  // Quantidade de reels na fonte dedicada. 0 = todos (padrão) — a conta
+  // leitora pagina o perfil inteiro, que é a vantagem sobre a Apify.
+  const [readerLimit, setReaderLimit] = useState(0);
   const [sortBy, setSortBy] = useState<SortKey>("views");
   const [showFilters, setShowFilters] = useState(false);
   const [saveFolderId, setSaveFolderId] = useState("");
@@ -478,7 +481,7 @@ export default function InspiracoesPage() {
     const startRes = await fetch("/api/inspirations/scrape-account", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ readerAccountId: selectedReaderId, targetUsername: target, limit: 120 }),
+      body: JSON.stringify({ readerAccountId: selectedReaderId, targetUsername: target, limit: readerLimit }),
     });
     const startData = await startRes.json();
     if (!startRes.ok || !startData.jobId) {
@@ -487,7 +490,7 @@ export default function InspiracoesPage() {
 
     // A raspagem roda no cron (a cada ~10 min na 1ª calibração) — polling mais
     // longo que o da Apify, que é síncrono via Apify runs.
-    const MAX_POLLS = 90; // 90 × 5s = 7.5 min
+    const MAX_POLLS = 180; // 180 × 5s = 15 min (perfil grande + fila do cron)
     for (let i = 0; i < MAX_POLLS; i++) {
       await new Promise<void>((r) => setTimeout(r, 5000));
       const pollRes = await fetch(
@@ -1002,6 +1005,23 @@ export default function InspiracoesPage() {
                     })}
                   </select>
                 )
+              )}
+
+              {/* Quantidade — a conta leitora pagina o perfil inteiro */}
+              {source === "reader" && readerAccounts.length > 0 && (
+                <select
+                  value={readerLimit}
+                  onChange={(e) => setReaderLimit(Number(e.target.value))}
+                  className="px-3 py-1.5 rounded-lg text-xs outline-none"
+                  style={{ background: "rgba(0,0,0,0.5)", border: "0.5px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.75)" }}
+                  title="Quantos reels buscar. Todos percorre o perfil inteiro."
+                >
+                  <option value={0}>Todos os reels</option>
+                  <option value={120}>Até 120</option>
+                  <option value={300}>Até 300</option>
+                  <option value={600}>Até 600</option>
+                  <option value={1200}>Até 1200</option>
+                </select>
               )}
             </div>
 
