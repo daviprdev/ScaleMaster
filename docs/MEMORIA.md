@@ -4438,3 +4438,82 @@ truncagem por orçamento de tempo e perfil vazio. `npm run build`,
 **Pendência:** exige **redeploy do python_server no Railway** — enquanto o
 serviço rodar o código antigo, o `time_budget_seconds` é ignorado e o
 `limit=0` cai em `max(1, 0) = 1`.
+
+---
+
+## Sessão 2026-09-20 — Clonar Perfil: auditoria completa e conserto
+
+Relato: "esses dias coloquei para rodar lá e não funcionou".
+
+**Evidência antes de mexer em código.** O banco não tinha NENHUMA linha de
+clone (`clone_source_profile IS NULL` em todas as `scheduled_posts`), o bucket
+não tinha `profile_pics/` (o poll do clone sobe a foto do perfil ao concluir —
+ou seja, nenhuma busca de clone terminou com sucesso desde o reset de 06/09) e
+não havia request em `/api/clone/*` nos logs da Vercel dos últimos 3 dias. O
+que sobrou foi auditar o caminho inteiro.
+
+### Causa principal — a mídia era apagada no meio da campanha
+
+`prefetch-clone-urls` hospedava o vídeo em `temp/clone_{postId}.mp4`. O
+cleanup do `process-loops` apaga `temp/*` com mais de **2h**. Como qualquer
+campanha de clone se espalha por horas ou dias, o arquivo morria no meio: os
+primeiros posts saíam e todo o resto falhava com `ERROR/EXPIRED`. Pior, era
+irrecuperável — o permalink do Instagram já tinha sido sobrescrito em
+`video_url`, então nem o prefetch nem o auto-heal tinham como voltar atrás.
+
+Aqui vale a regra geral: **limpeza por idade só serve para arquivo de vida
+curta.** A mídia de uma campanha de 3 dias é "velha" no segundo dia e continua
+sendo necessária. Quem tem vida longa precisa ser podado por REFERÊNCIA.
+
+### Os outros sete
+
+1. A fila da Fase 2 não tinha `ORDER BY`: resolvia Reels em ordem arbitrária,
+   então post que já estava na hora esperava enquanto Reel de dias à frente
+   era baixado.
+2. O `.limit(MAX_NEW_RUNS * 3)` era aplicado **antes** da deduplicação por
+   URL. Com N contas, as 24 linhas lidas podiam ser todas do MESMO Reel — na
+   prática 1 Reel resolvido por ciclo em vez de 8. (Mesma família do bug de
+   truncagem do PostgREST de 29/08: o limite cai antes do agrupamento.)
+3. Sem teto de tentativas: Reel apagado/privado reiniciava run da Apify para
+   sempre. Bug de dinheiro, não só de lógica.
+4. O run era rastreado gravando `[APIFY_RUN:{id}]` em
+   `scheduled_posts.error_message` — coluna de usuário, que guarda erro real.
+5. `BUDGET_MS = 54s` numa função com `maxDuration = 300`, com
+   `MAX_DOWNLOADS_PER_RUN = 2`: teto de 24 Reels por hora.
+6. A tela não filtrava contas **inativas**. Em produção, 28 das 83 contas
+   estão `is_active = false`, e todo post agendado para elas já nasce
+   condenado a `failed` ("Conta não encontrada ou inativa"). A aba Postar
+   filtra desde sempre (`page.tsx:1208`); a Clonar, não.
+7. A busca do perfil era 100% efêmera: sem nenhuma linha no banco, recarregar
+   ou sair da página perdia o run PAGO da Apify; o polling girava para sempre
+   se o run morresse; `maxRequestsPerCrawl = limit/8 + 40` (103 para
+   `limit=500`) cortava o crawl antes de alcançar os resultados pedidos; e o
+   dataset era lido sem paginar. As Inspirações já tinham resolvido tudo isso.
+
+### Arquitetura nova
+
+- `clone_media` — uma linha por permalink (`source_url` UNIQUE), com run da
+  Apify, URL hospedada, tentativas (teto 3) e claim atômico. O mesmo Reel
+  serve todas as contas e todas as campanhas com um único download.
+- `clone/{shortCode}.mp4` — fora de `temp/`. Podado só quando NENHUM post
+  pendente/publicando aponta para o arquivo, e depois de 24h de graça.
+- `scheduled_posts.clone_source_url` — o permalink original, imutável.
+  `video_url` vira a cópia hospedada; esta coluna é o que permite re-resolver
+  a mídia. Auto-heal: post de clone que falhou volta para o permalink.
+- Reel sem mídia possível vira `failed` com motivo legível em vez de ficar
+  `pending` para sempre escondendo o problema.
+
+`get_campaign_summaries` passou a reconhecer clone também por
+`clone_source_url`. Cache do PostgREST conferido por HTTP depois da migration
+(com teste de controle numa coluna inexistente, para a checagem significar
+alguma coisa).
+
+**Testes:** `scripts/test-clone.mjs`, 46 checagens. As de fila e de poda
+compilam e executam `lib/clone-media.ts` de verdade — incluindo a regressão
+exata de produção (mídia de campanha em andamento, com mais de 2h de vida,
+tem que sobreviver à poda). `npm test` = 632 checagens em 8 suítes.
+
+**Não verificado:** a busca em si depende de um run da Apify e do token, que
+só existe na Vercel — o caminho foi corrigido por comparação com o fluxo das
+Inspirações (que funciona em produção), não por execução. O primeiro clone
+depois deste deploy é o teste real.
