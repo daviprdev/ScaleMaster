@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { normalizeScrapedReel } from "@/lib/scraped-reel";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { fetch as undiciFetch } from "undici";
+import { listAllItems } from "@/lib/inspiration-scrape";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -47,8 +48,10 @@ export async function GET(req: NextRequest) {
   }
 
   if (run.status === "SUCCEEDED") {
-    const { items } = await client.dataset(run.defaultDatasetId as string).listItems();
-    const list = Array.isArray(items) ? items : [];
+    // Paginado: a API de datasets devolve no máximo 1000 itens por página e
+    // um perfil grande passa disso — sem paginar, o restante sumia em silêncio
+    // (mesma correção já aplicada nas Inspirações).
+    const list = await listAllItems(client, run.defaultDatasetId as string);
 
     // /reels/ returned nothing → fallback to main profile URL
     if (list.length === 0 && !fallback) {
@@ -59,7 +62,7 @@ export async function GET(req: NextRequest) {
           directUrls: [`https://www.instagram.com/${username}/`],
           resultsType: "posts",
           resultsLimit: limit,
-          maxRequestsPerCrawl: Math.ceil(limit / 8) + 40,
+          maxRequestsPerCrawl: Math.max(600, limit * 2),
           proxyConfiguration: { useApifyProxy: true },
         });
         return NextResponse.json({ status: "running", runId: fallbackRun.id, username, limit, fallback: true });

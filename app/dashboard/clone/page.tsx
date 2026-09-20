@@ -22,6 +22,8 @@ interface ReelItem {
   thumbnailUrl: string | null;
   videoUrl:     string;
   caption:      string;
+  /** null = o Apify não trouxe o campo; "" = Reel realmente sem legenda. */
+  originalCaption?: string | null;
   views:        number;
   likes:        number;
   comments:     number;
@@ -50,6 +52,7 @@ interface AccountRow {
   display_name:    string | null;
   avatar_url:      string | null;
   health_status:   string;
+  is_active:       boolean;
   folder_id:       string | null;
   account_folders: { name: string } | null;
 }
@@ -131,6 +134,13 @@ const AUTO_CAPTION_PREVIEW_CLONE =
   "3 atitudes de quem tem produtividade real:\n\n1️⃣ Priorizar, não preencher agenda.\n2️⃣ Dormir antes de trabalhar.\n3️⃣ Eliminar antes de delegar.\n\nSalva pra reler quando precisar.\n\n#produtividade #foco #rotina";
 
 const HISTORY_KEY = "clone_history_v1";
+// Busca em andamento (runId da Apify). Sem isso, recarregar a página ou sair
+// dela perdia o run PAGO: nada era salvo em lugar nenhum e o usuário via a
+// aba como se nunca tivesse buscado.
+const PENDING_SEARCH_KEY = "clone_pending_search_v1";
+// Teto do polling. O run da Apify raramente passa de 3min; sem teto a tela
+// ficava girando para sempre quando o run morria.
+const SEARCH_TIMEOUT_MS = 10 * 60_000;
 const SAVED_PROFILES_KEY = "clone_saved_profiles_v1";
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -195,7 +205,13 @@ export default function ClonePage() {
     fetch("/api/accounts/list")
       .then(r => r.json())
       .then(d => {
-        const list: AccountRow[] = (d.accounts ?? []).filter((a: AccountRow) => a.health_status !== "error");
+        // Conta inativa é recusada pelo publish-scheduled ("Conta não
+        // encontrada ou inativa") — se aparecesse aqui, todo post agendado
+        // para ela já nasceria condenado. A aba Postar sempre filtrou; esta
+        // não filtrava (28 das 83 contas em produção estavam inativas).
+        const list: AccountRow[] = (d.accounts ?? []).filter(
+          (a: AccountRow) => a.health_status !== "error" && a.is_active
+        );
         setAccounts(list);
         const folders = new Set(list.map(a => a.folder_id ?? "__none__"));
         setExpanded(folders);
@@ -287,11 +303,35 @@ export default function ClonePage() {
 
   // ── Search / Poll ─────────────────────────────────────────────────────────────
 
-  const startPolling = useCallback((runId: string, username: string, fallback: boolean, limit: number) => {
+  const startPolling = useCallback((
+    runId: string,
+    username: string,
+    fallback: boolean,
+    limit: number,
+    startedAt: number = Date.now(),
+  ) => {
     if (pollRef.current) clearInterval(pollRef.current);
+
+    // O run fica guardado no browser: recarregar a página (ou voltar para a
+    // aba depois) retoma o polling do MESMO run em vez de perder a busca.
+    const remember = (rid: string, fb: boolean) => {
+      try {
+        localStorage.setItem(PENDING_SEARCH_KEY, JSON.stringify({ runId: rid, username, fallback: fb, limit, startedAt }));
+      } catch {}
+    };
+    const forget = () => { try { localStorage.removeItem(PENDING_SEARCH_KEY); } catch {} };
+    remember(runId, fallback);
 
     pollRef.current = setInterval(async () => {
       try {
+        if (Date.now() - startedAt > SEARCH_TIMEOUT_MS) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          forget();
+          setSearchError("A busca passou de 10 minutos sem terminar na Apify. Tente de novo — se repetir, o perfil pode ser privado ou grande demais.");
+          setSearchState("error");
+          return;
+        }
+
         const params = new URLSearchParams({ runId, username, fallback: String(fallback), limit: String(limit) });
         const res  = await fetch(`/api/clone/search/poll?${params}`);
         const data = await res.json();
@@ -300,12 +340,13 @@ export default function ClonePage() {
           if (data.runId && data.runId !== runId) {
             if (pollRef.current) clearInterval(pollRef.current);
             setRunMeta({ runId: data.runId, username, fallback: true, limit });
-            startPolling(data.runId, username, true, limit);
+            startPolling(data.runId, username, true, limit, startedAt);
           }
           return;
         }
 
         if (pollRef.current) clearInterval(pollRef.current);
+        forget();
 
         if (data.status === "done") {
           setProfile(data.profile);
@@ -317,14 +358,32 @@ export default function ClonePage() {
           setSearchState("error");
         }
       } catch {
-        if (pollRef.current) clearInterval(pollRef.current);
-        setSearchError("Erro de rede ao buscar resultados.");
-        setSearchState("error");
+        // Erro de rede pontual não derruba mais a busca inteira: o run segue
+        // vivo na Apify e o próximo tick tenta de novo (até o timeout).
+        console.warn("[clone] falha ao consultar o run — tentando de novo no próximo ciclo.");
       }
     }, 4000);
   }, []);
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
+  // Retoma uma busca deixada em andamento (reload da página, voltar para a aba).
+  useEffect(() => {
+    let saved: { runId: string; username: string; fallback: boolean; limit: number; startedAt: number } | null = null;
+    try {
+      const raw = localStorage.getItem(PENDING_SEARCH_KEY);
+      if (raw) saved = JSON.parse(raw);
+    } catch {}
+    if (!saved?.runId) return;
+    if (Date.now() - (saved.startedAt ?? 0) > SEARCH_TIMEOUT_MS) {
+      try { localStorage.removeItem(PENDING_SEARCH_KEY); } catch {}
+      return;
+    }
+    setQuery(saved.username);
+    setSearchState("loading");
+    setRunMeta({ runId: saved.runId, username: saved.username, fallback: saved.fallback, limit: saved.limit });
+    startPolling(saved.runId, saved.username, saved.fallback, saved.limit, saved.startedAt);
+  }, [startPolling]);
 
   const handleSearch = async () => {
     const username = query.replace(/^@/, "").trim();
@@ -377,7 +436,7 @@ export default function ClonePage() {
 
       // Pré-corta os reels para não enviar os 300 raspados quando apenas N são necessários
       const reelsToSend = (reelCount === -1 ? reels : reels.slice(0, reelCount))
-        .map(r => ({ shortCode: r.shortCode, caption: r.caption }));
+        .map(r => ({ shortCode: r.shortCode, caption: r.caption, originalCaption: r.originalCaption }));
 
       const res  = await fetch("/api/clone/create", {
         method: "POST",

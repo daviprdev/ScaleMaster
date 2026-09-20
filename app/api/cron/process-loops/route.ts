@@ -1402,9 +1402,16 @@ export async function GET(req: NextRequest) {
   const now = new Date();
 
   // ── CLEANUP: Arquivos temporários (temp/vfx_*, vpf_*, strip_*, clone_*) ────
-  // A fila de efeitos criativos e o prefetch do Clone sobem arquivos para temp/
-  // mas nunca deletam após o uso (strip_* é legado, do auto-strip removido em
-  // 2026-09-06). Limpamos arquivos com mais de 2h a cada run.
+  // A fila de efeitos criativos sobe arquivos para temp/ mas nunca deleta
+  // após o uso (strip_* e clone_* são legado: o auto-strip saiu em 2026-09-06
+  // e o prefetch do Clone parou de usar temp/ em 2026-09-20). Limpamos
+  // arquivos com mais de 2h a cada run.
+  //
+  // ATENÇÃO: esta limpeza é por IDADE, então só serve para arquivo de vida
+  // curta — usado minutos depois de criado. A mídia do Clone ficava aqui e
+  // morria em 2h no meio de campanhas de dias; hoje ela vive em clone/ e é
+  // podada por REFERÊNCIA no prefetch-clone-urls. Nada com vida longa pode
+  // voltar para temp/.
   // IMPORTANTE: cada prefixo é listado (e portanto apagado) SEPARADAMENTE via
   // `search`. Um list() único sobre toda a pasta temp/, ordenado por
   // created_at asc, ficava starved para sempre assim que um prefixo sem

@@ -37,7 +37,12 @@ export async function POST(req: NextRequest) {
         directUrls: [`https://www.instagram.com/${username}/reels/`],
         resultsType: "posts",
         resultsLimit: limit,
-        maxRequestsPerCrawl: Math.ceil(limit / 8) + 40,
+        // Mesmo valor das Inspirações (lib/inspiration-scrape.ts), que é o
+        // fluxo validado em produção. O anterior (limit/8 + 40 = 103 para
+        // limit=500) cortava o crawl antes de alcançar os resultados pedidos:
+        // o actor gasta requisições com a listagem E com o detalhe de cada
+        // post, então o teto tem que ser maior que o número de resultados.
+        maxRequestsPerCrawl: Math.max(600, limit * 2),
         proxyConfiguration: { useApifyProxy: true },
       });
       return NextResponse.json({ runId: run.id, username, limit, fallback: false });

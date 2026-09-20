@@ -83,15 +83,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Posts por dia inválido (1–1440)." }, { status: 400 });
   if (!start_at)
     return NextResponse.json({ error: "Informe a data e hora de início." }, { status: 400 });
+  if (Number.isNaN(new Date(start_at).getTime()))
+    return NextResponse.json({ error: "Data e hora de início inválidas." }, { status: 400 });
 
   // Valida que todas as contas pertencem ao usuário autenticado (via RLS)
   const { data: ownedAccounts } = await supabase
     .from("instagram_accounts")
-    .select("id")
+    .select("id, username, is_active, health_status")
     .in("id", account_ids);
 
   if ((ownedAccounts?.length ?? 0) !== account_ids.length) {
     return NextResponse.json({ error: "Uma ou mais contas não pertencem ao seu usuário." }, { status: 403 });
+  }
+
+  // Conta inativa faz TODOS os posts dela falharem em publish-scheduled
+  // ("Conta não encontrada ou inativa"). Recusar aqui é melhor do que
+  // agendar centenas de linhas que já nascem condenadas — a aba Postar já
+  // filtrava contas inativas, a Clonar não filtrava.
+  const blocked = (ownedAccounts ?? []).filter(
+    (a: { is_active: boolean; health_status: string }) => !a.is_active || a.health_status === "error"
+  );
+  if (blocked.length) {
+    const nomes = blocked.map((a: { username: string }) => "@" + a.username).join(", ");
+    return NextResponse.json(
+      {
+        error: `Estas contas estão inativas ou com erro e não publicariam nada: ${nomes}. Ative-as em Contas (ou desmarque-as) antes de clonar.`,
+      },
+      { status: 400 }
+    );
   }
 
   // Seleciona quantidade de reels (frontend já pré-cortou, mas garantimos aqui)
@@ -152,11 +171,17 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const permalink = `https://www.instagram.com/reel/${reel.shortCode}/`;
+
       rows.push({
         user_id:              user.id,
         account_id:           accountId,
         video_id:             null,
-        video_url:            `https://www.instagram.com/reel/${reel.shortCode}/`,
+        // video_url começa no permalink e é trocado pelo prefetch-clone-urls
+        // pela cópia hospedada; clone_source_url guarda o permalink para
+        // sempre, o que permite re-resolver a mídia se o arquivo sumir.
+        video_url:            permalink,
+        clone_source_url:     permalink,
         caption:              resolucao.caption,
         caption_mode:         captionMode,
         scheduled_at:         scheduledAt,
