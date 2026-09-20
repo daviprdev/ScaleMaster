@@ -42,7 +42,7 @@ interface InstagramLoginResponse {
   profile_pic_url?: string | null;
   followers_count?: number | null;
   media_count?: number | null;
-  error_code?: "bad_password" | "banned_or_disabled" | "checkpoint_required" | "rate_limited" | "network_error" | "app_outdated" | "unknown";
+  error_code?: "bad_password" | "banned_or_disabled" | "checkpoint_required" | "two_factor_required" | "rate_limited" | "network_error" | "app_outdated" | "unknown";
   error_message?: string;
 }
 
@@ -66,7 +66,7 @@ interface JobRow {
   } | null;
 }
 
-const PERMANENT_ERROR_CODES = new Set(["bad_password", "banned_or_disabled"]);
+const PERMANENT_ERROR_CODES = new Set(["bad_password", "banned_or_disabled", "two_factor_required"]);
 
 function backoffMinutes(retryCount: number): number {
   return Math.min(10 * 2 ** retryCount, 180);

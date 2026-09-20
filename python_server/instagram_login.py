@@ -201,8 +201,11 @@ def _classify_error(exc: Exception) -> tuple[str, str]:
         return "bad_password", msg
     if isinstance(exc, ChallengeRequired) or "challenge_required" in lower:
         return "checkpoint_required", msg
+    # 2FA NAO e conta morta: a conta esta saudavel, falta o segredo TOTP (ou o
+    # cadastrado esta errado/dessincronizado). Codigo proprio pra que o chamador
+    # peca o dado ao usuario em vez de enterrar a conta como checkpoint.
     if isinstance(exc, TwoFactorRequired) or "two_factor_required" in lower:
-        return "checkpoint_required", msg
+        return "two_factor_required", msg
     if (
         isinstance(exc, (RateLimitError, ClientThrottledError, PleaseWaitFewMinutes))
         or "please wait a few minutes" in lower

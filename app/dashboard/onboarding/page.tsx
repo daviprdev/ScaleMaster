@@ -141,7 +141,7 @@ export default function OnboardingPage() {
   const [rejected, setRejected] = useState<Rejected[]>([]);
 
   // Cadastro manual
-  const [form, setForm] = useState({ username: "", password: "", proxy_url: "" });
+  const [form, setForm] = useState({ username: "", password: "", proxy_url: "", two_factor: "" });
   const [savingOne, setSavingOne] = useState(false);
 
   // Lista
@@ -263,7 +263,7 @@ export default function OnboardingPage() {
       const { created, rejected: rej } = await postJobs([form]);
       if (created) {
         setNotice(`@${form.username.replace(/^@/, "").toLowerCase()} entrou na fila.`);
-        setForm({ username: "", password: "", proxy_url: "" });
+        setForm({ username: "", password: "", proxy_url: "", two_factor: "" });
         await load();
       } else {
         setError(rej[0]?.error ?? "Não foi possível criar o job.");
@@ -286,6 +286,34 @@ export default function OnboardingPage() {
   };
 
   // ── Ações por job ────────────────────────────────────────────────────────
+
+  // Segredo TOTP digitado no card de um job que parou pedindo 2FA.
+  const [twoFactorDraft, setTwoFactorDraft] = useState<Record<string, string>>({});
+
+  // Salva o segredo e reenfileira a etapa na MESMA chamada: o PATCH aplica a
+  // edicao antes da acao, entao o cron ja pega o dado novo na proxima volta.
+  const saveTwoFactor = async (job: OnboardingJob) => {
+    const secret = (twoFactorDraft[job.id] ?? "").trim();
+    if (!secret || acting.has(job.id)) return;
+    setActing((s) => new Set(s).add(job.id));
+    setError("");
+    try {
+      const res = await fetch(`/api/onboarding/jobs/${job.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ two_factor: secret, action: "retry" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Falha ao salvar o segredo 2FA.");
+      setTwoFactorDraft((d) => { const n = { ...d }; delete n[job.id]; return n; });
+      setNotice(`@${job.username}: segredo 2FA salvo — etapa reenfileirada.`);
+      await load();
+    } catch (e) {
+      setError(`@${job.username}: ${e instanceof Error ? e.message : "erro desconhecido."}`);
+    } finally {
+      setActing((s) => { const n = new Set(s); n.delete(job.id); return n; });
+    }
+  };
 
   const act = async (job: OnboardingJob, action: "skip" | "retry") => {
     if (acting.has(job.id)) return;
@@ -514,6 +542,17 @@ export default function OnboardingPage() {
                 className="input-glass w-full mt-1 px-3 py-2.5 text-sm rounded-lg" />
             </div>
             <div>
+              <label className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.5)" }}>
+                Segredo 2FA <span style={{ color: "rgba(255,255,255,0.3)" }}>(opcional)</span>
+              </label>
+              <input value={form.two_factor} onChange={(e) => setForm({ ...form, two_factor: e.target.value })}
+                placeholder="chave do autenticador" autoComplete="off"
+                className="input-glass w-full mt-1 px-3 py-2.5 text-sm rounded-lg font-mono" />
+              <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.3)" }}>
+                Obrigatório se a conta tiver 2FA ativo. É a chave da configuração do autenticador, não o código de 6 dígitos.
+              </p>
+            </div>
+            <div>
               <label className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.5)" }}>Proxy dedicado</label>
               <input value={form.proxy_url} onChange={(e) => setForm({ ...form, proxy_url: e.target.value })}
                 onKeyDown={(e) => { if (e.key === "Enter") handleAddOne(); }}
@@ -584,6 +623,14 @@ export default function OnboardingPage() {
                 const canRetry = job.status === "error";
                 const busy = acting.has(job.id);
                 const open = expanded.has(job.id);
+                // Etapa parou pedindo 2FA: o dado precisa vir do usuario, entao
+                // o card oferece o campo em vez de so um retry que vai repetir.
+                // Cobre o codigo novo (two_factor_required) e os jobs que ja
+                // falharam antes dele, cuja razao traz so o nome da excecao.
+                const needsTwoFactor = STAGES.some((st) => {
+                  const reason = job.stage_status?.[st.key]?.reason?.toLowerCase() ?? "";
+                  return reason.includes("two_factor") || reason.includes("twofactor");
+                });
                 const logEntries = STAGES
                   .map((s) => ({ stage: s.key, res: job.stage_status?.[s.key] }))
                   .filter((e) => e.res && (e.res.reason || e.res.state !== "pending"));
@@ -594,6 +641,33 @@ export default function OnboardingPage() {
                     className="glass-card p-4 space-y-3"
                     style={isManual ? { borderColor: "rgba(255,184,0,0.35)" } : job.status === "error" ? { borderColor: "rgba(255,59,48,0.3)" } : undefined}
                   >
+                    {needsTwoFactor && (
+                      <div className="rounded-lg p-3 space-y-2"
+                        style={{ background: "rgba(255,184,0,0.07)", border: "0.5px solid rgba(255,184,0,0.3)" }}>
+                        <p className="text-[11px] leading-relaxed" style={{ color: "rgba(255,200,90,0.95)" }}>
+                          {job.has_two_factor
+                            ? "O código gerado foi recusado. Confira o segredo do autenticador e salve de novo."
+                            : "A conta tem 2FA ativo e nenhum segredo TOTP foi cadastrado. Informe a chave do autenticador para continuar."}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input
+                            value={twoFactorDraft[job.id] ?? ""}
+                            onChange={(e) => setTwoFactorDraft((d) => ({ ...d, [job.id]: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === "Enter") saveTwoFactor(job); }}
+                            placeholder="chave do autenticador"
+                            autoComplete="off" spellCheck={false}
+                            className="input-glass flex-1 min-w-[200px] px-3 py-2 text-xs rounded-lg font-mono" />
+                          <button onClick={() => saveTwoFactor(job)}
+                            disabled={busy || !(twoFactorDraft[job.id] ?? "").trim()}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-50"
+                            style={{ background: "rgba(0,255,65,0.1)", border: "0.5px solid rgba(0,255,65,0.35)", color: "rgba(0,255,65,0.9)" }}>
+                            {busy ? <Loader2 size={12} className="animate-spin" /> : <KeyRound size={12} />}
+                            Salvar e tentar de novo
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Linha 1 */}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">

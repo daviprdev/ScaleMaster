@@ -81,7 +81,7 @@ interface JobRow {
 // Conta com problema que retry nao resolve.
 const ACCOUNT_DEAD_ERRORS = new Set(["bad_password", "banned_or_disabled", "checkpoint_required", "app_outdated"]);
 // Etapa que precisa de acao humana (ou dado corrigido) antes de continuar.
-const NEEDS_MANUAL_ERRORS = new Set(["needs_manual", "invalid_photo"]);
+const NEEDS_MANUAL_ERRORS = new Set(["needs_manual", "invalid_photo", "two_factor_required"]);
 
 const STAGE_ENDPOINT: Record<Exclude<OnboardingStage, "magic_link">, string> = {
   invite: "/onboarding/accept-invite",
@@ -367,7 +367,15 @@ export async function GET(req: NextRequest) {
 
       if (!result.success) {
         const code = result.error_code ?? "unknown";
-        const message = `[${code}] ${result.error_message ?? "Falha desconhecida."}`;
+        let message = `[${code}] ${result.error_message ?? "Falha desconhecida."}`;
+
+        // A conta pede 2FA: o motivo cru da instagrapi nao diz ao usuario o que
+        // fazer. Aponta o dado que falta (ou que esta errado) na propria conta.
+        if (code === "two_factor_required") {
+          message = twoFactor
+            ? `[${code}] A conta pediu 2FA e o codigo gerado foi recusado — confira o segredo TOTP cadastrado (deve ser a chave da configuracao do autenticador, nao o codigo de 6 digitos). Detalhe: ${result.error_message ?? "sem detalhe"}`
+            : `[${code}] A conta tem 2FA ativo e nenhum segredo TOTP foi cadastrado. Informe o segredo do autenticador nesta conta e tente de novo. Detalhe: ${result.error_message ?? "sem detalhe"}`;
+        }
         console.warn(`[onboarding-cron] @${job.username} ${stage}: ${code}`);
 
         if (ACCOUNT_DEAD_ERRORS.has(code)) {
