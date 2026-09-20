@@ -4289,3 +4289,99 @@ typecheck/build e o schema no banco.
   `.env.local`, docs e anotações). A rotação é feita pela rota temporária
   `/api/internal/rotate-encryption-secret`, que lê a antiga do runtime da
   Vercel. Ligada só enquanto existir `KEY_ROTATION_TOKEN`; remover depois.
+
+## Sessão 2026-09-19/20 — Onboarding: 2FA, remoção de conta e magic_link automatizado
+
+### 1. O bug relatado de 2FA não existia (`f234cfd`)
+
+- **Relato:** `totp_secret` não seria enviado de `process-instagram-logins`
+  para o python_server. **Falso:** é enviado desde o primeiro commit da feature
+  (`842e473`), e a cadeia está inteira (route.ts:215 → main.py →
+  `instagram_login.authenticate_client`).
+- **Mais decisivo:** essa rota **nunca rodou** — `login_jobs` = 0 linhas e
+  `account_logins` = 0 linhas em produção.
+- **Falha real:** `onboarding_jobs`, etapa `invite`, 3 contas, todas com
+  `two_factor_enc IS NULL`. O cron mandava `totp_secret || undefined`
+  corretamente; não havia segredo cadastrado.
+- **Bug de verdade — o usuário ficava sem saída:** o formulário de conta única
+  em `/dashboard/onboarding` não tinha campo de 2FA (só o CSV aceitava
+  `two_factor`), e o card do job travado só oferecia Pular/Tentar de novo. O
+  `PATCH` já aceitava `two_factor`, mas a UI nunca expôs.
+- **Correções:** `TwoFactorRequired` ganhou código próprio
+  `two_factor_required` (antes somado a `checkpoint_required`, que está em
+  `ACCOUNT_DEAD_ERRORS` e enterrava contas saudáveis como mortas); no
+  onboarding vira `needs_manual`, nos crons de scrape/login encerra sem retry
+  inútil; mensagem separa "nenhum segredo cadastrado" de "código recusado";
+  campo de 2FA no cadastro único e painel no card que salva o segredo e
+  reenfileira a etapa na mesma chamada (detecção cobre a mensagem antiga, em
+  minúsculas e sem distinção de caixa).
+- **Não era necessário reativar conta:** os 3 jobs têm `account_id` NULL (a
+  linha em `instagram_accounts` só nasce no `magic_link`), o cron de onboarding
+  não chama `markDeadAccounts`, e havia 0 contas em erro / 0 `failover_logs`.
+
+### 2. Remover conta da fila de onboarding (`34d6e05`)
+
+- Não havia como tirar uma conta da fila — só deixar o job travado na tela.
+- **Achado que causaria falha silenciosa:** `onboarding_jobs` tinha RLS com
+  `select/insert/update` e **nenhuma policy de delete**. Seguindo o padrão do
+  projeto (client do usuário + `.eq("user_id")`), o delete apagaria 0 linhas e
+  responderia sucesso. Criada `onboarding_jobs_owner_delete` (migration
+  aplicada + `supabase/onboarding_jobs.sql`), e o delete usa `.select()` para
+  confirmar em vez de confiar na ausência de erro.
+- **Escopo:** apaga só a linha da fila. A única FK sai desta tabela
+  (`account_id → instagram_accounts`, ON DELETE SET NULL) e nada referencia
+  `onboarding_jobs` — conta já conectada continua ativa, e a notificação diz
+  isso. Job em `processing` é bloqueado com 409.
+- **Testado contra produção** com linha descartável e `set local role
+  authenticated`: dono apagou 1 linha, tentativa sobre linha de outro usuário
+  apagou 0, sem resíduo.
+
+### 3. Etapa magic_link automatizada no navegador (`31dc466`)
+
+- `python_server/magic_link.py` → `complete_magic_link()` percorre o caminho do
+  usuário real: `/add/{token}` (grava os cookies OAuth no domínio do SaaS) →
+  `instagram.com/oauth/authorize` → `/api/instagram/callback` → `/add/success`.
+  Reusa o `browser_engine` inteiro (proxy da conta, geo, fingerprint,
+  semáforo de concorrência).
+- **`/api/instagram/callback` não foi tocado** — a automação só entrega o
+  browser até lá com os mesmos cookies de um humano.
+- **A sessão do onboarding é instagrapi, não de navegador.** As etapas
+  anteriores logam pela API privada e `session_settings` não é `storage_state`
+  do Playwright. `storage_state_from_instagrapi()` converte os cookies
+  (`sessionid`, `ds_user_id`, `csrftoken`, `mid`, `ig_did`, `rur`). Sessão de
+  navegador salva em `ig_browser_sessions` tem prioridade.
+- **Identidade conferida antes de qualquer clique:** a tela de autorização
+  vincula quem estiver logado no navegador; o `ds_user_id` do cookie é
+  comparado ao da conta e divergência aborta sem autorizar. Vincular a conta
+  errada seria pior do que não vincular.
+- Endpoint `POST /onboarding/magic-link` com `verify_secret_strict` (recebe
+  sessão e devolve screenshot — mesma sensibilidade do `/test-browser-login`).
+- Cron: chama o Python em vez de só esperar; resolve o link do job ou o token
+  do próprio usuário em `magic_add_tokens`; sem proxy decifrável não faz
+  chamada nenhuma. Sucesso → confirma a linha em `instagram_accounts` e avança.
+  `needs_manual` → para. `ip_error`/`unknown` → backoff, 3 falhas encerram.
+- UI: card em `needs_manual` na etapa oferece abrir/copiar o link;
+  `MagicLinkModal` intacto.
+- **Duas hipóteses NÃO verificadas** (exigem conta real + proxy + Railway no
+  ar): (a) se o `sessionid` mobile autentica o instagram.com no Chromium — é o
+  mesmo token e a técnica é conhecida, mas o risk engine pode reagir à sessão
+  saltando de app Android para navegador desktop; (b) os seletores do botão de
+  autorização (a Meta não documenta esse DOM). Sem candidato conhecido **não
+  clica em nada** — volta `needs_manual` com screenshot e o texto da tela, que
+  é o insumo para ajustar o seletor. Lista de exclusão impede clique em
+  "Cancelar"/"Negar".
+- **Testado sem navegador:** conversão da sessão com payload realista de
+  `get_settings()` (cookies, domínio, flags, `httpOnly` no `sessionid`),
+  recusa sem `sessionid`, guardas de URL inválida e proxy vazia (nenhuma abre
+  navegador) e os regex de permitir/negar.
+
+### Pendências ao fim da sessão
+
+- **Deploy do python_server no Railway** — sem ele, `magic_link.py` não existe
+  em produção e a classificação `two_factor_required` não sai. Frontend já
+  está no ar (Vercel, deploy do commit `f234cfd` em diante).
+- Teste ponta a ponta do 2FA e do magic_link com conta real (usar
+  `beatriz_rocha1101` ou `aline_santosq49`; `helena_santosq76` já está
+  conectada e seu job ficou obsoleto).
+- Rotação da `ENCRYPTION_SECRET` segue pendente; remover a rota temporária
+  depois.
