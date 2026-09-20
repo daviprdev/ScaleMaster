@@ -20,6 +20,7 @@ import {
   KeyRound,
   Users,
   Clock,
+  Trash2,
 } from "lucide-react";
 import { readOnboardingFile, TEMPLATE_CSV, type OnboardingImportRow } from "@/lib/onboarding-import";
 
@@ -308,6 +309,35 @@ export default function OnboardingPage() {
       setTwoFactorDraft((d) => { const n = { ...d }; delete n[job.id]; return n; });
       setNotice(`@${job.username}: segredo 2FA salvo — etapa reenfileirada.`);
       await load();
+    } catch (e) {
+      setError(`@${job.username}: ${e instanceof Error ? e.message : "erro desconhecido."}`);
+    } finally {
+      setActing((s) => { const n = new Set(s); n.delete(job.id); return n; });
+    }
+  };
+
+  // Confirmacao de 2 cliques: o 1o clique arma o job, o 2o remove.
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+
+  const removeJob = async (job: OnboardingJob) => {
+    if (acting.has(job.id)) return;
+    if (confirmRemove !== job.id) {
+      setConfirmRemove(job.id);
+      return;
+    }
+    setActing((s) => new Set(s).add(job.id));
+    setError("");
+    try {
+      const res = await fetch(`/api/onboarding/jobs/${job.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Falha ao remover.");
+      setConfirmRemove(null);
+      setJobs((prev) => prev.filter((j) => j.id !== job.id));
+      setNotice(
+        data.account_kept
+          ? `@${job.username} saiu da fila. A conta ja conectada continua ativa.`
+          : `@${job.username} removida da fila.`
+      );
     } catch (e) {
       setError(`@${job.username}: ${e instanceof Error ? e.message : "erro desconhecido."}`);
     } finally {
@@ -698,6 +728,18 @@ export default function OnboardingPage() {
                             {busy && !canSkip ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}Tentar de novo
                           </button>
                         )}
+                        <button onClick={() => removeJob(job)} disabled={busy}
+                          onBlur={() => setConfirmRemove((c) => (c === job.id ? null : c))}
+                          title={job.account_id
+                            ? "Remove da fila de onboarding — a conta conectada continua ativa"
+                            : "Remove esta conta da fila de onboarding"}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
+                          style={confirmRemove === job.id
+                            ? { background: "rgba(255,59,48,0.16)", border: "0.5px solid rgba(255,59,48,0.6)", color: "rgba(255,120,110,1)" }
+                            : { background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.45)" }}>
+                          {busy ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                          {confirmRemove === job.id ? "Confirmar?" : "Remover"}
+                        </button>
                         <button onClick={() => toggleExpand(job.id)}
                           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs"
                           style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)" }}>

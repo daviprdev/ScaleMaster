@@ -170,3 +170,71 @@ export async function PATCH(
 
   return NextResponse.json({ job: updated });
 }
+
+// DELETE - tira a conta da fila de onboarding.
+//
+// Escopo deliberado: apaga SO a linha de onboarding_jobs. Se a conta ja chegou
+// a ser conectada (account_id preenchido), ela continua em instagram_accounts,
+// postando normalmente - a unica FK aqui sai desta tabela (ON DELETE SET NULL)
+// e nada referencia onboarding_jobs. Remover a fila nunca desconecta conta.
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    return NextResponse.json({ error: "Supabase nao configurado" }, { status: 503 });
+  }
+
+  const { id } = await params;
+  if (!isUuid(id)) return NextResponse.json({ error: "id invalido" }, { status: 400 });
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Nao autenticado" }, { status: 401 });
+
+  const { data: job, error: jobErr } = await supabase
+    .from("onboarding_jobs")
+    .select("id, username, status, account_id")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (jobErr) return NextResponse.json({ error: jobErr.message }, { status: 500 });
+  if (!job) return NextResponse.json({ error: "Job nao encontrado." }, { status: 404 });
+
+  // O cron esta rodando uma etapa agora: apagar no meio deixaria a chamada ao
+  // python_server orfa, escrevendo num job que nao existe mais.
+  if (job.status === "processing") {
+    return NextResponse.json(
+      { error: "Job em execucao neste momento. Tente em alguns minutos." },
+      { status: 409 }
+    );
+  }
+
+  // .neq fecha a corrida com um claim do cron entre a leitura e a escrita;
+  // .select confirma a remocao - sem ele, 0 linhas afetadas (RLS, corrida)
+  // voltariam como sucesso e a UI mentiria.
+  const { data: removed, error } = await supabase
+    .from("onboarding_jobs")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .neq("status", "processing")
+    .select("id")
+    .maybeSingle();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!removed) {
+    return NextResponse.json(
+      { error: "Job em execucao neste momento. Tente em alguns minutos." },
+      { status: 409 }
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    username: job.username,
+    // A UI avisa que a conta conectada nao foi tocada.
+    account_kept: !!job.account_id,
+  });
+}

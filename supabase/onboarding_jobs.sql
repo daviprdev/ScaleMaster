@@ -85,7 +85,7 @@ CREATE TRIGGER onboarding_jobs_updated_at
 
 ALTER TABLE public.onboarding_jobs ENABLE ROW LEVEL SECURITY;
 
--- Dono: select/insert/update das proprias linhas. O cron usa service_role, que
+-- Dono: select/insert/update/delete das proprias linhas. O cron usa service_role, que
 -- ignora RLS. Segredos nunca voltam ao browser: a rota GET seleciona so
 -- colunas nao sensiveis.
 DROP POLICY IF EXISTS "onboarding_jobs_owner_select" ON public.onboarding_jobs;
@@ -99,3 +99,10 @@ CREATE POLICY "onboarding_jobs_owner_insert" ON public.onboarding_jobs
 DROP POLICY IF EXISTS "onboarding_jobs_owner_update" ON public.onboarding_jobs;
 CREATE POLICY "onboarding_jobs_owner_update" ON public.onboarding_jobs
   FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- Remover o job apaga SO a linha da fila de onboarding. A unica FK aqui sai
+-- desta tabela (account_id -> instagram_accounts, ON DELETE SET NULL) e nada
+-- referencia onboarding_jobs: conta ja conectada continua intacta.
+DROP POLICY IF EXISTS "onboarding_jobs_owner_delete" ON public.onboarding_jobs;
+CREATE POLICY "onboarding_jobs_owner_delete" ON public.onboarding_jobs
+  FOR DELETE USING (auth.uid() = user_id);
