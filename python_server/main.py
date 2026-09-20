@@ -25,6 +25,7 @@ from instagram_login import perform_login
 from instagram_scraper import fetch_user_reels
 import session_store
 from browser_engine import STATUS_CHECKPOINT, STATUS_SUCCESS, STATUS_WRONG_PASSWORD, browser_login
+from magic_link import complete_magic_link
 from onboarding import (
     accept_app_invite,
     change_profile_photo,
@@ -183,6 +184,38 @@ class BrowserLoginResponse(BaseModel):
     session_reused: bool = False
     session_note: str | None = None
     checkpoint: dict | None = None
+    proxy_ip: str | None = None
+    proxy_country: str | None = None
+    elapsed_ms: int = 0
+    attempt_log: list[dict] = []
+
+
+class MagicLinkRequest(BaseModel):
+    # URL /add/{token} do proprio SaaS.
+    magic_url: str
+    username: str
+    # Objeto {server, username, password} ou string (URL / host:porta:user:pass).
+    proxy: dict | str
+    # Sessao instagrapi gravada pelas etapas anteriores do onboarding.
+    session_settings: dict | None = None
+    device_seed: str | None = None
+    # Dono da conta no SaaS - necessario para ler/gravar a sessao de navegador.
+    user_id: str | None = None
+    use_saved_session: bool = True
+    save_session: bool = True
+    headless: bool | None = None
+    include_screenshot: bool = True
+
+
+class MagicLinkResponse(BaseModel):
+    status: str
+    message: str
+    screenshot: str | None = None
+    checkpoint: dict | None = None
+    final_url: str | None = None
+    authorized_click: bool = False
+    session_saved: bool = False
+    session_note: str | None = None
     proxy_ip: str | None = None
     proxy_country: str | None = None
     elapsed_ms: int = 0
@@ -535,6 +568,77 @@ async def test_browser_login(
         session_reused=outcome.session_reused,
         session_note="; ".join(notes) or None,
         checkpoint=outcome.checkpoint,
+        proxy_ip=outcome.proxy_ip,
+        proxy_country=outcome.proxy_country,
+        elapsed_ms=outcome.elapsed_ms,
+        attempt_log=outcome.log,
+    )
+
+
+@app.post("/onboarding/magic-link", response_model=MagicLinkResponse)
+async def onboarding_magic_link(
+    req: MagicLinkRequest,
+    # Recebe sessao da conta e devolve screenshot: fail-closed, igual ao
+    # /test-browser-login.
+    _: None = Depends(verify_secret_strict),
+) -> MagicLinkResponse:
+    import json as _json
+
+    username = req.username.strip().lstrip("@").lower()
+    notes: list[str] = []
+    saved = None
+
+    # Sessao de navegador salva tem prioridade sobre a conversao da instagrapi.
+    if req.user_id and req.use_saved_session:
+        try:
+            saved = await session_store.load_session(req.user_id, username)
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"nao carregou sessao salva: {exc}")
+
+    outcome = await complete_magic_link(
+        req.magic_url,
+        username,
+        req.proxy,
+        session_settings=req.session_settings,
+        storage_state=(saved or {}).get("storage_state"),
+        fingerprint=(saved or {}).get("fingerprint"),
+        device_seed=req.device_seed,
+        headless=req.headless,
+        capture_screenshot=req.include_screenshot,
+    )
+
+    session_saved = False
+    if req.user_id and req.save_session and outcome.storage_state:
+        try:
+            await session_store.save_session(
+                req.user_id, username, outcome.storage_state, outcome.fingerprint,
+                outcome.proxy_ip, logged_in_now=False,
+            )
+            session_saved = True
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"sessao nao salva: {exc}")
+
+    print(_json.dumps({
+        "evt": "magic_link",
+        "username": username,
+        "status": outcome.status,
+        "exit_ip": outcome.proxy_ip,
+        "country": outcome.proxy_country,
+        "clicked": outcome.authorized_click,
+        "final_url": outcome.final_url,
+        "elapsed_ms": outcome.elapsed_ms,
+        "steps": [s["step"] for s in outcome.log],
+    }, ensure_ascii=False))
+
+    return MagicLinkResponse(
+        status=outcome.status,
+        message=outcome.message,
+        screenshot=outcome.screenshot_b64,
+        checkpoint=outcome.checkpoint,
+        final_url=outcome.final_url,
+        authorized_click=outcome.authorized_click,
+        session_saved=session_saved,
+        session_note="; ".join(notes) or None,
         proxy_ip=outcome.proxy_ip,
         proxy_country=outcome.proxy_country,
         elapsed_ms=outcome.elapsed_ms,

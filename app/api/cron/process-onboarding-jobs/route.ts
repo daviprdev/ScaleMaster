@@ -17,8 +17,11 @@
  *  - Conta morta (senha errada, checkpoint, suspensa, app desatualizado) ou
  *    etapa que exige humano (needs_manual) = 'error' imediato.
  *  - verify_professional: polling do account_type a cada ciclo, ate 1h.
- *  - magic_link: nesta fase o cron so DETECTA a conta conectada em
- *    instagram_accounts (a visita automatica ao link fica para a fase 2/3).
+ *  - magic_link: o python_server abre o link num navegador com a sessao e a
+ *    proxy da conta e autoriza o app. A confirmacao continua sendo a linha em
+ *    instagram_accounts criada por /api/instagram/callback (intocado). Se a
+ *    automacao nao concluir, a etapa vira needs_manual e o link segue
+ *    disponivel para autorizacao manual.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -48,6 +51,9 @@ const MAGIC_LINK_MAX_WAIT_MS = 72 * 60 * 60_000;
 const NO_PROXY_RETRY_MS = 15 * 60_000;
 const PYTHON_TIMEOUT_MS = 130_000;
 
+const PROXY_URL_RE = /^(https?|socks5h?):\/\//i;
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://autoscale-ia.vercel.app").replace(/\/$/, "");
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 interface OnboardingPythonResponse {
@@ -60,6 +66,15 @@ interface OnboardingPythonResponse {
   pending_found?: number | null;
   error_code?: string | null;
   error_message?: string | null;
+}
+
+// Resposta de POST /onboarding/magic-link (navegador Playwright).
+interface MagicLinkPythonResponse {
+  status: "success" | "needs_manual" | "ip_error" | "unknown_error";
+  message?: string | null;
+  final_url?: string | null;
+  authorized_click?: boolean;
+  checkpoint?: Record<string, unknown> | null;
 }
 
 interface JobRow {
@@ -273,18 +288,24 @@ export async function GET(req: NextRequest) {
     };
 
     try {
-      // magic_link: nenhuma chamada em nome da conta nesta fase - so detecta a
-      // conexao em instagram_accounts.
+      // magic_link: o navegador (Playwright, no python_server) percorre
+      // /add/{token} -> authorize do Instagram -> /api/instagram/callback. A
+      // confirmacao continua sendo a linha em instagram_accounts, que o
+      // callback cria - nada nele foi alterado.
       if (stage === "magic_link") {
-        const { data: connected } = await (admin as any)
-          .from("instagram_accounts")
-          .select("id, ig_user_id")
-          .eq("user_id", job.user_id)
-          // "_" e curinga no ILIKE - escapado para casar o username literal.
-          .ilike("username", job.username.replace(/[\\%_]/g, (c) => `\\${c}`))
-          .limit(1)
-          .maybeSingle();
+        const findConnected = async () => {
+          const { data } = await (admin as any)
+            .from("instagram_accounts")
+            .select("id, ig_user_id")
+            .eq("user_id", job.user_id)
+            // "_" e curinga no ILIKE - escapado para casar o username literal.
+            .ilike("username", job.username.replace(/[\%_]/g, (c) => `\${c}`))
+            .limit(1)
+            .maybeSingle();
+          return data as { id: string; ig_user_id: string | null } | null;
+        };
 
+        const connected = await findConnected();
         if (connected?.id) {
           await update({ account_id: connected.id });
           await advance("Conta conectada no SaaS.");
@@ -293,16 +314,107 @@ export async function GET(req: NextRequest) {
         }
 
         const startedAt = Date.parse(stageStatus.magic_link?.started_at ?? job.created_at);
-        if (Date.now() - startedAt > MAGIC_LINK_MAX_WAIT_MS) {
+        const esgotou = Date.now() - startedAt > MAGIC_LINK_MAX_WAIT_MS;
+
+        // Link do job, ou o token que o proprio usuario ja tem cadastrado.
+        let magicUrl = job.magic_link;
+        if (!magicUrl) {
+          const { data: tokenRow } = await (admin as any)
+            .from("magic_add_tokens")
+            .select("token")
+            .eq("user_id", job.user_id)
+            .maybeSingle();
+          if (tokenRow?.token) magicUrl = `${APP_URL}/add/${tokenRow.token}`;
+        }
+
+        const proxyUrl = job.proxy_url_enc ? decryptMaybe(job.proxy_url_enc) : null;
+        let sessionSettings: Record<string, unknown> | null = null;
+        if (job.session_settings) {
+          try {
+            sessionSettings = JSON.parse(decryptMaybe(job.session_settings) ?? "null");
+          } catch {
+            sessionSettings = null;
+          }
+        }
+
+        // Sem um destes a automacao nao tem como rodar: cai no fluxo manual
+        // (o link continua disponivel na UI).
+        const faltando = !magicUrl
+          ? "nenhum link magico cadastrado e o usuario nao tem token gerado"
+          : !sessionSettings
+          ? "nenhuma sessao do Instagram salva nas etapas anteriores"
+          : null;
+
+        if (faltando) {
+          if (esgotou) {
+            await failPermanently(
+              "needs_manual",
+              `Conta nao conectou em 72h - ${faltando}. Visite o link magico manualmente.`
+            );
+          } else {
+            await waitSameStage(MAGIC_LINK_POLL_INTERVAL_MS, `Aguardando conexao - ${faltando}.`);
+          }
+          continue;
+        }
+
+        // Regra do projeto: sem proxy dedicado, nenhuma chamada em nome da conta.
+        if (!proxyUrl || !PROXY_URL_RE.test(proxyUrl)) {
+          await update({
+            status: "pending",
+            retry_after: new Date(Date.now() + NO_PROXY_RETRY_MS).toISOString(),
+            error_message: "Aguardando proxy dedicado valido - nenhuma chamada feita.",
+          });
+          summary.skipped_no_proxy++;
+          continue;
+        }
+
+        if (esgotou) {
           await failPermanently("needs_manual", "Conta nao conectou em 72h - visite o link magico manualmente.");
           continue;
         }
-        await waitSameStage(
-          MAGIC_LINK_POLL_INTERVAL_MS,
-          job.magic_link
-            ? "Aguardando visita ao link magico (automacao na fase 2/3)."
-            : "Aguardando conexao - nenhum link magico cadastrado."
+
+        if (attempts > 0) await sleep(Math.floor(Math.random() * 2_000) + 1_000);
+        attempts++;
+
+        const magic = await callPythonServer<MagicLinkPythonResponse>(
+          "/onboarding/magic-link",
+          {
+            magic_url: magicUrl,
+            username: job.username,
+            proxy: proxyUrl,
+            session_settings: sessionSettings,
+            device_seed: job.id,
+            user_id: job.user_id,
+          },
+          PYTHON_TIMEOUT_MS
         );
+
+        console.log(
+          `[onboarding-cron] @${job.username} magic_link: ${magic.status}` +
+            (magic.final_url ? ` (${magic.final_url})` : "")
+        );
+
+        if (magic.status === "success") {
+          // O callback roda durante a navegacao, entao a linha ja deve existir.
+          const agora = await findConnected();
+          if (agora?.id) {
+            await update({ account_id: agora.id });
+            await advance("Conta autorizada pelo navegador e conectada.");
+            continue;
+          }
+          await waitSameStage(60_000, "Autorizada no navegador - aguardando a conta aparecer no SaaS.");
+          continue;
+        }
+
+        // needs_manual: humano precisa agir (checkpoint, sessao morta, layout
+        // da tela de autorizacao mudou). A UI oferece o link manual.
+        if (magic.status === "needs_manual") {
+          await failPermanently("needs_manual", magic.message ?? "Autorizacao automatica nao concluiu.");
+          continue;
+        }
+
+        // ip_error / unknown_error: transitorio, backoff (3 falhas encerram).
+        await failCounted(magic.message ?? `Falha na autorizacao automatica (${magic.status}).`);
         continue;
       }
 
@@ -314,7 +426,7 @@ export async function GET(req: NextRequest) {
 
       // Regra do projeto: sem proxy decifravel, nenhuma chamada em nome da conta.
       const proxyUrl = job.proxy_url_enc ? decryptMaybe(job.proxy_url_enc) : null;
-      if (!proxyUrl || !/^(https?|socks5h?):\/\//i.test(proxyUrl)) {
+      if (!proxyUrl || !PROXY_URL_RE.test(proxyUrl)) {
         await update({
           status: "pending",
           retry_after: new Date(Date.now() + NO_PROXY_RETRY_MS).toISOString(),

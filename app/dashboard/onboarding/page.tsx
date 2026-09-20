@@ -21,6 +21,8 @@ import {
   Users,
   Clock,
   Trash2,
+  ExternalLink,
+  Copy,
 } from "lucide-react";
 import { readOnboardingFile, TEMPLATE_CSV, type OnboardingImportRow } from "@/lib/onboarding-import";
 
@@ -345,6 +347,19 @@ export default function OnboardingPage() {
     }
   };
 
+  const [copiedLink, setCopiedLink] = useState<string | null>(null);
+
+  const copyMagicLink = async (job: OnboardingJob) => {
+    if (!job.magic_link) return;
+    try {
+      await navigator.clipboard.writeText(job.magic_link);
+      setCopiedLink(job.id);
+      setTimeout(() => setCopiedLink((c) => (c === job.id ? null : c)), 2000);
+    } catch {
+      setError("Não foi possível copiar o link.");
+    }
+  };
+
   const act = async (job: OnboardingJob, action: "skip" | "retry") => {
     if (acting.has(job.id)) return;
     setActing((s) => new Set(s).add(job.id));
@@ -661,6 +676,8 @@ export default function OnboardingPage() {
                   const reason = job.stage_status?.[st.key]?.reason?.toLowerCase() ?? "";
                   return reason.includes("two_factor") || reason.includes("twofactor");
                 });
+                // Etapa do link magico exigindo humano: o card oferece o link.
+                const needsMagicLink = isManual && job.stage === "magic_link";
                 const logEntries = STAGES
                   .map((s) => ({ stage: s.key, res: job.stage_status?.[s.key] }))
                   .filter((e) => e.res && (e.res.reason || e.res.state !== "pending"));
@@ -671,6 +688,34 @@ export default function OnboardingPage() {
                     className="glass-card p-4 space-y-3"
                     style={isManual ? { borderColor: "rgba(255,184,0,0.35)" } : job.status === "error" ? { borderColor: "rgba(255,59,48,0.3)" } : undefined}
                   >
+                    {needsMagicLink && (
+                      <div className="rounded-lg p-3 space-y-2"
+                        style={{ background: "rgba(0,229,255,0.06)", border: "0.5px solid rgba(0,229,255,0.3)" }}>
+                        <p className="text-[11px] leading-relaxed" style={{ color: "rgba(0,229,255,0.9)" }}>
+                          A autorização automática não concluiu. Abra o link mágico no navegador,
+                          logado como <span className="font-mono">@{job.username}</span>, e autorize o app.
+                        </p>
+                        {job.magic_link ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <a href={job.magic_link} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold"
+                              style={{ background: "rgba(0,229,255,0.1)", border: "0.5px solid rgba(0,229,255,0.35)", color: "rgba(0,229,255,0.95)" }}>
+                              <ExternalLink size={12} />Abrir link mágico
+                            </a>
+                            <button onClick={() => copyMagicLink(job)}
+                              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold"
+                              style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)" }}>
+                              <Copy size={12} />{copiedLink === job.id ? "Copiado" : "Copiar"}
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                            Nenhum link cadastrado neste job — gere um em Contas → Link mágico.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     {needsTwoFactor && (
                       <div className="rounded-lg p-3 space-y-2"
                         style={{ background: "rgba(255,184,0,0.07)", border: "0.5px solid rgba(255,184,0,0.3)" }}>
