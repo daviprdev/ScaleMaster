@@ -4385,3 +4385,56 @@ typecheck/build e o schema no banco.
   conectada e seu job ficou obsoleto).
 - Rotação da `ENCRYPTION_SECRET` segue pendente; remover a rota temporária
   depois.
+
+---
+
+## Sessão 2026-09-20 — Conta leitora: raspagem completa (fim do teto de 120 reels)
+
+**Sintoma:** todo perfil com mais de 200 reels voltava com exatamente 120 pela
+fonte "conta dedicada".
+
+**Causa:** não era limite do Instagram nem do instagrapi. O número estava
+escrito à mão em dois lugares: `limit: 120` no `searchViaReader`
+(`app/dashboard/inspirations/page.tsx`) e o default da rota de enfileiramento
+(`Number(body.limit) || 120`, que ainda fazia um `0` explícito cair em 120).
+O Python recebia `limit=120` e chamava `user_clips(amount=max(1, limit))`.
+
+**Confirmado na fonte** do instagrapi 3.0.2 (wheel baixado e lido, já que a lib
+não está instalada localmente): `user_clips_v1(user_id, amount=0)` pagina até o
+fim do perfil; `amount > 0` corta. Ou seja, o "todos" sempre existiu — só nunca
+foi pedido.
+
+**O que mudou:**
+
+- `python_server/instagram_scraper.py` (BUILD `scrapev1` → `scrapev2`): a
+  paginação passou a ser nossa, sobre `user_clips_paginated_v1` (página de 50,
+  dedup por `pk`, teto de segurança de 400 páginas). `limit <= 0` = todos.
+  Novo parâmetro `time_budget_seconds`: estourado o prazo, a busca para e
+  devolve o que já coletou com `truncated=True` — antes, um perfil gigante
+  estouraria o timeout HTTP e perderia **todos** os reels já baixados.
+  Nenhum sleep extra entre páginas: o instagrapi já dorme `delay_range` [1,3]
+  a cada requisição privada.
+- `python_server/main.py`: `limit` default 0, `time_budget_seconds` no request,
+  `truncated` na resposta.
+- `app/api/cron/process-scrape-jobs/route.ts`: o timeout por job era fixo em
+  130s. Agora cada job recebe o tempo que **ainda sobra** do run (até 240s),
+  com mínimo de 45s para iniciar um job novo. O orçamento mandado ao Python é
+  25s menor que o timeout HTTP, então ele para de paginar antes do fetch
+  abortar. Isso evita o cenário em que a Vercel mata a função no meio e o job
+  fica preso em `processing` até o auto-healing de 10 min.
+- `app/api/inspirations/scrape-account/route.ts`: `limit: 0` = todos (padrão da
+  fonte dedicada); `> 0` vira teto, até 5000.
+- UI Inspirações: seletor de quantidade (Todos / 120 / 300 / 600 / 1200) ao
+  lado do seletor de conta leitora, padrão **Todos**; janela de polling de
+  7,5 min → 15 min (perfil grande + fila do cron */5).
+- `supabase/reader_accounts.sql`: default de `limit_items` 120 → 0 (só afeta
+  provisionamento novo; jobs `verify` continuam mandando 1 explícito).
+
+**Testes:** instagrapi stubado em `sys.modules` + client falso — todos (237 em
+5 páginas), teto 120 respeitado, `verify` com 1 página, perfil pequeno,
+truncagem por orçamento de tempo e perfil vazio. `npm run build`,
+`npm run typecheck` e as 7 suítes (586 checagens) passando.
+
+**Pendência:** exige **redeploy do python_server no Railway** — enquanto o
+serviço rodar o código antigo, o `time_budget_seconds` é ignorado e o
+`limit=0` cai em `max(1, 0) = 1`.
