@@ -4517,3 +4517,38 @@ tem que sobreviver à poda). `npm test` = 632 checagens em 8 suítes.
 só existe na Vercel — o caminho foi corrigido por comparação com o fluxo das
 Inspirações (que funciona em produção), não por execução. O primeiro clone
 depois deste deploy é o teste real.
+
+---
+
+## Sessão 2026-09-20 — Inspirações: o aviso de erro que não ia embora
+
+Relato: fechar a mensagem de busca falhada no `X`, recarregar a página e ela
+voltar.
+
+**Causa:** o `X` só chamava `setDismissedErrors` — estado do React, perdido no
+reload. E `GET /api/inspirations/scrape/pending` devolve, por design, todos os
+erros das últimas 24h (para o usuário não perder o aviso ao sair da página).
+As duas coisas juntas faziam a mensagem ressuscitar por 24h.
+
+**Fix:** coluna `dismissed_at` em `inspiration_scrape_searches`, filtro
+`dismissed_at.is.null` no `.or()` do GET, e nova rota
+`POST /api/inspirations/scrape/dismiss` (`{ id }` ou `{ all: true }`), com
+botão "Dispensar todos (N)" quando há mais de um aviso. O state local continua
+sendo atualizado na hora para a UI não esperar a rede; se a gravação falhar, o
+aviso volta no próximo reload — que é o comportamento honesto.
+
+**Decisão de segurança:** a escrita usa service_role com o dono filtrado na
+query, e **não** uma policy de UPDATE para o usuário. A tabela guarda
+`run_ids`, `status` e `processing_until`; deixar o usuário escrever nesses
+campos permitiria zerar o claim e disparar um run **pago** de fallback
+duplicado. A rota escreve só `dismissed_at`.
+
+A tabela tinha SOMENTE policy de SELECT — um update pelo client do usuário
+afetaria 0 linhas em silêncio, exatamente a armadilha de 2026-09-20 no
+onboarding. Por isso o `.select("id")` confirmando as linhas afetadas.
+
+**Validação:** linha descartável no banco de produção (aparecia no filtro do
+painel, sumiu depois do update, apagada no fim; os dois avisos reais do
+usuário ficaram intactos) e o filtro novo do PostgREST testado por HTTP, com
+teste de controle numa coluna inexistente para a checagem significar alguma
+coisa. 8 checagens novas em `test-hardening` (84 → 92).
