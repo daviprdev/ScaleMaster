@@ -21,7 +21,12 @@ create table if not exists public.inspiration_scrape_searches (
   processing_until  timestamptz,
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now(),
-  finished_at       timestamptz
+  finished_at       timestamptz,
+  -- Quando o usuario fechou o aviso de erro desta busca. Preenchido = o
+  -- aviso nao volta a aparecer no painel (o X era so estado do React e a
+  -- mensagem ressuscitava a cada reload). Escrito so pelo service_role em
+  -- /api/inspirations/scrape/dismiss, com o dono filtrado na query.
+  dismissed_at      timestamptz
 );
 
 create index if not exists inspiration_scrape_searches_running_idx
@@ -34,3 +39,9 @@ alter table public.inspiration_scrape_searches enable row level security;
 drop policy if exists "users_read_own_scrape_searches" on public.inspiration_scrape_searches;
 create policy "users_read_own_scrape_searches" on public.inspiration_scrape_searches
   for select using (auth.uid() = user_id);
+
+-- Migration para bases existentes (2026-09-20).
+alter table public.inspiration_scrape_searches
+  add column if not exists dismissed_at timestamptz;
+create index if not exists inspiration_scrape_searches_user_status_idx
+  on public.inspiration_scrape_searches (user_id, status, created_at desc);

@@ -415,6 +415,28 @@ export default function InspiracoesPage() {
   const runningSearches = pendingSearches.filter((s) => s.status === "running");
   const failedSearches = pendingSearches.filter((s) => s.status === "error" && !dismissedErrors.has(s.id));
 
+  // Dispensa o aviso NO SERVIDOR. Antes o X só mexia no state, então recarregar
+  // a página trazia a mensagem de volta (o /pending devolve os erros de 24h).
+  // O state local continua sendo atualizado na hora para a UI não esperar a rede.
+  const dismissError = async (id?: string) => {
+    setDismissedErrors((prev) => {
+      const next = new Set(prev);
+      if (id) next.add(id);
+      else failedSearches.forEach((s) => next.add(s.id));
+      return next;
+    });
+    try {
+      await fetch("/api/inspirations/scrape/dismiss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(id ? { id } : { all: true }),
+      });
+    } catch {
+      // Falhou a gravação: o aviso volta no próximo reload, que é o
+      // comportamento honesto — melhor reaparecer do que fingir que sumiu.
+    }
+  };
+
   useEffect(() => { loadPending(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -1074,6 +1096,18 @@ export default function InspiracoesPage() {
           </div>
         )}
 
+        {failedSearches.length > 1 && (
+          <div className="flex justify-end">
+            <button
+              onClick={() => dismissError()}
+              className="text-xs px-2.5 py-1 rounded-lg transition-colors hover:text-white/70"
+              style={{ color: "rgba(255,255,255,0.35)", border: "0.5px solid rgba(255,255,255,0.08)" }}
+            >
+              Dispensar todos ({failedSearches.length})
+            </button>
+          </div>
+        )}
+
         {failedSearches.map((s) => (
           <div
             key={s.id}
@@ -1083,7 +1117,8 @@ export default function InspiracoesPage() {
             <AlertCircle size={15} className="flex-shrink-0" />
             <span className="flex-1">@{s.username}: {s.error_message ?? "a busca falhou."}</span>
             <button
-              onClick={() => setDismissedErrors((prev) => new Set(prev).add(s.id))}
+              onClick={() => dismissError(s.id)}
+              title="Dispensar este aviso"
               style={{ color: "rgba(255,255,255,0.3)" }}
               className="hover:text-white/60 transition-colors"
             >✕</button>

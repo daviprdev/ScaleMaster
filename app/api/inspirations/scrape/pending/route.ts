@@ -6,6 +6,9 @@ export const dynamic = "force-dynamic";
 
 // GET — buscas do usuário ainda rodando (para a página retomar ao voltar) e as
 // que terminaram com erro nas últimas 24h (para avisar em vez de sumir).
+//
+// Aviso já dispensado (dismissed_at preenchido) não volta: o "X" da página
+// era só estado do React e a mensagem ressuscitava a cada reload.
 export async function GET() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -16,7 +19,7 @@ export async function GET() {
     .from("inspiration_scrape_searches")
     .select("id, username, status, reel_count, error_message, created_at, finished_at")
     .eq("user_id", user.id)
-    .or(`status.eq.running,and(status.eq.error,created_at.gte.${since})`)
+    .or(`status.eq.running,and(status.eq.error,created_at.gte.${since},dismissed_at.is.null)`)
     .order("created_at", { ascending: false })
     .limit(20);
 

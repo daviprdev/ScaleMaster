@@ -406,6 +406,31 @@ async function main() {
       complete.includes("stories/${user.id}/") && complete.includes("meta.mimetype") && complete.includes(".remove(["));
   }
 
+  console.log("\n== Avisos de busca das Inspiracoes: o X tem que durar ==\n");
+  {
+    const pending = src("app/api/inspirations/scrape/pending/route.ts");
+    check("GET /pending nao devolve aviso ja dispensado",
+      pending.includes("dismissed_at.is.null"));
+
+    const dismiss = src("app/api/inspirations/scrape/dismiss/route.ts");
+    check("existe rota para dispensar o aviso (antes o X era so estado do React)",
+      dismiss.includes('.update({ dismissed_at'));
+    check("dispensar exige login",
+      dismiss.includes("getUser()") && dismiss.includes("Nao autenticado".replace("Nao", "Não")));
+    check("a escrita e escopada ao dono e so a avisos de erro",
+      dismiss.includes('.eq("user_id", user.id)') && dismiss.includes('.eq("status", "error")'));
+    check("usa service_role em vez de abrir UPDATE da tabela para o usuario",
+      dismiss.includes("getSupabaseAdmin"));
+    check("confirma as linhas afetadas com .select()",
+      dismiss.includes('.select("id")'));
+
+    const insp = stripComments(src("app/dashboard/inspirations/page.tsx"));
+    check("o X chama o servidor, nao so setState",
+      insp.includes('fetch("/api/inspirations/scrape/dismiss"') && insp.includes("dismissError(s.id)"));
+    check("da para dispensar todos de uma vez quando ha mais de um",
+      insp.includes("Dispensar todos"));
+  }
+
   console.log(`\n${passed} passaram, ${failed} falharam\n`);
   process.exit(failed === 0 ? 0 : 1);
 }
