@@ -73,6 +73,9 @@ interface Loop {
   caption_strip_mentions?: boolean | null;
   status: "active" | "paused";
   created_at: string;
+  /** Por que o cron não conseguiu postar no último ciclo (pasta vazia etc). */
+  last_skip_reason?: string | null;
+  last_skip_at?: string | null;
   loop_accounts?: LoopAccountData[];
   library_folders?: Folder | null;
 }
@@ -558,6 +561,26 @@ function LoopCard({
           {isActive ? "Ativo" : "Pausado"}
         </span>
       </div>
+
+      {/* Por que o loop não está postando — o sintoma que faltava.
+          Antes o cron detectava (pasta vazia, sem conta) e pulava calado:
+          o card seguia "Ativo" e o usuário só descobria pela ausência de posts. */}
+      {isActive && loop.last_skip_reason && (
+        <div
+          className="flex items-start gap-2 px-3 py-2 rounded-lg text-[11px] leading-relaxed"
+          style={{
+            background: "rgba(255,159,10,0.08)",
+            border: "0.5px solid rgba(255,159,10,0.25)",
+            color: "rgba(255,190,90,0.95)",
+          }}
+        >
+          <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+          <span>
+            <span className="font-semibold">Não está postando. </span>
+            {loop.last_skip_reason}
+          </span>
+        </div>
+      )}
 
       {/* Info row */}
       <div className="flex items-center gap-4 text-[11px] text-white/35">

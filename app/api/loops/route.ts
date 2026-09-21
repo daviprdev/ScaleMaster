@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 import { normalizeCaptionMode } from "@/lib/reel-captions";
+import { checkCreateReadiness } from "@/lib/loop-readiness";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,7 +32,7 @@ export async function GET() {
       effect_mirror, effect_invert, effect_zoom, effect_blur, effect_noise, effect_anti_ai,
       auto_caption_enabled, auto_caption_type, video_processing_mode, share_to_feed,
       caption_mode, caption_strip_hashtags, caption_strip_mentions,
-      status, created_at,
+      status, created_at, last_skip_reason, last_skip_at,
       loop_accounts ( account_id, instagram_accounts ( id, username, display_name, avatar_url ) ),
       library_folders ( id, name )
     `)
@@ -107,6 +108,19 @@ export async function POST(req: NextRequest) {
   const notOwnedAccounts = accountIdsToCheck.filter((id) => !ownedAccountIds.has(id));
   if (notOwnedAccounts.length > 0) {
     return NextResponse.json({ error: "Uma ou mais contas não pertencem a este usuário." }, { status: 403 });
+  }
+
+  // ── O loop consegue postar? ────────────────────────────────────────────
+  // Um loop sem vídeo na pasta (ou sem conta) fica "Ativo" na tela e nunca
+  // posta nada: o cron detecta e pula em silêncio. Recusar aqui é o único
+  // momento em que o usuário está olhando para a configuração errada.
+  const readiness = await checkCreateReadiness(anyAdmin, user.id, {
+    folderId: body.folder_id || null,
+    accountFolderId: body.account_folder_id || null,
+    accountIds: accountIdsToCheck,
+  });
+  if (!readiness.ok) {
+    return NextResponse.json({ error: readiness.reason }, { status: 400 });
   }
 
   const captionsToSave = (body.captions ?? []).map((c: string) => c.trim()).filter(Boolean);

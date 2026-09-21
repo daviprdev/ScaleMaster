@@ -15,6 +15,7 @@ import {
   type VideoProcessingMode,
 } from "@/lib/video-processing";
 import { requireCronAuth } from "@/lib/cron-auth";
+import { LOOP_SKIP_REASONS } from "@/lib/loop-readiness";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -62,6 +63,8 @@ interface LoopRow {
   account_folder_id: string | null;
   account_stagger_seconds: number | null;
   last_posted_at: string | null;
+  last_skip_reason?: string | null;
+  library_folders?: { name: string } | null;
   loop_accounts: LoopAccountRow[];
   auto_caption_enabled?: boolean;
   auto_caption_type?: string | null;
@@ -601,6 +604,46 @@ async function assignVideosForLoop(
 
 type LoopOutcome = "processed" | "skipped" | "error";
 
+/**
+ * Grava por que o loop não postou neste ciclo. Até 2026-09-21 esse motivo só
+ * existia como console.warn nos logs da Vercel: o loop ficava "Ativo" na tela,
+ * sem postar nada, e não havia nenhum sintoma visível para o usuário. Agora o
+ * card do Loop mostra o texto e diz o que fazer.
+ */
+async function noteSkip(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  loop: { id: string; name: string },
+  reason: string
+): Promise<LoopOutcome> {
+  console.warn(`[loop-cron] "${loop.name}": ${reason}`);
+  try {
+    await (admin as any)
+      .from("loops")
+      .update({ last_skip_reason: reason, last_skip_at: new Date().toISOString() })
+      .eq("id", loop.id);
+  } catch (e) {
+    // Best-effort: não é motivo para derrubar o ciclo dos outros loops.
+    console.warn(`[loop-cron] falha ao registrar o motivo do skip: ${String(e)}`);
+  }
+  return "skipped";
+}
+
+/** Loop voltou a funcionar: apaga o aviso do card. */
+async function clearSkipNote(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  loopId: string
+): Promise<void> {
+  try {
+    await (admin as any)
+      .from("loops")
+      .update({ last_skip_reason: null, last_skip_at: null })
+      .eq("id", loopId)
+      .not("last_skip_reason", "is", null);
+  } catch {
+    /* best-effort */
+  }
+}
+
 async function processOneLoop(
   loop: LoopRow,
   admin: ReturnType<typeof getSupabaseAdmin>,
@@ -650,13 +693,17 @@ async function processOneLoop(
   }
 
   if (validAccounts.length === 0) {
-    console.warn(`[loop-cron] "${loop.name}" sem contas ativas — pulando.`);
-    return "skipped";
+    return noteSkip(
+      admin,
+      loop,
+      loop.account_folder_id
+        ? LOOP_SKIP_REASONS.noAccountsInFolder(null)
+        : LOOP_SKIP_REASONS.allAccountsDown()
+    );
   }
 
   if (!loop.folder_id) {
-    console.warn(`[loop-cron] "${loop.name}" sem pasta configurada — pulando.`);
-    return "skipped";
+    return noteSkip(admin, loop, LOOP_SKIP_REASONS.noMediaFolder());
   }
 
   // ── Busca todos os vídeos da pasta (pool global do loop) ───────────────────
@@ -678,8 +725,7 @@ async function processOneLoop(
   }
 
   if (!allVideoRows.length) {
-    console.warn(`[loop-cron] "${loop.name}" sem vídeos na pasta — pulando.`);
-    return "skipped";
+    return noteSkip(admin, loop, LOOP_SKIP_REASONS.emptyMediaFolder(loop.library_folders?.name ?? null));
   }
 
   const allVideos = allVideoRows;
@@ -788,8 +834,7 @@ async function processOneLoop(
     );
 
     if (videoAssignments.size === 0) {
-      console.warn(`[loop-cron] "${loop.name}": sem vídeos disponíveis — pulando.`);
-      return "skipped";
+      return noteSkip(admin, loop, LOOP_SKIP_REASONS.noVideoAvailable());
     }
 
     // ── FASE 2: Dois sub-estágios ─────────────────────────────────────────────
@@ -1355,6 +1400,10 @@ async function processOneLoop(
     console.log(
       `[loop-cron] "${loop.name}": ${containersCreated}/${dueAccounts.length} container(s) neste run.`
     );
+    // Voltou a criar container = o aviso do card não vale mais.
+    if (containersCreated > 0 && loop.last_skip_reason) {
+      await clearSkipNote(admin, loop.id);
+    }
     return containersCreated > 0 ? "processed" : "skipped";
 
   } catch (loopErr) {
@@ -1479,7 +1528,8 @@ export async function GET(req: NextRequest) {
       effect_zoom, effect_blur, effect_noise, effect_anti_ai, video_processing_mode, share_to_feed,
       auto_caption_enabled, auto_caption_type,
       caption_mode, caption_strip_hashtags, caption_strip_mentions,
-      last_posted_at,
+      last_posted_at, last_skip_reason,
+      library_folders ( name ),
       loop_accounts (
         account_id,
         instagram_accounts (

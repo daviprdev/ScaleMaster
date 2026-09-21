@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 import { normalizeCaptionMode } from "@/lib/reel-captions";
+import { checkCreateReadiness } from "@/lib/loop-readiness";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -117,6 +118,52 @@ export async function PATCH(
     const notOwnedAccounts = accountIdsInBody.filter((accId) => !ownedAccountIds.has(accId));
     if (notOwnedAccounts.length > 0) {
       return NextResponse.json({ error: "Uma ou mais contas não pertencem a este usuário." }, { status: 403 });
+    }
+  }
+
+  // ── O loop continuaria conseguindo postar? ─────────────────────────────
+  // Só verifica quando a edição mexe nas duas pontas (pasta de mídia, contas)
+  // ou quando reativa o loop. Renomear um loop já quebrado não deve ser
+  // bloqueado — o aviso do card é que cuida desse caso.
+  const touchesSources =
+    "folder_id" in updatePayload ||
+    "account_folder_id" in updatePayload ||
+    "account_ids" in body ||
+    updatePayload.status === "active";
+
+  if (touchesSources) {
+    const { data: current } = await anyAdmin
+      .from("loops")
+      .select("folder_id, account_folder_id")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (current) {
+      const finalFolderId =
+        "folder_id" in updatePayload ? (updatePayload.folder_id as string | null) : current.folder_id;
+      const finalAccountFolderId =
+        "account_folder_id" in updatePayload
+          ? (updatePayload.account_folder_id as string | null)
+          : current.account_folder_id;
+
+      let finalAccountIds: string[] = accountIdsInBody;
+      if (!("account_ids" in body)) {
+        const { data: existing } = await anyAdmin
+          .from("loop_accounts")
+          .select("account_id")
+          .eq("loop_id", id);
+        finalAccountIds = ((existing ?? []) as { account_id: string }[]).map((r) => r.account_id);
+      }
+
+      const readiness = await checkCreateReadiness(anyAdmin, user.id, {
+        folderId: finalFolderId ?? null,
+        accountFolderId: finalAccountFolderId ?? null,
+        accountIds: finalAccountIds,
+      });
+      if (!readiness.ok) {
+        return NextResponse.json({ error: readiness.reason }, { status: 400 });
+      }
     }
   }
 

@@ -431,6 +431,63 @@ async function main() {
       insp.includes("Dispensar todos"));
   }
 
+  console.log("\n== Loop que nao consegue postar tem que aparecer ===\n");
+  {
+    const loopBuild = await compile(["lib/loop-readiness.ts"], "asc-loop-readiness");
+    const lr = await import(pathToFileURL(path.join(loopBuild, "lib", "loop-readiness.js")).href);
+
+    const semPasta = lr.checkLoopReadiness({ folderId: null, videoCount: 0 });
+    check("loop sem pasta de midia e recusado", semPasta.ok === false);
+
+    // O caso exato de producao: pasta escolhida, mas com zero videos.
+    const pastaVazia = lr.checkLoopReadiness({
+      folderId: "f1", videoCount: 0, folderName: "CHRYS",
+      accountFolderId: "a1", accountFolderAccountCount: 20,
+    });
+    check("REGRESSAO: pasta de midia vazia e recusada com o nome da pasta",
+      pastaVazia.ok === false && pastaVazia.reason.includes("CHRYS"));
+
+    const semContas = lr.checkLoopReadiness({
+      folderId: "f1", videoCount: 10, accountFolderId: "a1", accountFolderAccountCount: 0,
+    });
+    check("pasta de contas sem conta ativa e recusada", semContas.ok === false);
+
+    const semSelecao = lr.checkLoopReadiness({ folderId: "f1", videoCount: 10, specificAccountCount: 0 });
+    check("modo contas especificas sem nenhuma conta e recusado", semSelecao.ok === false);
+
+    const okPasta = lr.checkLoopReadiness({
+      folderId: "f1", videoCount: 10, accountFolderId: "a1", accountFolderAccountCount: 3,
+    });
+    const okEspecifico = lr.checkLoopReadiness({ folderId: "f1", videoCount: 10, specificAccountCount: 2 });
+    check("configuracao valida passa nos dois modos", okPasta.ok === true && okEspecifico.ok === true);
+
+    check("as mensagens dizem o que fazer, nao so o que houve",
+      lr.LOOP_SKIP_REASONS.emptyMediaFolder("X").includes("Adicione") &&
+      lr.LOOP_SKIP_REASONS.noAccountsInFolder("Y").includes("Adicione"));
+
+    const loopsApi = src("app/api/loops/route.ts");
+    check("criar loop valida se ele consegue postar",
+      loopsApi.includes("checkCreateReadiness") && loopsApi.includes("status: 400"));
+    check("GET /api/loops devolve o motivo do ultimo skip",
+      loopsApi.includes("last_skip_reason"));
+
+    const loopPatch = src("app/api/loops/[id]/route.ts");
+    check("editar loop revalida quando mexe na pasta, nas contas ou reativa",
+      loopPatch.includes("checkCreateReadiness") && loopPatch.includes("touchesSources"));
+
+    const cron = stripComments(src("app/api/cron/process-loops/route.ts"));
+    check("o cron grava o motivo do skip em vez de so logar",
+      cron.includes("noteSkip(admin, loop") && cron.includes("last_skip_reason"));
+    check("nenhum skip de configuracao volta a ser silencioso",
+      !cron.includes('sem videos na pasta') && !cron.includes("sem contas ativas"));
+    check("o aviso e apagado quando o loop volta a criar container",
+      cron.includes("clearSkipNote"));
+
+    const loopPage = stripComments(src("app/dashboard/loop/page.tsx"));
+    check("o card do Loop mostra o aviso",
+      loopPage.includes("loop.last_skip_reason") && loopPage.includes("postando"));
+  }
+
   console.log(`\n${passed} passaram, ${failed} falharam\n`);
   process.exit(failed === 0 ? 0 : 1);
 }
