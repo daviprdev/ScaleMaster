@@ -4552,3 +4552,51 @@ painel, sumiu depois do update, apagada no fim; os dois avisos reais do
 usuário ficaram intactos) e o filtro novo do PostgREST testado por HTTP, com
 teste de controle numa coluna inexistente para a checagem significar alguma
 coisa. 8 checagens novas em `test-hardening` (84 → 92).
+
+---
+
+## Sessão 2026-09-21 — Loop criado que nunca postou
+
+Relato: "criei um loop há um tempão e até agora não postou nada".
+
+**Diagnóstico (SQL de produção, antes de tocar em código):** o loop `CHRYS`
+está `active`, com `last_posted_at = NULL` e `cycles_done = 0`, apontando para
+a pasta de mídia `CHRYS` — que tem **zero vídeos**. As outras pastas têm
+conteúdo (LIDACI 324, SUSANA 244, Victoria 127, NICK 79). A pasta de contas
+está certa: 20 contas. Ou seja, faltava só a ponta do conteúdo.
+
+**Por que passou despercebido:** o `process-loops` lê a pasta, encontra lista
+vazia, faz `return "skipped"` com um `console.warn` e vai embora. O card
+continua "Ativo", verde, com o intervalo configurado — nenhum sintoma além do
+silêncio. É o mesmo caso de 2026-06-22 ("Loop sem vídeos: pasta de mídia
+vazia"), que na época foi encerrado como configuração do usuário e não deixou
+nenhuma defesa no código. Voltou.
+
+**O que mudou.** O motivo passa a aparecer nos dois momentos em que dá para
+agir:
+
+1. **Antes** — `POST /api/loops` e `PATCH /api/loops/[id]` recusam com 400 a
+   configuração que já nasce impossível: pasta de mídia vazia ou inexistente,
+   pasta de contas sem conta ativa e saudável, nenhuma conta selecionada. A
+   mensagem cita o nome da pasta e diz o que fazer. O PATCH só revalida quando
+   a edição mexe em pasta/contas ou reativa o loop — renomear um loop já
+   quebrado continua permitido, senão o usuário ficaria preso.
+2. **Depois** — o cron grava o motivo em `loops.last_skip_reason` (+
+   `last_skip_at`) e o card mostra uma faixa âmbar "Não está postando: …".
+   Isso cobre o que muda com o tempo e a validação de criação não alcança:
+   pasta esvaziada depois, contas removidas, todos os vídeos já usados. O
+   aviso se apaga sozinho assim que o loop volta a criar container.
+
+`lib/loop-readiness.ts` concentra a regra (precisa de vídeo **e** de conta) e
+as mensagens, usada pelas rotas e pelo cron — sem texto duplicado em três
+lugares.
+
+**Lição que vale além do Loop:** todo `return "skipped"` de cron por causa de
+CONFIGURAÇÃO (e não de erro transitório) precisa de um destino visível no
+banco. `console.warn` na Vercel não é sintoma — para o usuário, é
+indistinguível de estar tudo bem.
+
+**Testes:** 13 checagens novas em `test-hardening` (92 → 105), sendo 6
+comportamentais executando `lib/loop-readiness.ts` de verdade, incluindo a
+regressão exata (pasta com zero vídeos recusada, com o nome da pasta na
+mensagem). `npm test` = 653 checagens.
