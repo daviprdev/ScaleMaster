@@ -16,7 +16,14 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "WebSearch",
+      "WebFetch(domain:subzeroid.github.io)",
+      "WebFetch(domain:instagrapi.readthedocs.io)",
+      "Bash(python -c \"import instagrapi; print\\(instagrapi.__file__\\)\")",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npx next *)",
+      "Bash(./node_modules/.bin/next build *)"
     ]
   }
 }
