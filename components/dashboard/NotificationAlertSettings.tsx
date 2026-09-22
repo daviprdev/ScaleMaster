@@ -137,7 +137,7 @@ export default function NotificationAlertSettings() {
       <Row
         icon={<DollarSign size={16} />}
         title="Notificações de vendas"
-        description="Avisa na hora, a cada venda aprovada via ApexVips."
+        description="Avisa na hora, a cada venda aprovada (ApexVips/SharkBot)."
         checked={settings.sale_alerts_enabled}
         onChange={(v) => patch({ sale_alerts_enabled: v })}
         disabled={saving}

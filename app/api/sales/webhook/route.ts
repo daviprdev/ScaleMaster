@@ -23,7 +23,12 @@ export async function GET(req: NextRequest) {
   }
 
   const origin = req.nextUrl.origin;
-  const url = `${origin}/api/webhooks/apexvips/${data.sales_webhook_token}`;
+  const token = data.sales_webhook_token;
 
-  return NextResponse.json({ url });
+  return NextResponse.json({
+    apexvips: `${origin}/api/webhooks/apexvips/${token}`,
+    sharkbot: `${origin}/api/webhooks/sharkbot/${token}`,
+    // Compatibilidade retroativa: campos antigos que esperam { url }
+    url: `${origin}/api/webhooks/apexvips/${token}`,
+  });
 }

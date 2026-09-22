@@ -10,6 +10,9 @@
 -- dado do dia corrente com atraso. `today_has_data` deixa a UI avisar isso em
 -- vez de mostrar um 0 enganoso.
 
+-- Views globais: soma todas as contas ativas do SaaS (não filtra por usuário).
+-- O parâmetro p_user_id é mantido apenas para compatibilidade de assinatura,
+-- mas não é usado no filtro — as vendas também são globais.
 create or replace function public.get_account_views_summary(p_user_id uuid)
 returns jsonb
 language sql
@@ -20,7 +23,7 @@ as $$
   with accs as (
     select id, views_synced_at
       from instagram_accounts
-     where user_id = p_user_id and is_active and health_status <> 'error'
+     where is_active and health_status <> 'error'
   ), v as (
     select d.day, d.views
       from account_views_daily d

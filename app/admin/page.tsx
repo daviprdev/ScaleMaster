@@ -272,13 +272,13 @@ export default function AdminDashboardPage() {
         </ResponsiveContainer>
       </div>
 
-      {/* Vendas (ApexVips) */}
+      {/* Vendas (ApexVips + SharkBot) */}
       {sales && (
         <div className="glass-card rounded-2xl p-6">
           <div className="flex items-center gap-2 mb-4">
             <DollarSign className="w-4 h-4 text-[#00FF41]" />
             <h2 className="text-sm font-semibold text-white">Vendas</h2>
-            <span className="text-xs text-white/30">via ApexVips</span>
+            <span className="text-xs text-white/30">ApexVips · SharkBot</span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">

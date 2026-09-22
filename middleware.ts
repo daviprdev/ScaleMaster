@@ -94,8 +94,12 @@ export const config = {
   matcher: [
     "/dashboard/:path*",
     "/admin/:path*",
-    "/auth/login",
-    "/auth/register",
+    // /auth/login e /auth/register removidos: são páginas públicas e a chamada
+    // supabase.auth.getUser() no middleware adiciona latência desnecessária à
+    // navegação (o clique no <Link> ficava "preso" esperando o middleware).
+    // O redirect de usuário já logado → dashboard acontece dentro do handler
+    // apenas quando essas rotas forem acessadas por outros meios; na prática,
+    // a página de login já checa a sessão client-side e redireciona se necessário.
     "/api/:path*",
   ],
 };

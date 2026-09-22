@@ -142,10 +142,11 @@ export async function GET() {
         error: { message: string } | null;
       }>;
     }).rpc("get_account_views_summary", { p_user_id: user.id }),
+    // Vendas são globais (do dono do SaaS via ApexVips/SharkBot), não por usuário final.
+    // Removido filtro .eq("user_id", user.id) para mostrar o total real.
     admin
       .from("sales")
       .select("amount, created_at")
-      .eq("user_id", user.id)
       .not("amount", "is", null),
   ]);
 
