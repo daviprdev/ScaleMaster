@@ -194,6 +194,81 @@ export default function OnboardingPage() {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [apps, setApps] = useState<{ id: string; app_name: string; ig_app_id: string }[]>([]);
 
+  // Biblioteca de mídias
+  interface MediaItem {
+    id: string;
+    category: "profile_photo" | "story_media";
+    name: string;
+    url: string;
+    mime_type: string | null;
+    file_size: number | null;
+    created_at: string;
+  }
+  const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const [mediaCategory, setMediaCategory] = useState<"profile_photo" | "story_media">("profile_photo");
+
+  const loadMediaLibrary = useCallback(async () => {
+    try {
+      const res = await fetch("/api/onboarding/media", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setMediaLibrary(data.media ?? []);
+      }
+    } catch {
+      // silently fail
+    }
+  }, []);
+
+  useEffect(() => { loadMediaLibrary(); }, [loadMediaLibrary]);
+
+  const handleUploadMedia = async (file: File) => {
+    if (!file) return;
+    setUploadingMedia(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("category", mediaCategory);
+      formData.append("name", file.name.replace(/\.[^.]+$/, ""));
+      const res = await fetch("/api/onboarding/media", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Falha no upload.");
+      setNotice(`Mídia "${data.media.name}" adicionada à biblioteca.`);
+      await loadMediaLibrary();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao fazer upload.");
+    } finally {
+      setUploadingMedia(false);
+      if (mediaInputRef.current) mediaInputRef.current.value = "";
+    }
+  };
+
+  const handleDeleteMedia = async (id: string) => {
+    try {
+      const res = await fetch(`/api/onboarding/media/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Falha ao deletar.");
+      }
+      setMediaLibrary((prev) => prev.filter((m) => m.id !== id));
+      // Limpa seleção se a mídia deletada estava selecionada no template
+      if (templateForm.photo_url && mediaLibrary.find((m) => m.id === id)?.url === templateForm.photo_url) {
+        setTemplateForm((f) => ({ ...f, photo_url: "" }));
+      }
+      if (templateForm.story_media_url && mediaLibrary.find((m) => m.id === id)?.url === templateForm.story_media_url) {
+        setTemplateForm((f) => ({ ...f, story_media_url: "" }));
+      }
+      setNotice("Mídia removida da biblioteca.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao deletar mídia.");
+    }
+  };
+
   const loadTemplates = useCallback(async () => {
     try {
       const [tplRes, appsRes] = await Promise.all([
@@ -781,6 +856,99 @@ export default function OnboardingPage() {
         </div>
       </div>
 
+      {/* Biblioteca de Mídias */}
+      <div className="space-y-4 mt-8">
+        <div className="flex items-center gap-2">
+          <ImageIcon size={15} style={{ color: "var(--matrix)" }} />
+          <h2 className="text-sm font-bold" style={{ color: "rgba(255,255,255,0.85)" }}>Biblioteca de Mídias</h2>
+          <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.35)" }}>{mediaLibrary.length} itens</span>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Upload de Foto de Perfil */}
+          <div className="glass-card p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ImageIcon size={14} style={{ color: "rgba(0,229,255,0.8)" }} />
+                <h3 className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>Fotos de Perfil</h3>
+              </div>
+              <label className="btn-primary px-3 py-1.5 rounded-lg text-[10px] cursor-pointer disabled:opacity-60" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                {uploadingMedia && mediaCategory === "profile_photo" ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+                Upload
+                <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleUploadMedia(f);
+                }} />
+              </label>
+            </div>
+            <select value={mediaCategory} onChange={(e) => setMediaCategory(e.target.value as "profile_photo" | "story_media")}
+              className="input-glass w-full px-3 py-2 text-xs rounded-lg" style={{ color: "rgba(255,255,255,0.75)" }}>
+              <option value="profile_photo">Categoria: Fotos de Perfil</option>
+              <option value="story_media">Categoria: Mídias de Story</option>
+            </select>
+            <div className="grid grid-cols-3 gap-2 max-h-48 overflow-auto">
+              {mediaLibrary.filter((m) => m.category === "profile_photo").map((m) => (
+                <div key={m.id} className="relative group rounded-lg overflow-hidden" style={{ border: "0.5px solid rgba(255,255,255,0.08)" }}>
+                  <img src={m.url} alt={m.name} className="w-full h-16 object-cover" />
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                    <button onClick={() => handleDeleteMedia(m.id)} className="p-1 rounded-md hover:bg-red-500/20" title="Deletar">
+                      <Trash2 size={12} style={{ color: "#ff7b72" }} />
+                    </button>
+                  </div>
+                  <p className="absolute bottom-0 left-0 right-0 text-[8px] px-1 py-0.5 truncate" style={{ background: "rgba(0,0,0,0.7)", color: "rgba(255,255,255,0.7)" }}>{m.name}</p>
+                </div>
+              ))}
+              {mediaLibrary.filter((m) => m.category === "profile_photo").length === 0 && (
+                <p className="col-span-3 text-[10px] text-center py-4" style={{ color: "rgba(255,255,255,0.3)" }}>Nenhuma foto adicionada</p>
+              )}
+            </div>
+          </div>
+
+          {/* Upload de Mídia de Story */}
+          <div className="glass-card p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ImageIcon size={14} style={{ color: "rgba(0,229,255,0.8)" }} />
+                <h3 className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>Mídias de Story</h3>
+              </div>
+              <label className="btn-primary px-3 py-1.5 rounded-lg text-[10px] cursor-pointer disabled:opacity-60" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                {uploadingMedia && mediaCategory === "story_media" ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+                Upload
+                <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleUploadMedia(f);
+                }} />
+              </label>
+            </div>
+            <select value={mediaCategory} onChange={(e) => setMediaCategory(e.target.value as "profile_photo" | "story_media")}
+              className="input-glass w-full px-3 py-2 text-xs rounded-lg" style={{ color: "rgba(255,255,255,0.75)" }}>
+              <option value="profile_photo">Categoria: Fotos de Perfil</option>
+              <option value="story_media">Categoria: Mídias de Story</option>
+            </select>
+            <div className="grid grid-cols-3 gap-2 max-h-48 overflow-auto">
+              {mediaLibrary.filter((m) => m.category === "story_media").map((m) => (
+                <div key={m.id} className="relative group rounded-lg overflow-hidden" style={{ border: "0.5px solid rgba(255,255,255,0.08)" }}>
+                  {m.mime_type?.startsWith("video/") ? (
+                    <video src={m.url} className="w-full h-16 object-cover" muted />
+                  ) : (
+                    <img src={m.url} alt={m.name} className="w-full h-16 object-cover" />
+                  )}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                    <button onClick={() => handleDeleteMedia(m.id)} className="p-1 rounded-md hover:bg-red-500/20" title="Deletar">
+                      <Trash2 size={12} style={{ color: "#ff7b72" }} />
+                    </button>
+                  </div>
+                  <p className="absolute bottom-0 left-0 right-0 text-[8px] px-1 py-0.5 truncate" style={{ background: "rgba(0,0,0,0.7)", color: "rgba(255,255,255,0.7)" }}>{m.name}</p>
+                </div>
+              ))}
+              {mediaLibrary.filter((m) => m.category === "story_media").length === 0 && (
+                <p className="col-span-3 text-[10px] text-center py-4" style={{ color: "rgba(255,255,255,0.3)" }}>Nenhuma mídia adicionada</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Lista de jobs */}
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1128,34 +1296,54 @@ export default function OnboardingPage() {
                   </p>
                 </div>
 
-                {/* Foto de Perfil */}
+                {/* Foto de Perfil - Seleção da Biblioteca */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
-                    <ImageIcon size={12} />URL da Foto de Perfil
+                    <ImageIcon size={12} />Foto de Perfil (da Biblioteca)
                   </label>
-                  <input
-                    type="url"
+                  <select
                     value={templateForm.photo_url}
                     onChange={(e) => setTemplateForm({ ...templateForm, photo_url: e.target.value })}
-                    placeholder="https://exemplo.com/foto.jpg"
-                    className="input-glass w-full px-3 py-2.5 text-sm rounded-lg font-mono"
-                    style={{ color: "rgba(255,255,255,0.75)" }}
-                  />
+                    className="input-glass w-full px-3 py-2.5 text-sm rounded-lg"
+                    style={{ color: "rgba(255,255,255,0.75)" }}>
+                    <option value="">Sem foto (usar padrão do Instagram)</option>
+                    {mediaLibrary.filter((m) => m.category === "profile_photo").map((m) => (
+                      <option key={m.id} value={m.url}>{m.name}</option>
+                    ))}
+                  </select>
+                  {templateForm.photo_url && (
+                    <div className="flex items-center gap-2 p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.03)" }}>
+                      <img src={templateForm.photo_url} alt="Preview" className="w-10 h-10 rounded-full object-cover" />
+                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>Preview da foto selecionada</span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Mídia do Story */}
+                {/* Mídia do Story - Seleção da Biblioteca */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
-                    <ImageIcon size={12} />URL da Mídia do Story (foto ou vídeo)
+                    <ImageIcon size={12} />Mídia do Story (da Biblioteca)
                   </label>
-                  <input
-                    type="url"
+                  <select
                     value={templateForm.story_media_url}
                     onChange={(e) => setTemplateForm({ ...templateForm, story_media_url: e.target.value })}
-                    placeholder="https://exemplo.com/story.jpg"
-                    className="input-glass w-full px-3 py-2.5 text-sm rounded-lg font-mono"
-                    style={{ color: "rgba(255,255,255,0.75)" }}
-                  />
+                    className="input-glass w-full px-3 py-2.5 text-sm rounded-lg"
+                    style={{ color: "rgba(255,255,255,0.75)" }}>
+                    <option value="">Sem story (etapa pulada)</option>
+                    {mediaLibrary.filter((m) => m.category === "story_media").map((m) => (
+                      <option key={m.id} value={m.url}>{m.name} {m.mime_type?.startsWith("video/") ? "(vídeo)" : "(foto)"}</option>
+                    ))}
+                  </select>
+                  {templateForm.story_media_url && (
+                    <div className="flex items-center gap-2 p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.03)" }}>
+                      {mediaLibrary.find((m) => m.url === templateForm.story_media_url)?.mime_type?.startsWith("video/") ? (
+                        <video src={templateForm.story_media_url} className="w-16 h-10 rounded object-cover" muted />
+                      ) : (
+                        <img src={templateForm.story_media_url} alt="Preview" className="w-10 h-10 rounded object-cover" />
+                      )}
+                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.5)" }}>Preview da mídia selecionada</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Link do Story */}
