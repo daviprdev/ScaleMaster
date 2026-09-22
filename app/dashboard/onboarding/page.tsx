@@ -206,8 +206,6 @@ export default function OnboardingPage() {
   }
   const [mediaLibrary, setMediaLibrary] = useState<MediaItem[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
-  const mediaInputRef = useRef<HTMLInputElement>(null);
-  const [mediaCategory, setMediaCategory] = useState<"profile_photo" | "story_media">("profile_photo");
 
   const loadMediaLibrary = useCallback(async () => {
     try {
@@ -223,7 +221,7 @@ export default function OnboardingPage() {
 
   useEffect(() => { loadMediaLibrary(); }, [loadMediaLibrary]);
 
-  const handleUploadMedia = async (file: File) => {
+  const handleUploadMedia = async (file: File, category: "profile_photo" | "story_media") => {
     if (!file) return;
     setUploadingMedia(true);
     setError("");
@@ -236,7 +234,7 @@ export default function OnboardingPage() {
           fileName: file.name,
           fileType: file.type,
           fileSize: file.size,
-          category: mediaCategory,
+          category,
           name: file.name.replace(/\.[^.]+$/, ""),
         }),
       });
@@ -276,7 +274,7 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           storagePath: signData.path,
-          category: mediaCategory,
+          category,
           name: file.name.replace(/\.[^.]+$/, ""),
           mimeType: file.type,
           fileSize: file.size,
@@ -299,7 +297,6 @@ export default function OnboardingPage() {
       setError(e instanceof Error ? e.message : "Erro ao fazer upload.");
     } finally {
       setUploadingMedia(false);
-      if (mediaInputRef.current) mediaInputRef.current.value = "";
     }
   };
 
@@ -928,19 +925,15 @@ export default function OnboardingPage() {
                 <h3 className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>Fotos de Perfil</h3>
               </div>
               <label className="btn-primary px-3 py-1.5 rounded-lg text-[10px] cursor-pointer disabled:opacity-60" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                {uploadingMedia && mediaCategory === "profile_photo" ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+                {uploadingMedia ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
                 Upload
-                <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) handleUploadMedia(f);
+                  if (f) handleUploadMedia(f, "profile_photo");
+                  if (e.target) e.target.value = "";
                 }} />
               </label>
             </div>
-            <select value={mediaCategory} onChange={(e) => setMediaCategory(e.target.value as "profile_photo" | "story_media")}
-              className="input-glass w-full px-3 py-2 text-xs rounded-lg" style={{ color: "rgba(255,255,255,0.75)" }}>
-              <option value="profile_photo">Categoria: Fotos de Perfil</option>
-              <option value="story_media">Categoria: Mídias de Story</option>
-            </select>
             <div className="grid grid-cols-3 gap-2 max-h-48 overflow-auto">
               {mediaLibrary.filter((m) => m.category === "profile_photo").map((m) => (
                 <div key={m.id} className="relative group rounded-lg overflow-hidden" style={{ border: "0.5px solid rgba(255,255,255,0.08)" }}>
@@ -967,19 +960,15 @@ export default function OnboardingPage() {
                 <h3 className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.7)" }}>Mídias de Story</h3>
               </div>
               <label className="btn-primary px-3 py-1.5 rounded-lg text-[10px] cursor-pointer disabled:opacity-60" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                {uploadingMedia && mediaCategory === "story_media" ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
+                {uploadingMedia ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
                 Upload
                 <input type="file" accept="image/*,video/*" className="hidden" onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) handleUploadMedia(f);
+                  if (f) handleUploadMedia(f, "story_media");
+                  if (e.target) e.target.value = "";
                 }} />
               </label>
             </div>
-            <select value={mediaCategory} onChange={(e) => setMediaCategory(e.target.value as "profile_photo" | "story_media")}
-              className="input-glass w-full px-3 py-2 text-xs rounded-lg" style={{ color: "rgba(255,255,255,0.75)" }}>
-              <option value="profile_photo">Categoria: Fotos de Perfil</option>
-              <option value="story_media">Categoria: Mídias de Story</option>
-            </select>
             <div className="grid grid-cols-3 gap-2 max-h-48 overflow-auto">
               {mediaLibrary.filter((m) => m.category === "story_media").map((m) => (
                 <div key={m.id} className="relative group rounded-lg overflow-hidden" style={{ border: "0.5px solid rgba(255,255,255,0.08)" }}>

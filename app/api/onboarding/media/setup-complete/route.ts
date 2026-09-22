@@ -18,7 +18,7 @@ export async function GET() {
   }
 
   const admin = getSupabaseAdmin();
-  const results: Record<string, unknown> = {};
+  const results: Record<string, { status: string; message?: string; [key: string]: unknown }> = {};
 
   try {
     // 1. Verifica se o bucket existe
