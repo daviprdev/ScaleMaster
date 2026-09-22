@@ -22,7 +22,7 @@ const MAX_JOBS_PER_REQUEST = 200;
 const STAGGER_WINDOW_MS = 15 * 60_000;
 
 const SAFE_COLUMNS =
-  "id, username, stage, stage_status, status, retry_count, retry_after, error_message, photo_url, magic_link, account_id, ig_user_id, created_at, updated_at, processed_at";
+  "id, username, stage, stage_status, status, retry_count, retry_after, error_message, photo_url, magic_link, story_media_url, story_link_url, highlight_title, story_pk, account_id, ig_user_id, created_at, updated_at, processed_at";
 
 interface JobInput {
   username?: unknown;
@@ -31,6 +31,9 @@ interface JobInput {
   proxy_url?: unknown;
   photo_url?: unknown;
   magic_link?: unknown;
+  story_media_url?: unknown;
+  story_link_url?: unknown;
+  highlight_title?: unknown;
 }
 
 // GET - lista os jobs do usuario com progresso por etapa.
@@ -84,6 +87,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Corpo da requisicao invalido." }, { status: 400 });
   }
 
+  // Aceita template_id opcional: quando presente, os campos do template
+  // preenchem os jobs que nao tiverem valor proprio (o CSV so tem credenciais).
+  const templateId =
+    typeof (body as { template_id?: unknown })?.template_id === "string"
+      ? String((body as { template_id: string }).template_id).trim()
+      : null;
+
   const list: JobInput[] | null = Array.isArray(body)
     ? body
     : Array.isArray((body as { jobs?: unknown })?.jobs)
@@ -97,6 +107,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Maximo de ${MAX_JOBS_PER_REQUEST} contas por envio.` }, { status: 400 });
   }
 
+  // Carrega o template (se informado) para aplicar photo/story/highlight/app.
+  let template: {
+    app_id: string | null;
+    photo_url: string | null;
+    story_media_url: string | null;
+    story_link_url: string | null;
+    highlight_title: string | null;
+  } | null = null;
+  if (templateId) {
+    const { data: tpl, error: tplErr } = await supabase
+      .from("onboarding_templates")
+      .select("app_id, photo_url, story_media_url, story_link_url, highlight_title")
+      .eq("id", templateId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (tplErr) return NextResponse.json({ error: tplErr.message }, { status: 500 });
+    if (!tpl) return NextResponse.json({ error: "Template nao encontrado." }, { status: 404 });
+    template = tpl;
+  }
+
   const rejected: { index: number; username: string | null; error: string }[] = [];
   const valid: {
     username: string;
@@ -105,6 +135,9 @@ export async function POST(req: NextRequest) {
     proxy: string;
     photoUrl: string | null;
     magicLink: string | null;
+    storyMediaUrl: string | null;
+    storyLinkUrl: string | null;
+    highlightTitle: string | null;
   }[] = [];
   const seen = new Set<string>();
 
@@ -136,13 +169,32 @@ export async function POST(req: NextRequest) {
       magicLink = check.url;
     }
 
+    let storyMediaUrl: string | null = null;
+    if (typeof item.story_media_url === "string" && item.story_media_url.trim()) {
+      const check = validateDestinationUrl(item.story_media_url);
+      if (!check.ok) return reject(`story_media_url: ${check.error}`);
+      storyMediaUrl = check.url;
+    }
+
+    let storyLinkUrl: string | null = null;
+    if (typeof item.story_link_url === "string" && item.story_link_url.trim()) {
+      const check = validateDestinationUrl(item.story_link_url);
+      if (!check.ok) return reject(`story_link_url: ${check.error}`);
+      storyLinkUrl = check.url;
+    }
+
+    const highlightTitle =
+      typeof item.highlight_title === "string" && item.highlight_title.trim()
+        ? item.highlight_title.trim().slice(0, 100)
+        : null;
+
     const twoFactor =
       typeof item.two_factor === "string" && item.two_factor.trim()
         ? item.two_factor.replace(/\s+/g, "")
         : null;
 
     seen.add(username);
-    valid.push({ username, password, twoFactor, proxy, photoUrl, magicLink });
+    valid.push({ username, password, twoFactor, proxy, photoUrl, magicLink, storyMediaUrl, storyLinkUrl, highlightTitle });
   });
 
   // Conta que ja tem onboarding em andamento nao ganha outro (dois logins
@@ -173,6 +225,27 @@ export async function POST(req: NextRequest) {
   const step = toInsert.length > 1 ? STAGGER_WINDOW_MS / (toInsert.length - 1) : 0;
   const nowIso = new Date(now).toISOString();
 
+  // Gera magic_link automatico a partir do app_id do template (se houver).
+  // O token e unico por usuario — upsert garante que todas as contas do lote
+  // usam o mesmo link (o callback vincula pelo cookie ig_oauth_magic_user_id).
+  let autoMagicLink: string | null = null;
+  if (template?.app_id) {
+    const crypto = await import("crypto");
+    const newToken = crypto.randomUUID();
+    const { data: tokenRow } = await supabase
+      .from("magic_add_tokens")
+      .upsert(
+        { user_id: user.id, app_id: template.app_id, token: newToken, updated_at: nowIso },
+        { onConflict: "user_id" }
+      )
+      .select("token")
+      .single();
+    if (tokenRow?.token) {
+      const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://autoscale-ia.vercel.app").replace(/\/$/, "");
+      autoMagicLink = `${appUrl}/add/${tokenRow.token}`;
+    }
+  }
+
   const rows = toInsert.map((v, i) => {
     // Jitter de ate 30% do passo para o espacamento nao ficar periodico.
     const jitter = step ? Math.floor(Math.random() * step * 0.3) : 0;
@@ -184,8 +257,12 @@ export async function POST(req: NextRequest) {
       password_enc: encrypt(v.password),
       two_factor_enc: v.twoFactor ? encrypt(v.twoFactor) : null,
       proxy_url_enc: encrypt(v.proxy),
-      photo_url: v.photoUrl,
-      magic_link: v.magicLink,
+      // Template preenche campos ausentes no CSV (que so tem credenciais).
+      photo_url: v.photoUrl ?? template?.photo_url ?? null,
+      magic_link: v.magicLink ?? autoMagicLink,
+      story_media_url: v.storyMediaUrl ?? template?.story_media_url ?? null,
+      story_link_url: v.storyLinkUrl ?? template?.story_link_url ?? null,
+      highlight_title: v.highlightTitle ?? template?.highlight_title ?? null,
       status: "pending",
       retry_after: new Date(now + Math.round(i * step) + jitter).toISOString(),
     };

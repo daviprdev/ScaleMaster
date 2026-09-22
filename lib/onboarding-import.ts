@@ -12,25 +12,21 @@ export interface OnboardingImportRow {
   password: string;
   proxy_url: string;
   two_factor?: string;
-  photo_url?: string;
-  magic_link?: string;
   error: string | null;
 }
 
-type Field = "username" | "password" | "proxy_url" | "two_factor" | "photo_url" | "magic_link";
+type Field = "username" | "password" | "proxy_url" | "two_factor";
 
 const HEADER_ALIASES: Record<string, Field> = {
   username: "username", user: "username", usuario: "username", "usuário": "username", conta: "username", login: "username",
   password: "password", senha: "password", pass: "password",
   proxy_url: "proxy_url", proxy: "proxy_url", proxyurl: "proxy_url",
   two_factor: "two_factor", "2fa": "two_factor", totp: "two_factor", twofactor: "two_factor",
-  photo_url: "photo_url", foto: "photo_url", photo: "photo_url",
-  magic_link: "magic_link", link: "magic_link", link_magico: "magic_link",
 };
 
 export const TEMPLATE_CSV =
-  "username;password;proxy_url\r\n" +
-  "exemplo_conta;SenhaForte123;usuario:senha@203.0.113.10:8080\r\n";
+  "username;password;proxy_url;two_factor\r\n" +
+  "exemplo_conta;SenhaForte123;usuario:senha@203.0.113.10:8080;JBSWY3DPEHPK3PXP\r\n";
 
 /** CSV com deteccao de separador (; , ou tab) e aspas no padrao RFC 4180. */
 export function parseCsv(text: string): string[][] {
@@ -92,7 +88,7 @@ export function rowsFromMatrix(matrix: unknown[][]): OnboardingImportRow[] {
   // Sem cabecalho reconhecido: assume a ordem do modelo.
   const columns: (Field | undefined)[] = hasHeader
     ? header
-    : ["username", "password", "proxy_url", "two_factor", "photo_url", "magic_link"];
+    : ["username", "password", "proxy_url", "two_factor"];
   const dataStart = hasHeader ? headerIdx + 1 : headerIdx;
 
   const seen = new Set<string>();
@@ -121,8 +117,6 @@ export function rowsFromMatrix(matrix: unknown[][]): OnboardingImportRow[] {
       password: rec.password ?? "",
       proxy_url: rec.proxy_url ?? "",
       two_factor: rec.two_factor,
-      photo_url: rec.photo_url,
-      magic_link: rec.magic_link,
       error,
     });
   }

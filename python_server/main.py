@@ -30,6 +30,8 @@ from onboarding import (
     accept_app_invite,
     change_profile_photo,
     check_professional,
+    create_highlight_from_story,
+    post_story_with_link,
     switch_to_professional,
 )
 
@@ -157,6 +159,16 @@ class SwitchProfessionalRequest(OnboardingRequest):
     to_account_type: int = 3
 
 
+class PostStoryRequest(OnboardingRequest):
+    media_url: str
+    link_url: str
+
+
+class CreateHighlightRequest(OnboardingRequest):
+    story_pk: str
+    highlight_title: str
+
+
 class OnboardingResponse(BaseModel):
     success: bool
     session_settings: dict | None = None
@@ -165,6 +177,8 @@ class OnboardingResponse(BaseModel):
     is_professional: bool | None = None
     accepted: list[str] | None = None
     pending_found: int | None = None
+    story_pk: str | None = None
+    highlight_pk: str | None = None
     error_code: str | None = None
     error_message: str | None = None
 
@@ -501,6 +515,44 @@ async def onboarding_check_professional(
         req.password,
         req.proxy_url,
         req.device_seed,
+        req.totp_secret,
+        req.session_settings,
+    )
+    return _onboarding_response(result)
+
+
+@app.post("/onboarding/post-story", response_model=OnboardingResponse)
+async def onboarding_post_story(
+    req: PostStoryRequest,
+    _: None = Depends(verify_secret),
+) -> OnboardingResponse:
+    result = await asyncio.to_thread(
+        post_story_with_link,
+        req.username,
+        req.password,
+        req.proxy_url,
+        req.device_seed,
+        req.media_url,
+        req.link_url,
+        req.totp_secret,
+        req.session_settings,
+    )
+    return _onboarding_response(result)
+
+
+@app.post("/onboarding/create-highlight", response_model=OnboardingResponse)
+async def onboarding_create_highlight(
+    req: CreateHighlightRequest,
+    _: None = Depends(verify_secret),
+) -> OnboardingResponse:
+    result = await asyncio.to_thread(
+        create_highlight_from_story,
+        req.username,
+        req.password,
+        req.proxy_url,
+        req.device_seed,
+        req.story_pk,
+        req.highlight_title,
         req.totp_secret,
         req.session_settings,
     )

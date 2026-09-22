@@ -4,7 +4,7 @@
  * Drena a fila `onboarding_jobs` (Fase Onboarding 1/3). Cada job percorre, UMA
  * etapa por ciclo e SEMPRE em sequencia:
  *
- *   invite -> photo -> professional -> verify_professional -> magic_link -> done
+ *   invite -> photo -> professional -> verify_professional -> magic_link -> story -> highlight -> done
  *
  * Esqueleto copiado de process-scrape-jobs: claim atomico, auto-healing de job
  * preso em 'processing', backoff exponencial, jitter anti-burst por TENTATIVA.
@@ -89,6 +89,10 @@ interface JobRow {
   session_settings: string | null;
   photo_url: string | null;
   magic_link: string | null;
+  story_media_url: string | null;
+  story_link_url: string | null;
+  highlight_title: string | null;
+  story_pk: string | null;
   retry_count: number;
   created_at: string;
 }
@@ -98,7 +102,7 @@ const ACCOUNT_DEAD_ERRORS = new Set(["bad_password", "banned_or_disabled", "chec
 // Etapa que precisa de acao humana (ou dado corrigido) antes de continuar.
 const NEEDS_MANUAL_ERRORS = new Set(["needs_manual", "invalid_photo", "two_factor_required"]);
 
-const STAGE_ENDPOINT: Record<Exclude<OnboardingStage, "magic_link">, string> = {
+const STAGE_ENDPOINT: Record<Exclude<OnboardingStage, "magic_link" | "story" | "highlight">, string> = {
   invite: "/onboarding/accept-invite",
   photo: "/onboarding/change-photo",
   professional: "/onboarding/switch-professional",
@@ -163,7 +167,7 @@ export async function GET(req: NextRequest) {
   const { data: rows, error: fetchErr } = await (admin as any)
     .from("onboarding_jobs")
     .select(
-      "id, user_id, username, stage, stage_status, password_enc, two_factor_enc, proxy_url_enc, session_settings, photo_url, magic_link, retry_count, created_at"
+      "id, user_id, username, stage, stage_status, password_enc, two_factor_enc, proxy_url_enc, session_settings, photo_url, magic_link, story_media_url, story_link_url, highlight_title, story_pk, retry_count, created_at"
     )
     .eq("status", "pending")
     .or(`retry_after.is.null,retry_after.lte.${nowIso}`)
@@ -421,6 +425,154 @@ export async function GET(req: NextRequest) {
       // photo sem foto cadastrada: etapa opcional, pula sem chamada.
       if (stage === "photo" && !job.photo_url) {
         await advance("Sem photo_url - etapa pulada.");
+        continue;
+      }
+
+      // story: posta story com link externo e salva o story_pk para o highlight.
+      // DEVE vir antes da chamada generica STAGE_ENDPOINT[stage] porque story/highlight
+      // nao estao nesse mapa - usariam endpoint undefined e crashariam.
+      if (stage === "story") {
+        if (!job.story_media_url || !job.story_link_url) {
+          await advance("Sem story_media_url ou story_link_url - etapa pulada.");
+          continue;
+        }
+
+        const proxyUrl = job.proxy_url_enc ? decryptMaybe(job.proxy_url_enc) : null;
+        if (!proxyUrl || !PROXY_URL_RE.test(proxyUrl)) {
+          await update({
+            status: "pending",
+            retry_after: new Date(Date.now() + NO_PROXY_RETRY_MS).toISOString(),
+            error_message: "Aguardando proxy dedicado valido - nenhuma chamada feita.",
+          });
+          summary.skipped_no_proxy++;
+          continue;
+        }
+
+        const password = decryptMaybe(job.password_enc);
+        if (!password) {
+          await failPermanently("needs_manual", "Senha ausente - edite o job.");
+          continue;
+        }
+        const twoFactor = job.two_factor_enc ? decryptMaybe(job.two_factor_enc) : null;
+
+        let sessionSettings: Record<string, unknown> | null = null;
+        if (job.session_settings) {
+          try {
+            sessionSettings = JSON.parse(decryptMaybe(job.session_settings) ?? "null");
+          } catch {
+            sessionSettings = null;
+          }
+        }
+
+        if (attempts > 0) await sleep(Math.floor(Math.random() * 2_000) + 1_000);
+        attempts++;
+
+        const storyBody: Record<string, unknown> = {
+          username: job.username,
+          password,
+          proxy_url: proxyUrl,
+          device_seed: job.id,
+          totp_secret: twoFactor || undefined,
+          session_settings: sessionSettings || undefined,
+          media_url: job.story_media_url,
+          link_url: job.story_link_url,
+        };
+
+        const storyResult = await callPythonServer<OnboardingPythonResponse & { story_pk?: string | null }>(
+          "/onboarding/post-story",
+          storyBody,
+          PYTHON_TIMEOUT_MS
+        );
+        const storySessionPatch: Record<string, unknown> = {};
+        if (storyResult.session_settings) storySessionPatch.session_settings = encrypt(JSON.stringify(storyResult.session_settings));
+        if (storyResult.ig_user_id) storySessionPatch.ig_user_id = storyResult.ig_user_id;
+        if (storyResult.story_pk) storySessionPatch.story_pk = storyResult.story_pk;
+        if (Object.keys(storySessionPatch).length) await update(storySessionPatch);
+        if (!storyResult.success) {
+          const code = storyResult.error_code ?? "unknown";
+          const message = `[${code}] ${storyResult.error_message ?? "Falha ao postar story."}`;
+          console.warn(`[onboarding-cron] @${job.username} story: ${code}`);
+          if (ACCOUNT_DEAD_ERRORS.has(code)) await failPermanently("error", message);
+          else if (NEEDS_MANUAL_ERRORS.has(code) || code === "invalid_media") await failPermanently("needs_manual", message);
+          else await failCounted(message);
+          continue;
+        }
+        await advance("Story postado com link.", { story_pk: storyResult.story_pk ?? null });
+        continue;
+      }
+
+      // highlight: cria destaque a partir do story postado na etapa anterior.
+      if (stage === "highlight") {
+        if (!job.highlight_title) {
+          await advance("Sem highlight_title - etapa pulada.");
+          continue;
+        }
+        const storyPk = job.story_pk ?? stageStatus.story?.story_pk;
+        if (!storyPk) {
+          await failPermanently("needs_manual", "story_pk ausente - a etapa story nao salvou o ID do story.");
+          continue;
+        }
+
+        const proxyUrl = job.proxy_url_enc ? decryptMaybe(job.proxy_url_enc) : null;
+        if (!proxyUrl || !PROXY_URL_RE.test(proxyUrl)) {
+          await update({
+            status: "pending",
+            retry_after: new Date(Date.now() + NO_PROXY_RETRY_MS).toISOString(),
+            error_message: "Aguardando proxy dedicado valido - nenhuma chamada feita.",
+          });
+          summary.skipped_no_proxy++;
+          continue;
+        }
+
+        const password = decryptMaybe(job.password_enc);
+        if (!password) {
+          await failPermanently("needs_manual", "Senha ausente - edite o job.");
+          continue;
+        }
+        const twoFactor = job.two_factor_enc ? decryptMaybe(job.two_factor_enc) : null;
+
+        let sessionSettings: Record<string, unknown> | null = null;
+        if (job.session_settings) {
+          try {
+            sessionSettings = JSON.parse(decryptMaybe(job.session_settings) ?? "null");
+          } catch {
+            sessionSettings = null;
+          }
+        }
+
+        if (attempts > 0) await sleep(Math.floor(Math.random() * 2_000) + 1_000);
+        attempts++;
+
+        const highlightBody: Record<string, unknown> = {
+          username: job.username,
+          password,
+          proxy_url: proxyUrl,
+          device_seed: job.id,
+          totp_secret: twoFactor || undefined,
+          session_settings: sessionSettings || undefined,
+          story_pk: storyPk,
+          highlight_title: job.highlight_title,
+        };
+
+        const highlightResult = await callPythonServer<OnboardingPythonResponse & { highlight_pk?: string | null }>(
+          "/onboarding/create-highlight",
+          highlightBody,
+          PYTHON_TIMEOUT_MS
+        );
+        const highlightSessionPatch: Record<string, unknown> = {};
+        if (highlightResult.session_settings) highlightSessionPatch.session_settings = encrypt(JSON.stringify(highlightResult.session_settings));
+        if (highlightResult.ig_user_id) highlightSessionPatch.ig_user_id = highlightResult.ig_user_id;
+        if (Object.keys(highlightSessionPatch).length) await update(highlightSessionPatch);
+        if (!highlightResult.success) {
+          const code = highlightResult.error_code ?? "unknown";
+          const message = `[${code}] ${highlightResult.error_message ?? "Falha ao criar destaque."}`;
+          console.warn(`[onboarding-cron] @${job.username} highlight: ${code}`);
+          if (ACCOUNT_DEAD_ERRORS.has(code)) await failPermanently("error", message);
+          else if (NEEDS_MANUAL_ERRORS.has(code)) await failPermanently("needs_manual", message);
+          else await failCounted(message);
+          continue;
+        }
+        await advance("Destaque criado a partir do story.", { highlight_pk: highlightResult.highlight_pk ?? null });
         continue;
       }
 

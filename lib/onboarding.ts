@@ -14,6 +14,8 @@ export const ONBOARDING_STAGES = [
   "professional",
   "verify_professional",
   "magic_link",
+  "story",
+  "highlight",
 ] as const;
 
 export type OnboardingStage = (typeof ONBOARDING_STAGES)[number];
@@ -26,6 +28,8 @@ export interface StageResult {
   at?: string;
   started_at?: string;
   account_type?: string | null;
+  story_pk?: string | null;
+  highlight_pk?: string | null;
 }
 
 export type StageStatusMap = Partial<Record<OnboardingStage, StageResult>>;

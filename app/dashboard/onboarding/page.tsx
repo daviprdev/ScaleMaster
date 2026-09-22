@@ -23,12 +23,19 @@ import {
   Trash2,
   ExternalLink,
   Copy,
+  LayoutTemplate,
+  Plus,
+  Pencil,
+  Save,
+  Image as ImageIcon,
+  Link2,
+  Type,
 } from "lucide-react";
 import { readOnboardingFile, TEMPLATE_CSV, type OnboardingImportRow } from "@/lib/onboarding-import";
 
 // ── Tipos (espelham o GET /api/onboarding/jobs) ──────────────────────────────
 
-type Stage = "invite" | "photo" | "professional" | "verify_professional" | "magic_link";
+type Stage = "invite" | "photo" | "professional" | "verify_professional" | "magic_link" | "story" | "highlight";
 type StageState = "pending" | "ok" | "needs_manual" | "error";
 type JobStatus = "pending" | "processing" | "done" | "error";
 
@@ -38,6 +45,8 @@ interface StageResult {
   at?: string;
   started_at?: string;
   account_type?: string | null;
+  story_pk?: string | null;
+  highlight_pk?: string | null;
 }
 
 interface OnboardingJob {
@@ -51,6 +60,10 @@ interface OnboardingJob {
   error_message: string | null;
   photo_url: string | null;
   magic_link: string | null;
+  story_media_url: string | null;
+  story_link_url: string | null;
+  highlight_title: string | null;
+  story_pk: string | null;
   account_id: string | null;
   created_at: string;
   updated_at: string;
@@ -72,6 +85,8 @@ const STAGES: { key: Stage; label: string }[] = [
   { key: "professional", label: "Profissional" },
   { key: "verify_professional", label: "Verificação" },
   { key: "magic_link", label: "Link mágico" },
+  { key: "story", label: "Story" },
+  { key: "highlight", label: "Destaque" },
 ];
 const STAGE_LABEL = Object.fromEntries(STAGES.map((s) => [s.key, s.label])) as Record<Stage, string>;
 
@@ -152,6 +167,121 @@ export default function OnboardingPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [acting, setActing] = useState<Set<string>>(new Set());
 
+  // Templates de onboarding
+  interface OnboardingTemplate {
+    id: string;
+    name: string;
+    app_id: string | null;
+    photo_url: string | null;
+    story_media_url: string | null;
+    story_link_url: string | null;
+    highlight_title: string | null;
+    created_at: string;
+    updated_at: string;
+  }
+  const [templates, setTemplates] = useState<OnboardingTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [showTemplateForm, setShowTemplateForm] = useState(false);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [templateForm, setTemplateForm] = useState({
+    name: "",
+    app_id: "",
+    photo_url: "",
+    story_media_url: "",
+    story_link_url: "",
+    highlight_title: "",
+  });
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [apps, setApps] = useState<{ id: string; app_name: string; ig_app_id: string }[]>([]);
+
+  const loadTemplates = useCallback(async () => {
+    try {
+      const [tplRes, appsRes] = await Promise.all([
+        fetch("/api/onboarding/templates", { cache: "no-store" }),
+        fetch("/api/apps", { cache: "no-store" }),
+      ]);
+      if (tplRes.ok) {
+        const data = await tplRes.json();
+        setTemplates(data.templates ?? []);
+      }
+      if (appsRes.ok) {
+        const data = await appsRes.json();
+        setApps(data.apps ?? []);
+      }
+    } catch {
+      // silently fail
+    }
+  }, []);
+
+  useEffect(() => { loadTemplates(); }, [loadTemplates]);
+
+  const handleSaveTemplate = async () => {
+    if (!templateForm.name.trim()) {
+      setError("Nome do template é obrigatório.");
+      return;
+    }
+    setSavingTemplate(true);
+    setError("");
+    try {
+      const body = {
+        name: templateForm.name.trim(),
+        app_id: templateForm.app_id || null,
+        photo_url: templateForm.photo_url || null,
+        story_media_url: templateForm.story_media_url || null,
+        story_link_url: templateForm.story_link_url || null,
+        highlight_title: templateForm.highlight_title || null,
+      };
+      const url = editingTemplateId
+        ? `/api/onboarding/templates/${editingTemplateId}`
+        : "/api/onboarding/templates";
+      const method = editingTemplateId ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Falha ao salvar template.");
+      setNotice(editingTemplateId ? "Template atualizado." : "Template criado.");
+      setShowTemplateForm(false);
+      setEditingTemplateId(null);
+      setTemplateForm({ name: "", app_id: "", photo_url: "", story_media_url: "", story_link_url: "", highlight_title: "" });
+      await loadTemplates();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao salvar template.");
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    try {
+      const res = await fetch(`/api/onboarding/templates/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Falha ao deletar template.");
+      }
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+      if (selectedTemplateId === id) setSelectedTemplateId("");
+      setNotice("Template removido.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao deletar template.");
+    }
+  };
+
+  const handleEditTemplate = (tpl: OnboardingTemplate) => {
+    setEditingTemplateId(tpl.id);
+    setTemplateForm({
+      name: tpl.name,
+      app_id: tpl.app_id ?? "",
+      photo_url: tpl.photo_url ?? "",
+      story_media_url: tpl.story_media_url ?? "",
+      story_link_url: tpl.story_link_url ?? "",
+      highlight_title: tpl.highlight_title ?? "",
+    });
+    setShowTemplateForm(true);
+  };
+
   const load = useCallback(async () => {
     if (!_firstLoad.current) setLoading(true);
     try {
@@ -193,7 +323,10 @@ export default function OnboardingPage() {
       const res = await fetch("/api/onboarding/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobs: chunk }),
+        body: JSON.stringify({
+          jobs: chunk,
+          template_id: selectedTemplateId || undefined,
+        }),
       });
       if (res.status === 401) { window.location.href = "/auth/login"; break; }
       const data = await res.json().catch(() => ({}));
@@ -237,8 +370,8 @@ export default function OnboardingPage() {
     setSending(true); setError(""); setNotice("");
     try {
       const { created, rejected: rej } = await postJobs(
-        validRows.map(({ username, password, proxy_url, two_factor, photo_url, magic_link }) =>
-          ({ username, password, proxy_url, two_factor, photo_url, magic_link })),
+        validRows.map(({ username, password, proxy_url, two_factor }) =>
+          ({ username, password, proxy_url, two_factor })),
         validRows.map((r) => r.line)
       );
       setRejected(rej);
@@ -467,6 +600,42 @@ export default function OnboardingPage() {
               style={{ background: "rgba(0,229,255,0.08)", border: "0.5px solid rgba(0,229,255,0.25)", color: "rgba(0,229,255,0.9)" }}>
               <Download size={12} />Baixar modelo
             </button>
+          </div>
+
+          {/* Seletor de Template */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
+                <LayoutTemplate size={12} />
+                Template de Onboarding
+                <span style={{ color: "rgba(255,255,255,0.3)" }}>(opcional)</span>
+              </label>
+              <button
+                onClick={() => {
+                  setEditingTemplateId(null);
+                  setTemplateForm({ name: "", app_id: "", photo_url: "", story_media_url: "", story_link_url: "", highlight_title: "" });
+                  setShowTemplateForm(true);
+                }}
+                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold"
+                style={{ background: "rgba(0,255,65,0.08)", border: "0.5px solid rgba(0,255,65,0.25)", color: "rgba(0,255,65,0.9)" }}>
+                <Plus size={10} />Novo template
+              </button>
+            </div>
+            <select
+              value={selectedTemplateId}
+              onChange={(e) => setSelectedTemplateId(e.target.value)}
+              className="input-glass w-full px-3 py-2.5 text-sm rounded-lg"
+              style={{ color: "rgba(255,255,255,0.75)" }}>
+              <option value="">Sem template (usar apenas dados do CSV)</option>
+              {templates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>
+                  {tpl.name} {tpl.app_id ? `· App: ${apps.find(a => a.id === tpl.app_id)?.app_name ?? tpl.app_id.slice(0, 8)}` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+              O template aplica foto de perfil, mídia do story, link externo e título do destaque a todas as contas importadas.
+            </p>
           </div>
 
           <div
@@ -895,6 +1064,175 @@ export default function OnboardingPage() {
           </div>
         )}
       </div>
+
+      {/* Modal de Template de Onboarding */}
+      {showTemplateForm && (
+        <>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50" onClick={() => setShowTemplateForm(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+            <div className="glass rounded-2xl border border-white/10 w-full max-w-lg shadow-2xl pointer-events-auto max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between p-5 pb-4 border-b border-white/[0.06]">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[#00FF41]/10 border border-[#00FF41]/20 flex items-center justify-center">
+                    <LayoutTemplate size={16} className="text-[#00FF41]" />
+                  </div>
+                  <div>
+                    <h2 className="text-white font-semibold text-[15px] leading-tight">
+                      {editingTemplateId ? "Editar Template" : "Novo Template de Onboarding"}
+                    </h2>
+                    <p className="text-white/40 text-xs mt-0.5">
+                      Configuração aplicada a todas as contas importadas com este template
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setShowTemplateForm(false)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/[0.06] transition-all">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {/* Nome */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
+                    <Type size={12} />Nome do Template *
+                  </label>
+                  <input
+                    type="text"
+                    value={templateForm.name}
+                    onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })}
+                    placeholder="Ex: Onboarding APP 04"
+                    className="input-glass w-full px-3 py-2.5 text-sm rounded-lg"
+                    style={{ color: "rgba(255,255,255,0.85)" }}
+                  />
+                </div>
+
+                {/* Meta App */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
+                    <ShieldCheck size={12} />Meta App (para Magic Link automático)
+                  </label>
+                  <select
+                    value={templateForm.app_id}
+                    onChange={(e) => setTemplateForm({ ...templateForm, app_id: e.target.value })}
+                    className="input-glass w-full px-3 py-2.5 text-sm rounded-lg"
+                    style={{ color: "rgba(255,255,255,0.75)" }}>
+                    <option value="">Sem app (Magic Link manual)</option>
+                    {apps.map((app) => (
+                      <option key={app.id} value={app.id}>{app.app_name}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                    Se selecionado, o Magic Link é gerado automaticamente para todas as contas do lote.
+                  </p>
+                </div>
+
+                {/* Foto de Perfil */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
+                    <ImageIcon size={12} />URL da Foto de Perfil
+                  </label>
+                  <input
+                    type="url"
+                    value={templateForm.photo_url}
+                    onChange={(e) => setTemplateForm({ ...templateForm, photo_url: e.target.value })}
+                    placeholder="https://exemplo.com/foto.jpg"
+                    className="input-glass w-full px-3 py-2.5 text-sm rounded-lg font-mono"
+                    style={{ color: "rgba(255,255,255,0.75)" }}
+                  />
+                </div>
+
+                {/* Mídia do Story */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
+                    <ImageIcon size={12} />URL da Mídia do Story (foto ou vídeo)
+                  </label>
+                  <input
+                    type="url"
+                    value={templateForm.story_media_url}
+                    onChange={(e) => setTemplateForm({ ...templateForm, story_media_url: e.target.value })}
+                    placeholder="https://exemplo.com/story.jpg"
+                    className="input-glass w-full px-3 py-2.5 text-sm rounded-lg font-mono"
+                    style={{ color: "rgba(255,255,255,0.75)" }}
+                  />
+                </div>
+
+                {/* Link do Story */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
+                    <Link2 size={12} />URL do Link Externo no Story
+                  </label>
+                  <input
+                    type="url"
+                    value={templateForm.story_link_url}
+                    onChange={(e) => setTemplateForm({ ...templateForm, story_link_url: e.target.value })}
+                    placeholder="https://meusite.com/oferta"
+                    className="input-glass w-full px-3 py-2.5 text-sm rounded-lg font-mono"
+                    style={{ color: "rgba(255,255,255,0.75)" }}
+                  />
+                </div>
+
+                {/* Título do Destaque */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold flex items-center gap-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>
+                    <Type size={12} />Título do Destaque
+                  </label>
+                  <input
+                    type="text"
+                    value={templateForm.highlight_title}
+                    onChange={(e) => setTemplateForm({ ...templateForm, highlight_title: e.target.value })}
+                    placeholder="Ex: Oferta Especial"
+                    maxLength={100}
+                    className="input-glass w-full px-3 py-2.5 text-sm rounded-lg"
+                    style={{ color: "rgba(255,255,255,0.85)" }}
+                  />
+                </div>
+
+                {/* Lista de templates existentes (se não estiver editando) */}
+                {!editingTemplateId && templates.length > 0 && (
+                  <div className="pt-3 border-t border-white/[0.06]">
+                    <p className="text-xs font-semibold mb-2" style={{ color: "rgba(255,255,255,0.4)" }}>Templates existentes:</p>
+                    <div className="space-y-1.5">
+                      {templates.map((tpl) => (
+                        <div key={tpl.id} className="flex items-center justify-between px-3 py-2 rounded-lg"
+                          style={{ background: "rgba(255,255,255,0.03)", border: "0.5px solid rgba(255,255,255,0.08)" }}>
+                          <span className="text-sm" style={{ color: "rgba(255,255,255,0.7)" }}>{tpl.name}</span>
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => handleEditTemplate(tpl)}
+                              className="p-1.5 rounded-md hover:bg-white/[0.06] transition-colors"
+                              title="Editar">
+                              <Pencil size={12} style={{ color: "rgba(0,229,255,0.7)" }} />
+                            </button>
+                            <button onClick={() => handleDeleteTemplate(tpl.id)}
+                              className="p-1.5 rounded-md hover:bg-white/[0.06] transition-colors"
+                              title="Deletar">
+                              <Trash2 size={12} style={{ color: "rgba(255,120,110,0.7)" }} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Botões de ação */}
+                <div className="flex gap-2 pt-2">
+                  <button onClick={() => setShowTemplateForm(false)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white/[0.04] border border-white/[0.08] text-white/60 hover:bg-white/[0.07] hover:text-white/90 transition-all">
+                    Cancelar
+                  </button>
+                  <button onClick={handleSaveTemplate} disabled={savingTemplate || !templateForm.name.trim()}
+                    className="flex-1 btn-primary flex items-center justify-center gap-2 py-2.5 text-sm font-semibold disabled:opacity-50">
+                    {savingTemplate ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                    {editingTemplateId ? "Atualizar" : "Criar Template"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

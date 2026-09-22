@@ -430,3 +430,153 @@ def check_professional(
         )
     except Exception as exc:
         return _fail(cl, tag, exc, authenticated=True)
+
+
+# ---------------------------------------------------------------------------
+# Etapa story
+# ---------------------------------------------------------------------------
+
+_MEDIA_MAX_BYTES = 100 * 1024 * 1024  # 100 MB para video
+
+
+def _download_media(media_url: str) -> tuple[Path, str]:
+    """Baixa a midia (foto ou video) e retorna (path, media_type).
+    media_type é 'photo' ou 'video' baseado no content-type."""
+    if not media_url.lower().startswith(("https://", "http://")):
+        raise ValueError("media_url precisa ser http(s)")
+
+    with httpx.Client(timeout=60.0, follow_redirects=True) as client:
+        with client.stream("GET", media_url) as resp:
+            if resp.status_code != 200:
+                raise ValueError(f"download da midia falhou: HTTP {resp.status_code}")
+            ctype = resp.headers.get("content-type", "")
+            if ctype.startswith("video/"):
+                media_type = "video"
+            elif ctype.startswith("image/"):
+                media_type = "photo"
+            else:
+                raise ValueError(f"media_url nao e imagem nem video (content-type={ctype})")
+
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in resp.iter_bytes():
+                total += len(chunk)
+                if total > _MEDIA_MAX_BYTES:
+                    raise ValueError("midia maior que 100 MB")
+                chunks.append(chunk)
+
+    ext = ".mp4" if media_type == "video" else ".jpg"
+    path = Path(tempfile.gettempdir()) / f"onb_story_{uuid_lib.uuid4().hex}{ext}"
+    path.write_bytes(b"".join(chunks))
+
+    # Se for foto, normaliza para JPEG RGB
+    if media_type == "photo":
+        from io import BytesIO
+        from PIL import Image
+        img = Image.open(BytesIO(path.read_bytes())).convert("RGB")
+        jpg_path = path.with_suffix(".jpg")
+        img.save(jpg_path, format="JPEG", quality=92)
+        path.unlink()
+        path = jpg_path
+
+    return path, media_type
+
+
+def post_story_with_link(
+    username: str,
+    password: str,
+    proxy_url: str,
+    device_seed: str,
+    media_url: str,
+    link_url: str,
+    totp_secret: str | None = None,
+    existing_settings: dict | None = None,
+) -> OnboardingResult:
+    """Posta um story com foto/video e adiciona um sticker de link externo.
+    Retorna o story_pk para uso na etapa highlight."""
+    try:
+        media_path, media_type = _download_media(media_url)
+    except Exception as exc:
+        return OnboardingResult(False, error_code="invalid_media", error_message=f"[{BUILD}] {exc}"[:500])
+
+    try:
+        cl, err, tag = _prepare_client(
+            username, password, proxy_url, device_seed, totp_secret, existing_settings
+        )
+        if err is not None:
+            return OnboardingResult(False, error_code=err[0], error_message=err[1])
+
+        try:
+            from instagrapi.types import StoryLink
+
+            # Cria o sticker de link
+            link_sticker = StoryLink(webUri=link_url)
+
+            # Upload conforme o tipo de midia
+            if media_type == "video":
+                story = cl.video_upload_to_story(media_path, links=[link_sticker])
+            else:
+                story = cl.photo_upload_to_story(media_path, links=[link_sticker])
+
+            story_pk = str(story.pk) if story.pk else None
+            if not story_pk:
+                return OnboardingResult(
+                    False,
+                    error_code="story_no_pk",
+                    error_message=f"{tag} Story postado mas sem pk retornado.",
+                    settings=cl.get_settings(),
+                )
+
+            return OnboardingResult(
+                True,
+                settings=cl.get_settings(),
+                ig_user_id=(str(cl.user_id) if cl.user_id else None),
+                story_pk=story_pk,
+            )
+        except Exception as exc:
+            return _fail(cl, tag, exc, authenticated=True)
+    finally:
+        try:
+            os.unlink(media_path)
+        except OSError:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Etapa highlight
+# ---------------------------------------------------------------------------
+
+
+def create_highlight_from_story(
+    username: str,
+    password: str,
+    proxy_url: str,
+    device_seed: str,
+    story_pk: str,
+    highlight_title: str,
+    totp_secret: str | None = None,
+    existing_settings: dict | None = None,
+) -> OnboardingResult:
+    """Cria um destaque a partir do story postado na etapa anterior."""
+    cl, err, tag = _prepare_client(
+        username, password, proxy_url, device_seed, totp_secret, existing_settings
+    )
+    if err is not None:
+        return OnboardingResult(False, error_code=err[0], error_message=err[1])
+
+    try:
+        highlight = cl.highlight_create(
+            title=highlight_title,
+            story_ids=[story_pk],
+            cover_story_id=story_pk,
+        )
+        highlight_pk = str(highlight.pk) if highlight.pk else None
+
+        return OnboardingResult(
+            True,
+            settings=cl.get_settings(),
+            ig_user_id=(str(cl.user_id) if cl.user_id else None),
+            highlight_pk=highlight_pk,
+        )
+    except Exception as exc:
+        return _fail(cl, tag, exc, authenticated=True)
