@@ -228,17 +228,72 @@ export default function OnboardingPage() {
     setUploadingMedia(true);
     setError("");
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("category", mediaCategory);
-      formData.append("name", file.name.replace(/\.[^.]+$/, ""));
-      const res = await fetch("/api/onboarding/media", {
+      // Passo 1: Obter path do storage via API leve (sem passar o arquivo pela Vercel)
+      const signRes = await fetch("/api/onboarding/media/sign", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+          category: mediaCategory,
+          name: file.name.replace(/\.[^.]+$/, ""),
+        }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Falha no upload.");
-      setNotice(`Mídia "${data.media.name}" adicionada à biblioteca.`);
+
+      // Tratamento robusto de erro (captura respostas não-JSON da Vercel)
+      let signData;
+      try {
+        signData = await signRes.json();
+      } catch {
+        const text = await signRes.text();
+        throw new Error(text.includes("Request Entity Too Large")
+          ? "Arquivo muito grande para o plano atual da Vercel. Tente um arquivo menor ou faça upgrade."
+          : `Erro na API: ${text.slice(0, 100)}`);
+      }
+
+      if (!signRes.ok) throw new Error(signData.error ?? "Falha ao preparar upload.");
+
+      // Passo 2: Upload DIRETO para o Supabase Storage (bypassa a Vercel completamente)
+      const { createBrowserClient } = await import("@supabase/ssr");
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+
+      const { error: uploadError } = await supabase.storage
+        .from(signData.bucket)
+        .upload(signData.path, file, {
+          contentType: file.type,
+          upsert: false,
+        });
+
+      if (uploadError) throw new Error(`Falha no upload: ${uploadError.message}`);
+
+      // Passo 3: Confirmar e registrar no banco
+      const confirmRes = await fetch("/api/onboarding/media/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storagePath: signData.path,
+          category: mediaCategory,
+          name: file.name.replace(/\.[^.]+$/, ""),
+          mimeType: file.type,
+          fileSize: file.size,
+        }),
+      });
+
+      let confirmData;
+      try {
+        confirmData = await confirmRes.json();
+      } catch {
+        const text = await confirmRes.text();
+        throw new Error(`Erro ao confirmar: ${text.slice(0, 100)}`);
+      }
+
+      if (!confirmRes.ok) throw new Error(confirmData.error ?? "Falha ao registrar mídia.");
+
+      setNotice(`Mídia "${confirmData.media.name}" adicionada à biblioteca.`);
       await loadMediaLibrary();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao fazer upload.");
