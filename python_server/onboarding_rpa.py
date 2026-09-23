@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
 
+import httpx
 from playwright.async_api import async_playwright, BrowserContext, Page, TimeoutError as PlaywrightTimeout
 
 # Diretório base para perfis persistentes (cada conta tem sua pasta)
@@ -76,6 +77,19 @@ class InstagramRPA:
         """Remove caracteres inválidos para nome de pasta."""
         return "".join(c if c.isalnum() or c in "._-" else "_" for c in name)
 
+    async def _download_to_temp(self, url: str, suffix: str = "") -> str:
+        """Baixa uma URL para um arquivo temporário local. Retorna o path."""
+        if not url.startswith(("http://", "https://")):
+            # Já é path local
+            return url
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        tmp.write(resp.content)
+        tmp.close()
+        return tmp.name
+
     def _parse_proxy(self, proxy_url: str) -> dict:
         """Converte URL de proxy para formato do Playwright."""
         # Formato: http://user:pass@host:port ou socks5://user:pass@host:port
@@ -116,6 +130,12 @@ class InstagramRPA:
             await self.context.close()
         if self.playwright:
             await self.playwright.stop()
+        # Limpa perfil temporário para evitar acúmulo em /tmp
+        if hasattr(self, "profile_dir") and self.profile_dir.exists():
+            try:
+                shutil.rmtree(self.profile_dir)
+            except Exception:
+                pass
 
     async def inject_cookies(self, cookies: list[dict]):
         """Injeta cookies salvos no contexto do navegador."""
@@ -259,7 +279,11 @@ class InstagramRPA:
 
     async def change_profile_photo(self, photo_path: str) -> RPAResult:
         """Troca a foto de perfil via UI."""
+        local_photo = None
         try:
+            # Baixa mídia se for URL pública (antes de qualquer operação)
+            local_photo = await self._download_to_temp(photo_path, suffix=".jpg")
+
             # Vai para a página de edição de perfil
             await self.page.goto(f"https://www.instagram.com/{self.username}/edit/", wait_until="networkidle")
             await self.page.wait_for_timeout(2000)
@@ -281,40 +305,46 @@ class InstagramRPA:
                 except:
                     continue
 
-            # Faz upload da foto
             file_input = await self.page.query_selector('input[type="file"]')
-            if file_input:
-                await file_input.set_input_files(photo_path)
-                await self.page.wait_for_timeout(3000)
+            if not file_input:
+                return RPAResult(False, "change_photo", "Não encontrou input de arquivo", error_code="file_input_not_found")
 
-                # Clica em salvar/confirmar se necessário
-                save_selectors = [
-                    'button:has-text("Enviar")',
-                    'button:has-text("Submit")',
-                    'button:has-text("Salvar")',
-                    'button:has-text("Save")',
-                ]
+            await file_input.set_input_files(local_photo)
+            await self.page.wait_for_timeout(3000)
 
-                for selector in save_selectors:
-                    try:
-                        btn = await self.page.wait_for_selector(selector, timeout=3000)
-                        if btn:
-                            await btn.click()
-                            await self.page.wait_for_timeout(2000)
-                            break
-                    except:
-                        continue
+            # Clica em salvar/confirmar se necessário
+            save_selectors = [
+                'button:has-text("Enviar")',
+                'button:has-text("Submit")',
+                'button:has-text("Salvar")',
+                'button:has-text("Save")',
+            ]
 
-                return RPAResult(True, "change_photo", "Foto de perfil alterada com sucesso")
+            for selector in save_selectors:
+                try:
+                    btn = await self.page.wait_for_selector(selector, timeout=3000)
+                    if btn:
+                        await btn.click()
+                        await self.page.wait_for_timeout(2000)
+                        break
+                except:
+                    continue
 
-            return RPAResult(False, "change_photo", "Não encontrou input de arquivo", error_code="file_input_not_found")
+            return RPAResult(True, "change_photo", "Foto de perfil alterada com sucesso")
 
         except Exception as e:
             return RPAResult(False, "change_photo", f"Erro ao trocar foto: {str(e)}", error_code="unknown_error")
+        finally:
+            if local_photo and local_photo != photo_path and os.path.exists(local_photo):
+                os.unlink(local_photo)
 
     async def post_story_with_link(self, media_path: str, link_url: str) -> RPAResult:
         """Posta story com mídia e sticker de link via UI."""
+        local_media = None
         try:
+            # Baixa mídia se for URL pública (antes de qualquer operação)
+            local_media = await self._download_to_temp(media_path, suffix=".mp4")
+
             # Vai para a página de criação de story
             await self.page.goto("https://www.instagram.com/create/select/", wait_until="networkidle")
             await self.page.wait_for_timeout(2000)
@@ -336,75 +366,77 @@ class InstagramRPA:
                 except:
                     continue
 
-            # Faz upload da mídia
             file_input = await self.page.query_selector('input[type="file"]')
-            if file_input:
-                await file_input.set_input_files(media_path)
-                await self.page.wait_for_timeout(3000)
+            if not file_input:
+                return RPAResult(False, "story", "Não encontrou input de arquivo para story", error_code="file_input_not_found")
 
-                # Adiciona sticker de link
-                link_sticker_selectors = [
-                    'button:has-text("Link")',
-                    '[aria-label="Link"]',
-                    'div[role="button"]:has-text("Link")',
-                ]
+            await file_input.set_input_files(local_media)
+            await self.page.wait_for_timeout(3000)
 
-                for selector in link_sticker_selectors:
-                    try:
-                        btn = await self.page.wait_for_selector(selector, timeout=5000)
-                        if btn:
-                            await btn.click()
+            # Adiciona sticker de link
+            link_sticker_selectors = [
+                'button:has-text("Link")',
+                '[aria-label="Link"]',
+                'div[role="button"]:has-text("Link")',
+            ]
+
+            for selector in link_sticker_selectors:
+                try:
+                    btn = await self.page.wait_for_selector(selector, timeout=5000)
+                    if btn:
+                        await btn.click()
+                        await self.page.wait_for_timeout(1000)
+
+                        # Preenche a URL
+                        url_input = await self.page.wait_for_selector('input[type="url"], input[placeholder*="link"], input[placeholder*="URL"]', timeout=5000)
+                        if url_input:
+                            await url_input.fill(link_url)
                             await self.page.wait_for_timeout(1000)
 
-                            # Preenche a URL
-                            url_input = await self.page.wait_for_selector('input[type="url"], input[placeholder*="link"], input[placeholder*="URL"]', timeout=5000)
-                            if url_input:
-                                await url_input.fill(link_url)
-                                await self.page.wait_for_timeout(1000)
+                            # Confirma o link
+                            confirm_selectors = [
+                                'button:has-text("Concluir")',
+                                'button:has-text("Done")',
+                                'button:has-text("Adicionar")',
+                            ]
 
-                                # Confirma o link
-                                confirm_selectors = [
-                                    'button:has-text("Concluir")',
-                                    'button:has-text("Done")',
-                                    'button:has-text("Adicionar")',
-                                ]
+                            for confirm_sel in confirm_selectors:
+                                try:
+                                    confirm_btn = await self.page.wait_for_selector(confirm_sel, timeout=3000)
+                                    if confirm_btn:
+                                        await confirm_btn.click()
+                                        await self.page.wait_for_timeout(1000)
+                                        break
+                                except:
+                                    continue
+                        break
+                except:
+                    continue
 
-                                for confirm_sel in confirm_selectors:
-                                    try:
-                                        confirm_btn = await self.page.wait_for_selector(confirm_sel, timeout=3000)
-                                        if confirm_btn:
-                                            await confirm_btn.click()
-                                            await self.page.wait_for_timeout(1000)
-                                            break
-                                    except:
-                                        continue
-                            break
-                    except:
-                        continue
+            # Publica o story
+            publish_selectors = [
+                'button:has-text("Compartilhar")',
+                'button:has-text("Share")',
+                'button:has-text("Publicar")',
+            ]
 
-                # Publica o story
-                publish_selectors = [
-                    'button:has-text("Compartilhar")',
-                    'button:has-text("Share")',
-                    'button:has-text("Publicar")',
-                ]
+            for selector in publish_selectors:
+                try:
+                    btn = await self.page.wait_for_selector(selector, timeout=5000)
+                    if btn:
+                        await btn.click()
+                        await self.page.wait_for_timeout(5000)
+                        return RPAResult(True, "post_story", "Story publicado com sucesso")
+                except:
+                    continue
 
-                for selector in publish_selectors:
-                    try:
-                        btn = await self.page.wait_for_selector(selector, timeout=5000)
-                        if btn:
-                            await btn.click()
-                            await self.page.wait_for_timeout(5000)
-                            return RPAResult(True, "post_story", "Story publicado com sucesso")
-                    except:
-                        continue
-
-                return RPAResult(False, "post_story", "Não encontrou botão de publicar", error_code="publish_button_not_found")
-
-            return RPAResult(False, "post_story", "Não encontrou input de arquivo", error_code="file_input_not_found")
+            return RPAResult(False, "post_story", "Não encontrou botão de publicar", error_code="publish_button_not_found")
 
         except Exception as e:
             return RPAResult(False, "post_story", f"Erro ao postar story: {str(e)}", error_code="unknown_error")
+        finally:
+            if local_media and local_media != media_path and os.path.exists(local_media):
+                os.unlink(local_media)
 
     async def create_highlight_from_story(self, title: str) -> RPAResult:
         """Cria destaque a partir do story mais recente."""

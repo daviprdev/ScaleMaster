@@ -725,8 +725,9 @@ async def onboarding_rpa_run(
         highlight_title=req.highlight_title,
         existing_cookies=req.existing_cookies,
     )
-    if not result["success"]:
-        raise HTTPException(status_code=400, detail=result)
+    # Retorna HTTP 200 mesmo em caso de falha para que o cron receba o JSON
+    # estruturado com error_code e possa decidir entre retry ou erro permanente.
+    # HTTP 400 faria o callPythonServer lançar exceção genérica, perdendo o error_code.
     return result
 
 
