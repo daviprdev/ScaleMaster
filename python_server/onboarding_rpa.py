@@ -151,7 +151,13 @@ class InstagramRPA:
     async def login(self) -> RPAResult:
         """Faz login no Instagram via UI real."""
         try:
-            await self.page.goto("https://www.instagram.com/accounts/login/", wait_until="networkidle")
+            print(f"[RPA:{self.username}] Navegando para página de login...")
+            await self.page.goto(
+                "https://www.instagram.com/accounts/login/",
+                wait_until="domcontentloaded",
+                timeout=30_000,
+            )
+            print(f"[RPA:{self.username}] Página de login carregada: {self.page.url}")
 
             # Verifica se já está logado
             if await self._is_logged_in():
@@ -232,12 +238,15 @@ class InstagramRPA:
     async def accept_tester_invite(self, app_id: str) -> RPAResult:
         """Aceita convite de tester do App Meta via UI."""
         try:
+            print(f"[RPA:{self.username}] Navegando para página de convite tester (app {app_id})...")
             # Vai para a página de convites de tester
             await self.page.goto(
                 f"https://www.instagram.com/accounts/manage_access/?app_id={app_id}",
-                wait_until="networkidle"
+                wait_until="domcontentloaded",
+                timeout=30_000,
             )
-            await self.page.wait_for_timeout(2000)
+            await self.page.wait_for_timeout(3000)
+            print(f"[RPA:{self.username}] Página de convite carregada: {self.page.url}")
 
             # Procura pelo botão de aceitar convite
             # O Instagram pode mostrar diferentes layouts, então tentamos vários seletores
@@ -282,11 +291,19 @@ class InstagramRPA:
         local_photo = None
         try:
             # Baixa mídia se for URL pública (antes de qualquer operação)
+            print(f"[RPA:{self.username}] Baixando foto de perfil...")
             local_photo = await self._download_to_temp(photo_path, suffix=".jpg")
+            print(f"[RPA:{self.username}] Foto baixada: {local_photo}")
 
-            # Vai para a página de edição de perfil
-            await self.page.goto(f"https://www.instagram.com/{self.username}/edit/", wait_until="networkidle")
-            await self.page.wait_for_timeout(2000)
+            # Vai para a página de edição de perfil (domcontentloaded evita hang infinito)
+            print(f"[RPA:{self.username}] Navegando para /edit/...")
+            await self.page.goto(
+                f"https://www.instagram.com/{self.username}/edit/",
+                wait_until="domcontentloaded",
+                timeout=30_000,
+            )
+            await self.page.wait_for_timeout(3000)
+            print(f"[RPA:{self.username}] Página carregada: {self.page.url}")
 
             # Clica em "Alterar foto de perfil"
             change_photo_selectors = [
@@ -345,9 +362,15 @@ class InstagramRPA:
             # Baixa mídia se for URL pública (antes de qualquer operação)
             local_media = await self._download_to_temp(media_path, suffix=".mp4")
 
-            # Vai para a página de criação de story
-            await self.page.goto("https://www.instagram.com/create/select/", wait_until="networkidle")
-            await self.page.wait_for_timeout(2000)
+            # Vai para a página de criação de story (domcontentloaded evita hang)
+            print(f"[RPA:{self.username}] Navegando para criação de story...")
+            await self.page.goto(
+                "https://www.instagram.com/create/select/",
+                wait_until="domcontentloaded",
+                timeout=30_000,
+            )
+            await self.page.wait_for_timeout(3000)
+            print(f"[RPA:{self.username}] Página de story carregada: {self.page.url}")
 
             # Seleciona "Story"
             story_selectors = [
@@ -441,9 +464,15 @@ class InstagramRPA:
     async def create_highlight_from_story(self, title: str) -> RPAResult:
         """Cria destaque a partir do story mais recente."""
         try:
-            # Vai para o perfil
-            await self.page.goto(f"https://www.instagram.com/{self.username}/", wait_until="networkidle")
-            await self.page.wait_for_timeout(2000)
+            # Vai para o perfil (domcontentloaded evita hang infinito)
+            print(f"[RPA:{self.username}] Navegando para perfil (highlight)...")
+            await self.page.goto(
+                f"https://www.instagram.com/{self.username}/",
+                wait_until="domcontentloaded",
+                timeout=30_000,
+            )
+            await self.page.wait_for_timeout(3000)
+            print(f"[RPA:{self.username}] Perfil carregado: {self.page.url}")
 
             # Clica no story mais recente (primeiro círculo de story)
             story_circle = await self.page.wait_for_selector('[aria-label="Story"] canvas, div[role="button"][aria-label*="story"]', timeout=10000)
