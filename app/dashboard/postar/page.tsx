@@ -858,6 +858,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [expandedError, setExpandedError] = useState<string | null>(null);
+  const [expandedEngagement, setExpandedEngagement] = useState<Set<string>>(new Set());
   const [tick, setTick] = useState(0);
   const [editCampaign, setEditCampaign] = useState<Campaign | null>(null);
 
@@ -1082,40 +1083,58 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                 </div>
               </div>
 
-              {/* ── Engagement por conta ── */}
-              {campaign.account_engagement && campaign.account_engagement.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between px-1">
-                    <span className="text-[9px] uppercase tracking-wider text-white/25">Engagement por conta</span>
-                    {(campaign.total_plays ?? 0) > 0 && (
-                      <span className="text-[9px] tabular-nums text-[#00E5FF]/60">{(campaign.total_plays ?? 0).toLocaleString("pt-BR")} views totais</span>
+              {/* ── Engagement por conta (collapsible) ── */}
+              {campaign.account_engagement && campaign.account_engagement.length > 0 && (() => {
+                const isExpanded = expandedEngagement.has(campaign.campaign_id);
+                return (
+                  <div className="space-y-1.5">
+                    <button
+                      onClick={() => setExpandedEngagement(prev => {
+                        const next = new Set(prev);
+                        if (next.has(campaign.campaign_id)) next.delete(campaign.campaign_id);
+                        else next.add(campaign.campaign_id);
+                        return next;
+                      })}
+                      className="flex items-center justify-between w-full px-1 py-1 rounded-lg hover:bg-white/[0.03] transition-colors group"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <ChevronDown size={12} className={cn("text-white/30 transition-transform duration-200", isExpanded ? "rotate-0" : "-rotate-90")} />
+                        <span className="text-[9px] uppercase tracking-wider text-white/25 group-hover:text-white/40 transition-colors">Engagement por conta</span>
+                      </div>
+                      {(campaign.total_plays ?? 0) > 0 && (
+                        <span className="text-[9px] tabular-nums text-[#00E5FF]/60">{(campaign.total_plays ?? 0).toLocaleString("pt-BR")} views totais</span>
+                      )}
+                    </button>
+                    {isExpanded && (
+                      <>
+                        <div className="space-y-1">
+                          {campaign.account_engagement.map((eng, idx) => (
+                            <div key={eng.account_id} className={cn(
+                              "flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px]",
+                              idx === 0 ? "bg-amber-500/[0.04] border-amber-500/10" : "bg-white/[0.02] border-white/[0.04]"
+                            )}>
+                              <span className={cn("w-3 text-center font-bold tabular-nums", idx === 0 ? "text-amber-400" : "text-white/20")}>{idx + 1}</span>
+                              {eng.avatar_url
+                                ? <img src={eng.avatar_url} alt={eng.username} className="w-4 h-4 rounded-full object-cover" />
+                                : <div className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center"><span className="text-[6px] font-bold text-white/40">{eng.username.charAt(0).toUpperCase()}</span></div>
+                              }
+                              <span className="flex-1 truncate text-white/60">@{eng.username}</span>
+                              <div className="flex items-center gap-2.5 tabular-nums">
+                                <span className={cn("font-bold", eng.total_plays > 0 ? "text-[#00E5FF]" : "text-white/15")} title="Views">{eng.total_plays > 0 ? eng.total_plays.toLocaleString("pt-BR") : "—"}</span>
+                                <span className={cn("font-medium", eng.total_likes > 0 ? "text-pink-400" : "text-white/15")} title="Likes">{eng.total_likes > 0 ? eng.total_likes.toLocaleString("pt-BR") : "—"}</span>
+                                <span className={cn("font-medium", eng.total_comments > 0 ? "text-amber-400" : "text-white/15")} title="Comentários">{eng.total_comments > 0 ? eng.total_comments.toLocaleString("pt-BR") : "—"}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {campaign.published > 0 && (campaign.account_engagement.every(e => e.synced_posts === 0)) && (
+                          <p className="text-[9px] text-white/20 px-1">Sincronizando métricas…</p>
+                        )}
+                      </>
                     )}
                   </div>
-                  <div className="space-y-1">
-                    {campaign.account_engagement.map((eng, idx) => (
-                      <div key={eng.account_id} className={cn(
-                        "flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px]",
-                        idx === 0 ? "bg-amber-500/[0.04] border-amber-500/10" : "bg-white/[0.02] border-white/[0.04]"
-                      )}>
-                        <span className={cn("w-3 text-center font-bold tabular-nums", idx === 0 ? "text-amber-400" : "text-white/20")}>{idx + 1}</span>
-                        {eng.avatar_url
-                          ? <img src={eng.avatar_url} alt={eng.username} className="w-4 h-4 rounded-full object-cover" />
-                          : <div className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center"><span className="text-[6px] font-bold text-white/40">{eng.username.charAt(0).toUpperCase()}</span></div>
-                        }
-                        <span className="flex-1 truncate text-white/60">@{eng.username}</span>
-                        <div className="flex items-center gap-2.5 tabular-nums">
-                          <span className={cn("font-bold", eng.total_plays > 0 ? "text-[#00E5FF]" : "text-white/15")} title="Views">{eng.total_plays > 0 ? eng.total_plays.toLocaleString("pt-BR") : "—"}</span>
-                          <span className={cn("font-medium", eng.total_likes > 0 ? "text-pink-400" : "text-white/15")} title="Likes">{eng.total_likes > 0 ? eng.total_likes.toLocaleString("pt-BR") : "—"}</span>
-                          <span className={cn("font-medium", eng.total_comments > 0 ? "text-amber-400" : "text-white/15")} title="Comentários">{eng.total_comments > 0 ? eng.total_comments.toLocaleString("pt-BR") : "—"}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {campaign.published > 0 && (campaign.account_engagement.every(e => e.synced_posts === 0)) && (
-                    <p className="text-[9px] text-white/20 px-1">Sincronizando métricas…</p>
-                  )}
-                </div>
-              )}
+                );
+              })()}
 
               {/* ── Timing row ── */}
               <div className="grid grid-cols-2 gap-2 text-[11px]">
