@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2, Clock, AlertTriangle, Loader2, RefreshCw,
   Radio, Zap, TrendingUp, XCircle, Activity, Heart, Layers,
-  BarChart2, Send,
+  BarChart2, Send, Eye, MessageCircle, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -43,14 +43,17 @@ interface CampaignAccountStatus {
   total: number; published: number; pending: number; failed: number;
   overdue_count: number;
   last_published_at: string | null; next_scheduled_at: string | null;
-  total_likes: number; campaign_ids: string[];
+  total_likes: number; total_plays: number; total_reach: number; total_comments: number;
+  synced_posts: number;
+  campaign_ids: string[];
   last_error_message: string | null;
 }
 
 interface CampaignMonitorData {
   metrics: {
     total_published: number; total_pending: number; total_failed: number;
-    total_overdue: number; total_likes: number; active_campaigns: number; next_publish_in_ms: number | null;
+    total_overdue: number; total_likes: number; total_plays: number; total_reach: number; total_comments: number;
+    active_campaigns: number; next_publish_in_ms: number | null;
   };
   accounts: CampaignAccountStatus[];
   timeline: { published: TimelineEntry[]; upcoming: UpcomingEntry[] };
@@ -434,8 +437,8 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
         </div>
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-4 gap-1.5 text-[10px]">
+      {/* Stats grid — operational */}
+      <div className="grid grid-cols-3 gap-1.5 text-[10px]">
         <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
           <CheckCircle2 size={11} className="text-[var(--matrix)]/60" />
           <span className="font-bold text-[var(--matrix)] tabular-nums">{acc.published}</span>
@@ -451,12 +454,36 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
           <span className={cn("font-bold tabular-nums", hasFailed ? "text-red-400" : "text-white/25")}>{acc.failed}</span>
           <span className="text-[9px] text-white/25">falha</span>
         </div>
+      </div>
+
+      {/* Stats grid — engagement */}
+      <div className="grid grid-cols-4 gap-1.5 text-[10px]">
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+          <Eye size={11} className={cn(acc.total_plays > 0 ? "text-[var(--electric)]/60" : "text-white/15")} />
+          <span className={cn("font-bold tabular-nums", acc.total_plays > 0 ? "text-[var(--electric)]" : "text-white/25")}>{fmtNum(acc.total_plays)}</span>
+          <span className="text-[9px] text-white/25">views</span>
+        </div>
         <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
           <Heart size={11} className={cn(acc.total_likes > 0 ? "text-pink-400/60" : "text-white/15")} />
           <span className={cn("font-bold tabular-nums", acc.total_likes > 0 ? "text-pink-400" : "text-white/25")}>{fmtNum(acc.total_likes)}</span>
           <span className="text-[9px] text-white/25">likes</span>
         </div>
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+          <MessageCircle size={11} className={cn(acc.total_comments > 0 ? "text-amber-400/60" : "text-white/15")} />
+          <span className={cn("font-bold tabular-nums", acc.total_comments > 0 ? "text-amber-400" : "text-white/25")}>{fmtNum(acc.total_comments)}</span>
+          <span className="text-[9px] text-white/25">coment.</span>
+        </div>
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
+          <Users size={11} className={cn(acc.total_reach > 0 ? "text-purple-400/60" : "text-white/15")} />
+          <span className={cn("font-bold tabular-nums", acc.total_reach > 0 ? "text-purple-400" : "text-white/25")}>{fmtNum(acc.total_reach)}</span>
+          <span className="text-[9px] text-white/25">alcance</span>
+        </div>
       </div>
+
+      {/* Sync hint */}
+      {acc.published > 0 && acc.synced_posts === 0 && (
+        <p className="text-[9px] text-white/20 px-1">Sincronizando métricas…</p>
+      )}
 
       {/* Timing row */}
       <div className="grid grid-cols-2 gap-2 text-[11px]">
@@ -731,7 +758,7 @@ function CampaignView() {
     return <div className="flex items-center justify-center h-64"><Loader2 size={24} className="animate-spin text-[var(--electric)]" /></div>;
   }
 
-  const m = data?.metrics ?? { total_published: 0, total_pending: 0, total_failed: 0, total_overdue: 0, total_likes: 0, active_campaigns: 0, next_publish_in_ms: null };
+  const m = data?.metrics ?? { total_published: 0, total_pending: 0, total_failed: 0, total_overdue: 0, total_likes: 0, total_plays: 0, total_reach: 0, total_comments: 0, active_campaigns: 0, next_publish_in_ms: null };
   const allAccounts = data?.accounts ?? [];
 
   const CAMP_FILTERS = [
@@ -776,7 +803,7 @@ function CampaignView() {
         </button>
       </div>
 
-      {/* Metrics */}
+      {/* Metrics — operational */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <MetricCard label="Publicados" sub="em campanhas" value={m.total_published} color="green" icon={CheckCircle2} />
         <MetricCard label="Na fila" sub="agendados" value={m.total_pending} color="cyan" icon={Clock} />
@@ -784,6 +811,13 @@ function CampaignView() {
         <MetricCard label="Falhas" sub="total" value={m.total_failed} color="red" icon={XCircle} />
         <MetricCard label="Próxima postagem" sub="countdown" value="" color="amber" icon={TrendingUp}
           extra={<p className="text-sm font-bold text-amber-400 tabular-nums"><Countdown ms={m.next_publish_in_ms} /></p>} />
+      </div>
+      {/* Metrics — engagement */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mt-3">
+        <MetricCard label="Views" sub="total campanhas" value={fmtNum(m.total_plays ?? 0)} color="cyan" icon={Eye} />
+        <MetricCard label="Likes" sub="total campanhas" value={fmtNum(m.total_likes ?? 0)} color="pink" icon={Heart} />
+        <MetricCard label="Comentários" sub="total campanhas" value={fmtNum(m.total_comments ?? 0)} color="amber" icon={MessageCircle} />
+        <MetricCard label="Alcance" sub="total campanhas" value={fmtNum(m.total_reach ?? 0)} color="violet" icon={Users} />
       </div>
 
       {data && <Timeline published={data.timeline.published} upcoming={data.timeline.upcoming} />}

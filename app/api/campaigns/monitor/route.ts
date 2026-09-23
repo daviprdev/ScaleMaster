@@ -35,7 +35,7 @@ export async function GET() {
 
     admin
       .from("scheduled_posts")
-      .select("id, account_id, campaign_id, status, scheduled_at, published_at, media_id, insights_likes, error_message")
+      .select("id, account_id, campaign_id, status, scheduled_at, published_at, media_id, insights_likes, insights_plays, insights_reach, insights_comments, insights_fetched_at, error_message")
       .eq("user_id", user.id)
       .not("campaign_id", "is", null)
       // pending/publishing (any date), failed (recent), published (last 24h)
@@ -51,7 +51,9 @@ export async function GET() {
   const posts = (postsRes.data ?? []) as {
     id: string; account_id: string; campaign_id: string; status: string;
     scheduled_at: string; published_at: string | null; media_id: string | null;
-    insights_likes: number | null; error_message: string | null;
+    insights_likes: number | null; insights_plays: number | null;
+    insights_reach: number | null; insights_comments: number | null;
+    insights_fetched_at: string | null; error_message: string | null;
   }[];
 
   const accountMap = new Map(accounts.map(a => [a.id, a]));
@@ -63,7 +65,9 @@ export async function GET() {
     total: number; published: number; pending: number; failed: number;
     overdue_count: number;
     last_published_at: string | null; next_scheduled_at: string | null;
-    total_likes: number; campaign_ids: string[];
+    total_likes: number; total_plays: number; total_reach: number; total_comments: number;
+    synced_posts: number;
+    campaign_ids: string[];
     last_error_message: string | null;
   }>();
 
@@ -79,7 +83,9 @@ export async function GET() {
         avatar_url: acc.avatar_url,
         total: 0, published: 0, pending: 0, failed: 0, overdue_count: 0,
         last_published_at: null, next_scheduled_at: null,
-        total_likes: 0, campaign_ids: [],
+        total_likes: 0, total_plays: 0, total_reach: 0, total_comments: 0,
+        synced_posts: 0,
+        campaign_ids: [],
         last_error_message: null,
       });
     }
@@ -89,7 +95,11 @@ export async function GET() {
 
     if (post.status === "published") {
       s.published++;
-      s.total_likes += post.insights_likes ?? 0;
+      s.total_likes    += post.insights_likes    ?? 0;
+      s.total_plays    += post.insights_plays    ?? 0;
+      s.total_reach    += post.insights_reach    ?? 0;
+      s.total_comments += post.insights_comments ?? 0;
+      if (post.insights_fetched_at) s.synced_posts++;
       const pat = post.published_at ?? post.scheduled_at;
       if (!s.last_published_at || pat > s.last_published_at) s.last_published_at = pat;
     } else if (post.status === "pending" || post.status === "publishing") {
@@ -128,6 +138,9 @@ export async function GET() {
   const totalFailed     = accountList.reduce((s, a) => s + a.failed, 0);
   const totalOverdue    = accountList.reduce((s, a) => s + a.overdue_count, 0);
   const totalLikes      = accountList.reduce((s, a) => s + a.total_likes, 0);
+  const totalPlays      = accountList.reduce((s, a) => s + a.total_plays, 0);
+  const totalReach      = accountList.reduce((s, a) => s + a.total_reach, 0);
+  const totalComments   = accountList.reduce((s, a) => s + a.total_comments, 0);
   const activeCampaigns = campaignIds.size;
 
   const publishedTimeline = posts
@@ -163,6 +176,9 @@ export async function GET() {
       total_failed: totalFailed,
       total_overdue: totalOverdue,
       total_likes: totalLikes,
+      total_plays: totalPlays,
+      total_reach: totalReach,
+      total_comments: totalComments,
       active_campaigns: activeCampaigns,
       next_publish_in_ms,
     },
