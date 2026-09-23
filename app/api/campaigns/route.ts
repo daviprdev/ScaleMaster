@@ -25,11 +25,28 @@ interface RpcRow {
   is_clone: boolean;
 }
 
+interface AccountEngagement {
+  account_id: string;
+  username: string;
+  avatar_url: string | null;
+  total_plays: number;
+  total_likes: number;
+  total_comments: number;
+  total_reach: number;
+  published_count: number;
+  synced_posts: number;
+}
+
 interface CampaignSummary extends RpcRow {
   campaign_status: "running" | "completed";
   is_automation: boolean;
   is_synced: boolean;
   synced_folder_names: string[];
+  account_engagement?: AccountEngagement[];
+  total_plays?: number;
+  total_likes?: number;
+  total_comments?: number;
+  total_reach?: number;
 }
 
 export async function GET(req: NextRequest) {
@@ -126,6 +143,66 @@ export async function GET(req: NextRequest) {
       .limit(campaignIds.length * 2);
     const storyIds = new Set<string>((typedRows ?? []).map((r: { campaign_id: string }) => r.campaign_id));
     campaigns = campaigns.filter(c => storyIds.has(c.campaign_id));
+  }
+
+  // Métricas de engagement por conta para cada campanha (views, likes, comments, reach)
+  if (campaigns.length > 0) {
+    const campaignIds = campaigns.map(c => c.campaign_id);
+    const { data: engRows } = await (admin as any)
+      .from("scheduled_posts")
+      .select(`
+        campaign_id,
+        account_id,
+        insights_plays,
+        insights_likes,
+        insights_comments,
+        insights_reach,
+        insights_fetched_at,
+        status,
+        instagram_accounts!inner(id, username, avatar_url)
+      `)
+      .eq("user_id", user.id)
+      .in("campaign_id", campaignIds)
+      .eq("status", "published");
+
+    // Agrupa por campanha → conta
+    const engMap = new Map<string, Map<string, AccountEngagement>>();
+    for (const row of (engRows ?? []) as any[]) {
+      const cid = row.campaign_id as string;
+      const aid = row.account_id as string;
+      if (!engMap.has(cid)) engMap.set(cid, new Map());
+      const accMap = engMap.get(cid)!;
+      if (!accMap.has(aid)) {
+        const acc = row.instagram_accounts as { id: string; username: string; avatar_url: string | null };
+        accMap.set(aid, {
+          account_id: aid,
+          username: acc?.username ?? "?",
+          avatar_url: acc?.avatar_url ?? null,
+          total_plays: 0, total_likes: 0, total_comments: 0, total_reach: 0,
+          published_count: 0, synced_posts: 0,
+        });
+      }
+      const e = accMap.get(aid)!;
+      e.published_count++;
+      e.total_plays += row.insights_plays ?? 0;
+      e.total_likes += row.insights_likes ?? 0;
+      e.total_comments += row.insights_comments ?? 0;
+      e.total_reach += row.insights_reach ?? 0;
+      if (row.insights_fetched_at) e.synced_posts++;
+    }
+
+    // Injeta nas campanhas e calcula totais globais da campanha
+    for (const camp of campaigns) {
+      const accEng = engMap.get(camp.campaign_id);
+      if (accEng && accEng.size > 0) {
+        const list = Array.from(accEng.values()).sort((a, b) => b.total_plays - a.total_plays);
+        camp.account_engagement = list;
+        camp.total_plays = list.reduce((s, e) => s + e.total_plays, 0);
+        camp.total_likes = list.reduce((s, e) => s + e.total_likes, 0);
+        camp.total_comments = list.reduce((s, e) => s + e.total_comments, 0);
+        camp.total_reach = list.reduce((s, e) => s + e.total_reach, 0);
+      }
+    }
   }
 
   return NextResponse.json({ campaigns });

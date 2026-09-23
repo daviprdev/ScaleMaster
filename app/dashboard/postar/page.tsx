@@ -45,6 +45,18 @@ interface SavedCaption {
   created_at: string;
 }
 
+interface AccountEngagement {
+  account_id: string;
+  username: string;
+  avatar_url: string | null;
+  total_plays: number;
+  total_likes: number;
+  total_comments: number;
+  total_reach: number;
+  published_count: number;
+  synced_posts: number;
+}
+
 interface Campaign {
   campaign_id: string;
   total: number;
@@ -64,6 +76,11 @@ interface Campaign {
   is_automation?: boolean;
   is_synced?: boolean;
   synced_folder_names?: string[];
+  account_engagement?: AccountEngagement[];
+  total_plays?: number;
+  total_likes?: number;
+  total_comments?: number;
+  total_reach?: number;
 }
 
 // ── Campaign helpers ────────────────────────────────────────────────────────
@@ -1064,6 +1081,41 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                   <span className="font-bold tabular-nums text-white/25">{campaign.cancelled}</span>
                 </div>
               </div>
+
+              {/* ── Engagement por conta ── */}
+              {campaign.account_engagement && campaign.account_engagement.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[9px] uppercase tracking-wider text-white/25">Engagement por conta</span>
+                    {(campaign.total_plays ?? 0) > 0 && (
+                      <span className="text-[9px] tabular-nums text-[#00E5FF]/60">{(campaign.total_plays ?? 0).toLocaleString("pt-BR")} views totais</span>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    {campaign.account_engagement.map((eng, idx) => (
+                      <div key={eng.account_id} className={cn(
+                        "flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px]",
+                        idx === 0 ? "bg-amber-500/[0.04] border-amber-500/10" : "bg-white/[0.02] border-white/[0.04]"
+                      )}>
+                        <span className={cn("w-3 text-center font-bold tabular-nums", idx === 0 ? "text-amber-400" : "text-white/20")}>{idx + 1}</span>
+                        {eng.avatar_url
+                          ? <img src={eng.avatar_url} alt={eng.username} className="w-4 h-4 rounded-full object-cover" />
+                          : <div className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center"><span className="text-[6px] font-bold text-white/40">{eng.username.charAt(0).toUpperCase()}</span></div>
+                        }
+                        <span className="flex-1 truncate text-white/60">@{eng.username}</span>
+                        <div className="flex items-center gap-2.5 tabular-nums">
+                          <span className={cn("font-bold", eng.total_plays > 0 ? "text-[#00E5FF]" : "text-white/15")} title="Views">{eng.total_plays > 0 ? eng.total_plays.toLocaleString("pt-BR") : "—"}</span>
+                          <span className={cn("font-medium", eng.total_likes > 0 ? "text-pink-400" : "text-white/15")} title="Likes">{eng.total_likes > 0 ? eng.total_likes.toLocaleString("pt-BR") : "—"}</span>
+                          <span className={cn("font-medium", eng.total_comments > 0 ? "text-amber-400" : "text-white/15")} title="Comentários">{eng.total_comments > 0 ? eng.total_comments.toLocaleString("pt-BR") : "—"}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {campaign.published > 0 && (campaign.account_engagement.every(e => e.synced_posts === 0)) && (
+                    <p className="text-[9px] text-white/20 px-1">Sincronizando métricas…</p>
+                  )}
+                </div>
+              )}
 
               {/* ── Timing row ── */}
               <div className="grid grid-cols-2 gap-2 text-[11px]">
