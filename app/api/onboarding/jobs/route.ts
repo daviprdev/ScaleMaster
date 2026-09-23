@@ -252,8 +252,8 @@ export async function POST(req: NextRequest) {
     return {
       user_id: user.id,
       username: v.username,
-      stage: "invite",
-      stage_status: withStage({}, "invite", { state: "pending", started_at: nowIso }),
+      stage: "photo",
+      stage_status: withStage({}, "photo", { state: "pending", started_at: nowIso }),
       password_enc: encrypt(v.password),
       two_factor_enc: v.twoFactor ? encrypt(v.twoFactor) : null,
       proxy_url_enc: encrypt(v.proxy),

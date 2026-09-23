@@ -3,17 +3,18 @@
  * (Fase Onboarding 1/3). Usado pelo cron process-onboarding-jobs e pelas rotas
  * /api/onboarding/jobs.
  *
- * Ordem obrigatoria das etapas: o link magico e OAuth do Instagram Business
- * Login e so funciona em conta Business/Creator, entao a conversao para
- * profissional (e a confirmacao dela) vem ANTES do link.
+ * Fluxo 100% automatico via API privada (instagrapi) - SEM Magic Link/OAuth:
+ *   photo -> professional -> verify_professional -> connect -> story -> highlight
+ *
+ * A etapa "connect" cria a conta no SaaS diretamente salvando os session_settings
+ * na tabela instagram_accounts, sem depender de OAuth ou cliques manuais.
  */
 
 export const ONBOARDING_STAGES = [
-  "invite",
   "photo",
   "professional",
   "verify_professional",
-  "magic_link",
+  "connect",
   "story",
   "highlight",
 ] as const;

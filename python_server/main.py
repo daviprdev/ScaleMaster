@@ -34,6 +34,7 @@ from onboarding import (
     post_story_with_link,
     switch_to_professional,
 )
+from onboarding_rpa import run_onboarding_rpa, RPARequest as RPARequestModel
 
 # ---------------------------------------------------------------------------
 # Config — lidas na inicialização; crash imediato se ausentes
@@ -704,6 +705,29 @@ async def onboarding_magic_link(
         elapsed_ms=outcome.elapsed_ms,
         attempt_log=outcome.log,
     )
+
+
+@app.post("/onboarding-rpa/run")
+async def onboarding_rpa_run(
+    req: RPARequestModel,
+    _: None = Depends(verify_secret_strict),
+) -> dict:
+    """Executa o fluxo completo de onboarding via navegador real (Playwright RPA)."""
+    result = await run_onboarding_rpa(
+        username=req.username,
+        password=req.password,
+        proxy_url=req.proxy_url,
+        totp_secret=req.totp_secret,
+        app_id=req.app_id,
+        photo_path=req.photo_path,
+        story_media_path=req.story_media_path,
+        story_link_url=req.story_link_url,
+        highlight_title=req.highlight_title,
+        existing_cookies=req.existing_cookies,
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result)
+    return result
 
 
 @app.get("/health")
