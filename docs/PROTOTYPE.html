@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoScale — Prototype v2.0</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+:root {
+--bg-base:#09090B;--bg-surface:#18181B;--bg-surface-hover:#27272A;--bg-elevated:#3F3F46;
+--border-subtle:rgba(255,255,255,.06);--border-default:rgba(255,255,255,.10);--border-strong:rgba(255,255,255,.16);
+--text-primary:#FAFAFA;--text-secondary:#A1A1AA;--text-muted:#71717A;--text-disabled:#52525B;
+--accent:#00FF41;--accent-dim:rgba(0,255,65,.08);--accent-text:#4ADE80;
+--danger:#EF4444;--danger-bg:rgba(239,68,68,.10);--warning:#F59E0B;--warning-bg:rgba(245,158,11,.10);
+--success:#22C55E;--success-bg:rgba(34,197,94,.10);--info:#3B82F6;--info-bg:rgba(59,130,246,.10);
+--s1:.25rem;--s2:.5rem;--s3:.75rem;--s4:1rem;--s5:1.25rem;--s6:1.5rem;--s8:2rem;--s10:2.5rem;
+--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;
+--r-sm:4px;--r-md:8px;--r-lg:12px;--r-xl:16px;--r-full:9999px;
+--t-fast:120ms ease;--t-base:200ms ease;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg-base);color:var(--text-primary);font-family:var(--sans);font-size:.875rem;line-height:1.6;-webkit-font-smoothing:antialiased;overflow:hidden}
+.shell{display:flex;height:100vh;width:100vw}
+
+/* ── Sidebar ── */
+.sb{width:260px;background:var(--bg-surface);border-right:1px solid var(--border-default);display:flex;flex-direction:column;flex-shrink:0}
+.sb-logo{display:flex;align-items:center;gap:var(--s2);padding:var(--s4);border-bottom:1px solid var(--border-subtle)}
+.sb-logo-icon{width:32px;height:32px;border-radius:var(--r-md);background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sb-logo-icon svg{width:18px;height:18px;stroke:#000;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.sb-logo-text{font-weight:700;font-size:1rem;letter-spacing:-.02em}
+.sb-nav{flex:1;padding:var(--s3);overflow-y:auto}
+.sb-nav::-webkit-scrollbar{width:3px}.sb-nav::-webkit-scrollbar-thumb{background:var(--bg-elevated);border-radius:2px}
+.gl{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);padding:var(--s3) var(--s3) var(--s1)}
+.ni{display:flex;align-items:center;gap:var(--s2);padding:.45rem var(--s3);border-radius:var(--r-sm);font-size:.82rem;font-weight:500;color:var(--text-secondary);cursor:pointer;transition:all var(--t-fast);margin-bottom:1px;text-decoration:none}
+.ni:hover{background:rgba(255,255,255,.04);color:var(--text-primary)}
+.ni.active{background:var(--accent-dim);color:var(--accent-text)}
+.ni svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.7;flex-shrink:0}
+.ni.active svg{opacity:1}
+.sb-user{padding:var(--s3) var(--s4);border-top:1px solid var(--border-subtle);display:flex;align-items:center;gap:var(--s2)}
+.avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#00CC33);display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;color:#000;flex-shrink:0}
+.uname{font-size:.82rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.urole{font-size:.65rem;color:var(--text-muted)}
+
+/* ── Main ── */
+.main{flex:1;overflow-y:auto;overflow-x:hidden;padding:var(--s8)}
+.main::-webkit-scrollbar{width:6px}.main::-webkit-scrollbar-thumb{background:var(--bg-elevated);border-radius:3px}
+.page{display:none}.page.active{display:block}
+.ph{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:var(--s8)}
+.pb{font-size:.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:var(--s1)}
+.pt{font-size:1.5rem;font-weight:600;letter-spacing:-.02em}
+.pa{display:flex;gap:var(--s3);align-items:center;flex-shrink:0}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s4);border-radius:var(--r-md);font-size:.82rem;font-weight:500;cursor:pointer;border:none;transition:all var(--t-base);font-family:inherit;white-space:nowrap}
+.btn-p{background:var(--accent);color:#000}.btn-p:hover{background:#22FF55}
+.btn-s{background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border-strong)}.btn-s:hover{background:var(--bg-surface-hover)}
+.btn-g{background:transparent;color:var(--text-secondary)}.btn-g:hover{color:var(--text-primary);background:rgba(255,255,255,.04)}
+.btn-d{background:var(--danger-bg);color:#FCA5A5;border:1px solid rgba(239,68,68,.2)}.btn-d:hover{background:rgba(239,68,68,.18)}
+.btn-sm{padding:.35rem .75rem;font-size:.78rem}
+
+/* ── Metrics ── */
+.mg{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s4);margin-bottom:var(--s8)}
+.mc{background:var(--bg-surface);border:1px solid var(--border-default);border-radius:var(--r-lg);padding:var(--s5);transition:border-color var(--t-base)}
+.mc:hover{border-color:var(--border-strong)}
+.ml{font-size:.7rem;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:var(--s1)}
+.mv{font-family:var(--mono);font-size:1.75rem;font-weight:600;letter-spacing:-.03em;line-height:1.2}
+.md{font-size:.75rem;margin-top:var(--s2)}
+.up{color:#86EFAC}.dn{color:#FCA5A5}
+
+/* ── Cards ── */
+.card{background:var(--bg-surface);border:1px solid var(--border-default);border-radius:var(--r-lg);padding:var(--s6)}
+.card-title{font-size:.875rem;font-weight:600;margin-bottom:var(--s4)}
+
+/* ── Table ── */
+.tw{overflow-x:auto;border:1px solid var(--border-default);border-radius:var(--r-lg)}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{text-align:left;padding:var(--s3) var(--s4);font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);background:rgba(255,255,255,.02);border-bottom:1px solid var(--border-default)}
+td{padding:var(--s3) var(--s4);border-bottom:1px solid var(--border-subtle);color:var(--text-secondary)}
+tr:last-child td{border-bottom:none}
+td strong{color:var(--text-primary);font-weight:500}
+.mono{font-family:var(--mono)}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:.7rem;font-weight:500;padding:.15rem .5rem;border-radius:var(--r-full)}
+.b-ok{background:var(--success-bg);color:#86EFAC}.b-err{background:var(--danger-bg);color:#FCA5A5}
+.b-warn{background:var(--warning-bg);color:#FCD34D}.b-info{background:var(--info-bg);color:#93C5FD}
+.dot{width:5px;height:5px;border-radius:50%;background:currentColor}
+
+/* ── Inputs ── */
+.input{background:rgba(255,255,255,.04);border:1px solid var(--border-default);border-radius:var(--r-md);padding:var(--s2) var(--s3);color:var(--text-primary);font-size:.82rem;font-family:inherit;outline:none;transition:border-color var(--t-base);width:100%}
+.input:focus{border-color:var(--accent)}
+.input::placeholder{color:var(--text-muted)}
+.label{font-size:.75rem;font-weight:500;color:var(--text-secondary);margin-bottom:var(--s1);display:block}
+
+/* ── Filter Bar ── */
+.fb{display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap;margin-bottom:var(--s6)}
+.fb .input{max-width:240px}
+.fb select.input{max-width:160px}
+.fb-count{margin-left:auto;font-size:.75rem;color:var(--text-muted)}
+
+/* ── Chart Bars ── */
+.chart{display:flex;align-items:flex-end;gap:6px;height:180px;padding:var(--s4) 0}
+.bar{flex:1;border-radius:var(--r-sm) var(--r-sm) 0 0;transition:height .3s}
+.bar-accent{background:var(--accent)}.bar-dim{background:var(--accent-dim)}
+
+/* ── Toggle ── */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:var(--s4) 0;border-bottom:1px solid var(--border-subtle)}
+.toggle-row:last-child{border-bottom:none}
+.toggle-label{font-size:.82rem;color:var(--text-primary)}
+.toggle-desc{font-size:.72rem;color:var(--text-muted);margin-top:2px}
+.toggle{width:36px;height:20px;border-radius:10px;position:relative;cursor:pointer;flex-shrink:0;transition:background var(--t-base)}
+.toggle.on{background:var(--accent)}.toggle.off{background:var(--bg-surface-hover);border:1px solid var(--border-strong)}
+.toggle-knob{width:16px;height:16px;border-radius:50%;position:absolute;top:2px;transition:left var(--t-base)}
+.toggle.on .toggle-knob{right:2px;background:#000}.toggle.off .toggle-knob{left:2px;background:var(--text-muted)}
+
+/* ── Empty State ── */
+.empty{text-align:center;padding:var(--s10) var(--s4);display:flex;flex-direction:column;align-items:center;gap:var(--s3)}
+.empty-icon{width:48px;height:48px;border-radius:var(--r-lg);background:var(--bg-surface-hover);display:flex;align-items:center;justify-content:center;color:var(--text-muted)}
+.empty-title{font-size:1rem;font-weight:600}
+.empty-desc{font-size:.85rem;color:var(--text-secondary);max-width:300px}
+
+/* ── Section Title ── */
+.st{font-size:.875rem;font-weight:600;margin-bottom:var(--s4);letter-spacing:-.01em}
+
+/* ── Form Grid ── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s4)}
+.form-stack{display:flex;flex-direction:column;gap:var(--s4)}
+
+/* ── Sparkline ── */
+.spark{display:flex;align-items:flex-end;gap:2px;height:24px}
+.spark-bar{flex:1;border-radius:2px;background:var(--accent-dim)}
+.spark-bar.hi{background:var(--accent)}
+
+@media(max-width:1024px){.mg{grid-template-columns:repeat(2,1fr)}.form-grid{grid-template-columns:1fr}}
+@media(max-width:768px){.shell{flex-direction:column}.sb{width:100%;height:auto;max-height:60vh}.main{padding:var(--s4)}.mg{grid-template-columns:1fr}.ph{flex-direction:column;gap:var(--s3)}.pa{width:100%}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ═══════ SIDEBAR ═══════ -->
+<nav class="sb">
+  <div class="sb-logo">
+    <div class="sb-logo-icon"><svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+    <div class="sb-logo-text">AutoScale</div>
+  </div>
+  <div class="sb-nav">
+    <div class="gl">Visão Geral</div>
+    <a class="ni active" data-page="dashboard"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Dashboard</a>
+    <a class="ni" data-page="accounts"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Contas</a>
+    <a class="ni" data-page="onboarding"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>Onboarding</a>
+    <div class="gl">Publicação</div>
+    <a class="ni" data-page="post"><svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Postar</a>
+    <a class="ni" data-page="loop"><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>Loop</a>
+    <a class="ni" data-page="clone"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Clonar Perfil</a>
+    <a class="ni" data-page="stories"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Stories</a>
+    <div class="gl">Relatórios</div>
+    <a class="ni" data-page="monitor"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Monitor</a>
+    <a class="ni" data-page="analytics"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>Analytics</a>
+  </div>
+  <div class="sb-user">
+    <div class="avatar">D</div>
+    <div style="min-width:0"><div class="uname">Davip</div><div class="urole">Admin</div></div>
+  </div>
+</nav>
+
+<!-- ═══════ MAIN CONTENT ═══════ -->
+<main class="main">
+
+<!-- ── DASHBOARD ── -->
+<div class="page active" id="dashboard">
+  <div class="ph">
+    <div><div class="pb">Dashboard / Visão Geral</div><div class="pt">Dashboard</div></div>
+    <div class="pa">
+      <button class="btn btn-s btn-sm">Atualizar</button>
+      <button class="btn btn-p btn-sm">+ Nova Conta</button>
+    </div>
+  </div>
+  <div class="mg">
+    <div class="mc"><div class="ml">Views Hoje</div><div class="mv">18.835</div><div class="md up">↑ 12% vs ontem</div></div>
+    <div class="mc"><div class="ml">Contas Ativas</div><div class="mv">47</div><div class="md">3 com erro · 2 novas</div></div>
+    <div class="mc"><div class="ml">Fila de Postagem</div><div class="mv">128</div><div class="md">Próximo em 4 min</div></div>
+    <div class="mc"><div class="ml">Taxa de Erro</div><div class="mv">2.4%</div><div class="md dn">↑ 0.8% vs semana</div></div>
+  </div>
+  <div class="st">Contas Recentes</div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Conta</th><th>Status</th><th>Posts Hoje</th><th>Views (7d)</th><th>Último Sync</th></tr></thead>
+      <tbody>
+        <tr><td><strong>@salomaothaynara370</strong></td><td><span class="badge b-ok"><span class="dot"></span>Online</span></td><td class="mono">12</td><td class="mono">48.291</td><td style="color:var(--text-muted)">há 3 min</td></tr>
+        <tr><td><strong>@leticiafreitas923</strong></td><td><span class="badge b-err"><span class="dot"></span>Checkpoint</span></td><td class="mono">0</td><td class="mono">—</td><td style="color:var(--text-muted)">há 2h</td></tr>
+        <tr><td><strong>@ursulajessicaemanuela</strong></td><td><span class="badge b-ok"><span class="dot"></span>Online</span></td><td class="mono">8</td><td class="mono">22.104</td><td style="color:var(--text-muted)">há 5 min</td></tr>
+        <tr><td><strong>@catiamartaneves</strong></td><td><span class="badge b-warn"><span class="dot"></span>Sincronizando</span></td><td class="mono">4</td><td class="mono">15.832</td><td style="color:var(--text-muted)">agora</td></tr>
+        <tr><td><strong>@marcosoliveira882</strong></td><td><span class="badge b-ok"><span class="dot"></span>Online</span></td><td class="mono">6</td><td class="mono">31.447</td><td style="color:var(--text-muted)">há 8 min</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── CONTAS ── -->
+<div class="page" id="accounts">
+  <div class="ph">
+    <div><div class="pb">Dashboard / Contas</div><div class="pt">Gerenciar Contas</div></div>
+    <div class="pa">
+      <button class="btn btn-s btn-sm">Exportar CSV</button>
+      <button class="btn btn-p btn-sm">+ Adicionar Conta</button>
+    </div>
+  </div>
+  <div class="fb">
+    <input class="input" placeholder="Buscar conta..." />
+    <select class="input"><option>Todos os status</option><option>Online</option><option>Erro</option><option>Pendente</option></select>
+    <select class="input"><option>Últimos 7 dias</option><option>Últimos 30 dias</option><option>Todos</option></select>
+    <div class="fb-count">47 resultados</div>
+  </div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Conta</th><th>Categoria</th><th>Status</th><th>Posts (30d)</th><th>Views (30d)</th><th>Ações</th></tr></thead>
+      <tbody>
+        <tr><td><strong>@salomaothaynara370</strong></td><td>Lifestyle</td><td><span class="badge b-ok"><span class="dot"></span>Online</span></td><td class="mono">342</td><td class="mono">1.2M</td><td><button class="btn btn-g btn-sm">Editar</button></td></tr>
+        <tr><td><strong>@leticiafreitas923</strong></td><td>Fitness</td><td><span class="badge b-err"><span class="dot"></span>Checkpoint</span></td><td class="mono">0</td><td class="mono">—</td><td><button class="btn btn-g btn-sm">Reconectar</button></td></tr>
+        <tr><td><strong>@ursulajessicaemanuela</strong></td><td>Moda</td><td><span class="badge b-ok"><span class="dot"></span>Online</span></td><td class="mono">218</td><td class="mono">890K</td><td><button class="btn btn-g btn-sm">Editar</button></td></tr>
+        <tr><td><strong>@catiamartaneves</strong></td><td>Finanças</td><td><span class="badge b-warn"><span class="dot"></span>Sincronizando</span></td><td class="mono">156</td><td class="mono">445K</td><td><button class="btn btn-g btn-sm">Editar</button></td></tr>
+        <tr><td><strong>@marcosoliveira882</strong></td><td>Tech</td><td><span class="badge b-ok"><span class="dot"></span>Online</span></td><td class="mono">289</td><td class="mono">672K</td><td><button class="btn btn-g btn-sm">Editar</button></td></tr>
+        <tr><td><strong>@anabeatrizcosta</strong></td><td>Lifestyle</td><td><span class="badge b-ok"><span class="dot"></span>Online</span></td><td class="mono">198</td><td class="mono">534K</td><td><button class="btn btn-g btn-sm">Editar</button></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── POSTAR ── -->
+<div class="page" id="post">
+  <div class="ph">
+    <div><div class="pb">Dashboard / Publicação</div><div class="pt">Criar Publicação</div></div>
+    <div class="pa"><button class="btn btn-p btn-sm">Publicar Agora</button></div>
+  </div>
+  <div class="form-grid">
+    <div class="card">
+      <div class="card-title">Configuração do Post</div>
+      <div class="form-stack">
+        <div><label class="label">Legenda</label><textarea class="input" rows="4" placeholder="Escreva a legenda do post..."></textarea></div>
+        <div><label class="label">Conta de Destino</label><select class="input"><option>@salomaothaynara370</option><option>@ursulajessicaemanuela</option><option>Todas as contas ativas</option></select></div>
+        <div><label class="label">Horário de Publicação</label><select class="input"><option>Agora</option><option>Agendar para mais tarde</option><option>Melhor horário (automático)</option></select></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Preview & Mídia</div>
+      <div style="background:var(--bg-base);border:1px dashed var(--border-strong);border-radius:var(--r-md);padding:var(--s8);text-align:center;color:var(--text-muted);font-size:.82rem;margin-bottom:var(--s4)">
+        Arraste imagens ou clique para upload<br><span style="font-size:.7rem">JPG, PNG até 10MB</span>
+      </div>
+      <div style="display:flex;gap:var(--s2);flex-wrap:wrap">
+        <div style="width:64px;height:64px;border-radius:var(--r-sm);background:var(--bg-surface-hover);border:1px solid var(--border-default)"></div>
+        <div style="width:64px;height:64px;border-radius:var(--r-sm);background:var(--bg-surface-hover);border:1px solid var(--border-default)"></div>
+        <div style="width:64px;height:64px;border-radius:var(--r-sm);background:var(--bg-surface-hover);border:1px dashed var(--border-strong);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:1.2rem;cursor:pointer">+</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── ANALYTICS ── -->
+<div class="page" id="analytics">
+  <div class="ph">
+    <div><div class="pb">Dashboard / Relatórios</div><div class="pt">Analytics</div></div>
+    <div class="pa">
+      <select class="input" style="width:auto"><option>Últimos 7 dias</option><option>Últimos 30 dias</option><option>Últimos 90 dias</option></select>
+      <button class="btn btn-s btn-sm">Exportar</button>
+    </div>
+  </div>
+  <div class="mg" style="grid-template-columns:repeat(3,1fr)">
+    <div class="mc"><div class="ml">Total Views</div><div class="mv">1.2M</div><div class="md up">↑ 23% vs período anterior</div></div>
+    <div class="mc"><div class="ml">Engajamento Médio</div><div class="mv">4.8%</div><div class="md up">↑ 0.6% vs período anterior</div></div>
+    <div class="mc"><div class="ml">Novos Seguidores</div><div class="mv">12.847</div><div class="md dn">↓ 3% vs período anterior</div></div>
+  </div>
+  <div class="card" style="margin-bottom:var(--s6)">
+    <div class="card-title">Views por Dia</div>
+    <div class="chart">
+      <div class="bar bar-dim" style="height:35%"></div>
+      <div class="bar bar-dim" style="height:48%"></div>
+      <div class="bar bar-dim" style="height:42%"></div>
+      <div class="bar bar-dim" style="height:65%"></div>
+      <div class="bar bar-accent" style="height:88%"></div>
+      <div class="bar bar-dim" style="height:72%"></div>
+      <div class="bar bar-dim" style="height:58%"></div>
+      <div class="bar bar-dim" style="height:45%"></div>
+      <div class="bar bar-dim" style="height:62%"></div>
+      <div class="bar bar-dim" style="height:78%"></div>
+      <div class="bar bar-accent" style="height:92%"></div>
+      <div class="bar bar-dim" style="height:68%"></div>
+      <div class="bar bar-dim" style="height:55%"></div>
+      <div class="bar bar-dim" style="height:40%"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:.7rem;color:var(--text-muted);padding-top:var(--s2)">
+      <span>18 Set</span><span>19</span><span>20</span><span>21</span><span>22</span><span>23</span><span>24 Set</span>
+    </div>
+  </div>
+  <div class="st">Top Contas por Performance</div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Conta</th><th>Views (7d)</th><th>Engajamento</th><th>Seguidores Novos</th><th>Tendência</th></tr></thead>
+      <tbody>
+        <tr><td><strong>@salomaothaynara370</strong></td><td class="mono">48.291</td><td class="mono">6.2%</td><td class="mono">+1.240</td><td><div class="spark"><div class="spark-bar" style="height:30%"></div><div class="spark-bar" style="height:50%"></div><div class="spark-bar hi" style="height:80%"></div><div class="spark-bar" style="height:65%"></div><div class="spark-bar" style="height:90%"></div></div></td></tr>
+        <tr><td><strong>@marcosoliveira882</strong></td><td class="mono">31.447</td><td class="mono">5.1%</td><td class="mono">+890</td><td><div class="spark"><div class="spark-bar" style="height:40%"></div><div class="spark-bar" style="height:55%"></div><div class="spark-bar" style="height:45%"></div><div class="spark-bar hi" style="height:70%"></div><div class="spark-bar" style="height:60%"></div></div></td></tr>
+        <tr><td><strong>@ursulajessicaemanuela</strong></td><td class="mono">22.104</td><td class="mono">4.3%</td><td class="mono">+567</td><td><div class="spark"><div class="spark-bar" style="height:60%"></div><div class="spark-bar" style="height:45%"></div><div class="spark-bar" style="height:50%"></div><div class="spark-bar" style="height:40%"></div><div class="spark-bar hi" style="height:55%"></div></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── PÁGINAS PLACEHOLDER ── -->
+<div class="page" id="onboarding">
+  <div class="ph"><div><div class="pb">Dashboard / Onboarding</div><div class="pt">Onboarding</div></div></div>
+  <div class="card"><div class="empty"><div class="empty-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg></div><div class="empty-title">Assistente de Onboarding</div><div class="empty-desc">Configure suas primeiras contas e preferências de publicação em poucos passos.</div><button class="btn btn-p" style="margin-top:var(--s2)">Iniciar Setup</button></div></div>
+</div>
+<div class="page" id="loop"><div class="ph"><div><div class="pb">Dashboard / Publicação</div><div class="pt">Loop Automático</div></div></div><div class="card"><div class="empty"><div class="empty-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></div><div class="empty-title">Loop de Publicação</div><div class="empty-desc">Configure ciclos automáticos de postagem para manter consistência.</div><button class="btn btn-p" style="margin-top:var(--s2)">Criar Loop</button></div></div></div>
+<div class="page" id="clone"><div class="ph"><div><div class="pb">Dashboard / Publicação</div><div class="pt">Clonar Perfil</div></div></div><div class="card"><div class="empty"><div class="empty-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></div><div class="empty-title">Clonar Perfil</div><div class="empty-desc">Duplique configurações e conteúdo entre contas rapidamente.</div><button class="btn btn-p" style="margin-top:var(--s2)">Selecionar Origem</button></div></div></div>
+<div class="page" id="stories"><div class="ph"><div><div class="pb">Dashboard / Publicação</div><div class="pt">Stories</div></div></div><div class="card"><div class="empty"><div class="empty-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg></div><div class="empty-title">Publicar Stories</div><div class="empty-desc">Agende e publique stories automaticamente nas suas contas.</div><button class="btn btn-p" style="margin-top:var(--s2)">Novo Story</button></div></div></div>
+<div class="page" id="monitor"><div class="ph"><div><div class="pb">Dashboard / Relatórios</div><div class="pt">Monitor em Tempo Real</div></div></div><div class="card"><div class="empty"><div class="empty-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div class="empty-title">Monitor Ativo</div><div class="empty-desc">Acompanhe o status de todas as contas e publicações em tempo real.</div><button class="btn btn-p" style="margin-top:var(--s2)">Ativar Monitor</button></div></div></div>
+
+</main>
+</div>
+
+<script>
+document.querySelectorAll('.ni[data-page]').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.ni').forEach(n => n.classList.remove('active'));
+    item.classList.add('active');
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    const target = document.getElementById(item.dataset.page);
+    if (target) target.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>
