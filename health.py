@@ -1,8 +1,10 @@
 """Health check endpoint simples para o Worker RPA."""
 import asyncio
+import uuid
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from config import WORKER_API_SECRET, HEALTH_PORT
+from db import insert_job, list_recent_jobs, get_stats
 
 app = FastAPI(title="AutoScale RPA Worker Health")
 
@@ -49,12 +51,36 @@ async def submit_job(request: Request):
             status_code=400,
         )
 
-    # TODO: Enfileirar job na fila interna (Redis, SQLite local, ou fila em memória)
-    # Por enquanto, apenas valida e retorna accepted
-    return JSONResponse(
-        {"status": "accepted", "username": body["username"]},
-        status_code=202,
-    )
+    # Persistir job no SQLite local
+    job_data = {"id": str(uuid.uuid4()), **body}
+    try:
+        job_id = insert_job(job_data)
+        return JSONResponse(
+            {"status": "accepted", "id": job_id, "username": body["username"]},
+            status_code=202,
+        )
+    except Exception as e:
+        if "UNIQUE constraint" in str(e):
+            return JSONResponse(
+                {"error": "Job já existe para este username"},
+                status_code=409,
+            )
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/jobs")
+async def get_jobs(request: Request):
+    """Lista jobs recentes (últimos 50). Requer auth."""
+    auth = request.headers.get("authorization", "")
+    if auth != f"Bearer {WORKER_API_SECRET}":
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(list_recent_jobs())
+
+
+@app.get("/stats")
+async def stats():
+    """Estatísticas da fila de jobs."""
+    return JSONResponse(get_stats())
 
 
 def start_health_server():

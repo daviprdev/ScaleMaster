@@ -27,6 +27,9 @@ HEALTH_PORT: int = int(os.getenv("HEALTH_PORT", "8080"))
 # Browser
 BROWSER_HEADLESS: bool = os.getenv("BROWSER_HEADLESS", "1") == "1"
 
+# SQLite
+SQLITE_DB_PATH: str = os.getenv("SQLITE_DB_PATH", "/app/data/jobs.db")
+
 
 def validate_config() -> list[str]:
     """Retorna lista de erros de configuração. Lista vazia = OK."""

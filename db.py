@@ -10,7 +10,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
-DB_PATH: str = "/app/data/jobs.db"
+from config import SQLITE_DB_PATH
+
+DB_PATH: str = SQLITE_DB_PATH
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (

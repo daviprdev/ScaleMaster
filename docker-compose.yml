@@ -5,6 +5,7 @@ services:
     env_file: .env
     volumes:
       - ./profiles:/opt/rpa/profiles
+      - ./data:/app/data
     mem_limit: 3g
     cpus: 2.5
     ports:

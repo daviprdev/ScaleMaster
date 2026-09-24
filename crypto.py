@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import os
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from config import ENCRYPTION_SECRET
@@ -42,6 +43,6 @@ def encrypt(plaintext: str) -> str:
 
     key = _derive_key(ENCRYPTION_SECRET)
     aesgcm = AESGCM(key)
-    nonce = aesgcm._backend._get_random_bytes(12)  # type: ignore[attr-defined]
+    nonce = os.urandom(12)  # type: ignore[attr-defined]
     ciphertext_with_tag = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), None)
     return base64.b64encode(nonce + ciphertext_with_tag).decode("ascii")
