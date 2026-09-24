@@ -1,0 +1,16 @@
+services:
+  rpa-worker:
+    build: .
+    restart: always
+    env_file: .env
+    volumes:
+      - ./profiles:/opt/rpa/profiles
+    mem_limit: 3g
+    cpus: 2.5
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
