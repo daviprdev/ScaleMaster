@@ -33,7 +33,6 @@ export const ROTATION_TARGETS: { table: string; columns: string[]; allowPlaintex
   { table: "proxy_pool", columns: ["proxy_url"] },
   { table: "user_meta_apps", columns: ["ig_app_secret"] },
   { table: "reader_accounts", columns: ["password_enc", "totp_secret_enc", "proxy_url", "session_settings"] },
-  { table: "onboarding_jobs", columns: ["password_enc", "two_factor_enc", "proxy_url_enc", "session_settings"] },
   { table: "instagram_accounts", columns: ["proxy_url", "access_token"], allowPlaintext: ["access_token"] },
   { table: "account_logins", columns: ["password_hash", "two_factor_key"] },
   { table: "ig_browser_sessions", columns: ["storage_state_enc"] },

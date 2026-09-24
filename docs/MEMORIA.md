@@ -4600,3 +4600,47 @@ indistinguível de estar tudo bem.
 comportamentais executando `lib/loop-readiness.ts` de verdade, incluindo a
 regressão exata (pasta com zero vídeos recusada, com o nome da pasta na
 mensagem). `npm test` = 653 checagens.
+
+---
+
+## 2026-09-23 — Engagement por conta nas campanhas (Postar + Monitor)
+
+**O que foi feito:** Adaptar a lógica de views por conta do Loop Analytics para
+as campanhas ativas, tanto na aba Postar (`/dashboard/postar`) quanto no Monitor
+de Campanhas (`/dashboard/monitor`).
+
+### API `/api/campaigns/monitor`
+- Select expandido para buscar `insights_plays`, `insights_reach`,
+  `insights_comments` e `insights_fetched_at` de `scheduled_posts`.
+- Agregação por conta inclui `total_plays`, `total_reach`, `total_comments` e
+  `synced_posts` (posts com insights já coletados).
+- Totais globais da resposta incluem os 3 novos campos de engagement.
+
+### API `/api/campaigns`
+- Nova query pós-RPC que busca insights de `scheduled_posts` publicados por
+  campanha e agrupa por conta (`AccountEngagement`).
+- Totais de engagement (`total_plays/likes/comments/reach`) injetados em cada
+  `CampaignSummary`.
+
+### Frontend — Monitor (`app/dashboard/monitor/page.tsx`)
+- `CampaignAccountCard`: grid operacional (publ/fila/falha) separado do grid de
+  engagement (views/likes/coment./alcance). Hint "Sincronizando métricas…"
+  quando há posts publicados sem insight ainda.
+- `CampaignView`: nova linha de metric cards globais
+  (Views/Likes/Comentários/Alcance).
+- Tipos `CampaignAccountStatus` e `CampaignMonitorData` atualizados.
+
+### Frontend — Postar (`app/dashboard/postar/page.tsx`)
+- Cards de campanha exibem ranking de contas com views, likes e comentários,
+  ordenado por views; #1 destacado em amber.
+- Seção de engagement é **colapsável** (colapsada por padrão) via botão com
+  `ChevronDown` que rotaciona ao expandir/recolher. Views totais visíveis mesmo
+  colapsado. Estado por campanha via `Set<string>`.
+- Interface `AccountEngagement` adicionada; `Campaign` expandida com campos
+  opcionais de engagement.
+
+### Commits
+- `f4739e3` — feat: views, reach, comentários e synced por conta nas campanhas
+  ativas do Monitor
+- `936f90e` — feat: engagement por conta nas campanhas ativas da aba Postar
+- `6f495e6` — feat: toggle colapsável para engagement por conta na aba Postar

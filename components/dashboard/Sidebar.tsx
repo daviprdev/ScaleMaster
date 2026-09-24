@@ -54,7 +54,6 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, exact: true },
       { label: "Contas", href: "/dashboard/accounts", icon: Users },
-      { label: "Onboarding", href: "/dashboard/onboarding", icon: UserPlus },
     ],
   },
   {
