@@ -79,15 +79,34 @@ class InstagramRPA:
 
     async def _download_to_temp(self, url: str, suffix: str = "") -> str:
         """Baixa uma URL para um arquivo temporário local. Retorna o path."""
+        if not url or not url.strip():
+            raise ValueError("URL vazia fornecida para download")
         if not url.startswith(("http://", "https://")):
             # Já é path local
+            print(f"[RPA:{self.username}] Path local detectado: {url}")
             return url
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
+        print(f"[RPA:{self.username}] Iniciando download: {url[:120]}...")
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(20.0, connect=10.0),
+                follow_redirects=True,
+            ) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+            print(f"[RPA:{self.username}] Download OK: {len(resp.content)} bytes, status={resp.status_code}")
+        except httpx.TimeoutException as te:
+            print(f"[RPA:{self.username}] TIMEOUT no download após 20s: {te}")
+            raise
+        except httpx.HTTPStatusError as he:
+            print(f"[RPA:{self.username}] HTTP {he.response.status_code} no download: {he}")
+            raise
+        except Exception as e:
+            print(f"[RPA:{self.username}] ERRO no download: {type(e).__name__}: {e}")
+            raise
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
         tmp.write(resp.content)
         tmp.close()
+        print(f"[RPA:{self.username}] Arquivo salvo: {tmp.name} ({len(resp.content)} bytes)")
         return tmp.name
 
     def _parse_proxy(self, proxy_url: str) -> dict:
