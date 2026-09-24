@@ -220,12 +220,12 @@ SQLITE_DB_PATH=/app/data/jobs.db
 
 ---
 
-## MÓDULO onboarding_rpa.py
+## MÓDULO onboarding_rpa.py — Adaptação Obrigatória
 
-Copiar `python_server/onboarding_rpa.py` do repositório principal para este
-repositório. Adicionar o método `complete_magic_link()` descrito acima.
+O arquivo `python_server/onboarding_rpa.py` do repositório principal precisa ser
+copiado para este repositório e **adaptado**. O original NÃO tem suporte a Magic Link.
 
-O módulo já contém:
+### O que o original já contém (não modificar)
 - Classe `InstagramRPA` com login, accept_invite, change_photo, post_story, create_highlight
 - Função `run_onboarding_rpa()` que orquestra o fluxo
 - Helper `_download_to_temp()` para baixar URLs públicas
@@ -233,8 +233,248 @@ O módulo já contém:
 - Logs detalhados `[RPA:username]` em cada etapa
 - `wait_until="domcontentloaded"` (NUNCA usar `"networkidle"`)
 
-**Adição necessária:** O parâmetro `magic_link_url` em `run_onboarding_rpa()`
-e a chamada a `complete_magic_link()` como última etapa antes de retornar.
+### Adaptações obrigatórias
+
+#### 1. Adicionar método `complete_magic_link()` à classe `InstagramRPA`
+
+Inserir após `create_highlight_from_story()` (antes da função `run_onboarding_rpa()`):
+
+```python
+async def complete_magic_link(self, magic_link_url: str) -> RPAResult:
+    """Navega até o Magic Link do SaaS para vincular a conta via OAuth."""
+    import base64
+    try:
+        print(f"[RPA:{self.username}] Navegando para Magic Link...")
+        await self.page.goto(magic_link_url, wait_until="domcontentloaded", timeout=30_000)
+
+        # Aguardar redirect para página de sucesso
+        try:
+            await self.page.wait_for_url("**/add/success**", timeout=15_000)
+            print(f"[RPA:{self.username}] ✅ Magic Link aceito — conta vinculada!")
+            return RPAResult(True, "magic_link", "Conta vinculada ao SaaS via OAuth")
+        except PlaywrightTimeout:
+            current = self.page.url
+            if "/dashboard" in current or "/accounts" in current:
+                print(f"[RPA:{self.username}] ✅ Já no dashboard — conta vinculada!")
+                return RPAResult(True, "magic_link", "Conta vinculada (redirect direto)")
+
+            title = await self.page.title()
+            screenshot = await self.page.screenshot(type="jpeg", quality=60)
+            print(f"[RPA:{self.username}] ❌ Magic Link falhou: {title}")
+            return RPAResult(
+                False, "magic_link",
+                f"Página: {title}. URL final: {current}",
+                error_code="magic_link_failed",
+            )
+    except Exception as e:
+        return RPAResult(False, "magic_link", f"Erro no Magic Link: {str(e)}", error_code="magic_link_error")
+```
+
+#### 2. Modificar assinatura de `run_onboarding_rpa()`
+
+Adicionar parâmetro `magic_link_url: Optional[str] = None` e remover `app_id: str`:
+
+```python
+async def run_onboarding_rpa(
+    username: str,
+    password: str,
+    proxy_url: str,
+    totp_secret: Optional[str],
+    # app_id: str,          ← REMOVER (não é mais necessário)
+    photo_path: Optional[str],
+    story_media_path: Optional[str],
+    story_link_url: Optional[str],
+    highlight_title: Optional[str],
+    magic_link_url: Optional[str] = None,  # ← ADICIONAR
+    existing_cookies: Optional[list[dict]] = None,
+) -> dict:
+```
+
+#### 3. Adicionar etapa 6 (Magic Link) no fluxo da função
+
+Inserir após a etapa 5 (create_highlight) e antes do retorno de sucesso:
+
+```python
+        # Etapa 6: Vincular conta ao SaaS via Magic Link (se fornecido)
+        if magic_link_url:
+            magic_result = await rpa.complete_magic_link(magic_link_url)
+            if not magic_result.success:
+                return {
+                    "success": False,
+                    "stage": "magic_link",
+                    "message": magic_result.message,
+                    "error_code": magic_result.error_code,
+                    "cookies": await rpa.get_cookies(),
+                }
+```
+
+#### 4. Remover referências a Supabase/banco compartilhado
+
+O original pode conter imports ou chamadas a `supabase`, `onboarding_jobs`, etc.
+Remover tudo — este worker é standalone e não conhece o banco do SaaS.
+
+---
+
+## INTEGRAÇÃO ENTRE MÓDULOS (health ↔ db ↔ worker)
+
+Os três módulos existem mas precisam ser conectados. Sem isso, jobs se perdem.
+
+### Fluxo completo de um job
+
+```
+POST /jobs (health.py)
+    │
+    ├─ Valida auth Bearer + campos obrigatórios
+    ├─ Chama db.insert_job(job_data)
+    ├─ Retorna 202 Accepted
+    │
+    ▼
+Worker Loop (worker.py) ──── a cada POLL_INTERVAL_SECONDS
+    │
+    ├─ db.reset_stale_jobs()         ← auto-healing
+    ├─ db.claim_next_job()           ← claim atômico
+    ├─ Se None → sleep e repetir
+    │
+    ├─ Decifra credenciais (crypto.decrypt)
+    ├─ Executa run_onboarding_rpa(...)
+    │
+    ├─ Sucesso → db.complete_job(id)
+    ├─ Falha permanente → db.fail_job(id, msg, permanent=True)
+    └─ Falha transitória → db.fail_job(id, msg, permanent=False)
+                           └─ retry_count++, volta pra pending
+```
+
+### O que falta implementar
+
+| Módulo | Função | Status | Ação |
+|--------|--------|--------|------|
+| `health.py` | `POST /jobs` | Tem `# TODO` | Chamar `db.insert_job()` e integrar com fila |
+| `health.py` | `GET /jobs` | Não existe | Adicionar endpoint que chama `db.list_recent_jobs()` |
+| `worker.py` | Loop principal | Usa `asyncio.Queue` em memória | Substituir por `db.claim_next_job()` |
+| `worker.py` | Auto-healing | Não existe | Chamar `db.reset_stale_jobs()` no início de cada ciclo |
+| `worker.py` | Resultado | Não persiste | Chamar `db.complete_job()` ou `db.fail_job()` após execução |
+
+### Exemplo de integração no health.py
+
+```python
+from db import insert_job, list_recent_jobs, get_stats
+import uuid
+
+@app.post("/jobs")
+async def submit_job(request: Request):
+    auth = request.headers.get("authorization", "")
+    if auth != f"Bearer {WORKER_API_SECRET}":
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    body = await request.json()
+    required = ["username", "password_enc", "magic_link_token"]
+    missing = [f for f in required if not body.get(f)]
+    if missing:
+        return JSONResponse({"error": f"Campos ausentes: {', '.join(missing)}"}, status_code=400)
+
+    job_data = {
+        "id": str(uuid.uuid4()),
+        **body,
+    }
+    try:
+        job_id = insert_job(job_data)
+        return JSONResponse({"status": "accepted", "id": job_id}, status_code=202)
+    except Exception as e:
+        if "UNIQUE constraint" in str(e):
+            return JSONResponse({"error": "Job já existe para este username"}, status_code=409)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.get("/jobs")
+async def get_jobs(request: Request):
+    auth = request.headers.get("authorization", "")
+    if auth != f"Bearer {WORKER_API_SECRET}":
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(list_recent_jobs())
+
+@app.get("/stats")
+async def stats():
+    return JSONResponse(get_stats())
+```
+
+---
+
+## ENDPOINT NO SAAS — Geração de Magic Link Token
+
+O worker precisa receber um `magic_link_token` válido. O SaaS deve expor uma rota
+para gerar esse token. Sem isso, não há como testar o fluxo end-to-end.
+
+### Rota: POST /api/onboarding/magic-token
+
+**Auth:** Sessão do usuário logado (cookie NextAuth/Clerk)
+
+**Body:** `{}` (vazio — o user_id vem da sessão)
+
+**Lógica:**
+```typescript
+// app/api/onboarding/magic-token/route.ts
+import { createClient } from "@supabase/supabase-js";
+import { v4 as uuidv4 } from "uuid";
+
+export async function POST(req: Request) {
+  const session = await getSession(); // NextAuth ou Clerk
+  if (!session?.user?.id) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const token = uuidv4();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+
+  const supabase = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+  await supabase.from("magic_add_tokens").insert({
+    user_id: session.user.id,
+    token,
+    expires_at: expiresAt.toISOString(),
+    used: false,
+  });
+
+  const url = `${process.env.NEXT_PUBLIC_APP_URL}/add/${token}`;
+  return Response.json({ token, url, expires_at: expiresAt.toISOString() });
+}
+```
+
+### Tabela no Supabase (SaaS)
+
+```sql
+CREATE TABLE IF NOT EXISTS magic_add_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id),
+  token TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_magic_tokens_token ON magic_add_tokens(token);
+```
+
+### Rota: GET /add/[token] (já existe no SaaS)
+
+Esta rota recebe o token, valida, faz o OAuth linking da conta Instagram ao
+user_id associado, seta o cookie `ig_oauth_magic_user_id`, e redireciona para
+`/add/success` ou `/dashboard/accounts`. O RPA apenas navega até esta URL —
+toda a lógica de vinculação está no SaaS.
+
+### Fluxo E2E completo
+
+```
+1. Operador clica "Gerar Magic Link" no dashboard do SaaS
+2. SaaS chama POST /api/onboarding/magic-token → retorna { token, url }
+3. Operador copia a URL e inclui no payload do POST /jobs do worker
+   OU o SaaS chama diretamente POST /jobs do worker passando o token
+4. Worker executa RPA → última etapa navega até /add/{token}
+5. SaaS valida token, vincula conta ao user_id, redireciona para /add/success
+6. Worker detecta redirect → marca job como done
+7. Dashboard do SaaS mostra conta vinculada em tempo real
+```
 
 ---
 
