@@ -4200,67 +4200,6 @@ typecheck/build e o schema no banco.
   Se um fix de front não aparecer, orientar hard refresh / fechar-reabrir o app
   antes de assumir que o código está errado.
 
-## 2026-09-16 — Fase Onboarding 1/3: fundação (tabela + fila + python_server)
-
-- **Objetivo:** automatizar o onboarding manual de contas (logar → aceitar
-  convite do App → trocar foto → virar Profissional → link mágico). Estratégia:
-  instagrapi no python_server existente, sem navegador/RPA, replicando o padrão
-  `reader_accounts`/`scrape_jobs`/`login_jobs`.
-- **Ordem é regra, não detalhe:** o link mágico é OAuth do Instagram Business
-  Login e só funciona em conta Business/Creator. Por isso
-  `invite → photo → professional → verify_professional → magic_link`.
-- **Entregue:** tabela `onboarding_jobs` (aplicada via MCP), `lib/onboarding.ts`
-  (etapas, `nextStage`, `withStage`, progresso, normalização de username),
-  `python_server/onboarding.py` + 4 endpoints `/onboarding/*`, cron
-  `process-onboarding-jobs` (`*/2`), rotas `GET/POST /api/onboarding/jobs` e
-  `PATCH /api/onboarding/jobs/[id]`.
-- **Decisões:**
-  - `session_settings` ficou `text` (ciphertext), não `jsonb` — igual a
-    `reader_accounts`; jsonb só guardaria o ciphertext como string.
-  - Contador de falhas (`retry_count`) é POR ETAPA: zera ao avançar. 3 falhas
-    na mesma etapa = erro permanente.
-  - Erros que retry não resolve (senha errada, checkpoint, suspensa, app
-    desatualizado, `needs_manual`, foto inválida) encerram o job na hora.
-  - Espera (propagação do tipo de conta, aguardando conexão) NÃO conta como
-    falha.
-  - `device_seed` = id do job. Fica estável por conta durante todo o onboarding.
-  - Pausa de 30–90s entre etapas do mesmo job: nada de rajada de ações.
-  - PATCH `skip` existe para destravar etapa `needs_manual` depois que o humano
-    fez a ação à mão.
-- **Riscos em aberto:**
-  - **Convite de testador:** nenhum endpoint documentado. Os caminhos no código
-    são hipóteses NÃO verificadas; o esperado hoje é `needs_manual` com status
-    HTTP e trecho da resposta no motivo. Próximo passo: capturar o tráfego real
-    de Configurações → Apps e sites → Convites de testador e preencher
-    `IG_TESTER_INVITES_LIST_URL`/`IG_TESTER_INVITE_ACCEPT_URL` no Railway.
-  - Nada foi testado contra conta real: depende do deploy do python_server.
-  - `magic_link` só detecta a conexão; a visita automática é a fase 2/3.
-
-
-## Sessão 2026-09-16 — Fase Onboarding 3/3 (antecipada): página /dashboard/onboarding
-
-- **Entregue:** página `app/dashboard/onboarding/page.tsx` + link "Onboarding"
-  na Sidebar (VISÃO GERAL) e título no Header; `lib/onboarding-import.ts`
-  (leitura de planilha no browser).
-- **Importação:** CSV (separador `;`, `,` ou tab detectado; aspas RFC 4180; BOM;
-  linha `sep=`) e XLSX via `read-excel-file/universal` (import dinâmico — o
-  `/browser` usa Web Worker e complica o bundle). Cabeçalho com aliases
-  (usuario/senha/proxy…); sem cabeçalho reconhecido assume a ordem do modelo.
-  Colunas opcionais `two_factor`, `photo_url`, `magic_link` também são lidas.
-  Validação local só dá feedback — a definitiva é do POST. Envio em lotes de
-  200 (teto da rota); recusas do servidor mostradas com a linha da planilha.
-  Modelo baixável: CSV com `;` e BOM (abre direto no Excel pt-BR).
-- **Autenticação:** a página chama a rota com `fetch` same-origin — o cookie da
-  sessão Supabase vai junto, igual às outras páginas. O "Nao autenticado" só
-  aparece em chamada sem cookie (curl).
-- **Lista:** polling 10s (pausa com aba oculta), filtros Todos/Em andamento/
-  Atenção/Concluídos, trilha das 5 etapas com estado por chip, botão **Pular
-  etapa** quando a etapa atual está `needs_manual`, **Tentar de novo** quando o
-  job está parado em erro, e **Log** expansível com o `reason` de cada etapa +
-  `error_message`.
-- **Não validado contra conta real** (depende do python_server no Railway).
-
-
 ## Sessão 2026-09-16 — Motor Browser (Playwright), Fases 1–3
 
 - **Por quê:** instagrapi falhando no login (`app_outdated` / "CAA login did not
@@ -4270,18 +4209,16 @@ typecheck/build e o schema no banco.
   senha errada "As informações de login que você inseriu estão incorretas".
   Chromium headless novo: `navigator.webdriver=false`, sem "HeadlessChrome" nos
   client hints. Imagem Docker 1,0 → 1,99 GB; ~415 MB RAM por sessão.
-- **Sessão salva** em `ig_browser_sessions` (não em `instagram_accounts`, porque
-  a conta em onboarding só vira linha lá no fim do fluxo). Criptografia
-  compatível byte a byte com `lib/encrypt.ts` (verificado Python→Node).
+- **Sessão salva** em `ig_browser_sessions` (não em `instagram_accounts`).
+  Criptografia compatível byte a byte com `lib/encrypt.ts` (verificado Python→Node).
 - **Pendências:** `ENCRYPTION_SECRET` no Railway; teste com conta real
   (helena_santosq76); Fases 4/5 planejadas em `docs/BROWSER-ENGINE.md`.
 
 ## Rotação da ENCRYPTION_SECRET (2026-09-17)
 
 - Script `scripts/rotate-encryption-secret.mjs` (transação única, dry-run por
-  padrão, `--commit`, `--verify`). Inventário de 15 colunas cifradas; hoje só
-  `proxy_pool` (140), `user_meta_apps` (3), `reader_accounts` (15 valores) e
-  `onboarding_jobs` (2) têm dados.
+  padrão, `--commit`, `--verify`). Inventário de colunas cifradas; hoje só
+  `proxy_pool`, `user_meta_apps`, `reader_accounts` e `ig_browser_sessions` têm dados.
 - A chave efetiva é `sha256(ENCRYPTION_SECRET)` — a hex nova é usada como
   string, sem mudança de código no Next nem no python_server.
 - Railway só usa a chave em `ig_browser_sessions`; Vercel em todo o resto.
@@ -4290,101 +4227,16 @@ typecheck/build e o schema no banco.
   `/api/internal/rotate-encryption-secret`, que lê a antiga do runtime da
   Vercel. Ligada só enquanto existir `KEY_ROTATION_TOKEN`; remover depois.
 
-## Sessão 2026-09-19/20 — Onboarding: 2FA, remoção de conta e magic_link automatizado
+## 2026-09-24 — Onboarding movido para worker standalone (OAuth/Magic Link)
 
-### 1. O bug relatado de 2FA não existia (`f234cfd`)
-
-- **Relato:** `totp_secret` não seria enviado de `process-instagram-logins`
-  para o python_server. **Falso:** é enviado desde o primeiro commit da feature
-  (`842e473`), e a cadeia está inteira (route.ts:215 → main.py →
-  `instagram_login.authenticate_client`).
-- **Mais decisivo:** essa rota **nunca rodou** — `login_jobs` = 0 linhas e
-  `account_logins` = 0 linhas em produção.
-- **Falha real:** `onboarding_jobs`, etapa `invite`, 3 contas, todas com
-  `two_factor_enc IS NULL`. O cron mandava `totp_secret || undefined`
-  corretamente; não havia segredo cadastrado.
-- **Bug de verdade — o usuário ficava sem saída:** o formulário de conta única
-  em `/dashboard/onboarding` não tinha campo de 2FA (só o CSV aceitava
-  `two_factor`), e o card do job travado só oferecia Pular/Tentar de novo. O
-  `PATCH` já aceitava `two_factor`, mas a UI nunca expôs.
-- **Correções:** `TwoFactorRequired` ganhou código próprio
-  `two_factor_required` (antes somado a `checkpoint_required`, que está em
-  `ACCOUNT_DEAD_ERRORS` e enterrava contas saudáveis como mortas); no
-  onboarding vira `needs_manual`, nos crons de scrape/login encerra sem retry
-  inútil; mensagem separa "nenhum segredo cadastrado" de "código recusado";
-  campo de 2FA no cadastro único e painel no card que salva o segredo e
-  reenfileira a etapa na mesma chamada (detecção cobre a mensagem antiga, em
-  minúsculas e sem distinção de caixa).
-- **Não era necessário reativar conta:** os 3 jobs têm `account_id` NULL (a
-  linha em `instagram_accounts` só nasce no `magic_link`), o cron de onboarding
-  não chama `markDeadAccounts`, e havia 0 contas em erro / 0 `failover_logs`.
-
-### 2. Remover conta da fila de onboarding (`34d6e05`)
-
-- Não havia como tirar uma conta da fila — só deixar o job travado na tela.
-- **Achado que causaria falha silenciosa:** `onboarding_jobs` tinha RLS com
-  `select/insert/update` e **nenhuma policy de delete**. Seguindo o padrão do
-  projeto (client do usuário + `.eq("user_id")`), o delete apagaria 0 linhas e
-  responderia sucesso. Criada `onboarding_jobs_owner_delete` (migration
-  aplicada + `supabase/onboarding_jobs.sql`), e o delete usa `.select()` para
-  confirmar em vez de confiar na ausência de erro.
-- **Escopo:** apaga só a linha da fila. A única FK sai desta tabela
-  (`account_id → instagram_accounts`, ON DELETE SET NULL) e nada referencia
-  `onboarding_jobs` — conta já conectada continua ativa, e a notificação diz
-  isso. Job em `processing` é bloqueado com 409.
-- **Testado contra produção** com linha descartável e `set local role
-  authenticated`: dono apagou 1 linha, tentativa sobre linha de outro usuário
-  apagou 0, sem resíduo.
-
-### 3. Etapa magic_link automatizada no navegador (`31dc466`)
-
-- `python_server/magic_link.py` → `complete_magic_link()` percorre o caminho do
-  usuário real: `/add/{token}` (grava os cookies OAuth no domínio do SaaS) →
-  `instagram.com/oauth/authorize` → `/api/instagram/callback` → `/add/success`.
-  Reusa o `browser_engine` inteiro (proxy da conta, geo, fingerprint,
-  semáforo de concorrência).
-- **`/api/instagram/callback` não foi tocado** — a automação só entrega o
-  browser até lá com os mesmos cookies de um humano.
-- **A sessão do onboarding é instagrapi, não de navegador.** As etapas
-  anteriores logam pela API privada e `session_settings` não é `storage_state`
-  do Playwright. `storage_state_from_instagrapi()` converte os cookies
-  (`sessionid`, `ds_user_id`, `csrftoken`, `mid`, `ig_did`, `rur`). Sessão de
-  navegador salva em `ig_browser_sessions` tem prioridade.
-- **Identidade conferida antes de qualquer clique:** a tela de autorização
-  vincula quem estiver logado no navegador; o `ds_user_id` do cookie é
-  comparado ao da conta e divergência aborta sem autorizar. Vincular a conta
-  errada seria pior do que não vincular.
-- Endpoint `POST /onboarding/magic-link` com `verify_secret_strict` (recebe
-  sessão e devolve screenshot — mesma sensibilidade do `/test-browser-login`).
-- Cron: chama o Python em vez de só esperar; resolve o link do job ou o token
-  do próprio usuário em `magic_add_tokens`; sem proxy decifrável não faz
-  chamada nenhuma. Sucesso → confirma a linha em `instagram_accounts` e avança.
-  `needs_manual` → para. `ip_error`/`unknown` → backoff, 3 falhas encerram.
-- UI: card em `needs_manual` na etapa oferece abrir/copiar o link;
-  `MagicLinkModal` intacto.
-- **Duas hipóteses NÃO verificadas** (exigem conta real + proxy + Railway no
-  ar): (a) se o `sessionid` mobile autentica o instagram.com no Chromium — é o
-  mesmo token e a técnica é conhecida, mas o risk engine pode reagir à sessão
-  saltando de app Android para navegador desktop; (b) os seletores do botão de
-  autorização (a Meta não documenta esse DOM). Sem candidato conhecido **não
-  clica em nada** — volta `needs_manual` com screenshot e o texto da tela, que
-  é o insumo para ajustar o seletor. Lista de exclusão impede clique em
-  "Cancelar"/"Negar".
-- **Testado sem navegador:** conversão da sessão com payload realista de
-  `get_settings()` (cookies, domínio, flags, `httpOnly` no `sessionid`),
-  recusa sem `sessionid`, guardas de URL inválida e proxy vazia (nenhuma abre
-  navegador) e os regex de permitir/negar.
-
-### Pendências ao fim da sessão
-
-- **Deploy do python_server no Railway** — sem ele, `magic_link.py` não existe
-  em produção e a classificação `two_factor_required` não sai. Frontend já
-  está no ar (Vercel, deploy do commit `f234cfd` em diante).
-- Teste ponta a ponta do 2FA e do magic_link com conta real (usar
-  `beatriz_rocha1101` ou `aline_santosq49`; `helena_santosq76` já está
-  conectada e seu job ficou obsoleto).
-- Rotação da `ENCRYPTION_SECRET` segue pendente; remover a rota temporária
-  depois.
+- A automação de onboarding foi **completamente separada** do SaaS.
+- Worker RPA standalone em repositório próprio (`autoscale-rpa-worker`):
+  Python + Playwright + SQLite local, zero conexão com Supabase do SaaS.
+- Conexão conta↔SaaS acontece **apenas** via OAuth Magic Link: o RPA navega
+  até `https://autoscale-ia.vercel.app/add/{token}` como última etapa.
+- Removido do SaaS: `app/api/onboarding/`, `app/dashboard/onboarding/`,
+  `lib/onboarding.ts`, `lib/onboarding-import.ts`, cron `process-onboarding-jobs`.
+- Prompt completo de desenvolvimento no repositório do worker (`PROMPT-DESENVOLVIMENTO.md`).
 
 ---
 
