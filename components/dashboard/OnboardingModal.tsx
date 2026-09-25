@@ -235,7 +235,7 @@ export default function OnboardingModal({ open, onClose, onSuccess }: Onboarding
 
                   <div className="space-y-2">
                     <label className="text-white/40 text-[11px] font-semibold uppercase tracking-wide flex items-center gap-1.5">
-                      <ShieldCheck size={10} /> Secret 2FA (TOTP) — opcional
+                      <ShieldCheck size={10} /> Secret 2FA (TOTP) — obrigatório
                     </label>
                     <input
                       type="text"
@@ -244,6 +244,7 @@ export default function OnboardingModal({ open, onClose, onSuccess }: Onboarding
                       placeholder="JBSWY3DPEHPK3PXP"
                       className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-cyan-500/50 transition-colors font-mono text-xs"
                     />
+                    <p className="text-white/20 text-[10px]">Chave secreta do app autenticador (Google Authenticator, Authy, etc.). Obrigatória para login.</p>
                   </div>
 
                   <div className="space-y-2">
@@ -261,7 +262,7 @@ export default function OnboardingModal({ open, onClose, onSuccess }: Onboarding
 
                   <button
                     onClick={() => setStep("media")}
-                    disabled={!username.trim() || !password.trim()}
+                    disabled={!username.trim() || !password.trim() || !twoFactorSecret.trim()}
                     className="w-full py-2.5 rounded-xl bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-bold uppercase tracking-wide hover:bg-cyan-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Próximo: Mídias →

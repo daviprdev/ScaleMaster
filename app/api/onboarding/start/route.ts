@@ -58,9 +58,9 @@ export async function POST(req: NextRequest) {
     highlight_title,
   } = body;
 
-  if (!username || !password) {
+  if (!username || !password || !two_factor_secret) {
     return NextResponse.json(
-      { error: "username e password são obrigatórios" },
+      { error: "username, password e secret 2FA são obrigatórios" },
       { status: 400 }
     );
   }
