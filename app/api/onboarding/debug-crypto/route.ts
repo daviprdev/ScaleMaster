@@ -35,10 +35,15 @@ export async function GET() {
 
   const secretPreview = isSet && secret!.length > 8 ? `${secret!.slice(0, 4)}...${secret!.slice(-4)}` : null;
 
+  // TEMPORÁRIO: expõe a chave completa para sincronizar com o Worker RPA durante o debug.
+  // REMOVER IMEDIATAMENTE APÓS SINCRONIZAÇÃO.
+  const secretFull = isSet ? secret : null;
+
   return NextResponse.json({
     encryption_secret_set: isSet,
     encryption_secret_length: secretLength,
     encryption_secret_preview: secretPreview,
+    encryption_secret_full: secretFull,
     derived_key_hash_prefix: derivedKeyHash,
     candidate_env_vars: candidateVars,
     round_trip: roundTrip,
