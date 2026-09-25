@@ -485,6 +485,14 @@ async def run_onboarding_rpa(
       - cookies: cookies atualizados (para salvar no banco)
       - error_code: código de erro se falhou
     """
+    if not totp_secret or not totp_secret.strip():
+        return {
+            "success": False,
+            "stage": "validation",
+            "message": "Secret 2FA (TOTP) é obrigatório — todos os logins exigem autenticação de dois fatores",
+            "error_code": "needs_2fa",
+        }
+
     rpa = InstagramRPA(username, password, proxy_url, totp_secret)
 
     try:
