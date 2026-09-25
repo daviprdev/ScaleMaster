@@ -39,6 +39,7 @@ export default function OnboardingModal({ open, onClose, onSuccess }: Onboarding
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [storyFile, setStoryFile] = useState<File | null>(null);
   const [storyLinkUrl, setStoryLinkUrl] = useState("");
+  const [storyLinkText, setStoryLinkText] = useState("");
   const [highlightTitle, setHighlightTitle] = useState("");
 
   // Upload progress
@@ -58,6 +59,7 @@ export default function OnboardingModal({ open, onClose, onSuccess }: Onboarding
     setPhotoFile(null);
     setStoryFile(null);
     setStoryLinkUrl("");
+    setStoryLinkText("");
     setHighlightTitle("");
     setUploading(false);
     setSubmitting(false);
@@ -133,6 +135,7 @@ export default function OnboardingModal({ open, onClose, onSuccess }: Onboarding
           photo_url: photoUrl,
           story_media_url: storyMediaUrl,
           story_link_url: storyLinkUrl.trim() || undefined,
+          story_link_text: storyLinkText.trim() || undefined,
           highlight_title: highlightTitle.trim() || undefined,
         }),
       });
@@ -325,6 +328,21 @@ export default function OnboardingModal({ open, onClose, onSuccess }: Onboarding
                       placeholder="https://meulink.com/oferta"
                       className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-cyan-500/50 transition-colors"
                     />
+                  </div>
+
+                  {/* Texto personalizado do sticker */}
+                  <div className="space-y-2">
+                    <label className="text-white/40 text-[11px] font-semibold uppercase tracking-wide flex items-center gap-1.5">
+                      <LinkIcon size={10} /> Texto do sticker — opcional
+                    </label>
+                    <input
+                      type="text"
+                      value={storyLinkText}
+                      onChange={(e) => setStoryLinkText(e.target.value)}
+                      placeholder="Clique aqui 🔥"
+                      className="w-full px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                    />
+                    <p className="text-white/20 text-[10px]">Texto que aparece no botão do link no story. Se vazio, usa a URL.</p>
                   </div>
 
                   {/* Título do destaque */}

@@ -19,6 +19,7 @@ interface StartOnboardingBody {
   photo_url?: string;         // URL pública da foto de perfil (Supabase Storage)
   story_media_url?: string;   // URL pública da mídia do story
   story_link_url?: string;    // URL do sticker de link no story
+  story_link_text?: string;   // Texto personalizado do sticker de link (opcional)
   highlight_title?: string;   // título do destaque
 }
 
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
     photo_url,
     story_media_url,
     story_link_url,
+    story_link_text,
     highlight_title,
   } = body;
 
@@ -107,6 +109,7 @@ export async function POST(req: NextRequest) {
     photo_url: photo_url ?? null,
     story_media_url: story_media_url ?? null,
     story_link_url: story_link_url ?? null,
+    story_link_text: story_link_text ?? null,
     highlight_title: highlight_title ?? null,
     magic_link_token: magicToken,
   };
