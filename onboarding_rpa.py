@@ -158,11 +158,16 @@ class InstagramRPA:
             return await self.context.cookies()
         return []
 
-    def _init_instagrapi_from_cookies(self, cookies: list[dict]) -> bool:
-        """Inicializa instagrapi.Client com os cookies extraídos do Playwright.
+    def _init_instagrapi(self) -> bool:
+        """Inicializa instagrapi.Client com login mobile direto (username/password).
 
-        Converte cookies do Playwright (formato web) para o formato de settings
-        do instagrapi (sessão mobile). Retorna True se sucesso.
+        Cookies web do Playwright NÃO são compatíveis com a sessão mobile do
+        instagrapi — são formatos completamente diferentes (web sessionid vs
+        mobile IG_SIG_KEY + device headers). Por isso fazemos login direto
+        pelo instagrapi com as mesmas credenciais usadas no Playwright.
+        As duas sessões coexistem: Playwright cuida do que só a web faz
+        (aceite de convite tester), instagrapi cuida do resto (foto, story,
+        destaque) via API mobile privada.
         """
         try:
             from instagrapi import Client
@@ -173,46 +178,26 @@ class InstagramRPA:
             if self.proxy_url:
                 cl.set_proxy(self.proxy_url)
 
-            # Extrai cookies relevantes do Instagram
-            ig_cookies = {}
-            for cookie in cookies:
-                if "instagram.com" in cookie.get("domain", ""):
-                    ig_cookies[cookie["name"]] = cookie["value"]
-
-            # Verifica se temos os cookies essenciais
-            required_cookies = ["sessionid", "csrftoken", "ds_user_id"]
-            missing = [c for c in required_cookies if c not in ig_cookies]
-
-            if missing:
-                print(f"[RPA:{self.username}] ⚠️ Cookies essenciais faltando para instagrapi: {missing}")
-                # Tenta fazer login direto pelo instagrapi como fallback
-                print(f"[RPA:{self.username}] Tentando login direto via instagrapi...")
-                cl.login(self.username, self.password)
-            else:
-                # Injeta cookies no instagrapi
-                cl.set_cookies(ig_cookies)
-                # Verifica se a sessão é válida
-                try:
-                    cl.user_info_by_username(self.username)
-                    print(f"[RPA:{self.username}] ✅ Sessão instagrapi válida via cookies web")
-                except Exception as e:
-                    print(f"[RPA:{self.username}] ⚠️ Sessão web inválida no instagrapi: {e}")
-                    print(f"[RPA:{self.username}] Tentando login direto via instagrapi...")
-                    cl.login(self.username, self.password)
-
-            # Configura 2FA se necessário
+            # Login mobile direto — não usa cookies do Playwright
+            print(f"[RPA:{self.username}] Fazendo login mobile via instagrapi...")
             if self.totp_secret:
-                cl.enable_totp(self.totp_secret)
+                verification_code = self._generate_totp(self.totp_secret)
+                cl.login(self.username, self.password, verification_code=verification_code)
+            else:
+                cl.login(self.username, self.password)
+
+            # Verifica se a sessão é válida
+            user_info = cl.user_info_by_username(self.username)
+            print(f"[RPA:{self.username}] ✅ Instagrapi logado como @{user_info.username} (id: {user_info.pk})")
 
             self.ig_client = cl
-            print(f"[RPA:{self.username}] ✅ Instagrapi inicializado com sucesso")
             return True
 
         except ImportError:
             print(f"[RPA:{self.username}] ❌ instagrapi não instalado — pip install instagrapi")
             return False
         except Exception as e:
-            print(f"[RPA:{self.username}] ❌ Erro ao inicializar instagrapi: {e}")
+            print(f"[RPA:{self.username}] ❌ Erro ao inicializar instagrapi: {type(e).__name__}: {e}")
             return False
 
     async def login(self) -> RPAResult:
@@ -521,15 +506,15 @@ async def run_onboarding_rpa(
         # Etapa 2: Aceitar convite de tester via Playwright (web) — se aplicável
         # Pulada quando não há app_id — worker standalone não usa essa etapa
 
-        # Etapa 2.5: Inicializar instagrapi com cookies da sessão web
-        web_cookies = await rpa.get_cookies()
-        if not rpa._init_instagrapi_from_cookies(web_cookies):
+        # Etapa 2.5: Inicializar instagrapi com login mobile direto
+        # (cookies web do Playwright não são compatíveis com sessão mobile)
+        if not rpa._init_instagrapi():
             return {
                 "success": False,
                 "stage": "instagrapi_init",
-                "message": "Falha ao inicializar instagrapi com cookies web",
+                "message": "Falha ao inicializar instagrapi (login mobile)",
                 "error_code": "instagrapi_init_failed",
-                "cookies": web_cookies,
+                "cookies": await rpa.get_cookies(),
             }
 
         # Etapa 3: Trocar foto de perfil via instagrapi (mobile)
