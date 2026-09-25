@@ -45,6 +45,7 @@ import {
   Lock,
 } from "lucide-react";
 import MagicLinkModal from "@/components/dashboard/MagicLinkModal";
+import OnboardingModal from "@/components/dashboard/OnboardingModal";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -1016,6 +1017,7 @@ export default function AccountsPage() {
   const [userApps, setUserApps] = useState<UserMetaApp[]>([]);
   const [appPickerOpen, setAppPickerOpen] = useState(false);
   const [magicLinkOpen, setMagicLinkOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   // Folder state
   const [folders, setFolders] = useState<AccountFolder[]>([]);
@@ -1937,6 +1939,15 @@ export default function AccountsPage() {
 
       {/* Magic Link modal */}
       <MagicLinkModal open={magicLinkOpen} onClose={() => setMagicLinkOpen(false)} />
+      <OnboardingModal
+        open={onboardingOpen}
+        onClose={() => setOnboardingOpen(false)}
+        onSuccess={(data) => {
+          console.log("[onboarding] Job enviado:", data);
+          // Recarrega a lista de contas após alguns segundos para mostrar a nova conta
+          setTimeout(() => window.location.reload(), 5000);
+        }}
+      />
 
       {/* App picker modal */}
       <AnimatePresence>
@@ -2951,7 +2962,14 @@ export default function AccountsPage() {
                 Verificar
               </button>
               <button
-                onClick={() => setMagicLinkOpen(true)}
+                onClick={() => setOnboardingOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-semibold hover:bg-cyan-500/20 transition-colors flex items-center gap-1.5"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+              RPA
+            </button>
+            <button
+              onClick={() => setMagicLinkOpen(true)}
                 className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-[#00FF41]/20 text-[#00FF41]/70 hover:text-[#00FF41] hover:border-[#00FF41]/40 hover:bg-[#00FF41]/[0.06] transition-all"
               >
                 <LinkIcon size={14} />
