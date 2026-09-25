@@ -37,9 +37,16 @@ export async function GET() {
     };
   }
 
+  // Retorna prefixo/sufixo da secret para ajudar a identificar qual valor está configurado
+  // (sem expor o valor completo por segurança)
+  const secretPreview = isSet && secret!.length > 8
+    ? `${secret!.slice(0, 4)}...${secret!.slice(-4)}`
+    : null;
+
   return NextResponse.json({
     encryption_secret_set: isSet,
     encryption_secret_length: secretLength,
+    encryption_secret_preview: secretPreview,
     derived_key_hash_prefix: derivedKeyHash,
     round_trip: roundTrip,
     timestamp: new Date().toISOString(),
