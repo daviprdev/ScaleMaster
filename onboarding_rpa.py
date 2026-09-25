@@ -370,8 +370,14 @@ class InstagramRPA:
             if local_photo and local_photo != photo_path and os.path.exists(local_photo):
                 os.unlink(local_photo)
 
-    async def post_story_with_link(self, media_path: str, link_url: str) -> RPAResult:
-        """Posta story com mídia e sticker de link via UI."""
+    async def post_story_with_link(self, media_path: str, link_url: str, link_text: str | None = None) -> RPAResult:
+        """Posta story com mídia e sticker de link via UI.
+
+        Args:
+            media_path: URL ou caminho local da mídia (imagem/vídeo)
+            link_url: URL do sticker de link
+            link_text: Texto personalizado do sticker (opcional). Se None, usa a URL como texto.
+        """
         local_media = None
         try:
             # Baixa mídia se for URL pública (antes de qualquer operação)
@@ -430,6 +436,32 @@ class InstagramRPA:
                         if url_input:
                             await url_input.fill(link_url)
                             await self.page.wait_for_timeout(1000)
+
+                            # Personaliza o texto do sticker (se fornecido)
+                            if link_text:
+                                print(f"[RPA:{self.username}] Personalizando texto do sticker: '{link_text}'")
+                                # Clica no botão "Personalizar texto" ou similar
+                                customize_selectors = [
+                                    'button:has-text("Personalizar")',
+                                    'button:has-text("Customize")',
+                                    'div:has-text("Personalizar texto")',
+                                    '[aria-label*="personalizar"]',
+                                    '[aria-label*="customize"]',
+                                ]
+                                for cust_sel in customize_selectors:
+                                    try:
+                                        cust_btn = await self.page.wait_for_selector(cust_sel, timeout=3000)
+                                        if cust_btn:
+                                            await cust_btn.click()
+                                            await self.page.wait_for_timeout(1000)
+                                            # Preenche o texto personalizado
+                                            text_input = await self.page.wait_for_selector('input[type="text"], textarea', timeout=3000)
+                                            if text_input:
+                                                await text_input.fill(link_text)
+                                                await self.page.wait_for_timeout(500)
+                                            break
+                                    except:
+                                        continue
 
                             # Confirma o link
                             confirm_selectors = [
@@ -546,9 +578,14 @@ class InstagramRPA:
     async def complete_magic_link(self, magic_link_url: str) -> RPAResult:
         """Navega até o Magic Link do SaaS para vincular a conta via OAuth."""
         import base64
+        from urllib.parse import urlencode
         try:
-            print(f"[RPA:{self.username}] Navegando para Magic Link...")
-            await self.page.goto(magic_link_url, wait_until="domcontentloaded", timeout=30_000)
+            # Anexa dados da conta via query string para a página /add/[token] ler
+            params = urlencode({"username": self.username})
+            separator = "&" if "?" in magic_link_url else "?"
+            full_url = f"{magic_link_url}{separator}{params}"
+            print(f"[RPA:{self.username}] Navegando para Magic Link: {full_url[:120]}...")
+            await self.page.goto(full_url, wait_until="domcontentloaded", timeout=30_000)
 
             # Aguardar redirect para página de sucesso
             try:
@@ -581,6 +618,7 @@ async def run_onboarding_rpa(
     photo_path: Optional[str],
     story_media_path: Optional[str],
     story_link_url: Optional[str],
+    story_link_text: Optional[str],
     highlight_title: Optional[str],
     magic_link_url: Optional[str] = None,
     profile_dir: Optional[str] = None,
@@ -632,7 +670,7 @@ async def run_onboarding_rpa(
 
         # Etapa 4: Postar story com link (se fornecido)
         if story_media_path and story_link_url:
-            story_result = await rpa.post_story_with_link(story_media_path, story_link_url)
+            story_result = await rpa.post_story_with_link(story_media_path, story_link_url, story_link_text)
             if not story_result.success:
                 return {
                     "success": False,

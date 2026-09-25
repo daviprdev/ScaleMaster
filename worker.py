@@ -75,6 +75,7 @@ class RPAWorker:
                     photo_path=job.get("photo_url"),
                     story_media_path=job.get("story_media_url"),
                     story_link_url=job.get("story_link_url"),
+                    story_link_text=job.get("story_link_text"),
                     highlight_title=job.get("highlight_title"),
                     magic_link_url=magic_link_url,
                     profile_dir=str(Path(PROFILES_DIR) / username),
