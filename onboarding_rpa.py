@@ -1,19 +1,23 @@
 """
-AutoScale - Onboarding automatizado via Navegador Real (RPA com Playwright).
+AutoScale - Onboarding automatizado HÍBRIDO (Playwright Web + Instagrapi Mobile).
 
-Substitui completamente o instagrapi para o fluxo de onboarding. Usa um
-navegador Chromium real com perfis isolados persistentes (cookies/storage
-salvos em disco), exatamente como Multilogin/AdsPower fazem.
+Arquitetura:
+  - Playwright (Chromium headless): usado APENAS para login inicial e aceite
+    de convite de tester do App Meta — ações que exigem sessão web real.
+  - Instagrapi (API privada mobile): usado para trocar foto de perfil, postar
+    story com sticker de link (texto personalizado) e criar destaque — mais
+    rápido, leve e menos detectável como bot do que automação de DOM.
 
 Fluxo por conta:
   1. Abre Chromium com proxy dedicada e perfil persistente
-  2. Injeta cookies salvos (se existir) ou faz login com user/senha/2FA
-  3. Aceita convite de tester do App Meta (clica na UI real)
-  4. Troca foto de perfil (upload via UI)
-  5. Converte para conta profissional (se necessário)
-  6. Posta story com mídia + sticker de link
-  7. Cria destaque a partir do story
-  8. Salva cookies atualizados para reuso futuro
+  2. Faz login com user/senha/2FA via UI web (Playwright)
+  3. Aceita convite de tester do App Meta via UI web (Playwright) — se aplicável
+  4. Extrai cookies da sessão web e inicializa instagrapi.Client com eles
+  5. Troca foto de perfil via instagrapi (mobile API)
+  6. Posta story com mídia + sticker de link (texto personalizado) via instagrapi
+  7. Cria destaque a partir do story via instagrapi
+  8. Navega até Magic Link do SaaS via Playwright para vincular conta
+  9. Salva cookies atualizados para reuso futuro
 
 Retry inteligente: se der erro de IP/bloqueio, fecha o navegador, troca
 a proxy e tenta de novo (até 6 vezes).
@@ -51,7 +55,7 @@ class RPAResult:
 
 
 class InstagramRPA:
-    """Automação via navegador real para onboarding de contas Instagram."""
+    """Automação híbrida: Playwright (web) + Instagrapi (mobile) para onboarding."""
 
     def __init__(
         self,
@@ -72,6 +76,7 @@ class InstagramRPA:
         self.page: Optional[Page] = None
         self.playwright = None
         self.browser = None
+        self.ig_client = None  # instagrapi.Client — inicializado após login web
 
     def _safe_filename(self, name: str) -> str:
         """Remove caracteres inválidos para nome de pasta."""
@@ -82,7 +87,6 @@ class InstagramRPA:
         if not url or not url.strip():
             raise ValueError("URL vazia fornecida para download")
         if not url.startswith(("http://", "https://")):
-            # Já é path local
             print(f"[RPA:{self.username}] Path local detectado: {url}")
             return url
         print(f"[RPA:{self.username}] Iniciando download: {url[:120]}...")
@@ -111,7 +115,6 @@ class InstagramRPA:
 
     def _parse_proxy(self, proxy_url: str) -> dict:
         """Converte URL de proxy para formato do Playwright."""
-        # Formato: http://user:pass@host:port ou socks5://user:pass@host:port
         from urllib.parse import urlparse
         parsed = urlparse(proxy_url)
         proxy = {
@@ -127,11 +130,10 @@ class InstagramRPA:
         """Inicia o Playwright e abre o navegador com perfil persistente."""
         self.playwright = await async_playwright().start()
 
-        # Launch persistent context (salva cookies/storage automaticamente)
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(self.profile_dir),
-            headless=True,  # True para produção, False para debug
-            proxy=self._parse_proxy(self.proxy_url),
+            headless=True,
+            proxy=self._parse_proxy(self.proxy_url) if self.proxy_url else None,
             viewport={"width": 1920, "height": 1080},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             locale="pt-BR",
@@ -149,13 +151,6 @@ class InstagramRPA:
             await self.context.close()
         if self.playwright:
             await self.playwright.stop()
-        # Perfis persistentes: NÃO deletar profile_dir
-        # Os cookies/storage devem sobreviver entre execuções
-
-    async def inject_cookies(self, cookies: list[dict]):
-        """Injeta cookies salvos no contexto do navegador."""
-        if self.context and cookies:
-            await self.context.add_cookies(cookies)
 
     async def get_cookies(self) -> list[dict]:
         """Retorna os cookies atuais do contexto."""
@@ -163,8 +158,65 @@ class InstagramRPA:
             return await self.context.cookies()
         return []
 
+    def _init_instagrapi_from_cookies(self, cookies: list[dict]) -> bool:
+        """Inicializa instagrapi.Client com os cookies extraídos do Playwright.
+
+        Converte cookies do Playwright (formato web) para o formato de settings
+        do instagrapi (sessão mobile). Retorna True se sucesso.
+        """
+        try:
+            from instagrapi import Client
+
+            cl = Client()
+
+            # Configura proxy se existir
+            if self.proxy_url:
+                cl.set_proxy(self.proxy_url)
+
+            # Extrai cookies relevantes do Instagram
+            ig_cookies = {}
+            for cookie in cookies:
+                if "instagram.com" in cookie.get("domain", ""):
+                    ig_cookies[cookie["name"]] = cookie["value"]
+
+            # Verifica se temos os cookies essenciais
+            required_cookies = ["sessionid", "csrftoken", "ds_user_id"]
+            missing = [c for c in required_cookies if c not in ig_cookies]
+
+            if missing:
+                print(f"[RPA:{self.username}] ⚠️ Cookies essenciais faltando para instagrapi: {missing}")
+                # Tenta fazer login direto pelo instagrapi como fallback
+                print(f"[RPA:{self.username}] Tentando login direto via instagrapi...")
+                cl.login(self.username, self.password)
+            else:
+                # Injeta cookies no instagrapi
+                cl.set_cookies(ig_cookies)
+                # Verifica se a sessão é válida
+                try:
+                    cl.user_info_by_username(self.username)
+                    print(f"[RPA:{self.username}] ✅ Sessão instagrapi válida via cookies web")
+                except Exception as e:
+                    print(f"[RPA:{self.username}] ⚠️ Sessão web inválida no instagrapi: {e}")
+                    print(f"[RPA:{self.username}] Tentando login direto via instagrapi...")
+                    cl.login(self.username, self.password)
+
+            # Configura 2FA se necessário
+            if self.totp_secret:
+                cl.enable_totp(self.totp_secret)
+
+            self.ig_client = cl
+            print(f"[RPA:{self.username}] ✅ Instagrapi inicializado com sucesso")
+            return True
+
+        except ImportError:
+            print(f"[RPA:{self.username}] ❌ instagrapi não instalado — pip install instagrapi")
+            return False
+        except Exception as e:
+            print(f"[RPA:{self.username}] ❌ Erro ao inicializar instagrapi: {e}")
+            return False
+
     async def login(self) -> RPAResult:
-        """Faz login no Instagram via UI real."""
+        """Faz login no Instagram via UI real (Playwright)."""
         try:
             print(f"[RPA:{self.username}] Navegando para página de login...")
             await self.page.goto(
@@ -174,36 +226,26 @@ class InstagramRPA:
             )
             print(f"[RPA:{self.username}] Página de login carregada: {self.page.url}")
 
-            # Verifica se já está logado
             if await self._is_logged_in():
                 return RPAResult(True, "login", "Já estava logado (cookies válidos)")
 
-            # Preenche usuário e senha
             await self.page.fill('input[name="username"]', self.username)
             await self.page.fill('input[name="password"]', self.password)
-
-            # Clica em Login
             await self.page.click('button[type="submit"]')
-
-            # Aguarda navegação ou tela de 2FA
             await self.page.wait_for_timeout(3000)
 
-            # Verifica se pediu 2FA
             if await self._has_2fa_prompt():
                 if not self.totp_secret:
                     return RPAResult(False, "login", "2FA solicitado mas nenhum TOTP secret fornecido", error_code="needs_2fa")
 
-                # Gera código TOTP e preenche
                 totp_code = self._generate_totp(self.totp_secret)
                 await self.page.fill('input[name="verificationCode"]', totp_code)
                 await self.page.click('button[type="submit"]')
                 await self.page.wait_for_timeout(3000)
 
-            # Verifica se login foi bem-sucedido
             if await self._is_logged_in():
                 return RPAResult(True, "login", "Login realizado com sucesso", cookies=await self.get_cookies())
 
-            # Verifica se houve erro de bloqueio/challenge
             if await self._has_challenge():
                 return RPAResult(False, "login", "Instagram solicitou verificação adicional (challenge)", error_code="challenge_required")
 
@@ -215,21 +257,16 @@ class InstagramRPA:
             return RPAResult(False, "login", f"Erro durante login: {str(e)}", error_code="unknown_error")
 
     async def _is_logged_in(self) -> bool:
-        """Verifica se o usuário está logado."""
         try:
-            # Se estiver na página inicial ou perfil, está logado
             current_url = self.page.url
             if "/accounts/login" not in current_url and "instagram.com" in current_url:
                 return True
-
-            # Verifica se existe elemento de navegação logada
             nav = await self.page.query_selector('nav[aria-label="Home"]')
             return nav is not None
         except:
             return False
 
     async def _has_2fa_prompt(self) -> bool:
-        """Verifica se a tela de 2FA está visível."""
         try:
             el = await self.page.query_selector('input[name="verificationCode"]')
             return el is not None
@@ -237,7 +274,6 @@ class InstagramRPA:
             return False
 
     async def _has_challenge(self) -> bool:
-        """Verifica se há challenge/verificação adicional."""
         try:
             current_url = self.page.url
             return "/challenge/" in current_url or "/checkpoint/" in current_url
@@ -245,16 +281,14 @@ class InstagramRPA:
             return False
 
     def _generate_totp(self, secret: str) -> str:
-        """Gera código TOTP a partir do secret."""
         import pyotp
         totp = pyotp.TOTP(secret)
         return totp.now()
 
     async def accept_tester_invite(self, app_id: str) -> RPAResult:
-        """Aceita convite de tester do App Meta via UI."""
+        """Aceita convite de tester do App Meta via UI web (Playwright)."""
         try:
             print(f"[RPA:{self.username}] Navegando para página de convite tester (app {app_id})...")
-            # Vai para a página de convites de tester
             await self.page.goto(
                 f"https://www.instagram.com/accounts/manage_access/?app_id={app_id}",
                 wait_until="domcontentloaded",
@@ -263,8 +297,6 @@ class InstagramRPA:
             await self.page.wait_for_timeout(3000)
             print(f"[RPA:{self.username}] Página de convite carregada: {self.page.url}")
 
-            # Procura pelo botão de aceitar convite
-            # O Instagram pode mostrar diferentes layouts, então tentamos vários seletores
             accept_selectors = [
                 'button:has-text("Aceitar")',
                 'button:has-text("Accept")',
@@ -283,7 +315,6 @@ class InstagramRPA:
                 except:
                     continue
 
-            # Se não encontrou botão, verifica se já foi aceito
             if await self._is_invite_already_accepted():
                 return RPAResult(True, "accept_invite", "Convite já estava aceito")
 
@@ -293,75 +324,32 @@ class InstagramRPA:
             return RPAResult(False, "accept_invite", f"Erro ao aceitar convite: {str(e)}", error_code="unknown_error")
 
     async def _is_invite_already_accepted(self) -> bool:
-        """Verifica se o convite já foi aceito anteriormente."""
         try:
-            # Procura por texto indicando que já está conectado
             text = await self.page.inner_text("body")
             return "conectado" in text.lower() or "connected" in text.lower()
         except:
             return False
 
+    # ═══════════════════════════════════════════════════════════════
+    # ETAPAS VIA INSTAGRAPI (Mobile API)
+    # ═══════════════════════════════════════════════════════════════
+
     async def change_profile_photo(self, photo_path: str) -> RPAResult:
-        """Troca a foto de perfil via UI."""
+        """Troca foto de perfil via instagrapi (mobile API)."""
+        if not self.ig_client:
+            return RPAResult(False, "change_photo", "Instagrapi não inicializado", error_code="instagrapi_not_ready")
+
         local_photo = None
         try:
-            # Baixa mídia se for URL pública (antes de qualquer operação)
             print(f"[RPA:{self.username}] Baixando foto de perfil...")
             local_photo = await self._download_to_temp(photo_path, suffix=".jpg")
             print(f"[RPA:{self.username}] Foto baixada: {local_photo}")
 
-            # Vai para a página de edição de perfil (domcontentloaded evita hang infinito)
-            print(f"[RPA:{self.username}] Navegando para /edit/...")
-            await self.page.goto(
-                f"https://www.instagram.com/{self.username}/edit/",
-                wait_until="domcontentloaded",
-                timeout=30_000,
-            )
-            await self.page.wait_for_timeout(3000)
-            print(f"[RPA:{self.username}] Página carregada: {self.page.url}")
+            # Usa instagrapi para trocar foto (API mobile)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, lambda: self.ig_client.account_change_picture(local_photo))
 
-            # Clica em "Alterar foto de perfil"
-            change_photo_selectors = [
-                'button:has-text("Alterar foto de perfil")',
-                'button:has-text("Change profile photo")',
-                '[role="button"]:has-text("Alterar")',
-            ]
-
-            for selector in change_photo_selectors:
-                try:
-                    btn = await self.page.wait_for_selector(selector, timeout=5000)
-                    if btn:
-                        await btn.click()
-                        await self.page.wait_for_timeout(1000)
-                        break
-                except:
-                    continue
-
-            file_input = await self.page.query_selector('input[type="file"]')
-            if not file_input:
-                return RPAResult(False, "change_photo", "Não encontrou input de arquivo", error_code="file_input_not_found")
-
-            await file_input.set_input_files(local_photo)
-            await self.page.wait_for_timeout(3000)
-
-            # Clica em salvar/confirmar se necessário
-            save_selectors = [
-                'button:has-text("Enviar")',
-                'button:has-text("Submit")',
-                'button:has-text("Salvar")',
-                'button:has-text("Save")',
-            ]
-
-            for selector in save_selectors:
-                try:
-                    btn = await self.page.wait_for_selector(selector, timeout=3000)
-                    if btn:
-                        await btn.click()
-                        await self.page.wait_for_timeout(2000)
-                        break
-                except:
-                    continue
-
+            print(f"[RPA:{self.username}] ✅ Foto de perfil alterada via instagrapi")
             return RPAResult(True, "change_photo", "Foto de perfil alterada com sucesso")
 
         except Exception as e:
@@ -371,136 +359,49 @@ class InstagramRPA:
                 os.unlink(local_photo)
 
     async def post_story_with_link(self, media_path: str, link_url: str, link_text: str | None = None) -> RPAResult:
-        """Posta story com mídia e sticker de link via UI.
+        """Posta story com mídia e sticker de link via instagrapi (mobile API).
 
         Args:
             media_path: URL ou caminho local da mídia (imagem/vídeo)
             link_url: URL do sticker de link
-            link_text: Texto personalizado do sticker (opcional). Se None, usa a URL como texto.
+            link_text: Texto personalizado do sticker (opcional). Se None, usa a URL.
         """
+        if not self.ig_client:
+            return RPAResult(False, "post_story", "Instagrapi não inicializado", error_code="instagrapi_not_ready")
+
         local_media = None
         try:
-            # Baixa mídia se for URL pública (antes de qualquer operação)
+            print(f"[RPA:{self.username}] Baixando mídia do story...")
             local_media = await self._download_to_temp(media_path, suffix=".mp4")
+            print(f"[RPA:{self.username}] Mídia baixada: {local_media}")
 
-            # Vai para a página de criação de story (domcontentloaded evita hang)
-            print(f"[RPA:{self.username}] Navegando para criação de story...")
-            await self.page.goto(
-                "https://www.instagram.com/create/select/",
-                wait_until="domcontentloaded",
-                timeout=30_000,
+            # Determina se é vídeo ou imagem
+            is_video = local_media.lower().endswith((".mp4", ".mov", ".avi", ".webm"))
+
+            # Configura o sticker de link com texto personalizado
+            from instagrapi.types import StoryLink
+
+            link_sticker = StoryLink(
+                webUri=link_url,
+                text=link_text or link_url,  # Usa texto personalizado ou URL como fallback
             )
-            await self.page.wait_for_timeout(3000)
-            print(f"[RPA:{self.username}] Página de story carregada: {self.page.url}")
 
-            # Seleciona "Story"
-            story_selectors = [
-                'button:has-text("Story")',
-                '[role="tab"]:has-text("Story")',
-                'div:has-text("Story")',
-            ]
+            print(f"[RPA:{self.username}] Postando story com link: {link_url} (texto: '{link_text or link_url}')")
 
-            for selector in story_selectors:
-                try:
-                    btn = await self.page.wait_for_selector(selector, timeout=5000)
-                    if btn:
-                        await btn.click()
-                        await self.page.wait_for_timeout(1000)
-                        break
-                except:
-                    continue
+            loop = asyncio.get_event_loop()
+            if is_video:
+                await loop.run_in_executor(
+                    None,
+                    lambda: self.ig_client.clip_upload_as_story(local_media, links=[link_sticker])
+                )
+            else:
+                await loop.run_in_executor(
+                    None,
+                    lambda: self.ig_client.photo_upload_as_story(local_media, links=[link_sticker])
+                )
 
-            file_input = await self.page.query_selector('input[type="file"]')
-            if not file_input:
-                return RPAResult(False, "story", "Não encontrou input de arquivo para story", error_code="file_input_not_found")
-
-            await file_input.set_input_files(local_media)
-            await self.page.wait_for_timeout(3000)
-
-            # Adiciona sticker de link
-            link_sticker_selectors = [
-                'button:has-text("Link")',
-                '[aria-label="Link"]',
-                'div[role="button"]:has-text("Link")',
-            ]
-
-            for selector in link_sticker_selectors:
-                try:
-                    btn = await self.page.wait_for_selector(selector, timeout=5000)
-                    if btn:
-                        await btn.click()
-                        await self.page.wait_for_timeout(1000)
-
-                        # Preenche a URL
-                        url_input = await self.page.wait_for_selector('input[type="url"], input[placeholder*="link"], input[placeholder*="URL"]', timeout=5000)
-                        if url_input:
-                            await url_input.fill(link_url)
-                            await self.page.wait_for_timeout(1000)
-
-                            # Personaliza o texto do sticker (se fornecido)
-                            if link_text:
-                                print(f"[RPA:{self.username}] Personalizando texto do sticker: '{link_text}'")
-                                # Clica no botão "Personalizar texto" ou similar
-                                customize_selectors = [
-                                    'button:has-text("Personalizar")',
-                                    'button:has-text("Customize")',
-                                    'div:has-text("Personalizar texto")',
-                                    '[aria-label*="personalizar"]',
-                                    '[aria-label*="customize"]',
-                                ]
-                                for cust_sel in customize_selectors:
-                                    try:
-                                        cust_btn = await self.page.wait_for_selector(cust_sel, timeout=3000)
-                                        if cust_btn:
-                                            await cust_btn.click()
-                                            await self.page.wait_for_timeout(1000)
-                                            # Preenche o texto personalizado
-                                            text_input = await self.page.wait_for_selector('input[type="text"], textarea', timeout=3000)
-                                            if text_input:
-                                                await text_input.fill(link_text)
-                                                await self.page.wait_for_timeout(500)
-                                            break
-                                    except:
-                                        continue
-
-                            # Confirma o link
-                            confirm_selectors = [
-                                'button:has-text("Concluir")',
-                                'button:has-text("Done")',
-                                'button:has-text("Adicionar")',
-                            ]
-
-                            for confirm_sel in confirm_selectors:
-                                try:
-                                    confirm_btn = await self.page.wait_for_selector(confirm_sel, timeout=3000)
-                                    if confirm_btn:
-                                        await confirm_btn.click()
-                                        await self.page.wait_for_timeout(1000)
-                                        break
-                                except:
-                                    continue
-                        break
-                except:
-                    continue
-
-            # Publica o story
-            publish_selectors = [
-                'button:has-text("Compartilhar")',
-                'button:has-text("Share")',
-                'button:has-text("Publicar")',
-            ]
-
-            for selector in publish_selectors:
-                try:
-                    btn = await self.page.wait_for_selector(selector, timeout=5000)
-                    if btn:
-                        await btn.click()
-                        await self.page.wait_for_timeout(5000)
-                        return RPAResult(True, "post_story", "Story publicado com sucesso")
-                except:
-                    continue
-
-            return RPAResult(False, "post_story", "Não encontrou botão de publicar", error_code="publish_button_not_found")
+            print(f"[RPA:{self.username}] ✅ Story publicado com sucesso via instagrapi")
+            return RPAResult(True, "post_story", "Story publicado com sucesso")
 
         except Exception as e:
             return RPAResult(False, "post_story", f"Erro ao postar story: {str(e)}", error_code="unknown_error")
@@ -509,89 +410,55 @@ class InstagramRPA:
                 os.unlink(local_media)
 
     async def create_highlight_from_story(self, title: str) -> RPAResult:
-        """Cria destaque a partir do story mais recente."""
+        """Cria destaque a partir do story mais recente via instagrapi (mobile API)."""
+        if not self.ig_client:
+            return RPAResult(False, "create_highlight", "Instagrapi não inicializado", error_code="instagrapi_not_ready")
+
         try:
-            # Vai para o perfil (domcontentloaded evita hang infinito)
-            print(f"[RPA:{self.username}] Navegando para perfil (highlight)...")
-            await self.page.goto(
-                f"https://www.instagram.com/{self.username}/",
-                wait_until="domcontentloaded",
-                timeout=30_000,
+            print(f"[RPA:{self.username}] Buscando stories recentes para criar destaque...")
+
+            # Obtém o user_id
+            user_id = self.ig_client.user_id
+
+            # Busca stories recentes do próprio usuário
+            loop = asyncio.get_event_loop()
+            stories = await loop.run_in_executor(None, lambda: self.ig_client.user_stories(user_id))
+
+            if not stories:
+                return RPAResult(False, "create_highlight", "Nenhum story recente encontrado", error_code="no_recent_stories")
+
+            # Pega o story mais recente
+            latest_story = stories[0]
+            story_pk = latest_story.pk
+
+            print(f"[RPA:{self.username}] Criando destaque '{title}' a partir do story {story_pk}...")
+
+            # Cria o highlight
+            await loop.run_in_executor(
+                None,
+                lambda: self.ig_client.highlight_create(title, [story_pk])
             )
-            await self.page.wait_for_timeout(3000)
-            print(f"[RPA:{self.username}] Perfil carregado: {self.page.url}")
 
-            # Clica no story mais recente (primeiro círculo de story)
-            story_circle = await self.page.wait_for_selector('[aria-label="Story"] canvas, div[role="button"][aria-label*="story"]', timeout=10000)
-            if story_circle:
-                await story_circle.click()
-                await self.page.wait_for_timeout(3000)
-
-                # Clica em "Destaque" ou "Highlight"
-                highlight_selectors = [
-                    'button:has-text("Destaque")',
-                    'button:has-text("Highlight")',
-                    '[aria-label="Highlight"]',
-                    'div[role="button"]:has-text("Destaque")',
-                ]
-
-                for selector in highlight_selectors:
-                    try:
-                        btn = await self.page.wait_for_selector(selector, timeout=5000)
-                        if btn:
-                            await btn.click()
-                            await self.page.wait_for_timeout(2000)
-
-                            # Preenche o título do destaque
-                            title_input = await self.page.wait_for_selector('input[type="text"]', timeout=5000)
-                            if title_input:
-                                await title_input.fill(title)
-                                await self.page.wait_for_timeout(1000)
-
-                                # Confirma
-                                done_selectors = [
-                                    'button:has-text("Concluir")',
-                                    'button:has-text("Done")',
-                                    'button:has-text("Adicionar")',
-                                ]
-
-                                for done_sel in done_selectors:
-                                    try:
-                                        done_btn = await self.page.wait_for_selector(done_sel, timeout=3000)
-                                        if done_btn:
-                                            await done_btn.click()
-                                            await self.page.wait_for_timeout(2000)
-                                            return RPAResult(True, "create_highlight", f"Destaque '{title}' criado com sucesso")
-                                    except:
-                                        continue
-                            break
-                    except:
-                        continue
-
-                return RPAResult(False, "create_highlight", "Não encontrou opção de destaque", error_code="highlight_option_not_found")
-
-            return RPAResult(False, "create_highlight", "Não encontrou story para destacar", error_code="story_not_found")
+            print(f"[RPA:{self.username}] ✅ Destaque '{title}' criado com sucesso via instagrapi")
+            return RPAResult(True, "create_highlight", f"Destaque '{title}' criado com sucesso")
 
         except Exception as e:
             return RPAResult(False, "create_highlight", f"Erro ao criar destaque: {str(e)}", error_code="unknown_error")
 
     async def complete_magic_link(self, magic_link_url: str) -> RPAResult:
-        """Navega até o Magic Link do SaaS para vincular a conta via OAuth."""
-        import base64
+        """Navega até o Magic Link do SaaS para vincular a conta (Playwright)."""
         from urllib.parse import urlencode
         try:
-            # Anexa dados da conta via query string para a página /add/[token] ler
             params = urlencode({"username": self.username})
             separator = "&" if "?" in magic_link_url else "?"
             full_url = f"{magic_link_url}{separator}{params}"
             print(f"[RPA:{self.username}] Navegando para Magic Link: {full_url[:120]}...")
             await self.page.goto(full_url, wait_until="domcontentloaded", timeout=30_000)
 
-            # Aguardar redirect para página de sucesso
             try:
                 await self.page.wait_for_url("**/add/success**", timeout=15_000)
                 print(f"[RPA:{self.username}] ✅ Magic Link aceito — conta vinculada!")
-                return RPAResult(True, "magic_link", "Conta vinculada ao SaaS via OAuth")
+                return RPAResult(True, "magic_link", "Conta vinculada ao SaaS via Magic Link")
             except PlaywrightTimeout:
                 current = self.page.url
                 if "/dashboard" in current or "/accounts" in current:
@@ -599,7 +466,6 @@ class InstagramRPA:
                     return RPAResult(True, "magic_link", "Conta vinculada (redirect direto)")
 
                 title = await self.page.title()
-                screenshot = await self.page.screenshot(type="jpeg", quality=60)
                 print(f"[RPA:{self.username}] ❌ Magic Link falhou: {title}")
                 return RPAResult(
                     False, "magic_link",
@@ -625,7 +491,7 @@ async def run_onboarding_rpa(
     existing_cookies: Optional[list[dict]] = None,
 ) -> dict:
     """
-    Executa o fluxo completo de onboarding via RPA.
+    Executa o fluxo completo de onboarding HÍBRIDO (Playwright + Instagrapi).
 
     Retorna dict com:
       - success: bool
@@ -639,11 +505,10 @@ async def run_onboarding_rpa(
     try:
         await rpa.start()
 
-        # Injeta cookies salvos se existirem
         if existing_cookies:
             await rpa.inject_cookies(existing_cookies)
 
-        # Etapa 1: Login
+        # Etapa 1: Login via Playwright (web)
         login_result = await rpa.login()
         if not login_result.success:
             return {
@@ -653,10 +518,21 @@ async def run_onboarding_rpa(
                 "error_code": login_result.error_code,
             }
 
-        # Etapa 2: Aceitar convite de tester (se aplicável)
+        # Etapa 2: Aceitar convite de tester via Playwright (web) — se aplicável
         # Pulada quando não há app_id — worker standalone não usa essa etapa
 
-        # Etapa 3: Trocar foto de perfil (se fornecida)
+        # Etapa 2.5: Inicializar instagrapi com cookies da sessão web
+        web_cookies = await rpa.get_cookies()
+        if not rpa._init_instagrapi_from_cookies(web_cookies):
+            return {
+                "success": False,
+                "stage": "instagrapi_init",
+                "message": "Falha ao inicializar instagrapi com cookies web",
+                "error_code": "instagrapi_init_failed",
+                "cookies": web_cookies,
+            }
+
+        # Etapa 3: Trocar foto de perfil via instagrapi (mobile)
         if photo_path:
             photo_result = await rpa.change_profile_photo(photo_path)
             if not photo_result.success:
@@ -668,7 +544,7 @@ async def run_onboarding_rpa(
                     "cookies": await rpa.get_cookies(),
                 }
 
-        # Etapa 4: Postar story com link (se fornecido)
+        # Etapa 4: Postar story com link via instagrapi (mobile)
         if story_media_path and story_link_url:
             story_result = await rpa.post_story_with_link(story_media_path, story_link_url, story_link_text)
             if not story_result.success:
@@ -680,7 +556,7 @@ async def run_onboarding_rpa(
                     "cookies": await rpa.get_cookies(),
                 }
 
-        # Etapa 5: Criar destaque (se fornecido)
+        # Etapa 5: Criar destaque via instagrapi (mobile)
         if highlight_title:
             highlight_result = await rpa.create_highlight_from_story(highlight_title)
             if not highlight_result.success:
@@ -692,7 +568,7 @@ async def run_onboarding_rpa(
                     "cookies": await rpa.get_cookies(),
                 }
 
-        # Etapa 6: Vincular conta ao SaaS via Magic Link (se fornecido)
+        # Etapa 6: Vincular conta ao SaaS via Magic Link (Playwright web)
         if magic_link_url:
             magic_result = await rpa.complete_magic_link(magic_link_url)
             if not magic_result.success:
@@ -708,7 +584,7 @@ async def run_onboarding_rpa(
         return {
             "success": True,
             "stage": "done",
-            "message": "Onboarding completo via RPA",
+            "message": "Onboarding completo via RPA híbrido (Playwright + Instagrapi)",
             "cookies": await rpa.get_cookies(),
         }
 
