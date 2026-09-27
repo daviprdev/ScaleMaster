@@ -91,7 +91,13 @@ class RPAWorker:
                         break
 
                     proxy_id = proxy_row["id"]
-                    proxy_url = decrypt(proxy_row["proxy_url_enc"])
+                    # Proxy pode estar em texto puro (host:port:user:pass) ou cifrado
+                    raw_proxy = proxy_row["proxy_url_enc"]
+                    try:
+                        proxy_url = decrypt(raw_proxy)
+                    except (ValueError, Exception):
+                        # Já está em texto puro — usar diretamente
+                        proxy_url = raw_proxy
                     tried_proxy_ids.append(proxy_id)
                     mark_proxy_used(proxy_id)
 
