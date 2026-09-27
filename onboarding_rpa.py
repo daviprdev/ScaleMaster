@@ -219,17 +219,17 @@ class InstagramRPA:
             print(f"[RPA:{self.username}] Erro extraindo cookies: {e}")
             return []
 
-    def _upload_video_thumb(self, video_path, link_sticker):
+    def _upload_video_thumb(self, video_path, link_sticker, stickers=None):
         import pathlib as pl
         thumb = video_path + ".jpg"
         try:
             r = subprocess.run(["ffmpeg", "-y", "-i", video_path, "-vframes", "1", "-q:v", "2", thumb], capture_output=True, timeout=30)
             if r.returncode == 0 and os.path.exists(thumb):
-                return self.ig_client.video_upload_to_story(path=pl.Path(video_path), thumbnail=pl.Path(thumb), links=[link_sticker])
-            return self.ig_client.video_upload_to_story(path=pl.Path(video_path), links=[link_sticker])
+                return self.ig_client.video_upload_to_story(path=pl.Path(video_path), thumbnail=pl.Path(thumb), links=[link_sticker], stickers=stickers or [])
+            return self.ig_client.video_upload_to_story(path=pl.Path(video_path), links=[link_sticker], stickers=stickers or [])
         except Exception as e:
             print(f"[RPA:{self.username}] ffmpeg err: {e}")
-            return self.ig_client.video_upload_to_story(path=pl.Path(video_path), links=[link_sticker])
+            return self.ig_client.video_upload_to_story(path=pl.Path(video_path), links=[link_sticker], stickers=stickers or [])
         finally:
             if os.path.exists(thumb):
                 try:
@@ -240,19 +240,50 @@ class InstagramRPA:
     async def post_story_with_link(self, media_path, link_url, link_text=None):
         if not self.ig_client:
             return RPAResult(False, "post_story", "Instagrapi nao init", error_code="instagrapi_not_ready")
+        # Verificar se ja existe story recente (evitar duplicacao)
+        try:
+            uid = self.ig_client.user_id
+            existing = self.ig_client.user_stories(uid)
+            if existing:
+                print(f"[RPA:{self.username}] Story ja existe ({len(existing)}), pulando postagem")
+                return RPAResult(True, "post_story", "Story ja existente, pulado")
+        except Exception:
+            pass  # Se falhar verificacao, continua normalmente
         local = None
         try:
             local = await self._download_to_temp(media_path, suffix=".mp4")
             is_vid = local.lower().endswith((".mp4", ".mov", ".avi", ".webm"))
-            from instagrapi.types import StoryLink
-            ls = StoryLink(webUri=link_url, text=link_text or link_url)
-            print(f"[RPA:{self.username}] Story: {link_url}")
+            from instagrapi.types import StoryLink, StorySticker, StoryStickerLink
+            # StoryLink para o link clicavel no story
+            ls = StoryLink(webUri=link_url)
+            # StorySticker com StoryStickerLink para mostrar texto personalizado
+            stickers = []
+            if link_text:
+                sticker_link = StoryStickerLink(url=link_url, link_title=link_text)
+                sticker = StorySticker(
+                    id="link_sticker",
+                    type="story_link",
+                    x=0.5, y=0.85, z=1000005,
+                    width=0.6, height=0.12,
+                    rotation=0.0,
+                    story_link=sticker_link,
+                )
+                stickers.append(sticker)
+            print(f"[RPA:{self.username}] Story: link={link_url}, text={link_text or '(default)'}")
             loop = asyncio.get_event_loop()
             if is_vid:
-                await loop.run_in_executor(None, lambda: self._upload_video_thumb(local, ls))
+                await loop.run_in_executor(
+                    None,
+                    lambda: self._upload_video_thumb(local, ls, stickers=stickers),
+                )
             else:
-                await loop.run_in_executor(None, lambda: self.ig_client.photo_upload_to_story(path=local, links=[ls]))
-            return RPAResult(True, "post_story", "Story publicado")
+                await loop.run_in_executor(
+                    None,
+                    lambda: self.ig_client.photo_upload_to_story(
+                        path=local, links=[ls], stickers=stickers,
+                    ),
+                )
+            return RPAResult(True, "post_story", "Story publicado com link")
         except Exception as e:
             print(f"[RPA:{self.username}] ERRO STORY: {traceback.format_exc()}")
             return RPAResult(False, "post_story", f"{type(e).__name__}: {e}", error_code="story_failed")
@@ -282,6 +313,14 @@ class InstagramRPA:
         try:
             uid = self.ig_client.user_id
             loop = asyncio.get_event_loop()
+            # Verificar se ja existe highlight com esse titulo (evitar duplicacao)
+            try:
+                existing_highlights = await loop.run_in_executor(None, lambda: self.ig_client.highlight_info_by_title(title))
+                if existing_highlights:
+                    print(f"[RPA:{self.username}] Destaque '{title}' ja existe, pulando")
+                    return RPAResult(True, "highlight", f"Destaque '{title}' ja existente")
+            except Exception:
+                pass  # Se falhar verificacao, continua normalmente
             stories = await loop.run_in_executor(None, lambda: self.ig_client.user_stories(uid))
             if not stories:
                 return RPAResult(False, "highlight", "Sem story recente", error_code="no_stories")
@@ -304,41 +343,72 @@ class InstagramRPA:
                 except Exception:
                     pass
 
-    async def start(self, inject_cookies=None):
-        self._clear_profile_locks()
-        self.playwright = await async_playwright().start()
-        self.context = await self.playwright.chromium.launch_persistent_context(
-            user_data_dir=str(self.profile_dir),
-            headless=False,
-            proxy=self._parse_proxy_playwright(self.proxy_url) if self.proxy_url else None,
-            viewport={"width": 1920, "height": 1080},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            locale="pt-BR",
-            timezone_id="America/Sao_Paulo",
-            ignore_https_errors=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-            ],
-            ignore_default_args=["--enable-automation"],
-        )
-        await self.context.add_init_script("""
+    async def start(self, inject_cookies=None, max_retries=3):
+        """Launch Playwright with retry on TargetClosedError."""
+        last_err = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                self._clear_profile_locks()
+                # Kill any lingering chromium processes for this profile
+                import subprocess as _sp
+                _sp.run(["pkill", "-f", f"user-data-dir={self.profile_dir}"], capture_output=True, timeout=5)
+                await asyncio.sleep(1)
+                self._clear_profile_locks()
+                self.playwright = await async_playwright().start()
+                self.context = await self.playwright.chromium.launch_persistent_context(
+                    user_data_dir=str(self.profile_dir),
+                    headless=False,
+                    proxy=self._parse_proxy_playwright(self.proxy_url) if self.proxy_url else None,
+                    viewport={"width": 1920, "height": 1080},
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    locale="pt-BR",
+                    timezone_id="America/Sao_Paulo",
+                    ignore_https_errors=True,
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--disable-dev-shm-usage",
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-gpu",
+                        "--single-process",
+                    ],
+                    ignore_default_args=["--enable-automation"],
+                )
+                await self.context.add_init_script("""
 Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
 Object.defineProperty(navigator, 'languages', {get: () => ['pt-BR', 'pt', 'en']});
 window.chrome = {runtime: {}};
 """)
-        # Injetar cookies do instagrapi antes de criar pagina
-        if inject_cookies:
-            try:
-                await self.context.add_cookies(inject_cookies)
-                print(f"[RPA:{self.username}] Cookies injetados no Playwright: {len(inject_cookies)}")
+                if inject_cookies:
+                    try:
+                        await self.context.add_cookies(inject_cookies)
+                        print(f"[RPA:{self.username}] Cookies injetados no Playwright: {len(inject_cookies)}")
+                    except Exception as e:
+                        print(f"[RPA:{self.username}] Erro injetando cookies: {e}")
+                self.page = await self.context.new_page()
+                self.page.set_default_timeout(DEFAULT_TIMEOUT)
+                self.page.set_default_navigation_timeout(NAVIGATION_TIMEOUT)
+                print(f"[RPA:{self.username}] Playwright iniciado (tentativa {attempt})")
+                return  # Success
             except Exception as e:
-                print(f"[RPA:{self.username}] Erro injetando cookies: {e}")
-        self.page = await self.context.new_page()
-        self.page.set_default_timeout(DEFAULT_TIMEOUT)
-        self.page.set_default_navigation_timeout(NAVIGATION_TIMEOUT)
+                last_err = e
+                print(f"[RPA:{self.username}] Playwright falhou tentativa {attempt}/{max_retries}: {type(e).__name__}: {e}")
+                # Cleanup before retry
+                try:
+                    if self.context:
+                        await self.context.close()
+                except Exception:
+                    pass
+                try:
+                    if self.playwright:
+                        await self.playwright.stop()
+                except Exception:
+                    pass
+                self.context = None
+                self.playwright = None
+                if attempt < max_retries:
+                    await asyncio.sleep(3 * attempt)
+        raise last_err
 
     async def stop(self):
         if self.context:

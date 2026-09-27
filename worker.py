@@ -63,6 +63,17 @@ except ImportError:
     run_onboarding_rpa = None  # type: ignore
 
 
+# ─── PAUSE/RESUME GLOBAL ─────────────────────────────────────
+_queue_paused = False
+
+def is_queue_paused() -> bool:
+    return _queue_paused
+
+def set_queue_paused(paused: bool) -> None:
+    global _queue_paused
+    _queue_paused = paused
+
+
 class RPAWorker:
     """Worker que consome jobs do SQLite e executa RPA."""
 
@@ -203,6 +214,11 @@ class RPAWorker:
 
         while self._running:
             try:
+                # Checar se fila está pausada
+                if is_queue_paused():
+                    await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                    continue
+
                 # Auto-healing: recuperar jobs presos em processing
                 reset_stale_jobs()
 
