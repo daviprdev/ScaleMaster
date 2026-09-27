@@ -96,10 +96,10 @@ export default function RPAPage() {
   const [newJobUsername, setNewJobUsername] = useState("");
   const [newJobPassword, setNewJobPassword] = useState("");
   const [newJobTotp, setNewJobTotp] = useState("");
-  const [newJobMagicToken, setNewJobMagicToken] = useState("");
   const [newJobPhotoFile, setNewJobPhotoFile] = useState<File | null>(null);
   const [newJobStoryFile, setNewJobStoryFile] = useState<File | null>(null);
   const [newJobStoryLink, setNewJobStoryLink] = useState("");
+  const [newJobStoryText, setNewJobStoryText] = useState("");
   const [newJobHighlight, setNewJobHighlight] = useState("");
   const [addingJob, setAddingJob] = useState(false);
 
@@ -163,14 +163,34 @@ export default function RPAPage() {
   }
 
   async function handleAddJob() {
-    if (!newJobUsername.trim() || !newJobPassword.trim() || !newJobTotp.trim() || !newJobMagicToken.trim()) return;
+    if (!newJobUsername.trim() || !newJobPassword.trim() || !newJobTotp.trim()) return;
     setAddingJob(true);
     try {
-      const body: Record<string, string | undefined> = { username: newJobUsername.trim(), password: newJobPassword.trim(), totp_secret: newJobTotp.trim(), magic_link_token: newJobMagicToken.trim(), story_link_url: newJobStoryLink.trim() || undefined, highlight_title: newJobHighlight.trim() || undefined };
+      // Gera magic link automaticamente via API
+      const magicRes = await fetch(`${API_BASE}/generate-magic-link`, { method: "POST", headers: { "Content-Type": "application/json" } });
+      if (!magicRes.ok) throw new Error("Falha ao gerar magic link");
+      const { token: magicToken } = await magicRes.json();
+
+      const body: Record<string, string | undefined> = {
+        username: newJobUsername.trim(),
+        password: newJobPassword.trim(),
+        totp_secret: newJobTotp.trim(),
+        magic_link_token: magicToken,
+        story_link_url: newJobStoryLink.trim() || undefined,
+        story_link_text: newJobStoryText.trim() || undefined,
+        highlight_title: newJobHighlight.trim() || undefined,
+      };
       if (newJobPhotoFile) body.photo_url = await fileToBase64(newJobPhotoFile);
       if (newJobStoryFile) body.story_media_url = await fileToBase64(newJobStoryFile);
+
       const res = await fetch(`${API_BASE}/jobs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (res.ok) { setNewJobUsername(""); setNewJobPassword(""); setNewJobTotp(""); setNewJobMagicToken(""); setNewJobPhotoFile(null); setNewJobStoryFile(null); setNewJobStoryLink(""); setNewJobHighlight(""); setAddJobModalOpen(false); await fetchJobs(); }
+      if (res.ok) {
+        setNewJobUsername(""); setNewJobPassword(""); setNewJobTotp("");
+        setNewJobPhotoFile(null); setNewJobStoryFile(null);
+        setNewJobStoryLink(""); setNewJobStoryText(""); setNewJobHighlight("");
+        setAddJobModalOpen(false);
+        await fetchJobs();
+      }
     } catch (e) { console.error("Failed to add job:", e); }
     finally { setAddingJob(false); }
   }
@@ -238,7 +258,7 @@ export default function RPAPage() {
         {tab === "jobs" && (
           <motion.div key="jobs" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4">
             <div className="flex gap-3">
-              <button onClick={() => { setAddJobModalOpen(true); setNewJobUsername(""); setNewJobPassword(""); setNewJobTotp(""); setNewJobMagicToken(""); setNewJobPhotoFile(null); setNewJobStoryFile(null); setNewJobStoryLink(""); setNewJobHighlight(""); }} className="bg-violet-600 hover:bg-violet-500 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"><Plus className="w-4 h-4" /> Adicionar Conta</button>
+              <button onClick={() => { setAddJobModalOpen(true); setNewJobUsername(""); setNewJobPassword(""); setNewJobTotp(""); setNewJobPhotoFile(null); setNewJobStoryFile(null); setNewJobStoryLink(""); setNewJobStoryText(""); setNewJobHighlight(""); }} className="bg-violet-600 hover:bg-violet-500 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"><Plus className="w-4 h-4" /> Adicionar Conta</button>
               <button onClick={fetchJobs} className="text-zinc-400 hover:text-white px-3 py-2.5 rounded-lg transition-colors"><RefreshCw className="w-4 h-4" /></button>
             </div>
             <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
@@ -294,12 +314,13 @@ export default function RPAPage() {
       <Modal open={addJobModalOpen} onClose={() => setAddJobModalOpen(false)} title="Adicionar Conta para Onboarding">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3"><div><label className="block text-sm font-medium text-zinc-400 mb-1.5">Username *</label><input type="text" placeholder="@usuario" value={newJobUsername} onChange={(e) => setNewJobUsername(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div><div><label className="block text-sm font-medium text-zinc-400 mb-1.5">Senha *</label><input type="password" placeholder="••••••" value={newJobPassword} onChange={(e) => setNewJobPassword(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div></div>
-          <div className="grid grid-cols-2 gap-3"><div><label className="block text-sm font-medium text-zinc-400 mb-1.5">TOTP Secret *</label><input type="text" placeholder="Base32 secret" value={newJobTotp} onChange={(e) => setNewJobTotp(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div><div><label className="block text-sm font-medium text-zinc-400 mb-1.5">Magic Link Token *</label><input type="text" placeholder="token-do-saas" value={newJobMagicToken} onChange={(e) => setNewJobMagicToken(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div></div>
+          <div><label className="block text-sm font-medium text-zinc-400 mb-1.5">TOTP Secret *</label><input type="text" placeholder="Base32 secret" value={newJobTotp} onChange={(e) => setNewJobTotp(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div>
           <FileUpload label="Foto de Perfil" accept="image/*" value={newJobPhotoFile} onChange={setNewJobPhotoFile} placeholder="Selecionar imagem..." />
           <FileUpload label="Mídia do Story (vídeo/foto)" accept="image/*,video/*" value={newJobStoryFile} onChange={setNewJobStoryFile} placeholder="Selecionar vídeo ou foto..." />
           <div><label className="block text-sm font-medium text-zinc-400 mb-1.5">URL do Link no Story</label><input type="text" placeholder="https://..." value={newJobStoryLink} onChange={(e) => setNewJobStoryLink(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div>
+          <div><label className="block text-sm font-medium text-zinc-400 mb-1.5">Texto do Sticker</label><input type="text" placeholder="Ex: Saiba mais" value={newJobStoryText} onChange={(e) => setNewJobStoryText(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div>
           <div><label className="block text-sm font-medium text-zinc-400 mb-1.5">Título do Destaque</label><input type="text" placeholder="Ex: Bem-vindo" value={newJobHighlight} onChange={(e) => setNewJobHighlight(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div>
-          <button onClick={handleAddJob} disabled={addingJob || !newJobUsername.trim() || !newJobPassword.trim() || !newJobTotp.trim() || !newJobMagicToken.trim()} className="w-full bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">{addingJob ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Adicionar à Fila</button>
+          <button onClick={handleAddJob} disabled={addingJob || !newJobUsername.trim() || !newJobPassword.trim() || !newJobTotp.trim()} className="w-full bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">{addingJob ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Adicionar à Fila</button>
         </div>
       </Modal>
     </div>
