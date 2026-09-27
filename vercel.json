@@ -1,4 +1,10 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "master": false
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/prefetch-clone-urls",
