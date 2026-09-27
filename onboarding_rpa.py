@@ -571,6 +571,17 @@ def clear_job_stages(job_id: str):
     _job_stages.pop(job_id, None)
 
 
+def _check_job_paused(jid: str, username: str) -> bool:
+    """Verifica se o job foi pausado e retorna True se deve abortar."""
+    try:
+        from worker import is_job_paused
+        if is_job_paused(jid):
+            print(f"[RPA:{username}] Job pausado pelo usuario — abortando")
+            return True
+    except ImportError:
+        pass
+    return False
+
 async def run_onboarding_rpa(
     username,
     password,
@@ -601,6 +612,9 @@ async def run_onboarding_rpa(
     try:
         # ═══ FASE 1: INSTAGRAPI MOBILE ═══
         _stage_start(jid, "instagrapi_login")
+        if _check_job_paused(jid, username):
+            _stage_fail(jid, "instagrapi_login", "Job pausado pelo usuario")
+            return {"success": False, "stage": "paused", "message": "Job pausado", "error_code": "job_paused"}
         if not rpa._init_instagrapi():
             _stage_fail(jid, "instagrapi_login", "Falha login mobile via instagrapi")
             return {
@@ -614,6 +628,9 @@ async def run_onboarding_rpa(
 
         # 1b. Postar story
         if story_media_path and story_link_url:
+            if _check_job_paused(jid, username):
+                _stage_fail(jid, "post_story", "Job pausado pelo usuario")
+                return {"success": False, "stage": "paused", "message": "Job pausado", "error_code": "job_paused"}
             _stage_start(jid, "post_story")
             sr = await rpa.post_story_with_link(story_media_path, story_link_url, story_link_text)
             if not sr.success:
@@ -624,6 +641,9 @@ async def run_onboarding_rpa(
 
         # 1c. Trocar foto de perfil
         if photo_path:
+            if _check_job_paused(jid, username):
+                _stage_fail(jid, "change_photo", "Job pausado pelo usuario")
+                return {"success": False, "stage": "paused", "message": "Job pausado", "error_code": "job_paused"}
             _stage_start(jid, "change_photo")
             pr = await rpa.change_profile_photo(photo_path)
             if not pr.success:
@@ -634,6 +654,9 @@ async def run_onboarding_rpa(
 
         # 1d. Criar destaque
         if highlight_title:
+            if _check_job_paused(jid, username):
+                _stage_fail(jid, "highlight", "Job pausado pelo usuario")
+                return {"success": False, "stage": "paused", "message": "Job pausado", "error_code": "job_paused"}
             _stage_start(jid, "highlight")
             hr = await rpa.create_highlight_from_story(highlight_title)
             if not hr.success:
@@ -643,12 +666,18 @@ async def run_onboarding_rpa(
             print(f"[RPA:{username}] FASE 1d OK: Destaque criado")
 
         # 1e. Extrair cookies do instagrapi para injetar no Playwright
+        if _check_job_paused(jid, username):
+            _stage_fail(jid, "extract_cookies", "Job pausado pelo usuario")
+            return {"success": False, "stage": "paused", "message": "Job pausado", "error_code": "job_paused"}
         _stage_start(jid, "extract_cookies")
         ig_cookies = rpa._extract_cookies_from_instagrapi()
         _stage_ok(jid, "extract_cookies", f"{len(ig_cookies)} cookies")
         print(f"[RPA:{username}] FASE 1e OK: {len(ig_cookies)} cookies extraidos")
 
         # ═══ FASE 2: PLAYWRIGHT WEB (com cookies injetados) ═══
+        if _check_job_paused(jid, username):
+            _stage_fail(jid, "playwright_login", "Job pausado pelo usuario")
+            return {"success": False, "stage": "paused", "message": "Job pausado", "error_code": "job_paused"}
         _stage_start(jid, "playwright_login")
         await rpa.start(inject_cookies=ig_cookies)
 
@@ -665,12 +694,18 @@ async def run_onboarding_rpa(
         print(f"[RPA:{username}] FASE 2a OK: Logado via cookies")
 
         # 2b. Converter para conta profissional
+        if _check_job_paused(jid, username):
+            _stage_fail(jid, "convert", "Job pausado pelo usuario")
+            return {"success": False, "stage": "paused", "message": "Job pausado", "error_code": "job_paused"}
         _stage_start(jid, "convert")
         cr = await rpa.convert_to_professional()
         _stage_ok(jid, "convert", cr.message)
         print(f"[RPA:{username}] FASE 2b OK: {cr.message}")
 
         # 2c. Aceitar convite de tester
+        if _check_job_paused(jid, username):
+            _stage_fail(jid, "accept_invite", "Job pausado pelo usuario")
+            return {"success": False, "stage": "paused", "message": "Job pausado", "error_code": "job_paused"}
         _stage_start(jid, "accept_invite")
         ir = await rpa.accept_tester_invite()
         _stage_ok(jid, "accept_invite", ir.message)
@@ -678,6 +713,9 @@ async def run_onboarding_rpa(
 
         # 2d. OAuth / Magic Link do SaaS
         if magic_link_url:
+            if _check_job_paused(jid, username):
+                _stage_fail(jid, "magic_link", "Job pausado pelo usuario")
+                return {"success": False, "stage": "paused", "message": "Job pausado", "error_code": "job_paused"}
             _stage_start(jid, "magic_link")
             ml = await rpa.complete_magic_link(magic_link_url)
             if not ml.success:

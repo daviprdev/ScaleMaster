@@ -16,7 +16,7 @@ from db import (
     deactivate_proxy,
     get_proxy_stats,
 )
-from worker import is_queue_paused, set_queue_paused
+from worker import is_queue_paused, set_queue_paused, is_job_paused, pause_job, resume_job, get_paused_jobs
 
 app = FastAPI(title="AutoScale RPA Worker Health")
 
@@ -129,6 +129,34 @@ async def resume_queue(request: Request):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     set_queue_paused(False)
     return JSONResponse({"status": "resumed"})
+
+
+# ─── JOB PAUSE/RESUME INDIVIDUAL ─────────────────────────────
+
+@app.post("/jobs/{job_id}/pause")
+async def pause_job_endpoint(job_id: str, request: Request):
+    """Pausa um job específico (aborta se estiver em execução)."""
+    auth = request.headers.get("authorization", "")
+    if auth != f"Bearer {WORKER_API_SECRET}":
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    pause_job(job_id)
+    return JSONResponse({"status": "paused", "id": job_id})
+
+
+@app.post("/jobs/{job_id}/resume")
+async def resume_job_endpoint(job_id: str, request: Request):
+    """Retoma um job pausado."""
+    auth = request.headers.get("authorization", "")
+    if auth != f"Bearer {WORKER_API_SECRET}":
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    resume_job(job_id)
+    return JSONResponse({"status": "resumed", "id": job_id})
+
+
+@app.get("/jobs/paused")
+async def list_paused_jobs():
+    """Lista IDs dos jobs pausados."""
+    return JSONResponse({"paused_jobs": get_paused_jobs()})
 
 
 # ─── PROXY POOL ENDPOINTS ────────────────────────────────────

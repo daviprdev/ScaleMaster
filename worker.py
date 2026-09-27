@@ -73,6 +73,21 @@ def set_queue_paused(paused: bool) -> None:
     global _queue_paused
     _queue_paused = paused
 
+# ─── PAUSE/RESUME POR JOB INDIVIDUAL ─────────────────────────
+_paused_jobs: set[str] = set()
+
+def is_job_paused(job_id: str) -> bool:
+    return job_id in _paused_jobs
+
+def pause_job(job_id: str) -> None:
+    _paused_jobs.add(job_id)
+
+def resume_job(job_id: str) -> None:
+    _paused_jobs.discard(job_id)
+
+def get_paused_jobs() -> list[str]:
+    return list(_paused_jobs)
+
 
 class RPAWorker:
     """Worker que consome jobs do SQLite e executa RPA."""
