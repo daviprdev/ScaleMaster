@@ -101,6 +101,8 @@ export default function RPAPage() {
   const [newJobStoryLink, setNewJobStoryLink] = useState("");
   const [newJobStoryText, setNewJobStoryText] = useState("");
   const [newJobHighlight, setNewJobHighlight] = useState("");
+  const [newJobAppId, setNewJobAppId] = useState("");
+  const [metaApps, setMetaApps] = useState<{ id: string; ig_app_id: string }[]>([]);
   const [addingJob, setAddingJob] = useState(false);
 
   const fetchProxies = useCallback(async () => {
@@ -121,7 +123,15 @@ export default function RPAPage() {
     finally { setLoadingJobs(false); }
   }, []);
 
-  useEffect(() => { fetchProxies(); fetchJobs(); }, [fetchProxies, fetchJobs]);
+  // Fetch meta apps for selector
+const fetchApps = useCallback(async () => {
+  try {
+    const res = await fetch(`${API_BASE}/apps`);
+    if (res.ok) setMetaApps(await res.json());
+  } catch (e) { console.error("Failed to fetch apps:", e); }
+}, []);
+
+useEffect(() => { fetchProxies(); fetchJobs(); fetchApps(); }, [fetchProxies, fetchJobs, fetchApps]);
 
   async function handleAddProxy() {
     if (!newProxy.trim()) return;
@@ -166,8 +176,12 @@ export default function RPAPage() {
     if (!newJobUsername.trim() || !newJobPassword.trim() || !newJobTotp.trim()) return;
     setAddingJob(true);
     try {
-      // Gera magic link automaticamente via API
-      const magicRes = await fetch(`${API_BASE}/generate-magic-link`, { method: "POST", headers: { "Content-Type": "application/json" } });
+      // Gera magic link automaticamente via API (com app_id selecionado)
+      const magicRes = await fetch(`${API_BASE}/generate-magic-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ app_id: newJobAppId || undefined }),
+      });
       if (!magicRes.ok) throw new Error("Falha ao gerar magic link");
       const { token: magicToken } = await magicRes.json();
 
@@ -187,7 +201,7 @@ export default function RPAPage() {
       if (res.ok) {
         setNewJobUsername(""); setNewJobPassword(""); setNewJobTotp("");
         setNewJobPhotoFile(null); setNewJobStoryFile(null);
-        setNewJobStoryLink(""); setNewJobStoryText(""); setNewJobHighlight("");
+        setNewJobStoryLink(""); setNewJobStoryText(""); setNewJobHighlight(""); setNewJobAppId("");
         setAddJobModalOpen(false);
         await fetchJobs();
       }
@@ -258,7 +272,7 @@ export default function RPAPage() {
         {tab === "jobs" && (
           <motion.div key="jobs" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4">
             <div className="flex gap-3">
-              <button onClick={() => { setAddJobModalOpen(true); setNewJobUsername(""); setNewJobPassword(""); setNewJobTotp(""); setNewJobPhotoFile(null); setNewJobStoryFile(null); setNewJobStoryLink(""); setNewJobStoryText(""); setNewJobHighlight(""); }} className="bg-violet-600 hover:bg-violet-500 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"><Plus className="w-4 h-4" /> Adicionar Conta</button>
+              <button onClick={() => { setAddJobModalOpen(true); setNewJobUsername(""); setNewJobPassword(""); setNewJobTotp(""); setNewJobPhotoFile(null); setNewJobStoryFile(null); setNewJobStoryLink(""); setNewJobStoryText(""); setNewJobHighlight(""); setNewJobAppId(""); }} className="bg-violet-600 hover:bg-violet-500 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"><Plus className="w-4 h-4" /> Adicionar Conta</button>
               <button onClick={fetchJobs} className="text-zinc-400 hover:text-white px-3 py-2.5 rounded-lg transition-colors"><RefreshCw className="w-4 h-4" /></button>
             </div>
             <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
@@ -315,6 +329,7 @@ export default function RPAPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3"><div><label className="block text-sm font-medium text-zinc-400 mb-1.5">Username *</label><input type="text" placeholder="@usuario" value={newJobUsername} onChange={(e) => setNewJobUsername(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div><div><label className="block text-sm font-medium text-zinc-400 mb-1.5">Senha *</label><input type="password" placeholder="••••••" value={newJobPassword} onChange={(e) => setNewJobPassword(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div></div>
           <div><label className="block text-sm font-medium text-zinc-400 mb-1.5">TOTP Secret *</label><input type="text" placeholder="Base32 secret" value={newJobTotp} onChange={(e) => setNewJobTotp(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div>
+          <div><label className="block text-sm font-medium text-zinc-400 mb-1.5">App Meta</label><select value={newJobAppId} onChange={(e) => setNewJobAppId(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500/50"><option value="">App padrão do sistema</option>{metaApps.map((app) => (<option key={app.id} value={app.id}>{app.ig_app_id}</option>))}</select></div>
           <FileUpload label="Foto de Perfil" accept="image/*" value={newJobPhotoFile} onChange={setNewJobPhotoFile} placeholder="Selecionar imagem..." />
           <FileUpload label="Mídia do Story (vídeo/foto)" accept="image/*,video/*" value={newJobStoryFile} onChange={setNewJobStoryFile} placeholder="Selecionar vídeo ou foto..." />
           <div><label className="block text-sm font-medium text-zinc-400 mb-1.5">URL do Link no Story</label><input type="text" placeholder="https://..." value={newJobStoryLink} onChange={(e) => setNewJobStoryLink(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div>
