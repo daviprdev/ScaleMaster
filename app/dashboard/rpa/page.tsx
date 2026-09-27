@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Server, Activity, Plus, Trash2, RefreshCw, AlertCircle,
   CheckCircle2, XCircle, Loader2, Wifi, WifiOff, Upload,
-  FileText, Image as ImageIcon, X,
+  FileText, Image as ImageIcon, X, Pause, Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -106,6 +106,8 @@ export default function RPAPage() {
   const [addingJob, setAddingJob] = useState(false);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [jobStages, setJobStages] = useState<Record<string, { key: string; label: string; phase: number; status: string; message: string }[]>>({});
+  const [queuePaused, setQueuePaused] = useState(false);
+  const [togglingQueue, setTogglingQueue] = useState(false);
 
   const fetchProxies = useCallback(async () => {
     try {
@@ -188,6 +190,21 @@ return () => clearInterval(interval);
     try { await fetch(`${API_BASE}/jobs/${id}`, { method: "DELETE", headers: { "Content-Type": "application/json" } }); await fetchJobs(); }
     catch (e) { console.error("Failed to delete job:", e); }
   }
+
+  async function handleToggleQueue() {
+    setTogglingQueue(true);
+    try {
+      const action = queuePaused ? "resume" : "pause";
+      const res = await fetch(`${API_BASE}/queue`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      if (res.ok) setQueuePaused(!queuePaused);
+    } catch (e) { console.error("Failed to toggle queue:", e); }
+    finally { setTogglingQueue(false); }
+  }
+
+  // Fetch queue status on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/queue`).then(r => r.json()).then(d => setQueuePaused(d.paused || false)).catch(() => {});
+  }, [API_BASE]);
 
   async function handleToggleProxy(id: string, isActive: number) {
     try { if (isActive) { await fetch(`${API_BASE}/proxies/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" } }); } await fetchProxies(); }
@@ -297,9 +314,11 @@ return () => clearInterval(interval);
 
         {tab === "jobs" && (
           <motion.div key="jobs" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-4">
-            <div className="flex gap-3">
+            <div className="flex gap-3 items-center">
               <button onClick={() => { setAddJobModalOpen(true); setNewJobUsername(""); setNewJobPassword(""); setNewJobTotp(""); setNewJobPhotoFile(null); setNewJobStoryFile(null); setNewJobStoryLink(""); setNewJobStoryText(""); setNewJobHighlight(""); setNewJobAppId(""); }} className="bg-violet-600 hover:bg-violet-500 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"><Plus className="w-4 h-4" /> Adicionar Conta</button>
+              <button onClick={handleToggleQueue} disabled={togglingQueue} className={cn("px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 border", queuePaused ? "bg-emerald-600/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/30" : "bg-orange-600/20 text-orange-400 border-orange-500/30 hover:bg-orange-600/30")}>{togglingQueue ? <Loader2 className="w-4 h-4 animate-spin" /> : queuePaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}{queuePaused ? "Retomar Fila" : "Pausar Fila"}</button>
               <button onClick={fetchJobs} className="text-zinc-400 hover:text-white px-3 py-2.5 rounded-lg transition-colors"><RefreshCw className="w-4 h-4" /></button>
+              {queuePaused && (<span className="text-xs text-orange-400 bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 rounded-full flex items-center gap-1.5"><Pause className="w-3 h-3" /> Fila pausada — nenhum job será processado</span>)}
             </div>
             <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
               <div className="p-4 border-b border-zinc-800"><h3 className="text-white font-medium">Fila de Onboarding ({jobs.length})</h3></div>
