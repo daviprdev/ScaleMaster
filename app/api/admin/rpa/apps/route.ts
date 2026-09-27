@@ -13,7 +13,7 @@ export async function GET() {
     const admin = getSupabaseAdmin();
     const { data, error } = await admin
       .from("user_meta_apps")
-      .select("id, ig_app_id, user_id")
+      .select("id, ig_app_id, app_name, user_id")
       .order("created_at", { ascending: false });
 
     if (error) {

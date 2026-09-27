@@ -102,7 +102,7 @@ export default function RPAPage() {
   const [newJobStoryText, setNewJobStoryText] = useState("");
   const [newJobHighlight, setNewJobHighlight] = useState("");
   const [newJobAppId, setNewJobAppId] = useState("");
-  const [metaApps, setMetaApps] = useState<{ id: string; ig_app_id: string }[]>([]);
+  const [metaApps, setMetaApps] = useState<{ id: string; ig_app_id: string; app_name: string | null }[]>([]);
   const [addingJob, setAddingJob] = useState(false);
 
   const fetchProxies = useCallback(async () => {
@@ -329,7 +329,7 @@ useEffect(() => { fetchProxies(); fetchJobs(); fetchApps(); }, [fetchProxies, fe
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3"><div><label className="block text-sm font-medium text-zinc-400 mb-1.5">Username *</label><input type="text" placeholder="@usuario" value={newJobUsername} onChange={(e) => setNewJobUsername(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div><div><label className="block text-sm font-medium text-zinc-400 mb-1.5">Senha *</label><input type="password" placeholder="••••••" value={newJobPassword} onChange={(e) => setNewJobPassword(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div></div>
           <div><label className="block text-sm font-medium text-zinc-400 mb-1.5">TOTP Secret *</label><input type="text" placeholder="Base32 secret" value={newJobTotp} onChange={(e) => setNewJobTotp(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div>
-          <div><label className="block text-sm font-medium text-zinc-400 mb-1.5">App Meta</label><select value={newJobAppId} onChange={(e) => setNewJobAppId(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500/50"><option value="">App padrão do sistema</option>{metaApps.map((app) => (<option key={app.id} value={app.id}>{app.ig_app_id}</option>))}</select></div>
+          <div><label className="block text-sm font-medium text-zinc-400 mb-1.5">App Meta</label><select value={newJobAppId} onChange={(e) => setNewJobAppId(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500/50"><option value="">App padrão do sistema</option>{metaApps.map((app) => (<option key={app.id} value={app.id}>{app.app_name || app.ig_app_id}</option>))}</select></div>
           <FileUpload label="Foto de Perfil" accept="image/*" value={newJobPhotoFile} onChange={setNewJobPhotoFile} placeholder="Selecionar imagem..." />
           <FileUpload label="Mídia do Story (vídeo/foto)" accept="image/*,video/*" value={newJobStoryFile} onChange={setNewJobStoryFile} placeholder="Selecionar vídeo ou foto..." />
           <div><label className="block text-sm font-medium text-zinc-400 mb-1.5">URL do Link no Story</label><input type="text" placeholder="https://..." value={newJobStoryLink} onChange={(e) => setNewJobStoryLink(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-violet-500/50" /></div>
