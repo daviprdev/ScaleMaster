@@ -16,6 +16,15 @@ import sys
 import time
 from pathlib import Path
 
+# Fix para Python 3.10+ em containers Docker: Playwright precisa spawnar
+# subprocessos (Chromium) e o event loop default não tem child watcher.
+# ThreadedChildWatcher resolve o NotImplementedError no subprocess_exec.
+if sys.platform != "win32":
+    try:
+        asyncio.set_child_watcher(asyncio.ThreadedChildWatcher())
+    except (AttributeError, RuntimeError):
+        pass  # Já setado ou Windows
+
 from config import (
     MAX_CONCURRENT_JOBS,
     POLL_INTERVAL_SECONDS,
@@ -30,7 +39,11 @@ from db import (
     claim_next_job,
     complete_job,
     fail_job,
+    get_next_proxy,
+    mark_proxy_used,
+    mark_proxy_failed,
 )
+from crypto import encrypt
 
 # Import do motor RPA
 try:
@@ -47,8 +60,10 @@ class RPAWorker:
         self._running = True
         self.semaphore = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
 
+    MAX_PROXY_ATTEMPTS = 6
+
     async def process_job(self, job: dict) -> None:
-        """Processa um único job de onboarding."""
+        """Processa um job com rotação automática de proxies (até 6 tentativas)."""
         async with self.semaphore:
             job_id = job["id"]
             username = job["username"]
@@ -58,51 +73,111 @@ class RPAWorker:
                 # Decifrar credenciais
                 password = decrypt(job["password_enc"])
                 totp_secret = decrypt(job["two_factor_enc"]) if job.get("two_factor_enc") else None
-                proxy_url = decrypt(job["proxy_url_enc"]) if job.get("proxy_url_enc") else None
-
-                # Construir URL do Magic Link
                 magic_link_url = f"{SAAS_BASE_URL}/add/{job['magic_link_token']}"
 
-                # Executar RPA
                 if run_onboarding_rpa is None:
                     raise RuntimeError("Módulo onboarding_rpa não carregado")
 
-                result = await run_onboarding_rpa(
-                    username=username,
-                    password=password,
-                    proxy_url=proxy_url,
-                    totp_secret=totp_secret,
-                    photo_path=job.get("photo_url"),
-                    story_media_path=job.get("story_media_url"),
-                    story_link_url=job.get("story_link_url"),
-                    story_link_text=job.get("story_link_text"),
-                    highlight_title=job.get("highlight_title"),
-                    magic_link_url=magic_link_url,
-                    profile_dir=str(Path(PROFILES_DIR) / username),
-                )
+                # ── Loop de rotação de proxies ──
+                tried_proxy_ids: list[str] = []
+                last_result = None
+                success = False
 
-                # Avaliar resultado
-                if result.get("success"):
-                    complete_job(job_id)
-                    print(f"[WORKER] ✅ Job {job_id} concluído com sucesso")
-                else:
+                for attempt in range(1, self.MAX_PROXY_ATTEMPTS + 1):
+                    # Buscar próximo proxy do estoque (excluindo já tentados)
+                    proxy_row = get_next_proxy(exclude_ids=tried_proxy_ids)
+                    if proxy_row is None:
+                        print(f"[WORKER] ⚠️ Sem proxies disponíveis no estoque (tentativa {attempt})")
+                        break
+
+                    proxy_id = proxy_row["id"]
+                    proxy_url = decrypt(proxy_row["proxy_url_enc"])
+                    tried_proxy_ids.append(proxy_id)
+                    mark_proxy_used(proxy_id)
+
+                    print(f"[WORKER] Tentativa {attempt}/{self.MAX_PROXY_ATTEMPTS} — Proxy: {proxy_row.get('provider', 'N/A')} ({proxy_id[:8]}...)")
+
+                    try:
+                        result = await run_onboarding_rpa(
+                            username=username,
+                            password=password,
+                            proxy_url=proxy_url,
+                            totp_secret=totp_secret,
+                            photo_path=job.get("photo_url"),
+                            story_media_path=job.get("story_media_url"),
+                            story_link_url=job.get("story_link_url"),
+                            story_link_text=job.get("story_link_text"),
+                            highlight_title=job.get("highlight_title"),
+                            magic_link_url=magic_link_url,
+                            profile_dir=str(Path(PROFILES_DIR) / username),
+                        )
+                    except Exception as rpa_exc:
+                        import traceback
+                        err_msg = f"{type(rpa_exc).__name__}: {rpa_exc}"
+                        print(f"[WORKER] 💥 Exceção RPA na tentativa {attempt}: {err_msg}")
+                        mark_proxy_failed(proxy_id, error=err_msg[:300])
+                        last_result = {"success": False, "error_code": "rpa_exception", "message": err_msg}
+                        continue
+
+                    if result.get("success"):
+                        mark_proxy_used(proxy_id)  # reforça sucesso
+                        complete_job(job_id)
+                        print(f"[WORKER] ✅ Job {job_id} concluído na tentativa {attempt}")
+                        success = True
+                        break
+
+                    # Falha — avaliar se deve rotacionar proxy
                     error_code = result.get("error_code", "unknown")
-                    error_msg = result.get("message", result.get("error_message", "Erro desconhecido"))
+                    error_msg = result.get("message", "Erro desconhecido")
+                    last_result = result
 
-                    # Erros permanentes vs transitórios
-                    permanent_errors = {"needs_2fa", "challenge_required", "login_failed", "account_disabled"}
-                    is_permanent = error_code in permanent_errors
+                    # Erros que justificam trocar proxy
+                    proxy_retryable = {
+                        "instagrapi_login_failed", "login_failed",
+                        "timeout", "unknown_error", "rpa_exception",
+                    }
+                    # Erros permanentes (não adianta trocar proxy)
+                    permanent_errors = {
+                        "needs_2fa", "challenge_required",
+                        "account_disabled", "sessionid_missing",
+                        "validation", "no_stories",
+                    }
+
+                    if error_code in permanent_errors:
+                        print(f"[WORKER] ❌ Erro permanente ({error_code}), parando rotação")
+                        break
+
+                    if error_code in proxy_retryable and attempt < self.MAX_PROXY_ATTEMPTS:
+                        fc = mark_proxy_failed(proxy_id, error=f"[{error_code}] {error_msg}"[:300])
+                        print(f"[WORKER] 🔄 Falha retryable ({error_code}), proxy {proxy_id[:8]} failure_count={fc}, tentando próximo...")
+                        continue
+
+                    # Erro não-retryable ou última tentativa
+                    if attempt >= self.MAX_PROXY_ATTEMPTS:
+                        mark_proxy_failed(proxy_id, error=f"[{error_code}] {error_msg}"[:300])
+                        print(f"[WORKER] ❌ Esgotadas {self.MAX_PROXY_ATTEMPTS} tentativas de proxy")
+                    break
+
+                # ── Resultado final ──
+                if not success:
+                    error_code = last_result.get("error_code", "unknown") if last_result else "no_proxy"
+                    error_msg = last_result.get("message", "Sem proxies ou erro desconhecido") if last_result else "No proxies available"
+                    is_permanent = error_code in {"needs_2fa", "challenge_required", "account_disabled", "validation"}
                     fail_job(job_id, f"[{error_code}] {error_msg}", permanent=is_permanent)
-
                     if is_permanent:
                         print(f"[WORKER] ❌ Job {job_id} falha permanente: {error_code}")
                     else:
-                        print(f"[WORKER] 🔄 Job {job_id} falha transitória: {error_code}")
+                        print(f"[WORKER] ❌ Job {job_id} falhou após {len(tried_proxy_ids)} tentativa(s): {error_code}")
 
             except Exception as e:
-                error_msg = str(e)[:500]
-                fail_job(job_id, error_msg, permanent=False)
-                print(f"[WORKER] 💥 Job {job_id} exceção: {e}")
+                import traceback
+                error_type = type(e).__name__
+                error_msg = str(e) or f"{error_type} (sem mensagem)"
+                full_error = f"[{error_type}] {error_msg}"
+                tb = traceback.format_exc()[-500:]
+                fail_job(job_id, f"{full_error}\n---TB---\n{tb}", permanent=False)
+                print(f"[WORKER] 💥 Job {job_id} exceção fatal: {full_error}")
+                print(f"[WORKER] Traceback:\n{tb}")
 
     async def worker_loop(self) -> None:
         """Loop principal que faz polling no SQLite por jobs pendentes."""

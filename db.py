@@ -34,8 +34,22 @@ CREATE TABLE IF NOT EXISTS jobs (
     updated_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS proxies (
+    id TEXT PRIMARY KEY,
+    proxy_url_enc TEXT NOT NULL,
+    provider TEXT,
+    country TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    failure_count INTEGER NOT NULL DEFAULT 0,
+    last_used_at REAL,
+    last_error TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_username ON jobs(username);
+CREATE INDEX IF NOT EXISTS idx_proxies_active ON proxies(is_active);
 """
 
 
@@ -197,3 +211,114 @@ def get_stats(db_path: str = DB_PATH) -> dict:
             ).fetchone()
             stats[status] = row["cnt"]
     return stats
+
+
+# ─── PROXY POOL MANAGEMENT ──────────────────────────────────
+
+def insert_proxy(proxy_url_enc: str, provider: str = None, country: str = None, db_path: str = DB_PATH) -> str:
+    """Insere novo proxy no estoque. Retorna ID."""
+    import uuid
+    now = time.time()
+    proxy_id = str(uuid.uuid4())
+    with _connect(db_path) as conn:
+        conn.execute(
+            """INSERT INTO proxies (id, proxy_url_enc, provider, country, is_active, failure_count, created_at, updated_at)
+               VALUES (?, ?, ?, ?, 1, 0, ?, ?)""",
+            (proxy_id, proxy_url_enc, provider, country, now, now),
+        )
+    return proxy_id
+
+
+def list_proxies(include_inactive: bool = False, db_path: str = DB_PATH) -> list[dict]:
+    """Lista proxies do estoque."""
+    with _connect(db_path) as conn:
+        if include_inactive:
+            rows = conn.execute("SELECT * FROM proxies ORDER BY created_at DESC").fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM proxies WHERE is_active = 1 ORDER BY failure_count ASC, last_used_at ASC").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_next_proxy(exclude_ids: list[str] = None, db_path: str = DB_PATH) -> Optional[dict]:
+    """Retorna o próximo proxy disponível (menos usado, menos falhas).
+
+    Args:
+        exclude_ids: Lista de IDs de proxy já tentados para este job (evita repetição).
+    """
+    with _connect(db_path) as conn:
+        if exclude_ids:
+            placeholders = ",".join("?" * len(exclude_ids))
+            row = conn.execute(
+                f"""SELECT * FROM proxies
+                    WHERE is_active = 1 AND id NOT IN ({placeholders})
+                    ORDER BY failure_count ASC, last_used_at ASC
+                    LIMIT 1""",
+                exclude_ids,
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """SELECT * FROM proxies
+                   WHERE is_active = 1
+                   ORDER BY failure_count ASC, last_used_at ASC
+                   LIMIT 1"""
+            ).fetchone()
+    return dict(row) if row else None
+
+
+def mark_proxy_used(proxy_id: str, db_path: str = DB_PATH) -> None:
+    """Registra que um proxy foi usado."""
+    now = time.time()
+    with _connect(db_path) as conn:
+        conn.execute(
+            "UPDATE proxies SET last_used_at = ?, updated_at = ? WHERE id = ?",
+            (now, now, proxy_id),
+        )
+
+
+def mark_proxy_failed(proxy_id: str, error: str = None, db_path: str = DB_PATH) -> int:
+    """Incrementa contador de falhas do proxy. Retorna novo failure_count."""
+    now = time.time()
+    with _connect(db_path) as conn:
+        conn.execute(
+            """UPDATE proxies
+               SET failure_count = failure_count + 1,
+                   last_error = ?,
+                   last_used_at = ?,
+                   updated_at = ?
+               WHERE id = ?""",
+            ((error or "")[:500], now, now, proxy_id),
+        )
+        row = conn.execute("SELECT failure_count FROM proxies WHERE id = ?", (proxy_id,)).fetchone()
+    return row["failure_count"] if row else 0
+
+
+def deactivate_proxy(proxy_id: str, db_path: str = DB_PATH) -> None:
+    """Desativa um proxy do estoque."""
+    now = time.time()
+    with _connect(db_path) as conn:
+        conn.execute(
+            "UPDATE proxies SET is_active = 0, updated_at = ? WHERE id = ?",
+            (now, proxy_id),
+        )
+
+
+def delete_proxy(proxy_id: str, db_path: str = DB_PATH) -> None:
+    """Remove permanentemente um proxy do estoque."""
+    with _connect(db_path) as conn:
+        conn.execute("DELETE FROM proxies WHERE id = ?", (proxy_id,))
+
+
+def get_proxy_stats(db_path: str = DB_PATH) -> dict:
+    """Estatísticas do estoque de proxies."""
+    with _connect(db_path) as conn:
+        total = conn.execute("SELECT COUNT(*) as cnt FROM proxies").fetchone()["cnt"]
+        active = conn.execute("SELECT COUNT(*) as cnt FROM proxies WHERE is_active = 1").fetchone()["cnt"]
+        failed = conn.execute("SELECT COUNT(*) as cnt FROM proxies WHERE failure_count > 0").fetchone()["cnt"]
+        avg_failures = conn.execute("SELECT AVG(failure_count) as avg_f FROM proxies WHERE is_active = 1").fetchone()["avg_f"]
+    return {
+        "total": total,
+        "active": active,
+        "inactive": total - active,
+        "with_failures": failed,
+        "avg_failure_rate": round(avg_failures or 0, 2),
+    }

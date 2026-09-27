@@ -1,48 +1,34 @@
 """
-AutoScale - Onboarding automatizado HÍBRIDO (Playwright Web + Instagrapi Mobile).
-
-Arquitetura:
-  - Playwright (Chromium headless): usado APENAS para login inicial e aceite
-    de convite de tester do App Meta — ações que exigem sessão web real.
-  - Instagrapi (API privada mobile): usado para trocar foto de perfil, postar
-    story com sticker de link (texto personalizado) e criar destaque — mais
-    rápido, leve e menos detectável como bot do que automação de DOM.
-
-Fluxo por conta:
-  1. Abre Chromium com proxy dedicada e perfil persistente
-  2. Faz login com user/senha/2FA via UI web (Playwright)
-  3. Aceita convite de tester do App Meta via UI web (Playwright) — se aplicável
-  4. Extrai cookies da sessão web e inicializa instagrapi.Client com eles
-  5. Troca foto de perfil via instagrapi (mobile API)
-  6. Posta story com mídia + sticker de link (texto personalizado) via instagrapi
-  7. Cria destaque a partir do story via instagrapi
-  8. Navega até Magic Link do SaaS via Playwright para vincular conta
-  9. Salva cookies atualizados para reuso futuro
-
-Retry inteligente: se der erro de IP/bloqueio, fecha o navegador, troca
-a proxy e tenta de novo (até 6 vezes).
+AutoScale - Onboarding RPA HIBRIDO (Instagrapi Mobile -> Playwright Web).
+Fluxo:
+FASE 1 (Instagrapi Mobile):
+  1a. Login mobile via instagrapi
+  1b. Postar story com sticker de link
+  1c. Trocar foto de perfil
+  1d. Criar destaque a partir do story
+  1e. Extrair cookies da sessao para injetar no Playwright
+FASE 2 (Playwright Web - com cookies injetados):
+  2a. Navegar para Instagram (ja logado via cookies)
+  2b. Converter para conta profissional (criador de conteudo)
+  2c. Aceitar convite de tester
+  2d. OAuth / Magic Link do SaaS
 """
-
 import os
-import json
 import asyncio
+import subprocess
 import tempfile
-import shutil
+import uuid
+import traceback
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
-
 import httpx
-from playwright.async_api import async_playwright, BrowserContext, Page, TimeoutError as PlaywrightTimeout
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 
-# Diretório base para perfis persistentes (cada conta tem sua pasta)
 PROFILES_DIR = Path(os.environ.get("ONBOARDING_PROFILES_DIR", "/tmp/onboarding_profiles"))
 PROFILES_DIR.mkdir(parents=True, exist_ok=True)
-
-# Configurações
-DEFAULT_TIMEOUT = 30_000  # 30 segundos
-NAVIGATION_TIMEOUT = 60_000  # 60 segundos para navegação
-MAX_RETRIES = 6
+DEFAULT_TIMEOUT = 60_000
+NAVIGATION_TIMEOUT = 60_000
 
 
 @dataclass
@@ -50,21 +36,12 @@ class RPAResult:
     success: bool
     stage: str
     message: str
-    cookies: Optional[list[dict]] = None
+    cookies: Optional[list] = None
     error_code: Optional[str] = None
 
 
 class InstagramRPA:
-    """Automação híbrida: Playwright (web) + Instagrapi (mobile) para onboarding."""
-
-    def __init__(
-        self,
-        username: str,
-        password: str,
-        proxy_url: str,
-        totp_secret: Optional[str] = None,
-        device_seed: Optional[str] = None,
-    ):
+    def __init__(self, username, password, proxy_url, totp_secret=None, device_seed=None):
         self.username = username
         self.password = password
         self.proxy_url = proxy_url
@@ -72,520 +49,447 @@ class InstagramRPA:
         self.device_seed = device_seed or username
         self.profile_dir = PROFILES_DIR / self._safe_filename(username)
         self.profile_dir.mkdir(parents=True, exist_ok=True)
-        self.context: Optional[BrowserContext] = None
-        self.page: Optional[Page] = None
+        self.context = None
+        self.page = None
         self.playwright = None
-        self.browser = None
-        self.ig_client = None  # instagrapi.Client — inicializado após login web
+        self.ig_client = None
 
-    def _safe_filename(self, name: str) -> str:
-        """Remove caracteres inválidos para nome de pasta."""
+    def _safe_filename(self, name):
         return "".join(c if c.isalnum() or c in "._-" else "_" for c in name)
 
-    async def _download_to_temp(self, url: str, suffix: str = "") -> str:
-        """Baixa uma URL para um arquivo temporário local. Retorna o path."""
+    async def _download_to_temp(self, url, suffix=""):
         if not url or not url.strip():
-            raise ValueError("URL vazia fornecida para download")
+            raise ValueError("URL vazia")
         if not url.startswith(("http://", "https://")):
-            print(f"[RPA:{self.username}] Path local detectado: {url}")
             return url
-        print(f"[RPA:{self.username}] Iniciando download: {url[:120]}...")
-        try:
-            async with httpx.AsyncClient(
-                timeout=httpx.Timeout(20.0, connect=10.0),
-                follow_redirects=True,
-            ) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
-            print(f"[RPA:{self.username}] Download OK: {len(resp.content)} bytes, status={resp.status_code}")
-        except httpx.TimeoutException as te:
-            print(f"[RPA:{self.username}] TIMEOUT no download após 20s: {te}")
-            raise
-        except httpx.HTTPStatusError as he:
-            print(f"[RPA:{self.username}] HTTP {he.response.status_code} no download: {he}")
-            raise
-        except Exception as e:
-            print(f"[RPA:{self.username}] ERRO no download: {type(e).__name__}: {e}")
-            raise
+        print(f"[RPA:{self.username}] Download: {url[:120]}...")
+        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0), follow_redirects=True) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+        print(f"[RPA:{self.username}] Download OK: {len(resp.content)} bytes")
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
         tmp.write(resp.content)
         tmp.close()
-        print(f"[RPA:{self.username}] Arquivo salvo: {tmp.name} ({len(resp.content)} bytes)")
         return tmp.name
 
-    def _parse_proxy(self, proxy_url: str) -> dict:
-        """Converte URL de proxy para formato do Playwright."""
+    def _parse_proxy_playwright(self, proxy_url):
+        proxy_url = proxy_url.strip()
+        if not proxy_url.startswith(("http://", "https://", "socks")) and proxy_url.count(":") >= 3:
+            parts = proxy_url.split(":", 3)
+            host, port, user, pwd = parts[0], parts[1], parts[2], parts[3]
+            if "{session_id}" in user:
+                user = user.replace("{session_id}", uuid.uuid4().hex[:8])
+            return {"server": f"http://{host}:{port}", "username": user, "password": pwd}
         from urllib.parse import urlparse
-        parsed = urlparse(proxy_url)
-        proxy = {
-            "server": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}",
-        }
-        if parsed.username:
-            proxy["username"] = parsed.username
-        if parsed.password:
-            proxy["password"] = parsed.password
-        return proxy
+        if "://" not in proxy_url:
+            proxy_url = "http://" + proxy_url
+        p = urlparse(proxy_url)
+        r = {"server": f"{p.scheme}://{p.hostname}:{p.port}"}
+        if p.username:
+            r["username"] = p.username
+        if p.password:
+            r["password"] = p.password
+        return r
 
-    async def start(self):
-        """Inicia o Playwright e abre o navegador com perfil persistente."""
+    def _parse_proxy_instagrapi(self, proxy_url):
+        proxy_url = proxy_url.strip()
+        if not proxy_url.startswith(("http://", "https://", "socks")) and proxy_url.count(":") >= 3:
+            parts = proxy_url.split(":", 3)
+            host, port, user, pwd = parts[0], parts[1], parts[2], parts[3]
+            if "{session_id}" in user:
+                user = user.replace("{session_id}", uuid.uuid4().hex[:8])
+            return f"http://{user}:{pwd}@{host}:{port}"
+        return proxy_url
+
+    # ── INSTAGRAPI (FASE 1) ─────────────────────────────────────
+    def _init_instagrapi(self):
+        """Login mobile via instagrapi."""
+        try:
+            from instagrapi import Client
+            cl = Client()
+            cl.set_device({
+                "manufacturer": "samsung",
+                "model": "SM-G998B",
+                "device": "o1s",
+                "cpu": "exynos2100",
+                "android_version": 33,
+                "android_release": "13",
+                "dpi": 420,
+                "resolution": [1080, 2400],
+            })
+            if self.proxy_url:
+                ps = self._parse_proxy_instagrapi(self.proxy_url)
+                print(f"[RPA:{self.username}] Proxy instagrapi OK")
+                cl.set_proxy(ps)
+            print(f"[RPA:{self.username}] Login mobile instagrapi...")
+            if self.totp_secret:
+                cl.login(self.username, self.password, verification_code=self._generate_totp(self.totp_secret))
+            else:
+                cl.login(self.username, self.password)
+            ui = cl.user_info_by_username(self.username)
+            print(f"[RPA:{self.username}] Instagrapi OK: @{ui.username} ({ui.pk})")
+            self.ig_client = cl
+            return True
+        except Exception as e:
+            print(f"[RPA:{self.username}] Erro instagrapi: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            return False
+
+    def _extract_cookies_from_instagrapi(self):
+        """Extrai cookies da sessao do instagrapi para injetar no Playwright."""
+        if not self.ig_client:
+            return []
+        try:
+            cookies = []
+            # instagrapi armazena cookies no objeto private
+            if hasattr(self.ig_client, 'private') and hasattr(self.ig_client.private, 'cookies'):
+                jar = self.ig_client.private.cookies
+                for cookie in jar:
+                    c = {
+                        "name": cookie.name,
+                        "value": cookie.value,
+                        "domain": cookie.domain or ".instagram.com",
+                        "path": cookie.path or "/",
+                    }
+                    if cookie.expires:
+                        c["expires"] = cookie.expires
+                    cookies.append(c)
+            # Fallback: tentar extrair do session
+            if not cookies and hasattr(self.ig_client, 'private'):
+                session = getattr(self.ig_client.private, 'session', None) or getattr(self.ig_client, '_session', None)
+                if session and hasattr(session, 'cookies'):
+                    for name, value in session.cookies.items():
+                        cookies.append({
+                            "name": name,
+                            "value": value,
+                            "domain": ".instagram.com",
+                            "path": "/",
+                        })
+            # Garantir que sessionid esteja presente
+            has_sessionid = any(c["name"] == "sessionid" for c in cookies)
+            if not has_sessionid and hasattr(self.ig_client, 'token'):
+                cookies.append({
+                    "name": "sessionid",
+                    "value": self.ig_client.token,
+                    "domain": ".instagram.com",
+                    "path": "/",
+                })
+            print(f"[RPA:{self.username}] Cookies extraidos do instagrapi: {len(cookies)}")
+            return cookies
+        except Exception as e:
+            print(f"[RPA:{self.username}] Erro extraindo cookies: {e}")
+            return []
+
+    def _upload_video_thumb(self, video_path, link_sticker):
+        import pathlib as pl
+        thumb = video_path + ".jpg"
+        try:
+            r = subprocess.run(["ffmpeg", "-y", "-i", video_path, "-vframes", "1", "-q:v", "2", thumb], capture_output=True, timeout=30)
+            if r.returncode == 0 and os.path.exists(thumb):
+                return self.ig_client.video_upload_to_story(path=pl.Path(video_path), thumbnail=pl.Path(thumb), links=[link_sticker])
+            return self.ig_client.video_upload_to_story(path=pl.Path(video_path), links=[link_sticker])
+        except Exception as e:
+            print(f"[RPA:{self.username}] ffmpeg err: {e}")
+            return self.ig_client.video_upload_to_story(path=pl.Path(video_path), links=[link_sticker])
+        finally:
+            if os.path.exists(thumb):
+                try:
+                    os.unlink(thumb)
+                except Exception:
+                    pass
+
+    async def post_story_with_link(self, media_path, link_url, link_text=None):
+        if not self.ig_client:
+            return RPAResult(False, "post_story", "Instagrapi nao init", error_code="instagrapi_not_ready")
+        local = None
+        try:
+            local = await self._download_to_temp(media_path, suffix=".mp4")
+            is_vid = local.lower().endswith((".mp4", ".mov", ".avi", ".webm"))
+            from instagrapi.types import StoryLink
+            ls = StoryLink(webUri=link_url, text=link_text or link_url)
+            print(f"[RPA:{self.username}] Story: {link_url}")
+            loop = asyncio.get_event_loop()
+            if is_vid:
+                await loop.run_in_executor(None, lambda: self._upload_video_thumb(local, ls))
+            else:
+                await loop.run_in_executor(None, lambda: self.ig_client.photo_upload_to_story(path=local, links=[ls]))
+            return RPAResult(True, "post_story", "Story publicado")
+        except Exception as e:
+            print(f"[RPA:{self.username}] ERRO STORY: {traceback.format_exc()}")
+            return RPAResult(False, "post_story", f"{type(e).__name__}: {e}", error_code="story_failed")
+        finally:
+            if local and local != media_path and os.path.exists(local):
+                os.unlink(local)
+
+    async def change_profile_photo(self, photo_path):
+        if not self.ig_client:
+            return RPAResult(False, "change_photo", "Instagrapi nao init", error_code="instagrapi_not_ready")
+        local = None
+        try:
+            local = await self._download_to_temp(photo_path, suffix=".jpg")
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, lambda: self.ig_client.account_change_picture(local))
+            return RPAResult(True, "change_photo", "Foto alterada")
+        except Exception as e:
+            print(f"[RPA:{self.username}] Erro foto: {traceback.format_exc()}")
+            return RPAResult(False, "change_photo", f"{type(e).__name__}: {e}", error_code="photo_failed")
+        finally:
+            if local and local != photo_path and os.path.exists(local):
+                os.unlink(local)
+
+    async def create_highlight_from_story(self, title):
+        if not self.ig_client:
+            return RPAResult(False, "highlight", "Instagrapi nao init", error_code="instagrapi_not_ready")
+        try:
+            uid = self.ig_client.user_id
+            loop = asyncio.get_event_loop()
+            stories = await loop.run_in_executor(None, lambda: self.ig_client.user_stories(uid))
+            if not stories:
+                return RPAResult(False, "highlight", "Sem story recente", error_code="no_stories")
+            pk = stories[0].pk
+            await loop.run_in_executor(None, lambda: self.ig_client.highlight_create(title, [pk]))
+            return RPAResult(True, "highlight", f"Destaque '{title}' criado")
+        except Exception as e:
+            print(f"[RPA:{self.username}] Erro destaque: {traceback.format_exc()}")
+            return RPAResult(False, "highlight", f"{type(e).__name__}: {e}", error_code="highlight_failed")
+
+    # ── PLAYWRIGHT (FASE 2) ─────────────────────────────────────
+    async def start(self, inject_cookies=None):
         self.playwright = await async_playwright().start()
-
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(self.profile_dir),
-            headless=True,
-            proxy=self._parse_proxy(self.proxy_url) if self.proxy_url else None,
+            headless=False,
+            proxy=self._parse_proxy_playwright(self.proxy_url) if self.proxy_url else None,
             viewport={"width": 1920, "height": 1080},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             locale="pt-BR",
             timezone_id="America/Sao_Paulo",
             ignore_https_errors=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+            ],
+            ignore_default_args=["--enable-automation"],
         )
-
+        await self.context.add_init_script("""
+Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+Object.defineProperty(navigator, 'languages', {get: () => ['pt-BR', 'pt', 'en']});
+window.chrome = {runtime: {}};
+""")
+        # Injetar cookies do instagrapi antes de criar pagina
+        if inject_cookies:
+            try:
+                await self.context.add_cookies(inject_cookies)
+                print(f"[RPA:{self.username}] Cookies injetados no Playwright: {len(inject_cookies)}")
+            except Exception as e:
+                print(f"[RPA:{self.username}] Erro injetando cookies: {e}")
         self.page = await self.context.new_page()
         self.page.set_default_timeout(DEFAULT_TIMEOUT)
         self.page.set_default_navigation_timeout(NAVIGATION_TIMEOUT)
 
     async def stop(self):
-        """Fecha o navegador e limpa recursos."""
         if self.context:
             await self.context.close()
         if self.playwright:
             await self.playwright.stop()
 
-    async def get_cookies(self) -> list[dict]:
-        """Retorna os cookies atuais do contexto."""
-        if self.context:
-            return await self.context.cookies()
-        return []
+    async def get_cookies(self):
+        return await self.context.cookies() if self.context else []
 
-    def _init_instagrapi(self) -> bool:
-        """Inicializa instagrapi.Client com login mobile direto (username/password).
-
-        Cookies web do Playwright NÃO são compatíveis com a sessão mobile do
-        instagrapi — são formatos completamente diferentes (web sessionid vs
-        mobile IG_SIG_KEY + device headers). Por isso fazemos login direto
-        pelo instagrapi com as mesmas credenciais usadas no Playwright.
-        As duas sessões coexistem: Playwright cuida do que só a web faz
-        (aceite de convite tester), instagrapi cuida do resto (foto, story,
-        destaque) via API mobile privada.
-        """
-        try:
-            from instagrapi import Client
-
-            cl = Client()
-
-            # Configura proxy se existir
-            if self.proxy_url:
-                cl.set_proxy(self.proxy_url)
-
-            # Login mobile direto — não usa cookies do Playwright
-            print(f"[RPA:{self.username}] Fazendo login mobile via instagrapi...")
-            if self.totp_secret:
-                verification_code = self._generate_totp(self.totp_secret)
-                cl.login(self.username, self.password, verification_code=verification_code)
-            else:
-                cl.login(self.username, self.password)
-
-            # Verifica se a sessão é válida
-            user_info = cl.user_info_by_username(self.username)
-            print(f"[RPA:{self.username}] ✅ Instagrapi logado como @{user_info.username} (id: {user_info.pk})")
-
-            self.ig_client = cl
-            return True
-
-        except ImportError:
-            print(f"[RPA:{self.username}] ❌ instagrapi não instalado — pip install instagrapi")
-            return False
-        except Exception as e:
-            print(f"[RPA:{self.username}] ❌ Erro ao inicializar instagrapi: {type(e).__name__}: {e}")
-            return False
-
-    async def login(self) -> RPAResult:
-        """Faz login no Instagram via UI real (Playwright)."""
-        try:
-            print(f"[RPA:{self.username}] Navegando para página de login...")
-            await self.page.goto(
-                "https://www.instagram.com/accounts/login/",
-                wait_until="domcontentloaded",
-                timeout=30_000,
-            )
-            print(f"[RPA:{self.username}] Página de login carregada: {self.page.url}")
-
-            if await self._is_logged_in():
-                return RPAResult(True, "login", "Já estava logado (cookies válidos)")
-
-            await self.page.fill('input[name="username"]', self.username)
-            await self.page.fill('input[name="password"]', self.password)
-            await self.page.click('button[type="submit"]')
-            await self.page.wait_for_timeout(3000)
-
-            if await self._has_2fa_prompt():
-                if not self.totp_secret:
-                    return RPAResult(False, "login", "2FA solicitado mas nenhum TOTP secret fornecido", error_code="needs_2fa")
-
-                totp_code = self._generate_totp(self.totp_secret)
-                await self.page.fill('input[name="verificationCode"]', totp_code)
-                await self.page.click('button[type="submit"]')
-                await self.page.wait_for_timeout(3000)
-
-            if await self._is_logged_in():
-                return RPAResult(True, "login", "Login realizado com sucesso", cookies=await self.get_cookies())
-
-            if await self._has_challenge():
-                return RPAResult(False, "login", "Instagram solicitou verificação adicional (challenge)", error_code="challenge_required")
-
-            return RPAResult(False, "login", "Login falhou - verifique credenciais", error_code="login_failed")
-
-        except PlaywrightTimeout:
-            return RPAResult(False, "login", "Timeout durante o login", error_code="timeout")
-        except Exception as e:
-            return RPAResult(False, "login", f"Erro durante login: {str(e)}", error_code="unknown_error")
-
-    async def _is_logged_in(self) -> bool:
-        try:
-            current_url = self.page.url
-            if "/accounts/login" not in current_url and "instagram.com" in current_url:
-                return True
-            nav = await self.page.query_selector('nav[aria-label="Home"]')
-            return nav is not None
-        except:
-            return False
-
-    async def _has_2fa_prompt(self) -> bool:
-        try:
-            el = await self.page.query_selector('input[name="verificationCode"]')
-            return el is not None
-        except:
-            return False
-
-    async def _has_challenge(self) -> bool:
-        try:
-            current_url = self.page.url
-            return "/challenge/" in current_url or "/checkpoint/" in current_url
-        except:
-            return False
-
-    def _generate_totp(self, secret: str) -> str:
+    def _generate_totp(self, secret):
         import pyotp
-        totp = pyotp.TOTP(secret)
-        return totp.now()
+        return pyotp.TOTP(secret).now()
 
-    async def accept_tester_invite(self, app_id: str) -> RPAResult:
-        """Aceita convite de tester do App Meta via UI web (Playwright)."""
+    async def _is_logged_in(self):
         try:
-            print(f"[RPA:{self.username}] Navegando para página de convite tester (app {app_id})...")
-            await self.page.goto(
-                f"https://www.instagram.com/accounts/manage_access/?app_id={app_id}",
-                wait_until="domcontentloaded",
-                timeout=30_000,
-            )
-            await self.page.wait_for_timeout(3000)
-            print(f"[RPA:{self.username}] Página de convite carregada: {self.page.url}")
-
-            accept_selectors = [
-                'button:has-text("Aceitar")',
-                'button:has-text("Accept")',
-                '[role="button"]:has-text("Aceitar")',
-                '[role="button"]:has-text("Accept")',
-                'div[role="button"]:has-text("Aceitar")',
-            ]
-
-            for selector in accept_selectors:
-                try:
-                    btn = await self.page.wait_for_selector(selector, timeout=5000)
-                    if btn:
-                        await btn.click()
-                        await self.page.wait_for_timeout(3000)
-                        return RPAResult(True, "accept_invite", f"Convite aceito para app {app_id}")
-                except:
-                    continue
-
-            if await self._is_invite_already_accepted():
-                return RPAResult(True, "accept_invite", "Convite já estava aceito")
-
-            return RPAResult(False, "accept_invite", "Não encontrou botão de aceitar convite", error_code="invite_button_not_found")
-
-        except Exception as e:
-            return RPAResult(False, "accept_invite", f"Erro ao aceitar convite: {str(e)}", error_code="unknown_error")
-
-    async def _is_invite_already_accepted(self) -> bool:
-        try:
-            text = await self.page.inner_text("body")
-            return "conectado" in text.lower() or "connected" in text.lower()
-        except:
+            if "/accounts/login" not in self.page.url and "instagram.com" in self.page.url:
+                return True
+            return (await self.page.query_selector('nav[aria-label="Home"]')) is not None
+        except Exception:
             return False
 
-    # ═══════════════════════════════════════════════════════════════
-    # ETAPAS VIA INSTAGRAPI (Mobile API)
-    # ═══════════════════════════════════════════════════════════════
-
-    async def change_profile_photo(self, photo_path: str) -> RPAResult:
-        """Troca foto de perfil via instagrapi (mobile API)."""
-        if not self.ig_client:
-            return RPAResult(False, "change_photo", "Instagrapi não inicializado", error_code="instagrapi_not_ready")
-
-        local_photo = None
+    async def convert_to_professional(self):
+        """Converte conta para profissional (criador de conteudo) via web."""
         try:
-            print(f"[RPA:{self.username}] Baixando foto de perfil...")
-            local_photo = await self._download_to_temp(photo_path, suffix=".jpg")
-            print(f"[RPA:{self.username}] Foto baixada: {local_photo}")
-
-            # Usa instagrapi para trocar foto (API mobile)
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, lambda: self.ig_client.account_change_picture(local_photo))
-
-            print(f"[RPA:{self.username}] ✅ Foto de perfil alterada via instagrapi")
-            return RPAResult(True, "change_photo", "Foto de perfil alterada com sucesso")
-
+            print(f"[RPA:{self.username}] Verificando tipo de conta...")
+            await self.page.goto("https://www.instagram.com/accounts/settings/", wait_until="networkidle", timeout=30000)
+            await self.page.wait_for_timeout(3000)
+            for text in ["Mudar para conta profissional", "Switch to professional account", "Conta profissional", "Professional account"]:
+                btn = await self.page.query_selector(f'text="{text}"')
+                if btn:
+                    print(f"[RPA:{self.username}] Botao converter encontrado: {text}")
+                    await btn.click()
+                    await self.page.wait_for_timeout(3000)
+                    creator = await self.page.query_selector('text="Criador de conteudo"')
+                    if not creator:
+                        creator = await self.page.query_selector('text="Content creator"')
+                    if not creator:
+                        creator = await self.page.query_selector('text="Creator"')
+                    if creator:
+                        await creator.click()
+                        await self.page.wait_for_timeout(2000)
+                    confirm = await self.page.query_selector('div[role="button"]:has-text("Avancar")')
+                    if not confirm:
+                        confirm = await self.page.query_selector('div[role="button"]:has-text("Next")')
+                    if not confirm:
+                        confirm = await self.page.query_selector('div[role="button"]:has-text("Concluir")')
+                    if not confirm:
+                        confirm = await self.page.query_selector('div[role="button"]:has-text("Done")')
+                    if confirm:
+                        await confirm.click()
+                        await self.page.wait_for_timeout(3000)
+                        print(f"[RPA:{self.username}] Conta convertida para profissional")
+                        return RPAResult(True, "convert", "Conta profissional")
+            print(f"[RPA:{self.username}] Ja e conta profissional ou botao nao encontrado")
+            return RPAResult(True, "convert", "Ja profissional ou ignorado")
         except Exception as e:
-            return RPAResult(False, "change_photo", f"Erro ao trocar foto: {str(e)}", error_code="unknown_error")
-        finally:
-            if local_photo and local_photo != photo_path and os.path.exists(local_photo):
-                os.unlink(local_photo)
+            print(f"[RPA:{self.username}] Erro converter: {e}")
+            return RPAResult(True, "convert", f"Ignorado: {e}")
 
-    async def post_story_with_link(self, media_path: str, link_url: str, link_text: str | None = None) -> RPAResult:
-        """Posta story com mídia e sticker de link via instagrapi (mobile API).
-
-        Args:
-            media_path: URL ou caminho local da mídia (imagem/vídeo)
-            link_url: URL do sticker de link
-            link_text: Texto personalizado do sticker (opcional). Se None, usa a URL.
-        """
-        if not self.ig_client:
-            return RPAResult(False, "post_story", "Instagrapi não inicializado", error_code="instagrapi_not_ready")
-
-        local_media = None
+    async def accept_tester_invite(self):
         try:
-            print(f"[RPA:{self.username}] Baixando mídia do story...")
-            local_media = await self._download_to_temp(media_path, suffix=".mp4")
-            print(f"[RPA:{self.username}] Mídia baixada: {local_media}")
-
-            # Determina se é vídeo ou imagem
-            is_video = local_media.lower().endswith((".mp4", ".mov", ".avi", ".webm"))
-
-            # Configura o sticker de link com texto personalizado
-            from instagrapi.types import StoryLink
-
-            link_sticker = StoryLink(
-                webUri=link_url,
-                text=link_text or link_url,  # Usa texto personalizado ou URL como fallback
-            )
-
-            print(f"[RPA:{self.username}] Postando story com link: {link_url} (texto: '{link_text or link_url}')")
-
-            loop = asyncio.get_event_loop()
-            if is_video:
-                await loop.run_in_executor(
-                    None,
-                    lambda: self.ig_client.clip_upload_as_story(local_media, links=[link_sticker])
-                )
-            else:
-                await loop.run_in_executor(
-                    None,
-                    lambda: self.ig_client.photo_upload_as_story(local_media, links=[link_sticker])
-                )
-
-            print(f"[RPA:{self.username}] ✅ Story publicado com sucesso via instagrapi")
-            return RPAResult(True, "post_story", "Story publicado com sucesso")
-
+            print(f"[RPA:{self.username}] Verificando convite tester...")
+            await self.page.goto("https://www.instagram.com/accounts/manage_access/", wait_until="networkidle", timeout=30000)
+            await self.page.wait_for_timeout(3000)
+            btn = await self.page.query_selector('button:has-text("Aceitar")')
+            if not btn:
+                btn = await self.page.query_selector('button:has-text("Accept")')
+            if not btn:
+                btn = await self.page.query_selector('div[role="button"]:has-text("Aceitar")')
+            if not btn:
+                btn = await self.page.query_selector('div[role="button"]:has-text("Accept")')
+            if btn:
+                await btn.click()
+                await self.page.wait_for_timeout(3000)
+                print(f"[RPA:{self.username}] Convite aceito")
+                return RPAResult(True, "accept_invite", "Convite aceito")
+            print(f"[RPA:{self.username}] Sem convite pendente")
+            return RPAResult(True, "accept_invite", "Sem convite")
         except Exception as e:
-            return RPAResult(False, "post_story", f"Erro ao postar story: {str(e)}", error_code="unknown_error")
-        finally:
-            if local_media and local_media != media_path and os.path.exists(local_media):
-                os.unlink(local_media)
+            print(f"[RPA:{self.username}] Erro convite: {e}")
+            return RPAResult(True, "accept_invite", f"Ignorado: {e}")
 
-    async def create_highlight_from_story(self, title: str) -> RPAResult:
-        """Cria destaque a partir do story mais recente via instagrapi (mobile API)."""
-        if not self.ig_client:
-            return RPAResult(False, "create_highlight", "Instagrapi não inicializado", error_code="instagrapi_not_ready")
-
-        try:
-            print(f"[RPA:{self.username}] Buscando stories recentes para criar destaque...")
-
-            # Obtém o user_id
-            user_id = self.ig_client.user_id
-
-            # Busca stories recentes do próprio usuário
-            loop = asyncio.get_event_loop()
-            stories = await loop.run_in_executor(None, lambda: self.ig_client.user_stories(user_id))
-
-            if not stories:
-                return RPAResult(False, "create_highlight", "Nenhum story recente encontrado", error_code="no_recent_stories")
-
-            # Pega o story mais recente
-            latest_story = stories[0]
-            story_pk = latest_story.pk
-
-            print(f"[RPA:{self.username}] Criando destaque '{title}' a partir do story {story_pk}...")
-
-            # Cria o highlight
-            await loop.run_in_executor(
-                None,
-                lambda: self.ig_client.highlight_create(title, [story_pk])
-            )
-
-            print(f"[RPA:{self.username}] ✅ Destaque '{title}' criado com sucesso via instagrapi")
-            return RPAResult(True, "create_highlight", f"Destaque '{title}' criado com sucesso")
-
-        except Exception as e:
-            return RPAResult(False, "create_highlight", f"Erro ao criar destaque: {str(e)}", error_code="unknown_error")
-
-    async def complete_magic_link(self, magic_link_url: str) -> RPAResult:
-        """Navega até o Magic Link do SaaS para vincular a conta (Playwright)."""
+    async def complete_magic_link(self, magic_link_url):
         from urllib.parse import urlencode
         try:
             params = urlencode({"username": self.username})
-            separator = "&" if "?" in magic_link_url else "?"
-            full_url = f"{magic_link_url}{separator}{params}"
-            print(f"[RPA:{self.username}] Navegando para Magic Link: {full_url[:120]}...")
-            await self.page.goto(full_url, wait_until="domcontentloaded", timeout=30_000)
-
+            sep = "&" if "?" in magic_link_url else "?"
+            url = f"{magic_link_url}{sep}{params}"
+            print(f"[RPA:{self.username}] Magic Link: {url[:120]}...")
+            await self.page.goto(url, wait_until="networkidle", timeout=30000)
             try:
-                await self.page.wait_for_url("**/add/success**", timeout=15_000)
-                print(f"[RPA:{self.username}] ✅ Magic Link aceito — conta vinculada!")
-                return RPAResult(True, "magic_link", "Conta vinculada ao SaaS via Magic Link")
+                await self.page.wait_for_url("**/add/success**", timeout=15000)
+                return RPAResult(True, "magic_link", "Conta vinculada")
             except PlaywrightTimeout:
-                current = self.page.url
-                if "/dashboard" in current or "/accounts" in current:
-                    print(f"[RPA:{self.username}] ✅ Já no dashboard — conta vinculada!")
-                    return RPAResult(True, "magic_link", "Conta vinculada (redirect direto)")
-
-                title = await self.page.title()
-                print(f"[RPA:{self.username}] ❌ Magic Link falhou: {title}")
-                return RPAResult(
-                    False, "magic_link",
-                    f"Página: {title}. URL final: {current}",
-                    error_code="magic_link_failed",
-                )
+                cur = self.page.url
+                if any(x in cur for x in ["/dashboard", "/accounts", "/success", "/connected"]):
+                    return RPAResult(True, "magic_link", "Vinculada (redirect)")
+                return RPAResult(False, "magic_link", f"Falhou: {cur}", error_code="magic_link_failed")
         except Exception as e:
-            return RPAResult(False, "magic_link", f"Erro no Magic Link: {str(e)}", error_code="magic_link_error")
+            return RPAResult(False, "magic_link", f"{type(e).__name__}: {e}", error_code="magic_link_error")
 
 
 async def run_onboarding_rpa(
-    username: str,
-    password: str,
-    proxy_url: str,
-    totp_secret: Optional[str],
-    photo_path: Optional[str],
-    story_media_path: Optional[str],
-    story_link_url: Optional[str],
-    story_link_text: Optional[str],
-    highlight_title: Optional[str],
-    magic_link_url: Optional[str] = None,
-    profile_dir: Optional[str] = None,
-    existing_cookies: Optional[list[dict]] = None,
-) -> dict:
+    username,
+    password,
+    proxy_url,
+    totp_secret,
+    photo_path,
+    story_media_path,
+    story_link_url,
+    story_link_text=None,
+    highlight_title=None,
+    magic_link_url=None,
+    profile_dir=None,
+    existing_cookies=None,
+):
     """
-    Executa o fluxo completo de onboarding HÍBRIDO (Playwright + Instagrapi).
-
-    Retorna dict com:
-      - success: bool
-      - stage: última etapa executada
-      - message: descrição do resultado
-      - cookies: cookies atualizados (para salvar no banco)
-      - error_code: código de erro se falhou
+    Fluxo completo:
+    FASE 1: Instagrapi mobile (login + story + foto + destaque + extrair cookies)
+    FASE 2: Playwright web com cookies injetados (converter + convite + OAuth)
     """
     if not totp_secret or not totp_secret.strip():
-        return {
-            "success": False,
-            "stage": "validation",
-            "message": "Secret 2FA (TOTP) é obrigatório — todos os logins exigem autenticação de dois fatores",
-            "error_code": "needs_2fa",
-        }
+        return {"success": False, "stage": "validation", "message": "TOTP obrigatorio", "error_code": "needs_2fa"}
 
     rpa = InstagramRPA(username, password, proxy_url, totp_secret)
-
     try:
-        await rpa.start()
-
-        if existing_cookies:
-            await rpa.inject_cookies(existing_cookies)
-
-        # Etapa 1: Login via Playwright (web)
-        login_result = await rpa.login()
-        if not login_result.success:
-            return {
-                "success": False,
-                "stage": "login",
-                "message": login_result.message,
-                "error_code": login_result.error_code,
-            }
-
-        # Etapa 2: Aceitar convite de tester via Playwright (web) — se aplicável
-        # Pulada quando não há app_id — worker standalone não usa essa etapa
-
-        # Etapa 2.5: Inicializar instagrapi com login mobile direto
-        # (cookies web do Playwright não são compatíveis com sessão mobile)
+        # ═══ FASE 1: INSTAGRAPI MOBILE ═══
         if not rpa._init_instagrapi():
             return {
                 "success": False,
-                "stage": "instagrapi_init",
-                "message": "Falha ao inicializar instagrapi (login mobile)",
-                "error_code": "instagrapi_init_failed",
-                "cookies": await rpa.get_cookies(),
+                "stage": "instagrapi_login",
+                "message": "Falha login mobile via instagrapi",
+                "error_code": "instagrapi_login_failed",
             }
+        print(f"[RPA:{username}] FASE 1a OK: Login mobile")
 
-        # Etapa 3: Trocar foto de perfil via instagrapi (mobile)
-        if photo_path:
-            photo_result = await rpa.change_profile_photo(photo_path)
-            if not photo_result.success:
-                return {
-                    "success": False,
-                    "stage": "change_photo",
-                    "message": photo_result.message,
-                    "error_code": photo_result.error_code,
-                    "cookies": await rpa.get_cookies(),
-                }
-
-        # Etapa 4: Postar story com link via instagrapi (mobile)
+        # 1b. Postar story
         if story_media_path and story_link_url:
-            story_result = await rpa.post_story_with_link(story_media_path, story_link_url, story_link_text)
-            if not story_result.success:
-                return {
-                    "success": False,
-                    "stage": "post_story",
-                    "message": story_result.message,
-                    "error_code": story_result.error_code,
-                    "cookies": await rpa.get_cookies(),
-                }
+            sr = await rpa.post_story_with_link(story_media_path, story_link_url, story_link_text)
+            if not sr.success:
+                return {"success": False, "stage": "post_story", "message": sr.message, "error_code": sr.error_code}
+            print(f"[RPA:{username}] FASE 1b OK: Story publicado")
 
-        # Etapa 5: Criar destaque via instagrapi (mobile)
+        # 1c. Trocar foto de perfil
+        if photo_path:
+            pr = await rpa.change_profile_photo(photo_path)
+            if not pr.success:
+                return {"success": False, "stage": "change_photo", "message": pr.message, "error_code": pr.error_code}
+            print(f"[RPA:{username}] FASE 1c OK: Foto de perfil")
+
+        # 1d. Criar destaque
         if highlight_title:
-            highlight_result = await rpa.create_highlight_from_story(highlight_title)
-            if not highlight_result.success:
-                return {
-                    "success": False,
-                    "stage": "create_highlight",
-                    "message": highlight_result.message,
-                    "error_code": highlight_result.error_code,
-                    "cookies": await rpa.get_cookies(),
-                }
+            hr = await rpa.create_highlight_from_story(highlight_title)
+            if not hr.success:
+                return {"success": False, "stage": "highlight", "message": hr.message, "error_code": hr.error_code}
+            print(f"[RPA:{username}] FASE 1d OK: Destaque criado")
 
-        # Etapa 6: Vincular conta ao SaaS via Magic Link (Playwright web)
+        # 1e. Extrair cookies do instagrapi para injetar no Playwright
+        ig_cookies = rpa._extract_cookies_from_instagrapi()
+        print(f"[RPA:{username}] FASE 1e OK: {len(ig_cookies)} cookies extraidos")
+
+        # ═══ FASE 2: PLAYWRIGHT WEB (com cookies injetados) ═══
+        await rpa.start(inject_cookies=ig_cookies)
+
+        # 2a. Verificar se ja esta logado via cookies
+        if not await rpa._is_logged_in():
+            return {
+                "success": False,
+                "stage": "playwright_login",
+                "message": "Cookies do instagrapi nao autenticaram no Playwright",
+                "error_code": "cookie_auth_failed",
+            }
+        print(f"[RPA:{username}] FASE 2a OK: Logado via cookies")
+
+        # 2b. Converter para conta profissional
+        cr = await rpa.convert_to_professional()
+        print(f"[RPA:{username}] FASE 2b OK: {cr.message}")
+
+        # 2c. Aceitar convite de tester
+        ir = await rpa.accept_tester_invite()
+        print(f"[RPA:{username}] FASE 2c OK: {ir.message}")
+
+        # 2d. OAuth / Magic Link do SaaS
         if magic_link_url:
-            magic_result = await rpa.complete_magic_link(magic_link_url)
-            if not magic_result.success:
-                return {
-                    "success": False,
-                    "stage": "magic_link",
-                    "message": magic_result.message,
-                    "error_code": magic_result.error_code,
-                    "cookies": await rpa.get_cookies(),
-                }
+            ml = await rpa.complete_magic_link(magic_link_url)
+            if not ml.success:
+                return {"success": False, "stage": "magic_link", "message": ml.message, "error_code": ml.error_code}
+            print(f"[RPA:{username}] FASE 2d OK: OAuth/Magic Link")
 
-        # Sucesso total
         return {
             "success": True,
             "stage": "done",
-            "message": "Onboarding completo via RPA híbrido (Playwright + Instagrapi)",
-            "cookies": await rpa.get_cookies(),
+            "message": "Onboarding completo (Instagrapi -> Playwright)",
         }
-
     except Exception as e:
+        tb = traceback.format_exc()
+        print(f"[RPA] ERRO GLOBAL: {tb}")
         return {
             "success": False,
             "stage": "unknown",
-            "message": f"Erro inesperado: {str(e)}",
+            "message": f"Erro inesperado: {type(e).__name__}: {e}",
             "error_code": "unexpected_error",
         }
     finally:
