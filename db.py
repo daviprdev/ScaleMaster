@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     photo_url TEXT,
     story_media_url TEXT,
     story_link_url TEXT,
+    story_link_text TEXT,
     highlight_title TEXT,
     magic_link_token TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
@@ -54,10 +55,16 @@ CREATE INDEX IF NOT EXISTS idx_proxies_active ON proxies(is_active);
 
 
 def init_db(db_path: str = DB_PATH) -> None:
-    """Cria tabelas e índices se não existirem."""
+    """Cria tabelas e índices se não existirem. Migra colunas novas automaticamente."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     with _connect(db_path) as conn:
         conn.executescript(_SCHEMA)
+        # Migração: adicionar story_link_text se não existir (bancos antigos)
+        try:
+            conn.execute("ALTER TABLE jobs ADD COLUMN story_link_text TEXT")
+            print("[DB] Migração: coluna story_link_text adicionada")
+        except sqlite3.OperationalError:
+            pass  # Coluna já existe
     print(f"[DB] SQLite inicializado: {db_path}")
 
 
@@ -78,32 +85,47 @@ def _connect(db_path: str = DB_PATH):
         conn.close()
 
 
-def insert_job(job_data: dict, db_path: str = DB_PATH) -> str:
+def insert_job(
+    username: str,
+    password_enc: str,
+    magic_link_token: str,
+    two_factor_enc: str = None,
+    proxy_url_enc: str = None,
+    photo_url: str = None,
+    story_media_url: str = None,
+    story_link_url: str = None,
+    story_link_text: str = None,
+    highlight_title: str = None,
+    db_path: str = DB_PATH,
+) -> str:
     """Insere novo job. Retorna ID. Raises sqlite3.IntegrityError se username duplicado."""
+    import uuid
     now = time.time()
+    job_id = str(uuid.uuid4())
     with _connect(db_path) as conn:
-        cursor = conn.execute(
+        conn.execute(
             """INSERT INTO jobs (
                 id, username, password_enc, two_factor_enc, proxy_url_enc,
-                photo_url, story_media_url, story_link_url, highlight_title,
-                magic_link_token, status, retry_count, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)""",
+                photo_url, story_media_url, story_link_url, story_link_text,
+                highlight_title, magic_link_token, status, retry_count, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)""",
             (
-                job_data["id"],
-                job_data["username"],
-                job_data["password_enc"],
-                job_data.get("two_factor_enc"),
-                job_data.get("proxy_url_enc"),
-                job_data.get("photo_url"),
-                job_data.get("story_media_url"),
-                job_data.get("story_link_url"),
-                job_data.get("highlight_title"),
-                job_data["magic_link_token"],
+                job_id,
+                username,
+                password_enc,
+                two_factor_enc,
+                proxy_url_enc,
+                photo_url,
+                story_media_url,
+                story_link_url,
+                story_link_text,
+                highlight_title,
+                magic_link_token,
                 now,
                 now,
             ),
         )
-    return job_data["id"]
+    return job_id
 
 
 def claim_next_job(db_path: str = DB_PATH) -> Optional[dict]:
@@ -163,6 +185,13 @@ def fail_job(job_id: str, error_message: str, permanent: bool = False, db_path: 
                    WHERE id = ?""",
                 (error_message[:500], now, job_id),
             )
+
+
+def delete_job(job_id: str, db_path: str = DB_PATH) -> bool:
+    """Remove job permanentemente da fila. Retorna True se deletou."""
+    with _connect(db_path) as conn:
+        result = conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+    return result.rowcount > 0
 
 
 def reset_stale_jobs(timeout_seconds: int = 900, db_path: str = DB_PATH) -> int:

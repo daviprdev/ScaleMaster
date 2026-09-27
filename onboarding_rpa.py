@@ -118,9 +118,15 @@ class InstagramRPA:
                 "resolution": [1080, 2400],
             })
             if self.proxy_url:
-                ps = self._parse_proxy_instagrapi(self.proxy_url)
-                print(f"[RPA:{self.username}] Proxy instagrapi OK")
-                cl.set_proxy(ps)
+                # Configura proxy se existir — converte formato host:port:user:pass
+                # para http://user:pass@host:port (formato esperado pelo instagrapi/requests)
+                proxy_str = self.proxy_url.strip()
+                if not proxy_str.startswith(("http://", "https://", "socks")) and proxy_str.count(":") >= 3:
+                    parts = proxy_str.split(":", 3)
+                    host, port, user, password = parts[0], parts[1], parts[2], parts[3]
+                    proxy_str = f"http://{user}:{password}@{host}:{port}"
+                    print(f"[RPA:{self.username}] Proxy instagrapi convertido: {host}:{port}")
+                cl.set_proxy(proxy_str)
             print(f"[RPA:{self.username}] Login mobile instagrapi...")
             if self.totp_secret:
                 cl.login(self.username, self.password, verification_code=self._generate_totp(self.totp_secret))
