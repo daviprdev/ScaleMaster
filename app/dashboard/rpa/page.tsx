@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Server, Activity, Plus, Trash2, RefreshCw, AlertCircle,
@@ -104,6 +104,8 @@ export default function RPAPage() {
   const [newJobAppId, setNewJobAppId] = useState("");
   const [metaApps, setMetaApps] = useState<{ id: string; ig_app_id: string; app_name: string | null }[]>([]);
   const [addingJob, setAddingJob] = useState(false);
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [jobStages, setJobStages] = useState<Record<string, { key: string; label: string; phase: number; status: string; message: string }[]>>({});
 
   const fetchProxies = useCallback(async () => {
     try {
@@ -132,6 +134,25 @@ const fetchApps = useCallback(async () => {
 }, []);
 
 useEffect(() => { fetchProxies(); fetchJobs(); fetchApps(); }, [fetchProxies, fetchJobs, fetchApps]);
+
+// Poll stages for expanded job or processing jobs
+useEffect(() => {
+const pollStages = async () => {
+const targets = jobs.filter(j => j.status === "processing" || j.id === expandedJobId);
+for (const j of targets) {
+try {
+const res = await fetch(`${API_BASE}/jobs/${j.id}/stages`);
+if (res.ok) {
+const data = await res.json();
+setJobStages(prev => ({ ...prev, [j.id]: data.stages || [] }));
+}
+} catch {}
+}
+};
+pollStages();
+const interval = setInterval(pollStages, 3000);
+return () => clearInterval(interval);
+}, [jobs, expandedJobId, API_BASE]);
 
   async function handleAddProxy() {
     if (!newProxy.trim()) return;
@@ -284,7 +305,7 @@ useEffect(() => { fetchProxies(); fetchJobs(); fetchApps(); }, [fetchProxies, fe
               <div className="p-4 border-b border-zinc-800"><h3 className="text-white font-medium">Fila de Onboarding ({jobs.length})</h3></div>
               {loadingJobs ? (<div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 text-violet-400 animate-spin" /></div>)
                 : jobs.length === 0 ? (<div className="p-8 text-center text-zinc-500">Nenhuma conta na fila de onboarding</div>)
-                : (<div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-zinc-950/50 text-zinc-400"><tr><th className="px-4 py-3 text-left font-medium">Username</th><th className="px-4 py-3 text-center font-medium">Status</th><th className="px-4 py-3 text-center font-medium">Tentativas</th><th className="px-4 py-3 text-left font-medium">Erro</th><th className="px-4 py-3 text-left font-medium">Atualizado</th><th className="px-4 py-3 text-right font-medium">Ações</th></tr></thead><tbody className="divide-y divide-zinc-800/50">{jobs.map((j) => (<tr key={j.id} className="hover:bg-zinc-800/30 transition-colors"><td className="px-4 py-3 text-white font-medium">@{j.username}</td><td className="px-4 py-3 text-center">{statusBadge(j.status)}</td><td className="px-4 py-3 text-center text-zinc-400 font-mono">{j.attempts}</td><td className="px-4 py-3 text-zinc-500 text-xs max-w-[350px]"><div className="group relative"><span className="block truncate cursor-help">{j.error_message || "—"}</span>{j.error_message && (<div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block w-[500px] max-h-[300px] overflow-auto bg-zinc-950 border border-zinc-700 rounded-lg p-3 text-xs text-zinc-300 whitespace-pre-wrap shadow-xl">{j.error_message}</div>)}</div></td><td className="px-4 py-3 text-zinc-400 text-xs">{timeAgo(j.updated_at)}</td><td className="px-4 py-3 text-right"><button onClick={() => handleDeleteJob(j.id)} className="p-1.5 text-zinc-400 hover:text-red-400 rounded-md hover:bg-red-500/10 transition-colors" title="Excluir job"><Trash2 className="w-3.5 h-3.5" /></button></td></tr>))}</tbody></table></div>)}
+                : (<div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-zinc-950/50 text-zinc-400"><tr><th className="px-4 py-3 text-left font-medium">Username</th><th className="px-4 py-3 text-center font-medium">Status</th><th className="px-4 py-3 text-center font-medium">Tentativas</th><th className="px-4 py-3 text-left font-medium">Progresso</th><th className="px-4 py-3 text-left font-medium">Erro</th><th className="px-4 py-3 text-left font-medium">Atualizado</th><th className="px-4 py-3 text-right font-medium">Ações</th></tr></thead><tbody className="divide-y divide-zinc-800/50">{jobs.map((j) => { const stages = jobStages[j.id] || []; const isExpanded = expandedJobId === j.id; return (<React.Fragment key={j.id}><tr className="hover:bg-zinc-800/30 transition-colors cursor-pointer" onClick={() => setExpandedJobId(isExpanded ? null : j.id)}><td className="px-4 py-3 text-white font-medium">@{j.username}</td><td className="px-4 py-3 text-center">{statusBadge(j.status)}</td><td className="px-4 py-3 text-center text-zinc-400 font-mono">{j.attempts}</td><td className="px-4 py-3"><div className="flex items-center gap-1">{stages.length > 0 ? stages.map((s) => (<div key={s.key} className={cn("w-2.5 h-2.5 rounded-full", s.status === "ok" ? "bg-emerald-400" : s.status === "error" ? "bg-red-400" : s.status === "running" ? "bg-yellow-400 animate-pulse" : "bg-zinc-700")} title={`${s.label}: ${s.status}${s.message ? " - " + s.message : ""}`} />)) : (<span className="text-zinc-600 text-xs">—</span>)}</div></td><td className="px-4 py-3 text-zinc-500 text-xs max-w-[250px]"><div className="group relative"><span className="block truncate cursor-help">{j.error_message || "—"}</span>{j.error_message && (<div className="absolute left-0 top-full mt-1 z-50 hidden group-hover:block w-[500px] max-h-[300px] overflow-auto bg-zinc-950 border border-zinc-700 rounded-lg p-3 text-xs text-zinc-300 whitespace-pre-wrap shadow-xl">{j.error_message}</div>)}</div></td><td className="px-4 py-3 text-zinc-400 text-xs">{timeAgo(j.updated_at)}</td><td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}><button onClick={() => handleDeleteJob(j.id)} className="p-1.5 text-zinc-400 hover:text-red-400 rounded-md hover:bg-red-500/10 transition-colors" title="Excluir job"><Trash2 className="w-3.5 h-3.5" /></button></td></tr>{isExpanded && stages.length > 0 && (<tr><td colSpan={7} className="px-4 py-3 bg-zinc-950/50"><div className="space-y-2">{stages.map((s) => (<div key={s.key} className="flex items-center gap-3"><div className={cn("w-3 h-3 rounded-full flex-shrink-0", s.status === "ok" ? "bg-emerald-400" : s.status === "error" ? "bg-red-400" : s.status === "running" ? "bg-yellow-400 animate-pulse" : "bg-zinc-700")} /><span className={cn("text-xs font-medium min-w-[140px]", s.status === "ok" ? "text-emerald-400" : s.status === "error" ? "text-red-400" : s.status === "running" ? "text-yellow-400" : "text-zinc-500")}>{s.label}</span><span className="text-zinc-500 text-xs">{s.message || (s.status === "pending" ? "Aguardando..." : s.status === "running" ? "Processando..." : s.status === "ok" ? "OK" : s.status === "error" ? "ERRO" : "")}</span></div>))}</div></td></tr>)}</React.Fragment>); })}</tbody></table></div>)}
             </div>
           </motion.div>
         )}
