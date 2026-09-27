@@ -60,13 +60,46 @@ class InstagramRPA:
     async def _download_to_temp(self, url, suffix=""):
         if not url or not url.strip():
             raise ValueError("URL vazia")
+        # Data URL base64 (imagem/vídeo enviado via dashboard como base64)
+        if url.startswith("data:"):
+            import base64 as _b64
+            header, data = url.split(",", 1)
+            mime = header.split(":")[1].split(";")[0] if ":" in header else "application/octet-stream"
+            ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+                       "video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm"}
+            detected_suffix = ext_map.get(mime, suffix or ".bin")
+            raw = _b64.b64decode(data)
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=detected_suffix)
+            tmp.write(raw)
+            tmp.close()
+            print(f"[RPA:{self.username}] Data URL decoded: {len(raw)} bytes -> {detected_suffix}")
+            return tmp.name
         if not url.startswith(("http://", "https://")):
             return url
         print(f"[RPA:{self.username}] Download: {url[:120]}...")
-        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0), follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=15.0), follow_redirects=True) as client:
             resp = await client.get(url)
             resp.raise_for_status()
-        print(f"[RPA:{self.username}] Download OK: {len(resp.content)} bytes")
+        # Detectar extensão pelo content-type se suffix não foi fornecido ou é genérico
+        if not suffix or suffix in ("", ".bin"):
+            ct = resp.headers.get("content-type", "").lower()
+            ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+                       "video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm"}
+            for k, v in ext_map.items():
+                if k in ct:
+                    suffix = v
+                    break
+            if not suffix:
+                # Fallback: tentar pela URL
+                from urllib.parse import urlparse
+                path = urlparse(url).path.lower()
+                for ext in (".mp4", ".mov", ".avi", ".webm", ".jpg", ".jpeg", ".png", ".webp"):
+                    if path.endswith(ext):
+                        suffix = ext
+                        break
+                if not suffix:
+                    suffix = ".jpg"
+        print(f"[RPA:{self.username}] Download OK: {len(resp.content)} bytes -> {suffix}")
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
         tmp.write(resp.content)
         tmp.close()
@@ -260,7 +293,19 @@ class InstagramRPA:
             return RPAResult(False, "highlight", f"{type(e).__name__}: {e}", error_code="highlight_failed")
 
     # ── PLAYWRIGHT (FASE 2) ─────────────────────────────────────
+    def _clear_profile_locks(self):
+        """Remove SingletonLock/Cookie/Socket para evitar TargetClosedError."""
+        import glob
+        for pattern in ["SingletonLock", "SingletonCookie", "SingletonSocket"]:
+            for f in glob.glob(os.path.join(str(self.profile_dir), pattern)):
+                try:
+                    os.unlink(f)
+                    print(f"[RPA:{self.username}] Lock removido: {os.path.basename(f)}")
+                except Exception:
+                    pass
+
     async def start(self, inject_cookies=None):
+        self._clear_profile_locks()
         self.playwright = await async_playwright().start()
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(self.profile_dir),
@@ -397,6 +442,65 @@ window.chrome = {runtime: {}};
             return RPAResult(False, "magic_link", f"{type(e).__name__}: {e}", error_code="magic_link_error")
 
 
+# ─── STAGE TRACKING ──────────────────────────────────────────
+# Estrutura global para tracking de progresso por job
+_job_stages: dict[str, list[dict]] = {}
+
+STAGE_DEFS = [
+    {"key": "instagrapi_login", "label": "Login Mobile", "phase": 1},
+    {"key": "post_story", "label": "Story + Link", "phase": 1},
+    {"key": "change_photo", "label": "Foto de Perfil", "phase": 1},
+    {"key": "highlight", "label": "Destaque", "phase": 1},
+    {"key": "extract_cookies", "label": "Cookies", "phase": 1},
+    {"key": "playwright_login", "label": "Login Web", "phase": 2},
+    {"key": "convert", "label": "Conta Profissional", "phase": 2},
+    {"key": "accept_invite", "label": "Convite Tester", "phase": 2},
+    {"key": "magic_link", "label": "OAuth / Magic Link", "phase": 2},
+]
+
+def _stage_start(job_id: str, stage_key: str):
+    """Marca uma etapa como 'running'."""
+    if job_id not in _job_stages:
+        _job_stages[job_id] = []
+    stages = _job_stages[job_id]
+    # Remove entrada anterior da mesma key se existir
+    _job_stages[job_id] = [s for s in stages if s["key"] != stage_key]
+    _job_stages[job_id].append({"key": stage_key, "status": "running", "message": "", "ts": __import__("time").time()})
+
+def _stage_ok(job_id: str, stage_key: str, message: str = ""):
+    """Marca uma etapa como 'ok'."""
+    if job_id not in _job_stages:
+        _job_stages[job_id] = []
+    stages = _job_stages[job_id]
+    _job_stages[job_id] = [s for s in stages if s["key"] != stage_key]
+    _job_stages[job_id].append({"key": stage_key, "status": "ok", "message": message, "ts": __import__("time").time()})
+
+def _stage_fail(job_id: str, stage_key: str, message: str = ""):
+    """Marca uma etapa como 'error'."""
+    if job_id not in _job_stages:
+        _job_stages[job_id] = []
+    stages = _job_stages[job_id]
+    _job_stages[job_id] = [s for s in stages if s["key"] != stage_key]
+    _job_stages[job_id].append({"key": stage_key, "status": "error", "message": message, "ts": __import__("time").time()})
+
+def get_job_stages(job_id: str) -> list[dict]:
+    """Retorna lista de stages com status para um job."""
+    raw = _job_stages.get(job_id, [])
+    # Merge com STAGE_DEFS para ter todas as etapas mesmo as não iniciadas
+    done_keys = {s["key"] for s in raw}
+    result = []
+    for sd in STAGE_DEFS:
+        if sd["key"] in done_keys:
+            entry = next(s for s in raw if s["key"] == sd["key"])
+            result.append({**sd, "status": entry["status"], "message": entry["message"]})
+        else:
+            result.append({**sd, "status": "pending", "message": ""})
+    return result
+
+def clear_job_stages(job_id: str):
+    _job_stages.pop(job_id, None)
+
+
 async def run_onboarding_rpa(
     username,
     password,
@@ -410,78 +514,106 @@ async def run_onboarding_rpa(
     magic_link_url=None,
     profile_dir=None,
     existing_cookies=None,
+    job_id: str = None,
 ):
     """
     Fluxo completo:
     FASE 1: Instagrapi mobile (login + story + foto + destaque + extrair cookies)
     FASE 2: Playwright web com cookies injetados (converter + convite + OAuth)
     """
+    jid = job_id or username  # fallback para username se job_id não fornecido
+
     if not totp_secret or not totp_secret.strip():
+        _stage_fail(jid, "instagrapi_login", "TOTP obrigatorio")
         return {"success": False, "stage": "validation", "message": "TOTP obrigatorio", "error_code": "needs_2fa"}
 
     rpa = InstagramRPA(username, password, proxy_url, totp_secret)
     try:
         # ═══ FASE 1: INSTAGRAPI MOBILE ═══
+        _stage_start(jid, "instagrapi_login")
         if not rpa._init_instagrapi():
+            _stage_fail(jid, "instagrapi_login", "Falha login mobile via instagrapi")
             return {
                 "success": False,
                 "stage": "instagrapi_login",
                 "message": "Falha login mobile via instagrapi",
                 "error_code": "instagrapi_login_failed",
             }
+        _stage_ok(jid, "instagrapi_login", "Login mobile OK")
         print(f"[RPA:{username}] FASE 1a OK: Login mobile")
 
         # 1b. Postar story
         if story_media_path and story_link_url:
+            _stage_start(jid, "post_story")
             sr = await rpa.post_story_with_link(story_media_path, story_link_url, story_link_text)
             if not sr.success:
+                _stage_fail(jid, "post_story", sr.message)
                 return {"success": False, "stage": "post_story", "message": sr.message, "error_code": sr.error_code}
+            _stage_ok(jid, "post_story", "Story publicado")
             print(f"[RPA:{username}] FASE 1b OK: Story publicado")
 
         # 1c. Trocar foto de perfil
         if photo_path:
+            _stage_start(jid, "change_photo")
             pr = await rpa.change_profile_photo(photo_path)
             if not pr.success:
+                _stage_fail(jid, "change_photo", pr.message)
                 return {"success": False, "stage": "change_photo", "message": pr.message, "error_code": pr.error_code}
+            _stage_ok(jid, "change_photo", "Foto atualizada")
             print(f"[RPA:{username}] FASE 1c OK: Foto de perfil")
 
         # 1d. Criar destaque
         if highlight_title:
+            _stage_start(jid, "highlight")
             hr = await rpa.create_highlight_from_story(highlight_title)
             if not hr.success:
+                _stage_fail(jid, "highlight", hr.message)
                 return {"success": False, "stage": "highlight", "message": hr.message, "error_code": hr.error_code}
+            _stage_ok(jid, "highlight", "Destaque criado")
             print(f"[RPA:{username}] FASE 1d OK: Destaque criado")
 
         # 1e. Extrair cookies do instagrapi para injetar no Playwright
+        _stage_start(jid, "extract_cookies")
         ig_cookies = rpa._extract_cookies_from_instagrapi()
+        _stage_ok(jid, "extract_cookies", f"{len(ig_cookies)} cookies")
         print(f"[RPA:{username}] FASE 1e OK: {len(ig_cookies)} cookies extraidos")
 
         # ═══ FASE 2: PLAYWRIGHT WEB (com cookies injetados) ═══
+        _stage_start(jid, "playwright_login")
         await rpa.start(inject_cookies=ig_cookies)
 
         # 2a. Verificar se ja esta logado via cookies
         if not await rpa._is_logged_in():
+            _stage_fail(jid, "playwright_login", "Cookies nao autenticaram no Playwright")
             return {
                 "success": False,
                 "stage": "playwright_login",
                 "message": "Cookies do instagrapi nao autenticaram no Playwright",
                 "error_code": "cookie_auth_failed",
             }
+        _stage_ok(jid, "playwright_login", "Logado via cookies")
         print(f"[RPA:{username}] FASE 2a OK: Logado via cookies")
 
         # 2b. Converter para conta profissional
+        _stage_start(jid, "convert")
         cr = await rpa.convert_to_professional()
+        _stage_ok(jid, "convert", cr.message)
         print(f"[RPA:{username}] FASE 2b OK: {cr.message}")
 
         # 2c. Aceitar convite de tester
+        _stage_start(jid, "accept_invite")
         ir = await rpa.accept_tester_invite()
+        _stage_ok(jid, "accept_invite", ir.message)
         print(f"[RPA:{username}] FASE 2c OK: {ir.message}")
 
         # 2d. OAuth / Magic Link do SaaS
         if magic_link_url:
+            _stage_start(jid, "magic_link")
             ml = await rpa.complete_magic_link(magic_link_url)
             if not ml.success:
+                _stage_fail(jid, "magic_link", ml.message)
                 return {"success": False, "stage": "magic_link", "message": ml.message, "error_code": ml.error_code}
+            _stage_ok(jid, "magic_link", "Conta vinculada ao SaaS")
             print(f"[RPA:{username}] FASE 2d OK: OAuth/Magic Link")
 
         return {
@@ -492,6 +624,11 @@ async def run_onboarding_rpa(
     except Exception as e:
         tb = traceback.format_exc()
         print(f"[RPA] ERRO GLOBAL: {tb}")
+        # Marca a última etapa running como error
+        stages = _job_stages.get(jid, [])
+        running = [s for s in stages if s["status"] == "running"]
+        if running:
+            _stage_fail(jid, running[-1]["key"], str(e)[:200])
         return {
             "success": False,
             "stage": "unknown",

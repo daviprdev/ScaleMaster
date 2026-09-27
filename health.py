@@ -26,6 +26,76 @@ async def health(request: Request):
     return {"status": "ok", "service": "rpa-worker"}
 
 
+# ─── JOBS ENDPOINTS ──────────────────────────────────────────
+
+@app.post("/jobs")
+async def create_job(request: Request):
+    """Cria novo job de onboarding. Aceita credenciais em texto puro e criptografa internamente."""
+    auth = request.headers.get("authorization", "")
+    if auth != f"Bearer {WORKER_API_SECRET}":
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "JSON inválido"}, status_code=400)
+
+    username = body.get("username", "").strip()
+    password = body.get("password", "").strip()
+    totp_secret = body.get("totp_secret", "").strip()
+    magic_link_token = body.get("magic_link_token", "").strip()
+
+    if not username or not password or not totp_secret or not magic_link_token:
+        return JSONResponse(
+            {"error": "username, password, totp_secret e magic_link_token são obrigatórios"},
+            status_code=400,
+        )
+
+    job_id = insert_job(
+        username=username,
+        password_enc=encrypt(password),
+        two_factor_enc=encrypt(totp_secret),
+        magic_link_token=magic_link_token,
+        photo_url=body.get("photo_url"),
+        story_media_url=body.get("story_media_url"),
+        story_link_url=body.get("story_link_url"),
+        story_link_text=body.get("story_link_text"),
+        highlight_title=body.get("highlight_title"),
+    )
+    return JSONResponse({"status": "created", "id": job_id}, status_code=201)
+
+
+@app.get("/jobs")
+async def get_jobs(request: Request):
+    """Lista jobs recentes."""
+    auth = request.headers.get("authorization", "")
+    if auth != f"Bearer {WORKER_API_SECRET}":
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(list_recent_jobs(limit=50))
+
+
+@app.delete("/jobs/{job_id}")
+async def delete_job_endpoint(job_id: str, request: Request):
+    """Remove job permanentemente da fila."""
+    auth = request.headers.get("authorization", "")
+    if auth != f"Bearer {WORKER_API_SECRET}":
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    removed = delete_job(job_id)
+    if not removed:
+        return JSONResponse({"error": "Job não encontrado"}, status_code=404)
+    return JSONResponse({"status": "deleted", "id": job_id})
+
+
+@app.get("/jobs/{job_id}/stages")
+async def get_job_stages(job_id: str, request: Request):
+    """Retorna progresso por etapa de um job."""
+    auth = request.headers.get("authorization", "")
+    if auth != f"Bearer {WORKER_API_SECRET}":
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    from onboarding_rpa import get_job_stages as _get_stages
+    stages = _get_stages(job_id)
+    return JSONResponse({"job_id": job_id, "stages": stages})
+
+
 @app.get("/stats")
 async def stats():
     """Estatísticas da fila de jobs."""
@@ -88,64 +158,6 @@ async def disable_proxy(proxy_id: str, request: Request):
 async def proxy_stats():
     """Estatísticas do estoque de proxies."""
     return JSONResponse(get_proxy_stats())
-
-
-# ─── JOBS ENDPOINTS ──────────────────────────────────────────
-@app.get("/jobs")
-async def get_jobs(request: Request):
-    """Lista jobs recentes."""
-    auth = request.headers.get("authorization", "")
-    if auth != f"Bearer {WORKER_API_SECRET}":
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    return JSONResponse(list_recent_jobs(limit=50))
-
-
-@app.post("/jobs")
-async def create_job(request: Request):
-    """Cria novo job de onboarding. Aceita credenciais em texto puro e criptografa internamente."""
-    auth = request.headers.get("authorization", "")
-    if auth != f"Bearer {WORKER_API_SECRET}":
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    try:
-        body = await request.json()
-    except Exception:
-        return JSONResponse({"error": "JSON inválido"}, status_code=400)
-
-    username = body.get("username", "").strip()
-    password = body.get("password", "").strip()
-    totp_secret = body.get("totp_secret", "").strip()
-    magic_link_token = body.get("magic_link_token", "").strip()
-
-    if not username or not password or not totp_secret or not magic_link_token:
-        return JSONResponse(
-            {"error": "username, password, totp_secret e magic_link_token são obrigatórios"},
-            status_code=400,
-        )
-
-    job_id = insert_job(
-        username=username,
-        password_enc=encrypt(password),
-        two_factor_enc=encrypt(totp_secret),
-        magic_link_token=magic_link_token,
-        photo_url=body.get("photo_url"),
-        story_media_url=body.get("story_media_url"),
-        story_link_url=body.get("story_link_url"),
-        story_link_text=body.get("story_link_text"),
-        highlight_title=body.get("highlight_title"),
-    )
-    return JSONResponse({"status": "created", "id": job_id}, status_code=201)
-
-
-@app.delete("/jobs/{job_id}")
-async def delete_job_endpoint(job_id: str, request: Request):
-    """Remove job permanentemente da fila."""
-    auth = request.headers.get("authorization", "")
-    if auth != f"Bearer {WORKER_API_SECRET}":
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    removed = delete_job(job_id)
-    if not removed:
-        return JSONResponse({"error": "Job não encontrado"}, status_code=404)
-    return JSONResponse({"status": "deleted", "id": job_id})
 
 
 def start_health_server():

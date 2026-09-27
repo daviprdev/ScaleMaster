@@ -14,6 +14,8 @@ import asyncio
 import signal
 import sys
 import time
+import subprocess
+import os
 from pathlib import Path
 
 # Fix para Python 3.10+ em containers Docker: Playwright precisa spawnar
@@ -24,6 +26,14 @@ if sys.platform != "win32":
         asyncio.set_child_watcher(asyncio.ThreadedChildWatcher())
     except (AttributeError, RuntimeError):
         pass  # Já setado ou Windows
+
+# Garantir DISPLAY=:99 para Playwright (Xvfb já roda no container via entrypoint ou manualmente)
+if sys.platform != "win32":
+    if not os.environ.get("DISPLAY"):
+        os.environ["DISPLAY"] = ":99"
+        print("[WORKER] DISPLAY=:99 setado (Xvfb deve estar rodando)")
+    else:
+        print(f"[WORKER] DISPLAY já setado: {os.environ['DISPLAY']}")
 
 from config import (
     MAX_CONCURRENT_JOBS,
@@ -116,6 +126,7 @@ class RPAWorker:
                             highlight_title=job.get("highlight_title"),
                             magic_link_url=magic_link_url,
                             profile_dir=str(Path(PROFILES_DIR) / username),
+                            job_id=job_id,
                         )
                     except Exception as rpa_exc:
                         import traceback
