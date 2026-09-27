@@ -30,10 +30,25 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+
+    // Worker aceita credenciais em texto puro e cifra internamente
+    // Enviar password, totp_secret, magic_link_token conforme worker espera
+    const payload = {
+      username: body.username,
+      password: body.password,
+      totp_secret: body.totp_secret,
+      magic_link_token: body.magic_link_token,
+      photo_url: body.photo_url,
+      story_media_url: body.story_media_url,
+      story_link_url: body.story_link_url,
+      story_link_text: body.story_link_text,
+      highlight_title: body.highlight_title,
+    };
+
     const res = await fetch(`${WORKER_API}/jobs`, {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(15_000),
     });
     const data = await res.json().catch(() => ({}));
