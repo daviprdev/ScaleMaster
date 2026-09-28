@@ -15,6 +15,8 @@ from db import (
     delete_proxy,
     deactivate_proxy,
     get_proxy_stats,
+    get_job_stages_detail,
+    recover_expired_leases,
 )
 from worker import is_queue_paused, set_queue_paused, is_job_paused, pause_job, resume_job, get_paused_jobs
 
@@ -50,6 +52,25 @@ async def create_job(request: Request):
             {"error": "username, password, totp_secret e magic_link_token são obrigatórios"},
             status_code=400,
         )
+
+    # Validar story_link_url quando story_media_url é fornecido (link é obrigatório)
+    story_media = body.get("story_media_url", "").strip()
+    story_link = body.get("story_link_url", "").strip()
+    if story_media and not story_link:
+        return JSONResponse(
+            {"error": "story_link_url é obrigatório quando story_media_url é fornecido"},
+            status_code=400,
+        )
+
+    # Validar formato da URL do link se fornecida
+    if story_link:
+        from urllib.parse import urlparse
+        parsed = urlparse(story_link)
+        if parsed.scheme not in ("http", "https"):
+            return JSONResponse(
+                {"error": "story_link_url deve ser uma URL válida (http/https)"},
+                status_code=400,
+            )
 
     job_id = insert_job(
         username=username,
