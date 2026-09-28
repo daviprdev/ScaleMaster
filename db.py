@@ -25,7 +25,10 @@ JOB_DEADLINE_SECONDS = 3600    # Prazo máximo total de execução (1h)
 BACKOFF_BASE_SECONDS = 10      # Backoff exponencial base
 BACKOFF_MAX_SECONDS = 300      # Backoff máximo (5 min)
 
-_SCHEMA = """
+# Schema base: apenas CREATE TABLE com colunas que SEMPRE existem
+# Colunas novas são adicionadas via _MIGRATIONS (ALTER TABLE)
+# Índices que dependem de colunas novas ficam em _INDEXES (após migrações)
+_SCHEMA_BASE = """
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL,
@@ -35,29 +38,13 @@ CREATE TABLE IF NOT EXISTS jobs (
     photo_url TEXT,
     story_media_url TEXT,
     story_link_url TEXT,
-    story_link_text TEXT,
     highlight_title TEXT,
     magic_link_token TEXT NOT NULL,
-    app_id TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
-    retry_count INTEGER NOT NULL DEFAULT 0,
     error_message TEXT,
-    error_code TEXT,
     created_at REAL NOT NULL,
     processed_at REAL,
-    updated_at REAL NOT NULL,
-    completed_stages TEXT DEFAULT '',
-    sessionid_enc TEXT,
-    current_stage TEXT,
-    flow_version INTEGER NOT NULL DEFAULT 2,
-    lease_owner TEXT,
-    lease_expires_at REAL,
-    heartbeat_at REAL,
-    next_attempt_at REAL DEFAULT 0,
-    deadline_at REAL,
-    story_pk TEXT,
-    highlight_pk TEXT,
-    idempotency_key TEXT
+    updated_at REAL NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS proxies (
@@ -87,15 +74,19 @@ CREATE TABLE IF NOT EXISTS job_stages (
     data TEXT,
     FOREIGN KEY (job_id) REFERENCES jobs(id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
-CREATE INDEX IF NOT EXISTS idx_jobs_username ON jobs(username);
-CREATE INDEX IF NOT EXISTS idx_jobs_next_attempt ON jobs(next_attempt_at);
-CREATE INDEX IF NOT EXISTS idx_jobs_lease ON jobs(lease_expires_at);
-CREATE INDEX IF NOT EXISTS idx_proxies_active ON proxies(is_active);
-CREATE INDEX IF NOT EXISTS idx_job_stages_job ON job_stages(job_id, stage_key);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_idempotency ON jobs(idempotency_key) WHERE idempotency_key IS NOT NULL;
 """
+
+# Índices seguros: só usam colunas que existem desde o início OU foram migradas
+_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)",
+    "CREATE INDEX IF NOT EXISTS idx_jobs_username ON jobs(username)",
+    "CREATE INDEX IF NOT EXISTS idx_proxies_active ON proxies(is_active)",
+    "CREATE INDEX IF NOT EXISTS idx_job_stages_job ON job_stages(job_id, stage_key)",
+    # Estes dependem de colunas migradas — só criar se a coluna existir
+    "CREATE INDEX IF NOT EXISTS idx_jobs_next_attempt ON jobs(next_attempt_at)",
+    "CREATE INDEX IF NOT EXISTS idx_jobs_lease ON jobs(lease_expires_at)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_idempotency ON jobs(idempotency_key) WHERE idempotency_key IS NOT NULL",
+]
 
 _MIGRATIONS = [
     ("story_link_text", "ALTER TABLE jobs ADD COLUMN story_link_text TEXT"),
@@ -118,34 +109,33 @@ _MIGRATIONS = [
 
 
 def init_db(db_path: str = DB_PATH) -> None:
-    """Cria tabelas, índices e aplica migrações incrementalmente."""
+    """Cria tabelas, aplica migrações e cria índices na ordem correta.
+
+    Ordem: 1) Schema base (tabelas com colunas originais)
+           2) Migrações ALTER TABLE (adiciona colunas novas)
+           3) Índices (alguns dependem de colunas migradas)
+    """
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     with _connect(db_path) as conn:
-        conn.executescript(_SCHEMA)
+        # 1) Schema base — só colunas que sempre existiram
+        conn.executescript(_SCHEMA_BASE)
+
+        # 2) Migrações — adiciona colunas novas incrementalmente
         for col_name, sql in _MIGRATIONS:
             try:
                 conn.execute(sql)
                 print(f"[DB] Migração: coluna {col_name} adicionada")
             except sqlite3.OperationalError:
-                pass
-        # Criar tabela job_stages se não existir (já no schema, mas garante)
-        try:
-            conn.execute("""CREATE TABLE IF NOT EXISTS job_stages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                job_id TEXT NOT NULL,
-                stage_key TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',
-                attempt INTEGER NOT NULL DEFAULT 0,
-                started_at REAL,
-                finished_at REAL,
-                error_code TEXT,
-                error_message TEXT,
-                external_id TEXT,
-                data TEXT,
-                FOREIGN KEY (job_id) REFERENCES jobs(id)
-            )""")
-        except sqlite3.OperationalError:
-            pass
+                pass  # Coluna já existe
+
+        # 3) Índices — agora as colunas migradas já existem
+        for idx_sql in _INDEXES:
+            try:
+                conn.execute(idx_sql)
+            except sqlite3.OperationalError as e:
+                # Índice pode falhar se coluna ainda não existe (migração falhou)
+                print(f"[DB] Aviso: índice pulado: {e}")
+
     print(f"[DB] SQLite inicializado: {db_path}")
 
 
