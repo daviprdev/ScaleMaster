@@ -512,8 +512,31 @@ class InstagramRPA:
             media_type = self._detect_media_type(local)
             self._log(f"Story: tipo={media_type}, link={_sanitize_url(link_url)}")
 
-            from instagrapi.types import StoryLink
-            link_sticker = StoryLink(webUri=link_url)
+            from instagrapi.types import StoryLink, StorySticker, StoryStickerLink
+            # CORREÇÃO: Usar StorySticker com story_link populado para garantir
+            # que o sticker visual apareça no story. O instagrapi 3.0.14 cria
+            # StorySticker internamente mas deixa story_link=None, usando apenas
+            # extra=dict(url=...). O Instagram pode não renderizar sem o campo
+            # estrutural story_link preenchido.
+            link_sticker = StorySticker(
+                type="story_link",
+                x=0.5126011,
+                y=0.5168225,
+                z=0.0,
+                width=0.50998676,
+                height=0.25875,
+                rotation=0.0,
+                story_link=StoryStickerLink(
+                    url=link_url,
+                    link_title=link_text or "",
+                    link_type="web",
+                ),
+                extra=dict(
+                    link_type="web",
+                    url=str(link_url),
+                    tap_state_str_id="link_sticker_default",
+                ),
+            )
 
             loop = asyncio.get_event_loop()
 
@@ -532,7 +555,7 @@ class InstagramRPA:
                             lambda: self.ig_client.video_upload_to_story(
                                 path=Path(local),
                                 thumbnail=Path(thumb_path),
-                                links=[link_sticker],
+                                stickers=[link_sticker],  # Usar stickers= em vez de links=
                             ),
                         )
                     else:
@@ -540,7 +563,7 @@ class InstagramRPA:
                             None,
                             lambda: self.ig_client.video_upload_to_story(
                                 path=Path(local),
-                                links=[link_sticker],
+                                stickers=[link_sticker],
                             ),
                         )
                 finally:
@@ -554,7 +577,7 @@ class InstagramRPA:
                     None,
                     lambda: self.ig_client.photo_upload_to_story(
                         path=Path(local),
-                        links=[link_sticker],
+                        stickers=[link_sticker],  # Usar stickers= em vez de links=
                     ),
                 )
 
