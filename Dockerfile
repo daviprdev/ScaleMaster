@@ -10,11 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Python deps (instagrapi instalado separadamente do GitHub master)
+# Python deps (instagrapi pinado no commit eecce80 com correções de story links)
 COPY requirements.txt .
 RUN grep -v '^instagrapi' requirements.txt > /tmp/req_no_ig.txt \
     && pip install --no-cache-dir -r /tmp/req_no_ig.txt \
-    && pip install --no-cache-dir git+https://github.com/subzeroid/instagrapi.git@master
+    && pip install --no-cache-dir git+https://github.com/subzeroid/instagrapi.git@eecce804ddfb8f2520fcf18a7df16c2d19d644f0
 
 # Install Chromium + headless shell for Playwright 1.63+
 # Playwright 1.63 requires both chromium AND chromium-headless-shell

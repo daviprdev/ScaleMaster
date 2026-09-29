@@ -5,7 +5,7 @@ playwright==1.63.0
 cryptography==50.0.1
 pyotp==2.9.0
 python-dotenv==1.0.1
-# instagrapi fixado via git com commits de correção de story links:
+# instagrapi fixado no commit eecce80 (inclui e4c3820 + eecce80):
 # - e4c3820: serialização de stickers (preserva todos os IDs)
 # - eecce80: leitura de story_link_stickers[*].story_link.url
-git+https://github.com/subzeroid/instagrapi.git@master
+git+https://github.com/subzeroid/instagrapi.git@eecce804ddfb8f2520fcf18a7df16c2d19d644f0
