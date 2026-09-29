@@ -219,6 +219,8 @@ class RPAWorker:
                     "instagrapi_login_failed", "playwright_login_failed",
                     "login_failed", "timeout", "unknown_error", "rpa_exception",
                     "proxy_error", "network_error",
+                    "web_auth_failed", "login_ui_not_found", "login_timeout",
+                    "unexpected_error",
                 }
 
                 if error_code in permanent_errors:

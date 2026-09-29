@@ -3,11 +3,14 @@ services:
     build: .
     restart: always
     env_file: .env
+    environment:
+      - DISPLAY=:99
+      - PYTHONUNBUFFERED=1
     volumes:
       - ./profiles:/opt/rpa/profiles
       - ./data:/app/data
-    mem_limit: 3g
-    cpus: 2.5
+    mem_limit: 2g
+    cpus: 1.0
     ports:
       - "8080:8080"
     healthcheck:

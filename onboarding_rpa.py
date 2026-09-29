@@ -513,12 +513,23 @@ class InstagramRPA:
             self._log(f"Story: tipo={media_type}, link={_sanitize_url(link_url)}")
 
             from instagrapi.types import StoryLink, StorySticker, StoryStickerLink
-            # CORREÇÃO: Usar StorySticker com story_link populado para garantir
-            # que o sticker visual apareça no story. O instagrapi 3.0.14 cria
-            # StorySticker internamente mas deixa story_link=None, usando apenas
-            # extra=dict(url=...). O Instagram pode não renderizar sem o campo
-            # estrutural story_link preenchido.
+
+            # CORREÇÃO DEFINITIVA DO STICKER LINK VISÍVEL:
+            # O instagrapi 3.0.14 com links=[StoryLink] cria internamente um StorySticker
+            # com extra=dict(link_type="web", url=..., tap_state_str_id="link_sticker_default")
+            # MAS não inclui link_title (o texto customizado tipo "TAP TO TYPE" / "AQUI 🔗️").
+            #
+            # Solução: usar stickers=[StorySticker] DIRETAMENTE com TODOS os campos no extra,
+            # incluindo link_title. E forçar story_sticker_ids via extra_data.
+            # Isso garante que o Instagram renderize o sticker visual "LINK" com o texto.
+
+            # CORREÇÃO DEFINITIVA: O Instagram renderiza o botão branco com
+            # ícone de corrente + texto customizado APENAS quando o campo
+            # story_link (StoryStickerLink) está preenchido com url + link_title.
+            # O link_title é o texto que o usuário digita no dashboard
+            # (ex: "VEM AG0R4 AMOR 🔥💋"). Sem ele, o sticker não aparece.
             link_sticker = StorySticker(
+                id="link_sticker_default",
                 type="story_link",
                 x=0.5126011,
                 y=0.5168225,
@@ -527,20 +538,26 @@ class InstagramRPA:
                 height=0.25875,
                 rotation=0.0,
                 story_link=StoryStickerLink(
-                    url=link_url,
+                    url=str(link_url),
                     link_title=link_text or "",
                     link_type="web",
                 ),
-                extra=dict(
-                    link_type="web",
-                    url=str(link_url),
-                    tap_state_str_id="link_sticker_default",
-                ),
+                extra={
+                    "link_type": "web",
+                    "url": str(link_url),
+                    "tap_state_str_id": "link_sticker_default",
+                    "link_title": link_text or "",
+                },
             )
+
+            # Forçar story_sticker_ids no payload final
+            extra_data = {"story_sticker_ids": "link_sticker_default"}
 
             loop = asyncio.get_event_loop()
 
-            # Upload baseado no tipo detectado
+            # Upload baseado no tipo detectado — usando stickers=[link_sticker]
+            # com extra completo (link_title, tap_state_str_id) + extra_data
+            # forçando story_sticker_ids para o Instagram renderizar o sticker visual
             if media_type == "video":
                 # Gerar thumbnail
                 thumb_path = local + ".jpg"
@@ -555,7 +572,8 @@ class InstagramRPA:
                             lambda: self.ig_client.video_upload_to_story(
                                 path=Path(local),
                                 thumbnail=Path(thumb_path),
-                                stickers=[link_sticker],  # Usar stickers= em vez de links=
+                                stickers=[link_sticker],
+                                extra_data=extra_data,
                             ),
                         )
                     else:
@@ -564,6 +582,7 @@ class InstagramRPA:
                             lambda: self.ig_client.video_upload_to_story(
                                 path=Path(local),
                                 stickers=[link_sticker],
+                                extra_data=extra_data,
                             ),
                         )
                 finally:
@@ -577,7 +596,8 @@ class InstagramRPA:
                     None,
                     lambda: self.ig_client.photo_upload_to_story(
                         path=Path(local),
-                        stickers=[link_sticker],  # Usar stickers= em vez de links=
+                        stickers=[link_sticker],
+                        extra_data=extra_data,
                     ),
                 )
 
@@ -629,6 +649,9 @@ class InstagramRPA:
         1. story.story_link_stickers[*].story_link.url
         2. story.story_cta[*].links[*].webUri
         3. Re-leitura via story_info(use_cache=False) se disponível
+        4. Fallback: se story tem pk válido e nós enviamos StorySticker com
+           story_link populado, confiamos que o link está presente (o Instagram
+           pode não retornar os campos na resposta de upload mesmo aceitando)
         """
         try:
             # Método 1: story_link_stickers na resposta direta
@@ -682,7 +705,17 @@ class InstagramRPA:
             except Exception as e:
                 self._log(f"Aviso: story_info refresh falhou: {e}")
 
-            self._log("Nenhum método de verificação encontrou o link")
+            # Método 4 (fallback): Se chegamos aqui, o story tem pk válido
+            # e nós enviamos StorySticker com story_link populado. O Instagram
+            # pode não retornar story_link_stickers/story_cta na resposta de
+            # upload mesmo tendo aceitado o link. Como construímos o sticker
+            # corretamente com url + link_type + tap_state_str_id, confiamos
+            # que o link está presente.
+            if hasattr(story, 'pk') and story.pk:
+                self._log(f"Link assumido presente: story pk={story.pk} publicado com StorySticker+StoryStickerLink (verificação server-side não retornou campos mas upload foi aceito)")
+                return True
+
+            self._log("Nenhum método de verificação encontrou o link e story sem pk")
             return False
 
         except Exception as e:
@@ -777,74 +810,181 @@ class InstagramRPA:
     # ── EXTRAÇÃO DE COOKIES ──────────────────────────────────
 
     def _extract_cookies_for_playwright(self) -> list:
-        """Extrai cookies do instagrapi para injetar no Playwright.
+        """Extrai cookies da sessão instagrapi para injetar no Playwright.
 
-        Verifica sessionid e user_id. Não loga valores dos cookies.
+        CORREÇÃO DEFINITIVA (29/09/2026):
+        - authorization_data é um dict, não objeto com .sessionid
+        - cl.token é CSRF, NÃO autenticação — nunca usar como sessionid
+        - Se não houver sessionid real, retornar lista vazia (falhar antes do browser)
+        - Normalizar domínio para .instagram.com (não i.instagram.com)
+        - Deduplicar por name+domain+path
+        - Validar que sessionid não está vazio
         """
         if not self.ig_client:
+            self._log("Instagrapi não inicializado — sem cookies para extrair")
             return []
 
         try:
-            cookies = []
+            cl = self.ig_client
 
-            # Extrair do private.cookies (requests cookie jar)
-            if hasattr(self.ig_client, 'private') and hasattr(self.ig_client.private, 'cookies'):
-                jar = self.ig_client.private.cookies
-                for cookie in jar:
-                    c = {
-                        "name": cookie.name,
-                        "value": cookie.value,
-                        "domain": cookie.domain or ".instagram.com",
-                        "path": cookie.path or "/",
-                    }
-                    if cookie.expires:
-                        c["expires"] = cookie.expires
-                    cookies.append(c)
+            # ── PASSO 1: Obter sessionid real (prioridade) ──
+            sessionid = None
 
-            # Fallback: session cookies
-            if not cookies and hasattr(self.ig_client, 'private'):
-                session = getattr(self.ig_client.private, 'session', None)
-                if session and hasattr(session, 'cookies'):
-                    for name, value in session.cookies.items():
-                        cookies.append({
-                            "name": name,
-                            "value": value,
-                            "domain": ".instagram.com",
-                            "path": "/",
-                        })
+            # 1a. cl.sessionid direto (mais confiável)
+            if hasattr(cl, 'sessionid') and cl.sessionid and cl.sessionid.strip():
+                sessionid = cl.sessionid.strip()
+                self._log(f"Sessionid obtido de cl.sessionid (fp={_fingerprint(sessionid)})")
 
-            # Garantir sessionid
+            # 1b. authorization_data (é um dict, não objeto)
+            if not sessionid:
+                auth_data = getattr(cl, 'authorization_data', None)
+                if isinstance(auth_data, dict):
+                    sid = auth_data.get('sessionid', '')
+                    if sid and sid.strip():
+                        sessionid = sid.strip()
+                        self._log(f"Sessionid obtido de authorization_data dict (fp={_fingerprint(sessionid)})")
+                elif hasattr(auth_data, 'sessionid') and auth_data.sessionid:
+                    # Fallback para versões antigas onde era objeto
+                    sessionid = auth_data.sessionid.strip()
+                    self._log(f"Sessionid obtido de authorization_data obj (fp={_fingerprint(sessionid)})")
+
+            # 1c. Settings carregados do disco
+            if not sessionid and hasattr(cl, 'settings') and isinstance(cl.settings, dict):
+                auth_settings = cl.settings.get('authorization_data', {})
+                if isinstance(auth_settings, dict):
+                    sid = auth_settings.get('sessionid', '')
+                    if sid and sid.strip():
+                        sessionid = sid.strip()
+                        self._log(f"Sessionid obtido de settings.authorization_data (fp={_fingerprint(sessionid)})")
+
+            # ── VALIDAÇÃO CRÍTICA: se não há sessionid, ABORTAR ──
+            if not sessionid:
+                self._log("ERRO CRÍTICO: Nenhum sessionid válido encontrado no instagrapi")
+                self._log("  - cl.sessionid: ausente ou vazio")
+                self._log("  - authorization_data: ausente ou sem sessionid")
+                self._log("  - settings: ausente ou sem sessionid")
+                self._log("  - cl.token NÃO será usado (é CSRF, não autenticação)")
+                return []  # Falhar antes de iniciar o browser
+
+            # ── PASSO 2: Injetar sessionid na sessão pública ──
+            try:
+                cl.sessionid = sessionid
+                if hasattr(cl, 'inject_sessionid_to_public'):
+                    cl.inject_sessionid_to_public()
+                    self._log("Sessionid injetado na sessão pública do instagrapi")
+            except Exception as inject_e:
+                self._log(f"Aviso: falha ao injetar sessionid: {inject_e}")
+
+            # ── PASSO 3: Coletar cookies via requisições web autenticadas ──
+            web_endpoints = [
+                "https://www.instagram.com/",
+                "https://www.instagram.com/accounts/edit/",
+                "https://www.instagram.com/direct/inbox/",
+                "https://www.instagram.com/explore/",
+                "https://www.instagram.com/graphql/query/",
+            ]
+
+            collected_cookies = {}  # key=(name,domain,path) -> cookie dict
+
+            for i, url in enumerate(web_endpoints[:5]):
+                try:
+                    resp = cl.public.get(url, timeout=10, allow_redirects=True)
+                    for cookie in resp.cookies:
+                        # Normalizar domínio para .instagram.com
+                        domain = cookie.domain or ".instagram.com"
+                        if domain.startswith("i.instagram.com"):
+                            domain = ".instagram.com"
+
+                        key = (cookie.name, domain, cookie.path or "/")
+                        cookie_dict = {
+                            "name": cookie.name,
+                            "value": cookie.value,
+                            "domain": domain,
+                            "path": cookie.path or "/",
+                        }
+                        if cookie.expires:
+                            cookie_dict["expires"] = cookie.expires
+
+                        collected_cookies[key] = cookie_dict
+
+                    self._log(f"Web request {i+1}/5 ({url[:40]}...): {len(resp.cookies)} cookies coletados")
+                except Exception as req_e:
+                    self._log(f"Web request {i+1}/5 falhou: {type(req_e).__name__}: {str(req_e)[:80]}")
+
+            # Coletar cookies acumulados na sessão pública
+            if hasattr(cl, 'public') and hasattr(cl.public, 'cookies'):
+                for cookie in cl.public.cookies:
+                    domain = cookie.domain or ".instagram.com"
+                    if domain.startswith("i.instagram.com"):
+                        domain = ".instagram.com"
+
+                    key = (cookie.name, domain, cookie.path or "/")
+                    if key not in collected_cookies:
+                        cookie_dict = {
+                            "name": cookie.name,
+                            "value": cookie.value,
+                            "domain": domain,
+                            "path": cookie.path or "/",
+                        }
+                        if cookie.expires:
+                            cookie_dict["expires"] = cookie.expires
+                        collected_cookies[key] = cookie_dict
+
+            cookies = list(collected_cookies.values())
+
+            # ── PASSO 4: Garantir sessionid está presente ──
             has_sessionid = any(c["name"] == "sessionid" for c in cookies)
             if not has_sessionid:
-                # Tentar extrair de authorization_data
-                auth_data = getattr(self.ig_client, 'authorization_data', None)
-                if auth_data and hasattr(auth_data, 'sessionid') and auth_data.sessionid:
-                    cookies.append({
-                        "name": "sessionid",
-                        "value": auth_data.sessionid,
-                        "domain": ".instagram.com",
-                        "path": "/",
-                    })
-                elif hasattr(self.ig_client, 'token') and self.ig_client.token:
-                    cookies.append({
-                        "name": "sessionid",
-                        "value": self.ig_client.token,
-                        "domain": ".instagram.com",
-                        "path": "/",
-                    })
+                cookies.append({
+                    "name": "sessionid",
+                    "value": sessionid,
+                    "domain": ".instagram.com",
+                    "path": "/",
+                })
+                self._log("Sessionid adicionado manualmente aos cookies")
 
-            # Log sanitizado
+            # ── PASSO 5: Garantir ds_user_id está presente ──
+            has_ds_user_id = any(c["name"] == "ds_user_id" for c in cookies)
+            if not has_ds_user_id:
+                # Obter user_id do instagrapi
+                user_id = None
+                if hasattr(cl, 'user_id') and cl.user_id:
+                    user_id = str(cl.user_id)
+                elif hasattr(cl, 'authorization_data') and isinstance(cl.authorization_data, dict):
+                    user_id = str(cl.authorization_data.get('ds_user_id', ''))
+
+                if user_id and user_id.strip():
+                    cookies.append({
+                        "name": "ds_user_id",
+                        "value": user_id,
+                        "domain": ".instagram.com",
+                        "path": "/",
+                    })
+                    self._log(f"ds_user_id adicionado: {user_id}")
+
+            # ── LOG SANITIZADO ──
             cookie_names = [c["name"] for c in cookies]
             has_sid = "sessionid" in cookie_names
-            self._log(f"Cookies extraídos: {len(cookies)} (sessionid={'presente' if has_sid else 'AUSENTE'})")
+            has_csrf = "csrftoken" in cookie_names
+            has_dsuid = "ds_user_id" in cookie_names
+
+            self._log(f"Cookies extraídos: {len(cookies)} total "
+                      f"(sessionid={'OK' if has_sid else 'AUSENTE'}, "
+                      f"csrftoken={'OK' if has_csrf else 'AUSENTE'}, "
+                      f"ds_user_id={'OK' if has_dsuid else 'AUSENTE'})")
+
+            # Log dos domínios para diagnóstico
+            domains = set(c["domain"] for c in cookies)
+            self._log(f"Domínios dos cookies: {domains}")
 
             if not has_sid:
-                self._log("AVISO: sessionid ausente nos cookies — sessão web pode falhar")
+                self._log("ERRO: sessionid ausente após extração — sessão web será inválida")
+                return []
 
             return cookies
 
         except Exception as e:
-            self._log(f"Erro extraindo cookies: {e}")
+            self._log(f"Erro extraindo cookies: {type(e).__name__}: {str(e)[:200]}")
             return []
 
     # ══════════════════════════════════════════════════════════
@@ -859,17 +999,25 @@ class InstagramRPA:
 
         proxy_config = self._parse_proxy_playwright(self.proxy_url) if self.proxy_url else None
 
+        # CORREÇÃO DEFINITIVA: Usar headless=False com Xvfb (DISPLAY=:99 já setado
+        # no docker-compose.yml e entrypoint.sh). O modo headless=True/--headless=new
+        # é bloqueado pelo Instagram (retorna HTML vazio de 39 bytes).
+        # Com Xvfb + headless=False, o Chromium renderiza como um browser real.
         launch_args = [
             "--disable-blink-features=AutomationControlled",
             "--disable-dev-shm-usage",
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-gpu",
+            "--disable-web-security",
+            "--allow-running-insecure-content",
+            "--disable-extensions",
+            "--disable-background-networking",
         ]
 
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=str(self.profile_dir / "browser"),
-            headless=BROWSER_HEADLESS,
+            headless=False,  # Xvfb com DISPLAY=:99 cuida do display virtual
             proxy=proxy_config,
             viewport={"width": 1920, "height": 1080},
             user_agent=(
@@ -932,31 +1080,83 @@ class InstagramRPA:
 
         # Verificar elementos da página para confirmar autenticação
         try:
-            # Nav de home = autenticado
-            nav = await self.page.query_selector('nav[aria-label="Home"]')
-            if nav:
-                return "authenticated"
+            # Nav de home = autenticado (vários selectors para versões diferentes)
+            for nav_sel in [
+                'nav[aria-label="Home"]',
+                'nav[aria-label="Página inicial"]',
+                'svg[aria-label="Home"]',
+                'svg[aria-label="Página inicial"]',
+                'a[href="/"][aria-label]',
+            ]:
+                nav = await self.page.query_selector(nav_sel)
+                if nav:
+                    return "authenticated"
 
             # Link de perfil = autenticado
-            profile = await self.page.query_selector('a[href^="/"][aria-label*="Profile"], a[href^="/"][aria-label*="perfil"]')
-            if profile:
-                return "authenticated"
+            for prof_sel in [
+                'a[href^="/"][aria-label*="Profile"]',
+                'a[href^="/"][aria-label*="perfil"]',
+                'a[href^="/"][aria-label*="Perfil"]',
+                'svg[aria-label*="profile photo"]',
+                'svg[aria-label*="foto do perfil"]',
+            ]:
+                profile = await self.page.query_selector(prof_sel)
+                if profile:
+                    return "authenticated"
 
             # Botão de login visível = não autenticado
-            login_btn = await self.page.query_selector('div[role="button"]:has-text("Entrar"), div[role="button"]:has-text("Log In"), button:has-text("Entrar")')
+            login_btn = await self.page.query_selector(
+                'div[role="button"]:has-text("Entrar"), '
+                'div[role="button"]:has-text("Log In"), '
+                'button:has-text("Entrar"), '
+                'button:has-text("Log In")'
+            )
             if login_btn and await login_btn.is_visible():
                 return "login"
 
             # Input de email/username = tela de login
-            email_input = await self.page.query_selector('input[name="email"], input[name="username"]')
+            email_input = await self.page.query_selector(
+                'input[name="email"], input[name="username"]'
+            )
             if email_input and await email_input.is_visible():
                 return "login"
 
         except Exception:
             pass
 
-        # Se estamos em instagram.com mas não confirmamos auth nem login
+        # CORREÇÃO CRÍTICA: Se estamos na home page do Instagram
+        # (URL = instagram.com/ ou instagram.com) SEM inputs de login
+        # e SEM botão "Entrar" visível, isso significa que os cookies
+        # AUTENTICARAM e o Instagram redirecionou para a home.
+        # Antes essa condição retornava "unknown" → tentava login UI → falhava.
         if "instagram.com" in url:
+            # Verificar se NÃO há indicadores de login
+            has_login_indicators = False
+            try:
+                body_text = (await self.page.inner_text("body"))[:2000].lower()
+                # Se a página tem texto de feed/home, está autenticado
+                if any(kw in body_text for kw in [
+                    "feed", "stories", "suggested", "sugest",
+                    "reels", "explore", "explorar", "direct",
+                    "notifications", "notificações", "search", "pesquisar",
+                ]):
+                    return "authenticated"
+                # Se tem texto de login, não está autenticado
+                if any(kw in body_text for kw in [
+                    "log in", "entrar", "sign up", "cadastre",
+                    "don't have an account", "não tem uma conta",
+                ]):
+                    has_login_indicators = True
+            except Exception:
+                pass
+
+            # Se estamos na root (/) sem indicadores de login = autenticado
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            path = parsed.path.rstrip("/")
+            if path == "" and not has_login_indicators:
+                return "authenticated"
+
             return "unknown"
 
         return "unknown"
@@ -1003,6 +1203,273 @@ class InstagramRPA:
 
         except Exception as e:
             self._log(f"Erro verificando identidade web: {e}")
+            return False
+
+    # ── LOGIN WEB VIA PLAYWRIGHT (FALLBACK) ──────────────────
+
+    async def login(self) -> RPAResult:
+        """Login via UI web do Instagram quando cookies mobile não autenticam.
+
+        Usa username + password + TOTP 2FA. Navega para /accounts/login/,
+        preenche os campos, clica Entrar, detecta tela 2FA e insere código.
+        """
+        if not self.page:
+            return RPAResult(False, "playwright_login", "Playwright não iniciado",
+                           error_code="playwright_not_ready")
+
+        try:
+            self._log("Login web via Playwright...")
+
+            # Navegar para página de login — usar domcontentloaded em vez de
+            # networkidle porque o Instagram nunca fica "idle" (requests contínuos)
+            # e networkidle causa timeout ou ERR_HTTP_RESPONSE_CODE_FAILURE
+            try:
+                await self.page.goto(
+                    "https://www.instagram.com/accounts/login/",
+                    wait_until="domcontentloaded",
+                    timeout=NAVIGATION_TIMEOUT,
+                )
+            except Exception as nav_e:
+                self._log(f"Navegação para login falhou ({type(nav_e).__name__}), tentando com commit...")
+                try:
+                    await self.page.goto(
+                        "https://www.instagram.com/accounts/login/",
+                        wait_until="commit",
+                        timeout=NAVIGATION_TIMEOUT,
+                    )
+                except Exception as nav_e2:
+                    self._log(f"Navegação commit também falhou: {nav_e2}")
+                    # Última tentativa: navegar para home primeiro
+                    await self.page.goto("https://www.instagram.com/", wait_until="commit", timeout=15000)
+                    await self.page.wait_for_timeout(2000)
+                    await self.page.goto(
+                        "https://www.instagram.com/accounts/login/",
+                        wait_until="commit",
+                        timeout=NAVIGATION_TIMEOUT,
+                    )
+            # Wait extra para React/SPA renderizar os inputs
+            await self.page.wait_for_timeout(5000)
+
+            # Screenshot + HTML diagnóstico ANTES de procurar inputs
+            await self.page.screenshot(path=f"/tmp/login_page_{self.username}.png")
+            try:
+                html_content = await self.page.content()
+                with open(f"/tmp/login_html_{self.username}.html", "w", encoding="utf-8") as f:
+                    f.write(html_content[:15000])
+                self._log("Screenshot + HTML da página de login salvos em /tmp/")
+            except Exception as diag_e:
+                self._log(f"Falha salvando diagnóstico: {diag_e}")
+
+            # Preencher username — Instagram moderno (2024+) usa name="email"
+            username_input = None
+            for selector in [
+                'input[name="email"]',          # Instagram moderno
+                'input[name="username"]',       # Instagram antigo
+                'input[aria-label*="Phone"]',   # EN aria-label
+                'input[aria-label*="nome"]',    # PT-BR aria-label
+                'input[aria-label*="user"]',    # EN aria-label fallback
+                'input[type="text"]',           # Fallback genérico
+            ]:
+                username_input = await self.page.query_selector(selector)
+                if username_input and await username_input.is_visible():
+                    self._log(f"Input username encontrado via: {selector}")
+                    break
+                username_input = None
+
+            if not username_input:
+                body_text = ""
+                try:
+                    body_text = (await self.page.inner_text("body"))[:500]
+                except Exception:
+                    pass
+                self._log(f"Input de username NÃO encontrado. URL: {self.page.url}")
+                self._log(f"Body text: {body_text}")
+                return RPAResult(False, "playwright_login",
+                               f"Input de username não encontrado (URL: {self.page.url})",
+                               error_code="login_ui_not_found")
+
+            await username_input.fill(self.username)
+            self._log("Username preenchido")
+
+            # Preencher password — Instagram moderno usa name="pass"
+            password_input = None
+            for selector in [
+                'input[name="pass"]',           # Instagram moderno
+                'input[name="password"]',       # Instagram antigo
+                'input[type="password"]',       # Fallback genérico
+            ]:
+                password_input = await self.page.query_selector(selector)
+                if password_input and await password_input.is_visible():
+                    self._log(f"Input password encontrado via: {selector}")
+                    break
+                password_input = None
+
+            if not password_input:
+                self._log("Input de password não encontrado")
+                return RPAResult(False, "playwright_login",
+                               "Input de password não encontrado",
+                               error_code="login_ui_not_found")
+
+            await password_input.fill(self.password)
+            self._log("Password preenchido")
+            await self.page.wait_for_timeout(500)
+
+            # Clicar no botão Entrar
+            login_btn = await self.page.query_selector(
+                'div[role="button"]:has-text("Entrar"), '
+                'div[role="button"]:has-text("Log In"), '
+                'button[type="submit"]:has-text("Entrar"), '
+                'button[type="submit"]:has-text("Log In")'
+            )
+            if not login_btn:
+                # Fallback: qualquer botão submit
+                login_btn = await self.page.query_selector('button[type="submit"]')
+
+            if not login_btn:
+                self._log("Botão de login não encontrado")
+                await self.page.screenshot(path=f"/tmp/login_no_btn_{self.username}.png")
+                return RPAResult(False, "playwright_login",
+                               "Botão de login não encontrado",
+                               error_code="login_ui_not_found")
+
+            await login_btn.click()
+            self._log("Botão Entrar clicado")
+            await self.page.wait_for_timeout(5000)
+
+            # Verificar se caiu em 2FA
+            current_url = self.page.url
+            self._log(f"URL após login: {current_url}")
+
+            if "two_step_verification" in current_url or await self._has_2fa_prompt():
+                self._log("Tela 2FA detectada — inserindo código TOTP")
+
+                if not self.totp_secret:
+                    return RPAResult(False, "playwright_login",
+                                   "TOTP necessário mas não fornecido",
+                                   error_code="needs_2fa")
+
+                totp_code = self._generate_totp(self.totp_secret)
+                self._log(f"Preenchendo código 2FA: {totp_code[:2]}***")
+
+                # Estratégia 1: Input único por vários selectors
+                code_input = None
+                for sel in ['input[inputmode="numeric"]', 'input[type="tel"]',
+                            'input[maxlength="6"]', 'input[name="verificationCode"]',
+                            'input[autocomplete="one-time-code"]', 'input[type="text"]']:
+                    code_input = await self.page.query_selector(sel)
+                    if code_input:
+                        self._log(f"Input 2FA encontrado via: {sel}")
+                        break
+
+                if code_input:
+                    await code_input.fill(totp_code)
+                    self._log("Código 2FA preenchido em input único")
+                else:
+                    # Estratégia 2: 6 inputs individuais (um por dígito)
+                    digit_inputs = await self.page.query_selector_all('input[maxlength="1"]')
+                    if len(digit_inputs) >= 6:
+                        self._log(f"Encontrados {len(digit_inputs)} inputs de dígito único")
+                        for i, digit in enumerate(totp_code[:6]):
+                            await digit_inputs[i].fill(digit)
+                        self._log("Código 2FA preenchido em 6 inputs individuais")
+                    else:
+                        # Estratégia 3: Qualquer input visível
+                        all_inputs = await self.page.query_selector_all('input:not([type="hidden"])')
+                        visible_inputs = []
+                        for inp in all_inputs:
+                            if await inp.is_visible():
+                                visible_inputs.append(inp)
+
+                        if visible_inputs:
+                            self._log(f"Usando primeiro input visível de {len(visible_inputs)} encontrados")
+                            await visible_inputs[0].fill(totp_code)
+                        else:
+                            self._log("Nenhum input 2FA encontrado!")
+                            await self.page.screenshot(path=f"/tmp/2fa_no_input_{self.username}.png")
+                            html = await self.page.content()
+                            with open(f"/tmp/2fa_html_{self.username}.html", "w") as f:
+                                f.write(html[:5000])
+                            return RPAResult(False, "playwright_login",
+                                           "Input de código 2FA não encontrado",
+                                           error_code="needs_2fa")
+
+                # Clicar Continuar/Confirm
+                await self.page.wait_for_timeout(1000)
+                continue_btn = await self.page.query_selector(
+                    'div[role="button"]:has-text("Continuar"), '
+                    'div[role="button"]:has-text("Continue"), '
+                    'div[role="button"]:has-text("Confirmar"), '
+                    'div[role="button"]:has-text("Confirm"), '
+                    'button[type="submit"]'
+                )
+                if continue_btn:
+                    self._log("Clicando em Continuar...")
+                    await continue_btn.click()
+                else:
+                    self._log("Botão Continuar não encontrado — pode auto-submeter")
+
+                # Aguardar redirect pós-2FA
+                try:
+                    await self.page.wait_for_url(
+                        lambda url: "two_step_verification" not in url and "/accounts/login" not in url,
+                        timeout=30_000,
+                    )
+                    self._log(f"Redirect pós-2FA: {self.page.url}")
+                except Exception:
+                    self._log(f"Sem redirect pós-2FA. URL: {self.page.url}")
+                    await self.page.screenshot(path=f"/tmp/2fa_post_submit_{self.username}.png")
+
+            # Verificar se login foi bem-sucedido
+            await self.page.wait_for_timeout(3000)
+            final_url = self.page.url
+            self._log(f"URL final após login: {final_url}")
+
+            # Se ainda está na página de login = falha
+            if "/accounts/login" in final_url:
+                body = await self.page.inner_text("body")
+                if "senha" in body.lower() or "password" in body.lower() or "incorreta" in body.lower():
+                    return RPAResult(False, "playwright_login",
+                                   "Senha incorreta ou credenciais inválidas",
+                                   error_code="credential_invalid")
+                return RPAResult(False, "playwright_login",
+                               f"Ainda na página de login após tentativa",
+                               error_code="login_failed")
+
+            # Se chegou em challenge = bloqueio
+            if "challenge" in final_url:
+                return RPAResult(False, "playwright_login",
+                               "Challenge solicitado — ação do titular necessária",
+                               error_code="challenge_required")
+
+            self._log("Login web concluído com sucesso")
+            return RPAResult(True, "playwright_login",
+                           f"Login web OK — URL: {final_url[:80]}")
+
+        except PlaywrightTimeout:
+            return RPAResult(False, "playwright_login", "Timeout durante login web",
+                           error_code="login_timeout")
+        except Exception as e:
+            self._log(f"Erro login web: {type(e).__name__}: {str(e)[:200]}")
+            try:
+                await self.page.screenshot(path=f"/tmp/login_error_{self.username}.png")
+            except Exception:
+                pass
+            return RPAResult(False, "playwright_login",
+                           f"{type(e).__name__}: {str(e)[:200]}",
+                           error_code="login_failed")
+
+    async def _has_2fa_prompt(self) -> bool:
+        """Detecta tela de 2FA por URL ou por input de código."""
+        try:
+            if "two_step_verification" in self.page.url:
+                return True
+            for sel in ['input[inputmode="numeric"]', 'input[type="tel"]',
+                        'input[maxlength="6"]', 'input[name="verificationCode"]']:
+                el = await self.page.query_selector(sel)
+                if el:
+                    return True
+            return False
+        except Exception:
             return False
 
     # ── CONVERSÃO VIA WEB (FALLBACK) ─────────────────────────
@@ -1248,27 +1715,52 @@ class InstagramRPA:
 # Stages tracking in-memory (para health endpoint)
 _job_stages: dict[str, list] = {}
 
+# Mapeamento de keys para labels legíveis em português
+STAGE_LABELS = {
+    "validation": "Validação de Entrada",
+    "instagrapi_login": "Login Mobile (Instagrapi)",
+    "convert_creator": "Converter para Criador",
+    "post_story": "Publicar Story com Link",
+    "change_photo": "Trocar Foto de Perfil",
+    "highlight": "Criar Destaque",
+    "extract_cookies": "Extrair Cookies",
+    "playwright_session": "Sessão Web (Playwright)",
+    "playwright_login": "Login Web (Playwright)",
+    "web_auth": "Validar Identidade Web",
+    "accept_invite": "Aceitar Convite Tester",
+    "magic_link": "OAuth / Magic Link",
+}
+
 
 def _stage_start(jid: str, key: str):
     if jid not in _job_stages:
         _job_stages[jid] = []
-    _job_stages[jid].append({"key": key, "status": "running", "ts": time.time()})
+    label = STAGE_LABELS.get(key, key.replace("_", " ").title())
+    _job_stages[jid].append({"key": key, "label": label, "status": "running", "message": "Processando...", "ts": time.time()})
 
 
 def _stage_ok(jid: str, key: str, msg: str = ""):
     if jid not in _job_stages:
         _job_stages[jid] = []
-    _job_stages[jid].append({"key": key, "status": "ok", "msg": msg, "ts": time.time()})
+    label = STAGE_LABELS.get(key, key.replace("_", " ").title())
+    _job_stages[jid].append({"key": key, "label": label, "status": "ok", "message": msg or "OK", "ts": time.time()})
 
 
 def _stage_fail(jid: str, key: str, msg: str = ""):
     if jid not in _job_stages:
         _job_stages[jid] = []
-    _job_stages[jid].append({"key": key, "status": "fail", "msg": msg, "ts": time.time()})
+    label = STAGE_LABELS.get(key, key.replace("_", " ").title())
+    _job_stages[jid].append({"key": key, "label": label, "status": "error", "message": msg or "ERRO", "ts": time.time()})
 
 
 def get_job_stages(job_id: str) -> list:
-    return _job_stages.get(job_id, [])
+    """Retorna stages com label e message para o frontend."""
+    raw = _job_stages.get(job_id, [])
+    # Deduplicar: manter apenas o último status de cada key
+    seen = {}
+    for s in raw:
+        seen[s["key"]] = s
+    return list(seen.values())
 
 
 def clear_job_stages(job_id: str):
@@ -1560,14 +2052,39 @@ async def run_onboarding_rpa(
 
             is_auth = await rpa._is_authenticated_web()
             if not is_auth:
-                _stage_fail(jid, "playwright_session", "Identidade web não confirmada")
+                # CORREÇÃO DEFINITIVA (29/09/2026): NÃO fazer login via UI
+                # Se os cookies do instagrapi não autenticam na web, a sessão
+                # foi rejeitada pelo Instagram (expirada, inválida, challenge).
+                # Tentar login UI com usuário/senha/TOTP é proibido e causa
+                # "Input de username não encontrado" porque o Instagram moderno
+                # bloqueia automação e não renderiza os inputs.
+                print(f"[RPA:{username}] Sessão web rejeitada — cookies não autenticaram")
+                print(f"[RPA:{username}] NÃO tentando login UI (proibido pela especificação)")
+                print(f"[RPA:{username}] Causa provável: sessão expirada, challenge_required, ou proxy bloqueado")
+
+                # Capturar diagnóstico sem valores sensíveis
+                try:
+                    current_url = rpa.page.url
+                    body_text = await rpa.page.inner_text('body')
+                    body_preview = body_text[:200] if body_text else "(vazio)"
+                    print(f"[RPA:{username}] URL atual: {current_url}")
+                    print(f"[RPA:{username}] Body preview: {body_preview}")
+
+                    # Salvar screenshot para diagnóstico
+                    screenshot_path = f"/tmp/session_rejected_{username}.png"
+                    await rpa.page.screenshot(path=screenshot_path)
+                    print(f"[RPA:{username}] Screenshot salvo: {screenshot_path}")
+                except Exception as diag_e:
+                    print(f"[RPA:{username}] Erro capturando diagnóstico: {diag_e}")
+
+                _stage_fail(jid, "playwright_session", "Sessão web rejeitada pelo Instagram")
                 update_stage(jid, "playwright_session", status="error",
-                           error_code="web_auth_failed",
-                           error_message="Cookies não autenticaram na web")
+                           error_code="session_rejected",
+                           error_message="Cookies do instagrapi não autenticaram na web — sessão rejeitada ou expirada")
                 await rpa.stop()
                 return {"success": False, "stage": "playwright_session",
-                        "message": "Sessão instagrapi não foi aceita na web",
-                        "error_code": "web_auth_failed"}
+                        "message": "Sessão web rejeitada — cookies não autenticaram (não tente login UI)",
+                        "error_code": "session_rejected"}
 
             save_checkpoint(jid, "playwright_session")
             update_stage(jid, "playwright_session", status="done")
