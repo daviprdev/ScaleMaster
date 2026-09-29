@@ -28,6 +28,9 @@ import os
 import asyncio
 import subprocess
 import tempfile
+
+# Build version para diagnóstico e tracking de deploy
+BUILD = "rpa-v2.1"
 import time
 import uuid
 import traceback
@@ -162,40 +165,68 @@ class InstagramRPA:
         """Log sanitizado — nunca inclui credenciais."""
         print(f"[RPA:{self.username}] {msg}")
 
-    # ── PROXY PARSING ────────────────────────────────────────
+    # ── PROXY STICKY (resolvida uma única vez) ──────────────────
 
-    def _parse_proxy_playwright(self, proxy_url):
-        if not proxy_url:
-            return None
-        proxy_url = proxy_url.strip()
-        if not proxy_url.startswith(("http://", "https://", "socks")) and proxy_url.count(":") >= 3:
-            parts = proxy_url.split(":", 3)
-            host, port, user, pwd = parts[0], parts[1], parts[2], parts[3]
-            if "{session_id}" in user:
-                user = user.replace("{session_id}", uuid.uuid4().hex[:8])
-            return {"server": f"http://{host}:{port}", "username": user, "password": pwd}
-        from urllib.parse import urlparse as _up
-        if "://" not in proxy_url:
-            proxy_url = "http://" + proxy_url
-        p = _up(proxy_url)
-        r = {"server": f"{p.scheme}://{p.hostname}:{p.port}"}
-        if p.username:
-            r["username"] = p.username
-        if p.password:
-            r["password"] = p.password
-        return r
+@dataclass
+class ResolvedProxy:
+    """Proxy resolvida com session_id sticky para ambas as fases."""
+    instagrapi_url: str      # http://user:pass@host:port
+    playwright_config: dict  # {"server": ..., "username": ..., "password": ...}
+    session_id: str          # UUID sticky
+    host: str
+    port: int
 
-    def _parse_proxy_instagrapi(self, proxy_url):
-        if not proxy_url:
-            return None
-        proxy_url = proxy_url.strip()
-        if not proxy_url.startswith(("http://", "https://", "socks")) and proxy_url.count(":") >= 3:
-            parts = proxy_url.split(":", 3)
-            host, port, user, pwd = parts[0], parts[1], parts[2], parts[3]
-            if "{session_id}" in user:
-                user = user.replace("{session_id}", uuid.uuid4().hex[:8])
-            return f"http://{user}:{pwd}@{host}:{port}"
-        return proxy_url
+
+def _resolve_proxy(proxy_url: str, username: str) -> ResolvedProxy:
+    """Resolve a proxy URL uma única vez e deriva ambos os formatos.
+
+    Gera um session_id UUID estável baseado no username para garantir
+    que mobile e web usem a mesma identidade sticky na pool do provedor.
+    Preserva credenciais com caracteres especiais via urllib.parse.quote.
+    """
+    if not proxy_url or not proxy_url.strip():
+        raise ValueError("proxy_url é obrigatória")
+
+    raw = proxy_url.strip()
+
+    # Gerar session_id determinístico (estável entre execuções da mesma conta)
+    session_id = hashlib.sha256(f"sticky-{username}".encode()).hexdigest()[:12]
+
+    # Parsear formato host:port:user:pass (gbproxies) ou URL completa
+    if not raw.startswith(("http://", "https://", "socks")) and raw.count(":") >= 3:
+        parts = raw.split(":", 3)
+        host, port, user, pwd = parts[0], parts[1], parts[2], parts[3]
+    else:
+        from urllib.parse import urlparse
+        parsed = urlparse(raw if "://" in raw else f"http://{raw}")
+        host = parsed.hostname or ""
+        port = str(parsed.port or "")
+        user = parsed.username or ""
+        pwd = parsed.password or ""
+
+    # Substituir placeholder {session_id} se presente
+    if "{session_id}" in user:
+        user = user.replace("{session_id}", session_id)
+
+    # Construir formatos
+    from urllib.parse import quote
+    user_encoded = quote(user, safe="")
+    pwd_encoded = quote(pwd, safe="")
+
+    instagrapi_url = f"http://{user_encoded}:{pwd_encoded}@{host}:{port}"
+    playwright_config = {
+        "server": f"http://{host}:{port}",
+        "username": user,
+        "password": pwd,
+    }
+
+    return ResolvedProxy(
+        instagrapi_url=instagrapi_url,
+        playwright_config=playwright_config,
+        session_id=session_id,
+        host=host,
+        port=int(port),
+    )
 
     # ── TOTP ─────────────────────────────────────────────────
 
@@ -337,12 +368,15 @@ class InstagramRPA:
                 "resolution": [1080, 2400],
             })
 
-            # Proxy
-            if self.proxy_url:
-                proxy_str = self._parse_proxy_instagrapi(self.proxy_url)
-                if proxy_str:
-                    cl.set_proxy(proxy_str)
-                    self._log(f"Proxy instagrapi configurado: {_sanitize_url(proxy_str)}")
+            # Proxy (usar resolved_proxy se disponível, senão resolver agora)
+            if hasattr(self, '_resolved_proxy') and self._resolved_proxy:
+                cl.set_proxy(self._resolved_proxy.instagrapi_url)
+                self._log(f"Proxy instagrapi configurado (sticky): {self._resolved_proxy.host}:{self._resolved_proxy.port}")
+            elif self.proxy_url:
+                resolved = _resolve_proxy(self.proxy_url, self.username)
+                self._resolved_proxy = resolved
+                cl.set_proxy(resolved.instagrapi_url)
+                self._log(f"Proxy instagrapi configurado: {resolved.host}:{resolved.port}")
 
             self._log("Login mobile instagrapi...")
 
@@ -866,120 +900,61 @@ class InstagramRPA:
                 self._log("  - cl.token NÃO será usado (é CSRF, não autenticação)")
                 return []  # Falhar antes de iniciar o browser
 
-            # ── PASSO 2: Injetar sessionid na sessão pública ──
-            try:
-                cl.sessionid = sessionid
-                if hasattr(cl, 'inject_sessionid_to_public'):
-                    cl.inject_sessionid_to_public()
-                    self._log("Sessionid injetado na sessão pública do instagrapi")
-            except Exception as inject_e:
-                self._log(f"Aviso: falha ao injetar sessionid: {inject_e}")
+            # ── PASSO 2: Construir cookies mínimos diretamente (sem requisições web) ──
+            # A sessão já existe no client instagrapi autenticado. Fazer 5 requisições
+            # web para "coletar cookies" é desnecessário e arriscado (pode disparar
+            # rate limit ou challenge). Construímos os cookies essenciais diretamente.
 
-            # ── PASSO 3: Coletar cookies via requisições web autenticadas ──
-            web_endpoints = [
-                "https://www.instagram.com/",
-                "https://www.instagram.com/accounts/edit/",
-                "https://www.instagram.com/direct/inbox/",
-                "https://www.instagram.com/explore/",
-                "https://www.instagram.com/graphql/query/",
+            # Obter ds_user_id do client autenticado
+            ds_user_id = None
+            if hasattr(cl, 'user_id') and cl.user_id:
+                ds_user_id = str(cl.user_id)
+            elif hasattr(cl, 'authorization_data') and isinstance(cl.authorization_data, dict):
+                ds_user_id = str(cl.authorization_data.get('ds_user_id', ''))
+
+            if not ds_user_id or not ds_user_id.strip():
+                self._log("ERRO: ds_user_id ausente no client instagrapi autenticado")
+                return []
+
+            # Obter csrftoken (necessário para requests CSRF-protected)
+            csrftoken = None
+            if hasattr(cl, 'token') and cl.token:
+                csrftoken = cl.token
+            elif hasattr(cl, 'authorization_data') and isinstance(cl.authorization_data, dict):
+                csrftoken = cl.authorization_data.get('csrftoken')
+
+            # Construir cookies mínimos para Playwright
+            # Domínio SEMPRE .instagram.com (nunca i.instagram.com) para garantir
+            # que os cookies sejam enviados para www.instagram.com
+            cookies = [
+                {"name": "sessionid", "value": sessionid, "domain": ".instagram.com", "path": "/"},
+                {"name": "ds_user_id", "value": ds_user_id, "domain": ".instagram.com", "path": "/"},
             ]
 
-            collected_cookies = {}  # key=(name,domain,path) -> cookie dict
+            if csrftoken:
+                cookies.append({"name": "csrftoken", "value": csrftoken, "domain": ".instagram.com", "path": "/"})
 
-            for i, url in enumerate(web_endpoints[:5]):
-                try:
-                    resp = cl.public.get(url, timeout=10, allow_redirects=True)
-                    for cookie in resp.cookies:
-                        # Normalizar domínio para .instagram.com
-                        domain = cookie.domain or ".instagram.com"
-                        if domain.startswith("i.instagram.com"):
-                            domain = ".instagram.com"
+            # Cookies auxiliares opcionais (melhoram compatibilidade mas não são essenciais)
+            optional_cookies = {}
+            if hasattr(cl, 'settings') and isinstance(cl.settings, dict):
+                for name in ('mid', 'ig_did', 'rur', 'ig_nrcb', 'ig_cb'):
+                    val = cl.settings.get(name)
+                    if val and str(val).strip():
+                        optional_cookies[name] = str(val)
 
-                        key = (cookie.name, domain, cookie.path or "/")
-                        cookie_dict = {
-                            "name": cookie.name,
-                            "value": cookie.value,
-                            "domain": domain,
-                            "path": cookie.path or "/",
-                        }
-                        if cookie.expires:
-                            cookie_dict["expires"] = cookie.expires
-
-                        collected_cookies[key] = cookie_dict
-
-                    self._log(f"Web request {i+1}/5 ({url[:40]}...): {len(resp.cookies)} cookies coletados")
-                except Exception as req_e:
-                    self._log(f"Web request {i+1}/5 falhou: {type(req_e).__name__}: {str(req_e)[:80]}")
-
-            # Coletar cookies acumulados na sessão pública
-            if hasattr(cl, 'public') and hasattr(cl.public, 'cookies'):
-                for cookie in cl.public.cookies:
-                    domain = cookie.domain or ".instagram.com"
-                    if domain.startswith("i.instagram.com"):
-                        domain = ".instagram.com"
-
-                    key = (cookie.name, domain, cookie.path or "/")
-                    if key not in collected_cookies:
-                        cookie_dict = {
-                            "name": cookie.name,
-                            "value": cookie.value,
-                            "domain": domain,
-                            "path": cookie.path or "/",
-                        }
-                        if cookie.expires:
-                            cookie_dict["expires"] = cookie.expires
-                        collected_cookies[key] = cookie_dict
-
-            cookies = list(collected_cookies.values())
-
-            # ── PASSO 4: Garantir sessionid está presente ──
-            has_sessionid = any(c["name"] == "sessionid" for c in cookies)
-            if not has_sessionid:
-                cookies.append({
-                    "name": "sessionid",
-                    "value": sessionid,
-                    "domain": ".instagram.com",
-                    "path": "/",
-                })
-                self._log("Sessionid adicionado manualmente aos cookies")
-
-            # ── PASSO 5: Garantir ds_user_id está presente ──
-            has_ds_user_id = any(c["name"] == "ds_user_id" for c in cookies)
-            if not has_ds_user_id:
-                # Obter user_id do instagrapi
-                user_id = None
-                if hasattr(cl, 'user_id') and cl.user_id:
-                    user_id = str(cl.user_id)
-                elif hasattr(cl, 'authorization_data') and isinstance(cl.authorization_data, dict):
-                    user_id = str(cl.authorization_data.get('ds_user_id', ''))
-
-                if user_id and user_id.strip():
-                    cookies.append({
-                        "name": "ds_user_id",
-                        "value": user_id,
-                        "domain": ".instagram.com",
-                        "path": "/",
-                    })
-                    self._log(f"ds_user_id adicionado: {user_id}")
+            for name, value in optional_cookies.items():
+                cookies.append({"name": name, "value": value, "domain": ".instagram.com", "path": "/"})
 
             # ── LOG SANITIZADO ──
             cookie_names = [c["name"] for c in cookies]
-            has_sid = "sessionid" in cookie_names
-            has_csrf = "csrftoken" in cookie_names
-            has_dsuid = "ds_user_id" in cookie_names
-
-            self._log(f"Cookies extraídos: {len(cookies)} total "
-                      f"(sessionid={'OK' if has_sid else 'AUSENTE'}, "
-                      f"csrftoken={'OK' if has_csrf else 'AUSENTE'}, "
-                      f"ds_user_id={'OK' if has_dsuid else 'AUSENTE'})")
-
-            # Log dos domínios para diagnóstico
             domains = set(c["domain"] for c in cookies)
-            self._log(f"Domínios dos cookies: {domains}")
 
-            if not has_sid:
-                self._log("ERRO: sessionid ausente após extração — sessão web será inválida")
-                return []
+            self._log(f"Cookies construídos: {len(cookies)} total "
+                      f"(sessionid=OK, ds_user_id=OK, "
+                      f"csrftoken={'OK' if csrftoken else 'AUSENTE'}, "
+                      f"auxiliares={len(optional_cookies)})")
+            self._log(f"Domínios: {domains}")
+            self._log(f"Nomes: {cookie_names}")
 
             return cookies
 
@@ -997,7 +972,15 @@ class InstagramRPA:
 
         self.playwright = await async_playwright().start()
 
-        proxy_config = self._parse_proxy_playwright(self.proxy_url) if self.proxy_url else None
+        # Usar resolved_proxy sticky (mesma sessão da fase mobile)
+        if hasattr(self, '_resolved_proxy') and self._resolved_proxy:
+            proxy_config = self._resolved_proxy.playwright_config
+        elif self.proxy_url:
+            resolved = _resolve_proxy(self.proxy_url, self.username)
+            self._resolved_proxy = resolved
+            proxy_config = resolved.playwright_config
+        else:
+            proxy_config = None
 
         # CORREÇÃO DEFINITIVA: Usar headless=False com Xvfb (DISPLAY=:99 já setado
         # no docker-compose.yml e entrypoint.sh). O modo headless=True/--headless=new
@@ -1161,316 +1144,151 @@ class InstagramRPA:
 
         return "unknown"
 
-    async def _is_authenticated_web(self) -> bool:
-        """Confirma autenticação web por classificação de estado + API."""
-        state = await self._classify_page_state()
-        if state != "authenticated":
-            self._log(f"Estado web: {state} (não autenticado)")
-            return False
+    async def _is_authenticated_web(self) -> RPAResult:
+        """Valida identidade web via API autenticada com timeout explícito.
 
-        # Confirmar por API web (consulta autenticada)
+        NÃO depende de seletores DOM para provar autenticação.
+        Usa fetch com AbortController (15s) para consultar /api/v1/accounts/current_user/.
+        Compara o pk retornado com self.ig_user_id (identidade mobile).
+
+        Retorna RPAResult com error_code granular:
+          - success=True: identidade confirmada (pk match)
+          - session_rejected: cookies não autenticaram (HTML login ou 401)
+          - identity_mismatch: pk web ≠ pk mobile
+          - challenge_required: checkpoint/challenge detectado
+          - web_validation_timeout: fetch não respondeu em 15s
+          - proxy_error: erro de rede/proxy
+        """
+        if not self.page:
+            return RPAResult(False, "playwright_session", "Playwright não iniciado",
+                           error_code="playwright_not_ready")
+
         try:
+            # Navegar para home primeiro para estabelecer contexto
+            await self.page.goto(
+                "https://www.instagram.com/",
+                wait_until="domcontentloaded",
+                timeout=30_000,
+            )
+
+            # Verificar URL final — se redirecionou para login, sessão foi rejeitada
+            current_url = self.page.url or ""
+            if "/accounts/login" in current_url:
+                self._log("Sessão rejeitada: redirecionado para /accounts/login")
+                return RPAResult(False, "playwright_session",
+                               "Cookies não autenticaram — redirecionado para login",
+                               error_code="session_rejected")
+
+            # Detectar challenge/checkpoint por URL
+            if "/challenge/" in current_url or "/checkpoint/" in current_url:
+                self._log(f"Challenge detectado: {current_url[:80]}")
+                return RPAResult(False, "playwright_session",
+                               f"Checkpoint/challenge detectado",
+                               error_code="challenge_required")
+
+            # Fetch autenticado com AbortController (timeout 15s)
             result = await self.page.evaluate("""async () => {
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), 15000);
                 try {
                     const resp = await fetch('/api/v1/accounts/current_user/?edit=true', {
                         headers: {'X-IG-App-ID': '936619743392459'},
                         credentials: 'include',
+                        signal: ctrl.signal,
                     });
-                    if (!resp.ok) return {ok: false, status: resp.status};
+                    clearTimeout(timer);
+                    const contentType = resp.headers.get('content-type') || '';
+                    if (!resp.ok) {
+                        return {ok: false, status: resp.status, contentType: contentType};
+                    }
+                    // HTTP 200 com HTML de login NÃO é autenticação
+                    if (!contentType.includes('json')) {
+                        return {ok: false, status: resp.status, contentType: contentType, htmlResponse: true};
+                    }
                     const data = await resp.json();
                     return {
                         ok: true,
-                        username: data.user?.username,
                         pk: data.user?.pk,
+                        username: data.user?.username,
                     };
                 } catch(e) {
-                    return {ok: false, error: e.message};
+                    clearTimeout(timer);
+                    return {ok: false, error: e.name === 'AbortError' ? 'timeout' : e.message};
                 }
             }""")
 
-            if result.get("ok") and result.get("username"):
-                api_user = result["username"].lower()
-                expected_user = self.username.lower()
-                if api_user == expected_user:
-                    self._log(f"Identidade web confirmada via API: @{result['username']} (pk={result.get('pk')})")
-                    return True
-                else:
-                    self._log(f"CONTA ERRADA web: esperava @{expected_user}, API retornou @{api_user}")
-                    return False
-            else:
-                self._log(f"API web não confirmou identidade: {result}")
-                return False
+            if not result.get("ok"):
+                error = result.get("error", "")
+                status = result.get("status")
+                content_type = result.get("contentType", "")
 
-        except Exception as e:
-            self._log(f"Erro verificando identidade web: {e}")
-            return False
+                if error == "timeout":
+                    self._log("Timeout no fetch de identidade web (15s)")
+                    return RPAResult(False, "playwright_session",
+                                   "Fetch de identidade expirou em 15s",
+                                   error_code="web_validation_timeout")
 
-    # ── LOGIN WEB VIA PLAYWRIGHT (FALLBACK) ──────────────────
+                if result.get("htmlResponse"):
+                    self._log(f"HTTP {status} com HTML (não JSON) — sessão rejeitada")
+                    return RPAResult(False, "playwright_session",
+                                   f"HTTP {status} retornou HTML em vez de JSON",
+                                   error_code="session_rejected")
 
-    async def login(self) -> RPAResult:
-        """Login via UI web do Instagram quando cookies mobile não autenticam.
+                if status == 401 or status == 403:
+                    self._log(f"HTTP {status} — sessão rejeitada")
+                    return RPAResult(False, "playwright_session",
+                                   f"HTTP {status} — cookies não autenticaram",
+                                   error_code="session_rejected")
 
-        Usa username + password + TOTP 2FA. Navega para /accounts/login/,
-        preenche os campos, clica Entrar, detecta tela 2FA e insere código.
-        """
-        if not self.page:
-            return RPAResult(False, "playwright_login", "Playwright não iniciado",
-                           error_code="playwright_not_ready")
+                self._log(f"Fetch falhou: status={status}, error={error}")
+                return RPAResult(False, "playwright_session",
+                               f"Fetch de identidade falhou: {error or status}",
+                               error_code="proxy_error")
 
-        try:
-            self._log("Login web via Playwright...")
+            # Validar identidade: comparar pk web com ig_user_id mobile
+            web_pk = str(result.get("pk", ""))
+            mobile_pk = str(self.ig_user_id or "")
 
-            # Navegar para página de login — usar domcontentloaded em vez de
-            # networkidle porque o Instagram nunca fica "idle" (requests contínuos)
-            # e networkidle causa timeout ou ERR_HTTP_RESPONSE_CODE_FAILURE
-            try:
-                await self.page.goto(
-                    "https://www.instagram.com/accounts/login/",
-                    wait_until="domcontentloaded",
-                    timeout=NAVIGATION_TIMEOUT,
-                )
-            except Exception as nav_e:
-                self._log(f"Navegação para login falhou ({type(nav_e).__name__}), tentando com commit...")
-                try:
-                    await self.page.goto(
-                        "https://www.instagram.com/accounts/login/",
-                        wait_until="commit",
-                        timeout=NAVIGATION_TIMEOUT,
-                    )
-                except Exception as nav_e2:
-                    self._log(f"Navegação commit também falhou: {nav_e2}")
-                    # Última tentativa: navegar para home primeiro
-                    await self.page.goto("https://www.instagram.com/", wait_until="commit", timeout=15000)
-                    await self.page.wait_for_timeout(2000)
-                    await self.page.goto(
-                        "https://www.instagram.com/accounts/login/",
-                        wait_until="commit",
-                        timeout=NAVIGATION_TIMEOUT,
-                    )
-            # Wait extra para React/SPA renderizar os inputs
-            await self.page.wait_for_timeout(5000)
+            if not web_pk or not mobile_pk:
+                self._log(f"PK ausente: web={web_pk}, mobile={mobile_pk}")
+                return RPAResult(False, "playwright_session",
+                               "PK ausente na resposta da API ou no client mobile",
+                               error_code="identity_mismatch")
 
-            # Screenshot + HTML diagnóstico ANTES de procurar inputs
-            await self.page.screenshot(path=f"/tmp/login_page_{self.username}.png")
-            try:
-                html_content = await self.page.content()
-                with open(f"/tmp/login_html_{self.username}.html", "w", encoding="utf-8") as f:
-                    f.write(html_content[:15000])
-                self._log("Screenshot + HTML da página de login salvos em /tmp/")
-            except Exception as diag_e:
-                self._log(f"Falha salvando diagnóstico: {diag_e}")
+            if web_pk != mobile_pk:
+                self._log(f"IDENTIDADE DIVERGENTE: web_pk={web_pk}, mobile_pk={mobile_pk}")
+                return RPAResult(False, "playwright_session",
+                               f"ID web ({web_pk}) ≠ ID mobile ({mobile_pk})",
+                               error_code="identity_mismatch")
 
-            # Preencher username — Instagram moderno (2024+) usa name="email"
-            username_input = None
-            for selector in [
-                'input[name="email"]',          # Instagram moderno
-                'input[name="username"]',       # Instagram antigo
-                'input[aria-label*="Phone"]',   # EN aria-label
-                'input[aria-label*="nome"]',    # PT-BR aria-label
-                'input[aria-label*="user"]',    # EN aria-label fallback
-                'input[type="text"]',           # Fallback genérico
-            ]:
-                username_input = await self.page.query_selector(selector)
-                if username_input and await username_input.is_visible():
-                    self._log(f"Input username encontrado via: {selector}")
-                    break
-                username_input = None
-
-            if not username_input:
-                body_text = ""
-                try:
-                    body_text = (await self.page.inner_text("body"))[:500]
-                except Exception:
-                    pass
-                self._log(f"Input de username NÃO encontrado. URL: {self.page.url}")
-                self._log(f"Body text: {body_text}")
-                return RPAResult(False, "playwright_login",
-                               f"Input de username não encontrado (URL: {self.page.url})",
-                               error_code="login_ui_not_found")
-
-            await username_input.fill(self.username)
-            self._log("Username preenchido")
-
-            # Preencher password — Instagram moderno usa name="pass"
-            password_input = None
-            for selector in [
-                'input[name="pass"]',           # Instagram moderno
-                'input[name="password"]',       # Instagram antigo
-                'input[type="password"]',       # Fallback genérico
-            ]:
-                password_input = await self.page.query_selector(selector)
-                if password_input and await password_input.is_visible():
-                    self._log(f"Input password encontrado via: {selector}")
-                    break
-                password_input = None
-
-            if not password_input:
-                self._log("Input de password não encontrado")
-                return RPAResult(False, "playwright_login",
-                               "Input de password não encontrado",
-                               error_code="login_ui_not_found")
-
-            await password_input.fill(self.password)
-            self._log("Password preenchido")
-            await self.page.wait_for_timeout(500)
-
-            # Clicar no botão Entrar
-            login_btn = await self.page.query_selector(
-                'div[role="button"]:has-text("Entrar"), '
-                'div[role="button"]:has-text("Log In"), '
-                'button[type="submit"]:has-text("Entrar"), '
-                'button[type="submit"]:has-text("Log In")'
-            )
-            if not login_btn:
-                # Fallback: qualquer botão submit
-                login_btn = await self.page.query_selector('button[type="submit"]')
-
-            if not login_btn:
-                self._log("Botão de login não encontrado")
-                await self.page.screenshot(path=f"/tmp/login_no_btn_{self.username}.png")
-                return RPAResult(False, "playwright_login",
-                               "Botão de login não encontrado",
-                               error_code="login_ui_not_found")
-
-            await login_btn.click()
-            self._log("Botão Entrar clicado")
-            await self.page.wait_for_timeout(5000)
-
-            # Verificar se caiu em 2FA
-            current_url = self.page.url
-            self._log(f"URL após login: {current_url}")
-
-            if "two_step_verification" in current_url or await self._has_2fa_prompt():
-                self._log("Tela 2FA detectada — inserindo código TOTP")
-
-                if not self.totp_secret:
-                    return RPAResult(False, "playwright_login",
-                                   "TOTP necessário mas não fornecido",
-                                   error_code="needs_2fa")
-
-                totp_code = self._generate_totp(self.totp_secret)
-                self._log(f"Preenchendo código 2FA: {totp_code[:2]}***")
-
-                # Estratégia 1: Input único por vários selectors
-                code_input = None
-                for sel in ['input[inputmode="numeric"]', 'input[type="tel"]',
-                            'input[maxlength="6"]', 'input[name="verificationCode"]',
-                            'input[autocomplete="one-time-code"]', 'input[type="text"]']:
-                    code_input = await self.page.query_selector(sel)
-                    if code_input:
-                        self._log(f"Input 2FA encontrado via: {sel}")
-                        break
-
-                if code_input:
-                    await code_input.fill(totp_code)
-                    self._log("Código 2FA preenchido em input único")
-                else:
-                    # Estratégia 2: 6 inputs individuais (um por dígito)
-                    digit_inputs = await self.page.query_selector_all('input[maxlength="1"]')
-                    if len(digit_inputs) >= 6:
-                        self._log(f"Encontrados {len(digit_inputs)} inputs de dígito único")
-                        for i, digit in enumerate(totp_code[:6]):
-                            await digit_inputs[i].fill(digit)
-                        self._log("Código 2FA preenchido em 6 inputs individuais")
-                    else:
-                        # Estratégia 3: Qualquer input visível
-                        all_inputs = await self.page.query_selector_all('input:not([type="hidden"])')
-                        visible_inputs = []
-                        for inp in all_inputs:
-                            if await inp.is_visible():
-                                visible_inputs.append(inp)
-
-                        if visible_inputs:
-                            self._log(f"Usando primeiro input visível de {len(visible_inputs)} encontrados")
-                            await visible_inputs[0].fill(totp_code)
-                        else:
-                            self._log("Nenhum input 2FA encontrado!")
-                            await self.page.screenshot(path=f"/tmp/2fa_no_input_{self.username}.png")
-                            html = await self.page.content()
-                            with open(f"/tmp/2fa_html_{self.username}.html", "w") as f:
-                                f.write(html[:5000])
-                            return RPAResult(False, "playwright_login",
-                                           "Input de código 2FA não encontrado",
-                                           error_code="needs_2fa")
-
-                # Clicar Continuar/Confirm
-                await self.page.wait_for_timeout(1000)
-                continue_btn = await self.page.query_selector(
-                    'div[role="button"]:has-text("Continuar"), '
-                    'div[role="button"]:has-text("Continue"), '
-                    'div[role="button"]:has-text("Confirmar"), '
-                    'div[role="button"]:has-text("Confirm"), '
-                    'button[type="submit"]'
-                )
-                if continue_btn:
-                    self._log("Clicando em Continuar...")
-                    await continue_btn.click()
-                else:
-                    self._log("Botão Continuar não encontrado — pode auto-submeter")
-
-                # Aguardar redirect pós-2FA
-                try:
-                    await self.page.wait_for_url(
-                        lambda url: "two_step_verification" not in url and "/accounts/login" not in url,
-                        timeout=30_000,
-                    )
-                    self._log(f"Redirect pós-2FA: {self.page.url}")
-                except Exception:
-                    self._log(f"Sem redirect pós-2FA. URL: {self.page.url}")
-                    await self.page.screenshot(path=f"/tmp/2fa_post_submit_{self.username}.png")
-
-            # Verificar se login foi bem-sucedido
-            await self.page.wait_for_timeout(3000)
-            final_url = self.page.url
-            self._log(f"URL final após login: {final_url}")
-
-            # Se ainda está na página de login = falha
-            if "/accounts/login" in final_url:
-                body = await self.page.inner_text("body")
-                if "senha" in body.lower() or "password" in body.lower() or "incorreta" in body.lower():
-                    return RPAResult(False, "playwright_login",
-                                   "Senha incorreta ou credenciais inválidas",
-                                   error_code="credential_invalid")
-                return RPAResult(False, "playwright_login",
-                               f"Ainda na página de login após tentativa",
-                               error_code="login_failed")
-
-            # Se chegou em challenge = bloqueio
-            if "challenge" in final_url:
-                return RPAResult(False, "playwright_login",
-                               "Challenge solicitado — ação do titular necessária",
-                               error_code="challenge_required")
-
-            self._log("Login web concluído com sucesso")
-            return RPAResult(True, "playwright_login",
-                           f"Login web OK — URL: {final_url[:80]}")
+            self._log(f"Identidade web confirmada: pk={web_pk}, user=@{result.get('username')}")
+            return RPAResult(True, "playwright_session", "Identidade web validada")
 
         except PlaywrightTimeout:
-            return RPAResult(False, "playwright_login", "Timeout durante login web",
-                           error_code="login_timeout")
+            self._log("Timeout durante validação web")
+            return RPAResult(False, "playwright_session",
+                           "Timeout durante validação de identidade web",
+                           error_code="web_validation_timeout")
         except Exception as e:
-            self._log(f"Erro login web: {type(e).__name__}: {str(e)[:200]}")
-            try:
-                await self.page.screenshot(path=f"/tmp/login_error_{self.username}.png")
-            except Exception:
-                pass
-            return RPAResult(False, "playwright_login",
-                           f"{type(e).__name__}: {str(e)[:200]}",
-                           error_code="login_failed")
+            err_msg = str(e)[:200]
+            # Classificar erros de rede/proxy
+            if any(marker in err_msg.lower() for marker in [
+                "net::", "proxy", "connection", "dns", "unreachable",
+                "err_proxy", "err_connection", "err_name_not_resolved",
+            ]):
+                self._log(f"Erro de proxy/rede na validação web: {err_msg}")
+                return RPAResult(False, "playwright_session", err_msg,
+                               error_code="proxy_error")
+            self._log(f"Erro inesperado na validação web: {type(e).__name__}: {err_msg}")
+            return RPAResult(False, "playwright_session", err_msg,
+                           error_code="web_validation_failed")
 
-    async def _has_2fa_prompt(self) -> bool:
-        """Detecta tela de 2FA por URL ou por input de código."""
-        try:
-            if "two_step_verification" in self.page.url:
-                return True
-            for sel in ['input[inputmode="numeric"]', 'input[type="tel"]',
-                        'input[maxlength="6"]', 'input[name="verificationCode"]']:
-                el = await self.page.query_selector(sel)
-                if el:
-                    return True
-            return False
-        except Exception:
-            return False
+    # ── LOGIN WEB REMOVIDO ────────────────────────────────────
+    # O método login() foi removido conforme especificação:
+    # "Não implemente um segundo login com usuário, senha ou TOTP no Playwright."
+    # A sessão deve ser transferida do instagrapi via cookies.
+    # Se a validação web falhar, retornar erro classificado e parar.
+    # Linhas originais 1244-1495 deletadas.
 
     # ── CONVERSÃO VIA WEB (FALLBACK) ─────────────────────────
 
@@ -1712,6 +1530,13 @@ class InstagramRPA:
 # ORQUESTRADOR PRINCIPAL
 # ══════════════════════════════════════════════════════════════
 
+# Orçamento de tempo por etapa (segundos)
+STAGE_TIMEOUTS = {
+    "playwright_session": 120,   # 2 min para extração + injeção + validação
+    "accept_invite": 60,         # 1 min
+    "magic_link": 100,           # 100s
+}
+
 # Stages tracking in-memory (para health endpoint)
 _job_stages: dict[str, list] = {}
 
@@ -1725,7 +1550,6 @@ STAGE_LABELS = {
     "highlight": "Criar Destaque",
     "extract_cookies": "Extrair Cookies",
     "playwright_session": "Sessão Web (Playwright)",
-    "playwright_login": "Login Web (Playwright)",
     "web_auth": "Validar Identidade Web",
     "accept_invite": "Aceitar Convite Tester",
     "magic_link": "OAuth / Magic Link",
@@ -2014,7 +1838,7 @@ async def run_onboarding_rpa(
 
         # ═══ FASE 2: PLAYWRIGHT WEB ═══
 
-        # 2a. Extrair cookies e iniciar Playwright
+        # 2a. Extrair cookies e iniciar Playwright (com timeout)
         if "playwright_session" not in completed:
             _stage_start(jid, "playwright_session")
             if _check_job_paused(jid, username):
@@ -2024,68 +1848,85 @@ async def run_onboarding_rpa(
 
             update_stage(jid, "playwright_session", status="processing")
 
-            cookies = rpa._extract_cookies_for_playwright()
-            if not cookies:
-                _stage_fail(jid, "playwright_session", "Nenhum cookie extraído do instagrapi")
+            async def _do_playwright_session():
+                """Fase 2a completa: extrair cookies, injetar, navegar, validar."""
+                cookies = rpa._extract_cookies_for_playwright()
+                if not cookies:
+                    raise RuntimeError("no_cookies")
+
+                has_sessionid = any(c["name"] == "sessionid" for c in cookies)
+                if not has_sessionid:
+                    raise RuntimeError("sessionid_missing")
+
+                await rpa.start(inject_cookies=cookies)
+
+                # Navegar para Instagram e validar identidade
+                await rpa.page.goto(
+                    "https://www.instagram.com/",
+                    wait_until="domcontentloaded",
+                    timeout=NAVIGATION_TIMEOUT,
+                )
+                await rpa.page.wait_for_timeout(3000)
+
+                auth_result = await rpa._is_authenticated_web()
+                if not auth_result.success:
+                    raise RuntimeError(auth_result.error_code or "session_rejected")
+                return True
+
+            try:
+                await asyncio.wait_for(
+                    _do_playwright_session(),
+                    timeout=STAGE_TIMEOUTS.get("playwright_session", 120),
+                )
+            except asyncio.TimeoutError:
+                _stage_fail(jid, "playwright_session", "Timeout na fase playwright_session")
                 update_stage(jid, "playwright_session", status="error",
-                           error_code="no_cookies", error_message="Sem cookies para injetar")
-                return {"success": False, "stage": "playwright_session",
-                        "message": "Nenhum cookie extraído do instagrapi",
-                        "error_code": "sessionid_missing"}
-
-            has_sessionid = any(c["name"] == "sessionid" for c in cookies)
-            if not has_sessionid:
-                _stage_fail(jid, "playwright_session", "sessionid ausente nos cookies")
-                return {"success": False, "stage": "playwright_session",
-                        "message": "sessionid ausente — sessão web não será válida",
-                        "error_code": "sessionid_missing"}
-
-            await rpa.start(inject_cookies=cookies)
-
-            # Navegar para Instagram e validar identidade
-            await rpa.page.goto(
-                "https://www.instagram.com/",
-                wait_until="domcontentloaded",
-                timeout=NAVIGATION_TIMEOUT,
-            )
-            await rpa.page.wait_for_timeout(3000)
-
-            is_auth = await rpa._is_authenticated_web()
-            if not is_auth:
-                # CORREÇÃO DEFINITIVA (29/09/2026): NÃO fazer login via UI
-                # Se os cookies do instagrapi não autenticam na web, a sessão
-                # foi rejeitada pelo Instagram (expirada, inválida, challenge).
-                # Tentar login UI com usuário/senha/TOTP é proibido e causa
-                # "Input de username não encontrado" porque o Instagram moderno
-                # bloqueia automação e não renderiza os inputs.
-                print(f"[RPA:{username}] Sessão web rejeitada — cookies não autenticaram")
-                print(f"[RPA:{username}] NÃO tentando login UI (proibido pela especificação)")
-                print(f"[RPA:{username}] Causa provável: sessão expirada, challenge_required, ou proxy bloqueado")
-
-                # Capturar diagnóstico sem valores sensíveis
+                           error_code="stage_timeout",
+                           error_message=f"Excedeu {STAGE_TIMEOUTS['playwright_session']}s")
                 try:
-                    current_url = rpa.page.url
-                    body_text = await rpa.page.inner_text('body')
-                    body_preview = body_text[:200] if body_text else "(vazio)"
-                    print(f"[RPA:{username}] URL atual: {current_url}")
-                    print(f"[RPA:{username}] Body preview: {body_preview}")
-
-                    # Salvar screenshot para diagnóstico
-                    screenshot_path = f"/tmp/session_rejected_{username}.png"
-                    await rpa.page.screenshot(path=screenshot_path)
-                    print(f"[RPA:{username}] Screenshot salvo: {screenshot_path}")
-                except Exception as diag_e:
-                    print(f"[RPA:{username}] Erro capturando diagnóstico: {diag_e}")
-
-                _stage_fail(jid, "playwright_session", "Sessão web rejeitada pelo Instagram")
-                update_stage(jid, "playwright_session", status="error",
-                           error_code="session_rejected",
-                           error_message="Cookies do instagrapi não autenticaram na web — sessão rejeitada ou expirada")
-                await rpa.stop()
+                    await asyncio.wait_for(rpa.stop(), timeout=5)
+                except Exception:
+                    pass
                 return {"success": False, "stage": "playwright_session",
-                        "message": "Sessão web rejeitada — cookies não autenticaram (não tente login UI)",
-                        "error_code": "session_rejected"}
-
+                        "message": f"Timeout após {STAGE_TIMEOUTS['playwright_session']}s",
+                        "error_code": "stage_timeout"}
+            except RuntimeError as rte:
+                err_code = str(rte)
+                if err_code == "no_cookies":
+                    _stage_fail(jid, "playwright_session", "Nenhum cookie extraído do instagrapi")
+                    update_stage(jid, "playwright_session", status="error",
+                               error_code="no_cookies", error_message="Sem cookies para injetar")
+                    return {"success": False, "stage": "playwright_session",
+                            "message": "Nenhum cookie extraído do instagrapi",
+                            "error_code": "sessionid_missing"}
+                elif err_code == "sessionid_missing":
+                    _stage_fail(jid, "playwright_session", "sessionid ausente nos cookies")
+                    return {"success": False, "stage": "playwright_session",
+                            "message": "sessionid ausente — sessão web não será válida",
+                            "error_code": "sessionid_missing"}
+                else:
+                    # session_rejected, identity_mismatch, challenge_required, etc.
+                    print(f"[RPA:{username}] Sessão web rejeitada — erro: {err_code}")
+                    print(f"[RPA:{username}] NÃO tentando login UI (proibido pela especificação)")
+                    try:
+                        current_url = rpa.page.url
+                        screenshot_path = f"/tmp/session_rejected_{username}.png"
+                        await rpa.page.screenshot(path=screenshot_path)
+                        print(f"[RPA:{username}] URL: {current_url} | Screenshot: {screenshot_path}")
+                    except Exception:
+                        pass
+                    _stage_fail(jid, "playwright_session", f"Sessão web rejeitada ({err_code})")
+                    update_stage(jid, "playwright_session", status="error",
+                               error_code=err_code,
+                               error_message="Cookies do instagrapi não autenticaram na web")
+                    try:
+                        await asyncio.wait_for(rpa.stop(), timeout=5)
+                    except Exception:
+                        pass
+                    return {"success": False, "stage": "playwright_session",
+                            "message": f"Sessão web rejeitada ({err_code})",
+                            "error_code": err_code}
+            # Sucesso na fase 2a
             save_checkpoint(jid, "playwright_session")
             update_stage(jid, "playwright_session", status="done")
             _stage_ok(jid, "playwright_session", "Sessão web validada")
@@ -2101,14 +1942,15 @@ async def run_onboarding_rpa(
                 timeout=NAVIGATION_TIMEOUT,
             )
             await rpa.page.wait_for_timeout(3000)
-            if not await rpa._is_authenticated_web():
+            reauth = await rpa._is_authenticated_web()
+            if not reauth.success:
                 _stage_fail(jid, "playwright_session", "Re-validação web falhou")
                 return {"success": False, "stage": "playwright_session",
                         "message": "Re-validação web falhou",
-                        "error_code": "web_auth_failed"}
+                        "error_code": reauth.error_code or "web_auth_failed"}
             _stage_ok(jid, "playwright_session", "Restaurado do checkpoint")
 
-        # 2b. Aceitar convite tester
+        # 2b. Aceitar convite tester (com timeout)
         if "accept_invite" not in completed:
             _stage_start(jid, "accept_invite")
             if _check_job_paused(jid, username):
@@ -2117,9 +1959,20 @@ async def run_onboarding_rpa(
                         "message": "Job pausado", "error_code": "user_paused"}
 
             update_stage(jid, "accept_invite", status="processing")
-            ir = await rpa.accept_tester_invite(app_id=app_id)
+            try:
+                ir = await asyncio.wait_for(
+                    rpa.accept_tester_invite(app_id=app_id),
+                    timeout=STAGE_TIMEOUTS.get("accept_invite", 60),
+                )
+            except asyncio.TimeoutError:
+                _stage_fail(jid, "accept_invite", "Timeout aceitando convite")
+                update_stage(jid, "accept_invite", status="error",
+                           error_code="stage_timeout",
+                           error_message=f"Excedeu {STAGE_TIMEOUTS['accept_invite']}s")
+                return {"success": False, "stage": "accept_invite",
+                        "message": f"Timeout após {STAGE_TIMEOUTS['accept_invite']}s",
+                        "error_code": "stage_timeout"}
 
-            # Convite é opcional — não bloqueia conclusão
             save_checkpoint(jid, "accept_invite")
             update_stage(jid, "accept_invite", status="done")
             _stage_ok(jid, "accept_invite", ir.message)
@@ -2128,7 +1981,7 @@ async def run_onboarding_rpa(
             print(f"[RPA:{username}] Convite já processado (checkpoint)")
             _stage_ok(jid, "accept_invite", "Já completo")
 
-        # 2c. Magic Link / OAuth
+        # 2c. Magic Link / OAuth (com timeout)
         if magic_link_url and "magic_link" not in completed:
             _stage_start(jid, "magic_link")
             if _check_job_paused(jid, username):
@@ -2137,7 +1990,19 @@ async def run_onboarding_rpa(
                         "message": "Job pausado", "error_code": "user_paused"}
 
             update_stage(jid, "magic_link", status="processing")
-            ml = await rpa.complete_magic_link(magic_link_url)
+            try:
+                ml = await asyncio.wait_for(
+                    rpa.complete_magic_link(magic_link_url),
+                    timeout=STAGE_TIMEOUTS.get("magic_link", 100),
+                )
+            except asyncio.TimeoutError:
+                _stage_fail(jid, "magic_link", "Timeout no magic link")
+                update_stage(jid, "magic_link", status="error",
+                           error_code="stage_timeout",
+                           error_message=f"Excedeu {STAGE_TIMEOUTS['magic_link']}s")
+                return {"success": False, "stage": "magic_link",
+                        "message": f"Timeout após {STAGE_TIMEOUTS['magic_link']}s",
+                        "error_code": "stage_timeout"}
 
             if not ml.success:
                 _stage_fail(jid, "magic_link", ml.message)

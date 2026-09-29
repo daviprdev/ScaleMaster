@@ -16,6 +16,7 @@ from db import (
     deactivate_proxy,
     get_proxy_stats,
     get_job_stages_detail,
+    get_current_stages,
     recover_expired_leases,
 )
 from worker import is_queue_paused, set_queue_paused, is_job_paused, pause_job, resume_job, get_paused_jobs
@@ -113,9 +114,16 @@ async def get_job_stages(job_id: str, request: Request):
     auth = request.headers.get("authorization", "")
     if auth != f"Bearer {WORKER_API_SECRET}":
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    from onboarding_rpa import get_job_stages as _get_stages
+    from onboarding_rpa import get_job_stages as _get_stages, BUILD as _build
     stages = _get_stages(job_id)
-    return JSONResponse({"job_id": job_id, "stages": stages})
+    # Fallback: se memória volátil está vazia (worker reiniciou), buscar do SQLite
+    if not stages:
+        stages = get_current_stages(job_id)
+    return JSONResponse({
+        "job_id": job_id,
+        "stages": stages,
+        "build_version": _build,
+    })
 
 
 @app.get("/stats")

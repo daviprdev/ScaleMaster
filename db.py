@@ -110,6 +110,7 @@ _MIGRATIONS = [
     ("error_code", "ALTER TABLE jobs ADD COLUMN error_code TEXT"),
     ("app_id", "ALTER TABLE jobs ADD COLUMN app_id TEXT"),
     ("idempotency_key", "ALTER TABLE jobs ADD COLUMN idempotency_key TEXT"),
+    ("stage_build_version", "ALTER TABLE job_stages ADD COLUMN build_version TEXT"),
 ]
 
 
@@ -622,6 +623,100 @@ def get_proxy_stats(db_path: str = DB_PATH) -> dict:
         "with_failures": failed,
         "avg_failure_rate": round(avg_f or 0, 2),
     }
+
+
+# ─── STAGES PERSISTENTES ─────────────────────────────────────
+
+def upsert_stage(
+    job_id: str,
+    stage_key: str,
+    status: str,
+    message: str = None,
+    error_code: str = None,
+    external_id: str = None,
+    data: str = None,
+    build_version: str = None,
+    db_path: str = DB_PATH,
+) -> None:
+    """Insere ou atualiza o estado atual de uma etapa (INSERT OR REPLACE).
+
+    Normaliza estados: 'processing' → 'running', 'done' → 'ok'.
+    Persiste no SQLite para recuperação após reinício do worker.
+    """
+    # Normalizar estados para contrato da UI
+    status_map = {"processing": "running", "done": "ok"}
+    normalized_status = status_map.get(status, status)
+
+    now = time.time()
+    with _connect(db_path) as conn:
+        # Verificar se já existe registro para este job+stage
+        existing = conn.execute(
+            "SELECT id, started_at FROM job_stages WHERE job_id = ? AND stage_key = ?",
+            (job_id, stage_key),
+        ).fetchone()
+
+        if existing:
+            stage_id = existing["id"]
+            started_at = existing["started_at"]
+            # Se estava running e agora é ok/error, setar finished_at
+            finished_at = now if normalized_status in ("ok", "error") else None
+            conn.execute(
+                """UPDATE job_stages SET
+                   status = ?, error_code = ?, error_message = ?,
+                   external_id = ?, data = ?, build_version = ?,
+                   finished_at = COALESCE(?, finished_at),
+                   attempt = attempt + 1
+                   WHERE id = ?""",
+                (normalized_status, error_code, (message or "")[:500],
+                 external_id, data, build_version, finished_at, stage_id),
+            )
+        else:
+            started_at = now if normalized_status == "running" else None
+            finished_at = now if normalized_status in ("ok", "error") else None
+            conn.execute(
+                """INSERT INTO job_stages
+                   (job_id, stage_key, status, attempt, started_at, finished_at,
+                    error_code, error_message, external_id, data, build_version)
+                   VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)""",
+                (job_id, stage_key, normalized_status, started_at, finished_at,
+                 error_code, (message or "")[:500], external_id, data, build_version),
+            )
+
+
+def get_current_stages(job_id: str, db_path: str = DB_PATH) -> list[dict]:
+    """Retorna o estado atual de cada etapa de um job a partir do SQLite.
+
+    Retorna apenas o último estado por stage_key (não o histórico completo).
+    Usado como fallback quando o dict em memória está vazio (após reinício).
+    """
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            """SELECT stage_key, status, error_code, error_message,
+                      external_id, data, build_version, started_at, finished_at, attempt
+               FROM job_stages
+               WHERE job_id = ?
+               ORDER BY started_at ASC""",
+            (job_id,),
+        ).fetchall()
+
+    # Deduplicar por stage_key, mantendo o último estado
+    stages_by_key = {}
+    for row in rows:
+        key = row["stage_key"]
+        stages_by_key[key] = {
+            "key": key,
+            "status": row["status"],
+            "error_code": row["error_code"],
+            "message": row["error_message"],
+            "external_id": row["external_id"],
+            "data": row["data"],
+            "build_version": row["build_version"],
+            "started_at": row["started_at"],
+            "finished_at": row["finished_at"],
+            "attempt": row["attempt"],
+        }
+
+    return list(stages_by_key.values())
 
 
 # ─── COMPATIBILIDADE LEGACY ─────────────────────────────────

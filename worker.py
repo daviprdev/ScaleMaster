@@ -213,7 +213,7 @@ class RPAWorker:
                     "needs_2fa", "challenge_required", "account_disabled",
                     "sessionid_missing", "validation", "no_stories",
                     "story_link_verification_failed", "credential_invalid",
-                    "user_paused",
+                    "user_paused", "identity_mismatch",
                 }
                 proxy_retryable = {
                     "instagrapi_login_failed", "playwright_login_failed",
@@ -221,6 +221,9 @@ class RPAWorker:
                     "proxy_error", "network_error",
                     "web_auth_failed", "login_ui_not_found", "login_timeout",
                     "unexpected_error",
+                    # Novos error_codes da transferência de sessão v2
+                    "cookie_injection_failed", "session_rejected",
+                    "web_validation_timeout", "stage_timeout",
                 }
 
                 if error_code in permanent_errors:
