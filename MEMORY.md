@@ -5,6 +5,7 @@
 Worker standalone que automatiza onboarding de contas Instagram para o SaaS AutoScale-IA (autoscale-ia.vercel.app). Roda em VPS (2.25.244.181) dentro de Docker com Xvfb.
 
 **Repositório:** https://github.com/daviprdev/AutoScale-IA (branch `master` = worker, branch `main` = SaaS)
+**Última atualização:** 29/09/2026 — Commit `2d388b8` pushado para origin/master
 
 ## Arquitetura
 
