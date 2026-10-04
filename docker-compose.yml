@@ -1,6 +1,15 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+        NEXT_PUBLIC_INSTAGRAM_APP_ID: ${NEXT_PUBLIC_INSTAGRAM_APP_ID:-}
+        NEXT_PUBLIC_META_CLIENT_ID: ${NEXT_PUBLIC_META_CLIENT_ID:-}
+    image: autoscale-app:latest
+    container_name: autoscale-app-1
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
@@ -10,9 +19,6 @@ services:
       - PORT=3000
       - HOSTNAME=0.0.0.0
     # P1 CORREÇÃO: Healthcheck usando Node (já disponível) em vez de wget/curl.
-    # A imagem node:22-alpine não inclui wget por padrão, causando "unhealthy"
-    # mesmo com o app respondendo corretamente. Node HTTP é mais confiável e
-    # não requer instalação adicional de pacotes.
     healthcheck:
       test: ["CMD", "node", "-e", "const http = require('http'); const req = http.get('http://localhost:3000/api/health', {timeout: 5000}, (res) => { let data = ''; res.on('data', chunk => data += chunk); res.on('end', () => process.exit(res.statusCode === 200 ? 0 : 1)); }); req.on('error', () => process.exit(1)); req.on('timeout', () => { req.destroy(); process.exit(1); });"]
       interval: 30s
