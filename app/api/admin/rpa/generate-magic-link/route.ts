@@ -4,7 +4,8 @@ import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://autoscale-ia.vercel.app").replace(/\/$/, "");
+import { getAppUrl } from "@/lib/app-url";
+const APP_URL = getAppUrl();
 
 /**
  * POST /api/admin/rpa/generate-magic-link

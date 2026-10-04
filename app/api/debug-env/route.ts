@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getInstagramRedirectUri } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export async function GET() {
   const clientId = process.env.NEXT_PUBLIC_META_CLIENT_ID ?? "(não definida)";
   const igAppId = process.env.NEXT_PUBLIC_INSTAGRAM_APP_ID ?? "(não definida)";
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "(não definida)";
-  const redirectUri = "https://autoscale-ia.vercel.app/api/instagram/callback";
+  const redirectUri = getInstagramRedirectUri();
   const scope = "instagram_business_basic,instagram_business_content_publish,instagram_manage_comments,instagram_manage_insights";
 
   const oauthUrl =

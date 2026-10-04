@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import crypto from "crypto";
 import { decrypt } from "@/lib/encrypt";
+import { getAppUrl, getInstagramRedirectUri } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 
-const REDIRECT_URI = "https://autoscale-ia.vercel.app/api/instagram/callback";
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://autoscale-ia.vercel.app").replace(/\/$/, "");
+const REDIRECT_URI = getInstagramRedirectUri();
+const APP_URL = getAppUrl();
 
 export async function GET(
   req: NextRequest,

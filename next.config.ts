@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  // Required for Docker deployment — generates .next/standalone with minimal deps
+  output: "standalone",
   outputFileTracingRoot: path.resolve(__dirname),
   images: {
     remotePatterns: [

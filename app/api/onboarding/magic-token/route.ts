@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import crypto from "crypto";
+import { getAppUrl } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export async function POST() {
     return NextResponse.json({ error: "Erro ao gerar token" }, { status: 500 });
   }
 
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://autoscale-ia.vercel.app").replace(/\/$/, "");
+  const appUrl = getAppUrl();
 
   return NextResponse.json({
     token: data.token,

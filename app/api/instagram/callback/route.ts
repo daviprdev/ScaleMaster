@@ -3,17 +3,17 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt } from "@/lib/encrypt";
 import { fetch as undiciFetch } from "undici";
+import { getAppUrl, getInstagramRedirectUri } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const REDIRECT_URI = "https://autoscale-ia.vercel.app/api/instagram/callback";
+const REDIRECT_URI = getInstagramRedirectUri();
 const GRAPH_IG = "https://graph.instagram.com";
 const FETCH_TIMEOUT_MS = 15_000;
 
-const APP_URL =
-  (process.env.NEXT_PUBLIC_APP_URL ?? "https://autoscale-ia.vercel.app").replace(/\/$/, "");
+const APP_URL = getAppUrl();
 
 function clearOAuthCookies(res: NextResponse) {
   res.cookies.set("ig_oauth_state", "", { maxAge: 0, path: "/" });

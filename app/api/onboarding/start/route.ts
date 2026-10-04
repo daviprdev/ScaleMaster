@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { encrypt } from "@/lib/encrypt";
 import crypto from "crypto";
+import { getAppUrl } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
 
   // 2. Gerar magic_link_token
   const magicToken = crypto.randomUUID();
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://autoscale-ia.vercel.app").replace(/\/$/, "");
+  const appUrl = getAppUrl();
 
   // Salvar token no banco
   const { error: tokenInsertError } = await admin

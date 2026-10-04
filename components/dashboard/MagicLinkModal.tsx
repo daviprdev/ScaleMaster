@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Link2, Copy, ExternalLink, RefreshCw, ChevronDown, CheckCircle2, Loader2 } from "lucide-react";
+import { getAppUrlClient } from "@/lib/app-url-client";
 
 interface UserMetaApp {
   id: string;
@@ -15,10 +16,7 @@ interface Props {
   onClose: () => void;
 }
 
-const APP_BASE =
-  typeof window !== "undefined"
-    ? window.location.origin
-    : "https://autoscale-ia.vercel.app";
+const APP_BASE = getAppUrlClient();
 
 export default function MagicLinkModal({ open, onClose }: Props) {
   const [apps, setApps] = useState<UserMetaApp[]>([]);

@@ -20,6 +20,7 @@ import {
   Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getInstagramRedirectUriClient } from "@/lib/app-url-client";
 
 interface UserApp {
   id: string;
@@ -37,7 +38,7 @@ interface FormState {
 
 type Tab = "apps" | "guide";
 
-const CALLBACK_URL = "https://autoscale-ia.vercel.app/api/instagram/callback";
+const CALLBACK_URL = getInstagramRedirectUriClient();
 
 // ── CopyButton ────────────────────────────────────────────────
 function CopyButton({ text }: { text: string }) {
