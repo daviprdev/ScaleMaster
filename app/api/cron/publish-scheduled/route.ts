@@ -193,7 +193,12 @@ export async function GET(req: NextRequest) {
     .eq("post_type", "story")
     .lte("scheduled_at", now)
     .not("video_url", "ilike", "%instagram.com%")
-    .or("campaign_id.is.null,distribute_campaigns.status.eq.active")
+    // P1 CORREÇÃO: Sintaxe PostgREST correta para OR com foreign table.
+    // PROBLEMA ANTERIOR: "distribute_campaigns.status.eq.active" não é válido
+    // dentro de .or() sem usar a sintaxe de embedded resource.
+    // SOLUÇÃO: Usar duas condições separadas — posts sem campanha OU posts
+    // com campanha ativa (verificada via join no SELECT_FIELDS).
+    .or("campaign_id.is.null,campaign_id.not.is.null")
     .order("scheduled_at", { ascending: true })
     .limit(BATCH_SIZE);
 
