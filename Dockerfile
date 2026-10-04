@@ -5,25 +5,26 @@
 # ---------------------------------------------------------------------------
 # Stage 1: Install dependencies
 # ---------------------------------------------------------------------------
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 WORKDIR /app
 
 # Copy package files first for better layer caching
 COPY package.json package-lock.json* pnpm-lock.yaml* ./
 
 # Detect lockfile and install accordingly
+# --legacy-peer-deps required due to peer dependency conflicts in lockfile
 RUN if [ -f pnpm-lock.yaml ]; then \
       corepack enable && pnpm install --frozen-lockfile; \
     elif [ -f package-lock.json ]; then \
-      npm ci; \
+      npm ci --legacy-peer-deps; \
     else \
-      npm install; \
+      npm install --legacy-peer-deps; \
     fi
 
 # ---------------------------------------------------------------------------
 # Stage 2: Build the application
 # ---------------------------------------------------------------------------
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -41,7 +42,7 @@ RUN if [ -f pnpm-lock.yaml ]; then \
 # ---------------------------------------------------------------------------
 # Stage 3: Production runtime
 # ---------------------------------------------------------------------------
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
