@@ -16,6 +16,10 @@ import {
 } from "@/lib/video-processing";
 import { requireCronAuth } from "@/lib/cron-auth";
 import { LOOP_SKIP_REASONS } from "@/lib/loop-readiness";
+import {
+  assignVideos as priorityAssignVideos,
+  normalizePriorityStrategy,
+} from "@/lib/media-priority";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -511,80 +515,42 @@ async function assignVideosForLoop(
     `[assign-phase] "${loop.name}": ${globallyTaken.size} vídeo(s) já tomados nesta janela (guard inter-run).`
   );
 
-  // Passagem síncrona: sem await entre as decisões — sem TOCTOU intra-run.
-  // Cada conta tem pool INDEPENDENTE de todos os vídeos da pasta, mas o
-  // desempate entre os disponíveis prioriza os vídeos de MENOR uso global —
-  // evita o mesmo vídeo sair em várias contas quase ao mesmo tempo.
+  // Estratégia de prioridade: lê da coluna do loop (default 'least_usage' para
+  // loops existentes, preservando comportamento atual). Seed determinística por
+  // janela para que retries/reloads reproduzam a mesma atribuição.
+  const loopStrategy = normalizePriorityStrategy(
+    (loop as unknown as Record<string, unknown>).priority_strategy as string | undefined,
+  );
+  const loopSeed = `${loop.id}:${windowStartIso}`;
+
+  // Converte usageByVideo (Map) para o formato esperado pelo media-priority
+  // (Map<accountId, Map<videoId, count>>). O `usage` já está nesse formato.
+  const priorityResults = priorityAssignVideos({
+    candidates: allVideos.map((v) => ({
+      id: v.id,
+      views: (v as unknown as Record<string, unknown>).views as number ?? 0,
+      public_url: v.public_url,
+      caption: v.caption ?? null,
+    })),
+    accountIds: accountsToAssign.map((a) => a.id),
+    usageByAccount: usage,
+    windowClaims: globallyTaken,
+    recentGlobalCooldown: recentlyUsedGlobally,
+    strategy: loopStrategy,
+    seed: loopSeed,
+  });
+
+  // Converte os resultados do media-priority de volta para o formato esperado
+  // pelo resto do process-loops (Map<accountId, VideoAssignment>).
   const assignments = new Map<string, VideoAssignment>();
-
-  for (let i = 0; i < accountsToAssign.length; i++) {
-    const account = accountsToAssign[i];
-    const postedByAccount = postedSet(usage, account.id);
-
-    // Pool individual: exclui apenas o que ESTA conta já postou.
-    // globallyTaken serve de guard para invocações concorrentes (raramente populado
-    // graças ao CLAIM atômico, mas mantido por segurança).
-    let available = allVideos.filter(v => !postedByAccount.has(v.id) && !globallyTaken.has(v.id));
-
-    let isCycleReset = false;
-    if (available.length === 0 && loop.is_infinite) {
-      // Ciclo completo para esta conta: reinicia o histórico dela — mas os
-      // últimos vídeos que ela postou continuam fora, para que a virada de
-      // ciclo nunca devolva o vídeo do post anterior logo em seguida.
-      const recent = new Set(recentByAccount.get(account.id) ?? []);
-      available = allVideos.filter(v => !globallyTaken.has(v.id) && !recent.has(v.id));
-      if (available.length === 0) {
-        // Pasta menor que o cooldown: relaxa para só o último vídeo.
-        const lastVideo = (recentByAccount.get(account.id) ?? [])[0];
-        available = allVideos.filter(v => !globallyTaken.has(v.id) && v.id !== lastVideo);
-      }
-      isCycleReset = available.length > 0;
-      if (isCycleReset) {
-        console.log(
-          `[assign-phase] @${account.username}: ciclo completo (${postedByAccount.size} postados) ` +
-          `→ reiniciando histórico.`
-        );
-      }
-    }
-
-    if (available.length === 0) {
-      if (allVideos.length > 0) {
-        // Loop não-infinito que esgotou todos os vídeos: wrap-around pelo
-        // índice, pulando os vídeos recentes da conta — o índice sozinho é
-        // função da posição da conta na lista de devidas (quase sempre 0), o
-        // que devolvia o MESMO vídeo tick após tick para a mesma conta.
-        const recent = new Set(recentByAccount.get(account.id) ?? []);
-        const pool = allVideos.filter(v => !recent.has(v.id));
-        const wrapPool = pool.length > 0 ? pool : allVideos;
-        const fallbackIdx = i % wrapPool.length;
-        const fallbackVideo = wrapPool[fallbackIdx];
-        console.log(
-          `[assign-phase] @${account.username}: wrap-around (esgotou ${allVideos.length} vídeo(s)) ` +
-          `→ vídeo[${fallbackIdx}] "${fallbackVideo.filename.slice(0, 24)}".`
-        );
-        assignments.set(account.id, { video: fallbackVideo, isCycleReset: true });
-      } else {
-        console.warn(
-          `[assign-phase] @${account.username}: sem vídeos na pasta (global=${globallyTaken.size}).`
-        );
-      }
-      continue;
-    }
-
-    // Tira do sorteio o que circulou há pouco em qualquer conta do loop —
-    // relaxa só se isso zerar as opções desta conta.
-    const spread = available.filter(v => !recentlyUsedGlobally.has(v.id));
-    const pickFrom = spread.length > 0 ? spread : available;
-
-    // Sorteia apenas entre os de menor uso global e incrementa em memória (e no
-    // cooldown global) para que as próximas contas DESTE run já enxerguem o
-    // vídeo como usado.
-    const minUse = Math.min(...pickFrom.map(v => usageByVideo.get(v.id) ?? 0));
-    const leastUsed = pickFrom.filter(v => (usageByVideo.get(v.id) ?? 0) === minUse);
-    const video = leastUsed[Math.floor(Math.random() * leastUsed.length)];
-    usageByVideo.set(video.id, (usageByVideo.get(video.id) ?? 0) + 1);
-    recentlyUsedGlobally.add(video.id);
-    assignments.set(account.id, { video, isCycleReset });
+  const videoById = new Map(allVideos.map((v) => [v.id, v]));
+  for (const result of priorityResults) {
+    const videoRow = videoById.get(result.video.id);
+    if (!videoRow) continue; // segurança: candidato desapareceu entre fetch e atribuição
+    assignments.set(result.accountId, { video: videoRow, isCycleReset: result.isCycleReset });
+    // Atualiza contadores em memória para compatibilidade com logs/guards posteriores
+    usageByVideo.set(result.video.id, (usageByVideo.get(result.video.id) ?? 0) + 1);
+    recentlyUsedGlobally.add(result.video.id);
   }
 
   const summary = [...assignments.entries()]
@@ -714,7 +680,7 @@ async function processOneLoop(
     allVideoRows = await fetchAllRows<VideoRow>((from, to) =>
       (admin as any)
         .from("videos_library")
-        .select("id, public_url, filename, file_size, caption")
+        .select("id, public_url, filename, file_size, caption, views")
         .eq("folder_id", loop.folder_id)
         .order("created_at", { ascending: true })
         .range(from, to)

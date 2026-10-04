@@ -24,20 +24,15 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
 import { normalizeCaptionMode, resolveCaption } from "@/lib/reel-captions";
 import { normalizeProcessingMode } from "@/lib/video-processing";
-import { fetchVideoUsage, globalUsageByVideo, fetchAllRows } from "@/lib/video-history";
+import { fetchVideoUsage, fetchAllRows } from "@/lib/video-history";
 import { requireCronAuth } from "@/lib/cron-auth";
+import {
+  assignVideos as priorityAssignVideos,
+  normalizePriorityStrategy,
+} from "@/lib/media-priority";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
-
-function fisherYates<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
 
 interface DistributeCampaignRow {
   id: string;
@@ -125,12 +120,12 @@ async function processCampaign(
 
   // Paginado: `.limit(10000)` não bypassa o teto de 1000 linhas do PostgREST —
   // pastas grandes teriam o excedente ignorado em silêncio no pool.
-  let allVideos: { id: string; public_url: string; caption: string | null }[];
+  let allVideos: { id: string; public_url: string; caption: string | null; views: number }[];
   try {
-    allVideos = await fetchAllRows<{ id: string; public_url: string; caption: string | null }>((from, to) =>
+    allVideos = await fetchAllRows<{ id: string; public_url: string; caption: string | null; views: number }>((from, to) =>
       admin
         .from("videos_library")
-        .select("id, public_url, caption")
+        .select("id, public_url, caption, views")
         .eq("folder_id", campaign.video_folder_id)
         .order("created_at", { ascending: true })
         .range(from, to)
@@ -208,26 +203,34 @@ async function processCampaign(
     return 0;
   }
 
-  // Mesmo critério de seleção do modo pasta do Loop (assignVideosForLoop):
-  // pool individual por conta (exclui só o que ELA já postou) + desempate
-  // pelo vídeo de menor uso GLOBAL entre as contas due agora — evita que duas
-  // contas due no mesmo ciclo recebam o mesmo vídeo.
-  const postedByAccount = new Map<string, Set<string>>();
-  for (const [accountId, videos] of usage) postedByAccount.set(accountId, new Set(videos.keys()));
-  const usageByVideo = globalUsageByVideo(usage);
+  // Atribuição centralizada via media-priority: lê priority_strategy da campanha
+  // (default 'least_usage' para campanhas existentes). Seed determinística por
+  // ciclo para que retries reproduzam a mesma atribuição.
+  const campaignStrategy = normalizePriorityStrategy(
+    (campaign as unknown as Record<string, unknown>).priority_strategy as string | undefined,
+  );
+  const cycleSeed = `${campaign.id}:${now}`;
+  const priorityResults = priorityAssignVideos({
+    candidates: allVideos.map((v) => ({
+      id: v.id,
+      views: v.views ?? 0,
+      public_url: v.public_url,
+      caption: v.caption,
+    })),
+    accountIds: dueAccountIds,
+    usageByAccount: usage,
+    windowClaims: new Set(),
+    recentGlobalCooldown: new Set(),
+    strategy: campaignStrategy,
+    seed: cycleSeed,
+  });
 
-  const shuffledVideos = fisherYates(allVideos);
+  const videoById = new Map(allVideos.map((v) => [v.id, v]));
   const rows: object[] = [];
 
-  dueAccountIds.forEach((accountId, i) => {
-    const posted = postedByAccount.get(accountId) ?? new Set<string>();
-    const available = shuffledVideos.filter(v => !posted.has(v.id));
-    if (available.length === 0) return; // esgotou o pool sem atingir maxVideos — defensivo, não deveria ocorrer
-
-    const minUse = Math.min(...available.map(v => usageByVideo.get(v.id) ?? 0));
-    const leastUsed = available.filter(v => (usageByVideo.get(v.id) ?? 0) === minUse);
-    const video = leastUsed[Math.floor(Math.random() * leastUsed.length)];
-    usageByVideo.set(video.id, (usageByVideo.get(video.id) ?? 0) + 1);
+  priorityResults.forEach((assigned, i) => {
+    const video = videoById.get(assigned.video.id);
+    if (!video) return; // segurança: candidato desapareceu entre fetch e atribuição
 
     const staggerMs = campaign.account_stagger_seconds != null
       ? i * campaign.account_stagger_seconds * 1_000
@@ -253,7 +256,7 @@ async function processCampaign(
     if (!resolucao.validation.valid) {
       console.error(
         "[sync-distribute] campanha " + campaign.id.slice(0, 8) +
-        " conta " + accountId.slice(0, 8) + ": " + resolucao.validation.error?.code +
+        " conta " + assigned.accountId.slice(0, 8) + ": " + resolucao.validation.error?.code +
         " (chars=" + resolucao.length + " hashtags=" + resolucao.hashtags +
         " mentions=" + resolucao.mentions + ") — conta não matriculada."
       );
@@ -262,7 +265,7 @@ async function processCampaign(
 
     rows.push({
       user_id: campaign.user_id,
-      account_id: accountId,
+      account_id: assigned.accountId,
       video_id: video.id,
       video_url: video.public_url,
       caption: resolucao.caption,

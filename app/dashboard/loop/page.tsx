@@ -107,6 +107,7 @@ interface FormData {
   captionMode: CaptionMode;
   captionStripHashtags: boolean;
   captionStripMentions: boolean;
+  priorityStrategy: "views" | "least_usage" | "random";
 }
 
 interface SavedCaption {
@@ -151,6 +152,7 @@ const DEFAULT_FORM: FormData = {
   captionMode: "custom",
   captionStripHashtags: false,
   captionStripMentions: false,
+  priorityStrategy: "views",
 };
 
 // ── Analytics types ───────────────────────────────────────────
@@ -1330,6 +1332,9 @@ function LoopFormModal({
         captionMode: (editingLoop.caption_mode ?? "custom") as CaptionMode,
         captionStripHashtags: editingLoop.caption_strip_hashtags === true,
         captionStripMentions: editingLoop.caption_strip_mentions === true,
+        priorityStrategy: (editingLoop as any).priority_strategy === "views" || (editingLoop as any).priority_strategy === "least_usage" || (editingLoop as any).priority_strategy === "random"
+          ? (editingLoop as any).priority_strategy
+          : "least_usage",
       };
     }
     return DEFAULT_FORM;
@@ -1757,6 +1762,39 @@ function LoopFormModal({
             />
           </div>
 
+          {/* Estratégia de prioridade */}
+          <div>
+            <SectionLabel icon={TrendingUp} label="Ordem de distribuição" />
+            <div className="flex flex-wrap gap-2">
+              {([
+                { value: "views", label: "Mais visualizados" },
+                { value: "least_usage", label: "Menor uso" },
+                { value: "random", label: "Aleatório" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => update("priorityStrategy", opt.value)}
+                  className={cn(
+                    "px-3.5 py-2 rounded-xl text-sm font-bold border transition-all",
+                    form.priorityStrategy === opt.value
+                      ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
+                      : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[10px] text-white/30">
+              {form.priorityStrategy === "views"
+                ? "Prioriza os Reels com mais views da origem e varia a atribuição entre contas."
+                : form.priorityStrategy === "least_usage"
+                ? "Distribui primeiro os vídeos menos usados historicamente (comportamento anterior)."
+                : "Sorteia os vídeos sem considerar views nem histórico."}
+            </p>
+          </div>
+
           {/* Processamento do vídeo (limpeza — conceito separado dos efeitos) */}
           <div>
             <SectionLabel icon={SlidersHorizontal} label="Processamento do vídeo" />
@@ -1964,6 +2002,7 @@ export default function LoopPage() {
       caption_mode: form.captionMode,
       caption_strip_hashtags: form.captionStripHashtags,
       caption_strip_mentions: form.captionStripMentions,
+      priority_strategy: form.priorityStrategy,
       account_ids: form.accountMode === "folder" ? [] : form.accountIds,
     };
 

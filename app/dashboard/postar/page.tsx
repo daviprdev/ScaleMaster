@@ -1241,6 +1241,10 @@ export default function PostarPage() {
   const [accountStaggerSeconds, setAccountStaggerSeconds] = useState<number | null>(null);
   const [burstMode, setBurstMode] = useState(false);             // Modo Ciclo: postar tudo de uma vez
 
+  // Estratégia de prioridade: "views" (default), "least_usage" ou "random".
+  // Persistida na campanha para que sync-distribute-accounts use a mesma política.
+  const [priorityStrategy, setPriorityStrategy] = useState<"views" | "least_usage" | "random">("views");
+
   // Captions
   const [captions, setCaptions] = useState<string[]>(["", ""]);
   const [autoCaptionEnabled, setAutoCaptionEnabled] = useState(false);
@@ -1395,6 +1399,7 @@ export default function PostarPage() {
           caption_mode: captionMode,
           caption_strip_hashtags: stripHashtags,
           caption_strip_mentions: stripMentions,
+          priority_strategy: priorityStrategy,
         }),
       });
 
@@ -1883,6 +1888,39 @@ export default function PostarPage() {
                             A pasta tem só {folderVideoCount} vídeos — cada conta receberá {folderVideoCount}.
                           </p>
                         )}
+                      </div>
+
+                      {/* Estratégia de prioridade */}
+                      <div className="mt-3">
+                        <p className="text-[10px] text-white/40 font-medium mb-2 uppercase tracking-wider">Ordem de distribuição</p>
+                        <div className="flex flex-wrap gap-2">
+                          {([
+                            { value: "views", label: "Mais visualizados" },
+                            { value: "least_usage", label: "Menor uso" },
+                            { value: "random", label: "Aleatório" },
+                          ] as const).map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => setPriorityStrategy(opt.value)}
+                              className={cn(
+                                "px-3.5 py-2 rounded-xl text-sm font-bold border transition-all",
+                                priorityStrategy === opt.value
+                                  ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
+                                  : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                              )}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-1.5 text-[10px] text-white/30">
+                          {priorityStrategy === "views"
+                            ? "Prioriza os Reels com mais views da origem e varia a atribuição entre contas."
+                            : priorityStrategy === "least_usage"
+                            ? "Distribui primeiro os vídeos menos usados historicamente (comportamento anterior)."
+                            : "Sorteia os vídeos sem considerar views nem histórico."}
+                        </p>
                       </div>
 
                       <p className="mt-3 text-[11px] text-[#00E5FF]/70 leading-relaxed">

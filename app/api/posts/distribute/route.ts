@@ -8,17 +8,13 @@ import {
 } from "@/lib/reel-captions";
 import { fetchVideoUsage, fetchAllRows } from "@/lib/video-history";
 import { normalizeProcessingMode } from "@/lib/video-processing";
+import {
+  assignVideos,
+  normalizePriorityStrategy,
+  type PriorityStrategy,
+} from "@/lib/media-priority";
 
 export const runtime = "nodejs";
-
-function fisherYates<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
 
 interface DistributeBody {
   account_ids: string[];
@@ -95,14 +91,22 @@ export async function POST(req: NextRequest) {
   // Pré-gera legendas automáticas únicas se necessário (1 por post total)
   const autoType = (auto_caption_type ?? "curiosidades-gerais") as AutoCaptionType;
 
+  // Estratégia de prioridade: "views" (default para novas campanhas), "least_usage"
+  // (compatível com campanhas existentes) ou "random". Persistida na campanha para
+  // que sync-distribute-accounts e retries usem a mesma política.
+  const priorityStrategy = normalizePriorityStrategy(
+    (body as unknown as Record<string, unknown>).priority_strategy as string | undefined,
+  );
+
   // Paginado: `.limit(10000)` não bypassa o teto de 1000 linhas do PostgREST —
   // uma pasta com mais de 1000 vídeos teria o excedente ignorado em silêncio.
-  let allVideos: { id: string; public_url: string; caption: string | null }[];
+  // `views` incluído para ranking por prioridade.
+  let allVideos: { id: string; public_url: string; caption: string | null; views: number }[];
   try {
-    allVideos = await fetchAllRows<{ id: string; public_url: string; caption: string | null }>((from, to) =>
+    allVideos = await fetchAllRows<{ id: string; public_url: string; caption: string | null; views: number }>((from, to) =>
       admin
         .from("videos_library")
-        .select("id, public_url, caption")
+        .select("id, public_url, caption, views")
         .eq("folder_id", folder_id)
         .eq("user_id", user.id)
         .order("created_at", { ascending: true })
@@ -143,29 +147,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Pool compartilhado ordenado por menor uso GLOBAL entre as contas selecionadas
-  // (prioriza vídeo nunca postado por nenhuma delas), com desempate aleatório.
-  const globalUsage = (videoId: string) => {
-    let total = 0;
-    for (const accountId of account_ids) total += postedCount.get(accountId)?.get(videoId) ?? 0;
-    return total;
-  };
-  const sharedPool = fisherYates(allVideos).sort((a, b) => globalUsage(a.id) - globalUsage(b.id));
-  const poolSize = sharedPool.length;
-
-  // Atribuição em "quadrado latino": na rodada r, a conta de índice `ai` recebe
-  // sharedPool[(ai + r) % poolSize]. Isso garante que, na MESMA rodada (mesmo
-  // horário relativo entre as contas), nenhuma conta repete vídeo com outra —
-  // desde que nº de contas <= tamanho do pool. E cada conta percorre até
-  // poolSize vídeos distintos ao longo das rodadas, sem repetir os próprios.
-  // Corrige o caso real (81 contas / 330 vídeos) em que o sorteio independente
-  // por conta fazia o mesmo vídeo sair em várias contas na mesma janela de
-  // horas — padrão de conteúdo duplicado que a Meta suprime no alcance.
-  function videoForRound(accountIndex: number, round: number) {
-    return sharedPool[(accountIndex + round) % poolSize];
-  }
-
   const campaignId = randomUUID();
+  const distributionSeed = `${campaignId}:${Date.now()}`;
   // Distribui uniformemente ao longo de 24h (ignorado em burst_mode)
   const intervalMinutes = burst_mode ? 0 : Math.floor((24 * 60) / posts_per_day);
   // Modo Ciclo: tudo agendado para agora — o cron publish-scheduled drena a fila
@@ -192,16 +175,54 @@ export async function POST(req: NextRequest) {
     ? Math.max((account_stagger_seconds ?? 0) * 1_000, maxVideos * 2_000)
     : 0;
 
+  // Atribuição centralizada via media-priority: views DESC + diversidade entre
+  // contas na mesma rodada + balanceamento em escassez. Seed persistida na
+  // campanha para que retries e sync-distribute-accounts reproduzam a mesma
+  // atribuição. Sem windowClaims/recentGlobalCooldown aqui porque a distribuição
+  // cria scheduled_posts futuros (não containers imediatos como o Loop).
+  const assignments = assignVideos({
+    candidates: allVideos.map((v) => ({
+      id: v.id,
+      views: v.views ?? 0,
+      public_url: v.public_url,
+      caption: v.caption,
+    })),
+    accountIds: account_ids,
+    usageByAccount: postedCount,
+    windowClaims: new Set(),
+    recentGlobalCooldown: new Set(),
+    strategy: priorityStrategy,
+    seed: distributionSeed,
+  });
+
+  // Mapa rápido de vídeo por ID para resolver legenda/url durante a geração de linhas
+  const videoById = new Map(allVideos.map((v) => [v.id, v]));
+
+  // Agrupa atribuições por conta preservando a ordem devolvida pelo módulo
+  const assignmentsByAccount = new Map<string, typeof assignments>();
+  for (const a of assignments) {
+    let list = assignmentsByAccount.get(a.accountId);
+    if (!list) {
+      list = [];
+      assignmentsByAccount.set(a.accountId, list);
+    }
+    list.push(a);
+  }
+
   for (let ai = 0; ai < account_ids.length; ai++) {
     const accountId = account_ids[ai];
+    const accountAssignments = assignmentsByAccount.get(accountId) ?? [];
     const staggerMs = burst_mode
       ? ai * burstBlockMs
       : account_stagger_seconds
         ? ai * account_stagger_seconds * 1_000
         : ai * autoStaggerPerAccountMs;
 
-    for (let vi = 0; vi < maxVideos; vi++) {
-      const video = videoForRound(ai, vi);
+    for (let vi = 0; vi < accountAssignments.length; vi++) {
+      const assigned = accountAssignments[vi];
+      const video = videoById.get(assigned.video.id);
+      if (!video) continue; // segurança: candidato desapareceu entre fetch e atribuição
+
       // Burst: 2s entre vídeos só para ordenação estável na fila (scheduled_at ASC)
       const slotMs = burst_mode ? vi * 2_000 : vi * intervalMinutes * 60_000;
       const scheduledAt = new Date(startTime + slotMs + staggerMs).toISOString();
@@ -281,6 +302,8 @@ export async function POST(req: NextRequest) {
       burst_mode: !!burst_mode,
       video_processing_mode: processingMode,
       share_to_feed: shareToFeed,
+      priority_strategy: priorityStrategy,
+      distribution_seed: distributionSeed,
     });
     if (syncErr) console.error("[distribute] erro ao salvar sync da campanha:", syncErr.message);
   }
