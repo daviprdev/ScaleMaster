@@ -49,21 +49,9 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     title: "Meus Apps",
     subtitle: "Gerencie suas credenciais Meta",
   },
-  "/dashboard/human-schedule": {
-    title: "Horário Humano",
-    subtitle: "Anti-shadowban — publique em horários naturais",
-  },
-  "/dashboard/links": {
-    title: "Links Gerenciáveis",
-    subtitle: "Crie links curtos, altere destinos e acompanhe cliques",
-  },
-    "/dashboard/contas-leitoras": {
+  "/dashboard/contas-leitoras": {
     title: "Contas Leitoras",
     subtitle: "Contas dedicadas à raspagem de conteúdo (isoladas das de postagem)",
-  },
-  "/dashboard/logins": {
-    title: "Cofre de Logins",
-    subtitle: "Armazenamento criptografado de credenciais de acesso",
   },
 };
 

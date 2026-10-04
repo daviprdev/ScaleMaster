@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeProcessingMode } from "@/lib/video-processing";
-import { validateDestinationUrl, isUuid, publicLinkUrl } from "@/lib/managed-links";
 import { storyStoragePathFromPublicUrl } from "@/lib/story-upload";
 
 export const runtime = "nodejs";
@@ -12,8 +11,7 @@ interface PostNowBody {
   media_url: string;
   media_type: "image" | "video";
   video_processing_mode?: string; // "original" (padrao) | "clean_metadata"
-  /** Link divulgado junto do Story. Um dos dois, nunca os dois. */
-  managed_link_id?: string | null;
+  /** Link direto divulgado junto do Story (URL externa). */
   story_link_url?: string | null;
 }
 
@@ -54,35 +52,19 @@ export async function POST(req: NextRequest) {
   const admin = getSupabaseAdmin();
 
   // ── Link do Story ────────────────────────────────────────────────────────
-  // Com link gerenciado, a URL é DERIVADA DO SLUG no servidor: o que vai para
-  // o Story é sempre a URL pública /r/{slug}, nunca o destination_url — é
-  // exatamente isso que permite trocar o destino depois sem refazer nada.
-  // Qualquer URL que o frontend mande junto de um managed_link_id é ignorada.
+  // Links gerenciados foram removidos. Apenas URLs diretas são aceitas.
   let storyLinkUrl: string | null = null;
-  let managedLinkId: string | null = null;
 
-  if (body.managed_link_id) {
-    if (!isUuid(body.managed_link_id))
-      return NextResponse.json({ error: "Link inválido." }, { status: 400 });
-
-    const { data: link } = await admin
-      .from("managed_links")
-      .select("id, slug, status")
-      .eq("id", body.managed_link_id)
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    const row = link as { id: string; slug: string; status: string } | null;
-    if (!row) return NextResponse.json({ error: "Link não encontrado." }, { status: 400 });
-    if (row.status !== "active")
-      return NextResponse.json({ error: "Esse link não está ativo." }, { status: 400 });
-
-    managedLinkId = row.id;
-    storyLinkUrl = publicLinkUrl(row.slug, new URL(req.url).origin);
-  } else if (body.story_link_url) {
-    const check = validateDestinationUrl(body.story_link_url);
-    if (!check.ok) return NextResponse.json({ error: check.error }, { status: 400 });
-    storyLinkUrl = check.url;
+  if (body.story_link_url) {
+    try {
+      const parsed = new URL(body.story_link_url);
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        return NextResponse.json({ error: "URL do link deve ser http ou https." }, { status: 400 });
+      }
+      storyLinkUrl = parsed.toString();
+    } catch {
+      return NextResponse.json({ error: "URL do link inválida." }, { status: 400 });
+    }
   }
 
   const { data: ownedAccounts } = await admin
@@ -112,7 +94,6 @@ export async function POST(req: NextRequest) {
     post_type: "story",
     video_processing_mode: processingMode,
     story_link_url: storyLinkUrl,
-    managed_link_id: managedLinkId,
   }));
 
   const { error } = await admin.from("scheduled_posts").insert(rows);

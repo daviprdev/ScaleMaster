@@ -55,7 +55,6 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, exact: true },
       { label: "Contas", href: "/dashboard/accounts", icon: Users },
-      { label: "RPA", href: "/dashboard/rpa", icon: Bot },
     ],
   },
   {
@@ -73,7 +72,6 @@ const navGroups: NavGroup[] = [
       { label: "Inspirações",     href: "/dashboard/inspirations",    icon: Sparkles },
       { label: "Contas Leitoras", href: "/dashboard/contas-leitoras", icon: BookUser },
       { label: "Biblioteca",      href: "/dashboard/library",         icon: FolderOpen },
-      { label: "Links",           href: "/dashboard/links",           icon: Link2 },
     ],
   },
   {
@@ -87,9 +85,7 @@ const navGroups: NavGroup[] = [
     label: "CONFIGURAÇÕES",
     items: [
       { label: "Meu App",        href: "/dashboard/apps",           icon: KeyRound },
-      { label: "Logins",         href: "/dashboard/logins",         icon: Lock },
       { label: "Failover",       href: "/dashboard/failover",       icon: ShieldAlert },
-      { label: "Horário Humano", href: "/dashboard/human-schedule", icon: Clock },
       { label: "Proxies",        href: "/dashboard/proxy-test",     icon: Globe },
     ],
   },

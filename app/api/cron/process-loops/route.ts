@@ -79,14 +79,6 @@ interface LoopRow {
   caption_strip_mentions?: boolean | null;
 }
 
-interface HumanScheduleRow {
-  user_id: string;
-  is_active: boolean;
-  start_time: string;
-  end_time: string;
-  timezone: string;
-}
-
 interface VideoRow {
   id: string;
   public_url: string;
@@ -133,43 +125,6 @@ function selectDynamicCaption(rawCaptions: string[]): string {
   );
 
   return selected;
-}
-
-// ---------------------------------------------------------------------------
-// Human schedule helper
-// ---------------------------------------------------------------------------
-
-function isWithinHumanSchedule(
-  now: Date,
-  timezone: string,
-  startTime: string,
-  endTime: string
-): boolean {
-  try {
-    const fmt = new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezone,
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-    const parts = fmt.formatToParts(now);
-    const h = Number(parts.find(p => p.type === "hour")?.value ?? 0);
-    const m = Number(parts.find(p => p.type === "minute")?.value ?? 0);
-    const cur = h * 60 + m;
-    const toMin = (t: string) => {
-      const [th, tm] = t.split(":").map(Number);
-      return th * 60 + (tm ?? 0);
-    };
-    const start = toMin(startTime);
-    const end   = toMin(endTime);
-    // Janela normal (ex: 09:00–17:00): start < end
-    // Janela noturna crossing midnight (ex: 21:00–09:00): start > end
-    return start <= end
-      ? cur >= start && cur < end
-      : cur >= start || cur < end;
-  } catch {
-    return true;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -613,24 +568,8 @@ async function clearSkipNote(
 async function processOneLoop(
   loop: LoopRow,
   admin: ReturnType<typeof getSupabaseAdmin>,
-  now: Date,
-  scheduleMap: Map<string, HumanScheduleRow>
+  now: Date
 ): Promise<LoopOutcome> {
-
-  // ── Horário Humano ─────────────────────────────────────────────────────────
-  const schedule = scheduleMap.get(loop.user_id);
-  if (schedule?.is_active) {
-    const allowed = isWithinHumanSchedule(
-      now, schedule.timezone, schedule.start_time, schedule.end_time
-    );
-    if (!allowed) {
-      console.log(
-        `[loop-cron] "${loop.name}" bloqueado pelo Horário Humano ` +
-        `(fora de ${schedule.start_time}–${schedule.end_time} ${schedule.timezone}).`
-      );
-      return "skipped";
-    }
-  }
 
   // ── Contas válidas ─────────────────────────────────────────────────────────
   // Exclui contas marcadas como 'error' — evita ciclos infinitos de falha que
@@ -1514,21 +1453,6 @@ export async function GET(req: NextRequest) {
 
   const loops = (loopRows ?? []) as LoopRow[];
 
-  // ── Carrega configurações de horário humano (uma query para todos os users) ─
-  const distinctUserIds = [...new Set(loops.map(l => l.user_id))];
-  let scheduleMap = new Map<string, HumanScheduleRow>();
-
-  if (distinctUserIds.length > 0) {
-    const { data: scheduleRows } = await (admin as any)
-      .from("human_schedule_settings")
-      .select("user_id, is_active, start_time, end_time, timezone")
-      .in("user_id", distinctUserIds);
-
-    scheduleMap = new Map(
-      ((scheduleRows ?? []) as HumanScheduleRow[]).map(r => [r.user_id, r])
-    );
-  }
-
   // Todos os loops ativos são processados a cada run — não há mais um gate
   // por `loop.last_posted_at` no nível do loop inteiro (esse campo agora é só
   // informativo). Quem decide se HÁ trabalho a fazer é o due-check POR CONTA
@@ -1544,7 +1468,7 @@ export async function GET(req: NextRequest) {
   // o tempo total = max(tempo de um loop), não a soma — elimina o gargalo
   // sequencial que causava atraso em cascata quando múltiplos loops estavam elegíveis.
   const loopResults = await Promise.allSettled(
-    eligible.map(loop => processOneLoop(loop, admin, now, scheduleMap))
+    eligible.map(loop => processOneLoop(loop, admin, now))
   );
 
   const summary = loopResults.reduce(

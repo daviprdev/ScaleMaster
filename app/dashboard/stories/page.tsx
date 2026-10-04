@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
-import { StoryLinkSelector, EMPTY_STORY_LINK, type StoryLinkValue } from "@/components/dashboard/StoryLinkSelector";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -696,8 +695,8 @@ export default function StoriesPage() {
   // Publish
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
-  // Link divulgado junto do Story (registro + cópia — a API não anexa sticker).
-  const [storyLink, setStoryLink] = useState<StoryLinkValue>(EMPTY_STORY_LINK);
+  // Link direto divulgado junto do Story (URL externa; a API não anexa sticker).
+  const [storyLinkUrl, setStoryLinkUrl] = useState("");
   const [publishSuccess, setPublishSuccess] = useState<string | null>(null);
 
   // History
@@ -934,11 +933,8 @@ export default function StoriesPage() {
     if (!media || media.status !== "done" || !media.url) { setPublishError("Adicione uma mídia."); return; }
     if (!selectedFolderId) { setPublishError("Escolha um modelo."); return; }
     if (selectedAccountIds.length === 0) { setPublishError("Selecione ao menos 1 conta."); return; }
-    if (storyLink.mode === "managed" && !storyLink.managedLinkId) {
-      setPublishError("Escolha o link gerenciado ou volte para \"Sem link\"."); return;
-    }
-    if (storyLink.mode === "direct" && !storyLink.directUrl.trim()) {
-      setPublishError("Informe a URL do link ou volte para \"Sem link\"."); return;
+    if (storyLinkUrl.trim() && !/^https?:\/\//i.test(storyLinkUrl.trim())) {
+      setPublishError("URL do link deve começar com http:// ou https://"); return;
     }
 
     setPublishError(null);
@@ -953,11 +949,7 @@ export default function StoriesPage() {
           media_type: media.media_type,
           // Stories não oferecem limpeza de metadados: sempre o arquivo original.
           video_processing_mode: "original",
-          // O servidor deriva a URL pública a partir do slug quando é link
-          // gerenciado — o que for mandado aqui em story_link_url é ignorado
-          // nesse caso.
-          managed_link_id: storyLink.mode === "managed" ? storyLink.managedLinkId : null,
-          story_link_url: storyLink.mode === "direct" ? storyLink.directUrl.trim() || null : null,
+          story_link_url: storyLinkUrl.trim() || null,
         }),
       });
       const data = await res.json() as { success?: boolean; error?: string; accounts?: number };
@@ -1181,7 +1173,14 @@ export default function StoriesPage() {
           {/* Link do Story */}
           <SectionCard>
             <SectionLabel Icon={Link2}>Link do Story</SectionLabel>
-            <StoryLinkSelector value={storyLink} onChange={setStoryLink} />
+            <input
+              type="url"
+              placeholder="https://exemplo.com (opcional)"
+              value={storyLinkUrl}
+              onChange={(e) => setStoryLinkUrl(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-sm text-white/90 placeholder:text-white/25 focus:border-[#00E5FF]/40 focus:outline-none transition-colors"
+            />
+            <p className="mt-1 text-[10px] text-white/30">URL externa anexada ao Story como sticker de link.</p>
           </SectionCard>
 
           {/* Nota */}
