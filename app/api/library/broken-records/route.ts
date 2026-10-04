@@ -71,29 +71,55 @@ export async function POST(_: NextRequest) {
     return NextResponse.json({ deleted: 0, message: "Nenhum registro quebrado." });
   }
 
-  // Inventário do que existe de fato no Storage, por prefixo.
+  // P1 CORREÇÃO: Inventário RECURSIVO do Storage por prefixo.
+  // O código anterior listava apenas o primeiro nível (ex: "user-a"), mas uploads
+  // novos ficam em "user-a/videos/upload_....mp4". A listagem plana retornava
+  // apenas a subpasta "videos" como objeto, não os arquivos dentro dela, causando
+  // exclusão falsa de registros válidos.
+  //
+  // Solução: para cada prefixo raiz, percorrer recursivamente todas as subpastas
+  // usando listagem paginada. Distinguir erro de consulta (abortar) de ausência
+  // comprovada (pode excluir). Preservar caminhos antigos (raiz direta) e novos
+  // (com subpasta videos/).
   const prefixes = new Set(candidates.map(v => v.storage_path!.split("/")[0]));
   const existing = new Set<string>();
 
-  for (const prefix of prefixes) {
+  async function listRecursive(prefix: string, path: string = ""): Promise<void> {
     for (let offset = 0; ; offset += PAGE) {
       const { data, error } = await admin.storage
         .from("videos-library")
-        .list(prefix, { limit: PAGE, offset });
+        .list(path ? `${prefix}/${path}` : prefix, { limit: PAGE, offset });
 
       if (error) {
         // Sem inventário confiável, apagar seria um chute — aborta sem mutação.
         console.error("[library-cleanup] falha ao listar Storage:", error.message);
-        return NextResponse.json(
-          { error: "Não foi possível ler o Storage para verificar os arquivos. Nada foi alterado." },
-          { status: 502 }
-        );
+        throw new Error(`Falha ao listar ${prefix}/${path}: ${error.message}`);
       }
 
       const page = data ?? [];
-      for (const obj of page) existing.add(`${prefix}/${obj.name}`);
+      for (const obj of page) {
+        const fullPath = path ? `${prefix}/${path}/${obj.name}` : `${prefix}/${obj.name}`;
+        if (obj.id) {
+          // É um arquivo (tem id) — adiciona ao inventário
+          existing.add(fullPath);
+        } else {
+          // É uma subpasta (sem id) — recursão
+          await listRecursive(prefix, path ? `${path}/${obj.name}` : obj.name);
+        }
+      }
       if (page.length < PAGE) break;
     }
+  }
+
+  try {
+    for (const prefix of prefixes) {
+      await listRecursive(prefix);
+    }
+  } catch (e) {
+    return NextResponse.json(
+      { error: "Não foi possível ler o Storage para verificar os arquivos. Nada foi alterado." },
+      { status: 502 }
+    );
   }
 
   // Definição canônica em lib/library-integrity.ts — folder_id NUNCA entra aqui.

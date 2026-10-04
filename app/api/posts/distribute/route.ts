@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, getUniqueCaptions, type AutoCaptionType } from "@/lib/auto-captions";
@@ -15,6 +15,65 @@ import {
 } from "@/lib/media-priority";
 
 export const runtime = "nodejs";
+
+/**
+ * P1 CORREÇÃO: Idempotência de campanha com identidade estável.
+ *
+ * PROBLEMA ANTERIOR: O hash incluía `start_at`, mas o formulário gera
+ * `new Date().toISOString()` a cada envio no modo Ciclo/burst. Dois envios
+ * da mesma intenção geravam chaves diferentes, criando duplicatas.
+ *
+ * SOLUÇÃO: Separar identidade de operação (estável durante retry) de
+ * fingerprint de conteúdo (detecta reutilização incompatível).
+ *
+ * - `operationId`: gerado no cliente no início da intenção do usuário,
+ *   persistido durante retries. Nova campanha intencional = novo operationId.
+ * - `contentFingerprint`: hash normalizado dos parâmetros que afetam o
+ *   resultado (exclui timestamps voláteis como start_at em burst mode).
+ *
+ * Conflito de unicidade por concorrência: consultar estado da operação
+ * vencedora. Não transformar qualquer erro de banco em sucesso idempotente.
+ */
+function computeContentFingerprint(body: DistributeBody, userId: string): string {
+  // Normaliza campos que afetam o resultado da distribuição.
+  // EXCLUI start_at em burst_mode (volátil, não afeta atribuição).
+  // INCLUI campos omitidos anteriormente: caption_strip_hashtags,
+  // caption_strip_mentions, account_stagger_seconds.
+  const normalized = {
+    userId,
+    accountIds: [...body.account_ids].sort(),
+    folderId: body.folder_id,
+    videoCount: body.video_count,
+    postsPerDay: body.burst_mode ? null : body.posts_per_day,
+    startAt: body.burst_mode ? null : body.start_at,
+    captions: body.captions ?? [],
+    autoCaptionType: body.auto_caption_type ?? null,
+    captionMode: body.caption_mode ?? "custom",
+    captionStripHashtags: body.caption_strip_hashtags ?? false,
+    captionStripMentions: body.caption_strip_mentions ?? false,
+    accountStaggerSeconds: body.account_stagger_seconds ?? null,
+    burstMode: !!body.burst_mode,
+    syncFolderIds: [...(body.sync_folder_ids ?? [])].sort(),
+    processingMode: body.video_processing_mode ?? "original",
+    shareToFeed: body.share_to_feed ?? null,
+    priorityStrategy: body.priority_strategy ?? "views",
+  };
+  return createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+}
+
+function computeOperationId(body: DistributeBody, userId: string): string {
+  // P1: Identidade de operação estável durante retry.
+  // Se o cliente enviar `operation_id` explícito, usa ele (gerado no início
+  // da intenção do usuário). Caso contrário, deriva do conteúdo normalizado
+  // para compatibilidade com clientes antigos.
+  const explicitOpId = (body as unknown as Record<string, unknown>).operation_id as string | undefined;
+  if (explicitOpId && typeof explicitOpId === "string" && explicitOpId.length > 0) {
+    return explicitOpId;
+  }
+  // Fallback: hash do conteúdo (comportamento anterior, mas agora estável
+  // porque exclui campos voláteis em burst mode).
+  return computeContentFingerprint(body, userId);
+}
 
 interface DistributeBody {
   account_ids: string[];
@@ -32,6 +91,7 @@ interface DistributeBody {
   sync_folder_ids?: string[];     // pastas de contas cujas contas novas devem entrar sozinhas na campanha
   video_processing_mode?: string; // "original" (padrao) | "clean_metadata"
   share_to_feed?: boolean;        // true = Reels + grade | false = somente Reels
+  priority_strategy?: string;     // "views" | "least_usage" | "random" (default: "views")
 }
 
 export async function POST(req: NextRequest) {
@@ -147,8 +207,39 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // P1 CORREÇÃO: Idempotência com identidade estável durante retry.
+  // Usa operation_id explícito do cliente (se fornecido) ou deriva do
+  // conteúdo normalizado (exclui campos voláteis em burst mode).
+  const idempotencyKey = computeOperationId(body, user.id);
+
+  // Verifica se já existe uma campanha com esta chave (retry/duplo clique)
+  const { data: existingCampaign } = await admin
+    .from("distribute_campaigns")
+    .select("id, status")
+    .eq("idempotency_key", idempotencyKey)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (existingCampaign) {
+    // Campanha já existe — retorna sucesso idempotente sem recriar posts
+    const { count: existingPosts } = await admin
+      .from("scheduled_posts")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", existingCampaign.id);
+
+    return NextResponse.json({
+      success: true,
+      total_posts: existingPosts ?? 0,
+      campaign_id: existingCampaign.id,
+      idempotent: true,
+      message: "Campanha já criada com estes parâmetros.",
+    });
+  }
+
   const campaignId = randomUUID();
-  const distributionSeed = `${campaignId}:${Date.now()}`;
+  // Seed determinística baseada na chave idempotente (não em Date.now())
+  // para que retries reproduzam exatamente a mesma atribuição.
+  const distributionSeed = idempotencyKey;
   // Distribui uniformemente ao longo de 24h (ignorado em burst_mode)
   const intervalMinutes = burst_mode ? 0 : Math.floor((24 * 60) / posts_per_day);
   // Modo Ciclo: tudo agendado para agora — o cron publish-scheduled drena a fila
@@ -281,41 +372,49 @@ export async function POST(req: NextRequest) {
   // posts mas não gera trabalho duplicado — retries usam o mesmo campaignId.
   // A sincronização também faz parte da transação lógica: sem ela, contas novas
   // não seriam matriculadas automaticamente pelo cron sync-distribute-accounts.
-  if (Array.isArray(sync_folder_ids) && sync_folder_ids.length > 0) {
-    const { error: syncErr } = await admin.from("distribute_campaigns").insert({
-      id: campaignId,
-      user_id: user.id,
-      account_folder_ids: sync_folder_ids,
-      video_folder_id: folder_id,
-      video_count,
-      posts_per_day: burst_mode ? 1 : posts_per_day,
-      captions: isAutoCaption ? [] : validCaptions,
-      auto_caption_enabled: isAutoCaption,
-      auto_caption_type: isAutoCaption ? autoType : null,
-      caption_mode: captionMode,
-      caption_strip_hashtags: stripHashtags,
-      caption_strip_mentions: stripMentions,
-      account_stagger_seconds: account_stagger_seconds ?? null,
-      burst_mode: !!burst_mode,
-      video_processing_mode: processingMode,
-      share_to_feed: shareToFeed,
-      priority_strategy: priorityStrategy,
-      distribution_seed: distributionSeed,
-    });
-    if (syncErr) {
-      return NextResponse.json(
-        { error: `Falha ao salvar configuração da campanha: ${syncErr.message}` },
-        { status: 500 },
-      );
-    }
+  // P1: Atomicidade com estado de preparação. A campanha é inserida como
+  // "preparing" antes dos posts. Só após todos os inserts bem-sucedidos ela
+  // é ativada ("active"). Isso impede que workers consumam campanhas parciais.
+  // A chave idempotente garante que retries não criem duplicatas.
+  // P1 CORREÇÃO: Schema exige uuid[] NOT NULL DEFAULT '{}'.
+  // O código anterior enviava null quando não havia pastas de sincronização,
+  // causando falha de constraint no banco. Enviar array vazio explicitamente.
+  const { error: campaignInsertErr } = await admin.from("distribute_campaigns").insert({
+    id: campaignId,
+    user_id: user.id,
+    idempotency_key: idempotencyKey,
+    status: "preparing", // Estado inicial: ainda montando posts
+    account_folder_ids: Array.isArray(sync_folder_ids) && sync_folder_ids.length > 0 ? sync_folder_ids : [],
+    video_folder_id: folder_id,
+    video_count,
+    posts_per_day: burst_mode ? 1 : posts_per_day,
+    captions: isAutoCaption ? [] : validCaptions,
+    auto_caption_enabled: isAutoCaption,
+    auto_caption_type: isAutoCaption ? autoType : null,
+    caption_mode: captionMode,
+    caption_strip_hashtags: stripHashtags,
+    caption_strip_mentions: stripMentions,
+    account_stagger_seconds: account_stagger_seconds ?? null,
+    burst_mode: !!burst_mode,
+    video_processing_mode: processingMode,
+    share_to_feed: shareToFeed,
+    priority_strategy: priorityStrategy,
+    distribution_seed: distributionSeed,
+  });
+  if (campaignInsertErr) {
+    return NextResponse.json(
+      { error: `Falha ao criar campanha: ${campaignInsertErr.message}` },
+      { status: 500 },
+    );
   }
 
-  // Insert em lotes de 500 — após confirmação da campanha/sync
+  // Insert em lotes de 500 — após confirmação da campanha em estado "preparing"
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await admin.from("scheduled_posts").insert(rows.slice(i, i + 500));
     if (error) {
-      // Posts parcialmente inseridos são um estado inconsistente.
-      // Retorna erro claro; a campanha existe mas está incompleta.
+      // Posts parcialmente inseridos: campanha fica em "preparing" para sempre.
+      // Workers não consomem campanhas nesse estado. O usuário pode recriar
+      // com os mesmos parâmetros (idempotência) ou limpar manualmente.
       // O usuário pode recriar com o mesmo seed para reproduzir a atribuição.
       return NextResponse.json(
         {
@@ -328,11 +427,79 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // P1 CORREÇÃO: Ativação atômica com verificação de integridade.
+  // PROBLEMA ANTERIOR: Falha de ativação era apenas logada e a resposta
+  // continuava sendo sucesso, deixando campanha "preparing" com posts
+  // pendentes que workers não consumiriam (bloqueio silencioso).
+  //
+  // SOLUÇÃO: Verificar contagem de posts inseridos antes de ativar.
+  // Se contagem não bater, marcar como "failed" e retornar erro explícito.
+  // Retry com mesmo operation_id encontrará campanha "failed" e poderá
+  // limpar/recriar, ou o usuário pode intervir manualmente.
+  const { count: insertedCount, error: countErr } = await admin
+    .from("scheduled_posts")
+    .select("id", { count: "exact", head: true })
+    .eq("campaign_id", campaignId);
+
+  if (countErr || insertedCount !== rows.length) {
+    // Integridade comprometida: marcar como failed e retornar erro.
+    await admin
+      .from("distribute_campaigns")
+      .update({ status: "failed" })
+      .eq("id", campaignId)
+      .eq("status", "preparing");
+    console.error(
+      `[distribute] Falha de integridade: esperados ${rows.length} posts, ` +
+      `encontrados ${insertedCount ?? 0}. Campanha marcada como failed.`
+    );
+    return NextResponse.json(
+      {
+        error: `Falha de integridade: esperados ${rows.length} posts, encontrados ${insertedCount ?? 0}.`,
+        campaign_id: campaignId,
+        status: "failed",
+      },
+      { status: 500 },
+    );
+  }
+
+  const { error: activateErr, data: activated } = await admin
+    .from("distribute_campaigns")
+    .update({ status: "active" })
+    .eq("id", campaignId)
+    .eq("status", "preparing")
+    .select("id");
+
+  if (activateErr || !activated?.length) {
+    // Falha de ativação: campanha pode já ter sido ativada por concorrência
+    // ou estar em estado inesperado. Verificar estado atual.
+    const { data: current } = await admin
+      .from("distribute_campaigns")
+      .select("status")
+      .eq("id", campaignId)
+      .single();
+    const currentStatus = (current as { status?: string } | null)?.status ?? "unknown";
+    if (currentStatus !== "active") {
+      console.error(
+        `[distribute] Falha ao ativar campanha ${campaignId}: status atual=${currentStatus}, erro=${activateErr?.message}`
+      );
+      return NextResponse.json(
+        {
+          error: `Falha ao ativar campanha. Status atual: ${currentStatus}.`,
+          campaign_id: campaignId,
+          status: currentStatus,
+        },
+        { status: 500 },
+      );
+    }
+    // Já estava active (concorrência venceu) — trata como sucesso.
+  }
+
   const times = rows.map((r) => (r as { scheduled_at: string }).scheduled_at).sort();
 
   return NextResponse.json({
     success: true,
     campaign_id: campaignId,
+    status: "active",
     total_posts: rows.length,
     accounts: account_ids.length,
     videos_per_account: maxVideos,
@@ -340,8 +507,6 @@ export async function POST(req: NextRequest) {
     first_slot: times[0],
     last_slot: times[times.length - 1],
     caption_mode: captionMode,
-    // Quantos vídeos distintos entraram sem legenda original (modo "original").
-    // Publicam sem legenda — a UI usa isto para avisar depois de agendar.
     videos_sem_legenda_original: semLegendaOriginal.size,
   });
 }

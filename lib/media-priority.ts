@@ -196,6 +196,115 @@ function getPostedSet(
 }
 
 // ---------------------------------------------------------------------------
+// P1 CORREÇÃO: Maximum bipartite matching com complexidade controlada
+// ---------------------------------------------------------------------------
+
+/**
+ * Encontra matching máximo entre contas e vídeos elegíveis usando BFS/DFS
+ * com caminhos aumentantes (variante simplificada de Hopcroft-Karp).
+ *
+ * PROBLEMA ANTERIOR: Backtracking DFS puro tinha complexidade exponencial
+ * O(N! * M!) no pior caso. Com 11 contas/10 vídeos ou 200/10, ultrapassava
+ * 1.5s e bloqueava o processo Node.
+ *
+ * SOLUÇÃO: Algoritmo de caminhos aumentantes com complexidade O(V * E) onde
+ * V = contas + vídeos, E = arestas de elegibilidade. Para grafos esparsos
+ * (cada conta elegível para poucos vídeos), isso é muito mais rápido que
+ * backtracking exponencial.
+ *
+ * Retorna matching máximo (não necessariamente perfeito). Se não houver
+ * matching perfeito, retorna o melhor matching parcial encontrado.
+ */
+function findMaximumMatching(
+  accountIds: string[],
+  eligibility: Map<string, VideoCandidate[]>,
+  strategy: PriorityStrategy,
+  globalUsage: Map<string, number>,
+  rng: () => number,
+): Map<string, VideoCandidate> {
+  const result = new Map<string, VideoCandidate>();
+  const videoToAccount = new Map<string, string>();
+
+  // Pré-rankeia elegibilidade de cada conta por estratégia (estável por seed)
+  const rankedEligibility = new Map<string, VideoCandidate[]>();
+  for (const accountId of accountIds) {
+    const eligible = eligibility.get(accountId) ?? [];
+    rankedEligibility.set(accountId, buildRankedPool(eligible, strategy, globalUsage, rng));
+  }
+
+  // BFS para encontrar caminho aumentante a partir de uma conta não匹配ada
+  function findAugmentingPath(startAccount: string): string[] | null {
+    const visited = new Set<string>();
+    const queue: Array<{ account: string; path: string[] }> = [
+      { account: startAccount, path: [startAccount] }
+    ];
+    visited.add(startAccount);
+
+    while (queue.length > 0) {
+      const { account, path } = queue.shift()!;
+      const candidates = rankedEligibility.get(account) ?? [];
+
+      for (const video of candidates) {
+        const currentOwner = videoToAccount.get(video.id);
+
+        if (currentOwner === undefined) {
+          // Vídeo livre — caminho aumentante encontrado
+          return [...path, video.id];
+        }
+
+        if (!visited.has(currentOwner)) {
+          // Vídeo ocupado — tenta reatribuir o dono atual
+          visited.add(currentOwner);
+          queue.push({ account: currentOwner, path: [...path, video.id, currentOwner] });
+        }
+      }
+    }
+
+    return null; // Nenhum caminho aumentante encontrado
+  }
+
+  // Aplica caminho aumentante: alterna atribuições ao longo do caminho
+  function applyAugmentingPath(path: string[]): void {
+    for (let i = 0; i < path.length - 1; i += 2) {
+      const account = path[i];
+      const videoId = path[i + 1];
+      const video = rankedEligibility.get(account)?.find(v => v.id === videoId);
+
+      if (!video) continue;
+
+      const previousOwner = videoToAccount.get(videoId);
+      if (previousOwner) {
+        // Remove atribuição anterior
+        result.delete(previousOwner);
+      }
+
+      // Atribui vídeo à conta atual
+      result.set(account, video);
+      videoToAccount.set(videoId, account);
+    }
+  }
+
+  // Itera sobre todas as contas tentando encontrar caminhos aumentantes
+  // Limite de iterações para evitar loops infinitos em grafos patológicos
+  const maxIterations = accountIds.length * 2;
+  let iterations = 0;
+
+  for (const accountId of accountIds) {
+    if (result.has(accountId)) continue; // Já匹配ada
+
+    iterations++;
+    if (iterations > maxIterations) break; // Segurança contra loops
+
+    const path = findAugmentingPath(accountId);
+    if (path) {
+      applyAugmentingPath(path);
+    }
+  }
+
+  return result; // Matching máximo (pode ser parcial)
+}
+
+// ---------------------------------------------------------------------------
 // Main assignment function
 // ---------------------------------------------------------------------------
 
@@ -262,35 +371,160 @@ export function assignVideos(ctx: PriorityContext): AssignmentResult[] {
     // 2/1 → both accounts get the same video).
     const scarcityDetected = globallyAvailable.length < shuffledAccountIndices.length;
 
-    if (scarcityDetected) {
-      // Modular distribution: rank all globally available videos once, then
-      // assign them round-robin to shuffled accounts. This guarantees
-      // balanced distribution regardless of processing order.
-      const rankedAll = buildRankedPool(globallyAvailable, strategy, liveUsage, rng);
-      if (rankedAll.length === 0) continue;
+    // P1: Matching bipartido para evitar reset guloso.
+    // Caso A: existe atribuição sem repetição, mas a seleção gulosa reinicia ciclos.
+    // Caso B: escassez ignora histórico individual.
+    // Solução: construir grafo de elegibilidade (conta → vídeos inéditos) e
+    // encontrar matching máximo antes de cair em fallback greedy.
+    const accountEligibility = new Map<string, VideoCandidate[]>();
+    for (const ai of shuffledAccountIndices) {
+      const accountId = accountIds[ai];
+      const posted = livePosted.get(accountId)!;
+      const eligible = globallyAvailable.filter(
+        (v) => !posted.has(v.id) && !roundClaims.has(v.id),
+      );
+      accountEligibility.set(accountId, eligible);
+    }
 
-      for (let si = 0; si < shuffledAccountIndices.length; si++) {
-        const accountId = accountIds[shuffledAccountIndices[si]];
-        const posted = livePosted.get(accountId)!;
-        // Pick video at modular index — ensures even spread across ranked list
-        const videoIndex = si % rankedAll.length;
-        const selected = rankedAll[videoIndex];
-        const isCycleReset = posted.has(selected.id);
-        roundAssignments.push({ accountId, video: selected, isCycleReset });
+    // Tenta matching máximo usando algoritmo guloso com backtracking simples.
+    // Para N contas e M vídeos, complexidade O(N*M) na prática.
+    const matchingResult = findMaximumMatching(
+      shuffledAccountIndices.map((i) => accountIds[i]),
+      accountEligibility,
+      strategy,
+      liveUsage,
+      rng,
+    );
+
+    if (matchingResult && matchingResult.size > 0) {
+      // P1 CORREÇÃO: Usar matching máximo (pode ser parcial ou perfeito).
+      // PROBLEMA ANTERIOR: Só usava matching se fosse PERFEITO (size === accounts).
+      // Isso fazia com que 11 contas/10 vídeos caíssem no fallback de escassez
+      // mesmo quando o matching máximo encontrava 10 atribuições distintas.
+      //
+      // SOLUÇÃO: Usar todas as atribuições do matching máximo, depois preencher
+      // contas restantes com fallback (greedy ou escassez conforme o caso).
+      for (const [accountId, video] of matchingResult) {
+        roundAssignments.push({ accountId, video, isCycleReset: false });
+        roundClaims.add(video.id);
+      }
+      // Se matching foi perfeito, pula fallback
+      if (matchingResult.size === shuffledAccountIndices.length) {
+        // Todas as contas atribuídas — commit e próxima rodada
+      } else if (scarcityDetected) {
+        // P1 CORREÇÃO: Escassez real — menos vídeos que contas.
+        // PROBLEMA ANTERIOR: O primeiro passa atribuía vídeos inéditos apenas para
+        // contas com elegibilidade NÃO usada, marcando o vídeo como "used" após
+        // a primeira atribuição. Isso impedia que outras contas com o mesmo vídeo
+        // inédito o recebessem, resultando em distribuição desigual (2/3 em vez
+        // de 3/3 no Caso B).
+        //
+        // SOLUÇÃO: Em escassez, permitir que múltiplas contas recebam o mesmo
+        // vídeo inédito se ele for a única opção elegível para elas. O matching
+        // máximo já tentou encontrar atribuições distintas; se falhou, é porque
+        // não há solução perfeita — então distribuir repetições equilibradas
+        // respeitando elegibilidade individual.
+        const rankedAll = buildRankedPool(globallyAvailable, strategy, liveUsage, rng);
+        if (rankedAll.length === 0) continue;
+
+        // Identifica vídeos inéditos por conta (não usados no histórico pessoal)
+        const accountUnpublished = new Map<string, VideoCandidate[]>();
+        for (const ai of shuffledAccountIndices) {
+          const accountId = accountIds[ai];
+          const posted = livePosted.get(accountId)!;
+          const eligible = accountEligibility.get(accountId) ?? [];
+          const unpublished = eligible.filter((v) => !posted.has(v.id));
+          accountUnpublished.set(accountId, unpublished);
+        }
+
+        // P1 CORREÇÃO: Híbrido — elegibilidade individual + distribuição modular.
+        // PROBLEMA ANTERIOR 1: Primeiro passa atribuía mesmo vídeo para todas
+        // as contas (191 para um vídeo em 200/10).
+        // PROBLEMA ANTERIOR 2: Distribuição modular pura ignorava elegibilidade
+        // individual, fazendo conta C receber v1 em vez de v2 (único inédito).
+        //
+        // SOLUÇÃO: Duas fases para contas não cobertas pelo matching:
+        // Fase 1: Contas com APENAS 1 vídeo inédito elegível recebem esse vídeo
+        //         (respeita elegibilidade individual crítica — Caso B).
+        // Fase 2: Contas restantes recebem distribuição modular dos vídeos
+        //         rankeados globalmente (garante equilíbrio em escassez extrema).
+        const assignedAccounts = new Set<string>(matchingResult.keys());
+        const remainingAccounts = shuffledAccountIndices
+          .map((i) => accountIds[i])
+          .filter((id) => !assignedAccounts.has(id));
+
+        // Fase 1: Priorizar contas com elegibilidade restrita (apenas 1 inédito)
+        const phase1Assigned = new Set<string>();
+        for (const accountId of remainingAccounts) {
+          const unpublished = accountUnpublished.get(accountId) ?? [];
+          if (unpublished.length === 1) {
+            // Única opção elegível — atribui sem hesitar
+            const selected = unpublished[0];
+            const posted = livePosted.get(accountId)!;
+            const isCycleReset = posted.has(selected.id);
+            roundAssignments.push({ accountId, video: selected, isCycleReset });
+            phase1Assigned.add(accountId);
+          }
+        }
+
+        // Fase 2: Distribuição modular para contas restantes
+        const phase2Accounts = remainingAccounts.filter(id => !phase1Assigned.has(id));
+        for (let si = 0; si < phase2Accounts.length; si++) {
+          const accountId = phase2Accounts[si];
+          const videoIndex = si % rankedAll.length;
+          const selected = rankedAll[videoIndex];
+          const posted = livePosted.get(accountId)!;
+          const isCycleReset = posted.has(selected.id);
+          roundAssignments.push({ accountId, video: selected, isCycleReset });
+        }
+      } else {
+        // Fallback greedy: matching parcial mas não é escassez. Usa lógica original
+        // mas com roundClaims para evitar duplicação na rodada.
+        for (const ai of shuffledAccountIndices) {
+          const accountId = accountIds[ai];
+          // Pula contas já atribuídas pelo matching
+          if (roundAssignments.some((r) => r.accountId === accountId)) continue;
+
+          const posted = livePosted.get(accountId)!;
+          let perAccountPool = globallyAvailable.filter(
+            (v) => !posted.has(v.id) && !roundClaims.has(v.id),
+          );
+
+          let isCycleReset = false;
+
+          // Cycle reset: personal pool exhausted → relax to all except last posted
+          if (perAccountPool.length === 0 && globallyAvailable.length > 0) {
+            isCycleReset = true;
+            const lastVideo = lastVideoPerAccount.get(accountId);
+            perAccountPool = globallyAvailable.filter(
+              (v) => v.id !== lastVideo && !roundClaims.has(v.id),
+            );
+            if (perAccountPool.length === 0) {
+              perAccountPool = globallyAvailable.filter((v) => !roundClaims.has(v.id));
+            }
+          }
+
+          if (perAccountPool.length === 0) continue;
+
+          const ranked = buildRankedPool(perAccountPool, strategy, liveUsage, rng);
+          if (ranked.length === 0) continue;
+
+          const selected = ranked[0];
+          roundAssignments.push({ accountId, video: selected, isCycleReset });
+          roundClaims.add(selected.id);
+        }
       }
     } else {
-      // Normal path: each account picks from its unique pool with roundClaims
+      // Sem matching encontrado — fallback greedy completo
       for (const ai of shuffledAccountIndices) {
         const accountId = accountIds[ai];
         const posted = livePosted.get(accountId)!;
-
         let perAccountPool = globallyAvailable.filter(
           (v) => !posted.has(v.id) && !roundClaims.has(v.id),
         );
 
         let isCycleReset = false;
 
-        // Cycle reset: personal pool exhausted → relax to all except last posted
         if (perAccountPool.length === 0 && globallyAvailable.length > 0) {
           isCycleReset = true;
           const lastVideo = lastVideoPerAccount.get(accountId);

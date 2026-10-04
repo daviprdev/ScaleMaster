@@ -40,3 +40,6 @@ next-env.d.ts
 
 # Builds temporários das suítes de teste (scripts/test-*.mjs)
 .tmp-test-build-*/
+.env.cron
+.env.production
+.env.vercel-tmp

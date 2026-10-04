@@ -361,8 +361,11 @@ async function main() {
 
   check("TESTE 8: Loop resolve a legenda com o vídeo já escolhido",
     /resolveCaption\(\{[\s\S]{0,200}originalCaption: assignment\.video\.caption/.test(loops));
+  // P1 CORREÇÃO: O SELECT agora inclui `views` (Entrega 1 — prioridade por views).
+  // O teste verifica que `caption` está presente (necessário para resolver legenda),
+  // não a lista exata de campos, para acomodar adições legítimas.
   check("TESTE 8: o SELECT do Loop traz a legenda de cada vídeo",
-    loops.includes('.select("id, public_url, filename, file_size, caption")'));
+    /\.select\("[^"]*caption[^"]*"\)/.test(loops) && loops.includes("public_url"));
   check("TESTE 8: o texto vai para o container (snapshot por conta+vídeo)",
     loops.includes("caption,") && loops.includes("caption_mode: normalizeCaptionMode(loop.caption_mode)"));
   check("TESTE 8: Postar resolve por vídeo dentro do laço",

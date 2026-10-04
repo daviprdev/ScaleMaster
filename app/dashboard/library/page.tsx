@@ -235,12 +235,20 @@ export default function LibraryPage() {
     }
 
     const timestamp = Date.now();
-    const storagePath = `videos/upload_${timestamp}_${safeName}`;
+    // P1: O path deve começar com <user_id>/ para passar na validação de propriedade
+    // do library/record. Sem isso, uploads legítimos seriam rejeitados após a correção
+    // de segurança que impede cadastro de caminhos alheios.
+    const supabaseClient = createClient();
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user) {
+      setUploads(prev => prev.map(u => u.id === item.id ? { ...u, status: "error", error: "Sessão expirada." } : u));
+      return;
+    }
+    const storagePath = `${user.id}/videos/upload_${timestamp}_${safeName}`;
 
     try {
       await new Promise<void>((resolve, reject) => {
-        const supabase = createClient();
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabaseClient.auth.getSession().then(({ data: { session } }) => {
           if (!session) { reject(new Error("Sessão expirada. Faça login novamente.")); return; }
 
           const xhr = new XMLHttpRequest();

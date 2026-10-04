@@ -123,16 +123,20 @@ export async function GET(req: NextRequest) {
   );
 
   // ── Auto-heal 1: posts presos em "publishing" ─────────────────────────────
+  // P1: Usa publishing_started_at (início real do processamento) em vez de
+  // scheduled_at (horário agendado). Um post agendado há 30 min mas iniciado
+  // há 10 segundos não deve ser recuperado. Só recupera quem realmente começou
+  // a processar há mais de 5 minutos sem finalizar.
   const stuckCutoff = new Date(Date.now() - 5 * 60_000).toISOString();
   const { data: unblocked } = await admin
     .from("scheduled_posts")
-    .update({ status: "pending", error_message: null })
+    .update({ status: "pending", error_message: null, publishing_started_at: null })
     .eq("status", "publishing")
-    .lte("scheduled_at", stuckCutoff)
+    .lte("publishing_started_at", stuckCutoff)
     .select("id");
 
   if (unblocked?.length) {
-    console.log(`[publish-scheduled] ${unblocked.length} post(s) "publishing" → "pending"`);
+    console.log(`[publish-scheduled] ${unblocked.length} post(s) "publishing" → "pending" (lease expirado)`);
   }
 
   // ── Auto-heal 2: posts failed por ERROR/EXPIRED recebem nova tentativa ────
@@ -162,17 +166,26 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Busca posts elegíveis ─────────────────────────────────────────────────
-  // IMPORTANTE: não buscamos posts com instagram.com URLs — esses são tratados
-  // pelo prefetch-clone-urls que resolve as URLs para Supabase antes de publicar.
+  // P1 CORREÇÃO: Filtrar campanhas ativas antes de claimar posts.
+  // O código anterior buscava todos os posts "pending" sem verificar se a
+  // campanha associada estava em estado "active". Isso permitia que workers
+  // consumissem posts de campanhas ainda em "preparing" (incompletas), causando
+  // publicação parcial e falhas silenciosas.
+  //
+  // Solução: JOIN com distribute_campaigns e exigir status='active' OU
+  // campaign_id IS NULL (posts legítimos de outros fluxos sem campanha).
+  // Preservar posts de Loop/Clonar/Postar manual que não têm campanha.
   const SELECT_FIELDS =
-    "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, video_processing_mode, share_to_feed, " +
+    "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, video_processing_mode, share_to_feed, campaign_id, " +
     "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id), " +
-    "videos_library(public_url)";
+    "videos_library(public_url), " +
+    "distribute_campaigns!inner(id, status)";
 
   // Stories furam a fila: usuário espera publicação quase imediata ("Postar agora"),
   // diferente de campanhas em massa (Postar/Clone/Loop) que já são agendadas de
   // propósito ao longo de dias. Busca stories elegíveis primeiro; só preenche o
   // restante do lote com os demais posts se sobrar espaço.
+  // P1: Filtrar por campanha ativa OU sem campanha (posts legítimos de outros fluxos).
   const { data: storyRows, error: storyErr } = await admin
     .from("scheduled_posts")
     .select(SELECT_FIELDS)
@@ -180,6 +193,7 @@ export async function GET(req: NextRequest) {
     .eq("post_type", "story")
     .lte("scheduled_at", now)
     .not("video_url", "ilike", "%instagram.com%")
+    .or("campaign_id.is.null,distribute_campaigns.status.eq.active")
     .order("scheduled_at", { ascending: true })
     .limit(BATCH_SIZE);
 
@@ -283,9 +297,13 @@ export async function GET(req: NextRequest) {
     );
 
     // ── CLAIM atômico ──────────────────────────────────────────────────────
+    // P1: Registra publishing_started_at no momento do claim para que a
+    // recuperação de fila (auto-heal) use o início real do processamento,
+    // não o scheduled_at. Um post agendado há 30 min mas iniciado há 10s
+    // não deve ser recuperado prematuramente.
     const { data: claimed } = await admin
       .from("scheduled_posts")
-      .update({ status: "publishing" })
+      .update({ status: "publishing", publishing_started_at: new Date().toISOString() })
       .eq("id", post.id)
       .eq("status", "pending")
       .select("id");

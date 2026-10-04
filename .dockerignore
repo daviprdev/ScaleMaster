@@ -33,4 +33,9 @@ supabase
 
 # Review and prompt artifacts
 docs/prompts
-docs/review-*
+
+# Environment files with secrets — NEVER include in Docker context
+.env.cron
+.env.production
+.env.vercel-tmp
+.env.*.local

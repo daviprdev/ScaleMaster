@@ -183,10 +183,18 @@ async function main() {
 
   // TESTE 10 — compensação de upload.
   const recordRoute = src("app/api/library/record/route.ts");
-  check("TESTE 10: INSERT falhou → compensa removendo o arquivo recém-enviado",
-    /if \(error\)[\s\S]{0,800}storage[\s\S]{0,200}\.remove\(\[storagePath\]\)/.test(recordRoute));
-  check("TESTE 10: compensação só se nenhuma linha referenciar o arquivo",
-    /count: "exact", head: true[\s\S]{0,200}\.eq\("storage_path", storagePath\)/.test(recordRoute));
+  // P1 CORREÇÃO: Teste atualizado para refletir verificação robusta de referências.
+  // O código agora consulta count ANTES de apagar e distingue erro de consulta
+  // (não apagar) de ausência comprovada (count === 0). A regex anterior esperava
+  // if(error) seguido imediatamente de .remove(), mas agora há lógica de verificação
+  // entre eles. O teste verifica: (1) existe consulta de count, (2) remove só se
+  // count === 0, (3) não é limpeza global.
+  check("TESTE 10: INSERT falhou → consulta referências antes de compensar",
+    /count: "exact", head: true[\s\S]{0,300}\.eq\("storage_path", storagePath\)/.test(recordRoute));
+  check("TESTE 10: compensação só se count === 0 (ausência comprovada)",
+    /\(count \?\? 0\) === 0[\s\S]{0,400}\.remove\(\[storagePath\]\)/.test(recordRoute));
+  check("TESTE 10: erro de consulta NÃO apaga arquivo (preserva em dúvida)",
+    /if \(countErr\)[\s\S]{0,200}Arquivo preservado/.test(recordRoute));
   check("TESTE 10: compensação nunca é limpeza global",
     !/\.remove\(\s*paths/.test(recordRoute) && recordRoute.includes(".remove([storagePath])"));
 

@@ -476,7 +476,11 @@ async function assignVideosForLoop(
   const loopStrategy = normalizePriorityStrategy(
     (loop as unknown as Record<string, unknown>).priority_strategy as string | undefined,
   );
-  const loopSeed = `${loop.id}:${windowStartIso}`;
+  // Usa a seed persistida no loop para reprodutibilidade em retries.
+  // Fallback para loop.id:windowStartIso apenas se a coluna ainda não foi populada
+  // (loops criados antes da migração SQL).
+  const persistedLoopSeed = (loop as unknown as Record<string, unknown>).distribution_seed as string | null;
+  const loopSeed = persistedLoopSeed || `${loop.id}:${windowStartIso}`;
 
   // Converte usageByVideo (Map) para o formato esperado pelo media-priority
   // (Map<accountId, Map<videoId, count>>). O `usage` já está nesse formato.
@@ -1434,6 +1438,7 @@ export async function GET(req: NextRequest) {
       effect_zoom, effect_blur, effect_noise, effect_anti_ai, video_processing_mode, share_to_feed,
       auto_caption_enabled, auto_caption_type,
       caption_mode, caption_strip_hashtags, caption_strip_mentions,
+      priority_strategy, distribution_seed,
       last_posted_at, last_skip_reason,
       library_folders ( name ),
       loop_accounts (

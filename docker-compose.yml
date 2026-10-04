@@ -9,8 +9,12 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HOSTNAME=0.0.0.0
+    # P1 CORREÇÃO: Healthcheck usando Node (já disponível) em vez de wget/curl.
+    # A imagem node:22-alpine não inclui wget por padrão, causando "unhealthy"
+    # mesmo com o app respondendo corretamente. Node HTTP é mais confiável e
+    # não requer instalação adicional de pacotes.
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      test: ["CMD", "node", "-e", "const http = require('http'); const req = http.get('http://localhost:3000/api/health', {timeout: 5000}, (res) => { let data = ''; res.on('data', chunk => data += chunk); res.on('end', () => process.exit(res.statusCode === 200 ? 0 : 1)); }); req.on('error', () => process.exit(1)); req.on('timeout', () => { req.destroy(); process.exit(1); });"]
       interval: 30s
       timeout: 10s
       retries: 3

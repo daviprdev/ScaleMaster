@@ -53,6 +53,23 @@ export async function POST(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
 
+  // SEGURANÇA P1: Valida propriedade do storagePath ANTES de qualquer operação.
+  // Um cliente malicioso não pode registrar um arquivo de outro usuário enviando
+  // um storagePath arbitrário. O path deve começar com o user_id ou ser um upload
+  // direto autorizado (direct/<user_id>/). Isso impede o ataque descrito no prompt:
+  // cadastrar caminho alheio → excluir registro próprio → apagar arquivo da vítima.
+  const isOwnedPath = storagePath.startsWith(`${userId}/`) || storagePath.startsWith(`direct/${userId}/`);
+  if (!isOwnedPath) {
+    console.warn(
+      `[library-record] Tentativa de registrar storagePath não pertencente ao usuário ${userId}: ${storagePath}. ` +
+      `Requisição rejeitada antes do INSERT.`
+    );
+    return NextResponse.json(
+      { error: "storagePath não pertence a este usuário. Upload inválido." },
+      { status: 403 }
+    );
+  }
+
   // Confirma que a pasta informada pertence ao usuário logado
   const { data: folder } = await admin
     .from("library_folders")
@@ -107,14 +124,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Só removemos o arquivo desta operação, e apenas depois de confirmar que
-    // NENHUMA linha de videos_library o referencia.
-    const { count } = await admin
+    // P1 CORREÇÃO: Tratamento robusto de erro na consulta de referências.
+    // PROBLEMA ANTERIOR: O código ignorava erro da consulta e tratava
+    // `count = null` como zero, podendo apagar um arquivo que ainda tinha
+    // referências se a consulta falhasse (timeout, permissão, rede).
+    //
+    // SOLUÇÃO: Distinguir erro de consulta (não apagar) de ausência
+    // comprovada (count === 0). Preservar arquivo em caso de dúvida.
+    const { count, error: countErr } = await admin
       .from("videos_library")
       .select("id", { count: "exact", head: true })
       .eq("storage_path", storagePath);
 
-    if (!count && !storagePath.startsWith("direct/")) {
+    if (countErr) {
+      console.error(
+        `[library-record] INSERT falhou — erro ao consultar referências para ${storagePath}: ${countErr.message}. ` +
+        `Arquivo preservado (não é seguro apagar sem confirmação).`
+      );
+    } else if ((count ?? 0) === 0 && !storagePath.startsWith("direct/")) {
       const { error: rollbackError } = await admin.storage
         .from("videos-library")
         .remove([storagePath]);
@@ -123,7 +150,9 @@ export async function POST(req: NextRequest) {
         `${rollbackError ? "falhou (arquivo ficou órfão)" : "arquivo removido"}`
       );
     } else {
-      console.warn("[library-record] INSERT falhou; arquivo referenciado por outra linha — preservado.");
+      console.warn(
+        `[library-record] INSERT falhou; arquivo referenciado por ${count ?? 0} linha(s) — preservado.`
+      );
     }
 
     return NextResponse.json({ error: error.message }, { status: 500 });

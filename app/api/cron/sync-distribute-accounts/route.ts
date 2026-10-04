@@ -51,6 +51,8 @@ interface DistributeCampaignRow {
   burst_mode: boolean;
   video_processing_mode: string | null;
   share_to_feed: boolean | null;
+  priority_strategy: string | null;
+  distribution_seed: string | null;
 }
 
 interface AccountState {
@@ -66,9 +68,14 @@ export async function GET(req: NextRequest) {
 
   const admin = getSupabaseAdmin();
 
+  // P1 CORREÇÃO: Filtrar apenas campanhas ativas.
+  // O código anterior buscava todas as campanhas sem verificar status, permitindo
+  // que o sincronizador consumisse campanhas ainda em "preparing" (incompletas).
+  // Isso causava matrícula prematura de contas novas em campanhas parciais.
   const { data: campaigns, error } = await admin
     .from("distribute_campaigns")
-    .select("id, user_id, account_folder_ids, video_folder_id, video_count, posts_per_day, captions, auto_caption_enabled, auto_caption_type, caption_mode, caption_strip_hashtags, caption_strip_mentions, account_stagger_seconds, burst_mode, video_processing_mode, share_to_feed");
+    .select("id, user_id, account_folder_ids, video_folder_id, video_count, posts_per_day, captions, auto_caption_enabled, auto_caption_type, caption_mode, caption_strip_hashtags, caption_strip_mentions, account_stagger_seconds, burst_mode, video_processing_mode, share_to_feed, priority_strategy, distribution_seed, status")
+    .eq("status", "active");
 
   if (error) {
     console.error("[sync-distribute-accounts] Erro ao buscar campanhas:", error.message);
@@ -209,7 +216,11 @@ async function processCampaign(
   const campaignStrategy = normalizePriorityStrategy(
     (campaign as unknown as Record<string, unknown>).priority_strategy as string | undefined,
   );
-  const cycleSeed = `${campaign.id}:${now}`;
+  // Usa a seed persistida na campanha para reprodutibilidade em retries.
+  // Fallback para campaign.id:now apenas se a coluna ainda não foi populada
+  // (campanhas criadas antes da migração SQL).
+  const persistedSeed = (campaign as unknown as Record<string, unknown>).distribution_seed as string | null;
+  const cycleSeed = persistedSeed || `${campaign.id}:${now}`;
   const priorityResults = priorityAssignVideos({
     candidates: allVideos.map((v) => ({
       id: v.id,

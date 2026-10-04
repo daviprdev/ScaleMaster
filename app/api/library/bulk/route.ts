@@ -71,39 +71,69 @@ export async function DELETE(req: NextRequest) {
   }
 
   // ── Fase 2: Storage (DEPOIS — best-effort, não bloqueia resposta) ──
+  // P1 CORREÇÃO: Verificar referências antes de apagar fisicamente.
+  // PROBLEMA ANTERIOR: O código apagava arquivos do Storage imediatamente após
+  // deletar os registros do banco, sem verificar se outras linhas ainda
+  // referenciavam o mesmo storage_path. Isso causava perda de dados quando
+  // múltiplos registros compartilhavam o mesmo arquivo (ex: clones, reuploads).
+  //
+  // SOLUÇÃO: Para cada storage_path, consultar se ainda existem registros
+  // ativos no banco. Só remover fisicamente se count === 0.
   // "direct/" = URL externa sem upload no Storage → pular
   const storagePaths = ownedRows
     .map(r => r.storage_path)
     .filter(p => p && !p.startsWith("direct/"));
 
   if (storagePaths.length > 0) {
-    // Divide em lotes de 100 (limite da Storage API) e remove em paralelo
-    const BATCH_SIZE = 100;
-    const batches: string[][] = [];
-    for (let i = 0; i < storagePaths.length; i += BATCH_SIZE) {
-      batches.push(storagePaths.slice(i, i + BATCH_SIZE));
+    // Verifica quais paths ainda têm referências ativas
+    const pathsToDelete: string[] = [];
+    for (const path of storagePaths) {
+      const { count, error: countErr } = await admin
+        .from("videos_library")
+        .select("id", { count: "exact", head: true })
+        .eq("storage_path", path);
+
+      if (countErr) {
+        console.error(`[library/bulk DELETE] falha ao contar referências para ${path}:`, countErr.message);
+        continue; // Não apaga em caso de erro de consulta
+      }
+
+      if ((count ?? 0) === 0) {
+        pathsToDelete.push(path);
+      } else {
+        console.log(`[library/bulk DELETE] ${path} ainda tem ${count} referência(s) — preservado.`);
+      }
     }
 
-    try {
-      await Promise.all(
-        batches.map(batch =>
-          admin.storage
-            .from("videos-library")
-            .remove(batch)
-            .then(({ error }) => {
-              if (error && !error.message.toLowerCase().includes("not found")) {
-                console.error("[library/bulk DELETE] storage batch error:", error.message);
-              }
-            })
-            .catch(err => {
-              console.error("[library/bulk DELETE] storage batch threw:", err);
-            })
-        )
-      );
-    } catch (err) {
-      // Nunca deve chegar aqui (cada promise já captura o próprio erro),
-      // mas por segurança não deixamos vazar para fora.
-      console.error("[library/bulk DELETE] storage cleanup unexpected error:", err);
+    if (pathsToDelete.length > 0) {
+      // Divide em lotes de 100 (limite da Storage API) e remove em paralelo
+      const BATCH_SIZE = 100;
+      const batches: string[][] = [];
+      for (let i = 0; i < pathsToDelete.length; i += BATCH_SIZE) {
+        batches.push(pathsToDelete.slice(i, i + BATCH_SIZE));
+      }
+
+      try {
+        await Promise.all(
+          batches.map(batch =>
+            admin.storage
+              .from("videos-library")
+              .remove(batch)
+              .then(({ error }) => {
+                if (error && !error.message.toLowerCase().includes("not found")) {
+                  console.error("[library/bulk DELETE] storage batch error:", error.message);
+                }
+              })
+              .catch(err => {
+                console.error("[library/bulk DELETE] storage batch threw:", err);
+              })
+          )
+        );
+      } catch (err) {
+        // Nunca deve chegar aqui (cada promise já captura o próprio erro),
+        // mas por segurança não deixamos vazar para fora.
+        console.error("[library/bulk DELETE] storage cleanup unexpected error:", err);
+      }
     }
   }
 
