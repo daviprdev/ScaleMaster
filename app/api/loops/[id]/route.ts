@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 import { normalizeCaptionMode } from "@/lib/reel-captions";
 import { checkCreateReadiness } from "@/lib/loop-readiness";
+import { normalizePriorityStrategy } from "@/lib/media-priority";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -41,7 +42,8 @@ export async function PATCH(
     "effect_mirror", "effect_invert", "effect_zoom", "effect_blur", "effect_noise", "effect_anti_ai",
     "auto_caption_enabled", "auto_caption_type", "account_stagger_seconds",
     "video_processing_mode", "share_to_feed",
-    "caption_mode", "caption_strip_hashtags", "caption_strip_mentions"];
+    "caption_mode", "caption_strip_hashtags", "caption_strip_mentions",
+    "priority_strategy", "distribution_seed"];
   for (const key of scalars) {
     if (!(key in body)) continue;
 
@@ -68,6 +70,11 @@ export async function PATCH(
       // Só afeta publicações CRIADAS a partir daqui — posts/containers já
       // agendados guardam a decisão que valia no momento em que nasceram.
       updatePayload[key] = normalizeProcessingMode(body[key]);
+      continue;
+    }
+
+    if (key === "priority_strategy") {
+      updatePayload[key] = normalizePriorityStrategy(body[key] as string | undefined);
       continue;
     }
 
@@ -203,7 +210,20 @@ export async function DELETE(
 
   const admin = getSupabaseAdmin() as any;
 
-  // Cancela containers pendentes ANTES de deletar o loop.
+  // Valida ownership ANTES de qualquer mutação. Sem isso, um usuário poderia
+  // cancelar containers de um Loop de outro usuário conhecendo apenas o UUID.
+  const { data: loop, error: fetchError } = await admin
+    .from("loops")
+    .select("id, user_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  if (!loop || loop.user_id !== user.id) {
+    return NextResponse.json({ error: "Loop não encontrado ou sem permissão." }, { status: 404 });
+  }
+
+  // Cancela containers pendentes APÓS confirmar ownership.
   // Sem isso, ON DELETE SET NULL faz loop_id=NULL nos containers — eles ficam
   // presos na fila do publish-pending e bloqueiam postagens do novo loop.
   await admin

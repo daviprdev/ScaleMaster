@@ -28,6 +28,10 @@ export interface PriorityContext {
   seed: string;
   /** Collision window in minutes (default 5) */
   collisionWindowMinutes?: number;
+  /** Number of videos to assign per account (default 1 for backwards compat).
+   *  When > 1, assignVideos generates multiple rounds, each producing one
+   *  assignment per account, respecting history and diversity across rounds. */
+  videosPerAccount?: number;
 }
 
 export interface AssignmentResult {
@@ -204,75 +208,122 @@ export function assignVideos(ctx: PriorityContext): AssignmentResult[] {
     recentGlobalCooldown,
     strategy,
     seed,
+    videosPerAccount = 1,
   } = ctx;
 
-  if (accountIds.length === 0 || candidates.length === 0) return [];
+  if (accountIds.length === 0 || candidates.length === 0 || videosPerAccount < 1) return [];
 
   const rng = mulberry32(seed);
-  const globalUsage = computeGlobalUsage(usageByAccount);
+  const baseGlobalUsage = computeGlobalUsage(usageByAccount);
 
   // Filter out globally excluded videos (window claims + cooldown)
   const globallyAvailable = candidates.filter(
     (v) => !windowClaims.has(v.id) && !recentGlobalCooldown.has(v.id),
   );
 
+  if (globallyAvailable.length === 0) return [];
+
   const results: AssignmentResult[] = [];
-  // Track in-memory usage increments so subsequent accounts see updated counts
-  const incrementalUsage = new Map<string, number>();
+  // Mutable usage map that accumulates across ALL rounds and accounts.
+  // This ensures diversity: a video assigned to account A in round 0
+  // becomes "more used" and less likely to be picked again in round 1.
+  const liveUsage = new Map(baseGlobalUsage);
+  // Per-account mutable posted sets — tracks what each account received
+  // during this run so we don't repeat within the same batch.
+  const livePosted = new Map<string, Set<string>>();
+  for (const aid of accountIds) {
+    livePosted.set(aid, new Set(getPostedSet(usageByAccount, aid)));
+  }
+  // Track last video per account to avoid immediate repetition on cycle reset.
+  const lastVideoPerAccount = new Map<string, string | null>();
+  for (const aid of accountIds) {
+    lastVideoPerAccount.set(aid, getLastPostedVideo(usageByAccount, aid));
+  }
 
-  for (let ai = 0; ai < accountIds.length; ai++) {
-    const accountId = accountIds[ai];
-    const posted = getPostedSet(usageByAccount, accountId);
+  for (let round = 0; round < videosPerAccount; round++) {
+    // Collect assignments for this round first, then commit them all at once.
+    // This prevents ordering bias within a round (account[0] doesn't steal
+    // from account[N] because both see the same pre-round state).
+    const roundAssignments: { accountId: string; video: VideoCandidate; isCycleReset: boolean }[] = [];
+    // Videos claimed within this round — prevents two accounts getting the
+    // same video in the same round when alternatives exist.
+    const roundClaims = new Set<string>();
 
-    // Per-account pool: exclude what this account already posted
-    let perAccountPool = globallyAvailable.filter((v) => !posted.has(v.id));
-
-    let isCycleReset = false;
-
-    // Cycle reset: if personal pool exhausted, allow all except last posted
-    if (perAccountPool.length === 0 && globallyAvailable.length > 0) {
-      isCycleReset = true;
-      // Relax: only exclude the very last video posted by this account
-      const lastVideo = getLastPostedVideo(usageByAccount, accountId);
-      perAccountPool = globallyAvailable.filter(
-        (v) => v.id !== lastVideo,
-      );
-      // If still empty after relaxation, use full global pool
-      if (perAccountPool.length === 0) {
-        perAccountPool = globallyAvailable;
-      }
-    }
-
-    // Build effective global usage including incremental bumps from this run
-    const effectiveGlobalUsage = new Map(globalUsage);
-    for (const [vid, inc] of incrementalUsage) {
-      effectiveGlobalUsage.set(
-        vid,
-        (effectiveGlobalUsage.get(vid) ?? 0) + inc,
-      );
-    }
-
-    // Rank the per-account pool
-    const ranked = buildRankedPool(
-      perAccountPool,
-      strategy,
-      effectiveGlobalUsage,
+    // Shuffle account order per round for fairness: without this, account[0]
+    // always picks first and gets the best-ranked video every round.
+    const shuffledAccountIndices = seededShuffle(
+      accountIds.map((_, i) => i),
       rng,
     );
 
-    if (ranked.length === 0) continue;
+    // Scarcity: when globally available videos are fewer than accounts,
+    // some repetition within the round is inevitable. Use modular
+    // distribution to guarantee balanced assignment (e.g. 10/3 → 4/3/3,
+    // 2/1 → both accounts get the same video).
+    const scarcityDetected = globallyAvailable.length < shuffledAccountIndices.length;
 
-    // Latin square offset for diversity within the round
-    const index = ai % ranked.length;
-    const selected = ranked[index];
+    if (scarcityDetected) {
+      // Modular distribution: rank all globally available videos once, then
+      // assign them round-robin to shuffled accounts. This guarantees
+      // balanced distribution regardless of processing order.
+      const rankedAll = buildRankedPool(globallyAvailable, strategy, liveUsage, rng);
+      if (rankedAll.length === 0) continue;
 
-    results.push({ accountId, video: selected, isCycleReset });
+      for (let si = 0; si < shuffledAccountIndices.length; si++) {
+        const accountId = accountIds[shuffledAccountIndices[si]];
+        const posted = livePosted.get(accountId)!;
+        // Pick video at modular index — ensures even spread across ranked list
+        const videoIndex = si % rankedAll.length;
+        const selected = rankedAll[videoIndex];
+        const isCycleReset = posted.has(selected.id);
+        roundAssignments.push({ accountId, video: selected, isCycleReset });
+      }
+    } else {
+      // Normal path: each account picks from its unique pool with roundClaims
+      for (const ai of shuffledAccountIndices) {
+        const accountId = accountIds[ai];
+        const posted = livePosted.get(accountId)!;
 
-    // Bump incremental usage so next account sees this video as more used
-    incrementalUsage.set(
-      selected.id,
-      (incrementalUsage.get(selected.id) ?? 0) + 1,
-    );
+        let perAccountPool = globallyAvailable.filter(
+          (v) => !posted.has(v.id) && !roundClaims.has(v.id),
+        );
+
+        let isCycleReset = false;
+
+        // Cycle reset: personal pool exhausted → relax to all except last posted
+        if (perAccountPool.length === 0 && globallyAvailable.length > 0) {
+          isCycleReset = true;
+          const lastVideo = lastVideoPerAccount.get(accountId);
+          perAccountPool = globallyAvailable.filter(
+            (v) => v.id !== lastVideo && !roundClaims.has(v.id),
+          );
+          if (perAccountPool.length === 0) {
+            perAccountPool = globallyAvailable.filter((v) => !roundClaims.has(v.id));
+          }
+        }
+
+        if (perAccountPool.length === 0) continue;
+
+        const ranked = buildRankedPool(perAccountPool, strategy, liveUsage, rng);
+        if (ranked.length === 0) continue;
+
+        const selected = ranked[0];
+        roundAssignments.push({ accountId, video: selected, isCycleReset });
+        roundClaims.add(selected.id);
+      }
+    }
+
+    // Commit all round assignments at once
+    for (const assignment of roundAssignments) {
+      results.push(assignment);
+      // Update live state for subsequent rounds
+      livePosted.get(assignment.accountId)!.add(assignment.video.id);
+      lastVideoPerAccount.set(assignment.accountId, assignment.video.id);
+      liveUsage.set(
+        assignment.video.id,
+        (liveUsage.get(assignment.video.id) ?? 0) + 1,
+      );
+    }
   }
 
   return results;

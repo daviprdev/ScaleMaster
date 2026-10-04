@@ -23,7 +23,7 @@ BASE_URL="http://127.0.0.1:3000"
 # Cron manifest: name | endpoint | OnCalendar | TimeoutSec
 # Offsets are staggered to prevent thundering herd on the same second.
 CRONS=(
-  "publish-scheduled|/api/cron/publish-scheduled|*-*-* *:01:00|55"
+  "publish-scheduled|/api/cron/publish-scheduled|*-*-* *:00/1:00|55"
   "publish-pending|/api/cron/publish-pending|*-*-* *:00/2:00|110"
   "finalize-inspiration-scrapes|/api/cron/finalize-inspiration-scrapes|*-*-* *:00/2:30|110"
   "prefetch-clone-urls|/api/cron/prefetch-clone-urls|*-*-* *:00/5:00|290"

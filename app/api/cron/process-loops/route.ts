@@ -493,6 +493,7 @@ async function assignVideosForLoop(
     recentGlobalCooldown: recentlyUsedGlobally,
     strategy: loopStrategy,
     seed: loopSeed,
+    videosPerAccount: 1, // Loop atribui 1 vídeo por conta por tick; quantidade é controlada pela frequência do cron
   });
 
   // Converte os resultados do media-priority de volta para o formato esperado

@@ -193,6 +193,7 @@ export async function POST(req: NextRequest) {
     recentGlobalCooldown: new Set(),
     strategy: priorityStrategy,
     seed: distributionSeed,
+    videosPerAccount: maxVideos,
   });
 
   // Mapa rápido de vídeo por ID para resolver legenda/url durante a geração de linhas
@@ -275,15 +276,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Insert em lotes de 500
-  for (let i = 0; i < rows.length; i += 500) {
-    const { error } = await admin.from("scheduled_posts").insert(rows.slice(i, i + 500));
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  // Sincronização com pasta(s) de contas: persiste a config da campanha para que
-  // o cron sync-distribute-accounts possa matricular contas novas adicionadas
-  // depois, sem precisar recriar a distribuição.
+  // Atomicidade: insere campanha ANTES dos posts. Se a inserção da campanha
+  // falhar, nenhum post é criado. Se os posts falharem, a campanha fica sem
+  // posts mas não gera trabalho duplicado — retries usam o mesmo campaignId.
+  // A sincronização também faz parte da transação lógica: sem ela, contas novas
+  // não seriam matriculadas automaticamente pelo cron sync-distribute-accounts.
   if (Array.isArray(sync_folder_ids) && sync_folder_ids.length > 0) {
     const { error: syncErr } = await admin.from("distribute_campaigns").insert({
       id: campaignId,
@@ -305,7 +302,30 @@ export async function POST(req: NextRequest) {
       priority_strategy: priorityStrategy,
       distribution_seed: distributionSeed,
     });
-    if (syncErr) console.error("[distribute] erro ao salvar sync da campanha:", syncErr.message);
+    if (syncErr) {
+      return NextResponse.json(
+        { error: `Falha ao salvar configuração da campanha: ${syncErr.message}` },
+        { status: 500 },
+      );
+    }
+  }
+
+  // Insert em lotes de 500 — após confirmação da campanha/sync
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await admin.from("scheduled_posts").insert(rows.slice(i, i + 500));
+    if (error) {
+      // Posts parcialmente inseridos são um estado inconsistente.
+      // Retorna erro claro; a campanha existe mas está incompleta.
+      // O usuário pode recriar com o mesmo seed para reproduzir a atribuição.
+      return NextResponse.json(
+        {
+          error: `Falha ao inserir posts agendados (lote ${Math.floor(i / 500) + 1}): ${error.message}`,
+          campaign_id: campaignId,
+          partial: true,
+        },
+        { status: 500 },
+      );
+    }
   }
 
   const times = rows.map((r) => (r as { scheduled_at: string }).scheduled_at).sort();

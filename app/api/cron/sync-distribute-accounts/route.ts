@@ -223,6 +223,7 @@ async function processCampaign(
     recentGlobalCooldown: new Set(),
     strategy: campaignStrategy,
     seed: cycleSeed,
+    videosPerAccount: 1, // sync cria 1 post por conta por ciclo; quantidade total é controlada pelo cron
   });
 
   const videoById = new Map(allVideos.map((v) => [v.id, v]));

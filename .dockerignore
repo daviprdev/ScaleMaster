@@ -1,0 +1,36 @@
+# Dependencies and build artifacts
+node_modules
+.next
+.git
+
+# Environment files with secrets — NEVER include in Docker context
+.env
+.env.local
+.env.production
+.env.*.local
+
+# IDE and OS files
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Documentation and non-runtime files
+docs
+__tests__
+scripts/test-*.mjs
+scripts/simulate-priority.mjs
+*.md
+LICENSE
+
+# Python server (runs separately on VPS, not inside this container)
+python_server
+
+# Supabase migrations (applied manually, not part of runtime image)
+supabase
+
+# Review and prompt artifacts
+docs/prompts
+docs/review-*

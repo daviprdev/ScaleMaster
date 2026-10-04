@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 import { normalizeCaptionMode } from "@/lib/reel-captions";
 import { checkCreateReadiness } from "@/lib/loop-readiness";
+import { normalizePriorityStrategy } from "@/lib/media-priority";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,6 +33,7 @@ export async function GET() {
       effect_mirror, effect_invert, effect_zoom, effect_blur, effect_noise, effect_anti_ai,
       auto_caption_enabled, auto_caption_type, video_processing_mode, share_to_feed,
       caption_mode, caption_strip_hashtags, caption_strip_mentions,
+      priority_strategy, distribution_seed,
       status, created_at, last_skip_reason, last_skip_at,
       loop_accounts ( account_id, instagram_accounts ( id, username, display_name, avatar_url ) ),
       library_folders ( id, name )
@@ -125,6 +127,11 @@ export async function POST(req: NextRequest) {
 
   const captionsToSave = (body.captions ?? []).map((c: string) => c.trim()).filter(Boolean);
   const autoEnabled = body.auto_caption_enabled ?? false;
+  const priorityStrategy = normalizePriorityStrategy(
+    (body as unknown as Record<string, unknown>).priority_strategy as string | undefined,
+  );
+  // Seed determinística baseada em metadados do loop para reprodutibilidade.
+  const distributionSeed = `${user.id}:${body.name.trim()}:${Date.now()}`;
 
   if (!autoEnabled && captionsToSave.length === 0) {
     console.warn(
@@ -166,6 +173,8 @@ export async function POST(req: NextRequest) {
       caption_mode: normalizeCaptionMode(body.caption_mode),
       caption_strip_hashtags: body.caption_strip_hashtags === true,
       caption_strip_mentions: body.caption_strip_mentions === true,
+      priority_strategy: priorityStrategy,
+      distribution_seed: distributionSeed,
       status: "active",
     })
     .select()

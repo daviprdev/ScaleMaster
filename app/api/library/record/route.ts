@@ -94,10 +94,21 @@ export async function POST(req: NextRequest) {
     // Compensação: o arquivo já subiu ao Storage antes desta rota ser chamada.
     // Sem isso, todo INSERT que falha deixa um arquivo órfão permanente.
     //
+    // SEGURANÇA: Validamos que o storagePath pertence a este usuário ANTES de
+    // qualquer remoção. Um cliente malicioso não pode usar esta rota para apagar
+    // arquivos de outros usuários enviando storage_paths alheios.
+    // O path deve começar com o user_id ou ser um upload direto autorizado.
+    const isOwnedPath = storagePath.startsWith(`${userId}/`) || storagePath.startsWith(`direct/${userId}/`);
+    if (!isOwnedPath) {
+      console.warn(
+        `[library-record] INSERT falhou — storagePath não pertence ao usuário ${userId}: ${storagePath}. ` +
+        `Arquivo preservado (possível tentativa de acesso indevido).`
+      );
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
     // Só removemos o arquivo desta operação, e apenas depois de confirmar que
-    // NENHUMA linha de videos_library o referencia — senão um cliente poderia
-    // mandar o storage_path de outro usuário, forçar a falha do INSERT e usar
-    // a compensação para apagar o arquivo alheio. Nunca é uma limpeza global.
+    // NENHUMA linha de videos_library o referencia.
     const { count } = await admin
       .from("videos_library")
       .select("id", { count: "exact", head: true })
