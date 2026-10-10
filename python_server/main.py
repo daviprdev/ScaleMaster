@@ -34,7 +34,8 @@ from onboarding import (
     post_story_with_link,
     switch_to_professional,
 )
-from onboarding_rpa import run_onboarding_rpa, RPARequest as RPARequestModel
+# onboarding_rpa removido no refactor 294a242 — fluxo RPA descontinuado.
+# Os endpoints de scraping, vídeo e browser login permanecem ativos.
 
 # ---------------------------------------------------------------------------
 # Config — lidas na inicialização; crash imediato se ausentes
@@ -707,28 +708,7 @@ async def onboarding_magic_link(
     )
 
 
-@app.post("/onboarding-rpa/run")
-async def onboarding_rpa_run(
-    req: RPARequestModel,
-    _: None = Depends(verify_secret_strict),
-) -> dict:
-    """Executa o fluxo completo de onboarding via navegador real (Playwright RPA)."""
-    result = await run_onboarding_rpa(
-        username=req.username,
-        password=req.password,
-        proxy_url=req.proxy_url,
-        totp_secret=req.totp_secret,
-        app_id=req.app_id,
-        photo_path=req.photo_path,
-        story_media_path=req.story_media_path,
-        story_link_url=req.story_link_url,
-        highlight_title=req.highlight_title,
-        existing_cookies=req.existing_cookies,
-    )
-    # Retorna HTTP 200 mesmo em caso de falha para que o cron receba o JSON
-    # estruturado com error_code e possa decidir entre retry ou erro permanente.
-    # HTTP 400 faria o callPythonServer lançar exceção genérica, perdendo o error_code.
-    return result
+# Endpoint /onboarding-rpa/run removido — fluxo RPA descontinuado no refactor 294a242.
 
 
 @app.get("/health")
