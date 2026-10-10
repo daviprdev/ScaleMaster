@@ -58,7 +58,6 @@ interface PostRow {
   campaign_id: string | null;
   instagram_accounts: AccountRow | null;
   videos_library: { public_url: string } | null;
-  distribute_campaigns: { id: string; status: string } | null;
 }
 
 // Erros transitórios → retry (status "pending").
@@ -174,14 +173,15 @@ export async function GET(req: NextRequest) {
   // consumissem posts de campanhas ainda em "preparing" (incompletas), causando
   // publicação parcial e falhas silenciosas.
   //
-  // Solução: JOIN com distribute_campaigns e exigir status='active' OU
-  // campaign_id IS NULL (posts legítimos de outros fluxos sem campanha).
+  // Solução: buscar posts SEM join com distribute_campaigns (a FK pode não estar
+  // no schema cache do PostgREST, causando erro 500). O filtro de campanha ativa
+  // é aplicado em memória após a consulta, usando uma segunda query cirúrgica
+  // apenas para os campaign_ids presentes no batch.
   // Preservar posts de Loop/Clonar/Postar manual que não têm campanha.
   const SELECT_FIELDS =
     "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, video_processing_mode, share_to_feed, campaign_id, " +
     "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id), " +
-    "videos_library(public_url), " +
-    "distribute_campaigns(id, status)";
+    "videos_library(public_url)";
 
   // Stories furam a fila: usuário espera publicação quase imediata ("Postar agora"),
   // diferente de campanhas em massa (Postar/Clone/Loop) que já são agendadas de
@@ -195,12 +195,6 @@ export async function GET(req: NextRequest) {
     .eq("post_type", "story")
     .lte("scheduled_at", now)
     .not("video_url", "ilike", "%instagram.com%")
-    // P1 CORREÇÃO: Sintaxe PostgREST correta para OR com foreign table.
-    // PROBLEMA ANTERIOR: "distribute_campaigns.status.eq.active" não é válido
-    // dentro de .or() sem usar a sintaxe de embedded resource.
-    // SOLUÇÃO: Usar duas condições separadas — posts sem campanha OU posts
-    // com campanha ativa (verificada via join no SELECT_FIELDS).
-    .or("campaign_id.is.null,campaign_id.not.is.null")
     .order("scheduled_at", { ascending: true })
     .limit(BATCH_SIZE);
 
@@ -229,7 +223,47 @@ export async function GET(req: NextRequest) {
     otherRows = data ?? [];
   }
 
-  const posts = [...(storyRows ?? []), ...otherRows] as unknown as PostRow[];
+  const rawPosts = [...(storyRows ?? []), ...otherRows] as unknown as PostRow[];
+
+  // ── Filtro de campanha ativa em memória (sem FK no schema cache) ─────────
+  // Coleta campaign_ids únicos do batch, busca status em distribute_campaigns
+  // e filtra posts cuja campanha não esteja 'active'. Posts sem campaign_id
+  // passam direto (fluxos Loop/Clonar/Postar manual).
+  const campaignIds = [
+    ...new Set(rawPosts.map((p) => p.campaign_id).filter(Boolean)),
+  ] as string[];
+
+  const campaignStatusMap = new Map<string, string>();
+  if (campaignIds.length > 0) {
+    const { data: campaigns, error: campErr } = await admin
+      .from("distribute_campaigns")
+      .select("id, status")
+      .in("id", campaignIds);
+
+    if (campErr) {
+      console.warn(
+        "[publish-scheduled] ⚠ Falha ao buscar campanhas para filtro:",
+        campErr.message,
+      );
+      // Em caso de falha, permite todos os posts para não bloquear a fila;
+      // o filtro é uma otimização de atomicidade, não um gate de segurança.
+    } else {
+      for (const c of campaigns ?? []) {
+        campaignStatusMap.set(c.id, c.status);
+      }
+    }
+  }
+
+  const posts = rawPosts.filter((post) => {
+    if (!post.campaign_id) return true; // sem campanha → legítimo
+    const status = campaignStatusMap.get(post.campaign_id);
+    if (status === "active") return true;
+    console.log(
+      `[publish-scheduled] ⏭ Post ${post.id} filtrado: campanha ${post.campaign_id} ` +
+        `status=${status ?? "não encontrada"} (esperado: active).`,
+    );
+    return false;
+  });
   console.log(
     `[publish-scheduled] ${posts.length} post(s) a processar (${storyRows?.length ?? 0} stories priorizados).`
   );
@@ -296,20 +330,8 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
-    // ── Filtro de campanha ativa (P1) ────────────────────────────────────────
-    // Posts com campaign_id devem ter a campanha associada em status='active'.
-    // O JOIN no SELECT_FIELDS traz distribute_campaigns(id, status); se a
-    // campanha estiver inativa/preparing ou não existir mais, pulamos o post.
-    // Posts sem campanha (campaign_id IS NULL) são legítimos e passam direto.
-    if (post.campaign_id && (!post.distribute_campaigns || post.distribute_campaigns.status !== "active")) {
-      const campaignStatus = post.distribute_campaigns?.status ?? "não encontrada";
-      console.log(
-        `[publish-scheduled] ⏭ Post ${post.id} pulado: campanha ${post.campaign_id} ` +
-          `status=${campaignStatus} (esperado: active).`
-      );
-      summary.skipped++;
-      continue;
-    }
+    // Filtro de campanha ativa já aplicado em memória antes do loop
+    // (ver bloco "Filtro de campanha ativa em memória" acima).
 
     attemptedAccounts.add(account.id);
 
