@@ -55,8 +55,10 @@ interface PostRow {
   retry_count: number | null;
   video_processing_mode: string | null;
   share_to_feed: boolean | null;
+  campaign_id: string | null;
   instagram_accounts: AccountRow | null;
   videos_library: { public_url: string } | null;
+  distribute_campaigns: { id: string; status: string } | null;
 }
 
 // Erros transitórios → retry (status "pending").
@@ -300,9 +302,10 @@ export async function GET(req: NextRequest) {
     // campanha estiver inativa/preparing ou não existir mais, pulamos o post.
     // Posts sem campanha (campaign_id IS NULL) são legítimos e passam direto.
     if (post.campaign_id && (!post.distribute_campaigns || post.distribute_campaigns.status !== "active")) {
+      const campaignStatus = post.distribute_campaigns?.status ?? "não encontrada";
       console.log(
         `[publish-scheduled] ⏭ Post ${post.id} pulado: campanha ${post.campaign_id} ` +
-          `status=${post.distribute_campaigns?.status ?? "não encontrada"} (esperado: active).`
+          `status=${campaignStatus} (esperado: active).`
       );
       summary.skipped++;
       continue;
