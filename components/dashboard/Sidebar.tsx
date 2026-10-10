@@ -36,6 +36,7 @@ import {
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 type NavItem = {
   label: string;
@@ -176,27 +177,15 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
       >
         {/* Horizon glow accent */}
         <div className="absolute top-0 left-0 w-full h-48 pointer-events-none"
-          style={{ background: "radial-gradient(ellipse 120% 60% at 50% -10%, rgba(0,255,65,0.05) 0%, transparent 100%)" }} />
+          style={{ background: "radial-gradient(ellipse 120% 60% at 50% -10%, rgba(0,73,141,0.05) 0%, transparent 100%)" }} />
 
         {/* Logo */}
         <div className="relative flex items-center h-16 px-4 border-b border-white/[0.06]">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", boxShadow: "0 0 14px rgba(0,255,65,0.45)" }}>
-            <Zap className="w-4 h-4 text-black" strokeWidth={2.5} />
-          </div>
-          <AnimatePresence>
-            {!collapsed && (
-              <motion.span
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                transition={{ duration: 0.2 }}
-                className="ml-3 font-bold text-lg gradient-text whitespace-nowrap"
-              >
-                Scale Master
-              </motion.span>
-            )}
-          </AnimatePresence>
+          {collapsed ? (
+            <BrandLogo symbolOnly size={32} />
+          ) : (
+            <BrandLogo size={32} textSize="text-lg" />
+          )}
         </div>
 
         {/* Nav */}
@@ -243,11 +232,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                             <motion.div
                               layoutId="activeNav"
                               className="absolute inset-0 rounded-xl"
-                              style={{ background: "rgba(0,255,65,0.06)" }}
+                              style={{ background: "rgba(0,73,141,0.06)" }}
                               transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
                             />
                             <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[55%] rounded-r-full"
-                              style={{ background: "var(--matrix)", boxShadow: "0 0 8px rgba(0,255,65,0.8)" }} />
+                              style={{ background: "var(--matrix)", boxShadow: "0 0 8px rgba(0,73,141,0.8)" }} />
                           </>
                         )}
                         <item.icon
@@ -270,7 +259,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                           )}
                         </AnimatePresence>
                         {collapsed && active && (
-                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[55%] bg-violet-500 rounded-r-full" />
+                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[55%] bg-[#00498D] rounded-r-full" />
                         )}
                       </motion.div>
                     </Link>
@@ -350,10 +339,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
               <img
                 src={userAvatar}
                 alt="Avatar"
-                className="w-8 h-8 rounded-full object-cover flex-shrink-0 shadow-[0_0_8px_rgba(0,255,65,0.22)]"
+                className="w-8 h-8 rounded-full object-cover flex-shrink-0 shadow-[0_0_8px_rgba(0,73,141,0.22)]"
               />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00FF41] to-[#00E5FF] flex items-center justify-center flex-shrink-0 text-sm font-bold text-white shadow-[0_0_8px_rgba(0,255,65,0.22)]">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center flex-shrink-0 text-sm font-bold text-white shadow-[0_0_8px_rgba(0,73,141,0.22)]">
                 {userInitial}
               </div>
             )}
@@ -425,11 +414,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
 
                   {/* Logo row */}
                   <div className="relative flex items-center h-16 px-4 border-b border-white/[0.06]">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", boxShadow: "0 0 14px rgba(0,255,65,0.45)" }}>
-                      <Zap className="w-4 h-4 text-black" strokeWidth={2.5} />
-                    </div>
-                    <span className="ml-3 font-bold text-lg gradient-text whitespace-nowrap">Scale Master</span>
+                    <BrandLogo size={32} textSize="text-lg" />
                   </div>
 
                   {/* Nav */}
@@ -449,11 +434,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                                     "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-300",
                                     active ? "text-white" : "text-neutral-500 hover:text-neutral-200"
                                   )}
-                                  style={active ? { background: "rgba(0,255,65,0.06)" } : undefined}
+                                  style={active ? { background: "rgba(0,73,141,0.06)" } : undefined}
                                 >
                                   {active && (
                                     <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[55%] rounded-r-full"
-                                      style={{ background: "var(--matrix)", boxShadow: "0 0 8px rgba(0,255,65,0.8)" }} />
+                                      style={{ background: "var(--matrix)", boxShadow: "0 0 8px rgba(0,73,141,0.8)" }} />
                                   )}
                                   <item.icon
                                     className="flex-shrink-0 relative z-10"
@@ -501,10 +486,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                         <img
                           src={userAvatar}
                           alt="Avatar"
-                          className="w-8 h-8 rounded-full object-cover flex-shrink-0 shadow-[0_0_8px_rgba(0,255,65,0.22)]"
+                          className="w-8 h-8 rounded-full object-cover flex-shrink-0 shadow-[0_0_8px_rgba(0,73,141,0.22)]"
                         />
                       ) : (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00FF41] to-[#00E5FF] flex items-center justify-center flex-shrink-0 text-sm font-bold text-black">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center flex-shrink-0 text-sm font-bold text-black">
                           {userInitial}
                         </div>
                       )}
@@ -551,9 +536,9 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
               >
                 <div className="flex items-center gap-3 px-4 py-3.5">
                   {userAvatar ? (
-                    <img src={userAvatar} alt="Avatar" className="w-9 h-9 rounded-full object-cover flex-shrink-0 shadow-[0_0_10px_rgba(0,255,65,0.25)]" />
+                    <img src={userAvatar} alt="Avatar" className="w-9 h-9 rounded-full object-cover flex-shrink-0 shadow-[0_0_10px_rgba(0,73,141,0.25)]" />
                   ) : (
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00FF41] to-[#00E5FF] flex items-center justify-center text-sm font-bold text-white flex-shrink-0 shadow-[0_0_10px_rgba(0,255,65,0.25)]">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center text-sm font-bold text-white flex-shrink-0 shadow-[0_0_10px_rgba(0,73,141,0.25)]">
                       {userInitial}
                     </div>
                   )}

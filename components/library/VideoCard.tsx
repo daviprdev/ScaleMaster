@@ -151,15 +151,15 @@ export function VideoCard({
       style={{
         aspectRatio: "9/16",
         border: selected
-          ? "1.5px solid rgba(0,255,65,0.55)"
+          ? "1.5px solid rgba(0,73,141,0.55)"
           : "0.5px solid rgba(255,255,255,0.08)",
         boxShadow: selected
-          ? "0 0 0 1px rgba(0,255,65,0.12), 0 4px 20px rgba(0,255,65,0.14)"
+          ? "0 0 0 1px rgba(0,73,141,0.12), 0 4px 20px rgba(0,73,141,0.14)"
           : undefined,
         transition: "border-color 0.2s, box-shadow 0.2s",
         ...(hovered && !selected ? {
-          borderColor: "rgba(0,255,65,0.32)",
-          boxShadow: "0 0 0 0.5px rgba(0,229,255,0.1), 0 8px 28px rgba(0,255,65,0.12)",
+          borderColor: "rgba(0,73,141,0.32)",
+          boxShadow: "0 0 0 0.5px rgba(133,185,233,0.1), 0 8px 28px rgba(0,73,141,0.12)",
         } : {}),
       }}
     >
@@ -182,10 +182,10 @@ export function VideoCard({
           className="absolute inset-0 flex items-center justify-center"
           style={{
             background:
-              "linear-gradient(160deg, rgba(0,255,65,0.07) 0%, rgba(18,18,18,1) 50%, rgba(0,229,255,0.05) 100%)",
+              "linear-gradient(160deg, rgba(0,73,141,0.07) 0%, rgba(18,18,18,1) 50%, rgba(133,185,233,0.05) 100%)",
           }}
         >
-          <Film size={28} style={{ color: "rgba(0,255,65,0.18)" }} />
+          <Film size={28} style={{ color: "rgba(0,73,141,0.18)" }} />
         </div>
       )}
 
@@ -212,11 +212,11 @@ export function VideoCard({
             <div
               className="w-5 h-5 rounded-md flex items-center justify-center transition-all duration-150 cursor-pointer"
               style={{
-                background: selected ? "#00FF41" : "rgba(0,0,0,0.60)",
+                background: selected ? "#00498D" : "rgba(0,0,0,0.60)",
                 border: selected
-                  ? "1.5px solid #00FF41"
+                  ? "1.5px solid #00498D"
                   : "1.5px solid rgba(255,255,255,0.35)",
-                boxShadow: selected ? "0 0 8px rgba(0,255,65,0.4)" : undefined,
+                boxShadow: selected ? "0 0 8px rgba(0,73,141,0.4)" : undefined,
               }}
             >
               {selected && (
@@ -239,7 +239,7 @@ export function VideoCard({
             className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors hover:brightness-125"
             style={{
               background: "rgba(0,0,0,0.70)",
-              color: "rgba(0,229,255,0.85)",
+              color: "rgba(133,185,233,0.85)",
               backdropFilter: "blur(4px)",
             }}
           >
@@ -281,7 +281,7 @@ export function VideoCard({
             className="px-2 py-0.5 rounded-full text-[10px] font-medium mb-1"
             style={{
               background: "rgba(0,0,0,0.70)",
-              color: "rgba(0,255,65,0.8)",
+              color: "rgba(0,73,141,0.8)",
               backdropFilter: "blur(4px)",
             }}
           >
@@ -316,7 +316,7 @@ export function VideoCard({
               style={{
                 background: "rgba(0,0,0,0.45)",
                 border: "1px solid rgba(255,255,255,0.20)",
-                boxShadow: "0 0 14px rgba(0,255,65,0.16)",
+                boxShadow: "0 0 14px rgba(0,73,141,0.16)",
                 backdropFilter: "blur(6px)",
               }}
             >
@@ -397,22 +397,22 @@ export function VideoCard({
                 whileTap={{ scale: 0.95 }}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
                 style={{
-                  background: "rgba(0,255,65,0.1)",
-                  border: "0.5px solid rgba(0,255,65,0.3)",
-                  color: "rgba(0,255,65,0.9)",
-                  boxShadow: "0 0 12px rgba(0,255,65,0.1)",
+                  background: "rgba(0,73,141,0.1)",
+                  border: "0.5px solid rgba(0,73,141,0.3)",
+                  color: "rgba(0,73,141,0.9)",
+                  boxShadow: "0 0 12px rgba(0,73,141,0.1)",
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.background =
-                    "rgba(0,255,65,0.18)";
+                    "rgba(0,73,141,0.18)";
                   (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                    "0 0 20px rgba(0,255,65,0.2)";
+                    "0 0 20px rgba(0,73,141,0.2)";
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.background =
-                    "rgba(0,255,65,0.1)";
+                    "rgba(0,73,141,0.1)";
                   (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                    "0 0 12px rgba(0,255,65,0.1)";
+                    "0 0 12px rgba(0,73,141,0.1)";
                 }}
               >
                 <Send size={13} />
@@ -425,17 +425,17 @@ export function VideoCard({
                   whileTap={{ scale: 0.95 }}
                   className="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium transition-all duration-200"
                   style={{
-                    border: "0.5px solid rgba(0,229,255,0.2)",
-                    background: "rgba(0,229,255,0.06)",
-                    color: "rgba(0,229,255,0.75)",
+                    border: "0.5px solid rgba(133,185,233,0.2)",
+                    background: "rgba(133,185,233,0.06)",
+                    color: "rgba(133,185,233,0.75)",
                   }}
                   onMouseEnter={(e) => {
                     (e.currentTarget as HTMLButtonElement).style.background =
-                      "rgba(0,229,255,0.12)";
+                      "rgba(133,185,233,0.12)";
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLButtonElement).style.background =
-                      "rgba(0,229,255,0.06)";
+                      "rgba(133,185,233,0.06)";
                   }}
                 >
                   <CalendarClock size={11} />

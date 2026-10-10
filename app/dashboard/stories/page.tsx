@@ -199,7 +199,7 @@ function SingleMediaUpload({
         <div className="absolute top-2 left-2 flex items-center gap-1">
           <span className={cn(
             "flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold",
-            isVideo ? "bg-[#00E5FF]/20 text-[#00E5FF]" : "bg-[#00FF41]/20 text-[#00FF41]"
+            isVideo ? "bg-[#85B9E9]/20 text-[#85B9E9]" : "bg-[#00498D]/20 text-[#00498D]"
           )}>
             {isVideo ? <Film size={9} /> : <Image size={9} />}
             {isVideo ? "MP4" : "IMG"}
@@ -211,7 +211,7 @@ function SingleMediaUpload({
         {media.status === "uploading" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60">
             <div className="flex flex-col items-center gap-1.5">
-              <Loader2 size={20} className="animate-spin text-[#00E5FF]" />
+              <Loader2 size={20} className="animate-spin text-[#85B9E9]" />
               <span className="text-xs text-white/60">Enviando…</span>
             </div>
           </div>
@@ -226,8 +226,8 @@ function SingleMediaUpload({
         )}
         {media.status === "done" && (
           <div className="absolute top-2 right-2">
-            <div className="w-6 h-6 rounded-full bg-[#00FF41]/20 border border-[#00FF41]/40 flex items-center justify-center">
-              <Check size={12} className="text-[#00FF41]" strokeWidth={3} />
+            <div className="w-6 h-6 rounded-full bg-[#00498D]/20 border border-[#00498D]/40 flex items-center justify-center">
+              <Check size={12} className="text-[#00498D]" strokeWidth={3} />
             </div>
           </div>
         )}
@@ -253,16 +253,16 @@ function SingleMediaUpload({
       onClick={() => inputRef.current?.click()}
       className={cn(
         "relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed cursor-pointer transition-all select-none py-10 px-6",
-        dragging ? "border-[#00E5FF]/60 bg-[#00E5FF]/5 scale-[1.01]" : "border-white/15 bg-white/[0.02] hover:border-[#00E5FF]/40 hover:bg-[#00E5FF]/[0.03]"
+        dragging ? "border-[#85B9E9]/60 bg-[#85B9E9]/5 scale-[1.01]" : "border-white/15 bg-white/[0.02] hover:border-[#85B9E9]/40 hover:bg-[#85B9E9]/[0.03]"
       )}
     >
       <input ref={inputRef} type="file" accept=".jpg,.jpeg,.png,.mp4" className="hidden"
         onChange={e => e.target.files && handleFile(e.target.files)} />
-      <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-all", dragging ? "bg-[#00E5FF]/20" : "bg-white/[0.06]")}>
-        <Upload size={22} className={dragging ? "text-[#00E5FF]" : "text-white/30"} />
+      <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-all", dragging ? "bg-[#85B9E9]/20" : "bg-white/[0.06]")}>
+        <Upload size={22} className={dragging ? "text-[#85B9E9]" : "text-white/30"} />
       </div>
       <div className="text-center">
-        <p className={cn("text-sm font-medium transition-colors", dragging ? "text-[#00E5FF]" : "text-white/60")}>
+        <p className={cn("text-sm font-medium transition-colors", dragging ? "text-[#85B9E9]" : "text-white/60")}>
           {dragging ? "Solte aqui" : "Clique para escolher"}
         </p>
         <p className="text-xs text-white/25 mt-1">JPG, PNG, MP4 (máx. 60s)</p>
@@ -285,7 +285,7 @@ function MediaLibrary({
 }) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-6"><Loader2 size={16} className="animate-spin text-[#00E5FF]" /></div>
+      <div className="flex items-center justify-center py-6"><Loader2 size={16} className="animate-spin text-[#85B9E9]" /></div>
     );
   }
 
@@ -308,7 +308,7 @@ function MediaLibrary({
             onClick={() => onSelect(item)}
             className={cn(
               "relative group rounded-lg overflow-hidden border cursor-pointer bg-black/30 transition-all",
-              isSelected ? "border-[#00E5FF]/60 ring-1 ring-[#00E5FF]/40" : "border-white/[0.08] hover:border-white/25"
+              isSelected ? "border-[#85B9E9]/60 ring-1 ring-[#85B9E9]/40" : "border-white/[0.08] hover:border-white/25"
             )}
             style={{ aspectRatio: "9/16" }}
           >
@@ -319,10 +319,10 @@ function MediaLibrary({
               <img src={item.public_url} alt="" className="w-full h-full object-cover" />
             )}
             <span className="absolute top-1 left-1 w-4 h-4 rounded-md bg-black/60 flex items-center justify-center">
-              {isVideo ? <Film size={8} className="text-[#00E5FF]" /> : <Image size={8} className="text-[#00FF41]" />}
+              {isVideo ? <Film size={8} className="text-[#85B9E9]" /> : <Image size={8} className="text-[#00498D]" />}
             </span>
             {isSelected && (
-              <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[#00E5FF]/90 flex items-center justify-center">
+              <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[#85B9E9]/90 flex items-center justify-center">
                 <Check size={8} className="text-black" strokeWidth={3} />
               </span>
             )}
@@ -370,8 +370,8 @@ function HistoryPanel({
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <span className="text-xs font-semibold uppercase tracking-widest text-white/35">Histórico</span>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] px-2 py-1 rounded-lg bg-[#00FF41]/10 text-[#00FF41] border border-[#00FF41]/20 font-mono">{published} ok</span>
-          <span className="text-[10px] px-2 py-1 rounded-lg bg-[#00E5FF]/10 text-[#00E5FF] border border-[#00E5FF]/20 font-mono">{queued} em fila</span>
+          <span className="text-[10px] px-2 py-1 rounded-lg bg-[#00498D]/10 text-[#00498D] border border-[#00498D]/20 font-mono">{published} ok</span>
+          <span className="text-[10px] px-2 py-1 rounded-lg bg-[#85B9E9]/10 text-[#85B9E9] border border-[#85B9E9]/20 font-mono">{queued} em fila</span>
           <button onClick={onRefresh} disabled={refreshing} className="text-white/30 hover:text-white/60 transition-colors disabled:opacity-40">
             <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
           </button>
@@ -389,7 +389,7 @@ function HistoryPanel({
 
       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
         {loading ? (
-          <div className="flex items-center justify-center py-16"><Loader2 size={20} className="animate-spin text-[#00E5FF]" /></div>
+          <div className="flex items-center justify-center py-16"><Loader2 size={20} className="animate-spin text-[#85B9E9]" /></div>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <ImagePlay size={22} className="text-white/15 mb-2" />
@@ -401,8 +401,8 @@ function HistoryPanel({
               const isVideo = item.video_url?.match(/\.(mp4|mov)(\?|$)/i);
               let statusCls = "bg-white/10 text-white/40";
               let statusLabel: string = item.status;
-              if (item.status === "published") { statusCls = "bg-[#00FF41]/15 text-[#00FF41]"; statusLabel = "Publicado"; }
-              else if (item.status === "pending" || item.status === "publishing") { statusCls = "bg-[#00E5FF]/15 text-[#00E5FF]"; statusLabel = item.status === "pending" ? "Na fila" : "Publicando"; }
+              if (item.status === "published") { statusCls = "bg-[#00498D]/15 text-[#00498D]"; statusLabel = "Publicado"; }
+              else if (item.status === "pending" || item.status === "publishing") { statusCls = "bg-[#85B9E9]/15 text-[#85B9E9]"; statusLabel = item.status === "pending" ? "Na fila" : "Publicando"; }
               else if (item.status === "failed") { statusCls = "bg-red-500/15 text-red-400"; statusLabel = "Falhou"; }
               else { statusCls = "bg-white/10 text-white/30"; statusLabel = "Cancelado"; }
 
@@ -411,7 +411,7 @@ function HistoryPanel({
                   className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      {isVideo ? <Film size={12} className="text-[#00E5FF]/60 flex-shrink-0" /> : <Image size={12} className="text-[#00FF41]/60 flex-shrink-0" />}
+                      {isVideo ? <Film size={12} className="text-[#85B9E9]/60 flex-shrink-0" /> : <Image size={12} className="text-[#00498D]/60 flex-shrink-0" />}
                       <span className="text-sm text-white/70 truncate">@{item.instagram_accounts?.username ?? "conta removida"}</span>
                     </div>
                     <span className={cn("text-[9px] px-2 py-0.5 rounded-md font-semibold flex-shrink-0", statusCls)}>{statusLabel}</span>
@@ -466,7 +466,7 @@ function TemplatesSection({
       <p className="text-xs text-white/30 mb-4">Importe um story já postado e reposte em loop — mantém o story sempre ativo.</p>
 
       {loading ? (
-        <div className="flex items-center justify-center py-10"><Loader2 size={18} className="animate-spin text-[#00E5FF]" /></div>
+        <div className="flex items-center justify-center py-10"><Loader2 size={18} className="animate-spin text-[#85B9E9]" /></div>
       ) : templates.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-10 text-center border border-dashed border-white/10 rounded-xl">
           <Sparkles size={18} className="text-white/15 mb-2" />
@@ -487,7 +487,7 @@ function TemplatesSection({
                     <img src={t.media_url} alt="" className="w-full h-full object-cover" />
                   )}
                   <span className={cn("absolute top-1.5 left-1.5 text-[9px] px-1.5 py-0.5 rounded-md font-bold",
-                    isActive ? "bg-[#00FF41]/20 text-[#00FF41]" : "bg-white/15 text-white/50")}>
+                    isActive ? "bg-[#00498D]/20 text-[#00498D]" : "bg-white/15 text-white/50")}>
                     {isActive ? "Ativo" : "Pausado"}
                   </span>
                 </div>
@@ -588,7 +588,7 @@ function ImportTemplateModal({
         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" onClick={onClose} />
       <motion.div initial={{ opacity: 0, scale: 0.95, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 16 }}
         transition={{ duration: 0.15 }} className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none">
-        <div className="glass rounded-2xl border border-[#00E5FF]/20 w-full max-w-sm p-5 space-y-4 pointer-events-auto max-h-[85vh] overflow-y-auto">
+        <div className="glass rounded-2xl border border-[#85B9E9]/20 w-full max-w-sm p-5 space-y-4 pointer-events-auto max-h-[85vh] overflow-y-auto">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-white">Importar Template de Story</h3>
             <button onClick={onClose} className="text-white/30 hover:text-white/60"><X size={16} /></button>
@@ -603,15 +603,15 @@ function ImportTemplateModal({
                   return (
                     <button key={acc.id} onClick={() => setSourceAccountId(acc.id)}
                       className={cn("w-full flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
-                        sourceAccountId === acc.id ? "border-[#00E5FF]/40 bg-[#00E5FF]/8 text-[#00E5FF]" : "border-white/[0.08] text-white/60 hover:border-white/20")}>
-                      <span className={cn("relative flex-shrink-0 rounded-full", withStory && "p-[1.5px] bg-gradient-to-tr from-[#00FF41] to-[#00E5FF]")}>
+                        sourceAccountId === acc.id ? "border-[#85B9E9]/40 bg-[#85B9E9]/8 text-[#85B9E9]" : "border-white/[0.08] text-white/60 hover:border-white/20")}>
+                      <span className={cn("relative flex-shrink-0 rounded-full", withStory && "p-[1.5px] bg-gradient-to-tr from-[#00498D] to-[#85B9E9]")}>
                         {acc.avatar_url
                           ? <img src={acc.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover block" />
-                          : <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#00E5FF]/40 to-[#00FF41]/40 flex items-center justify-center"><span className="text-[9px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>}
+                          : <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#85B9E9]/40 to-[#00498D]/40 flex items-center justify-center"><span className="text-[9px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>}
                       </span>
                       <span className="text-xs font-medium">@{acc.username}</span>
-                      {withStory && <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#00FF41]/15 text-[#00FF41] font-semibold">story ativo</span>}
-                      {sourceAccountId === acc.id && <Check size={12} className="ml-auto text-[#00E5FF]" />}
+                      {withStory && <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#00498D]/15 text-[#00498D] font-semibold">story ativo</span>}
+                      {sourceAccountId === acc.id && <Check size={12} className="ml-auto text-[#85B9E9]" />}
                     </button>
                   );
                 })}
@@ -620,13 +620,13 @@ function ImportTemplateModal({
                 <p className="flex items-center gap-1.5 text-xs text-red-400"><AlertCircle size={12} /> {importError}</p>
               )}
               <button onClick={handleImport} disabled={!sourceAccountId || importing}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#00E5FF] text-black font-semibold text-sm disabled:opacity-40 transition-all">
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#85B9E9] text-black font-semibold text-sm disabled:opacity-40 transition-all">
                 {importing ? <><Loader2 size={14} className="animate-spin" /> Buscando story ativo…</> : <>Importar</>}
               </button>
             </>
           ) : (
             <>
-              <div className="flex items-center gap-2 text-xs text-[#00FF41]">
+              <div className="flex items-center gap-2 text-xs text-[#00498D]">
                 <CheckCircle2 size={13} /> Importado de @{imported?.source_username}
               </div>
               <div>
@@ -637,9 +637,9 @@ function ImportTemplateModal({
                     return (
                       <button key={acc.id} onClick={() => setTargetAccountIds(prev => selected ? prev.filter(id => id !== acc.id) : [...prev, acc.id])}
                         className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all",
-                          selected ? "border-[#00E5FF]/40 bg-[#00E5FF]/8 text-[#00E5FF]" : "border-white/[0.08] text-white/55 hover:border-white/20")}>
+                          selected ? "border-[#85B9E9]/40 bg-[#85B9E9]/8 text-[#85B9E9]" : "border-white/[0.08] text-white/55 hover:border-white/20")}>
                         <span className="text-xs font-medium">@{acc.username}</span>
-                        {selected && <Check size={9} className="text-[#00E5FF]" strokeWidth={3} />}
+                        {selected && <Check size={9} className="text-[#85B9E9]" strokeWidth={3} />}
                       </button>
                     );
                   })}
@@ -653,7 +653,7 @@ function ImportTemplateModal({
                   ].map(opt => (
                     <button key={opt.v} onClick={() => setIntervalMinutes(opt.v)}
                       className={cn("flex-1 py-2 rounded-lg border text-xs font-semibold transition-all",
-                        intervalMinutes === opt.v ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30" : "bg-white/[0.04] text-white/40 border-white/[0.07]")}>
+                        intervalMinutes === opt.v ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30" : "bg-white/[0.04] text-white/40 border-white/[0.07]")}>
                       {opt.label}
                     </button>
                   ))}
@@ -663,7 +663,7 @@ function ImportTemplateModal({
                 <p className="flex items-center gap-1.5 text-xs text-red-400"><AlertCircle size={12} /> {importError}</p>
               )}
               <button onClick={handleCreate} disabled={targetAccountIds.length === 0 || creating}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#00E5FF] text-black font-semibold text-sm disabled:opacity-40 transition-all">
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#85B9E9] text-black font-semibold text-sm disabled:opacity-40 transition-all">
                 {creating ? <><Loader2 size={14} className="animate-spin" /> Criando…</> : <><RefreshCw size={14} /> Criar Loop</>}
               </button>
             </>
@@ -1029,7 +1029,7 @@ export default function StoriesPage() {
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-1">
           <h1 className="page-title">Postagem de Stories</h1>
-          <span className="text-[10px] px-2 py-0.5 rounded-lg bg-[#00E5FF]/10 text-[#00E5FF] border border-[#00E5FF]/20 font-semibold tracking-wide">STORIES</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-lg bg-[#85B9E9]/10 text-[#85B9E9] border border-[#85B9E9]/20 font-semibold tracking-wide">STORIES</span>
         </div>
         <p className="page-subtitle">Suba uma foto ou vídeo e publique como Story agora — expira em 24h</p>
       </div>
@@ -1038,10 +1038,10 @@ export default function StoriesPage() {
       <AnimatePresence>
         {publishSuccess && (
           <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
-            className="mb-5 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#00E5FF]/10 border border-[#00E5FF]/20">
-            <CheckCircle2 size={14} className="text-[#00E5FF] flex-shrink-0" />
-            <p className="text-sm text-[#00E5FF] flex-1">{publishSuccess}</p>
-            <button onClick={() => setPublishSuccess(null)} className="text-[#00E5FF]/40 hover:text-[#00E5FF] transition-colors"><X size={13} /></button>
+            className="mb-5 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#85B9E9]/10 border border-[#85B9E9]/20">
+            <CheckCircle2 size={14} className="text-[#85B9E9] flex-shrink-0" />
+            <p className="text-sm text-[#85B9E9] flex-1">{publishSuccess}</p>
+            <button onClick={() => setPublishSuccess(null)} className="text-[#85B9E9]/40 hover:text-[#85B9E9] transition-colors"><X size={13} /></button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1080,14 +1080,14 @@ export default function StoriesPage() {
               <div className="flex items-center gap-2 text-white/30 text-sm py-2"><Loader2 size={14} className="animate-spin" /> Carregando...</div>
             ) : foldersWithAccounts.length === 0 ? (
               <p className="text-white/25 text-sm py-2">
-                Nenhuma pasta de contas encontrada. <a href="/dashboard/accounts" className="text-[#00E5FF] hover:underline">Criar pasta</a>
+                Nenhuma pasta de contas encontrada. <a href="/dashboard/accounts" className="text-[#85B9E9] hover:underline">Criar pasta</a>
               </p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {foldersWithAccounts.map(f => (
                   <button key={f.id} onClick={() => handleSelectFolder(f.id)}
                     className={cn("flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-all",
-                      selectedFolderId === f.id ? "border-[#00E5FF]/40 bg-[#00E5FF]/10 text-[#00E5FF]" : "border-white/[0.08] text-white/50 hover:border-white/20")}>
+                      selectedFolderId === f.id ? "border-[#85B9E9]/40 bg-[#85B9E9]/10 text-[#85B9E9]" : "border-white/[0.08] text-white/50 hover:border-white/20")}>
                     {f.id === "__no_folder__" ? "📂" : "📁"} {f.name}
                     <span className="text-[10px] opacity-50">({f.accounts.length})</span>
                   </button>
@@ -1117,7 +1117,7 @@ export default function StoriesPage() {
                       <span className="text-white/15 text-xs">·</span>
                     </>
                   )}
-                  <button onClick={() => setSelectedAccountIds(selectedFolder.accounts.map(a => a.id))} className="text-xs text-[#00FF41]/70 hover:text-[#00FF41] transition-colors">Todas</button>
+                  <button onClick={() => setSelectedAccountIds(selectedFolder.accounts.map(a => a.id))} className="text-xs text-[#00498D]/70 hover:text-[#00498D] transition-colors">Todas</button>
                   <span className="text-white/15 text-xs">·</span>
                   <button onClick={() => setSelectedAccountIds([])} className="text-xs text-white/30 hover:text-white/60 transition-colors">Limpar</button>
                   <button onClick={fetchActiveStories} disabled={loadingStories} title="Verificar stories ativos agora"
@@ -1134,8 +1134,8 @@ export default function StoriesPage() {
             )}
             {selectedFolder && storiesMap && (
               <div className="flex items-center gap-3 mb-3 text-[10px]">
-                <span className="flex items-center gap-1.5 text-[#00FF41]/80">
-                  <span className="w-2 h-2 rounded-full bg-gradient-to-tr from-[#00FF41] to-[#00E5FF]" />
+                <span className="flex items-center gap-1.5 text-[#00498D]/80">
+                  <span className="w-2 h-2 rounded-full bg-gradient-to-tr from-[#00498D] to-[#85B9E9]" />
                   {folderWithStoryCount} com story ativo
                 </span>
                 <span className="flex items-center gap-1.5 text-white/35">
@@ -1155,14 +1155,14 @@ export default function StoriesPage() {
                     <button key={acc.id} onClick={() => toggleAccount(acc.id)}
                       title={storiesMap ? (withStory ? `${storiesMap[acc.id]?.count ?? 1} story ativo` : "Sem story ativo") : undefined}
                       className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all",
-                        isSelected ? "border-[#00E5FF]/40 bg-[#00E5FF]/8 text-[#00E5FF]" : "border-white/[0.08] text-white/55 hover:border-white/20")}>
-                      <span className={cn("relative flex-shrink-0 rounded-full", withStory && "p-[1.5px] bg-gradient-to-tr from-[#00FF41] to-[#00E5FF]")}>
+                        isSelected ? "border-[#85B9E9]/40 bg-[#85B9E9]/8 text-[#85B9E9]" : "border-white/[0.08] text-white/55 hover:border-white/20")}>
+                      <span className={cn("relative flex-shrink-0 rounded-full", withStory && "p-[1.5px] bg-gradient-to-tr from-[#00498D] to-[#85B9E9]")}>
                         {acc.avatar_url
                           ? <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover block" />
-                          : <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#00E5FF]/40 to-[#00FF41]/40 flex items-center justify-center"><span className="text-[8px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>}
+                          : <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#85B9E9]/40 to-[#00498D]/40 flex items-center justify-center"><span className="text-[8px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>}
                       </span>
                       <span className="text-xs font-medium leading-none">@{acc.username}</span>
-                      {isSelected && <Check size={9} className="text-[#00E5FF] flex-shrink-0" strokeWidth={3} />}
+                      {isSelected && <Check size={9} className="text-[#85B9E9] flex-shrink-0" strokeWidth={3} />}
                     </button>
                   );
                 })}
@@ -1178,16 +1178,16 @@ export default function StoriesPage() {
               placeholder="https://exemplo.com (opcional)"
               value={storyLinkUrl}
               onChange={(e) => setStoryLinkUrl(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-sm text-white/90 placeholder:text-white/25 focus:border-[#00E5FF]/40 focus:outline-none transition-colors"
+              className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-sm text-white/90 placeholder:text-white/25 focus:border-[#85B9E9]/40 focus:outline-none transition-colors"
             />
             <p className="mt-1 text-[10px] text-white/30">URL externa anexada ao Story como sticker de link.</p>
           </SectionCard>
 
           {/* Nota */}
-          <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-[#00E5FF]/[0.04] border border-[#00E5FF]/15">
-            <ImagePlay size={14} className="text-[#00E5FF]/60 mt-0.5 flex-shrink-0" />
+          <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-[#85B9E9]/[0.04] border border-[#85B9E9]/15">
+            <ImagePlay size={14} className="text-[#85B9E9]/60 mt-0.5 flex-shrink-0" />
             <p className="text-xs text-white/40 leading-relaxed">
-              <span className="text-[#00E5FF]/70 font-medium">Stories não suportam legendas</span> pela API do Instagram.
+              <span className="text-[#85B9E9]/70 font-medium">Stories não suportam legendas</span> pela API do Instagram.
               Publica em até 1 minuto e expira automaticamente em 24 horas.
             </p>
           </div>
@@ -1205,7 +1205,7 @@ export default function StoriesPage() {
           {/* Publicar */}
           <button type="button" onClick={handlePublish} disabled={publishing || media?.status === "uploading"}
             className={cn("w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-black text-sm transition-all",
-              publishing || media?.status === "uploading" ? "bg-[#00E5FF]/40 cursor-not-allowed" : "bg-[#00E5FF] hover:bg-[#00E5FF]/90 hover:shadow-[0_0_28px_rgba(0,229,255,0.35)]"
+              publishing || media?.status === "uploading" ? "bg-[#85B9E9]/40 cursor-not-allowed" : "bg-[#85B9E9] hover:bg-[#85B9E9]/90 hover:shadow-[0_0_28px_rgba(133,185,233,0.35)]"
             )}>
             {publishing ? <><Loader2 size={16} className="animate-spin text-black/70" /> Publicando...</>
               : media?.status === "uploading" ? <><Loader2 size={16} className="animate-spin text-black/70" /> Aguardando upload...</>

@@ -8,8 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
       "Gerencie múltiplas contas, faça scraping de Reels e automatize postagens com IA.",
     start_url: "/",
     display: "standalone",
-    background_color: "#000000",
-    theme_color: "#000000",
+    background_color: "#061427",
+    theme_color: "#061427",
     orientation: "portrait",
     icons: [
       { src: "/icon-192", sizes: "192x192", type: "image/png" },

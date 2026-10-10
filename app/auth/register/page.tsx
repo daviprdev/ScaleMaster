@@ -4,8 +4,9 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Zap, Mail, Lock, Eye, EyeOff, User, ArrowRight, Check } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, User, ArrowRight, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { BrandLogoLarge } from "@/components/brand/BrandLogo";
 
 const passwordRequirements = [
   { label: "Mínimo 8 caracteres", test: (p: string) => p.length >= 8 },
@@ -55,11 +56,11 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-dvh bg-gray-950 flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden">
+    <div className="min-h-dvh flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden" style={{ background: "var(--background)" }}>
       <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none" />
       <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 right-1/4 w-[500px] h-[400px] bg-cyan-600/8 rounded-full blur-[100px]" />
-        <div className="absolute bottom-0 left-1/4 w-[400px] h-[300px] bg-violet-500/8 rounded-full blur-[80px]" />
+        <div className="absolute top-0 right-1/4 w-[500px] h-[400px] rounded-full blur-[100px]" style={{ background: "rgba(0,73,141,0.12)" }} />
+        <div className="absolute bottom-0 left-1/4 w-[400px] h-[300px] rounded-full blur-[80px]" style={{ background: "rgba(133,185,233,0.06)" }} />
       </div>
 
       <div className="relative z-10 w-full max-w-md">
@@ -68,11 +69,8 @@ export default function RegisterPage() {
           animate={{ opacity: 1, y: 0 }}
           className="flex justify-center mb-8"
         >
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)]">
-              <Zap className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-2xl font-bold gradient-text">Scale Master</span>
+          <Link href="/">
+            <BrandLogoLarge size={72} showName={true} />
           </Link>
         </motion.div>
 
@@ -80,7 +78,7 @@ export default function RegisterPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="glass neon-border rounded-2xl p-8"
+          className="glass rounded-2xl p-8"
         >
           <div className="mb-6">
             <h1 className="text-2xl font-bold mb-1">Criar conta grátis</h1>
@@ -174,9 +172,9 @@ export default function RegisterPage() {
 
             <p className="text-xs text-white/30 leading-relaxed">
               Ao criar sua conta, você concorda com nossos{" "}
-              <a href="#" className="text-violet-400 hover:underline">Termos de Serviço</a>{" "}
+              <a href="#" className="text-[#85B9E9] hover:underline">Termos de Serviço</a>{" "}
               e{" "}
-              <a href="#" className="text-violet-400 hover:underline">Política de Privacidade</a>.
+              <a href="#" className="text-[#85B9E9] hover:underline">Política de Privacidade</a>.
             </p>
 
             <motion.button
@@ -195,7 +193,7 @@ export default function RegisterPage() {
 
           <p className="text-center text-sm text-white/40 mt-6">
             Já tem uma conta?{" "}
-            <Link href="/auth/login" className="text-violet-400 hover:text-violet-300 font-medium transition-colors">
+            <Link href="/auth/login" className="text-[#85B9E9] hover:text-[#AFBDD0] font-medium transition-colors">
               Entrar agora
             </Link>
           </p>

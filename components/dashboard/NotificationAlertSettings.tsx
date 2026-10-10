@@ -32,7 +32,7 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
       onClick={() => onChange(!checked)}
       className={cn(
         "relative inline-flex w-11 h-6 rounded-full transition-colors duration-300 focus:outline-none shrink-0 disabled:opacity-40",
-        checked ? "bg-[#00FF41]/60" : "bg-white/10"
+        checked ? "bg-[#00498D]/60" : "bg-white/10"
       )}
     >
       <motion.span

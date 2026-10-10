@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Bell, BellRing, BellOff, AlertCircle, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 type SupportState = "checking" | "unsupported" | "ios-needs-install" | "supported";
 
@@ -154,7 +153,7 @@ export default function PushNotificationManager() {
     <div className="space-y-3">
       <div className="flex items-center justify-between px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
         <div className="flex items-center gap-3">
-          <span className={cn("shrink-0", subscribed ? "text-[#00FF41]" : "text-white/30")}>
+          <span className={`shrink-0 ${subscribed ? "text-[#00498D]" : "text-white/30"}`}>
             {subscribed ? <BellRing size={16} /> : <Bell size={16} />}
           </span>
           <div>
@@ -169,12 +168,7 @@ export default function PushNotificationManager() {
         <button
           onClick={subscribed ? handleUnsubscribe : handleSubscribe}
           disabled={busy}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150 shrink-0",
-            subscribed
-              ? "bg-red-500/[0.06] border border-red-500/20 text-red-400 hover:bg-red-500/[0.10]"
-              : "bg-[#00FF41]/[0.08] border border-[#00FF41]/25 text-[#00FF41] hover:bg-[#00FF41]/[0.14]"
-          )}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150 shrink-0 ${subscribed ? "bg-red-500/[0.06] border border-red-500/20 text-red-400 hover:bg-red-500/[0.10]" : "bg-[#00498D]/[0.08] border border-[#00498D]/25 text-[#00498D] hover:bg-[#00498D]/[0.14]"}`}
         >
           {busy && <Loader2 size={14} className="animate-spin" />}
           {subscribed ? <BellOff size={14} /> : <Bell size={14} />}

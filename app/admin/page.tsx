@@ -125,7 +125,7 @@ export default function AdminDashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24 text-white/40 gap-2">
-        <Loader2 className="w-5 h-5 animate-spin text-[#00FF41]" />
+        <Loader2 className="w-5 h-5 animate-spin text-[#00498D]" />
         <span className="text-sm">Carregando painel…</span>
       </div>
     );
@@ -147,8 +147,8 @@ export default function AdminDashboardPage() {
       label: "Usuários cadastrados",
       value: stats.totalUsers,
       icon: Users,
-      color: "text-[#00FF41]",
-      border: "border-[#00FF41]/20",
+      color: "text-[#00498D]",
+      border: "border-[#00498D]/20",
       breakdown: [
         { label: "Aprovados", value: stats.usersByStatus?.approved ?? 0, color: "text-emerald-400" },
         { label: "Pendentes", value: stats.usersByStatus?.pending  ?? 0, color: "text-amber-400" },
@@ -159,8 +159,8 @@ export default function AdminDashboardPage() {
       label: "Contas Meta conectadas",
       value: stats.totalAccounts,
       icon: Instagram,
-      color: "text-[#00E5FF]",
-      border: "border-[#00E5FF]/20",
+      color: "text-[#85B9E9]",
+      border: "border-[#85B9E9]/20",
       breakdown: null,
     },
     {
@@ -225,7 +225,7 @@ export default function AdminDashboardPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-[#00FF41]" />
+              <TrendingUp className="w-4 h-4 text-[#00498D]" />
               <h2 className="text-sm font-semibold text-white">Crescimento de usuários</h2>
             </div>
             <p className="text-xs text-white/40 mt-0.5">Últimos 30 dias</p>
@@ -236,8 +236,8 @@ export default function AdminDashboardPage() {
           <AreaChart data={stats.userGrowth} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="gradUsers" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#00FF41" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#00FF41" stopOpacity={0} />
+                <stop offset="5%"  stopColor="#00498D" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#00498D" stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#ffffff06" vertical={false} />
@@ -254,7 +254,7 @@ export default function AdminDashboardPage() {
             <Tooltip
               contentStyle={{
                 background: "rgba(0,0,0,0.88)",
-                border: "1px solid rgba(0,255,65,0.15)",
+                border: "1px solid rgba(0,73,141,0.15)",
                 borderRadius: 12,
                 fontSize: 12,
                 color: "#fff",
@@ -264,9 +264,9 @@ export default function AdminDashboardPage() {
             />
             <Area
               type="monotone" dataKey="users"
-              stroke="#00FF41" strokeWidth={2}
+              stroke="#00498D" strokeWidth={2}
               fill="url(#gradUsers)" dot={false}
-              activeDot={{ r: 4, fill: "#00FF41", stroke: "#000", strokeWidth: 2 }}
+              activeDot={{ r: 4, fill: "#00498D", stroke: "#000", strokeWidth: 2 }}
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -276,7 +276,7 @@ export default function AdminDashboardPage() {
       {sales && (
         <div className="glass-card rounded-2xl p-6">
           <div className="flex items-center gap-2 mb-4">
-            <DollarSign className="w-4 h-4 text-[#00FF41]" />
+            <DollarSign className="w-4 h-4 text-[#00498D]" />
             <h2 className="text-sm font-semibold text-white">Vendas</h2>
             <span className="text-xs text-white/30">ApexVips · SharkBot</span>
           </div>
@@ -313,7 +313,7 @@ export default function AdminDashboardPage() {
                     <tr key={s.id} className="border-b border-white/[0.03] last:border-0">
                       <td className="px-2 py-2.5 text-white/70">{s.customer ?? "—"}</td>
                       <td className="px-2 py-2.5 text-white/50">{s.planName ?? "—"}</td>
-                      <td className="px-2 py-2.5 text-[#00FF41] font-medium">
+                      <td className="px-2 py-2.5 text-[#00498D] font-medium">
                         {s.amount != null ? formatBRL(s.amount) : "—"}
                       </td>
                       <td className="px-2 py-2.5 text-white/40">

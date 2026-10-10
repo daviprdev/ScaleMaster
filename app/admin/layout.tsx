@@ -52,12 +52,12 @@ export default async function AdminLayout({
       <aside className="relative z-10 w-60 shrink-0 flex flex-col border-r border-white/[0.07] bg-black/70 backdrop-blur-[22px]">
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-white/[0.07]">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#00FF41]/[0.08] border border-[#00FF41]/20">
-            <Shield className="w-4 h-4 text-[#00FF41]" />
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#00498D]/[0.08] border border-[#00498D]/20">
+            <Shield className="w-4 h-4 text-[#00498D]" />
           </div>
           <div className="leading-none">
             <p className="text-sm font-bold text-white">Scale Master</p>
-            <p className="text-[11px] text-[#00FF41] font-medium mt-0.5 tracking-wide">Admin Panel</p>
+            <p className="text-[11px] text-[#00498D] font-medium mt-0.5 tracking-wide">Admin Panel</p>
           </div>
         </div>
 
@@ -67,9 +67,9 @@ export default async function AdminLayout({
             <Link
               key={href}
               href={href}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-white/45 hover:text-white hover:bg-[#00FF41]/[0.06] transition-all duration-150 group"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-white/45 hover:text-white hover:bg-[#00498D]/[0.06] transition-all duration-150 group"
             >
-              <Icon className="w-4 h-4 shrink-0 group-hover:text-[#00FF41] transition-colors" />
+              <Icon className="w-4 h-4 shrink-0 group-hover:text-[#00498D] transition-colors" />
               {label}
             </Link>
           ))}
@@ -81,7 +81,7 @@ export default async function AdminLayout({
             href="/dashboard"
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-white/35 hover:text-white/80 hover:bg-white/[0.05] transition-all duration-150 group"
           >
-            <LogOut className="w-4 h-4 shrink-0 group-hover:text-[#00E5FF] transition-colors" />
+            <LogOut className="w-4 h-4 shrink-0 group-hover:text-[#85B9E9] transition-colors" />
             Voltar ao Dashboard
           </Link>
           <p className="px-3 pt-2 text-[11px] text-white/20 truncate">{user.email}</p>

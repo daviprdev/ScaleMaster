@@ -118,8 +118,8 @@ function Countdown({ ms }: { ms: number | null }) {
 function Avatar({ username, size = "md" }: { username: string; size?: "sm" | "md" | "lg" }) {
   const colors = [
     "from-[var(--matrix)]/70 to-[var(--electric)]/70",
-    "from-violet-500 to-purple-700",
-    "from-cyan-500 to-blue-600",
+    "from-[#00498D] to-[#00346D]",
+    "from-[#85B9E9] to-[#00498D]",
     "from-amber-500 to-orange-600",
     "from-rose-500 to-pink-700",
   ];
@@ -133,7 +133,7 @@ function Avatar({ username, size = "md" }: { username: string; size?: "sm" | "md
 }
 
 function MetricCard({ label, sub, value, color, icon: Icon, extra }: {
-  label: string; sub: string; value: string | number; color: "green" | "cyan" | "red" | "amber" | "violet" | "pink";
+  label: string; sub: string; value: string | number; color: "green" | "cyan" | "red" | "amber" | "blue" | "pink";
   icon: React.ElementType; extra?: React.ReactNode;
 }) {
   const c = {
@@ -141,7 +141,7 @@ function MetricCard({ label, sub, value, color, icon: Icon, extra }: {
     cyan:   { border: "border-[var(--electric)]/20", glow: "from-[var(--electric)]/8", num: "text-[var(--electric)]", ic: "text-[var(--electric)]/40" },
     red:    { border: "border-red-500/20",    glow: "from-red-500/8",    num: "text-red-400",    ic: "text-red-400/40"    },
     amber:  { border: "border-amber-500/20",  glow: "from-amber-500/8",  num: "text-amber-400",  ic: "text-amber-400/40"  },
-    violet: { border: "border-violet-500/20", glow: "from-violet-500/8", num: "text-violet-400", ic: "text-violet-400/40" },
+    blue: { border: "border-[#00498D]/20", glow: "from-[#00498D]/8", num: "text-[#85B9E9]", ic: "text-[#85B9E9]/40" },
     pink:   { border: "border-pink-500/20",   glow: "from-pink-500/8",   num: "text-pink-400",   ic: "text-pink-400/40"   },
   }[color];
   return (
@@ -284,9 +284,9 @@ function LoopAccountCard({ acc }: { acc: AccountStatus }) {
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-semibold text-white/90 truncate">@{acc.username}</p>
             {acc.in_active_loop && (
-              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-600/15 border border-violet-500/20">
-                <Radio size={8} className="text-violet-400 animate-pulse" />
-                <span className="text-[9px] text-violet-300">{acc.loop_name ?? "Loop"}</span>
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#00498D]/15 border border-[#00498D]/20">
+                <Radio size={8} className="text-[#85B9E9] animate-pulse" />
+                <span className="text-[9px] text-[#AFBDD0]">{acc.loop_name ?? "Loop"}</span>
               </span>
             )}
           </div>
@@ -654,7 +654,7 @@ function LoopView() {
         <MetricCard label="Erros" sub="últimas 24h" value={m.errors_24h} color="red" icon={XCircle} />
         <MetricCard label="Próxima postagem" sub="countdown" value="" color="amber" icon={TrendingUp}
           extra={<p className="text-sm font-bold text-amber-400 tabular-nums"><Countdown ms={m.next_publish_in_ms} /></p>} />
-        <MetricCard label="Loops ativos" sub="em execução" value={m.active_loops} color="violet" icon={Radio} />
+        <MetricCard label="Loops ativos" sub="em execução" value={m.active_loops} color="blue" icon={Radio} />
       </div>
 
       {data && <Timeline published={data.timeline.published} upcoming={data.timeline.upcoming} />}
@@ -817,7 +817,7 @@ function CampaignView() {
         <MetricCard label="Views" sub="total campanhas" value={fmtNum(m.total_plays ?? 0)} color="cyan" icon={Eye} />
         <MetricCard label="Likes" sub="total campanhas" value={fmtNum(m.total_likes ?? 0)} color="pink" icon={Heart} />
         <MetricCard label="Comentários" sub="total campanhas" value={fmtNum(m.total_comments ?? 0)} color="amber" icon={MessageCircle} />
-        <MetricCard label="Alcance" sub="total campanhas" value={fmtNum(m.total_reach ?? 0)} color="violet" icon={Users} />
+        <MetricCard label="Alcance" sub="total campanhas" value={fmtNum(m.total_reach ?? 0)} color="blue" icon={Users} />
       </div>
 
       {data && <Timeline published={data.timeline.published} upcoming={data.timeline.upcoming} />}
@@ -897,7 +897,7 @@ export default function MonitorPage() {
               : "text-white/30 hover:text-white/60"
           )}
         >
-          <Radio size={14} className={tab === "loop" ? "text-violet-400" : "text-white/20"} />
+          <Radio size={14} className={tab === "loop" ? "text-[#85B9E9]" : "text-white/20"} />
           Loop
         </button>
         <button

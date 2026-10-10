@@ -172,8 +172,8 @@ function ViewsPeriodCard({ views }: { views: DashboardStats["views"] }) {
   const [period, setPeriod] = useState<ViewsPeriod>(views.today_has_data ? "today" : "yesterday");
   const current = VIEWS_PERIODS.find((p) => p.key === period)!;
   const value = Number(views[period]) || 0;
-  const color = "#00E5FF";
-  const glow = "rgba(0,229,255,0.22)";
+  const color = "#85B9E9";
+  const glow = "rgba(133,185,233,0.22)";
 
   return (
     <div className="glass-card ticks p-5 group relative overflow-hidden">
@@ -203,7 +203,7 @@ function ViewsPeriodCard({ views }: { views: DashboardStats["views"] }) {
               className="text-[10px] px-2.5 py-1 rounded-full border transition-colors"
               style={
                 period === p.key
-                  ? { background: "rgba(0,229,255,0.12)", borderColor: "rgba(0,229,255,0.4)", color }
+                  ? { background: "rgba(133,185,233,0.12)", borderColor: "rgba(133,185,233,0.4)", color }
                   : { background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.4)" }
               }
             >
@@ -289,16 +289,16 @@ export default function DashboardPage() {
           value: String(stats.accounts.total),
           change: "Total no SaaS",
           icon: Instagram,
-          iconColor: "#00FF41",
-          glow: "rgba(0,255,65,0.22)",
+          iconColor: "#00498D",
+          glow: "rgba(0,73,141,0.22)",
         },
         {
           label: "Postagens Hoje",
           value: String(stats.posts_today.published),
           change: `${stats.posts_today.loop} via Loop · ${stats.posts_today.scheduled} via campanhas`,
           icon: CalendarCheck,
-          iconColor: "#00E5FF",
-          glow: "rgba(0,229,255,0.22)",
+          iconColor: "#85B9E9",
+          glow: "rgba(133,185,233,0.22)",
         },
         // Enquanto a Meta não libera o dia corrente (algumas horas após virar às
         // 21h de Brasília), mostra ONTEM em vez de um 0 que parece erro.
@@ -308,24 +308,24 @@ export default function DashboardPage() {
               value: formatCompact(stats.views.today),
               change: `Ontem: ${formatCompact(stats.views.yesterday)} · zera às 21h`,
               icon: Eye,
-              iconColor: "#00E5FF",
-              glow: "rgba(0,229,255,0.22)",
+              iconColor: "#85B9E9",
+              glow: "rgba(133,185,233,0.22)",
             }
           : {
               label: "Views Ontem",
               value: formatCompact(stats.views.yesterday),
               change: "Hoje ainda sem dados — a Meta libera com algumas horas de atraso",
               icon: Eye,
-              iconColor: "#00E5FF",
-              glow: "rgba(0,229,255,0.22)",
+              iconColor: "#85B9E9",
+              glow: "rgba(133,185,233,0.22)",
             },
         {
           label: "Fila",
           value: String(stats.queue.pending),
           change: "Aguardando publicação",
           icon: ListOrdered,
-          iconColor: "#00FF41",
-          glow: "rgba(0,255,65,0.22)",
+          iconColor: "#00498D",
+          glow: "rgba(0,73,141,0.22)",
         },
       ]
     : null;
@@ -338,8 +338,8 @@ export default function DashboardPage() {
           total: stats.accounts.added_7d,
           totalLabel: "novas em 7 dias",
           icon: UserPlus,
-          iconColor: "#00FF41",
-          glow: "rgba(0,255,65,0.22)",
+          iconColor: "#00498D",
+          glow: "rgba(0,73,141,0.22)",
           items: [
             { label: "Hoje", value: stats.accounts.added_today },
             { label: "Ontem", value: stats.accounts.added_yesterday },
@@ -372,8 +372,8 @@ export default function DashboardPage() {
           compareLabel: "Ontem",
           compareValue: formatBRL(stats.sales.yesterday),
           icon: DollarSign,
-          iconColor: "#00FF41",
-          glow: "rgba(0,255,65,0.22)",
+          iconColor: "#00498D",
+          glow: "rgba(0,73,141,0.22)",
         },
         {
           label: "Vendas Mensais",
@@ -382,16 +382,16 @@ export default function DashboardPage() {
           compareLabel: "Mês anterior",
           compareValue: formatBRL(stats.sales.prev_month),
           icon: DollarSign,
-          iconColor: "#00FF41",
-          glow: "rgba(0,255,65,0.22)",
+          iconColor: "#00498D",
+          glow: "rgba(0,73,141,0.22)",
         },
       ]
     : null;
 
   const quickActions = [
-    { label: "Postar", href: "/dashboard/postar", icon: Send, desc: "Distribuição de conteúdo", color: "#00FF41" },
-    { label: "Loop", href: "/dashboard/loop", icon: Repeat2, desc: "Ciclo contínuo", color: "#00FF41" },
-    { label: "Stories", href: "/dashboard/stories", icon: ImagePlay, desc: "Postar e importar", color: "#00E5FF" },
+    { label: "Postar", href: "/dashboard/postar", icon: Send, desc: "Distribuição de conteúdo", color: "#00498D" },
+    { label: "Loop", href: "/dashboard/loop", icon: Repeat2, desc: "Ciclo contínuo", color: "#00498D" },
+    { label: "Stories", href: "/dashboard/stories", icon: ImagePlay, desc: "Postar e importar", color: "#85B9E9" },
   ];
 
   return (
@@ -402,7 +402,7 @@ export default function DashboardPage() {
         <button
           onClick={() => loadStats(true)}
           disabled={loading || refreshing}
-          className="flex items-center gap-1.5 text-[11px] text-white/25 hover:text-[#00FF41] transition-colors disabled:opacity-40"
+          className="flex items-center gap-1.5 text-[11px] text-white/25 hover:text-[#00498D] transition-colors disabled:opacity-40"
         >
           <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
           {refreshing ? "Atualizando…" : "Atualizar"}
@@ -552,7 +552,7 @@ export default function DashboardPage() {
         <motion.div variants={fadeUp} className="lg:col-span-2 glass-card p-5">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-sm font-semibold text-white/80 tracking-wide uppercase">Atividade Recente</h2>
-            <button className="text-[11px] text-[#00FF41]/60 hover:text-[#00FF41] transition-colors">
+            <button className="text-[11px] text-[#00498D]/60 hover:text-[#00498D] transition-colors">
               Ver tudo
             </button>
           </div>
@@ -616,9 +616,9 @@ export default function DashboardPage() {
                 <span
                   className="text-[10px] px-2 py-0.5 rounded-full"
                   style={{
-                    background: "rgba(0,255,65,0.08)",
-                    border: "0.5px solid rgba(0,255,65,0.2)",
-                    color: "#00FF41",
+                    background: "rgba(0,73,141,0.08)",
+                    border: "0.5px solid rgba(0,73,141,0.2)",
+                    color: "#00498D",
                   }}
                 >
                   {stats.queue.pending} na fila
@@ -675,10 +675,10 @@ export default function DashboardPage() {
                       className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
                       style={{
                         background: "rgba(255,255,255,0.04)",
-                        border: "0.5px solid rgba(0,229,255,0.2)",
+                        border: "0.5px solid rgba(133,185,233,0.2)",
                       }}
                     >
-                      <Play size={13} style={{ color: "#00E5FF" }} />
+                      <Play size={13} style={{ color: "#85B9E9" }} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-white/70 truncate group-hover/post:text-white/90 transition-colors">
@@ -688,7 +688,7 @@ export default function DashboardPage() {
                     </div>
                     <div
                       className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                      style={{ background: "#00FF41", boxShadow: "0 0 6px rgba(0,255,65,0.8)" }}
+                      style={{ background: "#00498D", boxShadow: "0 0 6px rgba(0,73,141,0.8)" }}
                     />
                   </motion.div>
                 );

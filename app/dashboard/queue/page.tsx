@@ -99,7 +99,7 @@ function AccountAvatar({ username, size = "sm" }: { username: string; size?: "sm
   return (
     <div
       className={cn(
-        "rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center font-bold text-white flex-shrink-0",
+        "rounded-full bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center font-bold text-white flex-shrink-0",
         size === "sm" ? "w-7 h-7 text-[10px]" : "w-9 h-9 text-xs"
       )}
     >
@@ -124,7 +124,7 @@ function MetricCard({
   const palette = {
     blue:  { ring: "border-blue-500/20",    glow: "from-blue-500/10",    num: "text-blue-400",    ic: "text-blue-400/50"    },
     green: { ring: "border-emerald-500/20", glow: "from-emerald-500/10", num: "text-emerald-400", ic: "text-emerald-400/50" },
-    cyan:  { ring: "border-cyan-500/20",    glow: "from-cyan-500/10",    num: "text-cyan-400",    ic: "text-cyan-400/50"    },
+    cyan:  { ring: "border-[#85B9E9]/20",    glow: "from-[#85B9E9]/10",    num: "text-[#85B9E9]",    ic: "text-[#85B9E9]/50"    },
     amber: { ring: "border-amber-500/20",   glow: "from-amber-500/10",   num: "text-amber-400",   ic: "text-amber-400/50"   },
     red:   { ring: "border-red-500/20",     glow: "from-red-500/10",     num: "text-red-400",     ic: "text-red-400/50"     },
   }[color];
@@ -156,11 +156,11 @@ function DiagPanel({ diag }: { diag: DiagResult }) {
     <div className="space-y-3 text-xs font-mono">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {[
-          { label: "Pending total",      value: sp.pending_total,    color: "text-cyan-400"    },
+          { label: "Pending total",      value: sp.pending_total,    color: "text-[#85B9E9]"    },
           { label: "Elegíveis agora",    value: sp.eligible_now,     color: "text-emerald-400" },
           { label: "Data futura",        value: sp.future_dated,     color: "text-amber-400"   },
           { label: "Em publicação",      value: sp.stuck_publishing, color: "text-blue-400"    },
-          { label: "Containers pendentes", value: diag.pending_containers, color: "text-violet-400" },
+          { label: "Containers pendentes", value: diag.pending_containers, color: "text-[#85B9E9]" },
           { label: "Falhas acumuladas",  value: sp.failed,           color: "text-red-400"     },
         ].map(row => (
           <div key={row.label} className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.05]">
@@ -246,7 +246,7 @@ function ForceRunPanel({ result }: { result: ForceRunResult }) {
         ) : (
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             <span className="text-white/35">Publicados</span><span className="text-emerald-400 font-bold">{sched.published ?? 0}</span>
-            <span className="text-white/35">Elegíveis</span><span className="text-cyan-400 font-bold">{sched.queue_eligible ?? 0}</span>
+            <span className="text-white/35">Elegíveis</span><span className="text-[#85B9E9] font-bold">{sched.queue_eligible ?? 0}</span>
             <span className="text-white/35">Data futura</span><span className="text-amber-400 font-bold">{sched.queue_future ?? 0}</span>
             <span className="text-white/35">Falhas (execução)</span><span className="text-red-400 font-bold">{sched.failed ?? 0}</span>
             <span className="text-white/35">Desbloqueados</span><span className="text-white/50">{sched.unblocked ?? 0}</span>
@@ -384,7 +384,7 @@ export default function QueuePage() {
   if (loading && !stats) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 size={24} className="animate-spin text-violet-400" />
+        <Loader2 size={24} className="animate-spin text-[#85B9E9]" />
       </div>
     );
   }
@@ -639,7 +639,7 @@ export default function QueuePage() {
         {(stats?.per_account.length ?? 0) > 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <div className="flex items-center gap-2 mb-3">
-              <Users size={14} className="text-violet-400" />
+              <Users size={14} className="text-[#85B9E9]" />
               <h2 className="text-sm font-semibold text-white/70">Gerenciamento por conta</h2>
               <span className="text-[10px] text-white/25 ml-1">ativas nas últimas 24h</span>
             </div>
@@ -665,9 +665,9 @@ export default function QueuePage() {
                       )}
                     </div>
                     {acc.has_active_loop && (
-                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-600/15 border border-violet-500/25 flex-shrink-0">
-                        <Radio size={9} className="text-violet-400 animate-pulse" />
-                        <span className="text-[10px] text-violet-300 font-medium">Loop</span>
+                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#00498D]/15 border border-[#00498D]/25 flex-shrink-0">
+                        <Radio size={9} className="text-[#85B9E9] animate-pulse" />
+                        <span className="text-[10px] text-[#AFBDD0] font-medium">Loop</span>
                       </div>
                     )}
                   </div>
@@ -677,7 +677,7 @@ export default function QueuePage() {
                     <div className="text-center p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.04]">
                       <p className={cn(
                         "text-lg font-bold tabular-nums leading-tight",
-                        acc.pending > 0 ? "text-cyan-400" : "text-white/25"
+                        acc.pending > 0 ? "text-[#85B9E9]" : "text-white/25"
                       )}>
                         {acc.pending}
                       </p>

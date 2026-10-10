@@ -48,7 +48,7 @@ function timeAgo(dateStr: string | null): string {
 }
 
 const STATUS_META: Record<ReaderAccount["status"], { label: string; color: string; dot: string }> = {
-  online:     { label: "Conectada",     color: "rgba(0,255,65,0.9)",  dot: "#00FF41" },
+  online:     { label: "Conectada",     color: "rgba(0,73,141,0.9)",  dot: "#00498D" },
   error:      { label: "Erro",          color: "rgba(255,100,90,0.9)", dot: "#FF3B30" },
   unverified: { label: "Não conectada", color: "rgba(255,255,255,0.4)", dot: "#888" },
 };
@@ -181,7 +181,7 @@ export default function ContasLeitorasPage() {
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: "linear-gradient(135deg, rgba(0,255,65,0.15), rgba(0,229,255,0.1))", border: "0.5px solid rgba(0,255,65,0.25)", boxShadow: "0 0 18px rgba(0,255,65,0.12)" }}>
+            style={{ background: "linear-gradient(135deg, rgba(0,73,141,0.15), rgba(133,185,233,0.1))", border: "0.5px solid rgba(0,73,141,0.25)", boxShadow: "0 0 18px rgba(0,73,141,0.12)" }}>
             <BookUser size={18} style={{ color: "var(--matrix)" }} />
           </div>
           <div>
@@ -200,9 +200,9 @@ export default function ContasLeitorasPage() {
 
       {/* Info banner */}
       <div className="flex items-start gap-3 px-4 py-3 rounded-xl"
-        style={{ background: "rgba(0,229,255,0.05)", border: "0.5px solid rgba(0,229,255,0.12)" }}>
+        style={{ background: "rgba(133,185,233,0.05)", border: "0.5px solid rgba(133,185,233,0.12)" }}>
         <ShieldCheck size={15} style={{ color: "var(--electric)" }} className="flex-shrink-0 mt-0.5" />
-        <p className="text-xs leading-relaxed" style={{ color: "rgba(0,229,255,0.7)" }}>
+        <p className="text-xs leading-relaxed" style={{ color: "rgba(133,185,233,0.7)" }}>
           Estas contas só <strong>leem</strong> conteúdo (raspam reels de perfis) e nunca postam.
           Cada uma precisa de um <strong>proxy dedicado</strong> para operar. Perfis privados só são
           acessíveis se a conta leitora já os seguir de verdade.
@@ -282,8 +282,8 @@ export default function ContasLeitorasPage() {
       ) : accounts.length === 0 ? (
         <div className="flex flex-col items-center py-20 gap-4 text-center">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
-            style={{ background: "rgba(0,255,65,0.06)", border: "0.5px solid rgba(0,255,65,0.18)" }}>
-            <Users size={26} style={{ color: "rgba(0,255,65,0.4)" }} />
+            style={{ background: "rgba(0,73,141,0.06)", border: "0.5px solid rgba(0,73,141,0.18)" }}>
+            <Users size={26} style={{ color: "rgba(0,73,141,0.4)" }} />
           </div>
           <div className="space-y-1.5">
             <p className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.5)" }}>Nenhuma conta leitora ainda</p>
@@ -318,13 +318,13 @@ export default function ContasLeitorasPage() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded"
                       style={a.has_proxy
-                        ? { background: "rgba(0,229,255,0.08)", color: "rgba(0,229,255,0.75)", border: "0.5px solid rgba(0,229,255,0.2)" }
+                        ? { background: "rgba(133,185,233,0.08)", color: "rgba(133,185,233,0.75)", border: "0.5px solid rgba(133,185,233,0.2)" }
                         : { background: "rgba(255,180,0,0.08)", color: "rgba(255,200,0,0.8)", border: "0.5px solid rgba(255,180,0,0.2)" }}>
                       <Globe size={9} />{a.has_proxy ? "proxy" : "sem proxy"}
                     </span>
                     {a.has_totp && (
                       <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded"
-                        style={{ background: "rgba(0,255,65,0.06)", color: "rgba(0,255,65,0.7)", border: "0.5px solid rgba(0,255,65,0.15)" }}>
+                        style={{ background: "rgba(0,73,141,0.06)", color: "rgba(0,73,141,0.7)", border: "0.5px solid rgba(0,73,141,0.15)" }}>
                         <KeyRound size={9} />2FA
                       </span>
                     )}
@@ -361,8 +361,8 @@ export default function ContasLeitorasPage() {
                       title={!a.has_proxy ? "Configure um proxy primeiro" : undefined}
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all disabled:cursor-not-allowed"
                       style={a.verifying || !a.has_proxy
-                        ? { background: "rgba(0,255,65,0.05)", border: "0.5px solid rgba(0,255,65,0.12)", color: "rgba(0,255,65,0.4)" }
-                        : { background: "rgba(0,255,65,0.1)", border: "0.5px solid rgba(0,255,65,0.3)", color: "rgba(0,255,65,0.9)" }}>
+                        ? { background: "rgba(0,73,141,0.05)", border: "0.5px solid rgba(0,73,141,0.12)", color: "rgba(0,73,141,0.4)" }
+                        : { background: "rgba(0,73,141,0.1)", border: "0.5px solid rgba(0,73,141,0.3)", color: "rgba(0,73,141,0.9)" }}>
                       {a.verifying ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                       {a.status === "online" ? "Revalidar" : "Conectar"}
                     </button>

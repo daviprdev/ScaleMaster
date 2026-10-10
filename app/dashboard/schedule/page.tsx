@@ -45,9 +45,9 @@ interface ScheduledPost {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const AVATAR_COLORS = [
-  "from-violet-500 to-purple-600",
+  "from-[#00498D] to-[#00346D]",
   "from-pink-500 to-rose-600",
-  "from-cyan-500 to-blue-600",
+  "from-[#85B9E9] to-[#00498D]",
   "from-emerald-500 to-teal-600",
   "from-amber-500 to-orange-600",
   "from-fuchsia-500 to-purple-600",
@@ -137,7 +137,7 @@ function PostRow({
       <div
         className={cn(
           "w-10 rounded-lg flex-shrink-0 bg-gradient-to-br",
-          account ? avatarGradient(account.username) : "from-violet-600 to-purple-800"
+          account ? avatarGradient(account.username) : "from-[#00498D] to-[#00346D]"
         )}
         style={{ aspectRatio: "9/16" }}
       />
@@ -378,7 +378,7 @@ export default function SchedulePage() {
               className={cn(
                 "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors",
                 filter === key
-                  ? "bg-violet-600/25 text-violet-300 border border-violet-500/30"
+                  ? "bg-[#00498D]/25 text-[#AFBDD0] border border-[#00498D]/30"
                   : "text-white/35 hover:text-white/60 hover:bg-white/[0.04] border border-transparent"
               )}
             >
@@ -386,7 +386,7 @@ export default function SchedulePage() {
               {count > 0 && (
                 <span className={cn(
                   "text-[10px] px-1.5 py-px rounded-full",
-                  filter === key ? "bg-violet-500/30 text-violet-300" : "bg-white/[0.06] text-white/30"
+                  filter === key ? "bg-[#00498D]/30 text-[#AFBDD0]" : "bg-white/[0.06] text-white/30"
                 )}>
                   {count}
                 </span>

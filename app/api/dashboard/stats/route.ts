@@ -7,12 +7,12 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const GRADIENTS = [
-  "from-violet-500 to-purple-600",
-  "from-cyan-500 to-blue-600",
+  "from-[#00498D] to-[#00346D]",
+  "from-[#85B9E9] to-[#00498D]",
   "from-pink-500 to-rose-600",
   "from-emerald-500 to-teal-600",
   "from-amber-500 to-orange-500",
-  "from-indigo-500 to-violet-600",
+  "from-[#00346D] to-[#00498D]",
 ];
 
 // ── Main handler ─────────────────────────────────────────────────

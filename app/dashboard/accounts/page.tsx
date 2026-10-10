@@ -172,9 +172,9 @@ function tokenStatusChip(tokenExpiresAt: string | null, isMetaAccount: boolean) 
 }
 
 const AVATAR_COLORS = [
-  "from-violet-500 to-purple-600",
+  "from-[#00498D] to-[#00346D]",
   "from-pink-500 to-rose-600",
-  "from-cyan-500 to-blue-600",
+  "from-[#85B9E9] to-[#00498D]",
   "from-emerald-500 to-teal-600",
   "from-amber-500 to-orange-600",
   "from-fuchsia-500 to-purple-600",
@@ -375,7 +375,7 @@ function AccountCard({
       className={cn(
         "glass-card rounded-2xl transition-all",
         accountFell && "border border-red-500/25",
-        selectMode && selected && "border border-[#00FF41]/50 ring-1 ring-[#00FF41]/20",
+        selectMode && selected && "border border-[#00498D]/50 ring-1 ring-[#00498D]/20",
         selectMode && !selected && "opacity-70",
       )}
     >
@@ -383,9 +383,9 @@ function AccountCard({
       {selectMode && (
         <div className={cn(
           "absolute top-3 left-3 z-20 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
-          selected ? "border-[#00FF41] bg-[#00FF41]/20" : "border-white/30 bg-black/40"
+          selected ? "border-[#00498D] bg-[#00498D]/20" : "border-white/30 bg-black/40"
         )}>
-          {selected && <div className="w-2.5 h-2.5 rounded-full bg-[#00FF41]" />}
+          {selected && <div className="w-2.5 h-2.5 rounded-full bg-[#00498D]" />}
         </div>
       )}
 
@@ -471,7 +471,7 @@ function AccountCard({
             className="w-7 h-7 rounded-lg flex items-center justify-center text-white/25 hover:text-white/70 hover:bg-white/[0.06] transition-colors disabled:opacity-40"
           >
             {(refreshing || deleting || tokenRefreshing || moving)
-              ? <Loader2 size={13} className="animate-spin text-cyan-400" />
+              ? <Loader2 size={13} className="animate-spin text-[#85B9E9]" />
               : <MoreHorizontal size={15} />
             }
           </button>
@@ -490,13 +490,13 @@ function AccountCard({
                   onClick={() => { onRefresh(account.id); setMenuOpen(false); }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
                 >
-                  <RefreshCw size={12} className="text-cyan-400" /> Sincronizar
+                  <RefreshCw size={12} className="text-[#85B9E9]" /> Sincronizar
                 </button>
                 <button
                   onClick={() => { onEditProfile(account); setMenuOpen(false); }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
                 >
-                  <UserCog size={12} className="text-[#00FF41]" /> Editar Perfil Manual
+                  <UserCog size={12} className="text-[#00498D]" /> Editar Perfil Manual
                 </button>
                 <button
                   onClick={() => { onToggle(account); setMenuOpen(false); }}
@@ -510,7 +510,7 @@ function AccountCard({
                     onClick={() => { onRefreshToken(account.id); setMenuOpen(false); }}
                     className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
                   >
-                    <KeyRound size={12} className="text-violet-400" /> Renovar Token
+                    <KeyRound size={12} className="text-[#85B9E9]" /> Renovar Token
                   </button>
                 )}
 
@@ -519,7 +519,7 @@ function AccountCard({
                   onClick={() => { onMoveClick(account); setMenuOpen(false); }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
                 >
-                  <Folder size={12} className="text-violet-400/80" /> Mover para pasta...
+                  <Folder size={12} className="text-[#85B9E9]/80" /> Mover para pasta...
                 </button>
 
                 {/* Configurar proxy dedicado */}
@@ -527,7 +527,7 @@ function AccountCard({
                   onClick={() => { onProxyClick(account); setMenuOpen(false); }}
                   className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
                 >
-                  <Globe size={12} className={account.has_proxy ? "text-[#00FF41]" : "text-white/40"} />
+                  <Globe size={12} className={account.has_proxy ? "text-[#00498D]" : "text-white/40"} />
                   {account.has_proxy ? "Editar Proxy" : "Configurar Proxy"}
                 </button>
 
@@ -711,7 +711,7 @@ function AccountCard({
         {/* Botão + etiqueta */}
         <button
           onClick={() => { setLabelFormOpen(o => !o); if (labelFormOpen) { setLabelText(""); } }}
-          className="flex items-center gap-1 text-[10px] text-white/25 hover:text-[#00FF41] transition-colors"
+          className="flex items-center gap-1 text-[10px] text-white/25 hover:text-[#00498D] transition-colors"
         >
           <Tag size={10} />
           {labelFormOpen ? "cancelar" : "+ etiqueta"}
@@ -861,7 +861,7 @@ function EditProfileModal({
                 )}
                 {uploading && (
                   <div className="absolute inset-0 rounded-full bg-black/60 flex items-center justify-center">
-                    <Loader2 size={16} className="animate-spin text-[#00FF41]" />
+                    <Loader2 size={16} className="animate-spin text-[#00498D]" />
                   </div>
                 )}
               </div>
@@ -875,7 +875,7 @@ function EditProfileModal({
                   className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-white/70 hover:text-white transition-colors disabled:opacity-40"
                   style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.09)" }}
                 >
-                  <Upload size={13} className="text-[#00FF41]" />
+                  <Upload size={13} className="text-[#00498D]" />
                   {uploading ? "Enviando..." : "Enviar foto"}
                 </button>
                 <button
@@ -884,7 +884,7 @@ function EditProfileModal({
                   className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-white/70 hover:text-white transition-colors disabled:opacity-40"
                   style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.09)" }}
                 >
-                  <Download size={13} className="text-[#00E5FF]" />
+                  <Download size={13} className="text-[#85B9E9]" />
                   Baixar p/ celular
                 </button>
               </div>
@@ -1958,11 +1958,11 @@ export default function AccountsPage() {
               transition={{ duration: 0.2, ease: "easeOut" }}
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
-              <div className="glass rounded-2xl neon-border w-full max-w-sm max-h-[85vh] flex flex-col p-6 space-y-4 pointer-events-auto overflow-hidden">
+              <div className="glass rounded-2xl  w-full max-w-sm max-h-[85vh] flex flex-col p-6 space-y-4 pointer-events-auto overflow-hidden">
                 <div className="flex items-center justify-between flex-shrink-0">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
-                      <KeyRound size={13} className="text-violet-400" />
+                    <div className="w-7 h-7 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center">
+                      <KeyRound size={13} className="text-[#85B9E9]" />
                     </div>
                     <h3 className="text-base font-bold text-white">Conectar Conta</h3>
                   </div>
@@ -2011,11 +2011,11 @@ export default function AccountsPage() {
                             setAppPickerOpen(false);
                             window.location.href = `/api/instagram/auth?appId=${app.id}`;
                           }}
-                          className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07] hover:bg-violet-600/10 hover:border-violet-500/25 transition-all text-left group"
+                          className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07] hover:bg-[#00498D]/10 hover:border-[#00498D]/25 transition-all text-left group"
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-8 h-8 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
-                              <KeyRound size={13} className="text-violet-400" />
+                            <div className="w-8 h-8 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center flex-shrink-0">
+                              <KeyRound size={13} className="text-[#85B9E9]" />
                             </div>
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-white/80 truncate group-hover:text-white transition-colors">
@@ -2026,13 +2026,13 @@ export default function AccountsPage() {
                               </p>
                             </div>
                           </div>
-                          <ChevronRight size={14} className="text-white/20 flex-shrink-0 group-hover:text-violet-400 transition-colors" />
+                          <ChevronRight size={14} className="text-white/20 flex-shrink-0 group-hover:text-[#85B9E9] transition-colors" />
                         </button>
                       ))}
                     </div>
                     <button
                       onClick={() => { setAppPickerOpen(false); router.push("/dashboard/apps"); }}
-                      className="w-full text-center text-xs text-white/25 hover:text-violet-400 transition-colors py-1 flex-shrink-0"
+                      className="w-full text-center text-xs text-white/25 hover:text-[#85B9E9] transition-colors py-1 flex-shrink-0"
                     >
                       + Cadastrar novo app
                     </button>
@@ -2064,11 +2064,11 @@ export default function AccountsPage() {
               transition={{ duration: 0.15 }}
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
-              <div className="glass rounded-2xl neon-border w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+              <div className="glass rounded-2xl  w-full max-w-xs p-5 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
-                      <FolderPlus size={13} className="text-violet-400" />
+                    <div className="w-7 h-7 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center">
+                      <FolderPlus size={13} className="text-[#85B9E9]" />
                     </div>
                     <h3 className="text-sm font-bold text-white">Nova Pasta</h3>
                   </div>
@@ -2098,7 +2098,7 @@ export default function AccountsPage() {
                   <button
                     onClick={handleCreateFolder}
                     disabled={!newFolderName.trim() || creatingFolder}
-                    className="flex-1 py-2.5 rounded-xl bg-violet-600/25 border border-violet-500/30 text-violet-300 text-xs font-semibold hover:bg-violet-600/35 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 rounded-xl bg-[#00498D]/25 border border-[#00498D]/30 text-[#AFBDD0] text-xs font-semibold hover:bg-[#00498D]/35 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
                   >
                     {creatingFolder ? <Loader2 size={12} className="animate-spin" /> : <FolderPlus size={12} />}
                     Criar
@@ -2130,7 +2130,7 @@ export default function AccountsPage() {
               transition={{ duration: 0.15 }}
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
-              <div className="glass rounded-2xl neon-border w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+              <div className="glass rounded-2xl  w-full max-w-xs p-5 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
@@ -2308,11 +2308,11 @@ export default function AccountsPage() {
               transition={{ duration: 0.15 }}
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
-              <div className="glass rounded-2xl neon-border w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+              <div className="glass rounded-2xl  w-full max-w-xs p-5 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
-                      <Folder size={13} className="text-violet-400" />
+                    <div className="w-7 h-7 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center">
+                      <Folder size={13} className="text-[#85B9E9]" />
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-white">Mover para pasta</h3>
@@ -2343,7 +2343,7 @@ export default function AccountsPage() {
                       <span className="text-[9px] text-white/25 flex-shrink-0">atual</span>
                     )}
                     {movePendingFolderId === null && (
-                      <CheckCircle2 size={12} className="text-[#00FF41] flex-shrink-0" />
+                      <CheckCircle2 size={12} className="text-[#00498D] flex-shrink-0" />
                     )}
                   </button>
 
@@ -2359,20 +2359,20 @@ export default function AccountsPage() {
                         className={cn(
                           "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
                           movePendingFolderId === f.id
-                            ? "bg-violet-600/15 border-violet-500/30 text-violet-200"
+                            ? "bg-[#00498D]/15 border-[#00498D]/30 text-[#AFBDD0]"
                             : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
                         )}
                       >
                         <Folder size={12} className={cn(
                           "flex-shrink-0",
-                          movePendingFolderId === f.id ? "text-violet-400" : "text-violet-400/50"
+                          movePendingFolderId === f.id ? "text-[#85B9E9]" : "text-[#85B9E9]/50"
                         )} />
                         <span className="flex-1 truncate">{f.name}</span>
                         {moveAccount.folder_id === f.id && movePendingFolderId !== f.id && (
                           <span className="text-[9px] text-white/25 flex-shrink-0">atual</span>
                         )}
                         {movePendingFolderId === f.id && (
-                          <CheckCircle2 size={12} className="text-violet-400 flex-shrink-0" />
+                          <CheckCircle2 size={12} className="text-[#85B9E9] flex-shrink-0" />
                         )}
                       </button>
                     ))
@@ -2392,7 +2392,7 @@ export default function AccountsPage() {
                       setMoveAccount(null);
                     }}
                     disabled={movingAccountId === moveAccount.id || movePendingFolderId === moveAccount.folder_id}
-                    className="flex-1 py-2.5 rounded-xl bg-violet-600/25 border border-violet-500/30 text-violet-300 text-xs font-semibold hover:bg-violet-600/35 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 rounded-xl bg-[#00498D]/25 border border-[#00498D]/30 text-[#AFBDD0] text-xs font-semibold hover:bg-[#00498D]/35 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
                   >
                     {movingAccountId === moveAccount.id
                       ? <Loader2 size={12} className="animate-spin" />
@@ -2427,11 +2427,11 @@ export default function AccountsPage() {
               transition={{ duration: 0.15 }}
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
-              <div className="glass rounded-2xl neon-border w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+              <div className="glass rounded-2xl  w-full max-w-xs p-5 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
-                      <Folder size={13} className="text-violet-400" />
+                    <div className="w-7 h-7 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center">
+                      <Folder size={13} className="text-[#85B9E9]" />
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-white">Mover para pasta</h3>
@@ -2461,7 +2461,7 @@ export default function AccountsPage() {
                     <FolderOpen size={12} className="text-white/30 flex-shrink-0" />
                     <span className="flex-1">Sem pasta</span>
                     {bulkMovePendingFolderId === null && (
-                      <CheckCircle2 size={12} className="text-[#00FF41] flex-shrink-0" />
+                      <CheckCircle2 size={12} className="text-[#00498D] flex-shrink-0" />
                     )}
                   </button>
 
@@ -2477,17 +2477,17 @@ export default function AccountsPage() {
                         className={cn(
                           "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
                           bulkMovePendingFolderId === f.id
-                            ? "bg-violet-600/15 border-violet-500/30 text-violet-200"
+                            ? "bg-[#00498D]/15 border-[#00498D]/30 text-[#AFBDD0]"
                             : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
                         )}
                       >
                         <Folder size={12} className={cn(
                           "flex-shrink-0",
-                          bulkMovePendingFolderId === f.id ? "text-violet-400" : "text-violet-400/50"
+                          bulkMovePendingFolderId === f.id ? "text-[#85B9E9]" : "text-[#85B9E9]/50"
                         )} />
                         <span className="flex-1 truncate">{f.name}</span>
                         {bulkMovePendingFolderId === f.id && (
-                          <CheckCircle2 size={12} className="text-violet-400 flex-shrink-0" />
+                          <CheckCircle2 size={12} className="text-[#85B9E9] flex-shrink-0" />
                         )}
                       </button>
                     ))
@@ -2504,7 +2504,7 @@ export default function AccountsPage() {
                   <button
                     onClick={() => handleBulkMove(bulkMovePendingFolderId)}
                     disabled={bulkMoving}
-                    className="flex-1 py-2.5 rounded-xl bg-violet-600/25 border border-violet-500/30 text-violet-300 text-xs font-semibold hover:bg-violet-600/35 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 rounded-xl bg-[#00498D]/25 border border-[#00498D]/30 text-[#AFBDD0] text-xs font-semibold hover:bg-[#00498D]/35 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
                   >
                     {bulkMoving
                       ? <Loader2 size={12} className="animate-spin" />
@@ -2539,11 +2539,11 @@ export default function AccountsPage() {
               transition={{ duration: 0.15 }}
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
-              <div className="glass rounded-2xl neon-border w-full max-w-sm p-5 space-y-4 pointer-events-auto">
+              <div className="glass rounded-2xl  w-full max-w-sm p-5 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-[#00FF41]/10 border border-[#00FF41]/20 flex items-center justify-center">
-                      <Globe size={13} className="text-[#00FF41]" />
+                    <div className="w-7 h-7 rounded-lg bg-[#00498D]/10 border border-[#00498D]/20 flex items-center justify-center">
+                      <Globe size={13} className="text-[#00498D]" />
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-white">Proxy Dedicado</h3>
@@ -2604,7 +2604,7 @@ export default function AccountsPage() {
                   <button
                     onClick={() => handleSaveProxy(proxyInput.trim() || null)}
                     disabled={!proxyInput.trim() || savingProxy}
-                    className="flex-1 py-2.5 rounded-xl bg-[#00FF41]/15 border border-[#00FF41]/25 text-[#00FF41] text-xs font-semibold hover:bg-[#00FF41]/25 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 rounded-xl bg-[#00498D]/15 border border-[#00498D]/25 text-[#00498D] text-xs font-semibold hover:bg-[#00498D]/25 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
                   >
                     {savingProxy ? <Loader2 size={12} className="animate-spin" /> : <Globe size={12} />}
                     Salvar
@@ -2636,7 +2636,7 @@ export default function AccountsPage() {
               transition={{ duration: 0.2 }}
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
-              <div className="glass rounded-2xl neon-border w-full max-w-lg p-6 space-y-4 pointer-events-auto">
+              <div className="glass rounded-2xl  w-full max-w-lg p-6 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/20 flex items-center justify-center">
@@ -2656,7 +2656,7 @@ export default function AccountsPage() {
                 {!csvResults ? (
                   <>
                     <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 space-y-1">
-                      <p className="text-[11px] text-white/40 font-mono">Formato: <span className="text-[#00FF41]/70">username,http://user:pass@ip:porta</span></p>
+                      <p className="text-[11px] text-white/40 font-mono">Formato: <span className="text-[#00498D]/70">username,http://user:pass@ip:porta</span></p>
                       <p className="text-[11px] text-white/25">Uma conta por linha. Para remover proxy: <span className="text-white/40 font-mono">username,</span></p>
                       <p className="text-[11px] text-white/25">Linhas com # são ignoradas.</p>
                     </div>
@@ -2665,7 +2665,7 @@ export default function AccountsPage() {
                       onChange={e => setCsvText(e.target.value)}
                       placeholder={"# Cole aqui — uma linha por conta\nconta1,http://user:pass@203.0.113.1:3128\nconta2,http://user:pass@198.51.100.5:3128\nconta3,"}
                       rows={10}
-                      className="w-full rounded-xl bg-black/40 border border-white/[0.08] text-xs text-white/70 font-mono placeholder-white/15 px-3 py-2.5 focus:outline-none focus:border-[#00FF41]/40 resize-none"
+                      className="w-full rounded-xl bg-black/40 border border-white/[0.08] text-xs text-white/70 font-mono placeholder-white/15 px-3 py-2.5 focus:outline-none focus:border-[#00498D]/40 resize-none"
                     />
                     <div className="flex gap-2">
                       <button
@@ -2690,21 +2690,21 @@ export default function AccountsPage() {
                       {csvResults.map((r, i) => (
                         <div key={i} className={cn(
                           "flex items-center justify-between px-3 py-2 rounded-lg text-xs",
-                          r.status === "saved" && "bg-[#00FF41]/[0.06] border border-[#00FF41]/15",
+                          r.status === "saved" && "bg-[#00498D]/[0.06] border border-[#00498D]/15",
                           r.status === "removed" && "bg-amber-500/[0.06] border border-amber-500/15",
                           r.status === "not_found" && "bg-white/[0.03] border border-white/[0.06]",
                           r.status === "error" && "bg-red-500/[0.06] border border-red-500/15",
                         )}>
                           <span className={cn(
                             "font-mono",
-                            r.status === "saved" && "text-[#00FF41]/80",
+                            r.status === "saved" && "text-[#00498D]/80",
                             r.status === "removed" && "text-amber-400/80",
                             r.status === "not_found" && "text-white/30",
                             r.status === "error" && "text-red-400/80",
                           )}>@{r.username.replace(/^@/, "")}</span>
                           <span className={cn(
                             "text-[10px] font-semibold",
-                            r.status === "saved" && "text-[#00FF41]/60",
+                            r.status === "saved" && "text-[#00498D]/60",
                             r.status === "removed" && "text-amber-400/60",
                             r.status === "not_found" && "text-white/20",
                             r.status === "error" && "text-red-400/60",
@@ -2726,7 +2726,7 @@ export default function AccountsPage() {
                       </button>
                       <button
                         onClick={() => { setShowCsvImport(false); setCsvResults(null); setCsvText(""); }}
-                        className="flex-1 py-2.5 rounded-xl bg-[#00FF41]/15 border border-[#00FF41]/25 text-[#00FF41] text-xs font-semibold hover:bg-[#00FF41]/25 transition-all"
+                        className="flex-1 py-2.5 rounded-xl bg-[#00498D]/15 border border-[#00498D]/25 text-[#00498D] text-xs font-semibold hover:bg-[#00498D]/25 transition-all"
                       >
                         Fechar
                       </button>
@@ -2759,7 +2759,7 @@ export default function AccountsPage() {
               transition={{ duration: 0.2 }}
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
-              <div className="glass rounded-2xl neon-border w-full max-w-lg p-6 space-y-4 pointer-events-auto">
+              <div className="glass rounded-2xl  w-full max-w-lg p-6 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
@@ -2820,26 +2820,26 @@ export default function AccountsPage() {
                       {checkerResults.map((r, i) => (
                         <div key={i} className={cn(
                           "flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs",
-                          r.status === "active" && "bg-[#00FF41]/[0.06] border border-[#00FF41]/15",
+                          r.status === "active" && "bg-[#00498D]/[0.06] border border-[#00498D]/15",
                           r.status === "not_found" && "bg-red-500/[0.06] border border-red-500/15",
                           r.status === "error" && "bg-white/[0.03] border border-white/[0.06]",
                         )}>
                           <span className="flex items-center gap-1.5 min-w-0">
-                            {r.status === "active" && <ShieldCheck size={12} className="text-[#00FF41]/80 flex-shrink-0" />}
+                            {r.status === "active" && <ShieldCheck size={12} className="text-[#00498D]/80 flex-shrink-0" />}
                             {r.status === "not_found" && <ShieldOff size={12} className="text-red-400/80 flex-shrink-0" />}
                             {r.status === "error" && <AlertTriangle size={12} className="text-amber-400/70 flex-shrink-0" />}
                             <span className={cn(
                               "font-mono truncate",
-                              r.status === "active" && "text-[#00FF41]/80",
+                              r.status === "active" && "text-[#00498D]/80",
                               r.status === "not_found" && "text-red-400/80",
                               r.status === "error" && "text-white/40",
                             )}>@{r.username}</span>
-                            {r.is_verified && <BadgeCheck size={11} className="text-[#00E5FF]/70 flex-shrink-0" />}
+                            {r.is_verified && <BadgeCheck size={11} className="text-[#85B9E9]/70 flex-shrink-0" />}
                             {r.is_private && <Lock size={10} className="text-white/25 flex-shrink-0" />}
                           </span>
                           <span className={cn(
                             "text-[10px] font-semibold text-right flex-shrink-0",
-                            r.status === "active" && "text-[#00FF41]/60",
+                            r.status === "active" && "text-[#00498D]/60",
                             r.status === "not_found" && "text-red-400/60",
                             r.status === "error" && "text-amber-400/60",
                           )}>
@@ -2966,7 +2966,7 @@ export default function AccountsPage() {
                   <button
                     onClick={handleBulkSync}
                     disabled={bulkSyncing || bulkActivating || bulkMoving || bulkDeleting}
-                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-[#00E5FF]/10 border border-[#00E5FF]/30 text-[#00E5FF] hover:bg-[#00E5FF]/20 disabled:opacity-40"
+                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-[#85B9E9]/10 border border-[#85B9E9]/30 text-[#85B9E9] hover:bg-[#85B9E9]/20 disabled:opacity-40"
                   >
                     {bulkSyncing
                       ? <Loader2 size={14} className="animate-spin" />
@@ -2980,7 +2980,7 @@ export default function AccountsPage() {
                   <button
                     onClick={handleBulkActivate}
                     disabled={bulkActivating || bulkMoving || bulkDeleting || bulkSyncing}
-                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-[#00FF41]/10 border border-[#00FF41]/30 text-[#00FF41] hover:bg-[#00FF41]/20 disabled:opacity-40"
+                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-[#00498D]/10 border border-[#00498D]/30 text-[#00498D] hover:bg-[#00498D]/20 disabled:opacity-40"
                   >
                     {bulkActivating
                       ? <Loader2 size={14} className="animate-spin" />
@@ -2991,7 +2991,7 @@ export default function AccountsPage() {
                   <button
                     onClick={() => { setBulkMovePendingFolderId(null); setBulkMoveOpen(true); }}
                     disabled={bulkMoving || bulkDeleting || bulkActivating || bulkSyncing}
-                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-violet-600/15 border border-violet-500/30 text-violet-300 hover:bg-violet-600/25 disabled:opacity-40"
+                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-[#00498D]/15 border border-[#00498D]/30 text-[#AFBDD0] hover:bg-[#00498D]/25 disabled:opacity-40"
                   >
                     <Folder size={14} />
                     {`Mover para pasta (${selectedIds.size})`}
@@ -3030,7 +3030,7 @@ export default function AccountsPage() {
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all",
             activeFolderId === null
-              ? "bg-[#00FF41]/12 text-[#00FF41] border border-[#00FF41]/25"
+              ? "bg-[#00498D]/12 text-[#00498D] border border-[#00498D]/25"
               : "text-white/40 hover:text-white/70 hover:bg-white/[0.05] border border-transparent"
           )}
         >
@@ -3068,7 +3068,7 @@ export default function AccountsPage() {
                   "flex items-center gap-1.5 pl-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all rounded-l-lg",
                   isActive ? "pr-1" : "pr-3 rounded-r-lg",
                   isActive
-                    ? "bg-violet-500/12 text-violet-300 border border-violet-500/25 border-r-0"
+                    ? "bg-[#00498D]/12 text-[#AFBDD0] border border-[#00498D]/25 border-r-0"
                     : "text-white/40 hover:text-white/70 hover:bg-white/[0.05] border border-transparent"
                 )}
               >
@@ -3076,7 +3076,7 @@ export default function AccountsPage() {
                 {folder.name}
                 <span className={cn(
                   "text-[9px] px-1 py-0.5 rounded-full",
-                  isActive ? "bg-violet-500/20 text-violet-300/70" : "bg-white/[0.06] text-white/25"
+                  isActive ? "bg-[#00498D]/20 text-[#AFBDD0]/70" : "bg-white/[0.06] text-white/25"
                 )}>
                   {folder.account_count}
                 </span>
@@ -3091,7 +3091,7 @@ export default function AccountsPage() {
                     setFolderMenuPos({ top: rect.bottom + 6, left: rect.left });
                     setOpenFolderMenuId(menuOpen ? null : folder.id);
                   }}
-                  className="h-full px-2 flex items-center rounded-r-lg bg-violet-500/12 border border-violet-500/25 border-l-0 text-violet-400/50 hover:text-violet-300 transition-colors"
+                  className="h-full px-2 flex items-center rounded-r-lg bg-[#00498D]/12 border border-[#00498D]/25 border-l-0 text-[#85B9E9]/50 hover:text-[#AFBDD0] transition-colors"
                 >
                   <Settings2 size={11} />
                 </button>
@@ -3138,7 +3138,7 @@ export default function AccountsPage() {
         {/* Nova pasta button */}
         <button
           onClick={() => setShowNewFolderModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 text-white/30 hover:text-violet-400 hover:bg-violet-500/[0.06] border border-transparent hover:border-violet-500/20 transition-all"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 text-white/30 hover:text-[#85B9E9] hover:bg-[#00498D]/[0.06] border border-transparent hover:border-[#00498D]/20 transition-all"
         >
           <FolderPlus size={11} className="flex-shrink-0" />
           Nova Pasta
@@ -3164,7 +3164,7 @@ export default function AccountsPage() {
                 sortMode === key
                   ? key === "story_expiring"
                     ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                    : "bg-[#00E5FF]/10 border-[#00E5FF]/30 text-[#00E5FF]"
+                    : "bg-[#85B9E9]/10 border-[#85B9E9]/30 text-[#85B9E9]"
                   : "bg-white/[0.03] border-white/[0.07] text-white/35 hover:text-white/60 hover:border-white/15"
               )}
             >
@@ -3200,7 +3200,7 @@ export default function AccountsPage() {
                     return next;
                   });
                 }}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-[#00FF41]/[0.06] border-[#00FF41]/20 text-[#00FF41]/70 hover:text-[#00FF41] hover:border-[#00FF41]/40 transition-all"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-[#00498D]/[0.06] border-[#00498D]/20 text-[#00498D]/70 hover:text-[#00498D] hover:border-[#00498D]/40 transition-all"
               >
                 <CheckCircle2 size={11} />
                 {filteredAccounts.length > 0 && filteredAccounts.every(a => selectedIds.has(a.id)) ? "Desmarcar todas" : "Selecionar todas"}
@@ -3233,7 +3233,7 @@ export default function AccountsPage() {
               ? <Folder size={24} className="text-white/20" />
               : accounts.length === 0
                 ? <Instagram size={24} className="text-white/20" />
-                : <CheckCircle2 size={24} className="text-[#00FF41]/40" />
+                : <CheckCircle2 size={24} className="text-[#00498D]/40" />
             }
           </div>
           <div className="space-y-1">
@@ -3253,7 +3253,7 @@ export default function AccountsPage() {
               </>
             ) : (
               <>
-                <p className="text-[#00FF41]/70 text-sm font-semibold">Tudo organizado</p>
+                <p className="text-[#00498D]/70 text-sm font-semibold">Tudo organizado</p>
                 <p className="text-white/20 text-xs max-w-xs">
                   Todas as contas estão dentro de uma pasta. Use as abas acima para gerenciá-las.
                 </p>

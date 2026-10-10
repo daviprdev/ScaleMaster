@@ -4,9 +4,9 @@ import { useEffect, useRef } from "react";
 
 const COUNT = 85;
 const PALETTES = [
-  [0, 255, 65]  as const,
-  [0, 229, 255] as const,
-  [0, 229, 255] as const,
+  [0, 73, 141]   as const,  // brand-blue
+  [133, 185, 233] as const,  // focus blue
+  [0, 52, 109]   as const,  // brand-blue-dark
 ];
 
 type Particle = {

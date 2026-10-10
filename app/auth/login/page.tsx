@@ -4,8 +4,9 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Zap, Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { BrandLogoLarge } from "@/components/brand/BrandLogo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -58,11 +59,11 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-dvh bg-gray-950 flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden">
+    <div className="min-h-dvh flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden" style={{ background: "var(--background)" }}>
       <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none" />
       <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-violet-600/10 rounded-full blur-[100px]" />
-        <div className="absolute bottom-0 right-1/4 w-[300px] h-[300px] bg-cyan-500/5 rounded-full blur-[80px]" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full blur-[100px]" style={{ background: "rgba(0,73,141,0.12)" }} />
+        <div className="absolute bottom-0 right-1/4 w-[300px] h-[300px] rounded-full blur-[80px]" style={{ background: "rgba(133,185,233,0.06)" }} />
       </div>
 
       <div className="relative z-10 w-full max-w-md">
@@ -72,11 +73,8 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
           className="flex justify-center mb-8"
         >
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)]">
-              <Zap className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-2xl font-bold gradient-text">Scale Master</span>
+          <Link href="/">
+            <BrandLogoLarge size={72} showName={true} />
           </Link>
         </motion.div>
 
@@ -84,7 +82,7 @@ export default function LoginPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="glass neon-border rounded-2xl p-8"
+          className="glass rounded-2xl p-8"
         >
           <div className="mb-6">
             <h1 className="text-2xl font-bold mb-1">Bem-vindo de volta</h1>
@@ -120,7 +118,7 @@ export default function LoginPage() {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-sm text-white/60">Senha</label>
-                <Link href="/auth/forgot-password" className="text-xs text-violet-400 hover:text-violet-300 transition-colors">
+                <Link href="/auth/forgot-password" className="text-xs text-[#85B9E9] hover:text-[#AFBDD0] transition-colors">
                   Esqueceu a senha?
                 </Link>
               </div>
@@ -185,7 +183,7 @@ export default function LoginPage() {
 
           <p className="text-center text-sm text-white/40 mt-6">
             Não tem uma conta?{" "}
-            <Link href="/auth/register" className="text-violet-400 hover:text-violet-300 font-medium transition-colors">
+            <Link href="/auth/register" className="text-[#85B9E9] hover:text-[#AFBDD0] font-medium transition-colors">
               Criar gratuitamente
             </Link>
           </p>

@@ -28,9 +28,9 @@ const TARGET_LABEL: Record<NotificationRow["target_type"], string> = {
 };
 
 const TYPE_BADGE: Record<NotificationRow["type"], string> = {
-  admin: "bg-[#00E5FF]/10 text-[#00E5FF] border-[#00E5FF]/25",
+  admin: "bg-[#85B9E9]/10 text-[#85B9E9] border-[#85B9E9]/25",
   system: "bg-white/5 text-white/50 border-white/10",
-  sale: "bg-[#00FF41]/10 text-[#00FF41] border-[#00FF41]/25",
+  sale: "bg-[#00498D]/10 text-[#00498D] border-[#00498D]/25",
 };
 
 function timeAgo(iso: string) {
@@ -121,7 +121,7 @@ export default function AdminNotificationsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title flex items-center gap-2.5">
-          <Bell size={20} className="text-[#00FF41]" />
+          <Bell size={20} className="text-[#00498D]" />
           Notificações
         </h1>
         <p className="page-subtitle">Envie um push manual para usuários ou consulte o histórico de disparos.</p>
@@ -200,9 +200,9 @@ export default function AdminNotificationsPage() {
           </div>
         )}
         {success && (
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#00FF41]/[0.06] border border-[#00FF41]/20">
-            <CheckCheck size={14} className="text-[#00FF41] shrink-0" />
-            <p className="text-xs text-[#00FF41]/90">{success}</p>
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#00498D]/[0.06] border border-[#00498D]/20">
+            <CheckCheck size={14} className="text-[#00498D] shrink-0" />
+            <p className="text-xs text-[#00498D]/90">{success}</p>
           </div>
         )}
 
@@ -243,7 +243,7 @@ export default function AdminNotificationsPage() {
                 <p className="text-xs text-white/45 truncate">{n.body}</p>
               </div>
               <div className="text-xs text-white/40 shrink-0 text-right">
-                <p className="text-[#00FF41]">{n.sent_count} ok</p>
+                <p className="text-[#00498D]">{n.sent_count} ok</p>
                 {n.failed_count > 0 && <p className="text-red-400">{n.failed_count} falha</p>}
               </div>
             </div>

@@ -120,8 +120,8 @@ export default function MagicLinkModal({ open, onClose }: Props) {
               {/* Header */}
               <div className="flex items-start justify-between p-5 pb-4 border-b border-white/[0.06]">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-[#00FF41]/10 border border-[#00FF41]/20 flex items-center justify-center">
-                    <Link2 size={16} className="text-[#00FF41]" />
+                  <div className="w-9 h-9 rounded-xl bg-[#00498D]/10 border border-[#00498D]/20 flex items-center justify-center">
+                    <Link2 size={16} className="text-[#00498D]" />
                   </div>
                   <div>
                     <h2 className="text-white font-semibold text-[15px] leading-tight">
@@ -173,7 +173,7 @@ export default function MagicLinkModal({ open, onClose }: Props) {
                           {/* Global option only if env var configured */}
                           <button
                             onClick={() => { setSelectedAppId("__global__"); setDropdownOpen(false); }}
-                            className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left hover:bg-white/[0.05] transition-colors ${selectedAppId === "__global__" ? "text-[#00FF41]" : "text-white/70"}`}
+                            className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left hover:bg-white/[0.05] transition-colors ${selectedAppId === "__global__" ? "text-[#00498D]" : "text-white/70"}`}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-white/20 flex-shrink-0" />
                             App Global (variáveis de ambiente)
@@ -183,9 +183,9 @@ export default function MagicLinkModal({ open, onClose }: Props) {
                             <button
                               key={app.id}
                               onClick={() => { setSelectedAppId(app.id); setDropdownOpen(false); }}
-                              className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left hover:bg-white/[0.05] transition-colors ${selectedAppId === app.id ? "text-[#00FF41]" : "text-white/70"}`}
+                              className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left hover:bg-white/[0.05] transition-colors ${selectedAppId === app.id ? "text-[#00498D]" : "text-white/70"}`}
                             >
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#00FF41]/50 flex-shrink-0" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#00498D]/50 flex-shrink-0" />
                               <span className="truncate">{app.app_name}</span>
                               <span className="text-white/25 text-xs ml-auto flex-shrink-0">{app.ig_app_id.slice(0, 8)}…</span>
                             </button>
@@ -212,7 +212,7 @@ export default function MagicLinkModal({ open, onClose }: Props) {
                       <input
                         readOnly
                         value={magicUrl}
-                        className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/[0.08] text-[13px] text-[#00E5FF]/80 font-mono focus:outline-none cursor-text select-all"
+                        className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/[0.08] text-[13px] text-[#85B9E9]/80 font-mono focus:outline-none cursor-text select-all"
                         onFocus={(e) => e.target.select()}
                       />
                     </div>
@@ -222,7 +222,7 @@ export default function MagicLinkModal({ open, onClose }: Props) {
                         onClick={handleCopy}
                         className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[13px] font-medium transition-all border ${
                           copied
-                            ? "bg-[#00FF41]/10 border-[#00FF41]/30 text-[#00FF41]"
+                            ? "bg-[#00498D]/10 border-[#00498D]/30 text-[#00498D]"
                             : "bg-white/[0.04] border-white/[0.08] text-white/60 hover:bg-white/[0.07] hover:text-white/90"
                         }`}
                       >

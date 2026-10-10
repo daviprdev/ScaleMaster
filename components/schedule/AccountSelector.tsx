@@ -38,7 +38,7 @@ export function AccountSelector({ accounts, selected, onChange }: AccountSelecto
         <p className="text-sm font-semibold text-white/70">
           Selecione as contas
           {selected.length > 0 && (
-            <span className="ml-2 px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-300 text-[10px] font-bold">
+            <span className="ml-2 px-1.5 py-0.5 rounded-full bg-[#00498D]/20 text-[#AFBDD0] text-[10px] font-bold">
               {selected.length}
             </span>
           )}
@@ -46,7 +46,7 @@ export function AccountSelector({ accounts, selected, onChange }: AccountSelecto
         <div className="flex gap-2 text-[11px]">
           <button
             onClick={selectAll}
-            className="text-violet-400 hover:text-violet-300 transition-colors"
+            className="text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
           >
             Todas
           </button>
@@ -72,7 +72,7 @@ export function AccountSelector({ accounts, selected, onChange }: AccountSelecto
               className={cn(
                 "w-full flex items-center gap-3 px-3 py-3 rounded-xl border transition-all duration-200 text-left",
                 isSelected
-                  ? "bg-violet-600/15 border-violet-500/40"
+                  ? "bg-[#00498D]/15 border-[#00498D]/40"
                   : "bg-white/[0.03] border-white/[0.07] hover:border-white/15 hover:bg-white/[0.06]"
               )}
             >
@@ -90,7 +90,7 @@ export function AccountSelector({ accounts, selected, onChange }: AccountSelecto
               <div className="flex-1 min-w-0">
                 <p className={cn(
                   "text-sm font-semibold truncate transition-colors",
-                  isSelected ? "text-violet-200" : "text-white/70"
+                  isSelected ? "text-[#AFBDD0]" : "text-white/70"
                 )}>
                   @{account.username}
                 </p>
@@ -111,7 +111,7 @@ export function AccountSelector({ accounts, selected, onChange }: AccountSelecto
                 <div className={cn(
                   "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
                   isSelected
-                    ? "border-violet-500 bg-violet-500"
+                    ? "border-[#00498D] bg-[#00498D]"
                     : "border-white/20"
                 )}>
                   {isSelected && <Check size={11} className="text-white" strokeWidth={3} />}
@@ -122,7 +122,7 @@ export function AccountSelector({ accounts, selected, onChange }: AccountSelecto
         })}
 
         {/* Add account placeholder */}
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-white/10 text-white/25 hover:border-violet-500/30 hover:text-violet-400/60 transition-all text-sm">
+        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-white/10 text-white/25 hover:border-[#00498D]/30 hover:text-[#85B9E9]/60 transition-all text-sm">
           <div className="w-9 h-9 rounded-full bg-white/[0.03] flex items-center justify-center">
             <Plus size={14} />
           </div>

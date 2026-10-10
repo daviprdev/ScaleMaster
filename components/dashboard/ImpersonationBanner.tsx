@@ -23,13 +23,13 @@ export function ImpersonationBanner({ adminEmail, userEmail }: Props) {
   }
 
   return (
-    <div className="relative z-50 flex items-center justify-between gap-3 bg-violet-700/95 backdrop-blur-sm border-b border-violet-500/40 px-4 py-2 shrink-0">
+    <div className="relative z-50 flex items-center justify-between gap-3 bg-[#00346D]/95 backdrop-blur-sm border-b border-[#00498D]/40 px-4 py-2 shrink-0">
       <div className="flex items-center gap-2 text-white text-xs font-medium min-w-0">
-        <Shield className="w-3.5 h-3.5 text-violet-200 shrink-0" />
+        <Shield className="w-3.5 h-3.5 text-[#AFBDD0] shrink-0" />
         <span className="truncate">
           Modo Admin —{" "}
           <span className="font-bold text-white">Vendo como {userEmail}</span>
-          <span className="text-violet-300/70 ml-2">· Admin: {adminEmail}</span>
+          <span className="text-[#AFBDD0]/70 ml-2">· Admin: {adminEmail}</span>
         </span>
       </div>
       <button

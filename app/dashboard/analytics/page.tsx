@@ -18,8 +18,8 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 // ── Chart theme (recharts doesn't read CSS vars) ──────────────────────────────
-const MATRIX   = "#00FF41";
-const ELECTRIC = "#00E5FF";
+const MATRIX   = "#00498D";
+const ELECTRIC = "#85B9E9";
 const GRID     = "rgba(255,255,255,0.04)";
 const AXIS_CLR = "rgba(255,255,255,0.22)";
 
@@ -118,9 +118,9 @@ function timeAgo(dateStr: string | null): string {
 }
 
 const ACC_COLORS = [
-  "from-[#00FF41] to-emerald-600",
-  "from-[#00E5FF] to-blue-600",
-  "from-violet-500 to-purple-600",
+  "from-[#00498D] to-emerald-600",
+  "from-[#85B9E9] to-blue-600",
+  "from-[#00498D] to-[#00346D]",
   "from-pink-500 to-rose-600",
   "from-amber-500 to-orange-600",
 ];
@@ -310,8 +310,8 @@ function PostRow({
       <div className="flex-shrink-0 grid grid-cols-3 sm:grid-cols-6 gap-2">
         {[
           { icon: Heart, label: "Curtidas", value: post.insights_likes, color: "text-pink-400" },
-          { icon: MessageCircle, label: "Comentários", value: post.insights_comments, color: "text-cyan-400" },
-          { icon: Eye, label: "Alcance", value: post.insights_reach, color: "text-violet-400" },
+          { icon: MessageCircle, label: "Comentários", value: post.insights_comments, color: "text-[#85B9E9]" },
+          { icon: Eye, label: "Alcance", value: post.insights_reach, color: "text-[#85B9E9]" },
           { icon: Play, label: "Plays", value: post.insights_plays, color: "text-emerald-400" },
           { icon: Share2, label: "Shares", value: post.insights_shares, color: "text-amber-400" },
           { icon: Bookmark, label: "Salvos", value: post.insights_saved, color: "text-blue-400" },
@@ -648,7 +648,7 @@ export default function AnalyticsPage() {
               value={fmt(kpi?.reach_30d ?? null)}
               sub="via Meta Insights"
               icon={Eye}
-              accent="border-violet-500/15"
+              accent="border-[#00498D]/15"
               loading={growthLoading}
             />
           </div>
@@ -833,7 +833,7 @@ export default function AnalyticsPage() {
                         </div>
                         {video.reach !== null && (
                           <div className="text-center hidden sm:block">
-                            <p className="text-sm font-bold text-violet-400">{fmt(video.reach)}</p>
+                            <p className="text-sm font-bold text-[#85B9E9]">{fmt(video.reach)}</p>
                             <p className="text-[10px] text-white/25">alcance</p>
                           </div>
                         )}
@@ -926,10 +926,10 @@ export default function AnalyticsPage() {
           {!postsLoading && postSummary && (
             <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
               {[
-                { label: "Publicados", value: fmt(postSummary.total_published), icon: CheckCircle2, color: "bg-violet-600/30" },
+                { label: "Publicados", value: fmt(postSummary.total_published), icon: CheckCircle2, color: "bg-[#00498D]/30" },
                 { label: "Curtidas",   value: fmt(postSummary.total_likes),     icon: Heart,        color: "bg-pink-600/30" },
                 { label: "Comentários",value: fmt(postSummary.total_comments),  icon: MessageCircle,color: "bg-cyan-600/30" },
-                { label: "Alcance",    value: fmt(postSummary.total_reach),     icon: Eye,          color: "bg-violet-500/30" },
+                { label: "Alcance",    value: fmt(postSummary.total_reach),     icon: Eye,          color: "bg-[#00498D]/30" },
                 { label: "Plays",      value: fmt(postSummary.total_plays),     icon: Play,         color: "bg-emerald-600/30" },
                 { label: "Shares",     value: fmt(postSummary.total_shares),    icon: Share2,       color: "bg-amber-600/30" },
                 { label: "Salvos",     value: fmt(postSummary.total_saved),     icon: Bookmark,     color: "bg-blue-600/30" },

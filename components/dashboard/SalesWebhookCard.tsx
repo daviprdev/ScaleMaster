@@ -69,7 +69,7 @@ export default function SalesWebhookCard() {
                     onClick={() => copy(key, value)}
                     className="shrink-0 flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/60 hover:bg-white/[0.08] transition-colors"
                   >
-                    {isCopied ? <Check size={13} className="text-[#00FF41]" /> : <Copy size={13} />}
+                    {isCopied ? <Check size={13} className="text-[#00498D]" /> : <Copy size={13} />}
                     {isCopied ? "Copiado" : "Copiar"}
                   </button>
                 </div>

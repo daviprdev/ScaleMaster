@@ -15,6 +15,7 @@ import {
   Link2,
   SlidersHorizontal,
 } from "lucide-react";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -31,42 +32,42 @@ const features = [
     title: "Multi-conta com Failover",
     description:
       "Conecte dezenas de contas Instagram Business. Se uma cair, o sistema isola e segue publicando nas demais — sem parar a operação inteira.",
-    color: "#00FF41",
+    color: "#00498D",
   },
   {
     icon: Repeat2,
     title: "Loop de Postagem",
     description:
       "Ciclo contínuo de publicação por pasta de vídeos, com intervalo, limite e horário humano configuráveis, 24/7.",
-    color: "#00E5FF",
+    color: "#85B9E9",
   },
   {
     icon: Bot,
     title: "Automação por Pastas",
     description:
       "Vincule pastas de contas e de mídia — conta nova adicionada depois entra no fluxo sozinha, sem recriar nada.",
-    color: "#00FF41",
+    color: "#00498D",
   },
   {
     icon: Copy,
     title: "Clonar Perfil",
     description:
       "Raspe os Reels de qualquer perfil público e reagende direto para suas contas, sem passar pela Biblioteca.",
-    color: "#00E5FF",
+    color: "#85B9E9",
   },
   {
     icon: Globe,
     title: "Proxy Dedicado por Conta",
     description:
       "Cada conta usa um IP residencial exclusivo e permanente. Zero reaproveitamento, zero vínculo entre perfis.",
-    color: "#00FF41",
+    color: "#00498D",
   },
   {
     icon: Activity,
     title: "Monitor & Analytics",
     description:
       "Fila, publicações e métricas reais da Meta API em tempo real, com alertas automáticos de queda de conta.",
-    color: "#00E5FF",
+    color: "#85B9E9",
   },
 ];
 
@@ -95,9 +96,9 @@ const steps = [
 ];
 
 const mockStats = [
-  { label: "Contas Conectadas", value: "24", color: "#00FF41" },
-  { label: "Postagens Hoje", value: "312", color: "#00E5FF" },
-  { label: "Fila", value: "18", color: "#00FF41" },
+  { label: "Contas Conectadas", value: "24", color: "#00498D" },
+  { label: "Postagens Hoje", value: "312", color: "#85B9E9" },
+  { label: "Fila", value: "18", color: "#00498D" },
 ];
 
 const mockNav = ["Dashboard", "Contas", "Postar", "Loop"];
@@ -108,9 +109,9 @@ export default function LandingPage() {
       {/* Background effects */}
       <div className="fixed inset-0 grid-bg opacity-40 pointer-events-none" />
       <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-[#00FF41]/[0.06] rounded-full blur-[120px]" />
-        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-[#00E5FF]/[0.05] rounded-full blur-[100px]" />
-        <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-[#00FF41]/[0.05] rounded-full blur-[80px]" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-[#00498D]/[0.06] rounded-full blur-[120px]" />
+        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-[#85B9E9]/[0.05] rounded-full blur-[100px]" />
+        <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-[#00498D]/[0.05] rounded-full blur-[80px]" />
       </div>
 
       {/* Navbar */}
@@ -121,13 +122,7 @@ export default function LandingPage() {
           transition={{ duration: 0.5 }}
           className="flex items-center gap-2"
         >
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", boxShadow: "0 0 14px rgba(0,255,65,0.45)" }}
-          >
-            <Zap className="w-4 h-4 text-black" strokeWidth={2.5} />
-          </div>
-          <span className="text-xl font-bold gradient-text">Scale Master</span>
+          <BrandLogo size={36} textSize="text-xl" />
         </motion.div>
 
         <motion.div
@@ -165,7 +160,7 @@ export default function LandingPage() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
-          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass neon-border text-sm text-[#00FF41] mb-8"
+          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass  text-sm text-[#00498D] mb-8"
         >
           <Instagram className="w-3.5 h-3.5" />
           <span>Automação de Instagram em escala real</span>
@@ -216,7 +211,7 @@ export default function LandingPage() {
           transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
           className="relative mt-20 w-full max-w-5xl"
         >
-          <div className="glass neon-border rounded-2xl p-1 overflow-hidden">
+          <div className="glass  rounded-2xl p-1 overflow-hidden">
             <div className="bg-black/60 rounded-xl p-6 h-80 flex items-center justify-center">
               {/* Mock Dashboard Preview */}
               <div className="w-full h-full flex gap-4">
@@ -228,7 +223,7 @@ export default function LandingPage() {
                       className="px-3 py-2 rounded-lg text-xs font-medium"
                       style={
                         i === 0
-                          ? { background: "rgba(0,255,65,0.1)", color: "#00FF41", border: "0.5px solid rgba(0,255,65,0.3)" }
+                          ? { background: "rgba(0,73,141,0.1)", color: "#00498D", border: "0.5px solid rgba(0,73,141,0.3)" }
                           : { color: "rgba(255,255,255,0.4)" }
                       }
                     >
@@ -261,7 +256,7 @@ export default function LandingPage() {
                         className="glass rounded-lg aspect-square"
                         style={{
                           background: `linear-gradient(135deg, ${
-                            i % 2 === 0 ? "rgba(0,255,65,0.16)" : "rgba(0,229,255,0.16)"
+                            i % 2 === 0 ? "rgba(0,73,141,0.16)" : "rgba(133,185,233,0.16)"
                           } 0%, rgba(0,0,0,0.3) 100%)`,
                         }}
                       />
@@ -273,7 +268,7 @@ export default function LandingPage() {
           </div>
 
           {/* Glow effect under mockup */}
-          <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-3/4 h-20 bg-[#00FF41]/10 blur-3xl rounded-full" />
+          <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-3/4 h-20 bg-[#00498D]/10 blur-3xl rounded-full" />
         </motion.div>
       </section>
 
@@ -287,7 +282,7 @@ export default function LandingPage() {
             viewport={{ once: true }}
             className="text-center mb-16"
           >
-            <span className="inline-block px-4 py-1.5 rounded-full glass border border-[#00E5FF]/30 text-sm text-[#00E5FF] mb-4">
+            <span className="inline-block px-4 py-1.5 rounded-full glass border border-[#85B9E9]/30 text-sm text-[#85B9E9] mb-4">
               Recursos
             </span>
             <h2 className="text-4xl md:text-5xl font-black mb-4">
@@ -343,7 +338,7 @@ export default function LandingPage() {
             viewport={{ once: true }}
             className="text-center mb-16"
           >
-            <span className="inline-block px-4 py-1.5 rounded-full glass border border-[#00FF41]/30 text-sm text-[#00FF41] mb-4">
+            <span className="inline-block px-4 py-1.5 rounded-full glass border border-[#00498D]/30 text-sm text-[#00498D] mb-4">
               Como funciona
             </span>
             <h2 className="text-4xl md:text-5xl font-black mb-4">
@@ -363,7 +358,7 @@ export default function LandingPage() {
               <motion.div key={i} variants={fadeUp} className="glass-card p-6 relative overflow-hidden">
                 <div
                   className="text-5xl font-black mb-4 opacity-20"
-                  style={{ color: i % 2 === 0 ? "#00FF41" : "#00E5FF" }}
+                  style={{ color: i % 2 === 0 ? "#00498D" : "#85B9E9" }}
                 >
                   {step.n}
                 </div>
@@ -392,9 +387,9 @@ export default function LandingPage() {
             initial="hidden"
             whileInView="show"
             viewport={{ once: true }}
-            className="glass neon-border rounded-3xl p-12 text-center relative overflow-hidden"
+            className="glass  rounded-3xl p-12 text-center relative overflow-hidden"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-[#00FF41]/[0.06] via-transparent to-[#00E5FF]/[0.06] pointer-events-none" />
+            <div className="absolute inset-0 bg-gradient-to-br from-[#00498D]/[0.06] via-transparent to-[#85B9E9]/[0.06] pointer-events-none" />
             <div className="relative">
               <h2 className="text-4xl md:text-5xl font-black mb-4">
                 Pronto para colocar sua{" "}
@@ -424,15 +419,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="relative z-10 border-t border-white/5 py-8 px-6">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div
-              className="w-6 h-6 rounded-md flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)" }}
-            >
-              <Zap className="w-3 h-3 text-black" strokeWidth={2.5} />
-            </div>
-            <span className="font-bold gradient-text">Scale Master</span>
-          </div>
+          <BrandLogo size={24} textSize="text-sm" />
           <p className="text-white/30 text-sm">
             © {new Date().getFullYear()} Scale Master. Todos os direitos reservados.
           </p>

@@ -12,10 +12,10 @@ type Beam = {
 };
 
 const COLORS: readonly [number, number, number][] = [
-  [0, 255, 65],
-  [0, 229, 255],
-  [0, 255, 65],
-  [0, 229, 255],
+  [0, 73, 141],   // brand-blue
+  [133, 185, 233], // focus blue
+  [0, 52, 109],   // brand-blue-dark
+  [0, 73, 141],   // brand-blue
 ];
 
 function mkBeam(i: number): Beam {

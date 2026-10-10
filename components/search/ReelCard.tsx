@@ -62,7 +62,7 @@ export function ReelCard({ reel, onDownload }: ReelCardProps) {
     }
   };
 
-  const gradient = reel.gradient ?? "from-violet-600 to-purple-800";
+  const gradient = reel.gradient ?? "from-[#00498D] to-[#00346D]";
 
   return (
     <motion.div
@@ -138,7 +138,7 @@ export function ReelCard({ reel, onDownload }: ReelCardProps) {
                 icon={Eye}
                 label="Views"
                 value={formatNumber(reel.views)}
-                color="text-cyan-400"
+                color="text-[#85B9E9]"
               />
               <MetricRow
                 icon={Heart}
@@ -150,7 +150,7 @@ export function ReelCard({ reel, onDownload }: ReelCardProps) {
                 icon={MessageCircle}
                 label="Comentários"
                 value={formatNumber(reel.comments)}
-                color="text-violet-400"
+                color="text-[#85B9E9]"
               />
             </div>
 
@@ -168,7 +168,7 @@ export function ReelCard({ reel, onDownload }: ReelCardProps) {
                   "w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
                   downloaded
                     ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400"
-                    : "bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white hover:shadow-[0_0_15px_rgba(139,92,246,0.4)]"
+                    : "bg-gradient-to-r from-[#00498D] to-[#85B9E9] hover:from-[#075BA6] hover:to-[#85B9E9] text-white hover:shadow-[0_0_15px_rgba(0,73,141,0.4)]"
                 )}
               >
                 {downloading ? (

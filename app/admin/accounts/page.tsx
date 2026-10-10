@@ -154,7 +154,7 @@ export default function AdminAccountsPage() {
       {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-white/40 gap-2">
-          <Loader2 className="w-5 h-5 animate-spin text-[#00FF41]" />
+          <Loader2 className="w-5 h-5 animate-spin text-[#00498D]" />
           <span className="text-sm">Carregando contas…</span>
         </div>
       )}
@@ -200,7 +200,7 @@ export default function AdminAccountsPage() {
                       className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-white/[0.03] transition-colors text-left"
                     >
                       {/* Avatar initial */}
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00FF41]/25 to-[#00E5FF]/25 border border-white/10 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00498D]/25 to-[#85B9E9]/25 border border-white/10 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
                         {userInitial(user.email)}
                       </div>
 
@@ -217,7 +217,7 @@ export default function AdminAccountsPage() {
                           className={cn(
                             "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
                             activeCount > 0
-                              ? "bg-[#00E5FF]/10 text-[#00E5FF] border-[#00E5FF]/20"
+                              ? "bg-[#85B9E9]/10 text-[#85B9E9] border-[#85B9E9]/20"
                               : "bg-white/5 text-white/30 border-white/10"
                           )}
                         >

@@ -73,12 +73,12 @@ export default function PendingPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-gray-950 flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden">
+    <div className="min-h-dvh  flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden">
       {/* Background */}
       <div className="fixed inset-0 grid-bg opacity-20 pointer-events-none" />
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-amber-600/8 rounded-full blur-[120px]" />
-        <div className="absolute bottom-0 right-1/4 w-[300px] h-[300px] bg-violet-500/5 rounded-full blur-[80px]" />
+        <div className="absolute bottom-0 right-1/4 w-[300px] h-[300px] rounded-full blur-[80px]" style={{ background: "rgba(0,73,141,0.06)" }} />
       </div>
 
       <div className="relative z-10 w-full max-w-md">
@@ -90,10 +90,10 @@ export default function PendingPage() {
           className="flex justify-center mb-8"
         >
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)]">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)]">
               <Zap className="w-5 h-5 text-white" />
             </div>
-            <span className="text-2xl font-bold bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">
+            <span className="text-2xl font-bold gradient-text">
               Scale Master
             </span>
           </div>
@@ -104,7 +104,7 @@ export default function PendingPage() {
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="glass neon-border rounded-2xl p-8"
+          className="glass  rounded-2xl p-8"
         >
           {/* Icon */}
           <div className="flex justify-center mb-6">
@@ -193,7 +193,7 @@ export default function PendingPage() {
                     onChange={(e) => setMessageText(e.target.value.slice(0, 500))}
                     placeholder="Manda a real: por que o todo-poderoso Admin (que provavelmente está tomando café agora) deveria liberar seu acesso? (Vale apelo emocional, promessa de PIX ou só dizer o que você faz mesmo...) 👀☕"
                     rows={4}
-                    className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 placeholder:text-white/20 text-sm px-4 py-3 resize-none outline-none focus:border-violet-500/40 focus:bg-white/[0.06] transition-all leading-relaxed"
+                    className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 placeholder:text-white/20 text-sm px-4 py-3 resize-none outline-none focus:border-[#00498D]/40 focus:bg-white/[0.06] transition-all leading-relaxed"
                   />
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] text-white/20">
@@ -203,7 +203,7 @@ export default function PendingPage() {
                       onClick={sendMessage}
                       disabled={!messageText.trim() || sending}
                       whileTap={{ scale: 0.97 }}
-                      className="flex items-center gap-2 rounded-xl bg-violet-600/20 border border-violet-500/25 text-violet-300 text-xs font-medium px-4 py-2 hover:bg-violet-600/30 hover:border-violet-500/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="flex items-center gap-2 rounded-xl bg-[#00498D]/20 border border-[#00498D]/25 text-[#AFBDD0] text-xs font-medium px-4 py-2 hover:bg-[#00498D]/30 hover:border-[#00498D]/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {sending ? (
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />

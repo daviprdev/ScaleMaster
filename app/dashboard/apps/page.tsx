@@ -102,12 +102,12 @@ function AppFormModal({
         transition={{ duration: 0.18, ease: "easeOut" }}
         className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
       >
-        <div className="glass rounded-2xl neon-border w-full max-w-md p-6 space-y-5 pointer-events-auto">
+        <div className="glass rounded-2xl  w-full max-w-md p-6 space-y-5 pointer-events-auto">
           {/* Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
-                <KeyRound size={13} className="text-violet-400" />
+              <div className="w-7 h-7 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center">
+                <KeyRound size={13} className="text-[#85B9E9]" />
               </div>
               <h2 className="text-base font-bold text-white">
                 {isEdit ? "Editar App" : "Cadastrar Novo App"}
@@ -143,7 +143,7 @@ function AppFormModal({
                 value={form.app_name}
                 onChange={(e) => set("app_name", e.target.value)}
                 placeholder="ex: Meu App de Produção"
-                className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 placeholder:text-white/20 text-sm px-4 py-2.5 outline-none focus:border-violet-500/40 focus:bg-white/[0.06] transition-all"
+                className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 placeholder:text-white/20 text-sm px-4 py-2.5 outline-none focus:border-[#00498D]/40 focus:bg-white/[0.06] transition-all"
               />
             </div>
             <div className="space-y-1.5">
@@ -154,7 +154,7 @@ function AppFormModal({
                 value={form.ig_app_id}
                 onChange={(e) => set("ig_app_id", e.target.value)}
                 placeholder="ex: 1234567890"
-                className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 placeholder:text-white/20 text-sm px-4 py-2.5 outline-none focus:border-violet-500/40 focus:bg-white/[0.06] transition-all font-mono"
+                className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 placeholder:text-white/20 text-sm px-4 py-2.5 outline-none focus:border-[#00498D]/40 focus:bg-white/[0.06] transition-all font-mono"
               />
             </div>
             <div className="space-y-1.5">
@@ -172,7 +172,7 @@ function AppFormModal({
                   value={form.ig_app_secret}
                   onChange={(e) => set("ig_app_secret", e.target.value)}
                   placeholder={isEdit ? "••••••••••••••••" : "Cole o App Secret aqui"}
-                  className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 placeholder:text-white/20 text-sm px-4 py-2.5 pr-10 outline-none focus:border-violet-500/40 focus:bg-white/[0.06] transition-all font-mono"
+                  className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 placeholder:text-white/20 text-sm px-4 py-2.5 pr-10 outline-none focus:border-[#00498D]/40 focus:bg-white/[0.06] transition-all font-mono"
                 />
                 <button
                   type="button"
@@ -284,8 +284,8 @@ function AppsTable({
             >
               {/* Nome */}
               <div className="flex items-center gap-3 min-w-0 pr-6">
-                <div className="w-9 h-9 rounded-xl bg-violet-500/[0.12] border border-violet-500/20 flex items-center justify-center flex-shrink-0">
-                  <KeyRound size={14} className="text-violet-400" />
+                <div className="w-9 h-9 rounded-xl bg-[#00498D]/[0.12] border border-[#00498D]/20 flex items-center justify-center flex-shrink-0">
+                  <KeyRound size={14} className="text-[#85B9E9]" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-white/85 truncate">
@@ -299,7 +299,7 @@ function AppsTable({
 
               {/* App ID */}
               <div className="flex items-center gap-2 pr-6 min-w-0">
-                <code className="text-xs text-violet-300 font-mono truncate">
+                <code className="text-xs text-[#AFBDD0] font-mono truncate">
                   {revealed
                     ? app.ig_app_id
                     : `${app.ig_app_id.slice(0, 4)}${"•".repeat(
@@ -358,7 +358,7 @@ function AppsTable({
                   <>
                     <button
                       onClick={() => onEdit(app)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-white/25 hover:text-violet-400 hover:bg-violet-500/10 transition-colors"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-white/25 hover:text-[#85B9E9] hover:bg-[#00498D]/10 transition-colors"
                       title="Editar"
                     >
                       <Edit2 size={13} />
@@ -422,8 +422,8 @@ const GUIDE_STEPS = [
     num: "02",
     title: "Crie um novo App",
     body: "Clique em 'My Apps' → 'Create App'. Selecione o tipo Business ou Consumer e preencha o nome. Anote o App ID gerado automaticamente.",
-    accent: "border-violet-500/25 bg-violet-500/[0.05]",
-    numColor: "text-violet-400",
+    accent: "border-[#00498D]/25 bg-[#00498D]/[0.05]",
+    numColor: "text-[#85B9E9]",
   },
   {
     num: "03",
@@ -437,8 +437,8 @@ const GUIDE_STEPS = [
     title: "Configure a URL de Callback",
     body: "Em Instagram → Configurações → Valid OAuth Redirect URIs, adicione a URL abaixo. Sem ela, o fluxo de autorização será rejeitado pelo Meta.",
     extra: CALLBACK_URL,
-    accent: "border-cyan-500/25 bg-cyan-500/[0.05]",
-    numColor: "text-cyan-400",
+    accent: "border-[#85B9E9]/25 bg-[#85B9E9]/[0.05]",
+    numColor: "text-[#85B9E9]",
   },
   {
     num: "05",
@@ -464,7 +464,7 @@ function HowToGuide() {
       className="space-y-4 max-w-3xl"
     >
       <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-4 flex items-start gap-3">
-        <Info size={15} className="text-violet-400 mt-0.5 flex-shrink-0" />
+        <Info size={15} className="text-[#85B9E9] mt-0.5 flex-shrink-0" />
         <p className="text-sm text-white/45 leading-relaxed">
           O modelo{" "}
           <strong className="text-white/70">BYOC (Bring Your Own Credentials)</strong> permite usar
@@ -663,7 +663,7 @@ export default function AppsPage() {
             className={cn(
               "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
               activeTab === tab.id
-                ? "bg-violet-600/25 text-violet-300 border border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.15)]"
+                ? "bg-[#00498D]/25 text-[#AFBDD0] border border-[#00498D]/30 shadow-[0_0_12px_rgba(139,92,246,0.15)]"
                 : "text-white/40 hover:text-white/70 hover:bg-white/[0.04]"
             )}
           >

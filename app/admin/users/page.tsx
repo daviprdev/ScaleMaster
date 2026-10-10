@@ -40,7 +40,7 @@ interface AdminUser {
 }
 
 const ROLE_BADGE: Record<AdminUser["role"], string> = {
-  admin: "bg-[#00FF41]/10 text-[#00FF41] border-[#00FF41]/25",
+  admin: "bg-[#00498D]/10 text-[#00498D] border-[#00498D]/25",
   user: "bg-white/5 text-white/50 border-white/10",
   banned: "bg-red-500/20 text-red-400 border-red-500/30",
 };
@@ -234,8 +234,8 @@ export default function AdminUsersPage() {
               {/* Header */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-[#00E5FF]/10 border border-[#00E5FF]/20 flex items-center justify-center flex-shrink-0">
-                    <Instagram size={16} className="text-[#00E5FF]" />
+                  <div className="w-9 h-9 rounded-xl bg-[#85B9E9]/10 border border-[#85B9E9]/20 flex items-center justify-center flex-shrink-0">
+                    <Instagram size={16} className="text-[#85B9E9]" />
                   </div>
                   <div className="min-w-0">
                     <h3 className="text-sm font-semibold text-white">Contas Conectadas</h3>
@@ -263,7 +263,7 @@ export default function AdminUsersPage() {
                       className={cn(
                         "flex items-center gap-3 px-3 py-2.5 rounded-xl border",
                         acc.is_active
-                          ? "bg-[#00E5FF]/[0.05] border-[#00E5FF]/15"
+                          ? "bg-[#85B9E9]/[0.05] border-[#85B9E9]/15"
                           : "bg-white/[0.03] border-white/[0.07]"
                       )}
                     >
@@ -284,7 +284,7 @@ export default function AdminUsersPage() {
                       <span className={cn(
                         "text-[10px] font-medium rounded-full border px-2 py-0.5 flex-shrink-0",
                         acc.is_active
-                          ? "text-[#00E5FF] border-[#00E5FF]/20 bg-[#00E5FF]/10"
+                          ? "text-[#85B9E9] border-[#85B9E9]/20 bg-[#85B9E9]/10"
                           : "text-white/30 border-white/10 bg-white/5"
                       )}>
                         {acc.is_active ? "Ativa" : "Inativa"}
@@ -326,7 +326,7 @@ export default function AdminUsersPage() {
 
       {loading && (
         <div className="flex items-center justify-center py-20 text-white/40 gap-2">
-          <Loader2 className="w-5 h-5 animate-spin text-[#00FF41]" />
+          <Loader2 className="w-5 h-5 animate-spin text-[#00498D]" />
           <span className="text-sm">Carregando usuários…</span>
         </div>
       )}
@@ -439,7 +439,7 @@ export default function AdminUsersPage() {
                       ) : (
                         <button
                           onClick={() => setAccountsModal(u)}
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.07] px-3 py-1.5 text-xs font-medium text-[#00E5FF] hover:bg-[#00E5FF]/15 transition-all"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-[#85B9E9]/20 bg-[#85B9E9]/[0.07] px-3 py-1.5 text-xs font-medium text-[#85B9E9] hover:bg-[#85B9E9]/15 transition-all"
                         >
                           <Instagram className="w-3 h-3" />
                           Ver {u.accounts.length} {u.accounts.length === 1 ? "conta" : "contas"}
@@ -460,7 +460,7 @@ export default function AdminUsersPage() {
                           )}
 
                           {isActioning ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-[#00FF41]/60" />
+                            <Loader2 className="w-4 h-4 animate-spin text-[#00498D]/60" />
                           ) : (
                             <>
                               {/* Approve / Reject buttons — only for pending users */}
@@ -521,8 +521,8 @@ export default function AdminUsersPage() {
                                       className={cn(
                                         "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all",
                                         isPending && pending?.role === "admin"
-                                          ? "border-[#00FF41]/30 bg-[#00FF41]/10 text-[#00FF41]"
-                                          : "border-[#00FF41]/15 bg-[#00FF41]/[0.06] text-[#00FF41]/80 hover:bg-[#00FF41]/10"
+                                          ? "border-[#00498D]/30 bg-[#00498D]/10 text-[#00498D]"
+                                          : "border-[#00498D]/15 bg-[#00498D]/[0.06] text-[#00498D]/80 hover:bg-[#00498D]/10"
                                       )}
                                     >
                                       <Crown className="w-3.5 h-3.5" />

@@ -23,15 +23,15 @@ interface TwinkleParticle {
   delay: number;
 }
 
-// Color palette weighted toward violet/cyan for the cyber-aurora theme
+// Color palette weighted toward blue/silver for the Scale Master theme
 const FLOAT_COLORS = [
-  "rgba(167,139,250,1)",  // violet-400
-  "rgba(167,139,250,1)",  // violet-400 (doubled weight)
-  "rgba(34,211,238,1)",   // cyan-400
-  "rgba(34,211,238,1)",   // cyan-400 (doubled weight)
+  "rgba(0,73,141,1)",  // brand-blue
+  "rgba(0,73,141,1)",  // brand-blue (doubled weight)
+  "rgba(133,185,233,1)",   // focus-blue
+  "rgba(133,185,233,1)",   // focus-blue (doubled weight)
   "rgba(129,140,248,1)",  // indigo-400
   "rgba(255,255,255,1)",  // white
-  "rgba(216,180,254,1)",  // violet-300
+  "rgba(0,52,109,1)",  // brand-blue-dark
   "rgba(103,232,249,1)",  // cyan-300
 ];
 

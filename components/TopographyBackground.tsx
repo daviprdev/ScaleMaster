@@ -3,8 +3,8 @@
 import { useEffect, useRef } from "react";
 
 // Color endpoints
-const C_LOW = [0, 229, 255] as const;  // #00E5FF  Electric Cyan (valleys)
-const C_HIGH = [0, 255, 65] as const;  // #00FF41  Matrix Green  (peaks)
+const C_LOW = [0, 229, 255] as const;  // #85B9E9  Electric Cyan (valleys)
+const C_HIGH = [0, 255, 65] as const;  // #00498D  Matrix Green  (peaks)
 
 function rgbAt(t: number): string {
   const r = Math.round(C_LOW[0] + (C_HIGH[0] - C_LOW[0]) * t);

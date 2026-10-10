@@ -723,14 +723,14 @@ export default function ClonePage() {
                     "glass-card rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:border-matrix/20 transition-all group relative",
                     "min-w-[180px] max-w-[220px]"
                   )}
-                  style={profile?.username === sp.username ? { border: "1px solid rgba(0,255,65,0.25)" } : {}}
+                  style={profile?.username === sp.username ? { border: "1px solid rgba(0,73,141,0.25)" } : {}}
                 >
                   {/* Avatar */}
                   {sp.profilePicUrl ? (
                     <img src={sp.profilePicUrl} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-white/10" />
                   ) : (
                     <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-                      style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", color: "#000" }}>
+                      style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", color: "#000" }}>
                       {sp.username.charAt(0).toUpperCase()}
                     </div>
                   )}
@@ -772,11 +772,11 @@ export default function ClonePage() {
                         <img
                           src={profile.profilePicUrl}
                           alt={profile.username}
-                          className="w-16 h-16 rounded-full object-cover border-2 border-matrix/30 shadow-[0_0_16px_rgba(0,255,65,0.2)]"
+                          className="w-16 h-16 rounded-full object-cover border-2 border-matrix/30 shadow-[0_0_16px_rgba(0,73,141,0.2)]"
                         />
                       ) : (
                         <div className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold"
-                          style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", color: "#000" }}>
+                          style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", color: "#000" }}>
                           {profile.username.charAt(0).toUpperCase()}
                         </div>
                       )}
@@ -841,7 +841,7 @@ export default function ClonePage() {
               <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="flex flex-col items-center justify-center py-20 text-center glass-card rounded-2xl">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
-                  style={{ background: "rgba(0,255,65,0.06)", border: "1px solid rgba(0,255,65,0.12)" }}>
+                  style={{ background: "rgba(0,73,141,0.06)", border: "1px solid rgba(0,73,141,0.12)" }}>
                   <Loader2 size={28} className="animate-spin" style={{ color: "var(--matrix)" }} />
                 </div>
                 <h3 className="text-lg font-semibold text-white/60 mb-1">
@@ -853,7 +853,7 @@ export default function ClonePage() {
               <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="flex flex-col items-center justify-center py-20 text-center glass-card rounded-2xl">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
-                  style={{ background: "rgba(0,255,65,0.06)", border: "1px solid rgba(0,255,65,0.12)" }}>
+                  style={{ background: "rgba(0,73,141,0.06)", border: "1px solid rgba(0,73,141,0.12)" }}>
                   <Copy size={28} style={{ color: "var(--matrix)" }} />
                 </div>
                 <h3 className="text-lg font-semibold text-white/60 mb-1">Busque um perfil para começar</h3>
@@ -882,7 +882,7 @@ export default function ClonePage() {
                       ? "border-matrix/60 text-matrix"
                       : "border-white/[0.08] text-white/40 hover:text-white/70 hover:border-white/20"
                   )}
-                  style={reelCount === opt.value ? { background: "rgba(0,255,65,0.08)" } : {}}
+                  style={reelCount === opt.value ? { background: "rgba(0,73,141,0.08)" } : {}}
                 >
                   {opt.label}
                   {opt.value !== -1 && stats && opt.value > stats.reelCount && (
@@ -912,7 +912,7 @@ export default function ClonePage() {
                       ? "border-electric/60 text-electric"
                       : "border-white/[0.08] text-white/40 hover:text-white/70 hover:border-white/20"
                   )}
-                  style={postsPerDay === n ? { background: "rgba(0,229,255,0.08)" } : {}}
+                  style={postsPerDay === n ? { background: "rgba(133,185,233,0.08)" } : {}}
                 >
                   {n}
                 </button>
@@ -949,7 +949,7 @@ export default function ClonePage() {
                 onClick={() => setAutoCaptionEnabled(v => !v)}
                 className={cn(
                   "relative w-11 h-6 rounded-full transition-colors flex-shrink-0",
-                  autoCaptionEnabled ? "bg-[#00FF41]/80" : "bg-white/10"
+                  autoCaptionEnabled ? "bg-[#00498D]/80" : "bg-white/10"
                 )}
               >
                 <span className={cn(
@@ -1082,13 +1082,13 @@ export default function ClonePage() {
                                     "flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all text-xs",
                                     sel ? "text-white" : "text-white/40 hover:text-white/70"
                                   )}
-                                  style={sel ? { background: "rgba(0,255,65,0.05)", border: "1px solid rgba(0,255,65,0.15)" } : { border: "1px solid transparent" }}
+                                  style={sel ? { background: "rgba(0,73,141,0.05)", border: "1px solid rgba(0,73,141,0.15)" } : { border: "1px solid transparent" }}
                                 >
                                   {acc.avatar_url ? (
                                     <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
                                   ) : (
                                     <div className="w-5 h-5 rounded-full flex-shrink-0 text-[9px] font-bold flex items-center justify-center"
-                                      style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", color: "#000" }}>
+                                      style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", color: "#000" }}>
                                       {acc.username.charAt(0).toUpperCase()}
                                     </div>
                                   )}
@@ -1173,7 +1173,7 @@ export default function ClonePage() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.97 }}
                   className="rounded-xl border border-matrix/25 p-3 space-y-1.5"
-                  style={{ background: "rgba(0,255,65,0.04)" }}
+                  style={{ background: "rgba(0,73,141,0.04)" }}
                 >
                   <div className="flex items-center gap-2 text-matrix font-semibold text-sm">
                     <CheckCircle2 size={15} />
@@ -1223,7 +1223,7 @@ export default function ClonePage() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="glass-card p-4 rounded-2xl"
-                  style={campaign && campaign.pending > 0 ? { border: "1px solid rgba(0,255,65,0.12)" } : {}}
+                  style={campaign && campaign.pending > 0 ? { border: "1px solid rgba(0,73,141,0.12)" } : {}}
                 >
                   <div className="flex items-start gap-4">
 
@@ -1237,7 +1237,7 @@ export default function ClonePage() {
                         />
                       ) : (
                         <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0"
-                          style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", color: "#000" }}>
+                          style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", color: "#000" }}>
                           {record.profile_username.charAt(0).toUpperCase()}
                         </div>
                       )}
@@ -1249,7 +1249,7 @@ export default function ClonePage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-white text-sm">@{record.profile_username}</span>
                         {campaign && campaign.pending > 0 ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(0,255,65,0.12)", color: "var(--matrix)", border: "1px solid rgba(0,255,65,0.2)" }}>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(0,73,141,0.12)", color: "var(--matrix)", border: "1px solid rgba(0,73,141,0.2)" }}>
                             Ativo
                           </span>
                         ) : isCancelled ? (
@@ -1257,7 +1257,7 @@ export default function ClonePage() {
                             Cancelado
                           </span>
                         ) : (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(0,229,255,0.08)", color: "var(--electric)", border: "1px solid rgba(0,229,255,0.15)" }}>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(133,185,233,0.08)", color: "var(--electric)", border: "1px solid rgba(133,185,233,0.15)" }}>
                             Concluído
                           </span>
                         )}
@@ -1302,7 +1302,7 @@ export default function ClonePage() {
                                   <img src={acc.avatar_url} alt="" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
                                 ) : (
                                   <div className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold flex-shrink-0"
-                                    style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", color: "#000" }}>
+                                    style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", color: "#000" }}>
                                     {acc.username.charAt(0).toUpperCase()}
                                   </div>
                                 )}

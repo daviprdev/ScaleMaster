@@ -80,7 +80,7 @@ export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void
         {/* Logo — mobile only */}
         <div className="md:hidden flex items-center gap-2 flex-shrink-0">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", boxShadow: "0 0 10px rgba(0,255,65,0.4)" }}>
+            style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", boxShadow: "0 0 10px rgba(0,73,141,0.4)" }}>
             <Zap size={14} className="text-black" strokeWidth={2.5} />
           </div>
           <span className="font-bold text-sm gradient-text">Scale Master</span>
@@ -99,11 +99,11 @@ export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void
       <div className="flex items-center gap-2 flex-shrink-0">
         <button className="relative w-9 h-9 rounded-xl bg-black/30 border border-white/[0.08]
           flex items-center justify-center text-white/40 hover:text-white
-          hover:border-matrix/40 hover:shadow-[0_0_12px_rgba(0,255,65,0.18)]
+          hover:border-matrix/40 hover:shadow-[0_0_12px_rgba(0,73,141,0.18)]
           transition-all duration-300">
           <Bell size={15} strokeWidth={1.5} />
           <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full"
-            style={{ background: "var(--matrix)", boxShadow: "0 0 6px rgba(0,255,65,0.8)" }} />
+            style={{ background: "var(--matrix)", boxShadow: "0 0 6px rgba(0,73,141,0.8)" }} />
         </button>
 
         {pathname === "/dashboard/schedule" && (

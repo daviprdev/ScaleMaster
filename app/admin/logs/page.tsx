@@ -26,11 +26,11 @@ interface LogEntry {
 }
 
 const ACTION_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  user_registered:      { label: "Usuário cadastrado",       icon: UserPlus,   color: "text-[#00E5FF] bg-[#00E5FF]/10 border-[#00E5FF]/20" },
+  user_registered:      { label: "Usuário cadastrado",       icon: UserPlus,   color: "text-[#85B9E9] bg-[#85B9E9]/10 border-[#85B9E9]/20" },
   user_approved:        { label: "Usuário aprovado",         icon: UserCheck,  color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
   user_rejected:        { label: "Usuário reprovado",        icon: UserX,      color: "text-red-400 bg-red-500/10 border-red-500/20" },
   user_banned:          { label: "Usuário banido",           icon: ShieldBan,  color: "text-red-400 bg-red-500/10 border-red-500/20" },
-  account_connected:    { label: "Conta conectada",          icon: Instagram,  color: "text-[#00FF41] bg-[#00FF41]/10 border-[#00FF41]/20" },
+  account_connected:    { label: "Conta conectada",          icon: Instagram,  color: "text-[#00498D] bg-[#00498D]/10 border-[#00498D]/20" },
   account_revoked:      { label: "Conta revogada",           icon: Trash2,     color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
   impersonation_started:{ label: "Impersonação iniciada",    icon: Eye,        color: "text-purple-400 bg-purple-500/10 border-purple-500/20" },
 };
@@ -78,7 +78,7 @@ export default function AdminLogsPage() {
 
       {loading && (
         <div className="flex items-center justify-center py-20 text-white/40 gap-2">
-          <Loader2 className="w-5 h-5 animate-spin text-[#00FF41]" />
+          <Loader2 className="w-5 h-5 animate-spin text-[#00498D]" />
           <span className="text-sm">Carregando logs…</span>
         </div>
       )}

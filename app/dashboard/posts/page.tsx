@@ -42,12 +42,12 @@ interface Account {
 
 // ── Helpers ───────────────────────────────────────────────────
 const GRADIENTS = [
-  "from-violet-600 to-purple-800",
-  "from-cyan-500 to-blue-700",
+  "from-[#00498D] to-[#00346D]",
+  "from-[#85B9E9] to-[#00498D]",
   "from-pink-500 to-rose-700",
   "from-emerald-500 to-teal-700",
   "from-amber-500 to-orange-700",
-  "from-indigo-500 to-violet-700",
+  "from-[#00346D] to-[#00498D]",
   "from-red-500 to-pink-700",
   "from-teal-500 to-cyan-700",
   "from-fuchsia-500 to-purple-700",
@@ -55,9 +55,9 @@ const GRADIENTS = [
 ];
 
 const AVATAR_COLORS = [
-  "from-violet-500 to-purple-600",
+  "from-[#00498D] to-[#00346D]",
   "from-pink-500 to-rose-600",
-  "from-cyan-500 to-blue-600",
+  "from-[#85B9E9] to-[#00498D]",
   "from-emerald-500 to-teal-600",
   "from-amber-500 to-orange-600",
   "from-fuchsia-500 to-purple-600",
@@ -104,7 +104,7 @@ function StepBadge({ n, done }: { n: number; done: boolean }) {
   return (
     <span className={cn(
       "w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 transition-colors",
-      done ? "bg-violet-500 text-white" : "bg-white/[0.08] text-white/35"
+      done ? "bg-[#00498D] text-white" : "bg-white/[0.08] text-white/35"
     )}>
       {done ? <Check size={11} /> : n}
     </span>
@@ -391,7 +391,7 @@ export default function PostsPage() {
             <StepBadge n={1} done={selectedVideoIds.size > 0} />
             <h2 className="font-semibold text-white/90 text-sm">Selecionar Vídeos</h2>
             {selectedVideoIds.size > 0 && (
-              <span className="text-[10px] bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded-full font-medium">
+              <span className="text-[10px] bg-[#00498D]/20 text-[#AFBDD0] px-2 py-0.5 rounded-full font-medium">
                 {selectedVideoIds.size} selecionado{selectedVideoIds.size !== 1 ? "s" : ""}
               </span>
             )}
@@ -400,7 +400,7 @@ export default function PostsPage() {
             {selectedVideoIds.size < videos.length && videos.length > 0 && (
               <button
                 onClick={selectAllVideos}
-                className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors"
+                className="text-[11px] text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
               >
                 Todos
               </button>
@@ -426,7 +426,7 @@ export default function PostsPage() {
             <p className="text-white/30 text-sm">Nenhum vídeo na biblioteca.</p>
             <a
               href="/dashboard/library"
-              className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
+              className="text-xs text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
             >
               Ir para a Biblioteca →
             </a>
@@ -443,7 +443,7 @@ export default function PostsPage() {
                     "relative rounded-xl overflow-hidden transition-all text-left group",
                     "border-2",
                     sel
-                      ? "border-violet-500 ring-2 ring-violet-500/20 scale-[0.98]"
+                      ? "border-[#00498D] ring-2 ring-[#00498D]/20 scale-[0.98]"
                       : "border-transparent hover:border-white/20"
                   )}
                 >
@@ -459,8 +459,8 @@ export default function PostsPage() {
                       </span>
                     )}
                     {sel && (
-                      <div className="absolute inset-0 bg-violet-500/15 flex items-start justify-start p-1.5">
-                        <div className="w-4 h-4 rounded-full bg-violet-500 flex items-center justify-center shadow-lg">
+                      <div className="absolute inset-0 bg-[#00498D]/15 flex items-start justify-start p-1.5">
+                        <div className="w-4 h-4 rounded-full bg-[#00498D] flex items-center justify-center shadow-lg">
                           <Check size={9} className="text-white" />
                         </div>
                       </div>
@@ -485,7 +485,7 @@ export default function PostsPage() {
             <StepBadge n={2} done={selectedAccountIds.size > 0} />
             <h2 className="font-semibold text-white/90 text-sm">Selecionar Contas</h2>
             {selectedAccountIds.size > 0 && (
-              <span className="text-[10px] bg-violet-500/20 text-violet-300 px-2 py-0.5 rounded-full font-medium">
+              <span className="text-[10px] bg-[#00498D]/20 text-[#AFBDD0] px-2 py-0.5 rounded-full font-medium">
                 {selectedAccountIds.size} selecionada{selectedAccountIds.size !== 1 ? "s" : ""}
               </span>
             )}
@@ -494,7 +494,7 @@ export default function PostsPage() {
             {selectedAccountIds.size < accounts.length && accounts.length > 0 && (
               <button
                 onClick={selectAllAccounts}
-                className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors"
+                className="text-[11px] text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
               >
                 Todas
               </button>
@@ -520,7 +520,7 @@ export default function PostsPage() {
             <p className="text-white/30 text-sm">Nenhuma conta ativa conectada.</p>
             <a
               href="/dashboard/accounts"
-              className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
+              className="text-xs text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
             >
               Conectar contas →
             </a>
@@ -536,7 +536,7 @@ export default function PostsPage() {
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left",
                     sel
-                      ? "border-violet-500 bg-violet-500/[0.07]"
+                      ? "border-[#00498D] bg-[#00498D]/[0.07]"
                       : "border-white/[0.06] bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04]"
                   )}
                 >
@@ -569,7 +569,7 @@ export default function PostsPage() {
                     )}
                   </div>
 
-                  {sel && <Check size={14} className="text-violet-400 flex-shrink-0" />}
+                  {sel && <Check size={14} className="text-[#85B9E9] flex-shrink-0" />}
                 </button>
               );
             })}
@@ -631,7 +631,7 @@ export default function PostsPage() {
         <button
           onClick={addCaption}
           disabled={captions.length >= 10}
-          className="mt-3 flex items-center gap-2 text-xs text-violet-400 hover:text-violet-300 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+          className="mt-3 flex items-center gap-2 text-xs text-[#85B9E9] hover:text-[#AFBDD0] transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
         >
           <Plus size={13} />
           Adicionar Variação de Legenda
@@ -708,13 +708,13 @@ export default function PostsPage() {
             className="mt-5 flex flex-wrap gap-x-5 gap-y-2 pt-4 border-t border-white/[0.06]"
           >
             <div className="flex items-center gap-1.5 text-xs text-white/50">
-              <Sparkles size={11} className="text-violet-400" />
+              <Sparkles size={11} className="text-[#85B9E9]" />
               <span>
                 <span className="text-white font-semibold">{totalPosts}</span> posts no total
               </span>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-white/50">
-              <Layers size={11} className="text-cyan-400" />
+              <Layers size={11} className="text-[#85B9E9]" />
               <span>
                 <span className="text-white font-semibold">{batchesPerAccount}</span>{" "}
                 lote{batchesPerAccount !== 1 ? "s" : ""} por conta

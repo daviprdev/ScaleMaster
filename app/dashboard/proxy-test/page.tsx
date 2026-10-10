@@ -164,8 +164,8 @@ function ProxyPoolSection() {
     <div className="glass-card rounded-2xl p-6 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#00E5FF]/10 border border-[#00E5FF]/20 flex items-center justify-center flex-shrink-0">
-            <Database size={16} className="text-[#00E5FF]" />
+          <div className="w-9 h-9 rounded-xl bg-[#85B9E9]/10 border border-[#85B9E9]/20 flex items-center justify-center flex-shrink-0">
+            <Database size={16} className="text-[#85B9E9]" />
           </div>
           <div>
             <p className="text-sm font-semibold text-white">Estoque de Proxies</p>
@@ -179,7 +179,7 @@ function ProxyPoolSection() {
         </div>
         <button
           onClick={() => setShowAdd(v => !v)}
-          className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border border-[#00E5FF]/25 text-[#00E5FF]/80 hover:text-[#00E5FF] hover:border-[#00E5FF]/45 hover:bg-[#00E5FF]/[0.06] transition-all flex-shrink-0"
+          className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border border-[#85B9E9]/25 text-[#85B9E9]/80 hover:text-[#85B9E9] hover:border-[#85B9E9]/45 hover:bg-[#85B9E9]/[0.06] transition-all flex-shrink-0"
         >
           {showAdd ? <X size={13} /> : <Plus size={13} />}
           {showAdd ? "Fechar" : "Adicionar"}
@@ -191,8 +191,8 @@ function ProxyPoolSection() {
         <div className="grid grid-cols-3 gap-2">
           {[
             { label: "Total", value: pool.total, cls: "text-white/70" },
-            { label: "Livres", value: pool.free, cls: "text-[#00FF41]" },
-            { label: "Em uso", value: pool.in_use, cls: "text-[#00E5FF]" },
+            { label: "Livres", value: pool.free, cls: "text-[#00498D]" },
+            { label: "Em uso", value: pool.in_use, cls: "text-[#85B9E9]" },
           ].map(c => (
             <div key={c.label} className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
               <p className={cn("text-lg font-bold tabular-nums", c.cls)}>{c.value}</p>
@@ -212,7 +212,7 @@ function ProxyPoolSection() {
             className={cn(
               "flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-medium",
               notice.type === "success"
-                ? "bg-[#00FF41]/8 border-[#00FF41]/20 text-[#00FF41]"
+                ? "bg-[#00498D]/8 border-[#00498D]/20 text-[#00498D]"
                 : "bg-red-500/8 border-red-500/25 text-red-300"
             )}
           >
@@ -258,7 +258,7 @@ function ProxyPoolSection() {
           <button
             onClick={handleAssignAll}
             disabled={assigning || pool.free === 0}
-            className="flex items-center gap-1.5 text-xs px-3.5 py-2.5 rounded-xl font-semibold bg-[#00FF41]/10 border border-[#00FF41]/25 text-[#00FF41] hover:bg-[#00FF41]/20 transition-all disabled:opacity-40"
+            className="flex items-center gap-1.5 text-xs px-3.5 py-2.5 rounded-xl font-semibold bg-[#00498D]/10 border border-[#00498D]/25 text-[#00498D] hover:bg-[#00498D]/20 transition-all disabled:opacity-40"
           >
             {assigning ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
             Atribuir às contas sem proxy
@@ -292,15 +292,15 @@ function ProxyPoolSection() {
             >
               <span className={cn(
                 "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                item.assigned_username ? "bg-[#00E5FF]" : "bg-[#00FF41]"
+                item.assigned_username ? "bg-[#85B9E9]" : "bg-[#00498D]"
               )} />
               <span className="text-xs font-mono text-white/60 flex-1 truncate">{item.display}</span>
               {item.assigned_username ? (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00E5FF]/10 text-[#00E5FF] font-semibold">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#85B9E9]/10 text-[#85B9E9] font-semibold">
                   @{item.assigned_username}
                 </span>
               ) : (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00FF41]/10 text-[#00FF41] font-semibold">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00498D]/10 text-[#00498D] font-semibold">
                   livre
                 </span>
               )}
@@ -364,8 +364,8 @@ export default function ProxyTestPage() {
 
       <div className="glass-card rounded-2xl p-6 space-y-4">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#00FF41]/10 border border-[#00FF41]/20 flex items-center justify-center flex-shrink-0">
-            <Shield size={16} className="text-[#00FF41]" />
+          <div className="w-9 h-9 rounded-xl bg-[#00498D]/10 border border-[#00498D]/20 flex items-center justify-center flex-shrink-0">
+            <Shield size={16} className="text-[#00498D]" />
           </div>
           <div>
             <p className="text-sm font-semibold text-white">Verificar IPs</p>
@@ -399,7 +399,7 @@ export default function ProxyTestPage() {
             <div className={cn(
               "flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-semibold",
               allUnique
-                ? "bg-[#00FF41]/8 border-[#00FF41]/20 text-[#00FF41]"
+                ? "bg-[#00498D]/8 border-[#00498D]/20 text-[#00498D]"
                 : "bg-amber-500/8 border-amber-500/20 text-amber-300"
             )}>
               {allUnique
@@ -430,13 +430,13 @@ export default function ProxyTestPage() {
                     )}>
                       <div className={cn(
                         "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                        r.ip ? "bg-[#00FF41]" : "bg-red-400"
+                        r.ip ? "bg-[#00498D]" : "bg-red-400"
                       )} />
                       <span className="text-sm text-white/80 font-medium">@{r.username}</span>
                       <span className={cn(
                         "text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase",
                         r.source === "dedicado"
-                          ? "bg-violet-500/15 text-violet-400"
+                          ? "bg-[#00498D]/15 text-[#85B9E9]"
                           : r.source === "template"
                           ? "bg-blue-500/15 text-blue-400"
                           : "bg-white/[0.05] text-white/25"
@@ -455,7 +455,7 @@ export default function ProxyTestPage() {
                       i < results.length - 1 && "border-b border-white/[0.04]"
                     )}>
                       {r.ip ? (
-                        <span className="text-xs font-mono text-[#00E5FF]">{r.ip}</span>
+                        <span className="text-xs font-mono text-[#85B9E9]">{r.ip}</span>
                       ) : (
                         <span className="text-xs text-red-400/70">{r.error ?? "erro"}</span>
                       )}

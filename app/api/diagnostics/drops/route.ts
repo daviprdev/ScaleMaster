@@ -59,7 +59,7 @@ function categorize(reason: string | null): CategoryInfo {
     r.includes("unsupported request") ||
     r.includes("method type: post")
   ) {
-    return { category: "personal", label: "Conta Pessoal (sem API)", color: "violet" };
+    return { category: "personal", label: "Conta Pessoal (sem API)", color: "blue" };
   }
   if (
     r.includes("unexpected error") ||

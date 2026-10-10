@@ -64,9 +64,9 @@ function countryFlag(code: string | null): string {
 }
 
 function DeviceIcon({ type, size = 15 }: { type: string; size?: number }) {
-  if (type === "mobile") return <Smartphone size={size} className="text-[#00E5FF]" />;
-  if (type === "tablet") return <Tablet size={size} className="text-[#00E5FF]" />;
-  return <Monitor size={size} className="text-[#00E5FF]" />;
+  if (type === "mobile") return <Smartphone size={size} className="text-[#85B9E9]" />;
+  if (type === "tablet") return <Tablet size={size} className="text-[#85B9E9]" />;
+  return <Monitor size={size} className="text-[#85B9E9]" />;
 }
 
 // ── Password strength ──────────────────────────────────────────────────────
@@ -485,7 +485,7 @@ export default function SettingsPage() {
                   className="w-16 h-16 rounded-full object-cover shadow-[0_0_20px_rgba(139,92,246,0.3)]"
                 />
               ) : (
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-2xl font-bold text-white shadow-[0_0_20px_rgba(139,92,246,0.3)]">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center text-2xl font-bold text-white shadow-[0_0_20px_rgba(139,92,246,0.3)]">
                   {initial}
                 </div>
               )}
@@ -506,7 +506,7 @@ export default function SettingsPage() {
                 type="button"
                 disabled={uploadingAvatar}
                 onClick={() => avatarInputRef.current?.click()}
-                className="text-xs text-violet-400 hover:text-violet-300 mt-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-xs text-[#85B9E9] hover:text-[#AFBDD0] mt-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {uploadingAvatar ? "Enviando..." : "Alterar foto"}
               </button>
@@ -644,8 +644,8 @@ export default function SettingsPage() {
               <PasswordStrength password={newPassword} />
             </div>
 
-            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-[#00E5FF]/[0.05] border border-[#00E5FF]/15 text-[11px] text-white/45">
-              <Mail size={13} className="flex-shrink-0 mt-0.5 text-[#00E5FF]/70" />
+            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-[#85B9E9]/[0.05] border border-[#85B9E9]/15 text-[11px] text-white/45">
+              <Mail size={13} className="flex-shrink-0 mt-0.5 text-[#85B9E9]/70" />
               <span>
                 Por segurança, enviaremos um código de verificação para o email
                 da conta antes de alterar a senha.
@@ -682,8 +682,8 @@ export default function SettingsPage() {
           </form>
         ) : (
           <form onSubmit={handleConfirmPassword} className="space-y-4">
-            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-[#00FF41]/[0.05] border border-[#00FF41]/15 text-[11px] text-white/50">
-              <Mail size={13} className="flex-shrink-0 mt-0.5 text-[#00FF41]/70" />
+            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-[#00498D]/[0.05] border border-[#00498D]/15 text-[11px] text-white/50">
+              <Mail size={13} className="flex-shrink-0 mt-0.5 text-[#00498D]/70" />
               <span>
                 Enviamos um código de 6 dígitos para{" "}
                 <span className="font-semibold text-white/75">{email}</span>.
@@ -729,7 +729,7 @@ export default function SettingsPage() {
                   type="button"
                   onClick={handleResendCode}
                   disabled={sendingCode || resendCooldown > 0}
-                  className="text-xs text-[#00E5FF]/70 hover:text-[#00E5FF] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="text-xs text-[#85B9E9]/70 hover:text-[#85B9E9] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {resendCooldown > 0
                     ? `Reenviar em ${resendCooldown}s`
@@ -814,7 +814,7 @@ export default function SettingsPage() {
                     className={cn(
                       "flex items-start gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150",
                       isCurrent
-                        ? "bg-[#00FF41]/[0.04] border-[#00FF41]/20"
+                        ? "bg-[#00498D]/[0.04] border-[#00498D]/20"
                         : isSelected
                         ? "bg-red-500/[0.07] border-red-500/30 cursor-pointer"
                         : isSelectable
@@ -838,7 +838,7 @@ export default function SettingsPage() {
                     ) : (
                       <div className={cn(
                         "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5",
-                        isCurrent ? "bg-[#00FF41]/10" : "bg-white/[0.05]"
+                        isCurrent ? "bg-[#00498D]/10" : "bg-white/[0.05]"
                       )}>
                         <DeviceIcon type={s.device_type} />
                       </div>
@@ -854,7 +854,7 @@ export default function SettingsPage() {
                           {s.browser} · {s.os}
                         </span>
                         {isCurrent && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider bg-[#00FF41]/10 border border-[#00FF41]/25 text-[#00FF41]">
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider bg-[#00498D]/10 border border-[#00498D]/25 text-[#00498D]">
                             ESTA SESSÃO
                           </span>
                         )}
@@ -1051,7 +1051,7 @@ export default function SettingsPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center shadow-[0_0_8px_rgba(139,92,246,0.35)] flex-shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center shadow-[0_0_8px_rgba(139,92,246,0.35)] flex-shrink-0">
                 <Crown size={14} className="text-white" />
               </div>
               <div>
@@ -1069,8 +1069,8 @@ export default function SettingsPage() {
           <button
             onClick={() => alert("Em breve! O plano Pro está sendo preparado.")}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl
-              bg-gradient-to-r from-violet-600 to-cyan-600
-              hover:from-violet-500 hover:to-cyan-500
+              bg-gradient-to-r from-[#00498D] to-[#85B9E9]
+              hover:from-[#075BA6] hover:to-[#85B9E9]
               hover:shadow-[0_0_22px_rgba(139,92,246,0.45)]
               text-white text-sm font-semibold
               transition-all duration-200 active:scale-[0.98]"

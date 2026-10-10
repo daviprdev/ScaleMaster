@@ -191,7 +191,7 @@ function StripToggle({
       className={cn(
         "w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all",
         checked
-          ? "bg-[#00E5FF]/[0.06] border-[#00E5FF]/25"
+          ? "bg-[#85B9E9]/[0.06] border-[#85B9E9]/25"
           : "bg-white/[0.02] border-white/[0.06] hover:border-white/15",
         !onChange && "opacity-40 cursor-not-allowed"
       )}
@@ -199,7 +199,7 @@ function StripToggle({
       <span
         className={cn(
           "mt-0.5 w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border transition-all",
-          checked ? "bg-[#00E5FF] border-[#00E5FF]" : "border-white/20"
+          checked ? "bg-[#85B9E9] border-[#85B9E9]" : "border-white/20"
         )}
       >
         {checked && <Check size={11} className="text-black" strokeWidth={3} />}

@@ -108,7 +108,7 @@ export function PostModal({ video, onClose }: PostModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-pink-500 to-violet-600 flex items-center justify-center">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#00498D] to-[#00346D] flex items-center justify-center">
               <Instagram size={14} className="text-white" />
             </div>
             <div>
@@ -213,16 +213,16 @@ export function PostModal({ video, onClose }: PostModalProps) {
                             !hasSession
                               ? "opacity-40 cursor-not-allowed border-white/[0.05] bg-white/[0.02]"
                               : isSelected
-                                ? "bg-violet-600/15 border-violet-500/35"
+                                ? "bg-[#00498D]/15 border-[#00498D]/35"
                                 : "bg-white/[0.03] border-white/[0.07] hover:border-white/15 hover:bg-white/[0.06]"
                           )}
                         >
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-violet-600 flex items-center justify-center flex-shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00498D] to-[#00346D] flex items-center justify-center flex-shrink-0">
                             <Instagram size={14} className="text-white" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <p className={cn("text-sm font-medium truncate", isSelected ? "text-violet-200" : "text-white/70")}>
+                              <p className={cn("text-sm font-medium truncate", isSelected ? "text-[#AFBDD0]" : "text-white/70")}>
                                 @{acc.username}
                               </p>
                               {isMeta && (
@@ -237,7 +237,7 @@ export function PostModal({ video, onClose }: PostModalProps) {
                           </div>
                           <div className={cn(
                             "w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0",
-                            isSelected ? "border-violet-500 bg-violet-500" : "border-white/20"
+                            isSelected ? "border-[#00498D] bg-[#00498D]" : "border-white/20"
                           )}>
                             {isSelected && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
                           </div>
@@ -295,7 +295,7 @@ export function PostModal({ video, onClose }: PostModalProps) {
                   "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all",
                   posting || !selectedIds.length
                     ? "bg-white/5 border border-white/10 text-white/30 cursor-not-allowed"
-                    : "bg-gradient-to-r from-pink-600 to-violet-600 hover:from-pink-500 hover:to-violet-500 text-white hover:shadow-[0_0_20px_rgba(219,39,119,0.35)]"
+                    : "bg-gradient-to-r from-[#00498D] to-[#00346D] hover:from-[#075BA6] hover:to-[#00346D] text-white hover:shadow-[0_0_20px_rgba(0,73,141,0.35)]"
                 )}
               >
                 {posting ? (

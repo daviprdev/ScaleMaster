@@ -504,8 +504,8 @@ export default function LibraryPage() {
               className="glass w-full max-w-sm rounded-2xl p-6 space-y-5 border border-white/10"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-violet-600/20 flex items-center justify-center">
-                  <FolderPlus size={18} className="text-violet-400" />
+                <div className="w-10 h-10 rounded-xl bg-[#00498D]/20 flex items-center justify-center">
+                  <FolderPlus size={18} className="text-[#85B9E9]" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-white">Nova Pasta</h3>
@@ -544,8 +544,8 @@ export default function LibraryPage() {
               className="glass w-full max-w-sm rounded-2xl p-6 space-y-4 border border-white/10"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center">
-                  <FolderInput size={18} className="text-cyan-400" />
+                <div className="w-10 h-10 rounded-xl bg-[#85B9E9]/20 flex items-center justify-center">
+                  <FolderInput size={18} className="text-[#85B9E9]" />
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-white">Mover vídeo</h3>
@@ -560,11 +560,11 @@ export default function LibraryPage() {
                     className={cn(
                       "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150",
                       movingTo === f.id
-                        ? "bg-violet-600/20 border border-violet-500/40 text-white"
+                        ? "bg-[#00498D]/20 border border-[#00498D]/40 text-white"
                         : "border border-transparent text-white/50 hover:bg-white/[0.05] hover:text-white/80"
                     )}
                   >
-                    <Folder size={15} className="flex-shrink-0 text-violet-400" />
+                    <Folder size={15} className="flex-shrink-0 text-[#85B9E9]" />
                     <span className="truncate">{f.name}</span>
                     {movingTo === f.id && <CheckMark />}
                   </button>
@@ -600,8 +600,8 @@ export default function LibraryPage() {
               className="glass w-full max-w-sm rounded-2xl p-6 space-y-4 border border-white/10"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center">
-                  <FolderInput size={18} className="text-cyan-400" />
+                <div className="w-10 h-10 rounded-xl bg-[#85B9E9]/20 flex items-center justify-center">
+                  <FolderInput size={18} className="text-[#85B9E9]" />
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-white">Mover {selectedIds.size} vídeo{selectedIds.size !== 1 ? "s" : ""}</h3>
@@ -616,11 +616,11 @@ export default function LibraryPage() {
                     className={cn(
                       "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150",
                       bulkMoveTo === f.id
-                        ? "bg-violet-600/20 border border-violet-500/40 text-white"
+                        ? "bg-[#00498D]/20 border border-[#00498D]/40 text-white"
                         : "border border-transparent text-white/50 hover:bg-white/[0.05] hover:text-white/80"
                     )}
                   >
-                    <Folder size={15} className="flex-shrink-0 text-violet-400" />
+                    <Folder size={15} className="flex-shrink-0 text-[#85B9E9]" />
                     <span className="truncate">{f.name}</span>
                     {bulkMoveTo === f.id && <CheckMark />}
                   </button>
@@ -715,8 +715,8 @@ export default function LibraryPage() {
               className="glass w-full max-w-sm rounded-2xl p-6 space-y-5 border border-white/10"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-violet-600/20 flex items-center justify-center">
-                  <Pencil size={18} className="text-violet-400" />
+                <div className="w-10 h-10 rounded-xl bg-[#00498D]/20 flex items-center justify-center">
+                  <Pencil size={18} className="text-[#85B9E9]" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-white">Renomear Pasta</h3>
@@ -767,7 +767,7 @@ export default function LibraryPage() {
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#00FF41]/10 border border-[#00FF41]/25 text-[#00FF41]/80 text-xs font-medium"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#00498D]/10 border border-[#00498D]/25 text-[#00498D]/80 text-xs font-medium"
               >
                 <CheckCircle2 size={13} /> {deleteFolderResult}
               </motion.span>
@@ -811,13 +811,13 @@ export default function LibraryPage() {
           "relative rounded-2xl border-2 border-dashed transition-all duration-200 cursor-pointer",
           "flex flex-col items-center justify-center gap-3 py-10 px-6 text-center",
           isDragOver
-            ? "border-violet-500/60 bg-violet-600/10 scale-[1.01]"
-            : "border-white/[0.10] bg-white/[0.02] hover:border-violet-500/30 hover:bg-violet-600/5"
+            ? "border-[#00498D]/60 bg-[#00498D]/10 scale-[1.01]"
+            : "border-white/[0.10] bg-white/[0.02] hover:border-[#00498D]/30 hover:bg-[#00498D]/5"
         )}
       >
         <input ref={fileInputRef} type="file" accept="video/*" multiple className="hidden" onChange={handleFileInput} />
-        <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-colors", isDragOver ? "bg-violet-600/20" : "bg-white/[0.04]")}>
-          <UploadCloud size={22} className={isDragOver ? "text-violet-400" : "text-white/25"} />
+        <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-colors", isDragOver ? "bg-[#00498D]/20" : "bg-white/[0.04]")}>
+          <UploadCloud size={22} className={isDragOver ? "text-[#85B9E9]" : "text-white/25"} />
         </div>
         <div>
           <p className="text-sm font-semibold text-white/70">
@@ -840,7 +840,7 @@ export default function LibraryPage() {
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
               <div className="flex items-center gap-2">
-                <Film size={14} className="text-violet-400" />
+                <Film size={14} className="text-[#85B9E9]" />
                 <span className="text-xs font-semibold text-white/70">
                   {activeUploads > 0 ? `Enviando ${activeUploads} arquivo${activeUploads > 1 ? "s" : ""}...` : "Uploads concluídos"}
                 </span>
@@ -856,7 +856,7 @@ export default function LibraryPage() {
                 {uploads.map(item => (
                   <motion.div key={item.id} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="px-4 py-3 space-y-2">
                     <div className="flex items-center gap-3">
-                      <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", item.status === "done" ? "bg-emerald-500/15 text-emerald-400" : item.status === "error" ? "bg-red-500/15 text-red-400" : item.status === "skipped" ? "bg-amber-500/15 text-amber-400" : "bg-violet-600/15 text-violet-400")}>
+                      <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", item.status === "done" ? "bg-emerald-500/15 text-emerald-400" : item.status === "error" ? "bg-red-500/15 text-red-400" : item.status === "skipped" ? "bg-amber-500/15 text-amber-400" : "bg-[#00498D]/15 text-[#85B9E9]")}>
                         {item.status === "done" ? <CheckCircle2 size={14} /> : item.status === "error" ? <AlertCircle size={14} /> : item.status === "skipped" ? <CheckCircle2 size={14} /> : item.status === "uploading" ? <Loader2 size={13} className="animate-spin" /> : <Film size={13} />}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -873,7 +873,7 @@ export default function LibraryPage() {
                     </div>
                     {item.status !== "error" && item.status !== "skipped" && (
                       <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden">
-                        <motion.div className={cn("h-full rounded-full", item.status === "done" ? "bg-emerald-500" : "bg-gradient-to-r from-violet-600 to-cyan-500")} initial={{ width: "0%" }} animate={{ width: `${item.progress}%` }} transition={{ duration: 0.35, ease: "easeOut" }} />
+                        <motion.div className={cn("h-full rounded-full", item.status === "done" ? "bg-emerald-500" : "bg-gradient-to-r from-[#00498D] to-[#85B9E9]")} initial={{ width: "0%" }} animate={{ width: `${item.progress}%` }} transition={{ duration: 0.35, ease: "easeOut" }} />
                       </div>
                     )}
                   </motion.div>
@@ -896,7 +896,7 @@ export default function LibraryPage() {
             className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors"
           >
             {allSelected
-              ? <><CheckSquare size={13} className="text-[#00FF41]" /> Desmarcar todos</>
+              ? <><CheckSquare size={13} className="text-[#00498D]" /> Desmarcar todos</>
               : <><Square size={13} /> Selecionar todos</>
             }
           </button>
@@ -1012,7 +1012,7 @@ export default function LibraryPage() {
                 className="w-24 h-24 rounded-3xl flex items-center justify-center"
                 style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.18)" }}
               >
-                <FolderPlus size={40} className="text-violet-400/60" />
+                <FolderPlus size={40} className="text-[#85B9E9]/60" />
               </div>
               <div>
                 <p className="text-white/60 font-semibold text-lg mb-2">Nenhuma pasta criada</p>
@@ -1073,16 +1073,16 @@ export default function LibraryPage() {
               className="flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl"
               style={{
                 background: "rgba(8,8,12,0.92)",
-                border: "1px solid rgba(0,255,65,0.2)",
+                border: "1px solid rgba(0,73,141,0.2)",
                 backdropFilter: "blur(20px)",
-                boxShadow: "0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,255,65,0.1)",
+                boxShadow: "0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,73,141,0.1)",
               }}
             >
               <div
                 className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: "rgba(0,255,65,0.12)", border: "1px solid rgba(0,255,65,0.25)" }}
+                style={{ background: "rgba(0,73,141,0.12)", border: "1px solid rgba(0,73,141,0.25)" }}
               >
-                <CheckSquare size={14} style={{ color: "#00FF41" }} />
+                <CheckSquare size={14} style={{ color: "#00498D" }} />
               </div>
               <span className="text-sm font-semibold text-white/80 whitespace-nowrap">
                 {selectedIds.size} vídeo{selectedIds.size !== 1 ? "s" : ""} selecionado{selectedIds.size !== 1 ? "s" : ""}
@@ -1101,9 +1101,9 @@ export default function LibraryPage() {
                 onClick={() => { setBulkMoveTo("__root__"); setBulkMovingOpen(true); }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 whitespace-nowrap"
                 style={{
-                  background: "rgba(0,229,255,0.12)",
-                  border: "1px solid rgba(0,229,255,0.30)",
-                  color: "rgba(0,229,255,0.90)",
+                  background: "rgba(133,185,233,0.12)",
+                  border: "1px solid rgba(133,185,233,0.30)",
+                  color: "rgba(133,185,233,0.90)",
                 }}
               >
                 <FolderInput size={12} /> Mover {selectedIds.size}
@@ -1136,7 +1136,7 @@ export default function LibraryPage() {
 
 function CheckMark() {
   return (
-    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" className="ml-auto text-violet-400">
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" className="ml-auto text-[#85B9E9]">
       <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -1145,12 +1145,12 @@ function CheckMark() {
 // ── FolderCard ────────────────────────────────────────────────
 
 const FOLDER_GRADIENTS = [
-  { bg: "from-violet-600/20 to-purple-700/10", icon: "text-violet-400", border: "border-violet-500/20 hover:border-violet-500/40", glow: "hover:shadow-[0_4px_20px_rgba(139,92,246,0.2)]" },
-  { bg: "from-cyan-500/20 to-blue-700/10", icon: "text-cyan-400", border: "border-cyan-500/20 hover:border-cyan-500/40", glow: "hover:shadow-[0_4px_20px_rgba(6,182,212,0.2)]" },
+  { bg: "from-[#00498D]/20 to-[#00346D]/10", icon: "text-[#85B9E9]", border: "border-[#00498D]/20 hover:border-[#00498D]/40", glow: "hover:shadow-[0_4px_20px_rgba(0,73,141,0.2)]" },
+  { bg: "from-[#85B9E9]/20 to-[#00498D]/10", icon: "text-[#85B9E9]", border: "border-[#85B9E9]/20 hover:border-[#85B9E9]/40", glow: "hover:shadow-[0_4px_20px_rgba(133,185,233,0.2)]" },
   { bg: "from-pink-500/20 to-rose-700/10", icon: "text-pink-400", border: "border-pink-500/20 hover:border-pink-500/40", glow: "hover:shadow-[0_4px_20px_rgba(236,72,153,0.2)]" },
   { bg: "from-emerald-500/20 to-teal-700/10", icon: "text-emerald-400", border: "border-emerald-500/20 hover:border-emerald-500/40", glow: "hover:shadow-[0_4px_20px_rgba(16,185,129,0.2)]" },
   { bg: "from-amber-500/20 to-orange-700/10", icon: "text-amber-400", border: "border-amber-500/20 hover:border-amber-500/40", glow: "hover:shadow-[0_4px_20px_rgba(245,158,11,0.2)]" },
-  { bg: "from-indigo-500/20 to-violet-700/10", icon: "text-indigo-400", border: "border-indigo-500/20 hover:border-indigo-500/40", glow: "hover:shadow-[0_4px_20px_rgba(99,102,241,0.2)]" },
+  { bg: "from-[#00346D]/20 to-[#00498D]/10", icon: "text-[#85B9E9]", border: "border-[#00346D]/20 hover:border-[#00346D]/40", glow: "hover:shadow-[0_4px_20px_rgba(0,52,109,0.2)]" },
 ];
 
 interface FolderCardProps {

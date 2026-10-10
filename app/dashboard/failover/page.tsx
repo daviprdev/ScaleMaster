@@ -51,7 +51,7 @@ function HealthBadge({ status }: { status: string }) {
 function PriorityLabel({ index }: { index: number }) {
   if (index === 0)
     return (
-      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-violet-500/15 border border-violet-500/30 text-violet-300">
+      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-[#00498D]/15 border border-[#00498D]/30 text-[#AFBDD0]">
         PRINCIPAL
       </span>
     );
@@ -65,7 +65,7 @@ function PriorityLabel({ index }: { index: number }) {
 function AccountAvatar({ username }: { username: string }) {
   const initials = username.slice(0, 2).toUpperCase();
   return (
-    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center text-white text-xs font-bold shrink-0">
       {initials}
     </div>
   );
@@ -151,8 +151,7 @@ function categoryStyle(color: string): string {
     red:    "bg-red-500/10 border-red-500/20 text-red-400",
     orange: "bg-orange-500/10 border-orange-500/20 text-orange-400",
     amber:  "bg-amber-500/10 border-amber-500/20 text-amber-400",
-    violet: "bg-violet-500/10 border-violet-500/20 text-violet-400",
-    blue:   "bg-blue-500/10 border-blue-500/20 text-blue-400",
+    blue:   "bg-[#00498D]/10 border-[#00498D]/20 text-[#85B9E9]",
     gray:   "bg-white/[0.05] border-white/[0.08] text-white/40",
   };
   return map[color] ?? map.gray;
@@ -161,7 +160,7 @@ function categoryStyle(color: string): string {
 function barColor(color: string): string {
   const map: Record<string, string> = {
     red: "bg-red-500", orange: "bg-orange-500", amber: "bg-amber-400",
-    violet: "bg-violet-500", blue: "bg-blue-500", gray: "bg-white/20",
+    blue: "bg-[#00498D]", gray: "bg-white/20",
   };
   return map[color] ?? "bg-white/20";
 }
@@ -306,7 +305,7 @@ export default function FailoverPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Shield size={20} className="text-violet-400" />
+            <Shield size={20} className="text-[#85B9E9]" />
             <h1 className="text-xl font-bold text-white">Failover de Contas</h1>
           </div>
           <p className="text-sm text-white/40">
@@ -630,7 +629,7 @@ export default function FailoverPage() {
             </span>
           )}
           {saving && (
-            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 text-xs font-medium">
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#00498D]/10 border border-[#00498D]/20 text-[#85B9E9] text-xs font-medium">
               <RefreshCw size={12} className="animate-spin" /> Salvando ordem…
             </span>
           )}
@@ -670,7 +669,7 @@ export default function FailoverPage() {
                   transition={{ duration: 0.18 }}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${
                     idx === 0
-                      ? "bg-violet-500/[0.06] border-violet-500/20"
+                      ? "bg-[#00498D]/[0.06] border-[#00498D]/20"
                       : acc.health_status !== "online"
                       ? "bg-red-500/[0.04] border-red-500/15"
                       : "bg-white/[0.03] border-white/[0.06]"
@@ -775,7 +774,7 @@ export default function FailoverPage() {
                         <ChevronRight size={10} className="text-white/20 shrink-0" />
                         <span
                           className={`text-xs font-semibold ${
-                            log.backup_account ? "text-cyan-400" : "text-white/30"
+                            log.backup_account ? "text-[#85B9E9]" : "text-white/30"
                           }`}
                         >
                           {log.backup_account
@@ -808,8 +807,8 @@ export default function FailoverPage() {
       </div>
 
       {/* Info box */}
-      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-violet-500/[0.06] border border-violet-500/15">
-        <Shield size={14} className="text-violet-400 mt-0.5 shrink-0" />
+      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-[#00498D]/[0.06] border border-[#00498D]/15">
+        <Shield size={14} className="text-[#85B9E9] mt-0.5 shrink-0" />
         <p className="text-xs text-white/40 leading-relaxed">
           Quando uma conta recebe um erro crítico da Meta API (token inválido, conta restrita ou
           bloqueada), o sistema marca-a automaticamente como{" "}

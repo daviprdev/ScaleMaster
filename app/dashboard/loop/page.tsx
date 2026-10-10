@@ -239,7 +239,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       className={cn(
         "relative inline-flex w-11 h-6 rounded-full transition-all duration-200 focus:outline-none flex-shrink-0",
         checked
-          ? "bg-violet-600 shadow-[0_0_10px_rgba(139,92,246,0.4)]"
+          ? "bg-[#00498D] "
           : "bg-white/10"
       )}
     >
@@ -256,7 +256,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 function SectionLabel({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
     <div className="flex items-center gap-2 mb-3">
-      <Icon size={13} className="text-violet-400/80" />
+      <Icon size={13} className="text-[#85B9E9]/80" />
       <span className="text-[10px] font-bold uppercase tracking-widest text-white/35">{label}</span>
     </div>
   );
@@ -371,7 +371,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
       {(engagement.total_plays > 0 || engagement.total_likes > 0 || engagement.total_comments > 0) ? (
         <div className="grid grid-cols-3 gap-2">
           <div className="flex flex-col items-center gap-0.5 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-            <Eye size={12} className="text-cyan-400/70" />
+            <Eye size={12} className="text-[#85B9E9]/70" />
             <span className="text-sm font-bold text-white/80">{formatNumber(engagement.total_plays)}</span>
             <span className="text-[9px] text-white/25 uppercase tracking-wide">Views</span>
           </div>
@@ -381,7 +381,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
             <span className="text-[9px] text-white/25 uppercase tracking-wide">Curtidas</span>
           </div>
           <div className="flex flex-col items-center gap-0.5 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-            <MessageCircle size={12} className="text-violet-400/70" />
+            <MessageCircle size={12} className="text-[#85B9E9]/70" />
             <span className="text-sm font-bold text-white/80">{formatNumber(engagement.total_comments)}</span>
             <span className="text-[9px] text-white/25 uppercase tracking-wide">Comentários</span>
           </div>
@@ -412,7 +412,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
                   className={cn(
                     "text-[9px] px-2 py-0.5 rounded-full border transition-colors",
                     rankingSort === s.key
-                      ? "bg-cyan-500/15 border-cyan-400/40 text-cyan-300"
+                      ? "bg-[#85B9E9]/15 border-[#85B9E9]/40 text-[#AFBDD0]"
                       : "bg-white/[0.03] border-white/[0.08] text-white/35 hover:text-white/60"
                   )}
                 >
@@ -470,7 +470,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
                     "w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0",
                     isChampion
                       ? "bg-gradient-to-br from-amber-400 to-orange-500"
-                      : "bg-gradient-to-br from-violet-500 to-cyan-500"
+                      : "bg-gradient-to-br from-[#00498D] to-[#85B9E9]"
                   )}>
                     {acc.username.charAt(0).toUpperCase()}
                   </div>
@@ -541,10 +541,10 @@ function LoopCard({
           <div className={cn(
             "w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors",
             isActive
-              ? "bg-violet-600/20 shadow-[0_0_12px_rgba(139,92,246,0.25)]"
+              ? "bg-[#00498D]/20 "
               : "bg-white/[0.04]"
           )}>
-            <Repeat2 size={16} className={isActive ? "text-violet-400" : "text-white/25"} />
+            <Repeat2 size={16} className={isActive ? "text-[#85B9E9]" : "text-white/25"} />
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-white/90 truncate">{loop.name}</p>
@@ -597,12 +597,12 @@ function LoopCard({
         </span>
         {(loop.effect_mirror || loop.effect_invert || loop.effect_zoom || loop.effect_blur || loop.effect_noise || loop.effect_anti_ai) && (
           <span className="flex items-center gap-1">
-            {loop.effect_mirror   && <FlipHorizontal size={10} className="text-cyan-400/60" />}
-            {loop.effect_invert   && <Contrast       size={10} className="text-cyan-400/60" />}
-            {loop.effect_zoom     && <ZoomIn         size={10} className="text-cyan-400/60" />}
-            {loop.effect_blur     && <Droplets       size={10} className="text-cyan-400/60" />}
-            {loop.effect_noise    && <Waves          size={10} className="text-cyan-400/60" />}
-            {loop.effect_anti_ai  && <Shield         size={10} className="text-cyan-400/60" />}
+            {loop.effect_mirror   && <FlipHorizontal size={10} className="text-[#85B9E9]/60" />}
+            {loop.effect_invert   && <Contrast       size={10} className="text-[#85B9E9]/60" />}
+            {loop.effect_zoom     && <ZoomIn         size={10} className="text-[#85B9E9]/60" />}
+            {loop.effect_blur     && <Droplets       size={10} className="text-[#85B9E9]/60" />}
+            {loop.effect_noise    && <Waves          size={10} className="text-[#85B9E9]/60" />}
+            {loop.effect_anti_ai  && <Shield         size={10} className="text-[#85B9E9]/60" />}
           </span>
         )}
       </div>
@@ -610,10 +610,10 @@ function LoopCard({
       {/* Accounts / Account Folder */}
       {loop.account_folder_id ? (
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-violet-500/20 bg-violet-600/[0.07]">
-            <Folder size={11} className="text-violet-400/70 flex-shrink-0" />
-            <span className="text-[11px] text-violet-300/80 font-medium">{accountFolder?.name ?? "Pasta"}</span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-600/20 text-violet-400 font-semibold uppercase tracking-wide">Auto</span>
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-[#00498D]/20 bg-[#00498D]/[0.07]">
+            <Folder size={11} className="text-[#85B9E9]/70 flex-shrink-0" />
+            <span className="text-[11px] text-[#AFBDD0]/80 font-medium">{accountFolder?.name ?? "Pasta"}</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#00498D]/20 text-[#85B9E9] font-semibold uppercase tracking-wide">Auto</span>
           </div>
           <span className="text-[10px] text-white/25">novas contas entram automaticamente</span>
         </div>
@@ -636,7 +636,7 @@ function LoopCard({
               >
                 <div className={cn(
                   "w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0",
-                  fell ? "bg-red-500/40" : "bg-gradient-to-br from-violet-500 to-cyan-500"
+                  fell ? "bg-red-500/40" : "bg-gradient-to-br from-[#00498D] to-[#85B9E9]"
                 )}>
                   {acc.username.charAt(0).toUpperCase()}
                 </div>
@@ -696,8 +696,8 @@ function LoopCard({
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150",
             analyticsOpen
-              ? "bg-violet-600/15 text-violet-300 border border-violet-500/25"
-              : "text-white/35 hover:text-violet-400 hover:bg-violet-600/10"
+              ? "bg-[#00498D]/15 text-[#AFBDD0] border border-[#00498D]/25"
+              : "text-white/35 hover:text-[#85B9E9] hover:bg-[#00498D]/10"
           )}
         >
           <BarChart2 size={11} />
@@ -756,7 +756,7 @@ function MediaLimitSelector({
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-150",
                 active
-                  ? "bg-violet-600/20 border-violet-500/50 text-violet-300"
+                  ? "bg-[#00498D]/20 border-[#00498D]/50 text-[#AFBDD0]"
                   : "bg-white/[0.03] border-white/[0.08] text-white/50 hover:text-white/80 hover:border-white/20"
               )}
             >
@@ -878,8 +878,8 @@ function AccountsMultiSelect({
           className={cn(
             "text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition-all",
             allSelected
-              ? "bg-[#00FF41]/10 border-[#00FF41]/25 text-[#00FF41]"
-              : "border-white/[0.08] text-white/35 hover:text-[#00FF41] hover:border-[#00FF41]/20 hover:bg-[#00FF41]/[0.05]"
+              ? "bg-[#00498D]/10 border-[#00498D]/25 text-[#00498D]"
+              : "border-white/[0.08] text-white/35 hover:text-[#00498D] hover:border-[#00498D]/20 hover:bg-[#00498D]/[0.05]"
           )}
         >
           {allSelected ? <><Check size={10} className="inline mr-1" />Todas selecionadas</> : "Selecionar todas"}
@@ -915,25 +915,25 @@ function AccountsMultiSelect({
                 className={cn(
                   "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors",
                   fullySel
-                    ? "bg-violet-600/10"
+                    ? "bg-[#00498D]/10"
                     : "hover:bg-white/[0.03]"
                 )}
               >
                 <div className={cn(
                   "w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all",
                   fullySel
-                    ? "bg-violet-600 border-violet-600"
+                    ? "bg-[#00498D] border-[#00498D]"
                     : partial
-                      ? "bg-violet-600/30 border-violet-500/40"
+                      ? "bg-[#00498D]/30 border-[#00498D]/40"
                       : "border-white/20"
                 )}>
                   {fullySel && <Check size={9} className="text-white" />}
-                  {partial && <div className="w-1.5 h-1.5 rounded-sm bg-violet-400" />}
+                  {partial && <div className="w-1.5 h-1.5 rounded-sm bg-[#85B9E9]" />}
                 </div>
-                <Folder size={11} className="flex-shrink-0 text-violet-400/70" />
+                <Folder size={11} className="flex-shrink-0 text-[#85B9E9]/70" />
                 <span className={cn(
                   "text-xs font-semibold flex-1 truncate",
-                  fullySel ? "text-violet-200" : partial ? "text-white/60" : "text-white/45"
+                  fullySel ? "text-[#AFBDD0]" : partial ? "text-white/60" : "text-white/45"
                 )}>
                   {folderName}
                 </span>
@@ -959,12 +959,12 @@ function AccountsMultiSelect({
                         fell
                           ? "border-red-500/15 bg-red-500/[0.06] text-red-400/50 cursor-not-allowed"
                           : isSel
-                            ? "border-violet-500/40 bg-violet-600/15 text-violet-200 cursor-pointer hover:bg-violet-600/25"
+                            ? "border-[#00498D]/40 bg-[#00498D]/15 text-[#AFBDD0] cursor-pointer hover:bg-[#00498D]/25"
                             : "border-white/[0.07] bg-white/[0.03] text-white/40 cursor-pointer hover:text-white/70 hover:border-white/15"
                       )}
                     >
                       {fell && <AlertTriangle size={8} className="flex-shrink-0 text-red-400/60" />}
-                      {isSel && !fell && <Check size={8} className="flex-shrink-0 text-violet-400" />}
+                      {isSel && !fell && <Check size={8} className="flex-shrink-0 text-[#85B9E9]" />}
                       <span className="font-medium">@{acc.username}</span>
                     </button>
                   );
@@ -1080,7 +1080,7 @@ function LoopCaptionEditor({
             <div>
               <div className="relative">
                 <div className="absolute top-3 left-3 flex items-center gap-1 pointer-events-none z-10">
-                  <span className="text-[10px] font-mono text-[#00FF41]/50 bg-[#00FF41]/10 rounded-md px-1.5 py-0.5">
+                  <span className="text-[10px] font-mono text-[#00498D]/50 bg-[#00498D]/10 rounded-md px-1.5 py-0.5">
                     #{i + 1}
                   </span>
                 </div>
@@ -1089,7 +1089,7 @@ function LoopCaptionEditor({
                   placeholder={`Variação ${i + 1}...`}
                   value={cap}
                   onChange={e => update(i, e.target.value)}
-                  className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm placeholder-white/20 resize-none focus:outline-none focus:border-[#00FF41]/40 focus:ring-1 focus:ring-[#00FF41]/20 transition-all leading-relaxed"
+                  className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm placeholder-white/20 resize-none focus:outline-none focus:border-[#00498D]/40 focus:ring-1 focus:ring-[#00498D]/20 transition-all leading-relaxed"
                   maxLength={2200}
                 />
                 <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
@@ -1123,8 +1123,8 @@ function LoopCaptionEditor({
                   >
                     {savedFeedback === i ? (
                       <div className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5">
-                        <CheckCircle2 size={11} className="text-[#00FF41]" />
-                        <span className="text-[10px] text-[#00FF41]">Salva na biblioteca!</span>
+                        <CheckCircle2 size={11} className="text-[#00498D]" />
+                        <span className="text-[10px] text-[#00498D]">Salva na biblioteca!</span>
                       </div>
                     ) : savingFor === i ? (
                       <div className="flex items-center gap-2 px-1 pt-1.5 pb-0.5">
@@ -1134,13 +1134,13 @@ function LoopCaptionEditor({
                           onChange={e => setSaveTitle(e.target.value)}
                           onKeyDown={e => { if (e.key === "Enter") handleSave(i); if (e.key === "Escape") { setSavingFor(null); setSaveTitle(""); } }}
                           placeholder="Nome da legenda (opcional)..."
-                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/15 text-white text-xs placeholder-white/25 focus:outline-none focus:border-[#00FF41]/40 transition-all"
+                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/15 text-white text-xs placeholder-white/25 focus:outline-none focus:border-[#00498D]/40 transition-all"
                         />
                         <button
                           type="button"
                           onClick={() => handleSave(i)}
                           disabled={savingApi}
-                          className="px-3 py-1.5 rounded-lg bg-[#00FF41]/15 text-[#00FF41] text-xs font-medium hover:bg-[#00FF41]/25 transition-all disabled:opacity-50 flex items-center gap-1"
+                          className="px-3 py-1.5 rounded-lg bg-[#00498D]/15 text-[#00498D] text-xs font-medium hover:bg-[#00498D]/25 transition-all disabled:opacity-50 flex items-center gap-1"
                         >
                           {savingApi ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
                           Salvar
@@ -1157,9 +1157,9 @@ function LoopCaptionEditor({
                       <button
                         type="button"
                         onClick={() => { setSavingFor(i); setSaveTitle(""); }}
-                        className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5 text-[10px] text-white/25 hover:text-[#00FF41]/60 transition-colors group"
+                        className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5 text-[10px] text-white/25 hover:text-[#00498D]/60 transition-colors group"
                       >
-                        <Save size={9} className="group-hover:text-[#00FF41]/60 transition-colors" />
+                        <Save size={9} className="group-hover:text-[#00498D]/60 transition-colors" />
                         Salvar esta legenda para usar depois
                       </button>
                     )}
@@ -1176,7 +1176,7 @@ function LoopCaptionEditor({
         <button
           type="button"
           onClick={add}
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/15 text-white/40 text-sm hover:border-[#00FF41]/40 hover:text-[#00FF41]/60 transition-all"
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/15 text-white/40 text-sm hover:border-[#00498D]/40 hover:text-[#00498D]/60 transition-all"
         >
           <Plus size={14} />
           Adicionar variação
@@ -1189,14 +1189,14 @@ function LoopCaptionEditor({
             className={cn(
               "flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-all",
               showLibrary
-                ? "border-[#00E5FF]/40 bg-[#00E5FF]/[0.08] text-[#00E5FF]"
-                : "border-white/15 text-white/40 hover:border-[#00E5FF]/40 hover:text-[#00E5FF]/70"
+                ? "border-[#85B9E9]/40 bg-[#85B9E9]/[0.08] text-[#85B9E9]"
+                : "border-white/15 text-white/40 hover:border-[#85B9E9]/40 hover:text-[#85B9E9]/70"
             )}
           >
             <Library size={14} />
             Usar Salva
             {savedCaptions.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-[#00E5FF]/15 text-[#00E5FF] text-[9px] font-mono">
+              <span className="px-1.5 py-0.5 rounded-full bg-[#85B9E9]/15 text-[#85B9E9] text-[9px] font-mono">
                 {savedCaptions.length}
               </span>
             )}
@@ -1213,7 +1213,7 @@ function LoopCaptionEditor({
               >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.07]">
                   <div className="flex items-center gap-2">
-                    <BookMarked size={13} className="text-[#00E5FF]" />
+                    <BookMarked size={13} className="text-[#85B9E9]" />
                     <span className="text-xs font-semibold text-white/70">Biblioteca de Legendas</span>
                   </div>
                   <button type="button" onClick={() => setShowLibrary(false)} className="text-white/25 hover:text-white/60 transition-colors">
@@ -1244,7 +1244,7 @@ function LoopCaptionEditor({
                           className="flex-1 text-left min-w-0"
                         >
                           {sc.title && (
-                            <p className="text-xs font-medium text-[#00E5FF]/80 truncate mb-0.5">{sc.title}</p>
+                            <p className="text-xs font-medium text-[#85B9E9]/80 truncate mb-0.5">{sc.title}</p>
                           )}
                           <p className="text-xs text-white/55 line-clamp-2 leading-relaxed">{sc.content}</p>
                           <p className="text-[9px] text-white/20 mt-1">Clique para adicionar</p>
@@ -1393,8 +1393,8 @@ function LoopFormModal({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.07] flex-shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-violet-600/20 flex items-center justify-center">
-              <Repeat2 size={16} className="text-violet-400" />
+            <div className="w-8 h-8 rounded-xl bg-[#00498D]/20 flex items-center justify-center">
+              <Repeat2 size={16} className="text-[#85B9E9]" />
             </div>
             <div>
               <h2 className="text-sm font-semibold text-white">
@@ -1435,7 +1435,7 @@ function LoopFormModal({
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold transition-all",
                   form.accountMode === "folder"
-                    ? "bg-violet-600/20 text-violet-200 border-r border-violet-500/20"
+                    ? "bg-[#00498D]/20 text-[#AFBDD0] border-r border-[#00498D]/20"
                     : "text-white/40 hover:text-white/70 border-r border-white/[0.05]"
                 )}
               >
@@ -1448,7 +1448,7 @@ function LoopFormModal({
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold transition-all",
                   form.accountMode === "specific"
-                    ? "bg-violet-600/20 text-violet-200"
+                    ? "bg-[#00498D]/20 text-[#AFBDD0]"
                     : "text-white/40 hover:text-white/70"
                 )}
               >
@@ -1566,7 +1566,7 @@ function LoopFormModal({
             <div className="space-y-3 p-4 rounded-xl border border-white/[0.07] bg-white/[0.03]">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-white/40">10 min</span>
-                <span className="text-base font-bold text-violet-300">
+                <span className="text-base font-bold text-[#AFBDD0]">
                   {formatInterval(form.intervalMinutes)}
                 </span>
                 <span className="text-xs text-white/40">24h</span>
@@ -1723,7 +1723,7 @@ function LoopFormModal({
               <button
                 type="button"
                 onClick={() => coverInputRef.current?.click()}
-                className="w-full h-24 rounded-xl border-2 border-dashed border-white/[0.08] flex flex-col items-center justify-center gap-2 text-white/30 hover:text-white/60 hover:border-violet-500/25 transition-all duration-150"
+                className="w-full h-24 rounded-xl border-2 border-dashed border-white/[0.08] flex flex-col items-center justify-center gap-2 text-white/30 hover:text-white/60 hover:border-[#00498D]/25 transition-all duration-150"
               >
                 <ImageIcon size={20} />
                 <span className="text-xs">Clique para adicionar uma capa</span>
@@ -1778,7 +1778,7 @@ function LoopFormModal({
                   className={cn(
                     "px-3.5 py-2 rounded-xl text-sm font-bold border transition-all",
                     form.priorityStrategy === opt.value
-                      ? "bg-[#00E5FF]/15 text-[#00E5FF] border-[#00E5FF]/30"
+                      ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30"
                       : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
                   )}
                 >
@@ -1814,7 +1814,7 @@ function LoopFormModal({
             <div className="space-y-2.5">
               <div className="flex items-center justify-between p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
                 <div className="flex items-center gap-3">
-                  <FlipHorizontal size={15} className="text-cyan-400/60" />
+                  <FlipHorizontal size={15} className="text-[#85B9E9]/60" />
                   <div>
                     <p className="text-sm text-white/80 font-medium">Espelhar</p>
                     <p className="text-xs text-white/30">Inverte horizontalmente o vídeo</p>
@@ -1825,7 +1825,7 @@ function LoopFormModal({
 
               <div className="flex items-center justify-between p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
                 <div className="flex items-center gap-3">
-                  <Contrast size={15} className="text-cyan-400/60" />
+                  <Contrast size={15} className="text-[#85B9E9]/60" />
                   <div>
                     <p className="text-sm text-white/80 font-medium">Inverter cores</p>
                     <p className="text-xs text-white/30">Estilo negativo fotográfico</p>
@@ -1836,7 +1836,7 @@ function LoopFormModal({
 
               <div className="flex items-center justify-between p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
                 <div className="flex items-center gap-3">
-                  <ZoomIn size={15} className="text-cyan-400/60" />
+                  <ZoomIn size={15} className="text-[#85B9E9]/60" />
                   <div>
                     <p className="text-sm text-white/80 font-medium">Zoom Sutil (+15%)</p>
                     <p className="text-xs text-white/30">Recorta bordas e amplia o frame central</p>
@@ -1847,7 +1847,7 @@ function LoopFormModal({
 
               <div className="flex items-center justify-between p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
                 <div className="flex items-center gap-3">
-                  <Droplets size={15} className="text-cyan-400/60" />
+                  <Droplets size={15} className="text-[#85B9E9]/60" />
                   <div>
                     <p className="text-sm text-white/80 font-medium">Desfoque Leve</p>
                     <p className="text-xs text-white/30">Filtro de privacidade imperceptível</p>
@@ -1858,7 +1858,7 @@ function LoopFormModal({
 
               <div className="flex items-center justify-between p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
                 <div className="flex items-center gap-3">
-                  <Waves size={15} className="text-cyan-400/60" />
+                  <Waves size={15} className="text-[#85B9E9]/60" />
                   <div>
                     <p className="text-sm text-white/80 font-medium">Grão Digital</p>
                     <p className="text-xs text-white/30">Ruído frame-a-frame, imperceptível</p>
@@ -1869,7 +1869,7 @@ function LoopFormModal({
 
               <div className="flex items-center justify-between p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
                 <div className="flex items-center gap-3">
-                  <Shield size={15} className="text-cyan-400/60" />
+                  <Shield size={15} className="text-[#85B9E9]/60" />
                   <div>
                     <p className="text-sm text-white/80 font-medium">Anti-IA</p>
                     <p className="text-xs text-white/30">Variação de cor única por conta</p>
@@ -2139,8 +2139,8 @@ export default function LoopPage() {
             <div className="w-24 h-24 rounded-3xl bg-white/[0.03] border border-white/[0.07] flex items-center justify-center">
               <Repeat2 size={36} className="text-white/10" />
             </div>
-            <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-violet-600/20 border border-violet-500/30 flex items-center justify-center">
-              <Infinity size={12} className="text-violet-400" />
+            <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-[#00498D]/20 border border-[#00498D]/30 flex items-center justify-center">
+              <Infinity size={12} className="text-[#85B9E9]" />
             </div>
           </div>
           <div>
