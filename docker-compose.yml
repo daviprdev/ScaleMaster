@@ -35,3 +35,39 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    depends_on:
+      python-server:
+        condition: service_healthy
+
+  python-server:
+    build:
+      context: ./python_server
+    image: autoscale-python-server:latest
+    container_name: autoscale-python-server-1
+    restart: unless-stopped
+    # Não expor porta publicamente — apenas a rede interna do compose.
+    # O app Next.js acessa via http://python-server:8000.
+    expose:
+      - "8000"
+    environment:
+      - PORT=8000
+      - SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - ENCRYPTION_SECRET=${ENCRYPTION_SECRET}
+      - PYTHON_SERVER_SECRET=${PYTHON_SERVER_SECRET}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -294,6 +294,20 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
+    // ── Filtro de campanha ativa (P1) ────────────────────────────────────────
+    // Posts com campaign_id devem ter a campanha associada em status='active'.
+    // O JOIN no SELECT_FIELDS traz distribute_campaigns(id, status); se a
+    // campanha estiver inativa/preparing ou não existir mais, pulamos o post.
+    // Posts sem campanha (campaign_id IS NULL) são legítimos e passam direto.
+    if (post.campaign_id && (!post.distribute_campaigns || post.distribute_campaigns.status !== "active")) {
+      console.log(
+        `[publish-scheduled] ⏭ Post ${post.id} pulado: campanha ${post.campaign_id} ` +
+          `status=${post.distribute_campaigns?.status ?? "não encontrada"} (esperado: active).`
+      );
+      summary.skipped++;
+      continue;
+    }
+
     attemptedAccounts.add(account.id);
 
     console.log(

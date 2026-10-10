@@ -23,7 +23,7 @@ BASE_URL="http://127.0.0.1:3000"
 # Cron manifest: name | endpoint | OnCalendar | TimeoutSec
 # Offsets are staggered to prevent thundering herd on the same second.
 CRONS=(
-  "publish-scheduled|/api/cron/publish-scheduled|*-*-* *:00/1:00|55"
+  "publish-scheduled|/api/cron/publish-scheduled|*-*-* *:00/1:00|290"
   "publish-pending|/api/cron/publish-pending|*-*-* *:00/2:00|110"
   "finalize-inspiration-scrapes|/api/cron/finalize-inspiration-scrapes|*-*-* *:00/2:30|110"
   "prefetch-clone-urls|/api/cron/prefetch-clone-urls|*-*-* *:00/5:00|290"
@@ -37,7 +37,7 @@ CRONS=(
   "daily-profit-notification|/api/cron/daily-profit-notification|*-*-* *:00/15:30|890"
   "story-templates|/api/cron/story-templates|*-*-* *:00/30:00|1790"
   "refresh-tokens|/api/cron/refresh-tokens|*-*-* 00/12:00:00|3590"
-  "analytics-sync|/api/analytics/sync|*-*-* 02:00:00|3590"
+  "analytics-sync|/api/analytics/sync|*-*-* 02:00:00|3590|POST"
 )
 
 echo "# Generating systemd units in: $OUTPUT_DIR"
@@ -45,10 +45,18 @@ echo "# Total crons: ${#CRONS[@]}"
 echo ""
 
 for entry in "${CRONS[@]}"; do
-  IFS='|' read -r NAME ENDPOINT ON_CALENDAR TIMEOUT <<< "$entry"
+  IFS='|' read -r NAME ENDPOINT ON_CALENDAR TIMEOUT METHOD <<< "$entry"
 
   SERVICE_FILE="$OUTPUT_DIR/autoscale-${NAME}.service"
   TIMER_FILE="$OUTPUT_DIR/autoscale-${NAME}.timer"
+
+  # Default to GET if no method specified
+  CURL_METHOD="${METHOD:-GET}"
+  if [ "$CURL_METHOD" = "POST" ]; then
+    CURL_CMD="/usr/bin/curl -sf -X POST -H \"Authorization: Bearer \${CRON_SECRET}\" ${BASE_URL}${ENDPOINT}"
+  else
+    CURL_CMD="/usr/bin/curl -sf -H \"Authorization: Bearer \${CRON_SECRET}\" ${BASE_URL}${ENDPOINT}"
+  fi
 
   # --- Service file ---
   cat > "$SERVICE_FILE" <<EOF
@@ -60,7 +68,7 @@ Requires=network-online.target
 [Service]
 Type=oneshot
 EnvironmentFile=/opt/autoscale/.env.cron
-ExecStart=/usr/bin/curl -sf -H "Authorization: Bearer \${CRON_SECRET}" ${BASE_URL}${ENDPOINT}
+ExecStart=${CURL_CMD}
 TimeoutStartSec=${TIMEOUT}
 StandardOutput=journal
 StandardError=journal
