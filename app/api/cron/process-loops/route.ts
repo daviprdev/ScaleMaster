@@ -819,7 +819,7 @@ async function processOneLoop(
       //                     original nunca entra no lugar da versao limpa.
       //
       // O original NUNCA e sobrescrito: videos_library.public_url permanece
-      // apontando para o arquivo como ele entrou no AutoScale.
+      // apontando para o arquivo como ele entrou no Scale Master.
       const loopMode: VideoProcessingMode = normalizeProcessingMode(loop.video_processing_mode);
       let waitingVariants = 0;
       let failedVariants  = 0;

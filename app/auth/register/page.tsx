@@ -72,7 +72,7 @@ export default function RegisterPage() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)]">
               <Zap className="w-5 h-5 text-white" />
             </div>
-            <span className="text-2xl font-bold gradient-text">AutoScale</span>
+            <span className="text-2xl font-bold gradient-text">Scale Master</span>
           </Link>
         </motion.div>
 

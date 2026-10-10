@@ -26,7 +26,7 @@
  * legenda errada — ou nenhuma.
  */
 
-/** Reel normalizado. É este o formato que circula no AutoScale. */
+/** Reel normalizado. É este o formato que circula no Scale Master. */
 export interface ScrapedReel {
   id: string;
   shortCode: string;
@@ -105,7 +105,7 @@ export function extractSourceUrl(item: RawItem): string | null {
 }
 
 /**
- * Converte um item cru do dataset do Apify no formato do AutoScale.
+ * Converte um item cru do dataset do Apify no formato do Scale Master.
  *
  * `fallbackUsername` só é usado quando o item não traz `ownerUsername` — é o
  * perfil que o usuário pesquisou, e não um chute.

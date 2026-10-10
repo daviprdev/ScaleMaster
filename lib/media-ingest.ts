@@ -1,5 +1,5 @@
 /**
- * media-ingest.ts — Download de mídia na ENTRADA do AutoScale.
+ * media-ingest.ts — Download de mídia na ENTRADA do Scale Master.
  *
  * REGRA ARQUITETURAL (2026-09-06): a mídia entra na Biblioteca EXATAMENTE como
  * veio da fonte. Sem FFmpeg, sem remux, sem strip de metadados, sem SEI, sem

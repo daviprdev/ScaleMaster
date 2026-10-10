@@ -1,9 +1,15 @@
 import { ImageResponse } from "next/og";
+import fs from "fs";
+import path from "path";
 
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
 export default function AppleIcon() {
+  const logoPath = path.join(process.cwd(), "public/brand/scale-master-logo.jpg");
+  const logoData = fs.readFileSync(logoPath);
+  const logoBase64 = logoData.toString("base64");
+
   return new ImageResponse(
     (
       <div
@@ -13,12 +19,16 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #00FF41 0%, #00E5FF 100%)",
+          background: "#001244",
+          borderRadius: 36,
         }}
       >
-        <svg width="100" height="100" viewBox="0 0 24 24" fill="#000000">
-          <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
-        </svg>
+        <img
+          src={`data:image/jpeg;base64,${logoBase64}`}
+          width={140}
+          height={140}
+          style={{ objectFit: "contain", borderRadius: 24 }}
+        />
       </div>
     ),
     { ...size }

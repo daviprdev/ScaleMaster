@@ -3,9 +3,9 @@ self.addEventListener("push", (event) => {
   try {
     payload = event.data ? event.data.json() : {};
   } catch {
-    payload = { title: "AutoScale", body: event.data ? event.data.text() : "" };
+    payload = { title: "Scale Master", body: event.data ? event.data.text() : "" };
   }
-  const title = payload.title || "AutoScale";
+  const title = payload.title || "Scale Master";
   const options = {
     body: payload.body || "",
     icon: "/icon-192",

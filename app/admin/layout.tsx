@@ -12,7 +12,7 @@ import {
   Bell,
 } from "lucide-react";
 
-export const metadata = { title: "Admin — AutoScale" };
+export const metadata = { title: "Admin — Scale Master" };
 
 const NAV_ITEMS = [
   { href: "/admin",              label: "Visão Geral",       icon: LayoutDashboard },
@@ -56,7 +56,7 @@ export default async function AdminLayout({
             <Shield className="w-4 h-4 text-[#00FF41]" />
           </div>
           <div className="leading-none">
-            <p className="text-sm font-bold text-white">AutoScale</p>
+            <p className="text-sm font-bold text-white">Scale Master</p>
             <p className="text-[11px] text-[#00FF41] font-medium mt-0.5 tracking-wide">Admin Panel</p>
           </div>
         </div>

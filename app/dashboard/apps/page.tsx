@@ -449,7 +449,7 @@ const GUIDE_STEPS = [
   },
   {
     num: "06",
-    title: "Cadastre no AutoScale",
+    title: "Cadastre no Scale Master",
     body: "Na aba 'Meus Apps', clique em 'Novo App', informe o nome, App ID e App Secret. O secret é criptografado com AES-256 antes de ser salvo.",
     accent: "border-emerald-500/25 bg-emerald-500/[0.05]",
     numColor: "text-emerald-400",

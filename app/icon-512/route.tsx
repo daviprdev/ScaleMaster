@@ -1,6 +1,12 @@
 import { ImageResponse } from "next/og";
+import fs from "fs";
+import path from "path";
 
 export async function GET() {
+  const logoPath = path.join(process.cwd(), "public/brand/scale-master-logo.jpg");
+  const logoData = fs.readFileSync(logoPath);
+  const logoBase64 = logoData.toString("base64");
+
   return new ImageResponse(
     (
       <div
@@ -10,12 +16,15 @@ export async function GET() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #00FF41 0%, #00E5FF 100%)",
+          background: "#001244",
         }}
       >
-        <svg width="290" height="290" viewBox="0 0 24 24" fill="#000000">
-          <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
-        </svg>
+        <img
+          src={`data:image/jpeg;base64,${logoBase64}`}
+          width={440}
+          height={440}
+          style={{ objectFit: "contain" }}
+        />
       </div>
     ),
     { width: 512, height: 512 }

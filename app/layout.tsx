@@ -24,14 +24,14 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AutoScale — Automação Inteligente para Instagram",
+  title: "Scale Master — Automação Inteligente para Instagram",
   description:
     "Gerencie múltiplas contas, faça scraping de Reels e automatize postagens com IA.",
-  applicationName: "AutoScale",
+  applicationName: "Scale Master",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "AutoScale",
+    title: "Scale Master",
   },
 };
 
@@ -39,7 +39,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#000000",
+  themeColor: "#061427",
 };
 
 export default function RootLayout({

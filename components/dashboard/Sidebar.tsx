@@ -193,7 +193,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                 transition={{ duration: 0.2 }}
                 className="ml-3 font-bold text-lg gradient-text whitespace-nowrap"
               >
-                AutoScale
+                Scale Master
               </motion.span>
             )}
           </AnimatePresence>
@@ -429,7 +429,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                       style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", boxShadow: "0 0 14px rgba(0,255,65,0.45)" }}>
                       <Zap className="w-4 h-4 text-black" strokeWidth={2.5} />
                     </div>
-                    <span className="ml-3 font-bold text-lg gradient-text whitespace-nowrap">AutoScale</span>
+                    <span className="ml-3 font-bold text-lg gradient-text whitespace-nowrap">Scale Master</span>
                   </div>
 
                   {/* Nav */}

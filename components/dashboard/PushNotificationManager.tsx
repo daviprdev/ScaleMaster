@@ -143,7 +143,7 @@ export default function PushNotificationManager() {
       <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-amber-500/[0.06] border border-amber-500/20">
         <AlertCircle size={16} className="text-amber-400 shrink-0" />
         <p className="text-sm text-amber-200/80">
-          No iPhone, primeiro adicione o AutoScale à Tela de Início (Compartilhar → Adicionar à
+          No iPhone, primeiro adicione o Scale Master à Tela de Início (Compartilhar → Adicionar à
           Tela de Início) e abra por esse ícone para poder ativar notificações.
         </p>
       </div>

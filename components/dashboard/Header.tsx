@@ -83,7 +83,7 @@ export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void
             style={{ background: "linear-gradient(135deg,#00FF41,#00E5FF)", boxShadow: "0 0 10px rgba(0,255,65,0.4)" }}>
             <Zap size={14} className="text-black" strokeWidth={2.5} />
           </div>
-          <span className="font-bold text-sm gradient-text">AutoScale</span>
+          <span className="font-bold text-sm gradient-text">Scale Master</span>
         </div>
 
         {/* Page title — desktop only */}

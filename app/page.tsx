@@ -127,7 +127,7 @@ export default function LandingPage() {
           >
             <Zap className="w-4 h-4 text-black" strokeWidth={2.5} />
           </div>
-          <span className="text-xl font-bold gradient-text">AutoScale</span>
+          <span className="text-xl font-bold gradient-text">Scale Master</span>
         </motion.div>
 
         <motion.div
@@ -295,7 +295,7 @@ export default function LandingPage() {
               <span className="gradient-text">precisa rodar sozinha</span>
             </h2>
             <p className="text-white/50 text-lg max-w-2xl mx-auto">
-              Do primeiro post ao failover automático, o AutoScale cobre toda a
+              Do primeiro post ao failover automático, o Scale Master cobre toda a
               pipeline de publicação em múltiplas contas.
             </p>
           </motion.div>
@@ -431,10 +431,10 @@ export default function LandingPage() {
             >
               <Zap className="w-3 h-3 text-black" strokeWidth={2.5} />
             </div>
-            <span className="font-bold gradient-text">AutoScale</span>
+            <span className="font-bold gradient-text">Scale Master</span>
           </div>
           <p className="text-white/30 text-sm">
-            © {new Date().getFullYear()} AutoScale. Todos os direitos reservados.
+            © {new Date().getFullYear()} Scale Master. Todos os direitos reservados.
           </p>
           <div className="flex gap-6 text-sm text-white/40">
             <a href="#" className="hover:text-white transition-colors">

@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "AutoScale — Automação Inteligente para Instagram",
-    short_name: "AutoScale",
+    name: "Scale Master — Automação Inteligente para Instagram",
+    short_name: "Scale Master",
     description:
       "Gerencie múltiplas contas, faça scraping de Reels e automatize postagens com IA.",
     start_url: "/",
