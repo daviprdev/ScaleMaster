@@ -34,8 +34,9 @@ function isAuthorized(req: NextRequest, secret: string): boolean {
 export async function POST(req: NextRequest) {
   const secret = process.env.APEXVIPS_WEBHOOK_SECRET;
   if (!secret) {
-    console.warn("[apexvips-webhook] AVISO: APEXVIPS_WEBHOOK_SECRET nao configurado.");
-  } else if (!isAuthorized(req, secret)) {
+    return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 });
+    
+  if (!isAuthorized(req, secret)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

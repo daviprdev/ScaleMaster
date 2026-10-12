@@ -143,7 +143,7 @@ async function exchangeCode(
     code?: number;
   };
 
-  console.log("[ig/callback] exchangeCode →", res.status, JSON.stringify(data).slice(0, 400));
+  console.log("[ig/callback] exchangeCode →", res.status, data.user_id ? "ok" : data.error_type);
 
   const ecDetail = metaErrorDetail("exchangeCode", res.status, data.error_message, data.error_type, data.code);
 
@@ -188,7 +188,7 @@ async function getLongLivedToken(
     error?: { message: string; type?: string; code?: number; fbtrace_id?: string };
   };
 
-  console.log("[ig/callback] longLivedToken →", res.status, JSON.stringify(data).slice(0, 400));
+  console.log("[ig/callback] longLivedToken →", res.status, data.access_token ? "ok" : data.error?.type);
 
   const lltDetail = metaErrorDetail("getLongLivedToken", res.status, data.error?.message, data.error?.type, data.error?.code);
 
@@ -223,7 +223,7 @@ async function getIGProfile(token: string) {
     error?: { message: string; type?: string; code?: number; fbtrace_id?: string };
   };
 
-  console.log("[ig/callback] profile →", res.status, JSON.stringify(data).slice(0, 400));
+  console.log("[ig/callback] profile →", res.status, data.username ?? data.error?.type);
 
   const profDetail = metaErrorDetail("getIGProfile", res.status, data.error?.message, data.error?.type, data.error?.code);
 
