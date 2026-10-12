@@ -17,7 +17,7 @@ export function getAppUrl(): string {
     if (process.env.NODE_ENV === "production") {
       throw new Error(
         "NEXT_PUBLIC_APP_URL is required in production. " +
-          "Set it to the canonical public URL (e.g. https://autoscale-ia.com)."
+          "Set it to the canonical public URL (e.g. https://scalemaster.tech)."
       );
     }
     return "http://localhost:3000";
