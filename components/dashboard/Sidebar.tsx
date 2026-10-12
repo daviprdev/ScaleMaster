@@ -63,7 +63,6 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Postar", href: "/dashboard/postar", icon: Send },
       { label: "Loop", href: "/dashboard/loop", icon: Repeat2 },
-      { label: "Clonar Perfil", href: "/dashboard/clone", icon: Copy },
       { label: "Stories", href: "/dashboard/stories", icon: ImagePlay },
     ],
   },
@@ -73,6 +72,7 @@ const navGroups: NavGroup[] = [
       { label: "Inspirações",     href: "/dashboard/inspirations",    icon: Sparkles },
       { label: "Contas Leitoras", href: "/dashboard/contas-leitoras", icon: BookUser },
       { label: "Biblioteca",      href: "/dashboard/library",         icon: FolderOpen },
+      { label: "Proxies",         href: "/dashboard/proxy-test",      icon: Globe },
     ],
   },
   {
@@ -87,7 +87,6 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Meu App",        href: "/dashboard/apps",           icon: KeyRound },
       { label: "Failover",       href: "/dashboard/failover",       icon: ShieldAlert },
-      { label: "Proxies",        href: "/dashboard/proxy-test",     icon: Globe },
     ],
   },
 ];
