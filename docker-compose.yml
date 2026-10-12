@@ -35,3 +35,29 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+  python-server:
+    build:
+      context: ./python_server
+    image: autoscale-python-server:latest
+    container_name: autoscale-python-server-1
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
