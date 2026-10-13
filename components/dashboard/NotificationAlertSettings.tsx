@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Loader2, ShieldAlert, TrendingUp, DollarSign } from "lucide-react";
+import { Loader2, ShieldAlert, TrendingUp, DollarSign, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
@@ -12,6 +12,8 @@ interface Settings {
   daily_profit_enabled: boolean;
   daily_profit_time: string;
   sale_alerts_enabled: boolean;
+  daily_views_goal_enabled: boolean;
+  daily_views_goal: number;
 }
 
 const DEFAULTS: Settings = {
@@ -20,6 +22,8 @@ const DEFAULTS: Settings = {
   daily_profit_enabled: false,
   daily_profit_time: "23:55",
   sale_alerts_enabled: true,
+  daily_views_goal_enabled: false,
+  daily_views_goal: 100000,
 };
 
 function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
@@ -172,6 +176,39 @@ export default function NotificationAlertSettings() {
           )}
         </div>
       )}
+
+      {/* Meta de views do dia */}
+      <div className="px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-white/30 shrink-0"><Eye size={16} /></span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-white/80">Meta de views do dia</p>
+              <p className="text-xs text-white/40">Avisa quando suas contas passarem desta marca no dia.</p>
+            </div>
+          </div>
+          <Toggle
+            checked={settings.daily_views_goal_enabled}
+            onChange={(v) => patch({ daily_views_goal_enabled: v })}
+            disabled={saving}
+          />
+        </div>
+        {settings.daily_views_goal_enabled && (
+          <div className="flex items-center gap-2 pl-7">
+            <input
+              type="number"
+              min={0}
+              max={100000000}
+              value={settings.daily_views_goal}
+              onChange={(e) => patch({ daily_views_goal: Number(e.target.value) || 0 })}
+              disabled={saving}
+              className="input-glass text-sm px-3 py-1.5 w-32"
+              placeholder="100000"
+            />
+            <span className="text-xs text-white/40">views</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

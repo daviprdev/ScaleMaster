@@ -21,6 +21,7 @@ import {
   MapPin,
   Clock,
   Bell,
+  Link2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -1040,11 +1041,12 @@ export default function SettingsPage() {
             <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Alertas automáticos</p>
             <NotificationAlertSettings />
           </div>
-          <div>
-            <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Vendas</p>
-            <SalesWebhookCard />
-          </div>
         </div>
+      </Section>
+
+      {/* ── Integrações ─────────────────────────────────────── */}
+      <Section icon={<Link2 size={15} />} title="Integrações">
+        <SalesWebhookCard />
       </Section>
 
       </div>

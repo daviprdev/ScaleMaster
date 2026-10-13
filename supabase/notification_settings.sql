@@ -3,13 +3,21 @@
 -- ═══════════════════════════════════════════════════════════════
 
 create table if not exists public.notification_settings (
-  user_id                uuid        primary key references auth.users(id) on delete cascade,
-  proxy_alerts_enabled   boolean     not null default true,
-  account_alerts_enabled boolean     not null default true,
-  daily_profit_enabled   boolean     not null default false,
-  daily_profit_time      text        not null default '23:55', -- HH:mm em America/Sao_Paulo
-  updated_at             timestamptz not null default now()
+  user_id                  uuid        primary key references auth.users(id) on delete cascade,
+  proxy_alerts_enabled     boolean     not null default true,
+  account_alerts_enabled   boolean     not null default true,
+  daily_profit_enabled     boolean     not null default false,
+  daily_profit_time        text        not null default '23:55', -- HH:mm em America/Sao_Paulo
+  sale_alerts_enabled      boolean     not null default true,
+  daily_views_goal_enabled boolean     not null default false,
+  daily_views_goal         integer     not null default 100000,
+  updated_at               timestamptz not null default now()
 );
+
+-- Migration: adicionar colunas novas em instalações existentes
+alter table public.notification_settings add column if not exists sale_alerts_enabled      boolean not null default true;
+alter table public.notification_settings add column if not exists daily_views_goal_enabled boolean not null default false;
+alter table public.notification_settings add column if not exists daily_views_goal         integer not null default 100000;
 
 alter table public.notification_settings enable row level security;
 
