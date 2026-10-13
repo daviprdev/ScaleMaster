@@ -5,7 +5,7 @@
  * notification_settings.daily_views_goal. Quando atinge (e ainda não foi
  * notificado hoje), envia push notification com a mensagem padrão.
  *
- * Roda a cada 15 min via systemd timer — dispara no horário configurado
+ * Roda a cada 1 hora via systemd timer — dispara no horário configurado
  * pelo usuário (18:00, 20:00 ou 22:00 BRT), uma vez por dia.
  */
 
@@ -22,9 +22,9 @@ export const dynamic = "force-dynamic";
 
 // Brasil não tem horário de verão desde 2019 — offset fixo.
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
-// Cron roda a cada 15 min — dispara pra qualquer usuário cujo horário configurado
-// caia na mesma janela de 15 min do momento atual (bucket = floor(minutos/15)).
-const BUCKET_MINUTES = 15;
+// Cron roda a cada 1 hora — dispara pra qualquer usuário cujo horário configurado
+// caia na mesma janela de 60 min do momento atual (bucket = floor(minutos/60)).
+const BUCKET_MINUTES = 60;
 
 function getBrtNowMinutes(nowUtc: Date): number {
   const brtNow = new Date(nowUtc.getTime() - BRT_OFFSET_MS);
