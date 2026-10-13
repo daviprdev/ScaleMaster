@@ -32,6 +32,7 @@ import {
   BookUser,
   UserPlus,
   Bot,
+  CheckCircle2,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,7 @@ const navGroups: NavGroup[] = [
       { label: "Postar", href: "/dashboard/postar", icon: Send },
       { label: "Loop", href: "/dashboard/loop", icon: Repeat2 },
       { label: "Stories", href: "/dashboard/stories", icon: ImagePlay },
+      { label: "Publicados", href: "/dashboard/publicados", icon: CheckCircle2 },
     ],
   },
   {
