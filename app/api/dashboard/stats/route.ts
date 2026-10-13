@@ -55,6 +55,10 @@ export async function GET() {
     upcomingRes,
     viewsPostsRes,
     salesRes,
+    videosTotalRes,
+    videosTodayRes,
+    videosYesterdayRes,
+    accountsActiveTodayRes,
   ] = await Promise.all([
     admin
       .from("instagram_accounts")
@@ -148,6 +152,33 @@ export async function GET() {
       .from("sales")
       .select("amount, created_at")
       .not("amount", "is", null),
+    // Vídeos publicados — total
+    admin
+      .from("scheduled_posts")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("status", "published"),
+    // Vídeos publicados hoje
+    admin
+      .from("scheduled_posts")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("status", "published")
+      .gte("published_at", startOfToday),
+    // Vídeos publicados ontem
+    admin
+      .from("scheduled_posts")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("status", "published")
+      .gte("published_at", startOfYesterday)
+      .lt("published_at", startOfToday),
+    // Contas ativas hoje (health_status = ok)
+    admin
+      .from("instagram_accounts")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("health_status", "ok"),
   ]);
 
   // Contas Caídas — deduplica por conta dentro de cada janela (eventos de failover)
@@ -249,6 +280,12 @@ export async function GET() {
       accounts_synced: Number(viewsSummary?.accounts_synced ?? 0),
       last_synced_at: viewsSummary?.last_synced_at ?? null,
     },
+    videos_published: {
+      total: videosTotalRes.count ?? 0,
+      today: videosTodayRes.count ?? 0,
+      yesterday: videosYesterdayRes.count ?? 0,
+    },
+    accounts_active_today: accountsActiveTodayRes.count ?? 0,
     queue: {
       pending: (queuePendingScheduledRes.count ?? 0) + (queuePendingContainersRes.count ?? 0),
     },

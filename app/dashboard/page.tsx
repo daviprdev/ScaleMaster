@@ -51,6 +51,8 @@ interface DashboardStats {
     accounts_synced: number;
     last_synced_at: string | null;
   };
+  videos_published: { total: number; today: number; yesterday: number };
+  accounts_active_today: number;
   queue: { pending: number };
   recent_activity: {
     type: "download" | "schedule";
@@ -285,44 +287,41 @@ export default function DashboardPage() {
   const simpleCards = stats
     ? [
         {
-          label: "Contas Conectadas",
-          value: String(stats.accounts.total),
-          change: "Total no SaaS",
-          icon: Instagram,
+          key: "views",
+          label: "Visualizações Hoje",
+          value: formatCompact(stats.views.today),
+          subLabel: "Total",
+          subValue: formatCompact(stats.views.total),
+          icon: Eye,
+          iconColor: "#85B9E9",
+          glow: "rgba(133,185,233,0.22)",
+        },
+        {
+          key: "videos",
+          label: "Vídeos Publicados",
+          value: String(stats.videos_published.total),
+          subLabel: "Hoje / Ontem",
+          subValue: `${stats.videos_published.today} / ${stats.videos_published.yesterday}`,
+          icon: Play,
           iconColor: "#00498D",
           glow: "rgba(0,73,141,0.22)",
         },
         {
-          label: "Postagens Hoje",
-          value: String(stats.posts_today.published),
-          change: `${stats.posts_today.loop} via Loop · ${stats.posts_today.scheduled} via campanhas`,
-          icon: CalendarCheck,
-          iconColor: "#85B9E9",
-          glow: "rgba(133,185,233,0.22)",
+          key: "active",
+          label: "Contas Ativas Hoje",
+          value: String(stats.accounts_active_today),
+          subLabel: "Com health OK",
+          subValue: `${stats.accounts.total} total conectadas`,
+          icon: CheckCircle2,
+          iconColor: "#10B981",
+          glow: "rgba(16,185,129,0.22)",
         },
-        // Enquanto a Meta não libera o dia corrente (algumas horas após virar às
-        // 21h de Brasília), mostra ONTEM em vez de um 0 que parece erro.
-        stats.views.today_has_data
-          ? {
-              label: "Views Hoje",
-              value: formatCompact(stats.views.today),
-              change: `Ontem: ${formatCompact(stats.views.yesterday)} · zera às 21h`,
-              icon: Eye,
-              iconColor: "#85B9E9",
-              glow: "rgba(133,185,233,0.22)",
-            }
-          : {
-              label: "Views Ontem",
-              value: formatCompact(stats.views.yesterday),
-              change: "Hoje ainda sem dados — a Meta libera com algumas horas de atraso",
-              icon: Eye,
-              iconColor: "#85B9E9",
-              glow: "rgba(133,185,233,0.22)",
-            },
         {
-          label: "Fila",
+          key: "queue",
+          label: "Posts na Fila",
           value: String(stats.queue.pending),
-          change: "Aguardando publicação",
+          subLabel: "Aguardando",
+          subValue: "publicação",
           icon: ListOrdered,
           iconColor: "#00498D",
           glow: "rgba(0,73,141,0.22)",
@@ -363,30 +362,7 @@ export default function DashboardPage() {
       ]
     : null;
 
-  const salesCards = stats
-    ? [
-        {
-          label: "Vendas Diárias",
-          value: formatBRL(stats.sales.today),
-          change: "Desde a meia-noite (Brasília)",
-          compareLabel: "Ontem",
-          compareValue: formatBRL(stats.sales.yesterday),
-          icon: DollarSign,
-          iconColor: "#00498D",
-          glow: "rgba(0,73,141,0.22)",
-        },
-        {
-          label: "Vendas Mensais",
-          value: formatBRL(stats.sales.month),
-          change: "Reinicia no dia 1º de cada mês",
-          compareLabel: "Mês anterior",
-          compareValue: formatBRL(stats.sales.prev_month),
-          icon: DollarSign,
-          iconColor: "#00498D",
-          glow: "rgba(0,73,141,0.22)",
-        },
-      ]
-    : null;
+  // Card único de vendas: diária em destaque + mensal abaixo
 
   const quickActions = [
     { label: "Postar", href: "/dashboard/postar", icon: Send, desc: "Distribuição de conteúdo", color: "#00498D" },
@@ -409,46 +385,43 @@ export default function DashboardPage() {
         </button>
       </motion.div>
 
-      {/* Vendas: diária / mensal */}
-      <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {loading || !salesCards
-          ? Array.from({ length: 2 }).map((_, i) => (
-              <motion.div key={i} variants={fadeUp}><StatSkeleton /></motion.div>
-            ))
-          : salesCards.map((stat, i) => (
-              <motion.div
-                key={i}
-                variants={fadeUp}
-                className="glass-card ticks p-5 group relative overflow-hidden"
+      {/* Vendas: card único com diária em destaque + mensal abaixo */}
+      <motion.div variants={fadeUp}>
+        {loading || !stats ? (
+          <StatSkeleton />
+        ) : (
+          <div className="glass-card ticks p-5 group relative overflow-hidden">
+            <AmbientGlow color="rgba(0,73,141,0.22)" />
+
+            <div className="flex items-start justify-between mb-4 relative z-10">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{
+                  background: "rgba(255,255,255,0.04)",
+                  border: "0.5px solid rgba(0,73,141,0.2)",
+                  boxShadow: "0 0 14px rgba(0,73,141,0.22)",
+                }}
               >
-                <AmbientGlow color={stat.glow} />
+                <DollarSign size={18} style={{ color: "#00498D" }} strokeWidth={1.5} />
+              </div>
+            </div>
 
-                <div className="flex items-start justify-between mb-4 relative z-10">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{
-                      background: "rgba(255,255,255,0.04)",
-                      border: `0.5px solid ${stat.iconColor}33`,
-                      boxShadow: `0 0 14px ${stat.glow}`,
-                    }}
-                  >
-                    <stat.icon size={18} style={{ color: stat.iconColor }} strokeWidth={1.5} />
-                  </div>
-                </div>
+            <div
+              className="text-2xl font-black mb-0.5 relative z-10"
+              style={{ color: "#00498D", textShadow: "0 0 20px rgba(0,73,141,0.22)" }}
+            >
+              {formatBRL(stats.sales.today)}
+            </div>
+            <div className="text-xs text-white/50 font-medium relative z-10">Vendas Hoje</div>
+            <div className="text-[10px] text-white/25 mt-1 relative z-10">Ontem: {formatBRL(stats.sales.yesterday)}</div>
 
-                <div
-                  className="text-2xl font-black mb-0.5 relative z-10"
-                  style={{ color: stat.iconColor, textShadow: `0 0 20px ${stat.glow}` }}
-                >
-                  {stat.value}
-                </div>
-                <div className="text-xs text-white/50 font-medium relative z-10">{stat.label}</div>
-                <div className="text-[10px] text-white/25 mt-1 relative z-10">{stat.change}</div>
-                <div className="text-[10px] text-white/30 mt-2 pt-2 border-t border-white/[0.06] relative z-10">
-                  {stat.compareLabel}: <span className="text-white/50 font-medium">{stat.compareValue}</span>
-                </div>
-              </motion.div>
-            ))}
+            <div className="text-[10px] text-white/30 mt-3 pt-3 border-t border-white/[0.06] relative z-10">
+              Este mês: <span className="text-white/50 font-medium">{formatBRL(stats.sales.month)}</span>
+              <span className="mx-1.5 text-white/15">·</span>
+              Anterior: <span className="text-white/40">{formatBRL(stats.sales.prev_month)}</span>
+            </div>
+          </div>
+        )}
       </motion.div>
 
       {/* Views das contas por período (Hoje / Ontem / 7d / 30d / Este mês) */}
@@ -490,7 +463,13 @@ export default function DashboardPage() {
                   {stat.value}
                 </div>
                 <div className="text-xs text-white/50 font-medium relative z-10">{stat.label}</div>
-                <div className="text-[10px] text-white/25 mt-1 relative z-10">{stat.change}</div>
+
+                {"subLabel" in stat && stat.subLabel && (
+                  <div className="text-[10px] text-white/30 mt-3 pt-3 border-t border-white/[0.06] relative z-10">
+                    {stat.subLabel}:{" "}
+                    <span className="text-white/50 font-medium">{stat.subValue}</span>
+                  </div>
+                )}
               </motion.div>
             ))}
       </motion.div>
