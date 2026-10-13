@@ -31,7 +31,7 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
   },
   "/dashboard/settings": {
     title: "Configurações",
-    subtitle: "Perfil, assinatura e sessão",
+    subtitle: "Configurações e sessão",
   },
   "/dashboard/analytics": {
     title: "Analytics",

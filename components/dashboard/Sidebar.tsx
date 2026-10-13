@@ -14,7 +14,6 @@ import {
   ChevronRight,
   ChevronUp,
   User,
-  CreditCard,
   Shield,
   KeyRound,
   Send,
@@ -555,15 +554,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/[0.05] transition-colors"
                   >
                     <User size={15} className="flex-shrink-0 text-white/30" />
-                    Perfil
-                  </button>
-                  <button
-                    disabled
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/20 cursor-not-allowed"
-                  >
-                    <CreditCard size={15} className="flex-shrink-0 text-white/15" />
-                    <span className="flex-1 text-left">Pagamentos</span>
-                    <span className="text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded-md bg-matrix/10 text-matrix/50">Em breve</span>
+                    Configurações
                   </button>
                 </div>
                 <div className="border-t border-white/[0.06]" />
