@@ -84,6 +84,7 @@ export default function NotificationAlertSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [localViewsGoal, setLocalViewsGoal] = useState<string>("");
 
   useEffect(() => {
     const supabase = createClient();
@@ -102,7 +103,10 @@ export default function NotificationAlertSettings() {
     fetch("/api/notification-settings")
       .then((r) => r.json())
       .then((data: { settings?: Settings }) => {
-        if (data.settings) setSettings(data.settings);
+        if (data.settings) {
+          setSettings(data.settings);
+          setLocalViewsGoal(String(data.settings.daily_views_goal));
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -202,8 +206,20 @@ export default function NotificationAlertSettings() {
                 type="number"
                 min={0}
                 max={100000000}
-                value={settings.daily_views_goal}
-                onChange={(e) => patch({ daily_views_goal: Number(e.target.value) || 0 })}
+                value={localViewsGoal}
+                onChange={(e) => setLocalViewsGoal(e.target.value)}
+                onBlur={() => {
+                  const val = Math.round(Number(localViewsGoal) || 0);
+                  if (val !== settings.daily_views_goal) {
+                    setLocalViewsGoal(String(val));
+                    patch({ daily_views_goal: val });
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
                 disabled={saving}
                 className="input-glass text-sm px-3 py-1.5 w-32"
                 placeholder="100000"
