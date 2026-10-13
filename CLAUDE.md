@@ -20,7 +20,7 @@ Plataforma SaaS de automação Instagram hospedada em VPS própria com Supabase 
 - **Containers:** `autoscale-app-1` (Next.js :3000) + `autoscale-python-server-1` (FastAPI :8000)
 - **Proxy Reverso:** Nginx com HTTPS (Let's Encrypt)
 - **Agendamentos:** 15 timers systemd (`autoscale-*.service`) — NÃO usa Vercel Crons
-- **Design System:** Cyber-Military Elite — cores #00FF41 (verde neon), #00E5FF (ciano), fundo escuro
+- **Design System:** Scale Master — escuro quase preto + azul da logo (#001244/#00498D) + prata (#BEB8BC); tokens em `app/globals.css`, primitivos em `components/ui/`, referência em `docs/design/`.
 
 ### Serviços e Portas
 | Serviço | Container | Porta Interna | Exposição |

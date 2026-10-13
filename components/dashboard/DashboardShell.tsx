@@ -3,7 +3,6 @@
 import { useState, useCallback } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
-import { BackgroundController } from "@/components/BackgroundController";
 
 /**
  * Client shell that owns the mobile-sidebar open/close state and wires
@@ -27,9 +26,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </div>
         </main>
       </div>
-
-      {/* Floating background-mode selector */}
-      <BackgroundController />
     </div>
   );
 }

@@ -1,26 +1,27 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Space_Grotesk, JetBrains_Mono } from "next/font/google";
-import { BackgroundProvider } from "@/components/BackgroundContext";
+import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+const geist = Geist({
   subsets: ["latin"],
   variable: "--font-sans",
   display: "swap",
+  weight: ["400", "500", "600"],
 });
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-display",
-  display: "swap",
-  weight: ["400", "500", "600", "700"],
-});
-
-const jetbrainsMono = JetBrains_Mono({
+const geistMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
   display: "swap",
   weight: ["400", "500"],
+});
+
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin"],
+  variable: "--font-serif",
+  display: "swap",
+  weight: "400",
+  style: "italic",
 });
 
 export const metadata: Metadata = {
@@ -39,8 +40,27 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#061427",
+  themeColor: "#05070c",
 };
+
+/**
+ * Inline script that applies the saved theme before hydration to prevent flash.
+ * Reads `sm-theme` from localStorage; falls back to system preference; defaults to dark.
+ */
+const themeScript = `
+(function() {
+  try {
+    var stored = localStorage.getItem('sm-theme');
+    var theme = stored === 'light' || stored === 'dark' ? stored
+      : stored === 'system'
+        ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+        : 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch(e) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+})();
+`;
 
 export default function RootLayout({
   children,
@@ -48,19 +68,18 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`dark ${inter.variable} ${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
-      style={{ background: "#000000" }}
+      data-theme="dark"
+      className={`${geist.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body
-        className={`antialiased text-white ${inter.className}`}
-        style={{ background: "transparent", position: "relative" }}
+        className={`antialiased ${geist.className}`}
+        style={{ background: "var(--bg)", color: "var(--ink)" }}
       >
-        <BackgroundProvider>
-          {/* Page content — renders above the canvas */}
-          <div style={{ position: "relative", zIndex: 1 }}>
-            {children}
-          </div>
-        </BackgroundProvider>
+        {children}
       </body>
     </html>
   );
