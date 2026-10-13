@@ -286,7 +286,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
       <div className="pt-3 space-y-3 animate-pulse">
         <div className="h-2 bg-white/[0.05] rounded-full w-full" />
         <div className="h-2 bg-white/[0.04] rounded-full w-3/4" />
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {[1,2,3].map(i => <div key={i} className="h-10 bg-white/[0.04] rounded-xl" />)}
         </div>
       </div>
@@ -369,7 +369,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
 
       {/* ── Engajamento total ── */}
       {(engagement.total_plays > 0 || engagement.total_likes > 0 || engagement.total_comments > 0) ? (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div className="flex flex-col items-center gap-0.5 p-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
             <Eye size={12} className="text-[#85B9E9]/70" />
             <span className="text-sm font-bold text-white/80">{formatNumber(engagement.total_plays)}</span>

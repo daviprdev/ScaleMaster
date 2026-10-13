@@ -188,7 +188,7 @@ function ProxyPoolSection() {
 
       {/* Contadores */}
       {pool && (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {[
             { label: "Total", value: pool.total, cls: "text-white/70" },
             { label: "Livres", value: pool.free, cls: "text-[#00498D]" },
@@ -414,7 +414,7 @@ export default function ProxyTestPage() {
 
             {/* Tabela */}
             <div className="glass-card rounded-2xl overflow-hidden">
-              <div className="grid grid-cols-[1fr_auto_auto] gap-0">
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 sm:gap-0">
                 {/* Header */}
                 <div className="contents text-[10px] uppercase tracking-wider text-white/25 font-semibold">
                   <div className="px-4 py-2.5 border-b border-white/[0.05]">Conta</div>

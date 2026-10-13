@@ -303,7 +303,7 @@ function LoopAccountCard({ acc }: { acc: AccountStatus }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-[11px]">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
         <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
           <span className="text-white/30 text-[9px] uppercase tracking-wider">Último post</span>
           <span className={cn("font-medium", acc.last_published_at ? "text-[var(--matrix)]" : "text-white/20")}>
@@ -438,7 +438,7 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
       </div>
 
       {/* Stats grid — operational */}
-      <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+      <div className="grid grid-cols-3 sm:grid-cols-3 gap-1.5 text-[10px]">
         <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
           <CheckCircle2 size={11} className="text-[var(--matrix)]/60" />
           <span className="font-bold text-[var(--matrix)] tabular-nums">{acc.published}</span>
@@ -457,7 +457,7 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
       </div>
 
       {/* Stats grid — engagement */}
-      <div className="grid grid-cols-4 gap-1.5 text-[10px]">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
         <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
           <Eye size={11} className={cn(acc.total_plays > 0 ? "text-[var(--electric)]/60" : "text-white/15")} />
           <span className={cn("font-bold tabular-nums", acc.total_plays > 0 ? "text-[var(--electric)]" : "text-white/25")}>{fmtNum(acc.total_plays)}</span>
@@ -486,7 +486,7 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
       )}
 
       {/* Timing row */}
-      <div className="grid grid-cols-2 gap-2 text-[11px]">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
         <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
           <span className="text-white/30 text-[9px] uppercase tracking-wider">Último post</span>
           <span className={cn("font-medium", acc.last_published_at ? "text-[var(--matrix)]" : "text-white/20")}>

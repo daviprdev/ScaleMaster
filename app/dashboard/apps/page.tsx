@@ -246,8 +246,8 @@ function AppsTable({
 
   return (
     <div className="rounded-2xl border border-white/[0.07] overflow-hidden">
-      {/* Table header */}
-      <div className="grid grid-cols-[2fr_2fr_1.5fr_160px] gap-0 px-6 py-3 bg-white/[0.03] border-b border-white/[0.06]">
+      {/* Table header — hidden on mobile, cards stack instead */}
+      <div className="hidden md:grid grid-cols-[2fr_2fr_1.5fr_160px] gap-0 px-6 py-3 bg-white/[0.03] border-b border-white/[0.06]">
         <span className="text-[10px] font-semibold text-white/30 uppercase tracking-widest">
           Nome do App
         </span>
@@ -277,7 +277,7 @@ function AppsTable({
               exit={{ opacity: 0, x: -24, transition: { duration: 0.15 } }}
               transition={{ duration: 0.18, delay: idx * 0.04 }}
               className={cn(
-                "grid grid-cols-[2fr_2fr_1.5fr_160px] gap-0 items-center px-6 py-4 group",
+                "grid grid-cols-1 md:grid-cols-[2fr_2fr_1.5fr_160px] gap-3 md:gap-0 items-center px-4 md:px-6 py-4 group",
                 idx < apps.length - 1 ? "border-b border-white/[0.04]" : "",
                 "hover:bg-white/[0.025] transition-colors"
               )}
@@ -385,13 +385,13 @@ function AppsTable({
 function TableSkeleton() {
   return (
     <div className="rounded-2xl border border-white/[0.07] overflow-hidden animate-pulse">
-      <div className="grid grid-cols-4 gap-4 px-6 py-3 bg-white/[0.03] border-b border-white/[0.06]">
+      <div className="hidden md:grid grid-cols-4 gap-4 px-6 py-3 bg-white/[0.03] border-b border-white/[0.06]">
         {[40, 35, 30, 20].map((w, i) => (
           <div key={i} style={{ width: `${w}%` }} className="h-2 bg-white/[0.07] rounded-full" />
         ))}
       </div>
       {[1, 2, 3].map((i) => (
-        <div key={i} className="grid grid-cols-4 gap-4 px-6 py-4 border-b border-white/[0.04] last:border-0">
+        <div key={i} className="grid grid-cols-1 md:grid-cols-4 gap-2 md:gap-4 px-4 md:px-6 py-3 md:py-4 border-b border-white/[0.04] last:border-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-white/[0.06] flex-shrink-0" />
             <div className="space-y-1.5 flex-1">
