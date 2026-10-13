@@ -12,6 +12,7 @@ const DEFAULTS = {
   sale_alerts_enabled: true,
   daily_views_goal_enabled: false,
   daily_views_goal: 100000,
+  daily_views_goal_time: "18:00",
 };
 
 export async function GET() {
@@ -24,7 +25,7 @@ export async function GET() {
   const admin = getSupabaseAdmin();
   const { data } = await admin
     .from("notification_settings")
-    .select("proxy_alerts_enabled, account_alerts_enabled, daily_profit_enabled, daily_profit_time, sale_alerts_enabled, daily_views_goal_enabled, daily_views_goal")
+    .select("proxy_alerts_enabled, account_alerts_enabled, daily_profit_enabled, daily_profit_time, sale_alerts_enabled, daily_views_goal_enabled, daily_views_goal, daily_views_goal_time")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -51,6 +52,9 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.daily_views_goal === "number" && body.daily_views_goal >= 0 && body.daily_views_goal <= 100_000_000) {
     patch.daily_views_goal = Math.round(body.daily_views_goal);
   }
+  if (typeof body.daily_views_goal_time === "string" && ["18:00", "20:00", "22:00"].includes(body.daily_views_goal_time)) {
+    patch.daily_views_goal_time = body.daily_views_goal_time;
+  }
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "Nenhum campo válido para atualizar" }, { status: 400 });
@@ -59,7 +63,7 @@ export async function PATCH(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const { data: existing } = await admin
     .from("notification_settings")
-    .select("proxy_alerts_enabled, account_alerts_enabled, daily_profit_enabled, daily_profit_time, sale_alerts_enabled, daily_views_goal_enabled, daily_views_goal")
+    .select("proxy_alerts_enabled, account_alerts_enabled, daily_profit_enabled, daily_profit_time, sale_alerts_enabled, daily_views_goal_enabled, daily_views_goal, daily_views_goal_time")
     .eq("user_id", user.id)
     .maybeSingle();
 

@@ -14,6 +14,7 @@ interface Settings {
   sale_alerts_enabled: boolean;
   daily_views_goal_enabled: boolean;
   daily_views_goal: number;
+  daily_views_goal_time: string;
 }
 
 const DEFAULTS: Settings = {
@@ -24,6 +25,7 @@ const DEFAULTS: Settings = {
   sale_alerts_enabled: true,
   daily_views_goal_enabled: false,
   daily_views_goal: 100000,
+  daily_views_goal_time: "18:00",
 };
 
 function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
@@ -194,18 +196,33 @@ export default function NotificationAlertSettings() {
           />
         </div>
         {settings.daily_views_goal_enabled && (
-          <div className="flex items-center gap-2 pl-7">
-            <input
-              type="number"
-              min={0}
-              max={100000000}
-              value={settings.daily_views_goal}
-              onChange={(e) => patch({ daily_views_goal: Number(e.target.value) || 0 })}
-              disabled={saving}
-              className="input-glass text-sm px-3 py-1.5 w-32"
-              placeholder="100000"
-            />
-            <span className="text-xs text-white/40">views</span>
+          <div className="space-y-2 pl-7">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={100000000}
+                value={settings.daily_views_goal}
+                onChange={(e) => patch({ daily_views_goal: Number(e.target.value) || 0 })}
+                disabled={saving}
+                className="input-glass text-sm px-3 py-1.5 w-32"
+                placeholder="100000"
+              />
+              <span className="text-xs text-white/40">views</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-white/40">Horário (Brasília)</label>
+              <select
+                value={settings.daily_views_goal_time}
+                onChange={(e) => patch({ daily_views_goal_time: e.target.value })}
+                disabled={saving}
+                className="input-glass text-sm px-3 py-1.5"
+              >
+                <option value="18:00">18:00</option>
+                <option value="20:00">20:00</option>
+                <option value="22:00">22:00</option>
+              </select>
+            </div>
           </div>
         )}
       </div>

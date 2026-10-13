@@ -11,6 +11,7 @@ create table if not exists public.notification_settings (
   sale_alerts_enabled      boolean     not null default true,
   daily_views_goal_enabled boolean     not null default false,
   daily_views_goal         integer     not null default 100000,
+  daily_views_goal_time    text        not null default '18:00', -- 18:00, 20:00 ou 22:00 BRT
   updated_at               timestamptz not null default now()
 );
 
@@ -18,6 +19,7 @@ create table if not exists public.notification_settings (
 alter table public.notification_settings add column if not exists sale_alerts_enabled      boolean not null default true;
 alter table public.notification_settings add column if not exists daily_views_goal_enabled boolean not null default false;
 alter table public.notification_settings add column if not exists daily_views_goal         integer not null default 100000;
+alter table public.notification_settings add column if not exists daily_views_goal_time    text    not null default '18:00';
 
 alter table public.notification_settings enable row level security;
 
