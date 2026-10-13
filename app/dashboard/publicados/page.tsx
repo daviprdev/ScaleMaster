@@ -255,47 +255,6 @@ export default function PublicadosPage() {
         </div>
       </motion.div>
 
-      {/* ── Stats resumidos ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        className="grid grid-cols-2 sm:grid-cols-4 gap-3"
-      >
-        <StatCard
-          icon={<CheckCircle2 size={16} />}
-          label="Total"
-          value={formatNumber(total)}
-          color="text-[#85B9E9]"
-          bgColor="bg-[#85B9E9]/10"
-          borderColor="border-[#85B9E9]/20"
-        />
-        <StatCard
-          icon={<Eye size={16} />}
-          label="Views"
-          value={formatNumber(stats.total_views)}
-          color="text-emerald-400"
-          bgColor="bg-emerald-500/10"
-          borderColor="border-emerald-500/20"
-        />
-        <StatCard
-          icon={<ImagePlay size={16} />}
-          label="Stories"
-          value={formatNumber(stats.stories)}
-          color="text-pink-400"
-          bgColor="bg-pink-500/10"
-          borderColor="border-pink-500/20"
-        />
-        <StatCard
-          icon={<Film size={16} />}
-          label="Reels"
-          value={formatNumber(stats.reels)}
-          color="text-amber-400"
-          bgColor="bg-amber-500/10"
-          borderColor="border-amber-500/20"
-        />
-      </motion.div>
-
       {/* ── Filtros ── */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
