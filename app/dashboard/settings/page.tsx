@@ -5,11 +5,8 @@ import { useRouter } from "next/navigation";
 import {
   User,
   Shield,
-  Crown,
   Camera,
   Mail,
-  Tag,
-  Zap,
   Check,
   Loader2,
   AlertCircle,
@@ -129,7 +126,8 @@ export default function SettingsPage() {
   // Profile
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
-  const [nickname, setNickname] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
   const [loadingUser, setLoadingUser] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -157,11 +155,6 @@ export default function SettingsPage() {
   const [passwordError, setPasswordError] = useState("");
   const _savingPasswordRef = useRef(false);
 
-  // Subscription
-  const [coupon, setCoupon] = useState("");
-  const [applyingCoupon, setApplyingCoupon] = useState(false);
-  const _couponRef = useRef(false);
-
   // Sessions / Devices
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -180,7 +173,8 @@ export default function SettingsPage() {
       if (user) {
         setEmail(user.email ?? "");
         setFullName(user.user_metadata?.full_name ?? "");
-        setNickname(user.user_metadata?.nickname ?? "");
+        setDisplayName(user.user_metadata?.display_name ?? "");
+        setUsername(user.user_metadata?.username ?? "");
         setPhone(user.user_metadata?.phone ?? "");
         setAvatarUrl(user.user_metadata?.avatar_url ?? null);
       }
@@ -333,7 +327,8 @@ export default function SettingsPage() {
       const { error } = await supabase.auth.updateUser({
         data: {
           full_name: fullName.trim(),
-          nickname: nickname.trim(),
+          display_name: displayName.trim(),
+          username: username.trim().toLowerCase(),
           phone: phone.trim(),
         },
       });
@@ -441,17 +436,6 @@ export default function SettingsPage() {
     setPasswordError("");
   };
 
-  // ── Coupon ─────────────────────────────────────────────────
-  const handleApplyCoupon = async () => {
-    if (_couponRef.current || !coupon.trim()) return;
-    _couponRef.current = true;
-    setApplyingCoupon(true);
-    await new Promise((r) => setTimeout(r, 900));
-    _couponRef.current = false;
-    setApplyingCoupon(false);
-    alert("Cupom inválido ou expirado.");
-  };
-
   const initial = (fullName || email).charAt(0).toUpperCase() || "U";
 
   return (
@@ -548,19 +532,36 @@ export default function SettingsPage() {
                 />
               </div>
 
-              {/* Apelido */}
+              {/* Nome de Exibição */}
               <div>
                 <label className="text-[11px] font-medium text-white/35 block mb-1.5">
-                  Apelido (@)
+                  Nome de Exibição
                 </label>
                 <input
                   type="text"
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                  placeholder="@apelido"
-                  maxLength={30}
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Como aparece na dashboard"
+                  maxLength={40}
                   className="input-glass w-full text-sm py-2.5"
                 />
+              </div>
+
+              {/* Nome de Usuário */}
+              <div>
+                <label className="text-[11px] font-medium text-white/35 block mb-1.5">
+                  Nome de Usuário
+                </label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, ""))}
+                  placeholder="usuario (login alternativo)"
+                  maxLength={30}
+                  pattern="[a-z0-9_.]+"
+                  className="input-glass w-full text-sm py-2.5"
+                />
+                <p className="text-[10px] text-white/25 mt-1">Apenas letras minúsculas, números, _ e .</p>
               </div>
 
               {/* Telefone */}
@@ -1046,67 +1047,6 @@ export default function SettingsPage() {
         </div>
       </Section>
 
-      {/* ── Assinatura ─────────────────────────────────────── */}
-      <Section icon={<Crown size={15} />} title="Assinatura">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center shadow-[0_0_8px_rgba(139,92,246,0.35)] flex-shrink-0">
-                <Crown size={14} className="text-white" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-white/80">Plano Atual</p>
-                <p className="text-[11px] text-white/35">
-                  3 contas · 50 vídeos · 30 posts/mês
-                </p>
-              </div>
-            </div>
-            <span className="px-2.5 py-1 rounded-full bg-white/[0.07] border border-white/[0.10] text-[10px] font-bold text-white/45 tracking-widest">
-              GRATUITO
-            </span>
-          </div>
-
-          <button
-            onClick={() => alert("Em breve! O plano Pro está sendo preparado.")}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl
-              bg-gradient-to-r from-[#00498D] to-[#85B9E9]
-              hover:from-[#075BA6] hover:to-[#85B9E9]
-              hover:shadow-[0_0_22px_rgba(139,92,246,0.45)]
-              text-white text-sm font-semibold
-              transition-all duration-200 active:scale-[0.98]"
-          >
-            <Zap size={14} />
-            Fazer Upgrade para Pro
-          </button>
-
-          <div className="pt-2 border-t border-white/[0.06] space-y-2.5">
-            <label className="flex items-center gap-1.5 text-[11px] font-medium text-white/35">
-              <Tag size={12} />
-              Cupom de Desconto
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={coupon}
-                onChange={(e) => setCoupon(e.target.value.toUpperCase())}
-                placeholder="CUPOM2025"
-                maxLength={20}
-                className="input-glass flex-1 text-sm py-2.5 font-mono tracking-wider"
-              />
-              <button
-                type="button"
-                onClick={handleApplyCoupon}
-                disabled={applyingCoupon || !coupon.trim()}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl btn-primary text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-              >
-                {applyingCoupon && <Loader2 size={13} className="animate-spin" />}
-                Aplicar
-              </button>
-            </div>
-          </div>
-        </div>
-      </Section>
-
-    </div>
+      </div>
   );
 }
