@@ -4,14 +4,14 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, ArrowRight, User } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { BrandLogoLarge } from "@/components/brand/BrandLogo";
 
 export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -31,12 +31,38 @@ export default function LoginPage() {
     setError("");
 
     const supabase = createClient();
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const trimmed = identifier.trim();
+    const isEmail = trimmed.includes("@");
+
+    // Se não é email, resolve username → email via API segura (service role)
+    let loginEmail = trimmed;
+    if (!isEmail && trimmed.length > 0) {
+      try {
+        const res = await fetch("/api/auth/resolve-username", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: trimmed }),
+        });
+        const json = await res.json();
+        if (!json.found || !json.email) {
+          setError("Usuário não encontrado. Verifique o nome de usuário ou use seu e-mail.");
+          setIsLoading(false);
+          return;
+        }
+        loginEmail = json.email;
+      } catch {
+        setError("Erro ao verificar nome de usuário. Tente novamente.");
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
 
     if (error) {
       setError(
         error.message === "Invalid login credentials"
-          ? "E-mail ou senha incorretos."
+          ? "E-mail/username ou senha incorretos."
           : error.message
       );
       setIsLoading(false);
@@ -101,15 +127,16 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-sm text-white/60 mb-1.5 block">E-mail</label>
+              <label className="text-sm text-white/60 mb-1.5 block">E-mail ou nome de usuário</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
                 <input
-                  type="email"
-                  placeholder="seu@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  type="text"
+                  placeholder="seu@email.com ou usuario"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   required
+                  autoComplete="username"
                   className="input-glass pl-10"
                 />
               </div>

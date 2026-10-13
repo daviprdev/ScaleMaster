@@ -21,6 +21,7 @@ import {
   Eye,
   DollarSign,
 } from "lucide-react";
+import { getSupabase } from "@/lib/supabase";
 
 // ── Types ────────────────────────────────────────────────────────
 interface DashboardStats {
@@ -243,7 +244,22 @@ export default function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [clearing, setClearing]     = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
+  const [displayName, setDisplayName] = useState<string>("");
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const supabase = getSupabase();
+    supabase.auth.getUser().then(({ data: { user } }: { data: { user: { user_metadata?: Record<string, string>; email?: string } | null } }) => {
+      if (user) {
+        setDisplayName(
+          user.user_metadata?.display_name ||
+          user.user_metadata?.full_name ||
+          user.email?.split("@")[0] ||
+          ""
+        );
+      }
+    });
+  }, []);
 
   const loadStats = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
@@ -384,6 +400,23 @@ export default function DashboardPage() {
           {refreshing ? "Atualizando…" : "Atualizar"}
         </button>
       </motion.div>
+
+      {/* Saudação */}
+      {displayName && (
+        <motion.div variants={fadeUp} className="mb-2">
+          <h2
+            className="text-3xl md:text-4xl font-black tracking-tight"
+            style={{
+              background: "linear-gradient(135deg, #ffffff 0%, #85B9E9 50%, #00498D 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              textShadow: "0 0 40px rgba(0,73,141,0.3)",
+            }}
+          >
+            Bem-Vindo, {displayName}
+          </h2>
+        </motion.div>
+      )}
 
       {/* Vendas: card único com diária em destaque + mensal abaixo */}
       <motion.div variants={fadeUp}>
