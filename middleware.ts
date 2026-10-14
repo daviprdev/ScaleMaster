@@ -25,8 +25,13 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Atualiza a sessão (obrigatório para o SSR funcionar corretamente)
-  const { data: { user } } = await supabase.auth.getUser();
+  // getSession() decodifica o JWT localmente (sem chamada de rede), evitando
+  // o delay de ~8s que getUser() causava ao validar o token via HTTP no Supabase.
+  // A validação definitiva com getUser() já acontece no layout server-side do
+  // dashboard — aqui só precisamos saber se existe sessão ativa para decidir
+  // o redirect, não precisamos da garantia criptográfica do servidor.
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   const { pathname } = request.nextUrl;
   const isDashboard = pathname.startsWith("/dashboard");
