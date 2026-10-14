@@ -23,8 +23,8 @@
 ### Fase 1 — Componentes
 | Item | Status | Commit | Notas |
 |------|--------|--------|-------|
-| Componentes UI (`components/ui/`) | ⏳ | - | Seção 8 do prompt |
-| `/dashboard/design-system` | ⏳ | - | Página de QA visual |
+| Componentes UI (`components/ui/`) | ✅ | d521bd5 | 28 componentes primitivos |
+| `/dashboard/design-system` | ⏳ | - | Página de QA visual (Fase 3+) |
 
 ### Fase 2 — Casca
 | Item | Status | Commit | Notas |
