@@ -41,6 +41,7 @@ interface PendingContainerRow {
   created_at: string;
   retry_after: string | null;
   use_proxy_pool: boolean | null;
+  proxy_pool_id_used: string | null;
   instagram_accounts: AccountRow | null;
 }
 
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
     .from("pending_containers")
     .select(`
       id, user_id, account_id, ig_business_account_id,
-      creation_id, caption, created_at, retry_after, use_proxy_pool,
+      creation_id, caption, created_at, retry_after, use_proxy_pool, proxy_pool_id_used,
       instagram_accounts (
         id, username, meta_access_token, token_expires_at, fb_page_id
       )
@@ -192,8 +193,25 @@ export async function GET(req: NextRequest) {
       // ── Seleção de proxy por publicação (opt-in) ──────────────────────
       // O valor é snapshot da configuração do loop no momento em que o container foi criado.
       let pendingProxy: SelectedProxy | null = null;
+      let proxyPoolIdUsed = container.proxy_pool_id_used;
       if (container.use_proxy_pool === true) {
-        pendingProxy = await selectProxyForPublish(admin, container.user_id, container.id);
+        pendingProxy = await selectProxyForPublish(
+          admin,
+          container.user_id,
+          container.id,
+          proxyPoolIdUsed
+        );
+        if (!pendingProxy) {
+          throw new Error("[PROXY] Nenhum proxy livre e válido no estoque para esta publicação.");
+        }
+        if (pendingProxy.poolId !== proxyPoolIdUsed) {
+          proxyPoolIdUsed = pendingProxy.poolId;
+          const { error } = await (admin as any)
+            .from("pending_containers")
+            .update({ proxy_pool_id_used: proxyPoolIdUsed })
+            .eq("id", container.id);
+          if (error) throw new Error(`[PROXY] Falha ao salvar proxy da publicação: ${error.message}`);
+        }
       }
       let pollStatus: Awaited<ReturnType<typeof pollContainerStatusOnce>>;
       try {
@@ -243,7 +261,23 @@ export async function GET(req: NextRequest) {
       // Re-seleciona proxy para a fase de publicação (mesmo proxy do poll).
       let pubProxy: SelectedProxy | null = null;
       if (container.use_proxy_pool === true) {
-        pubProxy = await selectProxyForPublish(admin, container.user_id, container.id);
+        pubProxy = await selectProxyForPublish(
+          admin,
+          container.user_id,
+          container.id,
+          proxyPoolIdUsed
+        );
+        if (!pubProxy) {
+          throw new Error("[PROXY] Proxy desta publicação indisponível no estoque.");
+        }
+        if (pubProxy.poolId !== proxyPoolIdUsed) {
+          proxyPoolIdUsed = pubProxy.poolId;
+          const { error } = await (admin as any)
+            .from("pending_containers")
+            .update({ proxy_pool_id_used: proxyPoolIdUsed })
+            .eq("id", container.id);
+          if (error) throw new Error(`[PROXY] Falha ao salvar proxy da publicação: ${error.message}`);
+        }
       }
       let mediaId = "";
       try {

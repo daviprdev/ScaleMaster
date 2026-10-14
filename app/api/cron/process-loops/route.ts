@@ -225,6 +225,7 @@ async function createContainerForAccount(
     video_processing_mode: normalizeProcessingMode(loop.video_processing_mode),
     share_to_feed: shareToFeed,
     use_proxy_pool: useProxyPool,
+    proxy_pool_id_used: creationProxy?.poolId ?? null,
     // Auditoria: qual modo produziu o texto acima. A publicação usa `caption`
     // e nunca recalcula a partir daqui.
     caption_mode: normalizeCaptionMode(loop.caption_mode),

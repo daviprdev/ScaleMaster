@@ -470,8 +470,13 @@ export async function GET(req: NextRequest) {
         // aqui, não no agendamento — proxies mortos/indisponíveis são ignorados.
         // Sem fallback silencioso: se não há proxy ativo, falha explícita.
         let publishProxy: SelectedProxy | null = null;
-        if (post.use_proxy_pool === true && !post.proxy_pool_id_used) {
-          publishProxy = await selectProxyForPublish(admin, post.user_id!, post.id);
+        if (post.use_proxy_pool === true) {
+          publishProxy = await selectProxyForPublish(
+            admin,
+            post.user_id!,
+            post.id,
+            post.proxy_pool_id_used
+          );
           if (!publishProxy) {
             // Falha explícita — NÃO faz fallback direto silencioso.
             await admin
@@ -487,11 +492,15 @@ export async function GET(req: NextRequest) {
             );
             continue;
           }
-          // Registra qual proxy foi selecionado para auditoria.
-          await admin
+          // Salva a seleção para auditoria e para manter o mesmo proxy em retries.
+          if (post.proxy_pool_id_used !== publishProxy.poolId) {
+            const { error } = await admin
             .from("scheduled_posts")
             .update({ proxy_pool_id_used: publishProxy.poolId })
             .eq("id", post.id);
+            if (error) throw new Error(`[PROXY] Falha ao salvar o proxy da publicação: ${error.message}`);
+            post.proxy_pool_id_used = publishProxy.poolId;
+          }
           console.log(
             `[publish-scheduled] 🔀 @${account.username}: proxy ${publishProxy.safeLabel}… selecionado.`
           );
@@ -527,10 +536,22 @@ export async function GET(req: NextRequest) {
       // para manter consistência nas fases poll/publish.
       let pollProxy: SelectedProxy | null = null;
       if (post.use_proxy_pool === true) {
-        // Se já tem proxy_pool_id_used, tenta re-selecionar pelo mesmo pool ID.
-        // Se não tem (container criado neste run), usa null (o proxy já foi fechado acima).
-        if (post.proxy_pool_id_used) {
-          pollProxy = await selectProxyForPublish(admin, post.user_id!, post.id);
+        pollProxy = await selectProxyForPublish(
+          admin,
+          post.user_id!,
+          post.id,
+          post.proxy_pool_id_used
+        );
+        if (!pollProxy) {
+          throw new Error("[PROXY] Nenhum proxy livre e válido no estoque para verificar esta publicação.");
+        }
+        if (post.proxy_pool_id_used !== pollProxy.poolId) {
+          const { error } = await admin
+            .from("scheduled_posts")
+            .update({ proxy_pool_id_used: pollProxy.poolId })
+            .eq("id", post.id);
+          if (error) throw new Error(`[PROXY] Falha ao salvar o proxy da publicação: ${error.message}`);
+          post.proxy_pool_id_used = pollProxy.poolId;
         }
       }
       let pollStatus: Awaited<ReturnType<typeof pollContainerStatusOnce>>;
@@ -599,7 +620,23 @@ export async function GET(req: NextRequest) {
       // Re-seleciona proxy para a fase de publicação (mesmo proxy da criação).
       let pubProxy: SelectedProxy | null = null;
       if (post.use_proxy_pool === true) {
-        pubProxy = await selectProxyForPublish(admin, post.user_id!, post.id);
+        pubProxy = await selectProxyForPublish(
+          admin,
+          post.user_id!,
+          post.id,
+          post.proxy_pool_id_used
+        );
+        if (!pubProxy) {
+          throw new Error("[PROXY] Nenhum proxy livre e válido no estoque para publicar.");
+        }
+        if (post.proxy_pool_id_used !== pubProxy.poolId) {
+          const { error } = await admin
+            .from("scheduled_posts")
+            .update({ proxy_pool_id_used: pubProxy.poolId })
+            .eq("id", post.id);
+          if (error) throw new Error(`[PROXY] Falha ao salvar o proxy da publicação: ${error.message}`);
+          post.proxy_pool_id_used = pubProxy.poolId;
+        }
       }
       let mediaId: string;
       try {

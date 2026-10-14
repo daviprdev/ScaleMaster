@@ -1818,14 +1818,6 @@ function LoopFormModal({
             />
           </div>
 
-          <div>
-            <SectionLabel icon={Shield} label="Rota de publicação" />
-            <ProxyPoolToggle
-              value={form.useProxyPool}
-              onChange={v => update("useProxyPool", v)}
-            />
-          </div>
-
           {/* Efeitos criativos — pipeline próprio, re-encodam por definição */}
           <div>
             <SectionLabel icon={Contrast} label="Efeitos Criativos" />
