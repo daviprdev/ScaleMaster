@@ -77,6 +77,21 @@ interface DashboardStats {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+function getFormattedDate(): string {
+  return new Date().toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).toUpperCase();
+}
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60_000);
@@ -208,12 +223,20 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Header */}
-      <PageHeader
-        eyebrow="Dashboard"
-        title={displayName ? `Bem-vindo, ${displayName}` : "Visão geral"}
-        description="Acompanhe métricas, atividade recente e próximas publicações."
-        actions={
+      {/* Header — saudação dinâmica */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-[26px] font-bold leading-[32px] tracking-[-0.02em] text-ink">
+            {getGreeting()},{" "}
+            <span className="text-[#85B9E9]">
+              {displayName || "Chefe"}
+            </span>
+          </h1>
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-ink-3">
+            {getFormattedDate()}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="secondary"
             size="sm"
@@ -223,8 +246,8 @@ export default function DashboardPage() {
           >
             {refreshing ? "Atualizando…" : "Atualizar"}
           </Button>
-        }
-      />
+        </div>
+      </div>
 
       {/* ── Stat tiles row ─────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
