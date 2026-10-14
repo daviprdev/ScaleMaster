@@ -451,7 +451,75 @@ export async function advanceSearch(
 
     const moreAvailable = response.paging_info.more_available;
 
-    if (!moreAvailable) {
+    // VERIFICAÇÃO DUPLA: Se a API diz que não há mais páginas, mas a página
+    // atual está cheia (ou quase), pode ser uma inconsistência temporária da
+    // API (rate limit, cache stale). Esperamos um pouco e tentamos novamente
+    // com o mesmo cursor para confirmar se realmente acabou.
+    // Isso evita parar prematuramente em perfis grandes.
+    const PAGE_SIZE_THRESHOLD = 10; // Se a página tem >= 10 itens, desconfiamos de "fim"
+    let confirmedEnd = !moreAvailable;
+
+    if (!moreAvailable && response.items.length >= PAGE_SIZE_THRESHOLD && pageState.pagesProcessed < MAX_PAGES) {
+      console.log(`[inspiration-scrape] @${search.username}: API disse fim mas página tem ${response.items.length} itens. Verificando novamente em 2s...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      try {
+        const recheckResponse = await fetchUserReels(search.username, pageState.cursor);
+        if (recheckResponse.success && recheckResponse.items.length > 0) {
+          // Ainda tem conteúdo! Não é o fim.
+          console.log(`[inspiration-scrape] @${search.username}: Verificação encontrou mais ${recheckResponse.items.length} itens. Continuando...`);
+          confirmedEnd = false;
+          // Processamos esses novos itens também
+          const extraReels = recheckResponse.items.map((item, i) =>
+            normalizeReelItem(item, search.username, pageState.reelsAccumulated + response.items.length + i)
+          );
+          const mergedWithExtra = dedupByShortCode([...merged, ...extraReels]);
+
+          // Atualiza estado com o novo cursor da verificação
+          const recheckCursor = recheckResponse.paging_info.max_id;
+          const recheckMore = recheckResponse.paging_info.more_available;
+
+          // Salva incrementalmente
+          await saveToHistory(admin, search.user_id, search.username, mergedWithExtra, profilePicUrl, fullName);
+
+          const newStateAfterRecheck: PageState = {
+            cursor: recheckCursor ?? null,
+            pagesProcessed: pageState.pagesProcessed + 1, // Conta a página original + esta verificação como progresso
+            reelsAccumulated: mergedWithExtra.length,
+          };
+
+          if (!recheckMore) {
+            // Agora sim, acabou de verdade (ou após a verificação)
+            await enrichCaptions(mergedWithExtra);
+            if (mergedWithExtra.some((r) => r.originalCaption !== null)) {
+              await saveToHistory(admin, search.user_id, search.username, mergedWithExtra, profilePicUrl, fullName);
+            }
+            const pinnedNote = "Nota: Reels fixados podem não estar incluídos (limitação da fonte).";
+            await finish(admin, search.id, {
+              status: "done",
+              reel_count: mergedWithExtra.length,
+              error_message: pinnedNote,
+              finished_at: new Date().toISOString(),
+              run_ids: writePageState(newStateAfterRecheck),
+            });
+            console.log(`[inspiration-scrape] @${search.username}: ${mergedWithExtra.length} reels salvos em ${newStateAfterRecheck.pagesProcessed} páginas (após verificação)`);
+            return { status: "done", reels: mergedWithExtra };
+          } else {
+            // Continua rodando com o novo estado
+            await finish(admin, search.id, {
+              run_ids: writePageState(newStateAfterRecheck),
+              reel_count: mergedWithExtra.length,
+            });
+            return { status: "running" };
+          }
+        }
+      } catch (err) {
+        console.warn(`[inspiration-scrape] @${search.username}: Falha na verificação de fim, assumindo fim real.`, err);
+        // Em caso de erro na verificação, assumimos que acabou mesmo
+      }
+    }
+
+    if (confirmedEnd) {
       // Coleta terminou — enriquece legendas ausentes
       await enrichCaptions(merged);
 
