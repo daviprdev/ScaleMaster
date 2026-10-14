@@ -165,36 +165,22 @@ export default function DashboardPage() {
     if (stats?.views.today_has_data) setViewsPeriod("today");
   }, [stats?.views.today_has_data]);
 
-  useEffect(() => {
-    const supabase = getSupabase();
-
-    const extractName = (user: any) => {
-      if (user) {
-        setDisplayName(
-          user.user_metadata?.display_name ||
-            user.user_metadata?.full_name ||
-            user.email?.split("@")[0] ||
-            ""
-        );
+  // Busca display_name via API server-side (bypassa cache JWT do cliente)
+  const loadDisplayName = useCallback(async () => {
+    try {
+      const r = await fetch("/api/profile/display-name", { cache: "no-store" });
+      if (r.ok) {
+        const data = await r.json();
+        if (data.display_name) setDisplayName(data.display_name);
       }
-    };
-
-    // Força refresh da sessão para pegar metadata atualizada do servidor
-    supabase.auth.refreshSession().then(({ data: { session } }) => {
-      extractName(session?.user);
-    });
-
-    // Listener: atualiza displayName em tempo real quando o perfil é salvo
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (event === "USER_UPDATED" && session?.user) {
-          extractName(session.user);
-        }
-      }
-    );
-
-    return () => subscription.unsubscribe();
+    } catch {
+      // Silently ignore — fallback to "Chefe"
+    }
   }, []);
+
+  useEffect(() => {
+    loadDisplayName();
+  }, [loadDisplayName]);
 
   const loadStats = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
