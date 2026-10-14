@@ -19,9 +19,7 @@ import {
   X,
   KeyRound,
   AlertTriangle,
-  Clapperboard,
   ChevronRight,
-  WifiOff,
   LinkIcon,
   Folder,
   FolderPlus,
@@ -31,9 +29,7 @@ import {
   Globe,
   Upload,
   ListX,
-  Tag,
   Check,
-  UserCog,
   Clipboard,
   Download,
   ExternalLink,
@@ -45,6 +41,7 @@ import {
   Lock,
 } from "lucide-react";
 import MagicLinkModal from "@/components/dashboard/MagicLinkModal";
+import { AccountCard } from "@/components/dashboard/accounts/AccountCard";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -249,476 +246,16 @@ function Metric({
   return (
     <div className={cn(
       "flex items-center gap-1 whitespace-nowrap text-[11px] flex-shrink-0",
-      red ? "text-red-400" : amber ? "text-amber-400" : blue ? "text-blue-400" : muted ? "text-white/20" : "text-white/45"
+      red ? "text-danger" : amber ? "text-warning" : blue ? "text-accent" : muted ? "text-ink-3/50" : "text-ink-3"
     )}>
       <span className={cn(
         "flex-shrink-0",
-        red ? "text-red-400/70" : amber ? "text-amber-400/70" : blue ? "text-blue-400" : muted ? "text-white/15" : "text-white/30"
+        red ? "text-danger/70" : amber ? "text-warning/70" : blue ? "text-accent" : muted ? "text-ink-3/40" : "text-ink-3"
       )}>
         {icon}
       </span>
       {label}
     </div>
-  );
-}
-
-// ── Card de conta ─────────────────────────────────────────────
-function AccountCard({
-  account,
-  onRefresh,
-  onToggle,
-  onDelete,
-  onRefreshToken,
-  onMoveClick,
-  onProxyClick,
-  onClearQueueClick,
-  onLabelUpdate,
-  onEditProfile,
-  refreshing,
-  toggling,
-  deleting,
-  tokenRefreshing,
-  moving,
-  selectMode,
-  selected,
-  onSelect,
-}: {
-  account: Account;
-  onRefresh: (id: string) => void;
-  onToggle: (acc: Account) => void;
-  onDelete: (id: string) => void;
-  onRefreshToken: (id: string) => void;
-  onMoveClick: (account: Account) => void;
-  onProxyClick: (account: Account) => void;
-  onClearQueueClick: (account: Account) => void;
-  onLabelUpdate: (id: string, labels: AccountLabel[]) => void;
-  onEditProfile: (account: Account) => void;
-  refreshing: boolean;
-  toggling: boolean;
-  deleting: boolean;
-  tokenRefreshing: boolean;
-  moving: boolean;
-  selectMode?: boolean;
-  selected?: boolean;
-  onSelect?: () => void;
-}) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Label state
-  const [labelFormOpen, setLabelFormOpen] = useState(false);
-  const [labelText, setLabelText] = useState("");
-  const [labelColor, setLabelColor] = useState(LABEL_COLORS[5]); // blue default
-  const [savingLabel, setSavingLabel] = useState(false);
-  const labelInputRef = useRef<HTMLInputElement>(null);
-
-  const supabaseLabel = useMemo(() => createClient(), []);
-
-  const handleAddLabel = async () => {
-    const text = labelText.trim();
-    if (!text || savingLabel) return;
-    setSavingLabel(true);
-    try {
-      const newLabels: AccountLabel[] = [...(account.labels ?? []), { text, color: labelColor }];
-      await supabaseLabel
-        .from("instagram_accounts")
-        .update({ labels: newLabels })
-        .eq("id", account.id);
-      onLabelUpdate(account.id, newLabels);
-      setLabelText("");
-      setLabelFormOpen(false);
-    } finally {
-      setSavingLabel(false);
-    }
-  };
-
-  const handleRemoveLabel = async (index: number) => {
-    const newLabels = (account.labels ?? []).filter((_, i) => i !== index);
-    await supabaseLabel
-      .from("instagram_accounts")
-      .update({ labels: newLabels })
-      .eq("id", account.id);
-    onLabelUpdate(account.id, newLabels);
-  };
-
-  useEffect(() => {
-    if (labelFormOpen) {
-      setTimeout(() => labelInputRef.current?.focus(), 60);
-    }
-  }, [labelFormOpen]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [menuOpen]);
-
-  const proxyImg = (url: string) => `/api/proxy-image?url=${encodeURIComponent(url)}`;
-  const busy = refreshing || toggling || deleting || tokenRefreshing || moving;
-  const isMetaConnected = !!account.ig_business_account_id;
-  const tokenChip = tokenStatusChip(account.token_expires_at, isMetaConnected);
-  const accountFell = account.health_status === "error" || account.health_status === "blocked";
-  const storiesInfo = storiesDisplay(account);
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.2 }}
-      onClick={selectMode ? onSelect : undefined}
-      style={{ position: "relative", zIndex: menuOpen ? 10 : "auto", cursor: selectMode ? "pointer" : undefined }}
-      className={cn(
-        "glass-card rounded-2xl transition-all",
-        accountFell && "border border-red-500/25",
-        selectMode && selected && "border border-[#00498D]/50 ring-1 ring-[#00498D]/20",
-        selectMode && !selected && "opacity-70",
-      )}
-    >
-      {/* Overlay de seleção */}
-      {selectMode && (
-        <div className={cn(
-          "absolute top-3 left-3 z-20 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
-          selected ? "border-[#00498D] bg-[#00498D]/20" : "border-white/30 bg-black/40"
-        )}>
-          {selected && <div className="w-2.5 h-2.5 rounded-full bg-[#00498D]" />}
-        </div>
-      )}
-
-      {/* Cabeçalho */}
-      <div className="flex items-start gap-3 p-5 pb-4">
-        <div className="relative flex-shrink-0">
-          {account.avatar_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={proxyImg(account.avatar_url)}
-              alt={account.username}
-              className={cn(
-                "w-12 h-12 rounded-full object-cover ring-2",
-                accountFell ? "ring-red-500/40 opacity-60 grayscale" : "ring-white/10"
-              )}
-            />
-          ) : (
-            <div className={cn(
-              "w-12 h-12 rounded-full bg-gradient-to-br flex items-center justify-center ring-2",
-              accountFell
-                ? "from-red-900 to-red-800 ring-red-500/30"
-                : cn("ring-white/10", avatarColor(account.username))
-            )}>
-              <Instagram size={20} className={accountFell ? "text-red-400/60" : "text-white"} />
-            </div>
-          )}
-          {accountFell && (
-            <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-red-500 flex items-center justify-center ring-2 ring-black">
-              <WifiOff size={8} className="text-white" />
-            </span>
-          )}
-        </div>
-
-        <div className="flex-1 min-w-0 pt-0.5">
-          <p className={cn("text-sm font-bold truncate", accountFell ? "text-white/50" : "text-white/90")}>
-            @{account.username}
-          </p>
-          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            <Instagram size={9} className={accountFell ? "text-red-400/40 flex-shrink-0" : "text-pink-400 flex-shrink-0"} />
-            <span className="text-[10px] text-white/30">Instagram</span>
-            {isMetaConnected && !accountFell && (
-              <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide bg-blue-500/15 text-blue-300 flex-shrink-0">
-                <span className="w-1 h-1 rounded-full bg-blue-400" />
-                META API
-              </span>
-            )}
-            {tokenChip && !accountFell && (
-              <span className={cn(
-                "inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase tracking-wide flex-shrink-0",
-                tokenChip.color
-              )}>
-                {tokenChip.icon === "danger"
-                  ? <AlertTriangle size={8} className="flex-shrink-0" />
-                  : <AlertCircle size={8} className="flex-shrink-0" />
-                }
-                {tokenChip.label}
-              </span>
-            )}
-            {accountFell ? (
-              <span className="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide bg-red-500/20 text-red-400 border border-red-500/30 flex-shrink-0 animate-pulse">
-                <WifiOff size={8} className="flex-shrink-0" />
-                {account.health_status === "blocked" ? "BLOQUEADA" : "DESCONECTADA"}
-              </span>
-            ) : (
-              <span className={cn(
-                "inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide flex-shrink-0",
-                account.is_active
-                  ? "bg-emerald-500/15 text-emerald-400"
-                  : "bg-white/[0.05] text-white/20"
-              )}>
-                <span className={cn("w-1.5 h-1.5 rounded-full", account.is_active ? "bg-emerald-400" : "bg-white/20")} />
-                {account.is_active ? "ATIVA" : "INATIVA"}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Menu três pontos */}
-        <div className="relative flex-shrink-0" ref={menuRef}>
-          <button
-            onClick={() => !busy && setMenuOpen(o => !o)}
-            disabled={busy}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-white/25 hover:text-white/70 hover:bg-white/[0.06] transition-colors disabled:opacity-40"
-          >
-            {(refreshing || deleting || tokenRefreshing || moving)
-              ? <Loader2 size={13} className="animate-spin text-[#85B9E9]" />
-              : <MoreHorizontal size={15} />
-            }
-          </button>
-
-          <AnimatePresence>
-            {menuOpen && (
-              <motion.div
-                key="menu"
-                initial={{ opacity: 0, scale: 0.9, y: -6 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: -6 }}
-                transition={{ duration: 0.1 }}
-                className="absolute right-0 top-full mt-1.5 z-[200] min-w-[180px] bg-[#111318] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden"
-              >
-                <button
-                  onClick={() => { onRefresh(account.id); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
-                >
-                  <RefreshCw size={12} className="text-[#85B9E9]" /> Sincronizar
-                </button>
-                <button
-                  onClick={() => { onEditProfile(account); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
-                >
-                  <UserCog size={12} className="text-[#00498D]" /> Editar Perfil Manual
-                </button>
-                <button
-                  onClick={() => { onToggle(account); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
-                >
-                  <Power size={12} className={account.is_active ? "text-amber-400" : "text-emerald-400"} />
-                  {account.is_active ? "Desativar conta" : "Ativar conta"}
-                </button>
-                {isMetaConnected && (
-                  <button
-                    onClick={() => { onRefreshToken(account.id); setMenuOpen(false); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
-                  >
-                    <KeyRound size={12} className="text-[#85B9E9]" /> Renovar Token
-                  </button>
-                )}
-
-                {/* Mover para pasta — abre modal na página */}
-                <button
-                  onClick={() => { onMoveClick(account); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
-                >
-                  <Folder size={12} className="text-[#85B9E9]/80" /> Mover para pasta...
-                </button>
-
-                {/* Configurar proxy dedicado */}
-                <button
-                  onClick={() => { onProxyClick(account); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
-                >
-                  <Globe size={12} className={account.has_proxy ? "text-[#00498D]" : "text-white/40"} />
-                  {account.has_proxy ? "Editar Proxy" : "Configurar Proxy"}
-                </button>
-
-                <button
-                  onClick={() => { onClearQueueClick(account); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-amber-400/70 hover:bg-amber-500/[0.08] hover:text-amber-400 transition-colors"
-                >
-                  <ListX size={12} /> Excluir Vídeos Pendentes
-                </button>
-
-                <div className="h-px bg-white/[0.06]" />
-                <button
-                  onClick={() => { onDelete(account.id); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-red-400/70 hover:bg-red-500/[0.08] hover:text-red-400 transition-colors"
-                >
-                  <Trash2 size={12} /> Remover Conta
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
-
-      <div className={cn("h-px mx-5", accountFell ? "bg-red-500/15" : "bg-white/[0.05]")} />
-
-      {accountFell ? (
-        <div className="px-5 py-4 space-y-3">
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-red-500/[0.08] border border-red-500/20">
-            <WifiOff size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-red-400 uppercase tracking-wide">
-                {account.health_status === "blocked"
-                  ? "Conta bloqueada pela Meta"
-                  : "Token inválido — sessão encerrada"}
-              </p>
-              <p className="text-[11px] text-red-400/60 mt-0.5 leading-relaxed">
-                {account.health_status === "blocked"
-                  ? "Sua conta foi bloqueada pela Meta. Acesse o Instagram e siga as instruções de recuperação."
-                  : "A sessão desta conta expirou ou a senha foi alterada. Reconecte para voltar a publicar."}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => { onRefreshToken(account.id); }}
-            disabled={tokenRefreshing}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs font-bold uppercase tracking-wide hover:bg-red-500/25 hover:border-red-500/50 transition-all disabled:opacity-50"
-          >
-            {tokenRefreshing
-              ? <><Loader2 size={12} className="animate-spin" /> Reconectando...</>
-              : <><LinkIcon size={12} /> Reconectar Instagram</>
-            }
-          </button>
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-5 py-3">
-          <div className="whitespace-nowrap text-[11px] flex-shrink-0 text-white/55 font-medium">
-            {accountAge(account.connected_at)}
-          </div>
-          <Metric icon={<Users size={11} />} label={`${formatNumber(account.followers_count)} seg.`} muted={account.followers_count == null} />
-          <Metric icon={<FileText size={11} />} label={`${account.posts_count ?? "—"} posts`} muted={account.posts_count == null} />
-          <Metric icon={<Clock size={11} />} label={account.last_post_at ? timeAgo(account.last_post_at) : "—"} muted={!account.last_post_at} />
-          <Metric
-            icon={<span className={cn(
-              "w-1.5 h-1.5 rounded-full inline-block flex-shrink-0",
-              account.profile_refreshed_at ? "bg-emerald-400" : "bg-white/20"
-            )} />}
-            label={account.profile_refreshed_at ? `sync ${timeAgo(account.profile_refreshed_at)}` : "não sincronizado"}
-            muted={!account.profile_refreshed_at}
-          />
-          {isMetaConnected && storiesInfo && (
-            <Metric
-              icon={<Clapperboard size={11} />}
-              label={storiesInfo.label}
-              amber={storiesInfo.amber}
-              muted={storiesInfo.muted}
-            />
-          )}
-          <Metric
-            icon={<Globe size={11} />}
-            label={account.has_proxy ? "proxy ativo" : "sem proxy"}
-            blue={account.has_proxy}
-            amber={!account.has_proxy}
-          />
-          {account.meta_app_name && (
-            <Metric
-              icon={<KeyRound size={11} />}
-              label={account.meta_app_name}
-              muted={false}
-            />
-          )}
-        </div>
-      )}
-
-      {/* ── Etiquetas ─────────────────────────────────────────── */}
-      <div className="px-5 pb-4">
-        {/* Chips de etiquetas existentes */}
-        {(account.labels ?? []).length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {(account.labels ?? []).map((lbl, i) => (
-              <div
-                key={i}
-                className="group/lbl flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold cursor-default select-none"
-                style={{
-                  background: `${lbl.color}18`,
-                  border: `0.5px solid ${lbl.color}50`,
-                  color: lbl.color,
-                }}
-              >
-                {lbl.text}
-                <button
-                  onClick={() => handleRemoveLabel(i)}
-                  className="opacity-0 group-hover/lbl:opacity-100 transition-opacity ml-0.5 hover:text-white"
-                >
-                  <X size={9} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Formulário inline de nova etiqueta */}
-        <AnimatePresence>
-          {labelFormOpen && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.15 }}
-              className="overflow-hidden"
-            >
-              <div
-                className="rounded-xl p-3 mb-2"
-                style={{ background: "rgba(255,255,255,0.03)", border: "0.5px solid rgba(255,255,255,0.08)" }}
-              >
-                <p className="text-[9px] font-bold uppercase tracking-widest text-white/30 mb-2.5">
-                  Nova etiqueta para @{account.username}
-                </p>
-                {/* Input + OK */}
-                <div className="flex items-center gap-2 mb-3">
-                  <input
-                    ref={labelInputRef}
-                    value={labelText}
-                    onChange={e => setLabelText(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") handleAddLabel(); if (e.key === "Escape") setLabelFormOpen(false); }}
-                    placeholder="Ex: Lote junho"
-                    maxLength={32}
-                    className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm text-white placeholder-white/20 outline-none"
-                    style={{ background: "rgba(255,255,255,0.06)", border: `0.5px solid ${labelColor}50` }}
-                  />
-                  <button
-                    onClick={handleAddLabel}
-                    disabled={!labelText.trim() || savingLabel}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-black disabled:opacity-40 flex-shrink-0 transition-opacity"
-                    style={{ background: labelColor }}
-                  >
-                    {savingLabel ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
-                    OK
-                  </button>
-                </div>
-                {/* Cores embaixo */}
-                <div className="flex items-center gap-2">
-                  {LABEL_COLORS.map(c => (
-                    <button
-                      key={c}
-                      onClick={() => setLabelColor(c)}
-                      className="w-5 h-5 rounded-full flex-shrink-0 transition-transform hover:scale-110"
-                      style={{
-                        background: c,
-                        outline: labelColor === c ? `2px solid ${c}` : "none",
-                        outlineOffset: "2px",
-                        boxShadow: labelColor === c ? `0 0 10px ${c}90` : "none",
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Botão + etiqueta */}
-        <button
-          onClick={() => { setLabelFormOpen(o => !o); if (labelFormOpen) { setLabelText(""); } }}
-          className="flex items-center gap-1 text-[10px] text-white/25 hover:text-[#00498D] transition-colors"
-        >
-          <Tag size={10} />
-          {labelFormOpen ? "cancelar" : "+ etiqueta"}
-        </button>
-      </div>
-
-    </motion.div>
   );
 }
 
@@ -834,12 +371,12 @@ function EditProfileModal({
         {/* Header */}
         <div className="flex items-start justify-between p-5 pb-3">
           <div className="min-w-0 pr-4">
-            <h2 className="font-bold text-white text-sm">Editar perfil — @{account.username}</h2>
-            <p className="text-[11px] text-white/35 mt-1 leading-relaxed">
+            <h2 className="font-bold text-ink text-sm">Editar perfil — @{account.username}</h2>
+            <p className="text-[11px] text-ink-3 mt-1 leading-relaxed">
               A API do Instagram não permite editar bio/foto. Salve aqui o que quer e use os botões para copiar/baixar e colar manualmente.
             </p>
           </div>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white hover:bg-white/[0.06] flex-shrink-0 transition-colors">
+          <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-hover flex-shrink-0 transition-colors">
             <X size={14} />
           </button>
         </div>
@@ -847,21 +384,21 @@ function EditProfileModal({
         <div className="px-5 pb-5 space-y-5">
           {/* Foto */}
           <div>
-            <p className="text-[11px] font-semibold text-white/50 uppercase tracking-widest mb-3">Foto sugerida</p>
+            <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-widest mb-3">Foto sugerida</p>
             <div className="flex items-center gap-4">
               {/* Avatar preview */}
               <div className="relative flex-shrink-0">
                 {displayPhoto ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={displayPhoto} alt="foto" className="w-16 h-16 rounded-full object-cover ring-2 ring-white/10" />
+                  <img src={displayPhoto} alt="foto" className="w-16 h-16 rounded-full object-cover ring-2 ring-line" />
                 ) : (
-                  <div className="w-16 h-16 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center">
-                    <Camera size={22} className="text-white/20" />
+                  <div className="w-16 h-16 rounded-full bg-surface-raised border border-line flex items-center justify-center">
+                    <Camera size={22} className="text-ink-3/50" />
                   </div>
                 )}
                 {uploading && (
-                  <div className="absolute inset-0 rounded-full bg-black/60 flex items-center justify-center">
-                    <Loader2 size={16} className="animate-spin text-[#00498D]" />
+                  <div className="absolute inset-0 rounded-full bg-overlay flex items-center justify-center">
+                    <Loader2 size={16} className="animate-spin text-brand-blue" />
                   </div>
                 )}
               </div>
@@ -872,19 +409,17 @@ function EditProfileModal({
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-white/70 hover:text-white transition-colors disabled:opacity-40"
-                  style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.09)" }}
+                  className="btn-ghost flex items-center gap-2 px-3 py-2 text-xs disabled:opacity-40"
                 >
-                  <Upload size={13} className="text-[#00498D]" />
+                  <Upload size={13} className="text-brand-blue" />
                   {uploading ? "Enviando..." : "Enviar foto"}
                 </button>
                 <button
                   onClick={handleDownloadPhoto}
                   disabled={!displayPhoto}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-white/70 hover:text-white transition-colors disabled:opacity-40"
-                  style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.09)" }}
+                  className="btn-ghost flex items-center gap-2 px-3 py-2 text-xs disabled:opacity-40"
                 >
-                  <Download size={13} className="text-[#85B9E9]" />
+                  <Download size={13} className="text-accent" />
                   Baixar p/ celular
                 </button>
               </div>
@@ -894,52 +429,48 @@ function EditProfileModal({
           {/* Bio */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[11px] font-semibold text-white/50 uppercase tracking-widest">Bio sugerida</p>
-              <span className="text-[10px] text-white/25">{bio.length}/150</span>
+              <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-widest">Bio sugerida</p>
+              <span className="text-[10px] text-ink-3">{bio.length}/150</span>
             </div>
             <textarea
               value={bio}
               onChange={e => setBio(e.target.value.slice(0, 150))}
               placeholder="Texto da bio..."
               rows={4}
-              className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none resize-none"
-              style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.09)", lineHeight: "1.5" }}
+              className="input-glass resize-none leading-relaxed"
             />
             <button
               onClick={() => copyText(bio, "bio")}
               disabled={!bio}
-              className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-white/60 hover:text-white transition-colors disabled:opacity-40"
-              style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.07)" }}
+              className="mt-2 btn-ghost flex items-center gap-2 px-3 py-1.5 text-xs disabled:opacity-40"
             >
-              {copied === "bio" ? <Check size={12} className="text-emerald-400" /> : <Clipboard size={12} />}
+              {copied === "bio" ? <Check size={12} className="text-success" /> : <Clipboard size={12} />}
               {copied === "bio" ? "Copiado!" : "Copiar bio"}
             </button>
           </div>
 
           {/* Link */}
           <div>
-            <p className="text-[11px] font-semibold text-white/50 uppercase tracking-widest mb-2">Link da bio</p>
+            <p className="text-[11px] font-semibold text-ink-2 uppercase tracking-widest mb-2">Link da bio</p>
             <input
               value={link}
               onChange={e => setLink(e.target.value)}
               placeholder="https://..."
               type="url"
-              className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none"
-              style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.09)" }}
+              className="input-glass"
             />
             <button
               onClick={() => copyText(link, "link")}
               disabled={!link}
-              className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-white/60 hover:text-white transition-colors disabled:opacity-40"
-              style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.07)" }}
+              className="mt-2 btn-ghost flex items-center gap-2 px-3 py-1.5 text-xs disabled:opacity-40"
             >
-              {copied === "link" ? <Check size={12} className="text-emerald-400" /> : <Clipboard size={12} />}
+              {copied === "link" ? <Check size={12} className="text-success" /> : <Clipboard size={12} />}
               {copied === "link" ? "Copiado!" : "Copiar link"}
             </button>
           </div>
 
           {synced && (
-            <p className="text-[10px] text-emerald-400/70 flex items-center gap-1">
+            <p className="text-[10px] text-success/70 flex items-center gap-1">
               <CheckCircle2 size={10} />
               Marcado sincronizado em {new Date(synced).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}
             </p>
@@ -957,8 +488,7 @@ function EditProfileModal({
             </button>
             <button
               onClick={() => window.open(`https://instagram.com/${account.username}`, "_blank")}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs text-white/60 hover:text-white transition-colors"
-              style={{ background: "rgba(255,255,255,0.05)", border: "0.5px solid rgba(255,255,255,0.09)" }}
+              className="btn-ghost flex items-center gap-1.5 px-3 py-2 text-xs"
             >
               <ExternalLink size={12} /> Abrir IG
             </button>
@@ -986,17 +516,17 @@ function AccountSkeleton() {
   return (
     <div className="glass-card rounded-2xl animate-pulse">
       <div className="flex items-start gap-3 p-5 pb-4">
-        <div className="w-12 h-12 rounded-full bg-white/[0.07] flex-shrink-0" />
+        <div className="w-12 h-12 rounded-full bg-line-control/20 flex-shrink-0" />
         <div className="flex-1 space-y-2 pt-1">
-          <div className="h-3.5 bg-white/[0.07] rounded-full w-28" />
-          <div className="h-2.5 bg-white/[0.04] rounded-full w-36" />
+          <div className="h-3.5 bg-line-control/20 rounded-full w-28" />
+          <div className="h-2.5 bg-line-control/10 rounded-full w-36" />
         </div>
-        <div className="w-7 h-7 rounded-lg bg-white/[0.04]" />
+        <div className="w-7 h-7 rounded-lg bg-surface-raised" />
       </div>
-      <div className="h-px bg-white/[0.05] mx-5" />
+      <div className="h-px bg-line mx-5" />
       <div className="flex items-center gap-3 px-5 py-3">
         {[52, 40, 48, 56].map((w, i) => (
-          <div key={i} style={{ width: w }} className="h-2.5 bg-white/[0.05] rounded-full flex-shrink-0" />
+          <div key={i} style={{ width: w }} className="h-2.5 bg-line rounded-full flex-shrink-0" />
         ))}
       </div>
     </div>
@@ -1968,7 +1498,7 @@ export default function AccountsPage() {
                   </div>
                   <button
                     onClick={() => setAppPickerOpen(false)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink-2 hover:bg-surface-hover transition-colors"
                   >
                     <X size={15} />
                   </button>
@@ -1982,7 +1512,7 @@ export default function AccountsPage() {
                   >
                     <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-4 space-y-1.5 text-center">
                       <p className="text-sm font-semibold text-amber-300">Nenhum App cadastrado</p>
-                      <p className="text-xs text-white/35 leading-relaxed">
+                      <p className="text-xs text-ink-3 leading-relaxed">
                         Você precisa cadastrar um App da Meta antes de adicionar uma conta.
                       </p>
                     </div>
@@ -2000,7 +1530,7 @@ export default function AccountsPage() {
                     animate={{ opacity: 1, y: 0 }}
                     className="space-y-3 min-h-0 flex flex-col"
                   >
-                    <p className="text-xs text-white/35 flex-shrink-0">
+                    <p className="text-xs text-ink-3 flex-shrink-0">
                       Escolha qual App Meta usar para autorizar a conta no Instagram:
                     </p>
                     <div className="space-y-2 overflow-y-auto pr-1">
@@ -2011,28 +1541,28 @@ export default function AccountsPage() {
                             setAppPickerOpen(false);
                             window.location.href = `/api/instagram/auth?appId=${app.id}`;
                           }}
-                          className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07] hover:bg-[#00498D]/10 hover:border-[#00498D]/25 transition-all text-left group"
+                          className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-surface-raised border border-line hover:bg-brand-blue/10 hover:border-brand-blue/25 transition-all text-left group"
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-8 h-8 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center flex-shrink-0">
                               <KeyRound size={13} className="text-[#85B9E9]" />
                             </div>
                             <div className="min-w-0">
-                              <p className="text-sm font-semibold text-white/80 truncate group-hover:text-white transition-colors">
+                              <p className="text-sm font-semibold text-ink truncate group-hover:text-ink transition-colors">
                                 {app.app_name}
                               </p>
-                              <p className="text-[10px] text-white/25 font-mono truncate">
+                              <p className="text-[10px] text-ink-3 font-mono truncate">
                                 ID: {app.ig_app_id}
                               </p>
                             </div>
                           </div>
-                          <ChevronRight size={14} className="text-white/20 flex-shrink-0 group-hover:text-[#85B9E9] transition-colors" />
+                          <ChevronRight size={14} className="text-ink-3 flex-shrink-0 group-hover:text-accent transition-colors" />
                         </button>
                       ))}
                     </div>
                     <button
                       onClick={() => { setAppPickerOpen(false); router.push("/dashboard/apps"); }}
-                      className="w-full text-center text-xs text-white/25 hover:text-[#85B9E9] transition-colors py-1 flex-shrink-0"
+                      className="w-full text-center text-xs text-ink-3 hover:text-accent transition-colors py-1 flex-shrink-0"
                     >
                       + Cadastrar novo app
                     </button>
@@ -2074,7 +1604,7 @@ export default function AccountsPage() {
                   </div>
                   <button
                     onClick={() => { setShowNewFolderModal(false); setNewFolderName(""); }}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink-2 hover:bg-surface-hover transition-colors"
                   >
                     <X size={14} />
                   </button>
@@ -2091,7 +1621,7 @@ export default function AccountsPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => { setShowNewFolderModal(false); setNewFolderName(""); }}
-                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                    className="flex-1 py-2.5 rounded-xl border border-line text-xs text-ink-3 hover:text-ink-2 transition-colors"
                   >
                     Cancelar
                   </button>
@@ -2140,7 +1670,7 @@ export default function AccountsPage() {
                   </div>
                   <button
                     onClick={() => setRenameModal(null)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink-2 hover:bg-surface-hover transition-colors"
                   >
                     <X size={14} />
                   </button>
@@ -2156,7 +1686,7 @@ export default function AccountsPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setRenameModal(null)}
-                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                    className="flex-1 py-2.5 rounded-xl border border-line text-xs text-ink-3 hover:text-ink-2 transition-colors"
                   >
                     Cancelar
                   </button>
@@ -2202,7 +1732,7 @@ export default function AccountsPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white">Excluir &quot;{deleteDialog.name}&quot;?</h3>
-                    <p className="text-xs text-white/40 mt-1 leading-relaxed">
+                    <p className="text-xs text-ink-3 mt-1 leading-relaxed">
                       {deleteDialog.count > 0
                         ? `${deleteDialog.count} conta${deleteDialog.count !== 1 ? "s" : ""} dentro desta pasta será${deleteDialog.count !== 1 ? "ão" : ""} excluída${deleteDialog.count !== 1 ? "s" : ""} permanentemente. Esta ação não pode ser desfeita.`
                         : "A pasta está vazia. Esta ação não pode ser desfeita."
@@ -2214,7 +1744,7 @@ export default function AccountsPage() {
                   <button
                     onClick={() => setDeleteDialog(null)}
                     disabled={deletingFolder}
-                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors disabled:opacity-50"
+                    className="flex-1 py-2.5 rounded-xl border border-line text-xs text-ink-3 hover:text-ink-2 transition-colors disabled:opacity-50"
                   >
                     Cancelar
                   </button>
@@ -2260,7 +1790,7 @@ export default function AccountsPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white">Excluir vídeos pendentes de @{clearQueueDialog.username}?</h3>
-                    <p className="text-xs text-white/40 mt-1 leading-relaxed">
+                    <p className="text-xs text-ink-3 mt-1 leading-relaxed">
                       Remove todos os posts e containers aguardando publicação na fila desta conta (Loop, Postar, Clonar). Posts já publicados no Instagram não são afetados. Esta ação não pode ser desfeita.
                     </p>
                   </div>
@@ -2269,7 +1799,7 @@ export default function AccountsPage() {
                   <button
                     onClick={() => setClearQueueDialog(null)}
                     disabled={clearingQueue}
-                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors disabled:opacity-50"
+                    className="flex-1 py-2.5 rounded-xl border border-line text-xs text-ink-3 hover:text-ink-2 transition-colors disabled:opacity-50"
                   >
                     Cancelar
                   </button>
@@ -2316,12 +1846,12 @@ export default function AccountsPage() {
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-white">Mover para pasta</h3>
-                      <p className="text-[11px] text-white/30">@{moveAccount.username}</p>
+                      <p className="text-[11px] text-ink-3">@{moveAccount.username}</p>
                     </div>
                   </div>
                   <button
                     onClick={() => setMoveAccount(null)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink-2 hover:bg-surface-hover transition-colors"
                   >
                     <X size={14} />
                   </button>
@@ -2333,14 +1863,14 @@ export default function AccountsPage() {
                     className={cn(
                       "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
                       movePendingFolderId === null
-                        ? "bg-white/[0.07] border-white/20 text-white"
-                        : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
+                        ? "bg-line-control/20 border-line-control text-ink"
+                        : "border-line text-ink-3 hover:bg-surface-hover hover:text-ink-2"
                     )}
                   >
-                    <FolderOpen size={12} className="text-white/30 flex-shrink-0" />
+                    <FolderOpen size={12} className="text-ink-3 flex-shrink-0" />
                     <span className="flex-1">Sem pasta</span>
                     {moveAccount.folder_id === null && movePendingFolderId !== null && (
-                      <span className="text-[9px] text-white/25 flex-shrink-0">atual</span>
+                      <span className="text-[9px] text-ink-3 flex-shrink-0">atual</span>
                     )}
                     {movePendingFolderId === null && (
                       <CheckCircle2 size={12} className="text-[#00498D] flex-shrink-0" />
@@ -2348,7 +1878,7 @@ export default function AccountsPage() {
                   </button>
 
                   {folders.length === 0 ? (
-                    <p className="text-[11px] text-white/25 text-center py-3">
+                    <p className="text-[11px] text-ink-3 text-center py-3">
                       Nenhuma pasta criada. Crie pastas nas abas acima.
                     </p>
                   ) : (
@@ -2360,7 +1890,7 @@ export default function AccountsPage() {
                           "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
                           movePendingFolderId === f.id
                             ? "bg-[#00498D]/15 border-[#00498D]/30 text-[#AFBDD0]"
-                            : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
+                            : "border-line text-ink-3 hover:bg-surface-hover hover:text-ink-2"
                         )}
                       >
                         <Folder size={12} className={cn(
@@ -2369,7 +1899,7 @@ export default function AccountsPage() {
                         )} />
                         <span className="flex-1 truncate">{f.name}</span>
                         {moveAccount.folder_id === f.id && movePendingFolderId !== f.id && (
-                          <span className="text-[9px] text-white/25 flex-shrink-0">atual</span>
+                          <span className="text-[9px] text-ink-3 flex-shrink-0">atual</span>
                         )}
                         {movePendingFolderId === f.id && (
                           <CheckCircle2 size={12} className="text-[#85B9E9] flex-shrink-0" />
@@ -2382,7 +1912,7 @@ export default function AccountsPage() {
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={() => setMoveAccount(null)}
-                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                    className="flex-1 py-2.5 rounded-xl border border-line text-xs text-ink-3 hover:text-ink-2 transition-colors"
                   >
                     Cancelar
                   </button>
@@ -2435,14 +1965,14 @@ export default function AccountsPage() {
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-white">Mover para pasta</h3>
-                      <p className="text-[11px] text-white/30">
+                      <p className="text-[11px] text-ink-3">
                         {selectedIds.size} conta{selectedIds.size !== 1 ? "s" : ""} selecionada{selectedIds.size !== 1 ? "s" : ""}
                       </p>
                     </div>
                   </div>
                   <button
                     onClick={() => !bulkMoving && setBulkMoveOpen(false)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink-2 hover:bg-surface-hover transition-colors"
                   >
                     <X size={14} />
                   </button>
@@ -2454,11 +1984,11 @@ export default function AccountsPage() {
                     className={cn(
                       "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
                       bulkMovePendingFolderId === null
-                        ? "bg-white/[0.07] border-white/20 text-white"
-                        : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
+                        ? "bg-line-control/20 border-line-control text-ink"
+                        : "border-line text-ink-3 hover:bg-surface-hover hover:text-ink-2"
                     )}
                   >
-                    <FolderOpen size={12} className="text-white/30 flex-shrink-0" />
+                    <FolderOpen size={12} className="text-ink-3 flex-shrink-0" />
                     <span className="flex-1">Sem pasta</span>
                     {bulkMovePendingFolderId === null && (
                       <CheckCircle2 size={12} className="text-[#00498D] flex-shrink-0" />
@@ -2466,7 +1996,7 @@ export default function AccountsPage() {
                   </button>
 
                   {folders.length === 0 ? (
-                    <p className="text-[11px] text-white/25 text-center py-3">
+                    <p className="text-[11px] text-ink-3 text-center py-3">
                       Nenhuma pasta criada. Crie pastas nas abas acima.
                     </p>
                   ) : (
@@ -2478,7 +2008,7 @@ export default function AccountsPage() {
                           "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
                           bulkMovePendingFolderId === f.id
                             ? "bg-[#00498D]/15 border-[#00498D]/30 text-[#AFBDD0]"
-                            : "border-white/[0.05] text-white/45 hover:bg-white/[0.04] hover:text-white/70"
+                            : "border-line text-ink-3 hover:bg-surface-hover hover:text-ink-2"
                         )}
                       >
                         <Folder size={12} className={cn(
@@ -2497,7 +2027,7 @@ export default function AccountsPage() {
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={() => !bulkMoving && setBulkMoveOpen(false)}
-                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                    className="flex-1 py-2.5 rounded-xl border border-line text-xs text-ink-3 hover:text-ink-2 transition-colors"
                   >
                     Cancelar
                   </button>
@@ -2547,19 +2077,19 @@ export default function AccountsPage() {
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-white">Proxy Dedicado</h3>
-                      <p className="text-[10px] text-white/30">@{proxyAccount.username}</p>
+                      <p className="text-[10px] text-ink-3">@{proxyAccount.username}</p>
                     </div>
                   </div>
                   <button
                     onClick={() => setProxyAccount(null)}
                     disabled={savingProxy}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors disabled:opacity-40"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink-2 hover:bg-surface-hover transition-colors disabled:opacity-40"
                   >
                     <X size={14} />
                   </button>
                 </div>
 
-                <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2.5 text-[11px] text-white/35 leading-relaxed">
+                <div className="rounded-xl bg-surface-raised border border-line px-3 py-2.5 text-[11px] text-ink-3 leading-relaxed">
                   {proxyAccount.has_proxy
                     ? "Esta conta já tem um proxy configurado. Insira uma nova URL para substituir, ou clique em Remover Proxy."
                     : "Insira a URL completa do proxy residencial dedicado a esta conta. A senha será criptografada antes de ser salva."
@@ -2567,7 +2097,7 @@ export default function AccountsPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] text-white/40 uppercase tracking-wide font-semibold">
+                  <label className="text-[10px] text-ink-3 uppercase tracking-wide font-semibold">
                     URL do Proxy
                   </label>
                   <input
@@ -2578,7 +2108,7 @@ export default function AccountsPage() {
                     placeholder="http://user:senha@host:porta"
                     className="input-glass w-full text-sm px-3 py-2.5 font-mono"
                   />
-                  <p className="text-[10px] text-white/20">
+                  <p className="text-[10px] text-ink-3">
                     Formatos aceitos: http://, https://, socks5://
                   </p>
                 </div>
@@ -2597,7 +2127,7 @@ export default function AccountsPage() {
                   <button
                     onClick={() => setProxyAccount(null)}
                     disabled={savingProxy}
-                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors disabled:opacity-40"
+                    className="flex-1 py-2.5 rounded-xl border border-line text-xs text-ink-3 hover:text-ink-2 transition-colors disabled:opacity-40"
                   >
                     Cancelar
                   </button>
@@ -2647,7 +2177,7 @@ export default function AccountsPage() {
                   <button
                     onClick={() => { setShowCsvImport(false); setCsvResults(null); setCsvText(""); }}
                     disabled={csvImporting}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink-2 hover:bg-surface-hover transition-colors"
                   >
                     <X size={15} />
                   </button>
@@ -2655,22 +2185,22 @@ export default function AccountsPage() {
 
                 {!csvResults ? (
                   <>
-                    <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 space-y-1">
-                      <p className="text-[11px] text-white/40 font-mono">Formato: <span className="text-[#00498D]/70">username,http://user:pass@ip:porta</span></p>
-                      <p className="text-[11px] text-white/25">Uma conta por linha. Para remover proxy: <span className="text-white/40 font-mono">username,</span></p>
-                      <p className="text-[11px] text-white/25">Linhas com # são ignoradas.</p>
+                    <div className="rounded-xl bg-surface-raised border border-line p-3 space-y-1">
+                      <p className="text-[11px] text-ink-3 font-mono">Formato: <span className="text-brand-blue/70">username,http://user:pass@ip:porta</span></p>
+                      <p className="text-[11px] text-ink-3">Uma conta por linha. Para remover proxy: <span className="text-ink-3 font-mono">username,</span></p>
+                      <p className="text-[11px] text-ink-3">Linhas com # são ignoradas.</p>
                     </div>
                     <textarea
                       value={csvText}
                       onChange={e => setCsvText(e.target.value)}
                       placeholder={"# Cole aqui — uma linha por conta\nconta1,http://user:pass@203.0.113.1:3128\nconta2,http://user:pass@198.51.100.5:3128\nconta3,"}
                       rows={10}
-                      className="w-full rounded-xl bg-black/40 border border-white/[0.08] text-xs text-white/70 font-mono placeholder-white/15 px-3 py-2.5 focus:outline-none focus:border-[#00498D]/40 resize-none"
+                      className="w-full rounded-xl bg-surface border border-line-control text-xs text-ink-2 font-mono placeholder-ink-3 px-3 py-2.5 focus:outline-none focus:border-brand-blue/40 resize-none"
                     />
                     <div className="flex gap-2">
                       <button
                         onClick={() => { setShowCsvImport(false); setCsvText(""); }}
-                        className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                        className="flex-1 py-2.5 rounded-xl border border-line text-xs text-ink-3 hover:text-ink-2 transition-colors"
                       >
                         Cancelar
                       </button>
@@ -2692,21 +2222,21 @@ export default function AccountsPage() {
                           "flex items-center justify-between px-3 py-2 rounded-lg text-xs",
                           r.status === "saved" && "bg-[#00498D]/[0.06] border border-[#00498D]/15",
                           r.status === "removed" && "bg-amber-500/[0.06] border border-amber-500/15",
-                          r.status === "not_found" && "bg-white/[0.03] border border-white/[0.06]",
+                          r.status === "not_found" && "bg-surface-raised border-line",
                           r.status === "error" && "bg-red-500/[0.06] border border-red-500/15",
                         )}>
                           <span className={cn(
                             "font-mono",
                             r.status === "saved" && "text-[#00498D]/80",
                             r.status === "removed" && "text-amber-400/80",
-                            r.status === "not_found" && "text-white/30",
+                            r.status === "not_found" && "text-ink-3",
                             r.status === "error" && "text-red-400/80",
                           )}>@{r.username.replace(/^@/, "")}</span>
                           <span className={cn(
                             "text-[10px] font-semibold",
                             r.status === "saved" && "text-[#00498D]/60",
                             r.status === "removed" && "text-amber-400/60",
-                            r.status === "not_found" && "text-white/20",
+                            r.status === "not_found" && "text-ink-3/60",
                             r.status === "error" && "text-red-400/60",
                           )}>
                             {r.status === "saved" && "✓ proxy salvo"}
@@ -2720,7 +2250,7 @@ export default function AccountsPage() {
                     <div className="flex gap-2 pt-1">
                       <button
                         onClick={() => { setCsvResults(null); }}
-                        className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                        className="flex-1 py-2.5 rounded-xl border border-line text-xs text-ink-3 hover:text-ink-2 transition-colors"
                       >
                         Importar mais
                       </button>
@@ -2770,7 +2300,7 @@ export default function AccountsPage() {
                   <button
                     onClick={() => { if (!checkerRunning) { setShowChecker(false); setCheckerResults(null); setCheckerText(""); setCheckerProgress(null); } }}
                     disabled={checkerRunning}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors disabled:opacity-30"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink-2 hover:bg-surface-hover transition-colors disabled:opacity-30"
                   >
                     <X size={15} />
                   </button>
@@ -2778,9 +2308,9 @@ export default function AccountsPage() {
 
                 {!checkerResults ? (
                   <>
-                    <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 space-y-1">
-                      <p className="text-[11px] text-white/40">Cole @usuários do Instagram — um por linha ou separados por vírgula.</p>
-                      <p className="text-[11px] text-white/25">
+                    <div className="rounded-xl bg-surface-raised border border-line p-3 space-y-1">
+                      <p className="text-[11px] text-ink-3">Cole @usuários do Instagram — um por linha ou separados por vírgula.</p>
+                      <p className="text-[11px] text-ink-3">
                         Verifica primeiro pela API oficial da Meta (exige ao menos uma conta conectada e só enxerga perfis Business/Creator) e depois pela consulta pública, que hoje é frequentemente bloqueada pelo Instagram. Contas banidas, removidas ou que nunca existiram aparecem como &quot;não encontrada&quot; — o Instagram não distingue o motivo publicamente. Até {CHECKER_MAX} por vez.
                       </p>
                     </div>
@@ -2789,12 +2319,12 @@ export default function AccountsPage() {
                       onChange={e => setCheckerText(e.target.value)}
                       placeholder={"@conta1\nconta2\nconta3"}
                       rows={8}
-                      className="w-full rounded-xl bg-black/40 border border-white/[0.08] text-xs text-white/70 font-mono placeholder-white/15 px-3 py-2.5 focus:outline-none focus:border-amber-500/40 resize-none"
+                      className="w-full rounded-xl bg-surface border border-line-control text-xs text-ink-2 font-mono placeholder-ink-3 px-3 py-2.5 focus:outline-none focus:border-warning/40 resize-none"
                     />
                     <div className="flex gap-2">
                       <button
                         onClick={() => { setShowChecker(false); setCheckerText(""); }}
-                        className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors"
+                        className="flex-1 py-2.5 rounded-xl border border-line text-xs text-ink-3 hover:text-ink-2 transition-colors"
                       >
                         Cancelar
                       </button>
@@ -2811,7 +2341,7 @@ export default function AccountsPage() {
                 ) : (
                   <>
                     {checkerProgress && (
-                      <div className="flex items-center justify-between text-[10px] text-white/30 px-0.5">
+                      <div className="flex items-center justify-between text-[10px] text-ink-3 px-0.5">
                         <span>{checkerRunning ? "Verificando…" : "Concluído"}</span>
                         <span className="font-mono tabular-nums">{checkerProgress.done}/{checkerProgress.total}</span>
                       </div>
@@ -2822,7 +2352,7 @@ export default function AccountsPage() {
                           "flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs",
                           r.status === "active" && "bg-[#00498D]/[0.06] border border-[#00498D]/15",
                           r.status === "not_found" && "bg-red-500/[0.06] border border-red-500/15",
-                          r.status === "error" && "bg-white/[0.03] border border-white/[0.06]",
+                          r.status === "error" && "bg-surface-raised border-line",
                         )}>
                           <span className="flex items-center gap-1.5 min-w-0">
                             {r.status === "active" && <ShieldCheck size={12} className="text-[#00498D]/80 flex-shrink-0" />}
@@ -2832,10 +2362,10 @@ export default function AccountsPage() {
                               "font-mono truncate",
                               r.status === "active" && "text-[#00498D]/80",
                               r.status === "not_found" && "text-red-400/80",
-                              r.status === "error" && "text-white/40",
+                              r.status === "error" && "text-ink-3",
                             )}>@{r.username}</span>
                             {r.is_verified && <BadgeCheck size={11} className="text-[#85B9E9]/70 flex-shrink-0" />}
-                            {r.is_private && <Lock size={10} className="text-white/25 flex-shrink-0" />}
+                            {r.is_private && <Lock size={10} className="text-ink-3 flex-shrink-0" />}
                           </span>
                           <span className={cn(
                             "text-[10px] font-semibold text-right flex-shrink-0",
@@ -2850,7 +2380,7 @@ export default function AccountsPage() {
                         </div>
                       ))}
                       {checkerRunning && checkerProgress && checkerProgress.done < checkerProgress.total && (
-                        <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-white/25">
+                        <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-ink-3">
                           <Loader2 size={12} className="animate-spin" />
                           Verificando próximo lote…
                         </div>
@@ -2860,7 +2390,7 @@ export default function AccountsPage() {
                       <button
                         onClick={() => { setCheckerResults(null); setCheckerProgress(null); }}
                         disabled={checkerRunning}
-                        className="flex-1 py-2.5 rounded-xl border border-white/[0.08] text-xs text-white/40 hover:text-white/70 transition-colors disabled:opacity-40"
+                        className="flex-1 py-2.5 rounded-xl border border-line text-xs text-ink-3 hover:text-ink-2 transition-colors disabled:opacity-40"
                       >
                         Verificar mais
                       </button>
@@ -2901,7 +2431,7 @@ export default function AccountsPage() {
               : <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
             }
             <span className="flex-1 whitespace-pre-line">{notification.message}</span>
-            <button onClick={() => setNotification(null)} className="text-white/30 hover:text-white/60 transition-colors flex-shrink-0">
+            <button onClick={() => setNotification(null)} className="text-ink-3 hover:text-ink-2 transition-colors flex-shrink-0">
               <X size={14} />
             </button>
           </motion.div>
@@ -2916,7 +2446,7 @@ export default function AccountsPage() {
       >
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Contas do Instagram</h1>
-          <p className="text-sm text-white/35 mt-0.5">
+          <p className="text-sm text-ink-3 mt-0.5">
             {accounts.length} conectada{accounts.length !== 1 ? "s" : ""} · {active} ativa{active !== 1 ? "s" : ""}
           </p>
         </div>
@@ -2927,11 +2457,11 @@ export default function AccountsPage() {
                 onClick={handleSyncAll}
                 disabled={syncingAll}
                 title="Sincronizar todas as contas"
-                className="flex items-center gap-1.5 justify-center p-2.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 transition-all disabled:opacity-50"
+                className="flex items-center gap-1.5 justify-center p-2.5 rounded-xl border border-line text-ink-3 hover:text-ink-2 hover:border-line-control transition-all disabled:opacity-50"
               >
                 <RefreshCw size={14} className={cn(syncingAll && "animate-spin")} />
                 {syncProgress && (
-                  <span className="text-xs font-mono tabular-nums text-white/50">
+                  <span className="text-xs font-mono tabular-nums text-ink-3">
                     {syncProgress.done}/{syncProgress.total}
                   </span>
                 )}
@@ -3039,7 +2569,7 @@ export default function AccountsPage() {
             "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all",
             activeFolderId === null
               ? "bg-[#00498D]/12 text-[#00498D] border border-[#00498D]/25"
-              : "text-white/40 hover:text-white/70 hover:bg-white/[0.05] border border-transparent"
+              : "text-ink-3 hover:text-ink-2 hover:bg-surface-hover border border-transparent"
           )}
         >
           <Users size={11} className="flex-shrink-0" />
@@ -3077,14 +2607,14 @@ export default function AccountsPage() {
                   isActive ? "pr-1" : "pr-3 rounded-r-lg",
                   isActive
                     ? "bg-[#00498D]/12 text-[#AFBDD0] border border-[#00498D]/25 border-r-0"
-                    : "text-white/40 hover:text-white/70 hover:bg-white/[0.05] border border-transparent"
+                    : "text-ink-3 hover:text-ink-2 hover:bg-surface-hover border border-transparent"
                 )}
               >
                 <Folder size={11} className="flex-shrink-0" />
                 {folder.name}
                 <span className={cn(
                   "text-[9px] px-1 py-0.5 rounded-full",
-                  isActive ? "bg-[#00498D]/20 text-[#AFBDD0]/70" : "bg-white/[0.06] text-white/25"
+                  isActive ? "bg-brand-blue/20 text-accent/70" : "bg-line-control/10 text-ink-3"
                 )}>
                   {folder.account_count}
                 </span>
@@ -3114,7 +2644,7 @@ export default function AccountsPage() {
                     exit={{ opacity: 0, scale: 0.9, y: -4 }}
                     transition={{ duration: 0.1 }}
                     style={{ position: "fixed", top: folderMenuPos.top, left: folderMenuPos.left }}
-                    className="z-[200] min-w-[148px] bg-[#111318] border border-white/[0.08] rounded-xl shadow-2xl overflow-hidden"
+                    className="z-[200] min-w-[148px] bg-surface-raised border border-line rounded-xl shadow-2xl overflow-hidden"
                   >
                     <button
                       onClick={() => {
@@ -3122,11 +2652,11 @@ export default function AccountsPage() {
                         setRenameName(folder.name);
                         setOpenFolderMenuId(null);
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-white/60 hover:bg-white/[0.05] hover:text-white transition-colors"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-ink-2 hover:bg-surface-hover hover:text-ink transition-colors"
                     >
                       <Pencil size={12} className="text-amber-400" /> Renomear Pasta
                     </button>
-                    <div className="h-px bg-white/[0.06]" />
+                    <div className="h-px bg-line" />
                     <button
                       onClick={() => {
                         setDeleteDialog({ id: folder.id, name: folder.name, count: folder.account_count });
@@ -3146,7 +2676,7 @@ export default function AccountsPage() {
         {/* Nova pasta button */}
         <button
           onClick={() => setShowNewFolderModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 text-white/30 hover:text-[#85B9E9] hover:bg-[#00498D]/[0.06] border border-transparent hover:border-[#00498D]/20 transition-all"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 text-ink-3 hover:text-accent hover:bg-brand-blue/[0.06] border border-transparent hover:border-brand-blue/20 transition-all"
         >
           <FolderPlus size={11} className="flex-shrink-0" />
           Nova Pasta
@@ -3156,7 +2686,7 @@ export default function AccountsPage() {
       {/* Filtros de ordenação + seleção — visíveis quando há contas */}
       {!loading && filteredAccounts.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-white/25 text-[11px] uppercase tracking-wider font-medium mr-1">Ordenar</span>
+          <span className="text-ink-3 text-[11px] uppercase tracking-wider font-medium mr-1">Ordenar</span>
           {(
             [
               { key: "followers_desc", label: "Mais seguidores" },
@@ -3173,7 +2703,7 @@ export default function AccountsPage() {
                   ? key === "story_expiring"
                     ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
                     : "bg-[#85B9E9]/10 border-[#85B9E9]/30 text-[#85B9E9]"
-                  : "bg-white/[0.03] border-white/[0.07] text-white/35 hover:text-white/60 hover:border-white/15"
+                  : "bg-surface-raised border-line text-ink-3 hover:text-ink-2 hover:border-line-control"
               )}
             >
               {key === "followers_desc" && <span className="text-[10px]">↓</span>}
@@ -3183,11 +2713,11 @@ export default function AccountsPage() {
             </button>
           ))}
           {/* Divisor */}
-          <div className="w-px h-4 bg-white/10 mx-1" />
+          <div className="w-px h-4 bg-line mx-1" />
           {!selectMode ? (
             <button
               onClick={() => setSelectMode(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-white/[0.03] border-white/[0.07] text-white/35 hover:text-white/60 hover:border-white/15 transition-all"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-surface-raised border-line text-ink-3 hover:text-ink-2 hover:border-line-control transition-all"
             >
               <CheckCircle2 size={11} />
               Selecionar
@@ -3215,7 +2745,7 @@ export default function AccountsPage() {
               </button>
               <button
                 onClick={cancelSelectMode}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-white/[0.03] border-white/[0.07] text-white/35 hover:text-white/60 hover:border-white/15 transition-all"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-surface-raised border-line text-ink-3 hover:text-ink-2 hover:border-line-control transition-all"
               >
                 <X size={11} />
                 Cancelar
@@ -3236,33 +2766,33 @@ export default function AccountsPage() {
           animate={{ opacity: 1 }}
           className="glass-card rounded-2xl flex flex-col items-center gap-4 py-20 text-center px-6"
         >
-          <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center">
+          <div className="w-14 h-14 rounded-2xl bg-surface-raised flex items-center justify-center">
             {activeFolderId
-              ? <Folder size={24} className="text-white/20" />
+              ? <Folder size={24} className="text-ink-3/50" />
               : accounts.length === 0
-                ? <Instagram size={24} className="text-white/20" />
+                ? <Instagram size={24} className="text-ink-3/50" />
                 : <CheckCircle2 size={24} className="text-[#00498D]/40" />
             }
           </div>
           <div className="space-y-1">
             {activeFolderId ? (
               <>
-                <p className="text-white/40 text-sm font-medium">Pasta vazia</p>
-                <p className="text-white/20 text-xs max-w-xs">
+                <p className="text-ink-3 text-sm font-medium">Pasta vazia</p>
+                <p className="text-ink-3/60 text-xs max-w-xs">
                   Mova contas para esta pasta usando o menu ⋯ em cada conta.
                 </p>
               </>
             ) : accounts.length === 0 ? (
               <>
-                <p className="text-white/40 text-sm font-medium">Nenhuma conta conectada</p>
-                <p className="text-white/20 text-xs max-w-xs">
+                <p className="text-ink-3 text-sm font-medium">Nenhuma conta conectada</p>
+                <p className="text-ink-3/60 text-xs max-w-xs">
                   Clique em &quot;Conectar conta&quot; e autorize via Instagram para adicionar sua primeira conta Business ou Creator.
                 </p>
               </>
             ) : (
               <>
                 <p className="text-[#00498D]/70 text-sm font-semibold">Tudo organizado</p>
-                <p className="text-white/20 text-xs max-w-xs">
+                <p className="text-ink-3/60 text-xs max-w-xs">
                   Todas as contas estão dentro de uma pasta. Use as abas acima para gerenciá-las.
                 </p>
               </>

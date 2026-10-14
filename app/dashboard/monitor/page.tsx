@@ -95,11 +95,11 @@ function fmtNum(n: number): string {
 }
 
 const LOOP_STATUS_CONFIG = {
-  published:  { label: "Publicado",   color: "text-[var(--matrix)]",  bg: "bg-[var(--matrix)]/10",  border: "border-[var(--matrix)]/25",  dot: "bg-[var(--matrix)]"  },
+  published:  { label: "Publicado",   color: "text-[var(--brand-blue)]",  bg: "bg-[var(--brand-blue)]/10",  border: "border-[var(--brand-blue)]/25",  dot: "bg-[var(--brand-blue)]"  },
   pending:    { label: "Aguardando",  color: "text-[var(--electric)]", bg: "bg-[var(--electric)]/10", border: "border-[var(--electric)]/25", dot: "bg-[var(--electric)]" },
   publishing: { label: "Publicando",  color: "text-amber-400",         bg: "bg-amber-500/10",         border: "border-amber-500/25",         dot: "bg-amber-400"          },
   error:      { label: "Erro",        color: "text-red-400",           bg: "bg-red-500/10",           border: "border-red-500/25",           dot: "bg-red-500"            },
-  none:       { label: "Sem atividade", color: "text-white/25",        bg: "bg-white/[0.03]",         border: "border-white/[0.06]",         dot: "bg-white/20"           },
+  none:       { label: "Sem atividade", color: "text-ink-3",        bg: "bg-surface-raised",         border: "border-line",         dot: "bg-line-control/30"           },
 };
 
 // ── Shared Components ──────────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ function Countdown({ ms }: { ms: number | null }) {
 
 function Avatar({ username, size = "md" }: { username: string; size?: "sm" | "md" | "lg" }) {
   const colors = [
-    "from-[var(--matrix)]/70 to-[var(--electric)]/70",
+    "from-[var(--brand-blue)]/70 to-[var(--electric)]/70",
     "from-[#00498D] to-[#00346D]",
     "from-[#85B9E9] to-[#00498D]",
     "from-amber-500 to-orange-600",
@@ -137,7 +137,7 @@ function MetricCard({ label, sub, value, color, icon: Icon, extra }: {
   icon: React.ElementType; extra?: React.ReactNode;
 }) {
   const c = {
-    green:  { border: "border-[var(--matrix)]/20",  glow: "from-[var(--matrix)]/8",  num: "text-[var(--matrix)]",  ic: "text-[var(--matrix)]/40"  },
+    green:  { border: "border-[var(--brand-blue)]/20",  glow: "from-[var(--brand-blue)]/8",  num: "text-[var(--brand-blue)]",  ic: "text-[var(--brand-blue)]/40"  },
     cyan:   { border: "border-[var(--electric)]/20", glow: "from-[var(--electric)]/8", num: "text-[var(--electric)]", ic: "text-[var(--electric)]/40" },
     red:    { border: "border-red-500/20",    glow: "from-red-500/8",    num: "text-red-400",    ic: "text-red-400/40"    },
     amber:  { border: "border-amber-500/20",  glow: "from-amber-500/8",  num: "text-amber-400",  ic: "text-amber-400/40"  },
@@ -153,8 +153,8 @@ function MetricCard({ label, sub, value, color, icon: Icon, extra }: {
           <span className={cn("text-2xl font-bold tabular-nums tracking-tight", c.num)}>{value}</span>
         </div>
         <div>
-          <p className="text-xs text-white/55 font-medium">{label}</p>
-          <p className="text-[10px] text-white/25">{sub}</p>
+          <p className="text-xs text-ink-2 font-medium">{label}</p>
+          <p className="text-[10px] text-ink-3">{sub}</p>
           {extra && <div className="mt-1">{extra}</div>}
         </div>
       </div>
@@ -181,20 +181,20 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
           <Activity size={14} className="text-[var(--electric)]" />
         </div>
         <div>
-          <h2 className="text-sm font-semibold text-white/90">Linha do Tempo</h2>
-          <p className="text-[10px] text-white/30">6h atrás → agora → próximas 3h</p>
+          <h2 className="text-sm font-semibold text-ink">Linha do Tempo</h2>
+          <p className="text-[10px] text-ink-3">6h atrás → agora → próximas 3h</p>
         </div>
-        <div className="ml-auto flex items-center gap-4 text-[10px] text-white/30">
-          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[var(--matrix)]" />Publicado</span>
+        <div className="ml-auto flex items-center gap-4 text-[10px] text-ink-3">
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[var(--brand-blue)]" />Publicado</span>
           <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[var(--electric)]" />Agendado</span>
         </div>
       </div>
 
-      <div className="relative h-2 rounded-full bg-white/[0.04] border border-white/[0.06] overflow-visible mx-2">
-        <div className="absolute inset-y-0 left-0 rounded-full bg-white/[0.03]" style={{ width: `${nowPct}%` }} />
+      <div className="relative h-2 rounded-full bg-surface-raised border border-line overflow-visible mx-2">
+        <div className="absolute inset-y-0 left-0 rounded-full bg-surface-raised" style={{ width: `${nowPct}%` }} />
         <div className="absolute top-1/2 -translate-y-1/2 z-20" style={{ left: `${nowPct}%` }}>
-          <div className="w-px h-6 bg-white/40 -translate-x-1/2 -translate-y-2" />
-          <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-[9px] text-white/40 whitespace-nowrap">agora</div>
+          <div className="w-px h-6 bg-line-2 -translate-x-1/2 -translate-y-2" />
+          <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-[9px] text-ink-3 whitespace-nowrap">agora</div>
         </div>
 
         {published.map((p, i) => {
@@ -202,11 +202,11 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
           if (pct < 0 || pct > nowPct) return null;
           return (
             <div key={i} className="absolute top-1/2 -translate-y-1/2 z-10 group" style={{ left: `${pct}%` }}>
-              <div className="w-2.5 h-2.5 rounded-full bg-[var(--matrix)] -translate-x-1/2 border border-black/50 cursor-default" />
+              <div className="w-2.5 h-2.5 rounded-full bg-[var(--brand-blue)] -translate-x-1/2 border border-black/50 cursor-default" />
               <div className="absolute bottom-5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center">
-                <div className="bg-black/90 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white/70 whitespace-nowrap">
+                <div className="bg-black/90 border border-line-2 rounded-lg px-2 py-1 text-[10px] text-ink-2 whitespace-nowrap">
                   @{p.account_username}<br />
-                  <span className="text-white/40">{new Date(p.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                  <span className="text-ink-3">{new Date(p.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
                 </div>
               </div>
             </div>
@@ -220,9 +220,9 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
             <div key={i} className="absolute top-1/2 -translate-y-1/2 z-10 group" style={{ left: `${pct}%` }}>
               <div className="w-2.5 h-2.5 rounded-full bg-[var(--electric)] -translate-x-1/2 border border-black/50 cursor-default animate-pulse" />
               <div className="absolute bottom-5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center">
-                <div className="bg-black/90 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white/70 whitespace-nowrap">
+                <div className="bg-black/90 border border-line-2 rounded-lg px-2 py-1 text-[10px] text-ink-2 whitespace-nowrap">
                   @{u.account_username}<br />
-                  <span className="text-white/40">{timeIn(u.at)}</span>
+                  <span className="text-ink-3">{timeIn(u.at)}</span>
                   {u.retry_count && u.retry_count > 0 && (
                     <span className="text-amber-400/70"> · retry {u.retry_count}</span>
                   )}
@@ -233,20 +233,20 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
         })}
       </div>
 
-      <div className="flex justify-between mt-3 text-[9px] text-white/20 px-2">
+      <div className="flex justify-between mt-3 text-[9px] text-ink-3 px-2">
         <span>-6h</span><span>-4h</span><span>-2h</span>
-        <span className="text-white/40 font-medium">agora</span>
+        <span className="text-ink-3 font-medium">agora</span>
         <span>+1h</span><span>+2h</span><span>+3h</span>
       </div>
 
       {upcoming.length > 0 && (
-        <div className="mt-5 border-t border-white/[0.05] pt-4">
-          <p className="text-[10px] text-white/30 uppercase tracking-wider mb-3">Próximas na fila</p>
+        <div className="mt-5 border-t border-line pt-4">
+          <p className="text-[10px] text-ink-3 uppercase tracking-wider mb-3">Próximas na fila</p>
           <div className="flex flex-wrap gap-2">
             {upcoming.slice(0, 12).map((u, i) => (
               <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--electric)]/[0.05] border border-[var(--electric)]/15">
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--electric)] animate-pulse shrink-0" />
-                <span className="text-[11px] text-white/60 font-medium">@{u.account_username}</span>
+                <span className="text-[11px] text-ink-2 font-medium">@{u.account_username}</span>
                 <span className="text-[10px] text-[var(--electric)]/70">{timeIn(u.at)}</span>
                 {u.retry_count && u.retry_count > 0 && (
                   <span className="text-[9px] text-amber-400/60 border border-amber-500/20 rounded px-1">retry {u.retry_count}</span>
@@ -254,8 +254,8 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
               </div>
             ))}
             {upcoming.length > 12 && (
-              <div className="flex items-center px-2.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.05]">
-                <span className="text-[10px] text-white/25">+{upcoming.length - 12} mais</span>
+              <div className="flex items-center px-2.5 py-1.5 rounded-xl bg-surface-raised border border-line">
+                <span className="text-[10px] text-ink-3">+{upcoming.length - 12} mais</span>
               </div>
             )}
           </div>
@@ -282,7 +282,7 @@ function LoopAccountCard({ acc }: { acc: AccountStatus }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm font-semibold text-white/90 truncate">@{acc.username}</p>
+            <p className="text-sm font-semibold text-ink truncate">@{acc.username}</p>
             {acc.in_active_loop && (
               <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#00498D]/15 border border-[#00498D]/20">
                 <Radio size={8} className="text-[#85B9E9] animate-pulse" />
@@ -290,7 +290,7 @@ function LoopAccountCard({ acc }: { acc: AccountStatus }) {
               </span>
             )}
           </div>
-          {acc.display_name && <p className="text-[10px] text-white/30 truncate">{acc.display_name}</p>}
+          {acc.display_name && <p className="text-[10px] text-ink-3 truncate">{acc.display_name}</p>}
         </div>
         <span className={cn("shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border",
           hasError ? "text-red-400 bg-red-500/10 border-red-500/25" : cn(cfg.color, cfg.bg, cfg.border))}>
@@ -304,20 +304,20 @@ function LoopAccountCard({ acc }: { acc: AccountStatus }) {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-          <span className="text-white/30 text-[9px] uppercase tracking-wider">Último post</span>
-          <span className={cn("font-medium", acc.last_published_at ? "text-[var(--matrix)]" : "text-white/20")}>
+        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-surface-raised border border-line">
+          <span className="text-ink-3 text-[9px] uppercase tracking-wider">Último post</span>
+          <span className={cn("font-medium", acc.last_published_at ? "text-[var(--brand-blue)]" : "text-ink-3")}>
             {timeAgo(acc.last_published_at)}
           </span>
         </div>
-        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-          <span className="text-white/30 text-[9px] uppercase tracking-wider">
+        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-surface-raised border border-line">
+          <span className="text-ink-3 text-[9px] uppercase tracking-wider">
             {acc.container_status === "pending" ? "Próximo" : "Postados 24h"}
           </span>
           {acc.container_status === "pending" ? (
             <span className="font-medium text-[var(--electric)]">{timeIn(acc.next_publish_at)}</span>
           ) : (
-            <span className={cn("font-medium", acc.published_24h > 0 ? "text-[var(--matrix)]" : "text-white/20")}>
+            <span className={cn("font-medium", acc.published_24h > 0 ? "text-[var(--brand-blue)]" : "text-ink-3")}>
               {acc.published_24h}
             </span>
           )}
@@ -364,24 +364,24 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
 
   if (!hasPending && acc.published === 0 && !hasFailed) {
     statusLabel = "Sem posts";
-    statusColor = "text-white/30"; statusBg = "bg-white/[0.03]"; statusBorder = "border-white/[0.06]";
-    statusDot = "bg-white/20"; cardBorder = "border-white/[0.08]";
+    statusColor = "text-ink-3"; statusBg = "bg-surface-raised"; statusBorder = "border-line";
+    statusDot = "bg-line-control/30"; cardBorder = "border-line";
   } else if (!hasPending && hasFailed && acc.published === 0) {
     statusLabel = "Falhou";
     statusColor = "text-red-400"; statusBg = "bg-red-500/10"; statusBorder = "border-red-500/25";
     statusDot = "bg-red-500"; cardBorder = "border-red-500/20";
   } else if (!hasPending) {
     statusLabel = "Concluída";
-    statusColor = "text-[var(--matrix)]"; statusBg = "bg-[var(--matrix)]/10"; statusBorder = "border-[var(--matrix)]/25";
-    statusDot = "bg-[var(--matrix)]"; cardBorder = "border-[var(--matrix)]/20";
+    statusColor = "text-[var(--brand-blue)]"; statusBg = "bg-[var(--brand-blue)]/10"; statusBorder = "border-[var(--brand-blue)]/25";
+    statusDot = "bg-[var(--brand-blue)]"; cardBorder = "border-[var(--brand-blue)]/20";
   } else if (hasOverdue) {
     statusLabel = "Atrasada";
     statusColor = "text-amber-400"; statusBg = "bg-amber-500/10"; statusBorder = "border-amber-500/25";
     statusDot = "bg-amber-400"; statusDotAnim = true; cardBorder = "border-amber-500/20";
   } else if (recentlyPublished) {
     statusLabel = "Publicando";
-    statusColor = "text-[var(--matrix)]"; statusBg = "bg-[var(--matrix)]/10"; statusBorder = "border-[var(--matrix)]/25";
-    statusDot = "bg-[var(--matrix)]"; statusDotAnim = true; cardBorder = "border-[var(--matrix)]/20";
+    statusColor = "text-[var(--brand-blue)]"; statusBg = "bg-[var(--brand-blue)]/10"; statusBorder = "border-[var(--brand-blue)]/25";
+    statusDot = "bg-[var(--brand-blue)]"; statusDotAnim = true; cardBorder = "border-[var(--brand-blue)]/20";
   } else {
     statusLabel = "Na Fila";
     statusColor = "text-[var(--electric)]"; statusBg = "bg-[var(--electric)]/10"; statusBorder = "border-[var(--electric)]/25";
@@ -400,8 +400,8 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
           )} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white/90 truncate">@{acc.username}</p>
-          {acc.display_name && <p className="text-[10px] text-white/30 truncate">{acc.display_name}</p>}
+          <p className="text-sm font-semibold text-ink truncate">@{acc.username}</p>
+          {acc.display_name && <p className="text-[10px] text-ink-3 truncate">{acc.display_name}</p>}
         </div>
         <span className={cn("shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border", statusColor, statusBg, statusBorder)}>
           {statusLabel === "Concluída"  && <CheckCircle2 size={10} />}
@@ -417,18 +417,18 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
       {/* Progress bar */}
       <div>
         <div className="flex items-center justify-between text-[10px] mb-1.5">
-          <span className="text-white/30">Progresso</span>
+          <span className="text-ink-3">Progresso</span>
           <span className="tabular-nums">
-            <span className="text-white/60 font-medium">{acc.published}</span>
-            <span className="text-white/25">/{acc.total}</span>
-            <span className="text-white/30 ml-1">({progressPct}%)</span>
+            <span className="text-ink-2 font-medium">{acc.published}</span>
+            <span className="text-ink-3">/{acc.total}</span>
+            <span className="text-ink-3 ml-1">({progressPct}%)</span>
           </span>
         </div>
-        <div className="h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+        <div className="h-1.5 rounded-full bg-surface-hover overflow-hidden">
           <motion.div
             className={cn("h-full rounded-full", hasFailed && !hasPending
               ? "bg-red-500/50"
-              : "bg-gradient-to-r from-[var(--matrix)] to-[var(--electric)]"
+              : "bg-gradient-to-r from-[var(--brand-blue)] to-[var(--electric)]"
             )}
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
@@ -439,66 +439,66 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
 
       {/* Stats grid — operational */}
       <div className="grid grid-cols-3 sm:grid-cols-3 gap-1.5 text-[10px]">
-        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-          <CheckCircle2 size={11} className="text-[var(--matrix)]/60" />
-          <span className="font-bold text-[var(--matrix)] tabular-nums">{acc.published}</span>
-          <span className="text-[9px] text-white/25">publ.</span>
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
+          <CheckCircle2 size={11} className="text-[var(--brand-blue)]/60" />
+          <span className="font-bold text-[var(--brand-blue)] tabular-nums">{acc.published}</span>
+          <span className="text-[9px] text-ink-3">publ.</span>
         </div>
-        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-          <Clock size={11} className={cn(hasPending ? "text-[var(--electric)]/60" : "text-white/15")} />
-          <span className={cn("font-bold tabular-nums", hasPending ? "text-[var(--electric)]" : "text-white/25")}>{acc.pending}</span>
-          <span className="text-[9px] text-white/25">fila</span>
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
+          <Clock size={11} className={cn(hasPending ? "text-[var(--electric)]/60" : "text-ink-3")} />
+          <span className={cn("font-bold tabular-nums", hasPending ? "text-[var(--electric)]" : "text-ink-3")}>{acc.pending}</span>
+          <span className="text-[9px] text-ink-3">fila</span>
         </div>
-        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-          <XCircle size={11} className={cn(hasFailed ? "text-red-400/60" : "text-white/15")} />
-          <span className={cn("font-bold tabular-nums", hasFailed ? "text-red-400" : "text-white/25")}>{acc.failed}</span>
-          <span className="text-[9px] text-white/25">falha</span>
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
+          <XCircle size={11} className={cn(hasFailed ? "text-red-400/60" : "text-ink-3")} />
+          <span className={cn("font-bold tabular-nums", hasFailed ? "text-red-400" : "text-ink-3")}>{acc.failed}</span>
+          <span className="text-[9px] text-ink-3">falha</span>
         </div>
       </div>
 
       {/* Stats grid — engagement */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
-        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-          <Eye size={11} className={cn(acc.total_plays > 0 ? "text-[var(--electric)]/60" : "text-white/15")} />
-          <span className={cn("font-bold tabular-nums", acc.total_plays > 0 ? "text-[var(--electric)]" : "text-white/25")}>{fmtNum(acc.total_plays)}</span>
-          <span className="text-[9px] text-white/25">views</span>
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
+          <Eye size={11} className={cn(acc.total_plays > 0 ? "text-[var(--electric)]/60" : "text-ink-3")} />
+          <span className={cn("font-bold tabular-nums", acc.total_plays > 0 ? "text-[var(--electric)]" : "text-ink-3")}>{fmtNum(acc.total_plays)}</span>
+          <span className="text-[9px] text-ink-3">views</span>
         </div>
-        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-          <Heart size={11} className={cn(acc.total_likes > 0 ? "text-pink-400/60" : "text-white/15")} />
-          <span className={cn("font-bold tabular-nums", acc.total_likes > 0 ? "text-pink-400" : "text-white/25")}>{fmtNum(acc.total_likes)}</span>
-          <span className="text-[9px] text-white/25">likes</span>
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
+          <Heart size={11} className={cn(acc.total_likes > 0 ? "text-pink-400/60" : "text-ink-3")} />
+          <span className={cn("font-bold tabular-nums", acc.total_likes > 0 ? "text-pink-400" : "text-ink-3")}>{fmtNum(acc.total_likes)}</span>
+          <span className="text-[9px] text-ink-3">likes</span>
         </div>
-        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-          <MessageCircle size={11} className={cn(acc.total_comments > 0 ? "text-amber-400/60" : "text-white/15")} />
-          <span className={cn("font-bold tabular-nums", acc.total_comments > 0 ? "text-amber-400" : "text-white/25")}>{fmtNum(acc.total_comments)}</span>
-          <span className="text-[9px] text-white/25">coment.</span>
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
+          <MessageCircle size={11} className={cn(acc.total_comments > 0 ? "text-amber-400/60" : "text-ink-3")} />
+          <span className={cn("font-bold tabular-nums", acc.total_comments > 0 ? "text-amber-400" : "text-ink-3")}>{fmtNum(acc.total_comments)}</span>
+          <span className="text-[9px] text-ink-3">coment.</span>
         </div>
-        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-          <Users size={11} className={cn(acc.total_reach > 0 ? "text-purple-400/60" : "text-white/15")} />
-          <span className={cn("font-bold tabular-nums", acc.total_reach > 0 ? "text-purple-400" : "text-white/25")}>{fmtNum(acc.total_reach)}</span>
-          <span className="text-[9px] text-white/25">alcance</span>
+        <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
+          <Users size={11} className={cn(acc.total_reach > 0 ? "text-purple-400/60" : "text-ink-3")} />
+          <span className={cn("font-bold tabular-nums", acc.total_reach > 0 ? "text-purple-400" : "text-ink-3")}>{fmtNum(acc.total_reach)}</span>
+          <span className="text-[9px] text-ink-3">alcance</span>
         </div>
       </div>
 
       {/* Sync hint */}
       {acc.published > 0 && acc.synced_posts === 0 && (
-        <p className="text-[9px] text-white/20 px-1">Sincronizando métricas…</p>
+        <p className="text-[9px] text-ink-3 px-1">Sincronizando métricas…</p>
       )}
 
       {/* Timing row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-          <span className="text-white/30 text-[9px] uppercase tracking-wider">Último post</span>
-          <span className={cn("font-medium", acc.last_published_at ? "text-[var(--matrix)]" : "text-white/20")}>
+        <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-surface-raised border border-line">
+          <span className="text-ink-3 text-[9px] uppercase tracking-wider">Último post</span>
+          <span className={cn("font-medium", acc.last_published_at ? "text-[var(--brand-blue)]" : "text-ink-3")}>
             {timeAgo(acc.last_published_at)}
           </span>
         </div>
         <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border",
           hasOverdue
             ? "bg-amber-500/[0.04] border-amber-500/15"
-            : "bg-white/[0.03] border-white/[0.04]"
+            : "bg-surface-raised border-line"
         )}>
-          <span className="text-white/30 text-[9px] uppercase tracking-wider">
+          <span className="text-ink-3 text-[9px] uppercase tracking-wider">
             {hasPending ? "Próximo" : "Situação"}
           </span>
           {hasPending ? (
@@ -506,7 +506,7 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
               {hasOverdue ? "⏱ " : ""}{timeIn(acc.next_scheduled_at)}
             </span>
           ) : (
-            <span className="font-medium text-[var(--matrix)]/60 text-[10px]">✓ concluído</span>
+            <span className="font-medium text-[var(--brand-blue)]/60 text-[10px]">✓ concluído</span>
           )}
         </div>
       </div>
@@ -584,8 +584,8 @@ function LoopView() {
   const allAccounts = data?.accounts ?? [];
 
   const LOOP_FILTERS = [
-    { key: "all" as const,       label: "Todas",      color: "text-white/60"          },
-    { key: "published" as const, label: "Publicado",  color: "text-[var(--matrix)]"   },
+    { key: "all" as const,       label: "Todas",      color: "text-ink-2"          },
+    { key: "published" as const, label: "Publicado",  color: "text-[var(--brand-blue)]"   },
     { key: "pending" as const,   label: "Aguardando", color: "text-[var(--electric)]" },
     { key: "error" as const,     label: "Erro",       color: "text-red-400"           },
   ];
@@ -633,16 +633,16 @@ function LoopView() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--matrix)] opacity-50" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--matrix)]" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--brand-blue)] opacity-50" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--brand-blue)]" />
           </span>
-          <p className="text-xs text-white/35">
+          <p className="text-xs text-ink-3">
             {updatedAt ? `Atualizado ${updatedAt}` : "Carregando..."}
-            {" · "}auto em <span className="tabular-nums text-white/50">{countdown}s</span>
+            {" · "}auto em <span className="tabular-nums text-ink-2">{countdown}s</span>
           </p>
         </div>
         <button onClick={() => fetchData(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.07] bg-white/[0.03] text-xs text-white/40 hover:text-white/70 hover:border-white/15 transition-all">
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-line bg-surface-raised text-xs text-ink-3 hover:text-ink-2 hover:border-line-2 transition-all">
           <RefreshCw size={12} />Atualizar
         </button>
       </div>
@@ -665,11 +665,11 @@ function LoopView() {
           {LOOP_FILTERS.map(f => (
             <button key={f.key} onClick={() => setFilter(f.key)}
               className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap",
-                filter === f.key ? "bg-white/[0.08] border border-white/15 text-white/80" : "text-white/30 hover:text-white/55 hover:bg-white/[0.04]")}>
+                filter === f.key ? "bg-line-control/20 border border-line-2 text-ink" : "text-ink-3 hover:text-ink-2 hover:bg-surface-raised")}>
               <span className={f.color}>{f.label}</span>
               {counts[f.key] > 0 && (
                 <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full tabular-nums",
-                  filter === f.key ? "bg-white/10 text-white/60" : "bg-white/[0.05] text-white/25")}>
+                  filter === f.key ? "bg-line-control/20 text-ink-2" : "bg-surface-hover text-ink-3")}>
                   {counts[f.key]}
                 </span>
               )}
@@ -679,21 +679,21 @@ function LoopView() {
 
         {sorted.length === 0 ? (
           <div className="glass-card p-12 flex flex-col items-center justify-center text-center">
-            <Zap size={22} className="text-white/15 mb-3" />
-            <p className="text-sm text-white/30">Nenhuma conta com este status</p>
+            <Zap size={22} className="text-ink-3 mb-3" />
+            <p className="text-sm text-ink-3">Nenhuma conta com este status</p>
           </div>
         ) : filter === "all" ? (
           <div className="space-y-6">
             {groups.map(({ loopName, accounts: groupAccs }) => (
               <div key={loopName ?? "__none__"}>
                 <div className="flex items-center gap-2 mb-3">
-                  <Radio size={11} className={loopName ? "text-[var(--electric)]/60" : "text-white/20"} />
+                  <Radio size={11} className={loopName ? "text-[var(--electric)]/60" : "text-ink-3"} />
                   <span className={cn("text-[11px] font-bold uppercase tracking-widest",
-                    loopName ? "text-[var(--electric)]/70" : "text-white/25")}>
+                    loopName ? "text-[var(--electric)]/70" : "text-ink-3")}>
                     {loopName ?? "Sem loop"}
                   </span>
-                  <span className="text-[10px] text-white/20">{groupAccs.length}</span>
-                  <div className="flex-1 h-px bg-white/[0.05]" />
+                  <span className="text-[10px] text-ink-3">{groupAccs.length}</span>
+                  <div className="flex-1 h-px bg-surface-hover" />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                   <AnimatePresence mode="popLayout">
@@ -762,11 +762,11 @@ function CampaignView() {
   const allAccounts = data?.accounts ?? [];
 
   const CAMP_FILTERS = [
-    { key: "all" as const,       label: "Todas",      color: "text-white/60"          },
+    { key: "all" as const,       label: "Todas",      color: "text-ink-2"          },
     { key: "active" as const,    label: "Na Fila",    color: "text-[var(--electric)]" },
     { key: "overdue" as const,   label: "Atrasadas",  color: "text-amber-400"         },
     { key: "error" as const,     label: "Com Erros",  color: "text-red-400"           },
-    { key: "completed" as const, label: "Concluídas", color: "text-[var(--matrix)]"   },
+    { key: "completed" as const, label: "Concluídas", color: "text-[var(--brand-blue)]"   },
   ];
 
   const filtered = filter === "all"       ? allAccounts
@@ -792,13 +792,13 @@ function CampaignView() {
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--electric)] opacity-50" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--electric)]" />
           </span>
-          <p className="text-xs text-white/35">
+          <p className="text-xs text-ink-3">
             {updatedAt ? `Atualizado ${updatedAt}` : "Carregando..."}
-            {" · "}auto em <span className="tabular-nums text-white/50">{countdown}s</span>
+            {" · "}auto em <span className="tabular-nums text-ink-2">{countdown}s</span>
           </p>
         </div>
         <button onClick={() => fetchData(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.07] bg-white/[0.03] text-xs text-white/40 hover:text-white/70 hover:border-white/15 transition-all">
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-line bg-surface-raised text-xs text-ink-3 hover:text-ink-2 hover:border-line-2 transition-all">
           <RefreshCw size={12} />Atualizar
         </button>
       </div>
@@ -825,9 +825,9 @@ function CampaignView() {
       {/* Empty state */}
       {allAccounts.length === 0 ? (
         <div className="glass-card p-16 flex flex-col items-center justify-center text-center">
-          <Send size={28} className="text-white/10 mb-4" />
-          <p className="text-sm font-medium text-white/30 mb-1">Nenhuma campanha ativa</p>
-          <p className="text-xs text-white/20">Crie uma campanha na aba <span className="text-[var(--electric)]/50">Postar</span> para monitorar aqui</p>
+          <Send size={28} className="text-ink-3 mb-4" />
+          <p className="text-sm font-medium text-ink-3 mb-1">Nenhuma campanha ativa</p>
+          <p className="text-xs text-ink-3">Crie uma campanha na aba <span className="text-[var(--electric)]/50">Postar</span> para monitorar aqui</p>
         </div>
       ) : (
         <div>
@@ -836,11 +836,11 @@ function CampaignView() {
             {CAMP_FILTERS.map(f => (
               <button key={f.key} onClick={() => setFilter(f.key)}
                 className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap",
-                  filter === f.key ? "bg-white/[0.08] border border-white/15 text-white/80" : "text-white/30 hover:text-white/55 hover:bg-white/[0.04]")}>
+                  filter === f.key ? "bg-line-control/20 border border-line-2 text-ink" : "text-ink-3 hover:text-ink-2 hover:bg-surface-raised")}>
                 <span className={f.color}>{f.label}</span>
                 {counts[f.key] > 0 && (
                   <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full tabular-nums",
-                    filter === f.key ? "bg-white/10 text-white/60" : "bg-white/[0.05] text-white/25")}>
+                    filter === f.key ? "bg-line-control/20 text-ink-2" : "bg-surface-hover text-ink-3")}>
                     {counts[f.key]}
                   </span>
                 )}
@@ -850,8 +850,8 @@ function CampaignView() {
 
           {filtered.length === 0 ? (
             <div className="glass-card p-12 flex flex-col items-center justify-center text-center">
-              <BarChart2 size={22} className="text-white/15 mb-3" />
-              <p className="text-sm text-white/30">Nenhuma conta com este filtro</p>
+              <BarChart2 size={22} className="text-ink-3 mb-3" />
+              <p className="text-sm text-ink-3">Nenhuma conta com este filtro</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
@@ -887,17 +887,17 @@ export default function MonitorPage() {
       </div>
 
       {/* Main Tabs */}
-      <div className="flex items-center gap-1 p-1 rounded-2xl bg-white/[0.03] border border-white/[0.06] w-fit">
+      <div className="flex items-center gap-1 p-1 rounded-2xl bg-surface-raised border border-line w-fit">
         <button
           onClick={() => setTab("loop")}
           className={cn(
             "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all",
             tab === "loop"
-              ? "bg-white/[0.08] border border-white/15 text-white/90"
-              : "text-white/30 hover:text-white/60"
+              ? "bg-line-control/20 border border-line-2 text-ink"
+              : "text-ink-3 hover:text-ink-2"
           )}
         >
-          <Radio size={14} className={tab === "loop" ? "text-[#85B9E9]" : "text-white/20"} />
+          <Radio size={14} className={tab === "loop" ? "text-[#85B9E9]" : "text-ink-3"} />
           Loop
         </button>
         <button
@@ -905,11 +905,11 @@ export default function MonitorPage() {
           className={cn(
             "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all",
             tab === "campanhas"
-              ? "bg-white/[0.08] border border-white/15 text-white/90"
-              : "text-white/30 hover:text-white/60"
+              ? "bg-line-control/20 border border-line-2 text-ink"
+              : "text-ink-3 hover:text-ink-2"
           )}
         >
-          <Send size={14} className={tab === "campanhas" ? "text-[var(--electric)]" : "text-white/20"} />
+          <Send size={14} className={tab === "campanhas" ? "text-[var(--electric)]" : "text-ink-3"} />
           Campanhas
         </button>
       </div>

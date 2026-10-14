@@ -84,7 +84,7 @@ const STATUS_CONFIG: Record<PostStatus, { label: string; color: string }> = {
   publishing: { label: "Publicando...", color: "bg-blue-500/15 text-blue-400 border-blue-500/20" },
   published:  { label: "Publicado",     color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" },
   failed:     { label: "Falha",         color: "bg-red-500/15 text-red-400 border-red-500/20" },
-  cancelled:  { label: "Cancelado",     color: "bg-white/[0.05] text-white/20 border-white/[0.06]" },
+  cancelled:  { label: "Cancelado",     color: "bg-surface-raised text-ink-3/60 border-line" },
 };
 
 function StatusIcon({ status }: { status: PostStatus }) {
@@ -146,11 +146,11 @@ function PostRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-white/85 truncate">
+            <p className="text-sm font-semibold text-ink truncate">
               @{account?.username ?? "—"}
             </p>
             {post.caption && (
-              <p className="text-xs text-white/35 mt-0.5 line-clamp-1 leading-snug">
+              <p className="text-xs text-ink-3 mt-0.5 line-clamp-1 leading-snug">
                 {post.caption}
               </p>
             )}
@@ -166,7 +166,7 @@ function PostRow({
         </div>
 
         {/* Meta */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-[11px] text-white/30">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-[11px] text-ink-3">
           <span className="flex items-center gap-1">
             <CalendarClock size={10} className="flex-shrink-0" />
             {formatDate(post.scheduled_at)}
@@ -184,7 +184,7 @@ function PostRow({
             </span>
           )}
           {post.media_id && (
-            <span className="font-mono text-white/15">#{post.media_id.slice(-8)}</span>
+            <span className="font-mono text-ink-3/40">#{post.media_id.slice(-8)}</span>
           )}
         </div>
 
@@ -203,7 +203,7 @@ function PostRow({
             <button
               onClick={() => onCancel(post.id)}
               disabled={busy}
-              className="flex items-center gap-1 text-[11px] text-white/30 hover:text-white/60 transition-colors disabled:opacity-40"
+              className="flex items-center gap-1 text-[11px] text-ink-3 hover:text-ink-2 transition-colors disabled:opacity-40"
             >
               {busy ? <Loader2 size={9} className="animate-spin" /> : <X size={9} />}
               Cancelar
@@ -238,14 +238,14 @@ function PostRow({
 function RowSkeleton() {
   return (
     <div className="glass-card rounded-xl p-4 flex items-start gap-4 animate-pulse">
-      <div className="w-10 rounded-lg bg-white/[0.06] flex-shrink-0" style={{ aspectRatio: "9/16" }} />
+      <div className="w-10 rounded-lg bg-line-control/10 flex-shrink-0" style={{ aspectRatio: "9/16" }} />
       <div className="flex-1 space-y-2 pt-1">
         <div className="flex justify-between">
-          <div className="h-3 bg-white/[0.07] rounded-full w-28" />
-          <div className="h-4 bg-white/[0.05] rounded-full w-20" />
+          <div className="h-3 bg-line-control/20 rounded-full w-28" />
+          <div className="h-4 bg-surface-raised rounded-full w-20" />
         </div>
-        <div className="h-2.5 bg-white/[0.04] rounded-full w-48" />
-        <div className="h-2.5 bg-white/[0.04] rounded-full w-36" />
+        <div className="h-2.5 bg-surface-raised rounded-full w-48" />
+        <div className="h-2.5 bg-surface-raised rounded-full w-36" />
       </div>
     </div>
   );
@@ -355,7 +355,7 @@ export default function SchedulePage() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Agendamentos</h1>
-          <p className="text-sm text-white/35 mt-0.5">
+          <p className="text-sm text-ink-3 mt-0.5">
             {counts.all} total · {counts.pending} pendente{counts.pending !== 1 ? "s" : ""} · {counts.published} publicado{counts.published !== 1 ? "s" : ""}
             {counts.failed > 0 && <span className="text-red-400/70"> · {counts.failed} com falha</span>}
           </p>
@@ -379,14 +379,14 @@ export default function SchedulePage() {
                 "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors",
                 filter === key
                   ? "bg-[#00498D]/25 text-[#AFBDD0] border border-[#00498D]/30"
-                  : "text-white/35 hover:text-white/60 hover:bg-white/[0.04] border border-transparent"
+                  : "text-ink-3 hover:text-ink-2 hover:bg-surface-raised border border-transparent"
               )}
             >
               {TAB_LABELS[key]}
               {count > 0 && (
                 <span className={cn(
                   "text-[10px] px-1.5 py-px rounded-full",
-                  filter === key ? "bg-[#00498D]/30 text-[#AFBDD0]" : "bg-white/[0.06] text-white/30"
+                  filter === key ? "bg-[#00498D]/30 text-[#AFBDD0]" : "bg-line-control/10 text-ink-3"
                 )}>
                   {count}
                 </span>
@@ -407,18 +407,18 @@ export default function SchedulePage() {
           animate={{ opacity: 1 }}
           className="glass-card rounded-2xl flex flex-col items-center gap-4 py-20 text-center px-6"
         >
-          <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center">
+          <div className="w-14 h-14 rounded-2xl bg-surface-raised flex items-center justify-center">
             {filter === "all"
-              ? <CalendarClock size={24} className="text-white/20" />
-              : <AlertCircle size={24} className="text-white/20" />
+              ? <CalendarClock size={24} className="text-ink-3/50" />
+              : <AlertCircle size={24} className="text-ink-3/50" />
             }
           </div>
           <div className="space-y-1">
-            <p className="text-white/40 text-sm font-medium">
+            <p className="text-ink-3 text-sm font-medium">
               {filter === "all" ? "Nenhum post agendado" : `Nenhum post ${TAB_LABELS[filter].toLowerCase()}`}
             </p>
             {filter === "all" && (
-              <p className="text-white/20 text-xs max-w-xs">
+              <p className="text-ink-3/50 text-xs max-w-xs">
                 Crie agendamentos em massa na página Postagens para preencher sua fila.
               </p>
             )}

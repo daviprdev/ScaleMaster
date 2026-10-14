@@ -155,8 +155,8 @@ function SectionCard({ children, className }: { children: React.ReactNode; class
 function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 mb-4">
-      <Icon size={14} className="text-white/35" />
-      <span className="text-xs font-semibold uppercase tracking-widest text-white/35">{children}</span>
+      <Icon size={14} className="text-ink-3" />
+      <span className="text-xs font-semibold uppercase tracking-widest text-ink-3">{children}</span>
     </div>
   );
 }
@@ -190,7 +190,7 @@ function SingleMediaUpload({
         : `${(media.file.size / 1024 / 1024).toFixed(1)} MB`;
 
     return (
-      <div className="relative group rounded-2xl overflow-hidden border border-white/10 bg-black/30" style={{ aspectRatio: "9/16", maxHeight: 320 }}>
+      <div className="relative group rounded-2xl overflow-hidden border border-line-2 bg-black/30" style={{ aspectRatio: "9/16", maxHeight: 320 }}>
         {isVideo ? (
           <VideoThumb src={media.previewUrl} className="w-full h-full object-cover" />
         ) : (
@@ -206,14 +206,14 @@ function SingleMediaUpload({
             {isVideo ? "MP4" : "IMG"}
           </span>
           {isVideo && media.duration && (
-            <span className="px-2 py-1 rounded-md text-[10px] bg-black/60 text-white/60">{Math.round(media.duration)}s</span>
+            <span className="px-2 py-1 rounded-md text-[10px] bg-black/60 text-ink-2">{Math.round(media.duration)}s</span>
           )}
         </div>
         {media.status === "uploading" && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60">
             <div className="flex flex-col items-center gap-1.5">
               <Loader2 size={20} className="animate-spin text-[#85B9E9]" />
-              <span className="text-xs text-white/60">Enviando…</span>
+              <span className="text-xs text-ink-2">Enviando…</span>
             </div>
           </div>
         )}
@@ -239,7 +239,7 @@ function SingleMediaUpload({
           <Trash2 size={12} />
         </button>
         <div className="absolute bottom-0 left-0 right-0 px-2 py-1.5" style={{ background: "linear-gradient(transparent, rgba(0,0,0,0.75))" }}>
-          <p className="text-[10px] text-white/50 truncate">{sizeLabel}</p>
+          <p className="text-[10px] text-ink-2 truncate">{sizeLabel}</p>
         </div>
       </div>
     );
@@ -254,19 +254,19 @@ function SingleMediaUpload({
       onClick={() => inputRef.current?.click()}
       className={cn(
         "relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed cursor-pointer transition-all select-none py-10 px-6",
-        dragging ? "border-[#85B9E9]/60 bg-[#85B9E9]/5 scale-[1.01]" : "border-white/15 bg-white/[0.02] hover:border-[#85B9E9]/40 hover:bg-[#85B9E9]/[0.03]"
+        dragging ? "border-[#85B9E9]/60 bg-[#85B9E9]/5 scale-[1.01]" : "border-line-control bg-surface hover:border-accent/40 hover:bg-accent/[0.03]"
       )}
     >
       <input ref={inputRef} type="file" accept=".jpg,.jpeg,.png,.mp4" className="hidden"
         onChange={e => e.target.files && handleFile(e.target.files)} />
-      <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-all", dragging ? "bg-[#85B9E9]/20" : "bg-white/[0.06]")}>
-        <Upload size={22} className={dragging ? "text-[#85B9E9]" : "text-white/30"} />
+      <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-all", dragging ? "bg-[#85B9E9]/20" : "bg-line-control/15")}>
+        <Upload size={22} className={dragging ? "text-[#85B9E9]" : "text-ink-3"} />
       </div>
       <div className="text-center">
-        <p className={cn("text-sm font-medium transition-colors", dragging ? "text-[#85B9E9]" : "text-white/60")}>
+        <p className={cn("text-sm font-medium transition-colors", dragging ? "text-[#85B9E9]" : "text-ink-2")}>
           {dragging ? "Solte aqui" : "Clique para escolher"}
         </p>
-        <p className="text-xs text-white/25 mt-1">JPG, PNG, MP4 (máx. 60s)</p>
+        <p className="text-xs text-ink-3 mt-1">JPG, PNG, MP4 (máx. 60s)</p>
       </div>
     </div>
   );
@@ -292,7 +292,7 @@ function MediaLibrary({
 
   if (items.length === 0) {
     return (
-      <p className="text-white/20 text-xs text-center py-4">
+      <p className="text-ink-3/50 text-xs text-center py-4">
         Nada salvo ainda — toda foto/vídeo enviado aqui fica guardado para reusar depois.
       </p>
     );
@@ -309,7 +309,7 @@ function MediaLibrary({
             onClick={() => onSelect(item)}
             className={cn(
               "relative group rounded-lg overflow-hidden border cursor-pointer bg-black/30 transition-all",
-              isSelected ? "border-[#85B9E9]/60 ring-1 ring-[#85B9E9]/40" : "border-white/[0.08] hover:border-white/25"
+              isSelected ? "border-[#85B9E9]/60 ring-1 ring-[#85B9E9]/40" : "border-line hover:border-line-control"
             )}
             style={{ aspectRatio: "9/16" }}
           >
@@ -369,17 +369,17 @@ function HistoryPanel({
   return (
     <SectionCard className="flex flex-col max-h-[720px]">
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
-        <span className="text-xs font-semibold uppercase tracking-widest text-white/35">Histórico</span>
+        <span className="text-xs font-semibold uppercase tracking-widest text-ink-3">Histórico</span>
         <div className="flex items-center gap-2">
           <span className="text-[10px] px-2 py-1 rounded-lg bg-[#00498D]/10 text-[#00498D] border border-[#00498D]/20 font-mono">{published} ok</span>
           <span className="text-[10px] px-2 py-1 rounded-lg bg-[#85B9E9]/10 text-[#85B9E9] border border-[#85B9E9]/20 font-mono">{queued} em fila</span>
-          <button onClick={onRefresh} disabled={refreshing} className="text-white/30 hover:text-white/60 transition-colors disabled:opacity-40">
+          <button onClick={onRefresh} disabled={refreshing} className="text-ink-3 hover:text-ink-2 transition-colors disabled:opacity-40">
             <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
           </button>
           {items.length > 0 && (
             <button onClick={handleClear} disabled={clearingAll}
               className={cn("flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border transition-all",
-                confirmClear ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-white/[0.08] text-white/30 hover:text-red-400"
+                confirmClear ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-line text-ink-3 hover:text-red-400"
               )}>
               {clearingAll ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
               {confirmClear ? "Confirmar" : "Limpar tudo"}
@@ -393,40 +393,40 @@ function HistoryPanel({
           <div className="flex items-center justify-center py-16"><Loader2 size={20} className="animate-spin text-[#85B9E9]" /></div>
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <ImagePlay size={22} className="text-white/15 mb-2" />
-            <p className="text-white/25 text-xs">Nenhum story postado ainda</p>
+            <ImagePlay size={22} className="text-ink-3/40 mb-2" />
+            <p className="text-ink-3 text-xs">Nenhum story postado ainda</p>
           </div>
         ) : (
           <AnimatePresence initial={false}>
             {items.map(item => {
               const isVideo = item.video_url?.match(/\.(mp4|mov)(\?|$)/i);
-              let statusCls = "bg-white/10 text-white/40";
+              let statusCls = "bg-line-control/20 text-ink-3";
               let statusLabel: string = item.status;
               if (item.status === "published") { statusCls = "bg-[#00498D]/15 text-[#00498D]"; statusLabel = "Publicado"; }
               else if (item.status === "pending" || item.status === "publishing") { statusCls = "bg-[#85B9E9]/15 text-[#85B9E9]"; statusLabel = item.status === "pending" ? "Na fila" : "Publicando"; }
               else if (item.status === "failed") { statusCls = "bg-red-500/15 text-red-400"; statusLabel = "Falhou"; }
-              else { statusCls = "bg-white/10 text-white/30"; statusLabel = "Cancelado"; }
+              else { statusCls = "bg-line-control/20 text-ink-3"; statusLabel = "Cancelado"; }
 
               return (
                 <motion.div key={item.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                  className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  className="p-3 rounded-xl bg-surface-raised border border-line">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       {isVideo ? <Film size={12} className="text-[#85B9E9]/60 flex-shrink-0" /> : <Image size={12} className="text-[#00498D]/60 flex-shrink-0" />}
-                      <span className="text-sm text-white/70 truncate">@{item.instagram_accounts?.username ?? "conta removida"}</span>
+                      <span className="text-sm text-ink-2 truncate">@{item.instagram_accounts?.username ?? "conta removida"}</span>
                     </div>
                     <span className={cn("text-[9px] px-2 py-0.5 rounded-md font-semibold flex-shrink-0", statusCls)}>{statusLabel}</span>
                   </div>
                   <div className="flex items-center justify-between mt-2 gap-2">
                     <div className="min-w-0">
-                      <p className="text-[10px] text-white/25 truncate">
+                      <p className="text-[10px] text-ink-3 truncate">
                         {item.status === "published" ? `Publicado ${timeAgo(item.created_at)}` : formatDatetime(item.scheduled_at)}
                       </p>
-                      {item.media_id && <p className="text-[9px] text-white/15 font-mono truncate">ID: {item.media_id}</p>}
+                      {item.media_id && <p className="text-[9px] text-ink-3/40 font-mono truncate">ID: {item.media_id}</p>}
                       {item.error_message && <p className="text-[9px] text-red-400/70 truncate">{item.error_message}</p>}
                     </div>
                     <button onClick={() => onDeleteItem(item.id)} disabled={deletingId === item.id}
-                      className="text-white/20 hover:text-red-400 transition-colors flex-shrink-0">
+                      className="text-ink-3/50 hover:text-red-400 transition-colors flex-shrink-0">
                       {deletingId === item.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                     </button>
                   </div>
@@ -457,21 +457,21 @@ function TemplatesSection({
     <SectionCard>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <RefreshCw size={14} className="text-white/35" />
-          <span className="text-xs font-semibold uppercase tracking-widest text-white/35">Templates de Story</span>
+          <RefreshCw size={14} className="text-ink-3" />
+          <span className="text-xs font-semibold uppercase tracking-widest text-ink-3">Templates de Story</span>
         </div>
         <button onClick={onImportClick} className="btn-primary flex items-center gap-1.5 text-xs px-3 py-2">
           <Download size={12} /> Importar do IG
         </button>
       </div>
-      <p className="text-xs text-white/30 mb-4">Importe um story já postado e reposte em loop — mantém o story sempre ativo.</p>
+      <p className="text-xs text-ink-3 mb-4">Importe um story já postado e reposte em loop — mantém o story sempre ativo.</p>
 
       {loading ? (
         <div className="flex items-center justify-center py-10"><Loader2 size={18} className="animate-spin text-[#85B9E9]" /></div>
       ) : templates.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-10 text-center border border-dashed border-white/10 rounded-xl">
-          <Sparkles size={18} className="text-white/15 mb-2" />
-          <p className="text-white/25 text-xs">Nenhum template ainda. Importe um story ativo de uma conta.</p>
+        <div className="flex flex-col items-center justify-center py-10 text-center border border-dashed border-line-2 rounded-xl">
+          <Sparkles size={18} className="text-ink-3/40 mb-2" />
+          <p className="text-ink-3 text-xs">Nenhum template ainda. Importe um story ativo de uma conta.</p>
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -479,7 +479,7 @@ function TemplatesSection({
             const isVideo = t.media_type === "video";
             const isActive = t.status === "active";
             return (
-              <div key={t.id} className="rounded-xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
+              <div key={t.id} className="rounded-xl border border-line bg-surface overflow-hidden">
                 <div className="relative bg-black/30" style={{ aspectRatio: "9/16", maxHeight: 160 }}>
                   {isVideo ? (
                     <VideoThumb src={t.media_url} className="w-full h-full object-cover" />
@@ -488,23 +488,23 @@ function TemplatesSection({
                     <img src={t.media_url} alt="" className="w-full h-full object-cover" />
                   )}
                   <span className={cn("absolute top-1.5 left-1.5 text-[9px] px-1.5 py-0.5 rounded-md font-bold",
-                    isActive ? "bg-[#00498D]/20 text-[#00498D]" : "bg-white/15 text-white/50")}>
+                    isActive ? "bg-[#00498D]/20 text-[#00498D]" : "bg-line-control/30 text-ink-2")}>
                     {isActive ? "Ativo" : "Pausado"}
                   </span>
                 </div>
                 <div className="p-2.5 space-y-1.5">
-                  <p className="text-[10px] text-white/40">De @{t.instagram_accounts?.username ?? "?"} → {t.story_template_accounts.length} conta{t.story_template_accounts.length !== 1 ? "s" : ""}</p>
-                  <p className="text-[10px] text-white/25">A cada {t.interval_minutes >= 60 ? `${Math.round(t.interval_minutes / 60)}h` : `${t.interval_minutes}min`}
+                  <p className="text-[10px] text-ink-3">De @{t.instagram_accounts?.username ?? "?"} → {t.story_template_accounts.length} conta{t.story_template_accounts.length !== 1 ? "s" : ""}</p>
+                  <p className="text-[10px] text-ink-3">A cada {t.interval_minutes >= 60 ? `${Math.round(t.interval_minutes / 60)}h` : `${t.interval_minutes}min`}
                     {t.last_posted_at ? ` · último ${timeAgo(t.last_posted_at)}` : " · aguardando 1º ciclo"}</p>
                   {t.last_error && <p className="text-[9px] text-red-400/70 truncate">{t.last_error}</p>}
                   <div className="flex items-center gap-1.5 pt-1">
                     <button onClick={() => onToggle(t)} disabled={togglingId === t.id}
-                      className="flex-1 flex items-center justify-center gap-1 text-[10px] px-2 py-1.5 rounded-lg border border-white/[0.08] text-white/50 hover:text-white/80 transition-all">
+                      className="flex-1 flex items-center justify-center gap-1 text-[10px] px-2 py-1.5 rounded-lg border border-line text-ink-2 hover:text-ink transition-all">
                       {togglingId === t.id ? <Loader2 size={10} className="animate-spin" /> : isActive ? <Pause size={10} /> : <Play size={10} />}
                       {isActive ? "Pausar" : "Retomar"}
                     </button>
                     <button onClick={() => onDelete(t.id)} disabled={deletingId === t.id}
-                      className="px-2 py-1.5 rounded-lg border border-white/[0.08] text-white/30 hover:text-red-400 transition-all">
+                      className="px-2 py-1.5 rounded-lg border border-line text-ink-3 hover:text-red-400 transition-all">
                       {deletingId === t.id ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
                     </button>
                   </div>
@@ -592,19 +592,19 @@ function ImportTemplateModal({
         <div className="glass rounded-2xl border border-[#85B9E9]/20 w-full max-w-sm p-5 space-y-4 pointer-events-auto max-h-[85vh] overflow-y-auto">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-white">Importar Template de Story</h3>
-            <button onClick={onClose} className="text-white/30 hover:text-white/60"><X size={16} /></button>
+            <button onClick={onClose} className="text-ink-3 hover:text-ink-2"><X size={16} /></button>
           </div>
 
           {step === "source" ? (
             <>
-              <p className="text-xs text-white/40">Escolha a conta que tem o story ativo que você quer manter em loop.</p>
+              <p className="text-xs text-ink-3">Escolha a conta que tem o story ativo que você quer manter em loop.</p>
               <div className="max-h-64 overflow-y-auto space-y-1.5">
                 {accounts.map(acc => {
                   const withStory = (storiesMap?.[acc.id]?.count ?? 0) > 0;
                   return (
                     <button key={acc.id} onClick={() => setSourceAccountId(acc.id)}
                       className={cn("w-full flex items-center gap-2 px-3 py-2 rounded-lg border transition-all text-left",
-                        sourceAccountId === acc.id ? "border-[#85B9E9]/40 bg-[#85B9E9]/8 text-[#85B9E9]" : "border-white/[0.08] text-white/60 hover:border-white/20")}>
+                        sourceAccountId === acc.id ? "border-[#85B9E9]/40 bg-[#85B9E9]/8 text-[#85B9E9]" : "border-line text-ink-2 hover:border-line-control")}>
                       <span className={cn("relative flex-shrink-0 rounded-full", withStory && "p-[1.5px] bg-gradient-to-tr from-[#00498D] to-[#85B9E9]")}>
                         {acc.avatar_url
                           ? <img src={acc.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover block" />
@@ -631,14 +631,14 @@ function ImportTemplateModal({
                 <CheckCircle2 size={13} /> Importado de @{imported?.source_username}
               </div>
               <div>
-                <p className="text-xs text-white/40 font-medium mb-2 uppercase tracking-wider">Repostar para</p>
+                <p className="text-xs text-ink-3 font-medium mb-2 uppercase tracking-wider">Repostar para</p>
                 <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
                   {accounts.map(acc => {
                     const selected = targetAccountIds.includes(acc.id);
                     return (
                       <button key={acc.id} onClick={() => setTargetAccountIds(prev => selected ? prev.filter(id => id !== acc.id) : [...prev, acc.id])}
                         className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all",
-                          selected ? "border-[#85B9E9]/40 bg-[#85B9E9]/8 text-[#85B9E9]" : "border-white/[0.08] text-white/55 hover:border-white/20")}>
+                          selected ? "border-[#85B9E9]/40 bg-[#85B9E9]/8 text-[#85B9E9]" : "border-line text-ink-2 hover:border-line-control")}>
                         <span className="text-xs font-medium">@{acc.username}</span>
                         {selected && <Check size={9} className="text-[#85B9E9]" strokeWidth={3} />}
                       </button>
@@ -647,14 +647,14 @@ function ImportTemplateModal({
                 </div>
               </div>
               <div>
-                <p className="text-xs text-white/40 font-medium mb-2 uppercase tracking-wider">Repostar a cada</p>
+                <p className="text-xs text-ink-3 font-medium mb-2 uppercase tracking-wider">Repostar a cada</p>
                 <div className="flex gap-2">
                   {[
                     { label: "12h", v: 720 }, { label: "18h", v: 1080}, { label: "23h", v: 1380 },
                   ].map(opt => (
                     <button key={opt.v} onClick={() => setIntervalMinutes(opt.v)}
                       className={cn("flex-1 py-2 rounded-lg border text-xs font-semibold transition-all",
-                        intervalMinutes === opt.v ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30" : "bg-white/[0.04] text-white/40 border-white/[0.07]")}>
+                        intervalMinutes === opt.v ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30" : "bg-surface-raised text-ink-3 border-line")}>
                       {opt.label}
                     </button>
                   ))}
@@ -1058,10 +1058,10 @@ export default function StoriesPage() {
             <SectionLabel Icon={Upload}>Mídia (foto ou vídeo)</SectionLabel>
             <SingleMediaUpload media={media} onAdd={handleAddMedia} onRemove={handleRemoveMedia} />
 
-            <div className="mt-5 pt-4 border-t border-white/[0.06]">
+            <div className="mt-5 pt-4 border-t border-line">
               <div className="flex items-center gap-2 mb-3">
-                <ImagePlay size={12} className="text-white/30" />
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-white/30">
+                <ImagePlay size={12} className="text-ink-3" />
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-ink-3">
                   Biblioteca — mídias já enviadas antes
                 </span>
               </div>
@@ -1080,9 +1080,9 @@ export default function StoriesPage() {
           <SectionCard>
             <SectionLabel Icon={Sparkles}>Modelo (obrigatório)</SectionLabel>
             {loadingAccounts ? (
-              <div className="flex items-center gap-2 text-white/30 text-sm py-2"><Loader2 size={14} className="animate-spin" /> Carregando...</div>
+              <div className="flex items-center gap-2 text-ink-3 text-sm py-2"><Loader2 size={14} className="animate-spin" /> Carregando...</div>
             ) : foldersWithAccounts.length === 0 ? (
-              <p className="text-white/25 text-sm py-2">
+              <p className="text-ink-3 text-sm py-2">
                 Nenhuma pasta de contas encontrada. <a href="/dashboard/accounts" className="text-[#85B9E9] hover:underline">Criar pasta</a>
               </p>
             ) : (
@@ -1090,7 +1090,7 @@ export default function StoriesPage() {
                 {foldersWithAccounts.map(f => (
                   <button key={f.id} onClick={() => handleSelectFolder(f.id)}
                     className={cn("flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-all",
-                      selectedFolderId === f.id ? "border-[#85B9E9]/40 bg-[#85B9E9]/10 text-[#85B9E9]" : "border-white/[0.08] text-white/50 hover:border-white/20")}>
+                      selectedFolderId === f.id ? "border-[#85B9E9]/40 bg-[#85B9E9]/10 text-[#85B9E9]" : "border-line text-ink-2 hover:border-line-control")}>
                     {f.id === "__no_folder__" ? "📂" : "📁"} {f.name}
                     <span className="text-[10px] opacity-50">({f.accounts.length})</span>
                   </button>
@@ -1106,8 +1106,8 @@ export default function StoriesPage() {
           <SectionCard>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Users size={14} className="text-white/35" />
-                <span className="text-xs font-semibold uppercase tracking-widest text-white/35">
+                <Users size={14} className="text-ink-3" />
+                <span className="text-xs font-semibold uppercase tracking-widest text-ink-3">
                   Contas ({selectedAccountIds.length}/{selectedFolder?.accounts.length ?? 0})
                 </span>
               </div>
@@ -1117,21 +1117,21 @@ export default function StoriesPage() {
                     <>
                       <button onClick={() => setSelectedAccountIds(selectedFolder.accounts.filter(a => !hasActiveStory(a.id)).map(a => a.id))}
                         className="text-xs text-amber-400/70 hover:text-amber-400 transition-colors">Sem story</button>
-                      <span className="text-white/15 text-xs">·</span>
+                      <span className="text-ink-3/40 text-xs">·</span>
                     </>
                   )}
                   <button onClick={() => setSelectedAccountIds(selectedFolder.accounts.map(a => a.id))} className="text-xs text-[#00498D]/70 hover:text-[#00498D] transition-colors">Todas</button>
-                  <span className="text-white/15 text-xs">·</span>
-                  <button onClick={() => setSelectedAccountIds([])} className="text-xs text-white/30 hover:text-white/60 transition-colors">Limpar</button>
+                  <span className="text-ink-3/40 text-xs">·</span>
+                  <button onClick={() => setSelectedAccountIds([])} className="text-xs text-ink-3 hover:text-ink-2 transition-colors">Limpar</button>
                   <button onClick={fetchActiveStories} disabled={loadingStories} title="Verificar stories ativos agora"
-                    className="text-white/30 hover:text-white/60 transition-colors disabled:opacity-40">
+                    className="text-ink-3 hover:text-ink-2 transition-colors disabled:opacity-40">
                     <RefreshCw size={12} className={loadingStories ? "animate-spin" : ""} />
                   </button>
                 </div>
               )}
             </div>
             {selectedFolder && loadingStories && !storiesMap && (
-              <div className="flex items-center gap-2 mb-3 text-[10px] text-white/30">
+              <div className="flex items-center gap-2 mb-3 text-[10px] text-ink-3">
                 <Loader2 size={10} className="animate-spin" /> Verificando quais contas já têm story ativo…
               </div>
             )}
@@ -1141,14 +1141,14 @@ export default function StoriesPage() {
                   <span className="w-2 h-2 rounded-full bg-gradient-to-tr from-[#00498D] to-[#85B9E9]" />
                   {folderWithStoryCount} com story ativo
                 </span>
-                <span className="flex items-center gap-1.5 text-white/35">
-                  <span className="w-2 h-2 rounded-full bg-white/20" />
+                <span className="flex items-center gap-1.5 text-ink-3">
+                  <span className="w-2 h-2 rounded-full bg-line-control/30" />
                   {selectedFolder.accounts.length - folderWithStoryCount} sem story
                 </span>
               </div>
             )}
             {!selectedFolder ? (
-              <p className="text-white/25 text-sm py-4 text-center">Selecione um modelo acima</p>
+              <p className="text-ink-3 text-sm py-4 text-center">Selecione um modelo acima</p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {selectedFolder.accounts.map(acc => {
@@ -1158,7 +1158,7 @@ export default function StoriesPage() {
                     <button key={acc.id} onClick={() => toggleAccount(acc.id)}
                       title={storiesMap ? (withStory ? `${storiesMap[acc.id]?.count ?? 1} story ativo` : "Sem story ativo") : undefined}
                       className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all",
-                        isSelected ? "border-[#85B9E9]/40 bg-[#85B9E9]/8 text-[#85B9E9]" : "border-white/[0.08] text-white/55 hover:border-white/20")}>
+                        isSelected ? "border-[#85B9E9]/40 bg-[#85B9E9]/8 text-[#85B9E9]" : "border-line text-ink-2 hover:border-line-control")}>
                       <span className={cn("relative flex-shrink-0 rounded-full", withStory && "p-[1.5px] bg-gradient-to-tr from-[#00498D] to-[#85B9E9]")}>
                         {acc.avatar_url
                           ? <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover block" />
@@ -1181,9 +1181,9 @@ export default function StoriesPage() {
               placeholder="https://exemplo.com (opcional)"
               value={storyLinkUrl}
               onChange={(e) => setStoryLinkUrl(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-sm text-white/90 placeholder:text-white/25 focus:border-[#85B9E9]/40 focus:outline-none transition-colors"
+              className="w-full px-3 py-2 rounded-lg bg-surface-raised border border-line text-sm text-ink placeholder:text-ink-3 focus:border-[#85B9E9]/40 focus:outline-none transition-colors"
             />
-            <p className="mt-1 text-[10px] text-white/30">URL externa anexada ao Story como sticker de link.</p>
+            <p className="mt-1 text-[10px] text-ink-3">URL externa anexada ao Story como sticker de link.</p>
           </SectionCard>
 
           <SectionCard>
@@ -1193,7 +1193,7 @@ export default function StoriesPage() {
           {/* Nota */}
           <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-[#85B9E9]/[0.04] border border-[#85B9E9]/15">
             <ImagePlay size={14} className="text-[#85B9E9]/60 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-white/40 leading-relaxed">
+            <p className="text-xs text-ink-3 leading-relaxed">
               <span className="text-[#85B9E9]/70 font-medium">Stories não suportam legendas</span> pela API do Instagram.
               Publica em até 1 minuto e expira automaticamente em 24 horas.
             </p>

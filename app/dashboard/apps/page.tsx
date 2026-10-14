@@ -51,7 +51,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={copy}
-      className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 transition-colors flex-shrink-0"
+      className="flex items-center gap-1 text-[10px] text-ink-3 hover:text-ink-2 transition-colors flex-shrink-0"
     >
       {copied ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
       {copied ? "Copiado!" : "Copiar"}
@@ -115,7 +115,7 @@ function AppFormModal({
             </div>
             <button
               onClick={onClose}
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink-2 hover:bg-line-control/15 transition-colors"
             >
               <X size={15} />
             </button>
@@ -136,32 +136,32 @@ function AppFormModal({
 
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <label className="block text-[10px] font-semibold text-white/35 uppercase tracking-widest">
+              <label className="block text-[10px] font-semibold text-ink-3 uppercase tracking-widest">
                 Nome do App *
               </label>
               <input
                 value={form.app_name}
                 onChange={(e) => set("app_name", e.target.value)}
                 placeholder="ex: Meu App de Produção"
-                className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 placeholder:text-white/20 text-sm px-4 py-2.5 outline-none focus:border-[#00498D]/40 focus:bg-white/[0.06] transition-all"
+                className="w-full rounded-xl bg-surface-raised border border-line text-ink placeholder:text-ink-3/50 text-sm px-4 py-2.5 outline-none focus:border-[#00498D]/40 focus:bg-line-control/15 transition-all"
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-[10px] font-semibold text-white/35 uppercase tracking-widest">
+              <label className="block text-[10px] font-semibold text-ink-3 uppercase tracking-widest">
                 Instagram App ID *
               </label>
               <input
                 value={form.ig_app_id}
                 onChange={(e) => set("ig_app_id", e.target.value)}
                 placeholder="ex: 1234567890"
-                className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 placeholder:text-white/20 text-sm px-4 py-2.5 outline-none focus:border-[#00498D]/40 focus:bg-white/[0.06] transition-all font-mono"
+                className="w-full rounded-xl bg-surface-raised border border-line text-ink placeholder:text-ink-3/50 text-sm px-4 py-2.5 outline-none focus:border-[#00498D]/40 focus:bg-line-control/15 transition-all font-mono"
               />
             </div>
             <div className="space-y-1.5">
-              <label className="block text-[10px] font-semibold text-white/35 uppercase tracking-widest">
+              <label className="block text-[10px] font-semibold text-ink-3 uppercase tracking-widest">
                 App Secret{" "}
                 {isEdit && (
-                  <span className="normal-case tracking-normal text-white/20">
+                  <span className="normal-case tracking-normal text-ink-3/50">
                     (vazio = mantém atual)
                   </span>
                 )}
@@ -172,12 +172,12 @@ function AppFormModal({
                   value={form.ig_app_secret}
                   onChange={(e) => set("ig_app_secret", e.target.value)}
                   placeholder={isEdit ? "••••••••••••••••" : "Cole o App Secret aqui"}
-                  className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 placeholder:text-white/20 text-sm px-4 py-2.5 pr-10 outline-none focus:border-[#00498D]/40 focus:bg-white/[0.06] transition-all font-mono"
+                  className="w-full rounded-xl bg-surface-raised border border-line text-ink placeholder:text-ink-3/50 text-sm px-4 py-2.5 pr-10 outline-none focus:border-[#00498D]/40 focus:bg-line-control/15 transition-all font-mono"
                 />
                 <button
                   type="button"
                   onClick={() => setShowSecret((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/50 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-3 hover:text-ink-2 transition-colors"
                 >
                   {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
@@ -210,7 +210,7 @@ function AppFormModal({
             </button>
             <button
               onClick={onClose}
-              className="btn-ghost px-4 text-sm text-white/40 hover:text-white/70"
+              className="btn-ghost px-4 text-sm text-ink-3 hover:text-ink-2"
             >
               Cancelar
             </button>
@@ -245,19 +245,19 @@ function AppsTable({
   }
 
   return (
-    <div className="rounded-2xl border border-white/[0.07] overflow-hidden">
+    <div className="rounded-2xl border border-line overflow-hidden">
       {/* Table header — hidden on mobile, cards stack instead */}
-      <div className="hidden md:grid grid-cols-[2fr_2fr_1.5fr_160px] gap-0 px-6 py-3 bg-white/[0.03] border-b border-white/[0.06]">
-        <span className="text-[10px] font-semibold text-white/30 uppercase tracking-widest">
+      <div className="hidden md:grid grid-cols-[2fr_2fr_1.5fr_160px] gap-0 px-6 py-3 bg-surface-raised border-b border-line">
+        <span className="text-[10px] font-semibold text-ink-3 uppercase tracking-widest">
           Nome do App
         </span>
-        <span className="text-[10px] font-semibold text-white/30 uppercase tracking-widest">
+        <span className="text-[10px] font-semibold text-ink-3 uppercase tracking-widest">
           IG App ID
         </span>
-        <span className="text-[10px] font-semibold text-white/30 uppercase tracking-widest">
+        <span className="text-[10px] font-semibold text-ink-3 uppercase tracking-widest">
           App Secret
         </span>
-        <span className="text-[10px] font-semibold text-white/30 uppercase tracking-widest text-right">
+        <span className="text-[10px] font-semibold text-ink-3 uppercase tracking-widest text-right">
           Ações
         </span>
       </div>
@@ -278,8 +278,8 @@ function AppsTable({
               transition={{ duration: 0.18, delay: idx * 0.04 }}
               className={cn(
                 "grid grid-cols-1 md:grid-cols-[2fr_2fr_1.5fr_160px] gap-3 md:gap-0 items-center px-4 md:px-6 py-4 group",
-                idx < apps.length - 1 ? "border-b border-white/[0.04]" : "",
-                "hover:bg-white/[0.025] transition-colors"
+                idx < apps.length - 1 ? "border-b border-line" : "",
+                "hover:bg-surface-hover transition-colors"
               )}
             >
               {/* Nome */}
@@ -288,10 +288,10 @@ function AppsTable({
                   <KeyRound size={14} className="text-[#85B9E9]" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-white/85 truncate">
+                  <p className="text-sm font-semibold text-ink truncate">
                     {app.app_name}
                   </p>
-                  <p className="text-[10px] text-white/25 mt-0.5">
+                  <p className="text-[10px] text-ink-3 mt-0.5">
                     {new Date(app.created_at).toLocaleDateString("pt-BR")}
                   </p>
                 </div>
@@ -309,7 +309,7 @@ function AppsTable({
                 <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => toggleReveal(app.id)}
-                    className="text-white/25 hover:text-white/60 transition-colors"
+                    className="text-ink-3 hover:text-ink-2 transition-colors"
                     title={revealed ? "Ocultar" : "Revelar"}
                   >
                     {revealed ? <EyeOff size={11} /> : <Eye size={11} />}
@@ -320,11 +320,11 @@ function AppsTable({
 
               {/* Secret */}
               <div className="flex items-center gap-2 pr-6">
-                <Lock size={11} className="text-white/20 flex-shrink-0" />
-                <span className="text-[11px] text-white/20 font-mono tracking-widest">
+                <Lock size={11} className="text-ink-3/50 flex-shrink-0" />
+                <span className="text-[11px] text-ink-3/50 font-mono tracking-widest">
                   ••••••••••••••
                 </span>
-                <span className="text-[9px] text-white/15 italic hidden sm:block">
+                <span className="text-[9px] text-ink-3/40 italic hidden sm:block">
                   cifrado
                 </span>
               </div>
@@ -349,7 +349,7 @@ function AppsTable({
                     </button>
                     <button
                       onClick={() => setConfirmDeleteId(null)}
-                      className="text-[11px] text-white/30 hover:text-white/60 transition-colors"
+                      className="text-[11px] text-ink-3 hover:text-ink-2 transition-colors"
                     >
                       Cancelar
                     </button>
@@ -358,14 +358,14 @@ function AppsTable({
                   <>
                     <button
                       onClick={() => onEdit(app)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-white/25 hover:text-[#85B9E9] hover:bg-[#00498D]/10 transition-colors"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-3 hover:text-[#85B9E9] hover:bg-[#00498D]/10 transition-colors"
                       title="Editar"
                     >
                       <Edit2 size={13} />
                     </button>
                     <button
                       onClick={() => setConfirmDeleteId(app.id)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-white/20 hover:text-red-400 hover:bg-red-500/[0.08] transition-colors"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-3/50 hover:text-red-400 hover:bg-red-500/[0.08] transition-colors"
                       title="Excluir"
                     >
                       <Trash2 size={13} />
@@ -384,23 +384,23 @@ function AppsTable({
 // ── TableSkeleton ─────────────────────────────────────────────
 function TableSkeleton() {
   return (
-    <div className="rounded-2xl border border-white/[0.07] overflow-hidden animate-pulse">
-      <div className="hidden md:grid grid-cols-4 gap-4 px-6 py-3 bg-white/[0.03] border-b border-white/[0.06]">
+    <div className="rounded-2xl border border-line overflow-hidden animate-pulse">
+      <div className="hidden md:grid grid-cols-4 gap-4 px-6 py-3 bg-surface-raised border-b border-line">
         {[40, 35, 30, 20].map((w, i) => (
-          <div key={i} style={{ width: `${w}%` }} className="h-2 bg-white/[0.07] rounded-full" />
+          <div key={i} style={{ width: `${w}%` }} className="h-2 bg-line-control/20 rounded-full" />
         ))}
       </div>
       {[1, 2, 3].map((i) => (
-        <div key={i} className="grid grid-cols-1 md:grid-cols-4 gap-2 md:gap-4 px-4 md:px-6 py-3 md:py-4 border-b border-white/[0.04] last:border-0">
+        <div key={i} className="grid grid-cols-1 md:grid-cols-4 gap-2 md:gap-4 px-4 md:px-6 py-3 md:py-4 border-b border-line last:border-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/[0.06] flex-shrink-0" />
+            <div className="w-9 h-9 rounded-xl bg-line-control/15 flex-shrink-0" />
             <div className="space-y-1.5 flex-1">
-              <div className="h-2.5 bg-white/[0.07] rounded-full w-3/4" />
-              <div className="h-2 bg-white/[0.04] rounded-full w-1/2" />
+              <div className="h-2.5 bg-line-control/20 rounded-full w-3/4" />
+              <div className="h-2 bg-surface-raised rounded-full w-1/2" />
             </div>
           </div>
           {[60, 50, 30].map((w, j) => (
-            <div key={j} style={{ width: `${w}%` }} className="h-2.5 bg-white/[0.05] rounded-full self-center" />
+            <div key={j} style={{ width: `${w}%` }} className="h-2.5 bg-line-control/10 rounded-full self-center" />
           ))}
         </div>
       ))}
@@ -463,11 +463,11 @@ function HowToGuide() {
       animate={{ opacity: 1, y: 0 }}
       className="space-y-4 max-w-3xl"
     >
-      <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] px-5 py-4 flex items-start gap-3">
+      <div className="rounded-xl border border-line bg-surface px-5 py-4 flex items-start gap-3">
         <Info size={15} className="text-[#85B9E9] mt-0.5 flex-shrink-0" />
-        <p className="text-sm text-white/45 leading-relaxed">
+        <p className="text-sm text-ink-3 leading-relaxed">
           O modelo{" "}
-          <strong className="text-white/70">BYOC (Bring Your Own Credentials)</strong> permite usar
+          <strong className="text-ink-2">BYOC (Bring Your Own Credentials)</strong> permite usar
           suas próprias credenciais do Meta Developers — total controle sobre dados e permissões das
           suas contas Instagram.
         </p>
@@ -487,23 +487,23 @@ function HowToGuide() {
                 <span className={cn("text-xs font-black font-mono tracking-wider", step.numColor)}>
                   {step.num}
                 </span>
-                <h3 className="text-sm font-bold text-white/90">{step.title}</h3>
+                <h3 className="text-sm font-bold text-ink">{step.title}</h3>
               </div>
               {"link" in step && step.link && (
                 <a
                   href={step.link.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-[11px] text-white/30 hover:text-white/60 transition-colors flex-shrink-0"
+                  className="flex items-center gap-1 text-[11px] text-ink-3 hover:text-ink-2 transition-colors flex-shrink-0"
                 >
                   <ExternalLink size={10} />
                   {step.link.label}
                 </a>
               )}
             </div>
-            <p className="text-xs text-white/45 leading-relaxed pl-9">{step.body}</p>
+            <p className="text-xs text-ink-3 leading-relaxed pl-9">{step.body}</p>
             {"extra" in step && step.extra && (
-              <div className="ml-9 flex items-center gap-2 rounded-lg bg-black/25 border border-white/[0.06] px-3 py-2">
+              <div className="ml-9 flex items-center gap-2 rounded-lg bg-black/25 border border-line px-3 py-2">
                 <code className="flex-1 text-[11px] text-cyan-300 font-mono break-all">
                   {step.extra}
                 </code>
@@ -619,7 +619,7 @@ export default function AppsPage() {
       >
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Meus Apps Meta</h1>
-          <p className="text-sm text-white/35 mt-1">
+          <p className="text-sm text-ink-3 mt-1">
             Gerencie as credenciais do Meta Developers para conectar suas contas Instagram.
           </p>
         </div>
@@ -649,7 +649,7 @@ export default function AppsPage() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.06 }}
-        className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06] w-fit"
+        className="flex items-center gap-1 p-1 rounded-xl bg-surface-raised border border-line w-fit"
       >
         {(
           [
@@ -664,7 +664,7 @@ export default function AppsPage() {
               "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
               activeTab === tab.id
                 ? "bg-[#00498D]/25 text-[#AFBDD0] border border-[#00498D]/30 shadow-[0_0_12px_rgba(139,92,246,0.15)]"
-                : "text-white/40 hover:text-white/70 hover:bg-white/[0.04]"
+                : "text-ink-3 hover:text-ink-2 hover:bg-surface-raised"
             )}
           >
             <tab.icon size={14} className="flex-shrink-0" />
@@ -686,7 +686,7 @@ export default function AppsPage() {
             <span className="flex-1">{pageError}</span>
             <button
               onClick={() => setPageError(null)}
-              className="text-white/25 hover:text-white/50 transition-colors"
+              className="text-ink-3 hover:text-ink-2 transition-colors"
             >
               <X size={13} />
             </button>
@@ -712,12 +712,12 @@ export default function AppsPage() {
                 animate={{ opacity: 1 }}
                 className="glass-card rounded-2xl flex flex-col items-center gap-4 py-20 text-center px-6"
               >
-                <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center">
-                  <KeyRound size={24} className="text-white/20" />
+                <div className="w-14 h-14 rounded-2xl bg-surface-raised flex items-center justify-center">
+                  <KeyRound size={24} className="text-ink-3/50" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white/50 text-sm font-semibold">Nenhum app cadastrado</p>
-                  <p className="text-white/25 text-xs max-w-xs leading-relaxed">
+                  <p className="text-ink-2 text-sm font-semibold">Nenhum app cadastrado</p>
+                  <p className="text-ink-3 text-xs max-w-xs leading-relaxed">
                     Cadastre as credenciais do seu app Meta para conectar contas Instagram.
                   </p>
                 </div>
@@ -734,7 +734,7 @@ export default function AppsPage() {
                   </motion.button>
                   <button
                     onClick={() => setActiveTab("guide")}
-                    className="btn-ghost text-sm px-4 py-2.5 flex items-center gap-2 text-white/50"
+                    className="btn-ghost text-sm px-4 py-2.5 flex items-center gap-2 text-ink-2"
                   >
                     <BookOpen size={14} /> Como configurar
                   </button>

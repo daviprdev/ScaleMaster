@@ -104,7 +104,7 @@ function StepBadge({ n, done }: { n: number; done: boolean }) {
   return (
     <span className={cn(
       "w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 transition-colors",
-      done ? "bg-[#00498D] text-white" : "bg-white/[0.08] text-white/35"
+      done ? "bg-[#00498D] text-white" : "bg-line-control/20 text-ink-3"
     )}>
       {done ? <Check size={11} /> : n}
     </span>
@@ -135,7 +135,7 @@ function VideosSkeleton() {
   return (
     <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2">
       {Array.from({ length: 8 }, (_, i) => (
-        <div key={i} className="aspect-[9/16] rounded-xl bg-white/[0.05] animate-pulse" />
+        <div key={i} className="aspect-[9/16] rounded-xl bg-surface-raised animate-pulse" />
       ))}
     </div>
   );
@@ -145,7 +145,7 @@ function AccountsSkeleton() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
       {[1, 2, 3].map(i => (
-        <div key={i} className="h-14 rounded-xl bg-white/[0.04] animate-pulse" />
+        <div key={i} className="h-14 rounded-xl bg-surface-raised animate-pulse" />
       ))}
     </div>
   );
@@ -342,13 +342,13 @@ export default function PostsPage() {
           transition={{ delay: 0.3 }}
           className="space-y-1 mb-8"
         >
-          <p className="text-white/45 text-sm">
+          <p className="text-ink-3 text-sm">
             {selectedAccountIds.size} conta{selectedAccountIds.size !== 1 ? "s" : ""} ·{" "}
             {success.batches} lote{success.batches !== 1 ? "s" : ""} por conta ·{" "}
             {selectedVideoIds.size} vídeo{selectedVideoIds.size !== 1 ? "s" : ""}
           </p>
           {success.endDate && (
-            <p className="text-white/30 text-xs">
+            <p className="text-ink-3 text-xs">
               Último lote em {success.endDate}
             </p>
           )}
@@ -379,7 +379,7 @@ export default function PostsPage() {
       {/* Cabeçalho */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold tracking-tight text-white">Agendamento em Massa</h1>
-        <p className="text-sm text-white/35 mt-0.5">
+        <p className="text-sm text-ink-3 mt-0.5">
           Distribua vídeos para múltiplas contas em lotes automáticos e embaralhados
         </p>
       </motion.div>
@@ -389,7 +389,7 @@ export default function PostsPage() {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
             <StepBadge n={1} done={selectedVideoIds.size > 0} />
-            <h2 className="font-semibold text-white/90 text-sm">Selecionar Vídeos</h2>
+            <h2 className="font-semibold text-ink text-sm">Selecionar Vídeos</h2>
             {selectedVideoIds.size > 0 && (
               <span className="text-[10px] bg-[#00498D]/20 text-[#AFBDD0] px-2 py-0.5 rounded-full font-medium">
                 {selectedVideoIds.size} selecionado{selectedVideoIds.size !== 1 ? "s" : ""}
@@ -408,7 +408,7 @@ export default function PostsPage() {
             {selectedVideoIds.size > 0 && (
               <button
                 onClick={clearVideos}
-                className="text-[11px] text-white/30 hover:text-white/55 transition-colors"
+                className="text-[11px] text-ink-3 hover:text-ink-2 transition-colors"
               >
                 Limpar
               </button>
@@ -420,10 +420,10 @@ export default function PostsPage() {
           <VideosSkeleton />
         ) : videos.length === 0 ? (
           <div className="flex flex-col items-center gap-2.5 py-12">
-            <div className="w-12 h-12 rounded-2xl bg-white/[0.04] flex items-center justify-center">
-              <Play size={20} className="text-white/20" />
+            <div className="w-12 h-12 rounded-2xl bg-surface-raised flex items-center justify-center">
+              <Play size={20} className="text-ink-3/50" />
             </div>
-            <p className="text-white/30 text-sm">Nenhum vídeo na biblioteca.</p>
+            <p className="text-ink-3 text-sm">Nenhum vídeo na biblioteca.</p>
             <a
               href="/dashboard/library"
               className="text-xs text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
@@ -444,7 +444,7 @@ export default function PostsPage() {
                     "border-2",
                     sel
                       ? "border-[#00498D] ring-2 ring-[#00498D]/20 scale-[0.98]"
-                      : "border-transparent hover:border-white/20"
+                      : "border-transparent hover:border-line-control"
                   )}
                 >
                   <div
@@ -454,7 +454,7 @@ export default function PostsPage() {
                     )}
                   >
                     {video.duration != null && (
-                      <span className="absolute bottom-1 right-1 text-[9px] bg-black/60 text-white/70 px-1 py-0.5 rounded leading-tight">
+                      <span className="absolute bottom-1 right-1 text-[9px] bg-black/60 text-ink-2 px-1 py-0.5 rounded leading-tight">
                         {formatDuration(video.duration)}
                       </span>
                     )}
@@ -467,7 +467,7 @@ export default function PostsPage() {
                     )}
                   </div>
                   <div className="px-1 py-1 bg-black/25">
-                    <p className="text-[9px] text-white/35 truncate leading-tight">
+                    <p className="text-[9px] text-ink-3 truncate leading-tight">
                       @{video.owner_username ?? "—"}
                     </p>
                   </div>
@@ -483,7 +483,7 @@ export default function PostsPage() {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
             <StepBadge n={2} done={selectedAccountIds.size > 0} />
-            <h2 className="font-semibold text-white/90 text-sm">Selecionar Contas</h2>
+            <h2 className="font-semibold text-ink text-sm">Selecionar Contas</h2>
             {selectedAccountIds.size > 0 && (
               <span className="text-[10px] bg-[#00498D]/20 text-[#AFBDD0] px-2 py-0.5 rounded-full font-medium">
                 {selectedAccountIds.size} selecionada{selectedAccountIds.size !== 1 ? "s" : ""}
@@ -502,7 +502,7 @@ export default function PostsPage() {
             {selectedAccountIds.size > 0 && (
               <button
                 onClick={clearAccounts}
-                className="text-[11px] text-white/30 hover:text-white/55 transition-colors"
+                className="text-[11px] text-ink-3 hover:text-ink-2 transition-colors"
               >
                 Limpar
               </button>
@@ -514,10 +514,10 @@ export default function PostsPage() {
           <AccountsSkeleton />
         ) : accounts.length === 0 ? (
           <div className="flex flex-col items-center gap-2.5 py-10">
-            <div className="w-12 h-12 rounded-2xl bg-white/[0.04] flex items-center justify-center">
-              <Instagram size={20} className="text-white/20" />
+            <div className="w-12 h-12 rounded-2xl bg-surface-raised flex items-center justify-center">
+              <Instagram size={20} className="text-ink-3/50" />
             </div>
-            <p className="text-white/30 text-sm">Nenhuma conta ativa conectada.</p>
+            <p className="text-ink-3 text-sm">Nenhuma conta ativa conectada.</p>
             <a
               href="/dashboard/accounts"
               className="text-xs text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
@@ -537,7 +537,7 @@ export default function PostsPage() {
                     "flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left",
                     sel
                       ? "border-[#00498D] bg-[#00498D]/[0.07]"
-                      : "border-white/[0.06] bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04]"
+                      : "border-line bg-surface hover:border-line-control hover:bg-surface-raised"
                   )}
                 >
                   {account.avatar_url ? (
@@ -559,11 +559,11 @@ export default function PostsPage() {
                   )}
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-white/85 truncate">
+                    <p className="text-xs font-semibold text-ink truncate">
                       @{account.username}
                     </p>
                     {account.followers_count != null && (
-                      <p className="text-[10px] text-white/30">
+                      <p className="text-[10px] text-ink-3">
                         {formatNumber(account.followers_count)} seg.
                       </p>
                     )}
@@ -581,8 +581,8 @@ export default function PostsPage() {
       <SectionCard delay={0.12}>
         <div className="flex items-center gap-2.5 mb-4">
           <StepBadge n={3} done={captions.some(c => c.trim())} />
-          <h2 className="font-semibold text-white/90 text-sm">Variações de Legenda</h2>
-          <span className="text-[10px] text-white/25 hidden sm:inline">
+          <h2 className="font-semibold text-ink text-sm">Variações de Legenda</h2>
+          <span className="text-[10px] text-ink-3 hidden sm:inline">
             (distribuídas aleatoriamente entre os posts)
           </span>
         </div>
@@ -611,14 +611,14 @@ export default function PostsPage() {
                     maxLength={2200}
                     className="input-glass w-full text-sm resize-none py-2.5 leading-relaxed"
                   />
-                  <p className="text-[10px] text-white/20 mt-0.5 text-right">
+                  <p className="text-[10px] text-ink-3/50 mt-0.5 text-right">
                     {caption.length}/2200
                   </p>
                 </div>
                 {captions.length > 1 && (
                   <button
                     onClick={() => removeCaption(i)}
-                    className="mt-1.5 w-7 h-7 rounded-lg flex items-center justify-center text-white/20 hover:bg-red-500/10 hover:text-red-400 transition-colors flex-shrink-0"
+                    className="mt-1.5 w-7 h-7 rounded-lg flex items-center justify-center text-ink-3/50 hover:bg-red-500/10 hover:text-red-400 transition-colors flex-shrink-0"
                   >
                     <X size={13} />
                   </button>
@@ -636,7 +636,7 @@ export default function PostsPage() {
           <Plus size={13} />
           Adicionar Variação de Legenda
           {captions.length >= 10 && (
-            <span className="text-white/25 ml-1">(máx. 10)</span>
+            <span className="text-ink-3 ml-1">(máx. 10)</span>
           )}
         </button>
       </SectionCard>
@@ -645,13 +645,13 @@ export default function PostsPage() {
       <SectionCard delay={0.16}>
         <div className="flex items-center gap-2.5 mb-5">
           <StepBadge n={4} done={!!startDatetime} />
-          <h2 className="font-semibold text-white/90 text-sm">Configurações de Lote</h2>
+          <h2 className="font-semibold text-ink text-sm">Configurações de Lote</h2>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* Data de início */}
           <div>
-            <label className="text-xs font-semibold text-white/40 mb-1.5 block">
+            <label className="text-xs font-semibold text-ink-3 mb-1.5 block">
               Data e Hora de Início
             </label>
             <input
@@ -665,7 +665,7 @@ export default function PostsPage() {
 
           {/* Vídeos por lote */}
           <div>
-            <label className="text-xs font-semibold text-white/40 mb-1.5 block">
+            <label className="text-xs font-semibold text-ink-3 mb-1.5 block">
               Vídeos por Lote
             </label>
             <input
@@ -678,12 +678,12 @@ export default function PostsPage() {
               max={20}
               className="input-glass w-full text-sm"
             />
-            <p className="text-[10px] text-white/25 mt-1.5">posts por janela de tempo</p>
+            <p className="text-[10px] text-ink-3 mt-1.5">posts por janela de tempo</p>
           </div>
 
           {/* Intervalo */}
           <div>
-            <label className="text-xs font-semibold text-white/40 mb-1.5 block">
+            <label className="text-xs font-semibold text-ink-3 mb-1.5 block">
               Intervalo entre Lotes (h)
             </label>
             <input
@@ -696,7 +696,7 @@ export default function PostsPage() {
               step={0.5}
               className="input-glass w-full text-sm"
             />
-            <p className="text-[10px] text-white/25 mt-1.5">horas entre cada lote</p>
+            <p className="text-[10px] text-ink-3 mt-1.5">horas entre cada lote</p>
           </div>
         </div>
 
@@ -705,22 +705,22 @@ export default function PostsPage() {
           <motion.div
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-5 flex flex-wrap gap-x-5 gap-y-2 pt-4 border-t border-white/[0.06]"
+            className="mt-5 flex flex-wrap gap-x-5 gap-y-2 pt-4 border-t border-line"
           >
-            <div className="flex items-center gap-1.5 text-xs text-white/50">
+            <div className="flex items-center gap-1.5 text-xs text-ink-3">
               <Sparkles size={11} className="text-[#85B9E9]" />
               <span>
                 <span className="text-white font-semibold">{totalPosts}</span> posts no total
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-white/50">
+            <div className="flex items-center gap-1.5 text-xs text-ink-3">
               <Layers size={11} className="text-[#85B9E9]" />
               <span>
                 <span className="text-white font-semibold">{batchesPerAccount}</span>{" "}
                 lote{batchesPerAccount !== 1 ? "s" : ""} por conta
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-white/50">
+            <div className="flex items-center gap-1.5 text-xs text-ink-3">
               <Clock size={11} className="text-pink-400" />
               <span>
                 início em{" "}
@@ -730,7 +730,7 @@ export default function PostsPage() {
               </span>
             </div>
             {endDate && intervalHours > 0 && (
-              <div className="flex items-center gap-1.5 text-xs text-white/50">
+              <div className="flex items-center gap-1.5 text-xs text-ink-3">
                 <CalendarRange size={11} className="text-amber-400" />
                 <span>
                   último lote em{" "}
@@ -754,20 +754,20 @@ export default function PostsPage() {
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             {totalPosts > 0 ? (
               <>
-                <span className="text-xs text-white/50">
+                <span className="text-xs text-ink-3">
                   <span className="text-white font-semibold">{totalPosts}</span> posts
                 </span>
-                <span className="text-xs text-white/50">
+                <span className="text-xs text-ink-3">
                   <span className="text-white font-semibold">{selectedAccountIds.size}</span>{" "}
                   conta{selectedAccountIds.size !== 1 ? "s" : ""}
                 </span>
-                <span className="text-xs text-white/50">
+                <span className="text-xs text-ink-3">
                   <span className="text-white font-semibold">{batchesPerAccount}</span>{" "}
                   lote{batchesPerAccount !== 1 ? "s" : ""} por conta
                 </span>
               </>
             ) : (
-              <span className="text-xs text-white/30">
+              <span className="text-xs text-ink-3">
                 Selecione vídeos e contas para começar
               </span>
             )}

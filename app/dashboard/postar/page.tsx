@@ -15,6 +15,19 @@ import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelec
 import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
 import { ProxyPoolToggle } from "@/components/dashboard/ProxyPoolToggle";
 import {
+  PageHeader,
+  Card,
+  Button,
+  Badge,
+  Tabs,
+  Banner,
+  Skeleton,
+  EmptyState,
+  Slider,
+  Dialog,
+  ProgressBar,
+} from "@/components/ui";
+import {
   validateInstagramCaption,
   INSTAGRAM_CAPTION_MAX_LENGTH,
   INSTAGRAM_CAPTION_MAX_HASHTAGS,
@@ -183,26 +196,26 @@ function DistributePreview({
     <div className="glass-card rounded-2xl p-5 space-y-5">
       <div className="flex items-center gap-2">
         <Zap size={14} className="text-[#85B9E9]" />
-        <span className="text-xs font-semibold uppercase tracking-widest text-white/40">Resumo</span>
+        <span className="text-xs font-semibold uppercase tracking-widest text-ink-3">Resumo</span>
       </div>
 
       {!isReady ? (
-        <p className="text-white/20 text-xs text-center py-4">
+        <p className="text-ink-3 text-xs text-center py-4">
           Preencha os campos para ver o resumo
         </p>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: "Vídeos/conta", value: videosPerAccount, color: "text-[#00498D]" },
-              { label: "Contas", value: totalAccounts, color: "text-[#85B9E9]" },
-              { label: "Total de posts", value: totalPosts, color: "text-white" },
-              { label: "Duração", value: `${days}d`, color: "text-white" },
-              { label: "Posts/dia", value: postsPerDay, color: "text-white/60" },
-              { label: "Legendas", value: captionCount, color: "text-white/60" },
+              { label: "Vídeos/conta", value: videosPerAccount, color: "text-brand-navy" },
+              { label: "Contas", value: totalAccounts, color: "text-accent" },
+              { label: "Total de posts", value: totalPosts, color: "text-ink" },
+              { label: "Duração", value: `${days}d`, color: "text-ink" },
+              { label: "Posts/dia", value: postsPerDay, color: "text-ink-2" },
+              { label: "Legendas", value: captionCount, color: "text-ink-2" },
             ].map(({ label, value, color }) => (
-              <div key={label} className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/[0.06]">
-                <p className="text-white/35 text-[10px] uppercase tracking-wider">{label}</p>
+              <div key={label} className="bg-surface-raised rounded-xl px-3 py-2.5 border border-line">
+                <p className="text-ink-3 text-[10px] uppercase tracking-wider">{label}</p>
                 <p className={cn("font-mono font-semibold text-base mt-0.5", color)}>{value}</p>
               </div>
             ))}
@@ -210,40 +223,40 @@ function DistributePreview({
 
           <div className="space-y-1.5">
             <div className="flex justify-between text-[10px]">
-              <span className="text-white/30 uppercase tracking-wider">Início</span>
-              <span className="text-[#00498D] font-mono">{formatDatetime(startDatetime)}</span>
+              <span className="text-ink-3 uppercase tracking-wider">Início</span>
+              <span className="text-brand-blue font-mono">{formatDatetime(startDatetime)}</span>
             </div>
             {lastSlotIso && (
               <div className="flex justify-between text-[10px]">
-                <span className="text-white/30 uppercase tracking-wider">Fim estimado</span>
-                <span className="text-[#85B9E9] font-mono">{formatDatetime(lastSlotIso)}</span>
+                <span className="text-ink-3 uppercase tracking-wider">Fim estimado</span>
+                <span className="text-accent font-mono">{formatDatetime(lastSlotIso)}</span>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#00498D]/5 border border-[#00498D]/20">
-            <Shuffle size={12} className="text-[#00498D] flex-shrink-0" />
-            <p className="text-[10px] text-[#00498D]/80">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-blue/5 border border-brand-blue/20">
+            <Shuffle size={12} className="text-brand-blue flex-shrink-0" />
+            <p className="text-[10px] text-brand-blue/80">
               Cada conta recebe os vídeos em ordem aleatória única
             </p>
           </div>
 
           {timelineSlots.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-[10px] text-white/25 uppercase tracking-wider">
+              <p className="text-[10px] text-ink-3 uppercase tracking-wider">
                 Horários por conta (Conta 1)
               </p>
               {timelineSlots.slice(0, 6).map((s, i) => (
                 <div key={i} className="flex items-center gap-3">
-                  <span className="text-[#85B9E9]/60 font-mono text-[10px] w-28 flex-shrink-0">{s}</span>
-                  <div className="flex-1 h-[3px] rounded-full bg-white/[0.05] overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-[#00498D]/60 to-[#85B9E9]/60 w-full" />
+                  <span className="text-accent/60 font-mono text-[10px] w-28 flex-shrink-0">{s}</span>
+                  <div className="flex-1 h-[3px] rounded-full bg-line overflow-hidden">
+                    <div className="h-full rounded-full bg-gradient-to-r from-brand-blue/60 to-accent/60 w-full" />
                   </div>
-                  <span className="text-white/30 text-[10px] w-16 text-right">{totalAccounts} conta{totalAccounts !== 1 ? "s" : ""}</span>
+                  <span className="text-ink-3 text-[10px] w-16 text-right">{totalAccounts} conta{totalAccounts !== 1 ? "s" : ""}</span>
                 </div>
               ))}
               {timelineSlots.length < videosPerAccount && (
-                <p className="text-white/15 text-[10px]">+ {videosPerAccount - timelineSlots.length} slots restantes...</p>
+                <p className="text-ink-3/50 text-[10px]">+ {videosPerAccount - timelineSlots.length} slots restantes...</p>
               )}
             </div>
           )}
@@ -367,13 +380,13 @@ function CaptionEditor({
                   onChange={e => update(i, e.target.value)}
                   rows={3}
                   placeholder={`Legenda ${i + 1}...`}
-                  className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm placeholder-white/20 resize-none focus:outline-none focus:border-[#00498D]/40 focus:ring-1 focus:ring-[#00498D]/20 transition-all leading-relaxed"
+                  className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-surface-raised border border-line-control text-ink text-sm placeholder-ink-3 resize-none focus:outline-none focus:border-brand-blue/40 focus:ring-1 focus:ring-brand-blue/20 transition-all leading-relaxed"
                 />
                 <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
                   {(() => {
                     const v = validateInstagramCaption(cap);
                     const cor = (excedeu: boolean, perto: boolean) =>
-                      excedeu ? "text-red-400" : perto ? "text-yellow-400" : "text-white/20";
+                      excedeu ? "text-danger" : perto ? "text-warning" : "text-ink-3";
                     return (
                       <span className="flex items-center gap-2 text-[10px] transition-colors">
                         <span className={cor(
@@ -404,7 +417,7 @@ function CaptionEditor({
                   {captions.length > 1 && (
                     <button
                       onClick={() => remove(i)}
-                      className="w-6 h-6 rounded-lg flex items-center justify-center text-white/25 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                      className="w-6 h-6 rounded-lg flex items-center justify-center text-ink-3 hover:text-danger hover:bg-danger/10 transition-colors"
                     >
                       <Trash2 size={11} />
                     </button>
@@ -434,7 +447,7 @@ function CaptionEditor({
                           onChange={e => setSaveTitle(e.target.value)}
                           onKeyDown={e => { if (e.key === "Enter") handleSave(i); if (e.key === "Escape") { setSavingFor(null); setSaveTitle(""); } }}
                           placeholder="Nome da legenda (opcional)..."
-                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/15 text-white text-xs placeholder-white/25 focus:outline-none focus:border-[#00498D]/40 transition-all"
+                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-surface-raised border border-line-control text-ink text-xs placeholder-ink-3 focus:outline-none focus:border-brand-blue/40 transition-all"
                         />
                         <button
                           onClick={() => handleSave(i)}
@@ -446,7 +459,7 @@ function CaptionEditor({
                         </button>
                         <button
                           onClick={() => { setSavingFor(null); setSaveTitle(""); }}
-                          className="w-6 h-6 flex items-center justify-center text-white/25 hover:text-white/60 transition-colors"
+                          className="w-6 h-6 flex items-center justify-center text-ink-3 hover:text-ink-2 transition-colors"
                         >
                           <X size={11} />
                         </button>
@@ -454,7 +467,7 @@ function CaptionEditor({
                     ) : (
                       <button
                         onClick={() => { setSavingFor(i); setSaveTitle(""); }}
-                        className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5 text-[10px] text-white/25 hover:text-[#00498D]/60 transition-colors group"
+                        className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5 text-[10px] text-ink-3 hover:text-brand-blue/60 transition-colors group"
                       >
                         <Save size={9} className="group-hover:text-[#00498D]/60 transition-colors" />
                         Salvar esta legenda para usar depois
@@ -472,7 +485,7 @@ function CaptionEditor({
         <button
           type="button"
           onClick={add}
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-white/15 text-white/40 text-sm hover:border-[#00498D]/40 hover:text-[#00498D]/60 transition-all"
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-line-control text-ink-3 text-sm hover:border-brand-blue/40 hover:text-brand-blue/60 transition-all"
         >
           <Plus size={14} />
           Adicionar Legenda
@@ -486,7 +499,7 @@ function CaptionEditor({
               "flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-all",
               showLibrary
                 ? "border-[#85B9E9]/40 bg-[#85B9E9]/8 text-[#85B9E9]"
-                : "border-white/15 text-white/40 hover:border-[#85B9E9]/40 hover:text-[#85B9E9]/70"
+                : "border-line-control text-ink-3 hover:border-accent/40 hover:text-accent/70"
             )}
           >
             <Library size={14} />
@@ -505,44 +518,44 @@ function CaptionEditor({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -6, scale: 0.97 }}
                 transition={{ duration: 0.14 }}
-                className="absolute z-30 bottom-full mb-2 right-0 w-80 bg-[#0d111b] border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+                className="absolute z-30 bottom-full mb-2 right-0 w-80 bg-surface-raised border border-line rounded-2xl shadow-2xl overflow-hidden"
               >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.07]">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-line">
                   <div className="flex items-center gap-2">
                     <BookMarked size={13} className="text-[#85B9E9]" />
-                    <span className="text-xs font-semibold text-white/70">Biblioteca de Legendas</span>
+                    <span className="text-xs font-semibold text-ink-2">Biblioteca de Legendas</span>
                   </div>
-                  <button onClick={() => setShowLibrary(false)} className="text-white/25 hover:text-white/60 transition-colors">
+                  <button onClick={() => setShowLibrary(false)} className="text-ink-3 hover:text-ink-2 transition-colors">
                     <X size={13} />
                   </button>
                 </div>
 
                 <div className="max-h-64 overflow-y-auto">
                   {loadingSaved ? (
-                    <div className="flex items-center justify-center py-8 gap-2 text-white/30 text-xs">
+                    <div className="flex items-center justify-center py-8 gap-2 text-ink-3 text-xs">
                       <Loader2 size={13} className="animate-spin" /> Carregando...
                     </div>
                   ) : savedCaptions.length === 0 ? (
                     <div className="py-8 text-center">
-                      <BookMarked size={20} className="text-white/10 mx-auto mb-2" />
-                      <p className="text-white/25 text-xs">Nenhuma legenda salva ainda.</p>
+                      <BookMarked size={20} className="text-ink-3/40 mx-auto mb-2" />
+                      <p className="text-ink-3 text-xs">Nenhuma legenda salva ainda.</p>
                     </div>
                   ) : (
                     savedCaptions.map(sc => (
                       <div
                         key={sc.id}
-                        className="group flex items-start gap-2 px-4 py-3 hover:bg-white/[0.04] transition-colors border-b border-white/[0.04] last:border-0"
+                        className="group flex items-start gap-2 px-4 py-3 hover:bg-surface-hover transition-colors border-b border-line last:border-0"
                       >
                         <button onClick={() => inject(sc.content)} className="flex-1 text-left min-w-0">
                           {sc.title && (
-                            <p className="text-xs font-medium text-[#85B9E9]/80 truncate mb-0.5">{sc.title}</p>
+                            <p className="text-xs font-medium text-accent/80 truncate mb-0.5">{sc.title}</p>
                           )}
-                          <p className="text-xs text-white/55 line-clamp-2 leading-relaxed">{sc.content}</p>
-                          <p className="text-[9px] text-white/20 mt-1">Clique para usar</p>
+                          <p className="text-xs text-ink-2 line-clamp-2 leading-relaxed">{sc.content}</p>
+                          <p className="text-[9px] text-ink-3 mt-1">Clique para usar</p>
                         </button>
                         <button
                           onClick={() => removeFromLibrary(sc.id)}
-                          className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center text-white/20 hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
+                          className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center text-ink-3 hover:text-danger transition-all flex-shrink-0 mt-0.5"
                         >
                           <Trash2 size={11} />
                         </button>
@@ -557,7 +570,7 @@ function CaptionEditor({
       </div>
 
       {captions.length > 1 && (
-        <p className="text-[10px] text-white/25 flex items-center gap-1.5">
+        <p className="text-[10px] text-ink-3 flex items-center gap-1.5">
           <Shuffle size={9} />
           Legendas sorteadas aleatoriamente em cada post
         </p>
@@ -568,15 +581,22 @@ function CaptionEditor({
 
 // ── SectionCard / SectionLabel ─────────────────────────────────────────────
 
-function SectionCard({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("glass-card p-5 rounded-2xl", className)}>{children}</div>;
+function SectionCard({ children, className, title, description, actions }: { children: React.ReactNode; className?: string; title?: string; description?: string; actions?: React.ReactNode }) {
+  if (title) {
+    return (
+      <Card title={title} description={description} actions={actions} className={className}>
+        {children}
+      </Card>
+    );
+  }
+  return <div className={cn("rounded-xl border border-line bg-surface p-5", className)}>{children}</div>;
 }
 
 function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 mb-4">
-      <Icon size={14} className="text-white/35" />
-      <span className="text-xs font-semibold uppercase tracking-widest text-white/35">{children}</span>
+      <Icon size={14} className="text-ink-3" />
+      <span className="text-xs font-semibold uppercase tracking-widest text-ink-3">{children}</span>
     </div>
   );
 }
@@ -686,38 +706,38 @@ function EditCampaignModal({
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96 }}
-            className="glass relative w-full max-w-lg rounded-2xl border border-white/10 p-6 z-10 max-h-[90vh] overflow-y-auto"
+            className="glass relative w-full max-w-lg rounded-2xl border border-line p-6 z-10 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-lg font-bold text-white">Editar campanha</h2>
-              <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
+              <h2 className="text-lg font-bold text-ink">Editar campanha</h2>
+              <button onClick={onClose} className="text-ink-3 hover:text-ink transition-colors">
                 <X size={18} />
               </button>
             </div>
-            <p className="text-[11px] text-white/30 mb-5 font-mono">#{campaign.campaign_id.slice(0, 8).toUpperCase()}</p>
+            <p className="text-[11px] text-ink-3 mb-5 font-mono">#{campaign.campaign_id.slice(0, 8).toUpperCase()}</p>
 
             {loadingInfo ? (
-              <div className="flex items-center justify-center py-16 gap-2 text-white/30 text-sm">
+              <div className="flex items-center justify-center py-16 gap-2 text-ink-3 text-sm">
                 <Loader2 size={16} className="animate-spin" /> Carregando configuração atual...
               </div>
             ) : (
               <div className="space-y-5">
                 {campaign.pending === 0 ? (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-warning-soft border border-warning/20 text-warning text-xs">
                     <AlertCircle size={14} className="flex-shrink-0" />
                     Essa campanha não tem posts pendentes — nada será reagendado, mas a configuração é salva para futuras contas sincronizadas.
                   </div>
                 ) : (
-                  <p className="text-[11px] text-white/35 leading-relaxed">
+                  <p className="text-[11px] text-ink-3 leading-relaxed">
                     As mudanças abaixo valem só para os{" "}
-                    <span className="text-white/60 font-medium">{campaign.pending} posts pendentes</span> desta campanha —
+                    <span className="text-ink-2 font-medium">{campaign.pending} posts pendentes</span> desta campanha —
                     posts já publicados não mudam. Os horários são recalculados a partir de agora com a nova cadência.
                   </p>
                 )}
 
                 {/* Cadência */}
                 <div>
-                  <label className="block text-xs text-white/50 mb-2 font-medium uppercase tracking-wider">Posts por dia por conta</label>
+                  <label className="block text-xs text-ink-2 mb-2 font-medium uppercase tracking-wider">Posts por dia por conta</label>
                   <div className="flex flex-wrap gap-2">
                     {POSTS_PER_DAY_OPTIONS.map(n => (
                       <button
@@ -728,8 +748,8 @@ function EditCampaignModal({
                         className={cn(
                           "flex flex-col items-center px-3.5 py-2 rounded-xl border transition-all",
                           postsPerDay === n
-                            ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30"
-                            : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                            ? "bg-accent/15 text-accent border-accent/30"
+                            : "bg-surface-raised text-ink-3 border-line hover:border-line-control hover:text-ink-2"
                         )}
                       >
                         <span className="text-sm font-bold leading-none">{n}</span>
@@ -745,21 +765,21 @@ function EditCampaignModal({
                         const v = parseInt(e.target.value, 10);
                         if (!isNaN(v) && v >= 1) setPostsPerDay(Math.min(v, 1440));
                       }}
-                      className="w-20 px-3 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm text-center focus:outline-none focus:border-[#85B9E9]/40 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="w-20 px-3 py-2 rounded-xl bg-surface-raised border border-line-control text-ink text-sm text-center focus:outline-none focus:border-accent/40 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                   </div>
                 </div>
 
                 {/* Stagger entre contas */}
                 <div>
-                  <label className="block text-xs text-white/50 mb-2 font-medium uppercase tracking-wider">Intervalo entre contas</label>
-                  <div className="space-y-2.5 p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.03]">
+                  <label className="block text-xs text-ink-2 mb-2 font-medium uppercase tracking-wider">Intervalo entre contas</label>
+                  <div className="space-y-2.5 p-3.5 rounded-xl border border-line bg-surface-raised">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-white/40">Auto</span>
-                      <span className={cn("text-sm font-bold", staggerSeconds ? "text-[#00498D]" : "text-white/30")}>
+                      <span className="text-xs text-ink-3">Auto</span>
+                      <span className={cn("text-sm font-bold", staggerSeconds ? "text-brand-blue" : "text-ink-3")}>
                         {staggerSeconds ? `${staggerSeconds}s` : "Automático"}
                       </span>
-                      <span className="text-xs text-white/40">5 min</span>
+                      <span className="text-xs text-ink-3">5 min</span>
                     </div>
                     <input
                       type="range" min={0} max={300} step={5}
@@ -768,27 +788,27 @@ function EditCampaignModal({
                       className="range-slider"
                       style={{
                         background: staggerSeconds
-                          ? `linear-gradient(to right, var(--matrix) 0%, var(--matrix) ${(staggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) ${(staggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) 100%)`
-                          : `linear-gradient(to right, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.08) 100%)`
+                          ? `linear-gradient(to right, var(--brand-blue) 0%, var(--brand-blue) ${(staggerSeconds / 300) * 100}%, var(--line) ${(staggerSeconds / 300) * 100}%, var(--line) 100%)`
+                          : `linear-gradient(to right, var(--line) 0%, var(--line) 100%)`
                       }}
                     />
                   </div>
                 </div>
 
                 {/* Legendas */}
-                <div className="p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02]">
+                <div className="p-3.5 rounded-xl border border-line bg-surface">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <Sparkles size={13} style={{ color: "var(--matrix)" }} />
+                      <Sparkles size={13} className="text-brand-blue" />
                       <div>
-                        <p className="text-sm font-medium text-white/80">Legendas Automáticas</p>
-                        <p className="text-[10px] text-white/35">Curiosidades únicas em PT-BR por post</p>
+                        <p className="text-sm font-medium text-ink">Legendas Automáticas</p>
+                        <p className="text-[10px] text-ink-3">Curiosidades únicas em PT-BR por post</p>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => setCaptionMode(m => m === "auto" ? "manual" : "auto")}
-                      className={cn("relative w-11 h-6 rounded-full transition-all flex-shrink-0", captionMode === "auto" ? "bg-[#00498D]" : "bg-white/10")}
+                      className={cn("relative w-11 h-6 rounded-full transition-all flex-shrink-0", captionMode === "auto" ? "bg-brand-blue" : "bg-line-control/30")}
                     >
                       <span className={cn("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all", captionMode === "auto" ? "left-[22px]" : "left-0.5")} />
                     </button>
@@ -797,9 +817,9 @@ function EditCampaignModal({
                   <AnimatePresence initial={false} mode="wait">
                     {captionMode === "auto" ? (
                       <motion.div key="auto" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
-                        <div className="mt-3 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
-                          <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma legenda diferente)</p>
-                          <p className="text-[10px] text-white/50 leading-relaxed italic whitespace-pre-line">
+                        <div className="mt-3 p-2.5 rounded-lg bg-surface-raised border border-line">
+                          <p className="text-[9px] text-ink-3 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma legenda diferente)</p>
+                          <p className="text-[10px] text-ink-2 leading-relaxed italic whitespace-pre-line">
                             {AUTO_CAPTION_PREVIEW_POSTAR}
                           </p>
                         </div>
@@ -811,7 +831,7 @@ function EditCampaignModal({
                           onChange={e => setCaptionsText(e.target.value)}
                           rows={5}
                           placeholder={"Uma legenda por linha...\nSorteada aleatoriamente em cada post."}
-                          className="w-full mt-3 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm placeholder-white/20 resize-none focus:outline-none focus:border-[#00498D]/40 focus:ring-1 focus:ring-[#00498D]/20 transition-all leading-relaxed"
+                          className="w-full mt-3 px-3 py-2.5 rounded-xl bg-surface-raised border border-line-control text-ink text-sm placeholder-ink-3 resize-none focus:outline-none focus:border-brand-blue/40 focus:ring-1 focus:ring-brand-blue/20 transition-all leading-relaxed"
                         />
                       </motion.div>
                     )}
@@ -819,7 +839,7 @@ function EditCampaignModal({
                 </div>
 
                 {error && (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-danger-soft border border-danger/20 text-danger text-xs">
                     <AlertCircle size={13} className="flex-shrink-0" />
                     {error}
                   </div>
@@ -829,7 +849,7 @@ function EditCampaignModal({
                   <button
                     onClick={handleSave}
                     disabled={saving}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all bg-[#00498D] text-black hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-all btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                     {saving ? "Salvando..." : "Salvar edição"}
@@ -837,7 +857,7 @@ function EditCampaignModal({
                   <button
                     onClick={onClose}
                     disabled={saving}
-                    className="px-5 py-3 rounded-xl text-sm text-white/50 hover:text-white/80 border border-white/10 hover:border-white/20 transition-all disabled:opacity-40"
+                    className="px-5 py-3 rounded-xl text-sm btn-ghost disabled:opacity-40"
                   >
                     Cancelar
                   </button>
@@ -925,11 +945,11 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
   if (campaigns.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center mb-4">
-          <BarChart2 size={24} className="text-white/15" />
+        <div className="w-16 h-16 rounded-2xl bg-surface-raised border border-line flex items-center justify-center mb-4">
+          <BarChart2 size={24} className="text-ink-3/40" />
         </div>
-        <p className="text-white/30 text-sm mb-1">Nenhuma campanha encontrada</p>
-        <p className="text-white/15 text-xs mb-5">Crie sua primeira distribuição</p>
+        <p className="text-ink-3 text-sm mb-1">Nenhuma campanha encontrada</p>
+        <p className="text-ink-3/50 text-xs mb-5">Crie sua primeira distribuição</p>
         <button onClick={onCreateNew} className="px-5 py-2.5 rounded-xl bg-[#00498D]/10 text-[#00498D] text-sm font-medium hover:bg-[#00498D]/20 transition-all border border-[#00498D]/20">
           Nova Distribuição
         </button>
@@ -947,7 +967,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
     <div className="max-w-3xl mx-auto">
       {/* Header row */}
       <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-4 text-xs text-white/30">
+        <div className="flex items-center gap-4 text-xs text-ink-3">
           {running.length > 0 && (
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-[#00498D] shadow-[0_0_4px_#00498D] animate-pulse" />
@@ -959,7 +979,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
         <button
           onClick={() => fetchCampaigns(true)}
           disabled={refreshing}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/[0.07] bg-white/[0.03] text-xs text-white/40 hover:text-[#85B9E9] hover:border-[#85B9E9]/20 transition-all disabled:opacity-40"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-line bg-surface-raised text-xs text-ink-3 hover:text-accent hover:border-accent/20 transition-all disabled:opacity-40"
         >
           <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
           {refreshing ? "Atualizando…" : "Atualizar"}
@@ -996,7 +1016,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
               ? "border-red-500/15"
               : isRunning
                 ? "border-[#85B9E9]/10"
-                : "border-white/[0.08]";
+                : "border-line";
 
           return (
             <motion.div
@@ -1011,8 +1031,8 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                 <div className="flex items-center gap-2.5 min-w-0">
                   <span className={cn("w-2 h-2 rounded-full shrink-0 mt-0.5", dotCls, dotPulse && "animate-pulse")} />
                   <div className="min-w-0">
-                    <p className="text-white/60 font-mono text-xs tracking-wider">#{campaign.campaign_id.slice(0, 8).toUpperCase()}</p>
-                    <p className="text-white/25 text-[10px] mt-0.5">Criada {formatDatetime(campaign.created_at)}</p>
+                    <p className="text-ink-2 font-mono text-xs tracking-wider">#{campaign.campaign_id.slice(0, 8).toUpperCase()}</p>
+                    <p className="text-ink-3 text-[10px] mt-0.5">Criada {formatDatetime(campaign.created_at)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -1035,7 +1055,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                   <button
                     onClick={() => setEditCampaign(campaign)}
                     title="Editar legendas e cadência"
-                    className="w-7 h-7 rounded-lg border flex items-center justify-center transition-all bg-white/[0.04] border-white/[0.08] text-white/25 hover:text-[#85B9E9] hover:border-[#85B9E9]/25"
+                    className="w-7 h-7 rounded-lg border flex items-center justify-center transition-all bg-surface-raised border-line text-ink-3 hover:text-accent hover:border-accent/25"
                   >
                     <Pencil size={11} />
                   </button>
@@ -1044,7 +1064,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                     disabled={isDeleting}
                     className={cn(
                       "w-7 h-7 rounded-lg border flex items-center justify-center transition-all",
-                      isConfirming ? "bg-red-500/15 border-red-500/40 text-red-400" : "bg-white/[0.04] border-white/[0.08] text-white/25 hover:text-red-400 hover:border-red-400/25",
+                      isConfirming ? "bg-danger-soft border-danger/40 text-danger" : "bg-surface-raised border-line text-ink-3 hover:text-danger hover:border-danger/25",
                       isDeleting && "opacity-40 cursor-not-allowed"
                     )}
                   >
@@ -1056,10 +1076,10 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
               {/* ── Progress ── */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[10px]">
-                  <span className="text-white/40 tabular-nums">{campaign.published} de {campaign.total} posts publicados</span>
-                  <span className={cn("font-bold tabular-nums", progress >= 100 ? "text-[#00498D]" : isRunning ? "text-[#85B9E9]" : "text-white/30")}>{progress}%</span>
+                  <span className="text-ink-3 tabular-nums">{campaign.published} de {campaign.total} posts publicados</span>
+                  <span className={cn("font-bold tabular-nums", progress >= 100 ? "text-brand-blue" : isRunning ? "text-accent" : "text-ink-3")}>{progress}%</span>
                 </div>
-                <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                <div className="h-1.5 rounded-full bg-line overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
@@ -1071,17 +1091,17 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
 
               {/* ── Stats row ── */}
               <div className="grid grid-cols-3 gap-2 text-[10px]">
-                <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-                  <span className="text-white/25 text-[9px] uppercase tracking-wider">Fila</span>
-                  <span className={cn("font-bold tabular-nums", campaign.pending > 0 ? "text-[#85B9E9]" : "text-white/20")}>{campaign.pending}</span>
+                <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-surface-raised border border-line">
+                  <span className="text-ink-3 text-[9px] uppercase tracking-wider">Fila</span>
+                  <span className={cn("font-bold tabular-nums", campaign.pending > 0 ? "text-accent" : "text-ink-3")}>{campaign.pending}</span>
                 </div>
-                <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border", hasFailed ? "bg-red-500/[0.04] border-red-500/15" : "bg-white/[0.03] border-white/[0.04]")}>
-                  <span className="text-white/25 text-[9px] uppercase tracking-wider">Falhas</span>
-                  <span className={cn("font-bold tabular-nums", hasFailed ? "text-red-400" : "text-white/20")}>{campaign.failed}</span>
+                <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border", hasFailed ? "bg-danger-soft border-danger/15" : "bg-surface-raised border-line")}>
+                  <span className="text-ink-3 text-[9px] uppercase tracking-wider">Falhas</span>
+                  <span className={cn("font-bold tabular-nums", hasFailed ? "text-danger" : "text-ink-3")}>{campaign.failed}</span>
                 </div>
-                <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-                  <span className="text-white/25 text-[9px] uppercase tracking-wider">Cancelados</span>
-                  <span className="font-bold tabular-nums text-white/25">{campaign.cancelled}</span>
+                <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-surface-raised border border-line">
+                  <span className="text-ink-3 text-[9px] uppercase tracking-wider">Cancelados</span>
+                  <span className="font-bold tabular-nums text-ink-3">{campaign.cancelled}</span>
                 </div>
               </div>
 
@@ -1095,11 +1115,11 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                       else next.add(campaign.campaign_id);
                       return next;
                     })}
-                    className="flex items-center justify-between w-full px-1 py-1 rounded-lg hover:bg-white/[0.03] transition-colors group"
+                    className="flex items-center justify-between w-full px-1 py-1 rounded-lg hover:bg-surface-hover transition-colors group"
                   >
                     <div className="flex items-center gap-1.5">
-                      <ChevronDown size={12} className={cn("text-white/30 transition-transform duration-200", expandedEngagement.has(campaign.campaign_id) ? "rotate-0" : "-rotate-90")} />
-                      <span className="text-[9px] uppercase tracking-wider text-white/25 group-hover:text-white/40 transition-colors">Engagement por conta</span>
+                      <ChevronDown size={12} className={cn("text-ink-3 transition-transform duration-200", expandedEngagement.has(campaign.campaign_id) ? "rotate-0" : "-rotate-90")} />
+                      <span className="text-[9px] uppercase tracking-wider text-ink-3 group-hover:text-ink-2 transition-colors">Engagement por conta</span>
                     </div>
                     {(campaign.total_plays ?? 0) > 0 && (
                       <span className="text-[9px] tabular-nums text-[#85B9E9]/60">{(campaign.total_plays ?? 0).toLocaleString("pt-BR")} views totais</span>
@@ -1111,24 +1131,24 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                         {campaign.account_engagement.map((eng, idx) => (
                           <div key={eng.account_id} className={cn(
                             "flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px]",
-                            idx === 0 ? "bg-amber-500/[0.04] border-amber-500/10" : "bg-white/[0.02] border-white/[0.04]"
+                            idx === 0 ? "bg-warning-soft border-warning/10" : "bg-surface border-line"
                           )}>
-                            <span className={cn("w-3 text-center font-bold tabular-nums", idx === 0 ? "text-amber-400" : "text-white/20")}>{idx + 1}</span>
+                            <span className={cn("w-3 text-center font-bold tabular-nums", idx === 0 ? "text-warning" : "text-ink-3")}>{idx + 1}</span>
                             {eng.avatar_url
                               ? <img src={eng.avatar_url} alt={eng.username} className="w-4 h-4 rounded-full object-cover" />
-                              : <div className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center"><span className="text-[6px] font-bold text-white/40">{eng.username.charAt(0).toUpperCase()}</span></div>
+                              : <div className="w-4 h-4 rounded-full bg-line-control/30 flex items-center justify-center"><span className="text-[6px] font-bold text-ink-3">{eng.username.charAt(0).toUpperCase()}</span></div>
                             }
-                            <span className="flex-1 truncate text-white/60">@{eng.username}</span>
+                            <span className="flex-1 truncate text-ink-2">@{eng.username}</span>
                             <div className="flex items-center gap-2.5 tabular-nums">
-                              <span className={cn("font-bold", eng.total_plays > 0 ? "text-[#85B9E9]" : "text-white/15")} title="Views">{eng.total_plays > 0 ? eng.total_plays.toLocaleString("pt-BR") : "—"}</span>
-                              <span className={cn("font-medium", eng.total_likes > 0 ? "text-pink-400" : "text-white/15")} title="Likes">{eng.total_likes > 0 ? eng.total_likes.toLocaleString("pt-BR") : "—"}</span>
-                              <span className={cn("font-medium", eng.total_comments > 0 ? "text-amber-400" : "text-white/15")} title="Comentários">{eng.total_comments > 0 ? eng.total_comments.toLocaleString("pt-BR") : "—"}</span>
+                              <span className={cn("font-bold", eng.total_plays > 0 ? "text-accent" : "text-ink-3/40")} title="Views">{eng.total_plays > 0 ? eng.total_plays.toLocaleString("pt-BR") : "—"}</span>
+                              <span className={cn("font-medium", eng.total_likes > 0 ? "text-pink-400" : "text-ink-3/40")} title="Likes">{eng.total_likes > 0 ? eng.total_likes.toLocaleString("pt-BR") : "—"}</span>
+                              <span className={cn("font-medium", eng.total_comments > 0 ? "text-warning" : "text-ink-3/40")} title="Comentários">{eng.total_comments > 0 ? eng.total_comments.toLocaleString("pt-BR") : "—"}</span>
                             </div>
                           </div>
                         ))}
                       </div>
                       {campaign.published > 0 && (campaign.account_engagement.every(e => e.synced_posts === 0)) && (
-                        <p className="text-[9px] text-white/20 px-1">Sincronizando métricas…</p>
+                        <p className="text-[9px] text-ink-3 px-1">Sincronizando métricas…</p>
                       )}
                     </>
                   )}
@@ -1137,31 +1157,31 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
 
               {/* ── Timing row ── */}
               <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.04]">
-                  <span className="text-white/25 text-[9px] uppercase tracking-wider">Último publicado</span>
-                  <span className={cn("font-medium", campaign.last_published_at ? "text-[#00498D]" : "text-white/20")}>
+                <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-surface-raised border border-line">
+                  <span className="text-ink-3 text-[9px] uppercase tracking-wider">Último publicado</span>
+                  <span className={cn("font-medium", campaign.last_published_at ? "text-brand-blue" : "text-ink-3")}>
                     {campTimeAgo(campaign.last_published_at)}
                   </span>
                 </div>
-                <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border", isOverdue ? "bg-amber-500/[0.04] border-amber-500/15" : "bg-white/[0.03] border-white/[0.04]")}>
-                  <span className="text-white/25 text-[9px] uppercase tracking-wider">
+                <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border", isOverdue ? "bg-warning-soft border-warning/15" : "bg-surface-raised border-line")}>
+                  <span className="text-ink-3 text-[9px] uppercase tracking-wider">
                     {isRunning ? "Próximo" : "Encerrada em"}
                   </span>
                   {isRunning ? (
-                    <span className={cn("font-medium", isOverdue ? "text-amber-400" : "text-[#85B9E9]")}>
+                    <span className={cn("font-medium", isOverdue ? "text-warning" : "text-accent")}>
                       {isOverdue ? "⏱ " : ""}{campTimeIn(campaign.next_pending)}
                     </span>
                   ) : (
-                    <span className="font-medium text-white/25 text-[10px]">{formatDatetime(campaign.last_slot)}</span>
+                    <span className="font-medium text-ink-3 text-[10px]">{formatDatetime(campaign.last_slot)}</span>
                   )}
                 </div>
               </div>
 
               {/* ── Overdue warning ── */}
               {isOverdue && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/[0.05] border border-amber-500/15">
-                  <AlertCircle size={11} className="text-amber-400/80 shrink-0" />
-                  <span className="text-[10px] text-amber-400/80">Post atrasado — o cron publicará na próxima execução (≤1 min)</span>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-warning-soft border border-warning/15">
+                  <AlertCircle size={11} className="text-warning/80 shrink-0" />
+                  <span className="text-[10px] text-warning/80">Post atrasado — o cron publicará na próxima execução (≤1 min)</span>
                 </div>
               )}
 
@@ -1184,23 +1204,23 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
               )}
 
               {/* ── Footer: accounts ── */}
-              <div className="flex items-center gap-2 pt-1 border-t border-white/[0.04]">
+              <div className="flex items-center gap-2 pt-1 border-t border-line">
                 <div className="flex -space-x-1.5">
                   {campAccounts.slice(0, 6).map(acc => (
                     acc.avatar_url
-                      ? <img key={acc.id} src={acc.avatar_url} alt={acc.username} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-black object-cover" />
-                      : <div key={acc.id} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-black bg-gradient-to-br from-[#00498D]/30 to-[#85B9E9]/30 flex items-center justify-center"><span className="text-[7px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span></div>
+                      ? <img key={acc.id} src={acc.avatar_url} alt={acc.username} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-bg object-cover" />
+                      : <div key={acc.id} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-bg bg-gradient-to-br from-brand-blue/30 to-accent/30 flex items-center justify-center"><span className="text-[7px] font-bold text-ink">{acc.username.charAt(0).toUpperCase()}</span></div>
                   ))}
                   {campAccounts.length === 0 && campaign.account_ids.slice(0, 6).map(id => (
-                    <div key={id} className="w-5 h-5 rounded-full border border-black bg-white/10" />
+                    <div key={id} className="w-5 h-5 rounded-full border border-bg bg-line-control/30" />
                   ))}
                   {campaign.account_ids.length > 6 && (
-                    <div className="w-5 h-5 rounded-full border border-black bg-white/10 flex items-center justify-center">
-                      <span className="text-[7px] text-white/40">+{campaign.account_ids.length - 6}</span>
+                    <div className="w-5 h-5 rounded-full border border-bg bg-line-control/30 flex items-center justify-center">
+                      <span className="text-[7px] text-ink-3">+{campaign.account_ids.length - 6}</span>
                     </div>
                   )}
                 </div>
-                <span className="text-white/25 text-[10px]">{campaign.account_ids.length} conta{campaign.account_ids.length !== 1 ? "s" : ""}</span>
+                <span className="text-ink-3 text-[10px]">{campaign.account_ids.length} conta{campaign.account_ids.length !== 1 ? "s" : ""}</span>
               </div>
             </motion.div>
           );
@@ -1466,31 +1486,23 @@ export default function PostarPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="mb-6">
-        <h1 className="page-title">Distribuição de Conteúdo</h1>
-        <p className="page-subtitle">Distribua vídeos de uma pasta para múltiplas contas com ordem aleatória única por conta</p>
-      </div>
+    <div className="mx-auto max-w-[var(--content-max)] px-4 py-7 sm:px-8">
+      <PageHeader
+        eyebrow="Postar"
+        title="Distribuição de Conteúdo"
+        description="Distribua vídeos de uma pasta para múltiplas contas com ordem aleatória única por conta"
+      />
 
       {/* Tabs */}
-      <div className="flex border-b border-white/[0.07] mb-6 gap-1">
-        {([
-          { id: "create", label: "Nova Distribuição", Icon: Film },
-          { id: "campaigns", label: "Campanhas Ativas", Icon: BarChart2 },
-        ] as const).map(({ id, label, Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={cn(
-              "flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all border-b-2 -mb-px",
-              activeTab === id ? "border-[#00498D] text-[#00498D]" : "border-transparent text-white/35 hover:text-white/60"
-            )}
-          >
-            <Icon size={13} />
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        tabs={[
+          { value: "create", label: "Nova Distribuição" },
+          { value: "campaigns", label: "Campanhas Ativas" },
+        ]}
+        value={activeTab}
+        onChange={(v) => setActiveTab(v as "create" | "campaigns")}
+        className="mb-6"
+      />
 
       {/* Success banner */}
       <AnimatePresence>
@@ -1500,18 +1512,14 @@ export default function PostarPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
-            className="mb-5 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#00498D]/10 border border-[#00498D]/20"
+            className="mb-5"
           >
-            <CheckCircle2 size={14} className="text-[#00498D] flex-shrink-0" />
-            <p className="text-sm text-[#00498D] flex-1">
+            <Banner tone="success" onClose={() => setSuccess(null)}>
               <span className="font-semibold">{success.total_posts} posts</span> criados —{" "}
               <span className="font-semibold">{success.videos_per_account} vídeos</span> por conta em{" "}
               <span className="font-semibold">{success.days} dia{success.days !== 1 ? "s" : ""}</span>
               {" · "}Início: {formatDatetime(success.first_slot)}
-            </p>
-            <button onClick={() => setSuccess(null)} className="text-[#00498D]/40 hover:text-[#00498D] transition-colors flex-shrink-0">
-              <X size={13} />
-            </button>
+            </Banner>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1528,24 +1536,24 @@ export default function PostarPage() {
             <SectionCard>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <Users size={14} className="text-white/35" />
-                  <span className="text-xs font-semibold uppercase tracking-widest text-white/35">Contas</span>
+                  <Users size={14} className="text-ink-3" />
+                  <span className="text-xs font-semibold uppercase tracking-widest text-ink-3">Contas</span>
                 </div>
                 {accounts.length > 0 && (
                   <div className="flex items-center gap-2 flex-wrap">
-                    <button onClick={() => setSelectedAccountIds(accounts.map(a => a.id))} className="text-xs text-[#00498D]/70 hover:text-[#00498D] transition-colors">
+                    <button onClick={() => setSelectedAccountIds(accounts.map(a => a.id))} className="text-xs text-accent/70 hover:text-accent transition-colors">
                       Todas
                     </button>
-                    <span className="text-white/15 text-xs">·</span>
-                    <button onClick={() => setSelectedAccountIds([])} className="text-xs text-white/30 hover:text-white/60 transition-colors">
+                    <span className="text-line text-xs">·</span>
+                    <button onClick={() => setSelectedAccountIds([])} className="text-xs text-ink-3 hover:text-ink-2 transition-colors">
                       Nenhuma
                     </button>
                     {accountsWithCampaign.size > 0 && accountsWithoutCampaign.length > 0 && (
                       <>
-                        <span className="text-white/15 text-xs">·</span>
+                        <span className="text-line text-xs">·</span>
                         <button
                           onClick={() => setSelectedAccountIds(accountsWithoutCampaign.map(a => a.id))}
-                          className="text-xs text-red-400/80 hover:text-red-400 transition-colors font-medium"
+                          className="text-xs text-danger/80 hover:text-danger transition-colors font-medium"
                         >
                           Novas ({accountsWithoutCampaign.length})
                         </button>
@@ -1556,14 +1564,20 @@ export default function PostarPage() {
               </div>
 
               {loadingAccounts ? (
-                <div className="flex items-center gap-2 text-white/30 text-sm py-2">
+                <div className="flex items-center gap-2 text-ink-3 text-sm py-2">
                   <Loader2 size={14} className="animate-spin" /> Carregando contas...
                 </div>
               ) : accounts.length === 0 ? (
-                <p className="text-white/25 text-sm py-4 text-center">
-                  Nenhuma conta conectada.{" "}
-                  <a href="/dashboard/accounts" className="text-[#85B9E9] hover:underline">Conectar conta</a>
-                </p>
+                <EmptyState
+                  icon={<Users size={24} />}
+                  title="Nenhuma conta conectada"
+                  description={
+                    <>
+                      Conecte uma conta Instagram para começar.{" "}
+                      <a href="/dashboard/accounts" className="text-accent hover:underline">Conectar conta</a>
+                    </>
+                  }
+                />
               ) : (
                 <div className="space-y-1.5">
                   {accountsByFolder.map(group => {
@@ -1579,23 +1593,23 @@ export default function PostarPage() {
                           className={cn(
                             "flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all cursor-pointer group",
                             isExpanded
-                              ? allSelected ? "border-[#00498D]/30 bg-[#00498D]/5" : someSelected ? "border-[#85B9E9]/20 bg-[#85B9E9]/3" : "border-white/12 bg-white/[0.03]"
-                              : allSelected ? "border-[#00498D]/25 bg-[#00498D]/4" : someSelected ? "border-[#85B9E9]/15 bg-[#85B9E9]/[0.02]" : "border-white/[0.07] bg-white/[0.02] hover:border-white/12"
+                              ? allSelected ? "border-brand-blue/30 bg-brand-blue/5" : someSelected ? "border-accent/20 bg-accent/3" : "border-line bg-surface-raised"
+                              : allSelected ? "border-brand-blue/25 bg-brand-blue/4" : someSelected ? "border-accent/15 bg-accent/[0.02]" : "border-line bg-surface hover:border-line-control"
                           )}
                           onClick={() => toggleExpand(group.id)}
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <ChevronDown
                               size={13}
-                              className={cn("flex-shrink-0 transition-transform duration-200 text-white/30", isExpanded && "rotate-180")}
+                              className={cn("flex-shrink-0 transition-transform duration-200 text-ink-3", isExpanded && "rotate-180")}
                             />
                             <span className="text-sm leading-none">{isNoFolder ? "📂" : "📁"}</span>
-                            <span className={cn("text-sm font-medium truncate", allSelected ? "text-[#00498D]" : someSelected ? "text-[#85B9E9]" : "text-white/60 group-hover:text-white/80")}>
+                            <span className={cn("text-sm font-medium truncate", allSelected ? "text-brand-blue" : someSelected ? "text-accent" : "text-ink-2 group-hover:text-ink")}>
                               {group.name}
                             </span>
-                            <span className="text-xs text-white/25 font-mono flex-shrink-0">({group.accounts.length})</span>
+                            <span className="text-xs text-ink-3 font-mono flex-shrink-0">({group.accounts.length})</span>
                             {someSelected && (
-                              <span className="text-[10px] text-white/30 flex-shrink-0">
+                              <span className="text-[10px] text-ink-3 flex-shrink-0">
                                 · {groupIds.filter(id => selectedAccountIds.includes(id)).length} sel.
                               </span>
                             )}
@@ -1609,7 +1623,7 @@ export default function PostarPage() {
                                 "text-[10px] px-2.5 py-1 rounded-lg border transition-all whitespace-nowrap",
                                 allSelected
                                   ? "border-[#00498D]/30 text-[#00498D]/70 hover:bg-[#00498D]/10"
-                                  : "border-white/[0.08] text-white/30 hover:border-[#00498D]/30 hover:text-[#00498D]/60"
+                                  : "border-line text-ink-3 hover:border-brand-blue/30 hover:text-brand-blue/60"
                               )}
                             >
                               {allSelected ? "desmarcar" : "selecionar"}
@@ -1618,7 +1632,7 @@ export default function PostarPage() {
                               type="button"
                               onClick={e => { e.stopPropagation(); setSelectedAccountIds(accounts.map(a => a.id)); }}
                               title="Selecionar todas as contas de todas as pastas"
-                              className="text-[10px] px-2.5 py-1 rounded-lg border border-white/[0.08] text-white/25 hover:border-[#85B9E9]/30 hover:text-[#85B9E9]/70 transition-all whitespace-nowrap"
+                              className="text-[10px] px-2.5 py-1 rounded-lg border border-line text-ink-3 hover:border-accent/30 hover:text-accent/70 transition-all whitespace-nowrap"
                             >
                               todas as pastas
                             </button>
@@ -1648,10 +1662,10 @@ export default function PostarPage() {
                                       className={cn(
                                         "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all relative",
                                         isSelected
-                                          ? "border-[#00498D]/40 bg-[#00498D]/8 text-[#00498D]"
+                                          ? "border-brand-blue/40 bg-brand-blue/8 text-brand-blue"
                                           : isNew
-                                            ? "border-red-500/30 bg-red-500/[0.05] text-white/70 hover:border-red-400/50"
-                                            : "border-white/[0.08] bg-white/[0.02] text-white/55 hover:border-white/20 hover:text-white/80"
+                                            ? "border-danger/30 bg-danger-soft text-ink-2 hover:border-danger/50"
+                                            : "border-line bg-surface text-ink-2 hover:border-line-control hover:text-ink"
                                       )}
                                     >
                                       {isNew && !isSelected && (
@@ -1686,13 +1700,13 @@ export default function PostarPage() {
               )}
 
               {fullySelectedFolders.length > 0 && (
-                <div className="mt-3 p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02]">
+                <div className="mt-3 p-3.5 rounded-xl border border-line bg-surface">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <RefreshCw size={13} className="text-[#85B9E9] flex-shrink-0" />
+                      <RefreshCw size={13} className="text-accent flex-shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-white/80">Sincronizar com a pasta</p>
-                        <p className="text-[10px] text-white/35 truncate">
+                        <p className="text-sm font-medium text-ink">Sincronizar com a pasta</p>
+                        <p className="text-[10px] text-ink-3 truncate">
                           Contas adicionadas depois em {fullySelectedFolders.map(g => g.name).join(", ")} entram na fila sozinhas
                         </p>
                       </div>
@@ -1702,7 +1716,7 @@ export default function PostarPage() {
                       onClick={() => setSyncFolders(v => !v)}
                       className={cn(
                         "relative w-11 h-6 rounded-full transition-colors flex-shrink-0",
-                        syncFolders ? "bg-[#85B9E9]/80" : "bg-white/10"
+                        syncFolders ? "bg-accent/80" : "bg-line-control/30"
                       )}
                     >
                       <span className={cn(
@@ -1722,26 +1736,26 @@ export default function PostarPage() {
 
               {/* Folder selector */}
               {loadingFolders ? (
-                <div className="flex items-center gap-2 text-white/30 text-sm py-2">
+                <div className="flex items-center gap-2 text-ink-3 text-sm py-2">
                   <Loader2 size={14} className="animate-spin" /> Carregando pastas...
                 </div>
               ) : folders.length === 0 ? (
-                <p className="text-white/25 text-sm py-4 text-center">
+                <p className="text-ink-3 text-sm py-4 text-center">
                   Nenhuma pasta criada.{" "}
-                  <a href="/dashboard/library" className="text-[#85B9E9] hover:underline">Criar pasta</a>
+                  <a href="/dashboard/library" className="text-accent hover:underline">Criar pasta</a>
                 </p>
               ) : (
                 <div className="relative mb-4">
                   <button
                     onClick={() => setFolderOpen(v => !v)}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 hover:border-white/20 transition-colors"
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-surface-raised border border-line-control hover:border-line-control transition-colors"
                   >
-                    <span className={cn("text-sm", selectedFolder ? "text-white" : "text-white/30")}>
+                    <span className={cn("text-sm", selectedFolder ? "text-ink" : "text-ink-3")}>
                       {selectedFolder
                         ? `📁 ${selectedFolder.name} · ${folderVideoCount} vídeos`
                         : "Selecionar pasta..."}
                     </span>
-                    <ChevronDown size={14} className={cn("text-white/30 transition-transform", folderOpen && "rotate-180")} />
+                    <ChevronDown size={14} className={cn("text-ink-3 transition-transform", folderOpen && "rotate-180")} />
                   </button>
 
                   <AnimatePresence>
@@ -1751,19 +1765,19 @@ export default function PostarPage() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -6 }}
                         transition={{ duration: 0.12 }}
-                        className="absolute z-20 top-full left-0 right-0 mt-1 bg-[#0d111b] border border-white/10 rounded-xl shadow-2xl overflow-y-auto max-h-72"
+                        className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface-raised border border-line rounded-xl shadow-2xl overflow-y-auto max-h-72"
                       >
                         {folders.map(f => (
                           <button
                             key={f.id}
                             onClick={() => { setSelectedFolderId(f.id); setFolderOpen(false); }}
                             className={cn(
-                              "w-full flex items-center justify-between px-4 py-3 text-sm text-left hover:bg-white/[0.05] transition-colors",
-                              selectedFolderId === f.id && "bg-[#00498D]/5 text-[#00498D]"
+                              "w-full flex items-center justify-between px-4 py-3 text-sm text-left hover:bg-surface-hover transition-colors",
+                              selectedFolderId === f.id && "bg-brand-blue/5 text-brand-blue"
                             )}
                           >
-                            <span className="text-white">📁 {f.name}</span>
-                            <span className="text-white/30 text-xs">{f.video_count} vídeos</span>
+                            <span className="text-ink">📁 {f.name}</span>
+                            <span className="text-ink-3 text-xs">{f.video_count} vídeos</span>
                           </button>
                         ))}
                       </motion.div>
@@ -1774,16 +1788,16 @@ export default function PostarPage() {
 
               {/* Quantidade */}
               {burstMode ? (
-                <div className="flex items-center gap-2 px-3.5 py-3 rounded-xl bg-[#85B9E9]/[0.04] border border-[#85B9E9]/15">
-                  <Zap size={12} className="text-[#85B9E9] flex-shrink-0" />
-                  <p className="text-[11px] text-white/50">
+                <div className="flex items-center gap-2 px-3.5 py-3 rounded-xl bg-accent/[0.04] border border-accent/15">
+                  <Zap size={12} className="text-accent flex-shrink-0" />
+                  <p className="text-[11px] text-ink-2">
                     Modo Ciclo ativo — quantidade definida na seção Cadência:{" "}
-                    <span className="text-[#85B9E9] font-semibold">{videoCount === -1 ? "todos os" : videoCount} vídeos por conta</span>
+                    <span className="text-accent font-semibold">{videoCount === -1 ? "todos os" : videoCount} vídeos por conta</span>
                   </p>
                 </div>
               ) : (
               <div>
-                <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Quantos vídeos postar</p>
+                <p className="text-xs text-ink-3 font-medium mb-3 uppercase tracking-wider">Quantos vídeos postar</p>
                 <div className="flex gap-2">
                   {VIDEO_COUNT_PRESETS.map(({ label, value }) => {
                     const isDisabled = value !== -1 && value > folderVideoCount && folderVideoCount > 0;
@@ -1795,10 +1809,10 @@ export default function PostarPage() {
                         className={cn(
                           "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all border",
                           videoCount === value
-                            ? "bg-[#00498D]/15 text-[#00498D] border-[#00498D]/30"
+                            ? "bg-brand-blue/15 text-brand-blue border-brand-blue/30"
                             : isDisabled
-                              ? "bg-white/[0.02] text-white/15 border-white/[0.05] cursor-not-allowed"
-                              : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                              ? "bg-surface text-ink-3/40 border-line cursor-not-allowed"
+                              : "bg-surface-raised text-ink-3 border-line hover:border-line-control hover:text-ink-2"
                         )}
                       >
                         {label}
@@ -1807,7 +1821,7 @@ export default function PostarPage() {
                   })}
                 </div>
                 {selectedFolderId && folderVideoCount > 0 && (
-                  <p className="mt-2 text-[11px] text-white/30">
+                  <p className="mt-2 text-[11px] text-ink-3">
                     {videosPerAccount === folderVideoCount
                       ? `Todos os ${folderVideoCount} vídeos da pasta serão usados`
                       : `${videosPerAccount} de ${folderVideoCount} vídeos serão usados`}
@@ -1822,31 +1836,22 @@ export default function PostarPage() {
               <SectionLabel Icon={CalendarDays}>Cadência</SectionLabel>
 
               {/* Toggle Modo Ciclo */}
-              <div className="mb-5 p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02]">
+              <div className="mb-5 rounded-xl border border-line bg-surface p-3.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <Zap size={13} style={{ color: "var(--electric)" }} />
+                    <Zap size={13} className="text-accent" />
                     <div>
-                      <p className="text-sm font-medium text-white/80">Modo Ciclo</p>
-                      <p className="text-[10px] text-white/35">Cada conta posta seu lote de vídeos de uma vez, uma conta após a outra</p>
+                      <p className="text-sm font-medium text-ink">Modo Ciclo</p>
+                      <p className="text-[10px] text-ink-3">Cada conta posta seu lote de vídeos de uma vez, uma conta após a outra</p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
+                  <Switch
+                    checked={burstMode}
+                    onChange={() => {
                       if (!burstMode && (videoCount === -1 || videoCount > 50)) setVideoCount(5);
                       setBurstMode(v => !v);
                     }}
-                    className={cn(
-                      "relative w-11 h-6 rounded-full transition-colors flex-shrink-0",
-                      burstMode ? "bg-[#85B9E9]/80" : "bg-white/10"
-                    )}
-                  >
-                    <span className={cn(
-                      "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform",
-                      burstMode ? "translate-x-5" : "translate-x-0"
-                    )} />
-                  </button>
+                  />
                 </div>
                 <AnimatePresence>
                   {burstMode && (
@@ -1859,7 +1864,7 @@ export default function PostarPage() {
                     >
                       {/* Quantidade de vídeos por conta */}
                       <div className="mt-3">
-                        <p className="text-[10px] text-white/40 font-medium mb-2 uppercase tracking-wider">Quantos vídeos por conta</p>
+                        <p className="text-[10px] text-ink-3 font-medium mb-2 uppercase tracking-wider">Quantos vídeos por conta</p>
                         <div className="flex items-center gap-2">
                           {[1, 3, 5, 10, 20].map(n => (
                             <button
@@ -1870,7 +1875,7 @@ export default function PostarPage() {
                                 "px-3.5 py-2 rounded-xl text-sm font-bold border transition-all",
                                 videoCount === n
                                   ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30"
-                                  : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                                  : "bg-surface-raised text-ink-3 border-line hover:border-line-control hover:text-ink-2"
                               )}
                             >
                               {n}
@@ -1886,7 +1891,7 @@ export default function PostarPage() {
                               if (!isNaN(v) && v >= 1) setVideoCount(Math.min(v, 999));
                             }}
                             placeholder="Outro"
-                            className="w-20 px-3 py-2 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm text-center focus:outline-none focus:border-[#85B9E9]/40 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-20 px-3 py-2 rounded-xl bg-surface-raised border border-line-control text-ink text-sm text-center focus:outline-none focus:border-accent/40 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                         </div>
                         {selectedFolderId && folderVideoCount > 0 && videoCount > folderVideoCount && (
@@ -1898,7 +1903,7 @@ export default function PostarPage() {
 
                       {/* Estratégia de prioridade */}
                       <div className="mt-3">
-                        <p className="text-[10px] text-white/40 font-medium mb-2 uppercase tracking-wider">Ordem de distribuição</p>
+                        <p className="text-[10px] text-ink-3 font-medium mb-2 uppercase tracking-wider">Ordem de distribuição</p>
                         <div className="flex flex-wrap gap-2">
                           {([
                             { value: "views", label: "Mais visualizados" },
@@ -1913,14 +1918,14 @@ export default function PostarPage() {
                                 "px-3.5 py-2 rounded-xl text-sm font-bold border transition-all",
                                 priorityStrategy === opt.value
                                   ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30"
-                                  : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                                  : "bg-surface-raised text-ink-3 border-line hover:border-line-control hover:text-ink-2"
                               )}
                             >
                               {opt.label}
                             </button>
                           ))}
                         </div>
-                        <p className="mt-1.5 text-[10px] text-white/30">
+                        <p className="mt-1.5 text-[10px] text-ink-3">
                           {priorityStrategy === "views"
                             ? "Prioriza os Reels com mais views da origem e varia a atribuição entre contas."
                             : priorityStrategy === "least_usage"
@@ -1951,7 +1956,7 @@ export default function PostarPage() {
                   >
                     {/* Posts por dia */}
                     <div className="mb-5">
-                      <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Posts por dia por conta</p>
+                      <p className="text-xs text-ink-3 font-medium mb-3 uppercase tracking-wider">Posts por dia por conta</p>
                       <div className="flex flex-wrap gap-2">
                         {POSTS_PER_DAY_OPTIONS.map(n => {
                           const mins = Math.floor((24 * 60) / n);
@@ -1967,7 +1972,7 @@ export default function PostarPage() {
                                 "flex flex-col items-center px-3.5 py-2 rounded-xl border transition-all",
                                 postsPerDay === n
                                   ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30"
-                                  : "bg-white/[0.04] text-white/40 border-white/[0.07] hover:border-white/20 hover:text-white/70"
+                                  : "bg-surface-raised text-ink-3 border-line hover:border-line-control hover:text-ink-2"
                               )}
                             >
                               <span className="text-sm font-bold leading-none">{n}</span>
@@ -1980,13 +1985,13 @@ export default function PostarPage() {
 
                     {/* Start datetime */}
                     <div>
-                      <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Data e hora do primeiro post</p>
+                      <p className="text-xs text-ink-3 font-medium mb-3 uppercase tracking-wider">Data e hora do primeiro post</p>
                       <input
                         type="datetime-local"
                         value={startDatetime}
                         min={minDatetime}
                         onChange={e => setStartDatetime(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-[#00498D]/40 focus:ring-1 focus:ring-[#00498D]/20 transition-all [color-scheme:dark]"
+                        className="w-full px-4 py-3 rounded-xl bg-surface-raised border border-line-control text-ink text-sm focus:outline-none focus:border-brand-blue/40 focus:ring-1 focus:ring-brand-blue/20 transition-all [color-scheme:dark]"
                       />
                     </div>
                   </motion.div>
@@ -1995,17 +2000,17 @@ export default function PostarPage() {
 
               {/* Stagger entre contas */}
               <div className="mt-5">
-                <p className="text-xs text-white/40 font-medium mb-3 uppercase tracking-wider">Intervalo entre contas</p>
-                <div className="space-y-3 p-4 rounded-xl border border-white/[0.07] bg-white/[0.03]">
+                <p className="text-xs text-ink-3 font-medium mb-3 uppercase tracking-wider">Intervalo entre contas</p>
+                <div className="space-y-3 p-4 rounded-xl border border-line bg-surface-raised">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-white/40">Auto</span>
+                    <span className="text-xs text-ink-3">Auto</span>
                     <span className={cn(
                       "text-base font-bold",
-                      accountStaggerSeconds ? "text-[#00498D]" : "text-white/30"
+                      accountStaggerSeconds ? "text-brand-blue" : "text-ink-3"
                     )}>
                       {accountStaggerSeconds ? `${accountStaggerSeconds}s` : "Automático"}
                     </span>
-                    <span className="text-xs text-white/40">5 min</span>
+                    <span className="text-xs text-ink-3">5 min</span>
                   </div>
                   <input
                     type="range"
@@ -2020,20 +2025,20 @@ export default function PostarPage() {
                     className="range-slider"
                     style={{
                       background: accountStaggerSeconds
-                        ? `linear-gradient(to right, var(--matrix) 0%, var(--matrix) ${(accountStaggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) ${(accountStaggerSeconds / 300) * 100}%, rgba(255,255,255,0.08) 100%)`
+                        ? `linear-gradient(to right, var(--brand-blue) 0%, var(--brand-blue) ${(accountStaggerSeconds / 300) * 100}%, var(--line) ${(accountStaggerSeconds / 300) * 100}%, var(--line) 100%)`
                         : `linear-gradient(to right, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.08) 100%)`
                     }}
                   />
                   {accountStaggerSeconds ? (
-                    <p className="text-[11px]" style={{ color: "var(--matrix)" }}>
+                    <p className="text-[11px] text-brand-blue">
                       {accountStaggerSeconds}s entre cada conta — arraste até o início para automático
                     </p>
                   ) : burstMode ? (
-                    <p className="text-[11px] text-white/30 italic">
+                    <p className="text-[11px] text-ink-3 italic">
                       Blocos em sequência imediata — use o slider para dar uma folga extra entre contas
                     </p>
                   ) : (
-                    <p className="text-[11px] text-white/30 italic">
+                    <p className="text-[11px] text-ink-3 italic">
                       Proporcional ao intervalo ÷ número de contas (máx. 5 min)
                     </p>
                   )}
@@ -2048,25 +2053,25 @@ export default function PostarPage() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -4 }}
                     transition={{ duration: 0.2 }}
-                    className="mt-5 p-4 rounded-xl bg-white/[0.03] border border-white/[0.07]"
+                    className="mt-5 rounded-xl border border-line bg-surface-hover p-4"
                   >
                     {(() => {
                       const days = Math.ceil(videosPerAccount / postsPerDay);
                       const totalPosts = videosPerAccount * selectedAccountIds.length;
                       return burstMode ? (
-                        <p className="text-xs text-white/55 leading-relaxed">
-                          <span className="text-[#00498D] font-semibold">{videosPerAccount}</span> vídeos por conta ×{" "}
-                          <span className="text-[#85B9E9] font-semibold">{selectedAccountIds.length}</span> conta{selectedAccountIds.length !== 1 ? "s" : ""} ={" "}
-                          <span className="text-white font-semibold">{totalPosts}</span> posts.
-                          {" "}Cada conta posta seu lote <span className="text-[#85B9E9] font-semibold">de uma vez</span>, em sequência:
+                        <p className="text-xs text-ink-2 leading-relaxed">
+                          <span className="text-accent font-semibold">{videosPerAccount}</span> vídeos por conta ×{" "}
+                          <span className="text-accent font-semibold">{selectedAccountIds.length}</span> conta{selectedAccountIds.length !== 1 ? "s" : ""} ={" "}
+                          <span className="text-ink font-semibold">{totalPosts}</span> posts.
+                          {" "}Cada conta posta seu lote <span className="text-accent font-semibold">de uma vez</span>, em sequência:
                           {" "}conta 1 → conta 2 → conta 3... com vídeos sorteados sem repetição entre elas.
                         </p>
                       ) : (
-                        <p className="text-xs text-white/55 leading-relaxed">
-                          <span className="text-[#00498D] font-semibold">{videosPerAccount}</span> vídeos ×{" "}
-                          <span className="text-[#85B9E9] font-semibold">{selectedAccountIds.length}</span> conta{selectedAccountIds.length !== 1 ? "s" : ""} ={" "}
-                          <span className="text-white font-semibold">{totalPosts}</span> posts ao longo de{" "}
-                          <span className="text-white font-semibold">{days}</span> dia{days !== 1 ? "s" : ""}.
+                        <p className="text-xs text-ink-2 leading-relaxed">
+                          <span className="text-accent font-semibold">{videosPerAccount}</span> vídeos ×{" "}
+                          <span className="text-accent font-semibold">{selectedAccountIds.length}</span> conta{selectedAccountIds.length !== 1 ? "s" : ""} ={" "}
+                          <span className="text-ink font-semibold">{totalPosts}</span> posts ao longo de{" "}
+                          <span className="text-ink font-semibold">{days}</span> dia{days !== 1 ? "s" : ""}.
                           {" "}Cada conta recebe os vídeos em ordem aleatória única.
                         </p>
                       );
@@ -2100,13 +2105,13 @@ export default function PostarPage() {
 
               {/* Legendas automáticas só existem dentro do modo Personalizada */}
               {captionMode === "custom" && (
-              <div className="mb-3 p-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02]">
+              <div className="mb-3 p-3.5 rounded-xl border border-line bg-surface">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <Sparkles size={13} style={{ color: "var(--matrix)" }} />
+                    <Sparkles size={13} className="text-brand-blue" />
                     <div>
-                      <p className="text-sm font-medium text-white/80">Legendas Automáticas</p>
-                      <p className="text-[10px] text-white/35">Curiosidades únicas em PT-BR por post</p>
+                      <p className="text-sm font-medium text-ink">Legendas Automáticas</p>
+                      <p className="text-[10px] text-ink-3">Curiosidades únicas em PT-BR por post</p>
                     </div>
                   </div>
                   <button
@@ -2114,7 +2119,7 @@ export default function PostarPage() {
                     onClick={() => setAutoCaptionEnabled(v => !v)}
                     className={cn(
                       "relative w-11 h-6 rounded-full transition-colors flex-shrink-0",
-                      autoCaptionEnabled ? "bg-[#00498D]/80" : "bg-white/10"
+                      autoCaptionEnabled ? "bg-brand-blue/80" : "bg-line-control/30"
                     )}
                   >
                     <span className={cn(
@@ -2132,9 +2137,9 @@ export default function PostarPage() {
                       transition={{ duration: 0.15 }}
                       className="overflow-hidden"
                     >
-                      <div className="mt-3 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
-                        <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma legenda diferente)</p>
-                        <p className="text-[10px] text-white/50 leading-relaxed italic whitespace-pre-line">
+                      <div className="mt-3 p-2.5 rounded-lg bg-surface-raised border border-line">
+                        <p className="text-[9px] text-ink-3 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma legenda diferente)</p>
+                        <p className="text-[10px] text-ink-2 leading-relaxed italic whitespace-pre-line">
                           {AUTO_CAPTION_PREVIEW_POSTAR}
                         </p>
                       </div>
@@ -2180,36 +2185,34 @@ export default function PostarPage() {
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
                 >
-                  <AlertCircle size={14} className="flex-shrink-0" />
-                  {submitError}
+                  <Banner tone="danger">{submitError}</Banner>
                 </motion.div>
               )}
             </AnimatePresence>
 
             {/* Submit */}
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full"
               onClick={handleSubmit}
               disabled={submitting}
-              className={cn(
-                "w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-black text-sm transition-all",
-                submitting ? "bg-[#00498D]/50 cursor-not-allowed" : "bg-[#00498D] hover:bg-[#00498D]/90 hover:shadow-[0_0_28px_rgba(0,73,141,0.35)]"
-              )}
+              icon={submitting ? <Loader2 size={16} className="animate-spin" /> : burstMode ? <Zap size={16} /> : <Send size={16} />}
             >
-              {submitting ? (
-                <><Loader2 size={16} className="animate-spin text-black/70" /> {burstMode ? "Postando agora..." : "Criando distribuição..."}</>
-              ) : (
-                <>{burstMode ? <Zap size={16} /> : <Send size={16} />} {burstMode ? "Postar Tudo Agora" : "Criar Distribuição"}
-                  {videosPerAccount > 0 && selectedAccountIds.length > 0 && (
-                    <span className="ml-1 opacity-70">
-                      ({videosPerAccount * selectedAccountIds.length} posts · {selectedAccountIds.length} conta{selectedAccountIds.length !== 1 ? "s" : ""})
-                    </span>
-                  )}
-                </>
-              )}
-            </button>
+              {submitting
+                ? (burstMode ? "Postando agora..." : "Criando distribuição...")
+                : (
+                  <>
+                    {burstMode ? "Postar Tudo Agora" : "Criar Distribuição"}
+                    {videosPerAccount > 0 && selectedAccountIds.length > 0 && (
+                      <span className="ml-1 opacity-70">
+                        ({videosPerAccount * selectedAccountIds.length} posts · {selectedAccountIds.length} conta{selectedAccountIds.length !== 1 ? "s" : ""})
+                      </span>
+                    )}
+                  </>
+                )}
+            </Button>
           </div>
 
           {/* Preview */}
@@ -2223,7 +2226,7 @@ export default function PostarPage() {
             />
 
             <div className="mt-4 glass-card rounded-2xl p-4 space-y-2.5">
-              <p className="text-[10px] text-white/25 uppercase tracking-wider">Como funciona</p>
+              <p className="text-[10px] text-ink-3 uppercase tracking-wider">Como funciona</p>
               {[
                 { icon: Shuffle, text: "Cada conta recebe os vídeos em uma ordem aleatória diferente" },
                 { icon: CalendarDays, text: "Posts distribuídos uniformemente ao longo do dia" },
@@ -2231,7 +2234,7 @@ export default function PostarPage() {
               ].map(({ icon: Icon, text }) => (
                 <div key={text} className="flex items-start gap-2">
                   <Icon size={10} className="text-[#00498D]/50 mt-0.5 flex-shrink-0" />
-                  <p className="text-[10px] text-white/30 leading-relaxed">{text}</p>
+                  <p className="text-[10px] text-ink-3 leading-relaxed">{text}</p>
                 </div>
               ))}
             </div>

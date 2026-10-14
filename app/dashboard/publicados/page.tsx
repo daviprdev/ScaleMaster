@@ -224,7 +224,7 @@ export default function PublicadosPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <Loader2 size={32} className="animate-spin text-[#85B9E9]" />
-        <p className="text-white/40 text-sm">Carregando publicações...</p>
+        <p className="text-ink-3 text-sm">Carregando publicações...</p>
       </div>
     );
   }
@@ -239,7 +239,7 @@ export default function PublicadosPage() {
               <CheckCircle2 size={22} className="text-[#85B9E9]" />
               Publicados
             </h1>
-            <p className="text-sm text-white/35 mt-0.5">
+            <p className="text-sm text-ink-3 mt-0.5">
               Histórico completo de todas as publicações realizadas
             </p>
           </div>
@@ -247,7 +247,7 @@ export default function PublicadosPage() {
           <button
             onClick={() => fetchData(selectedAccountId)}
             disabled={refreshing}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-white/[0.08] bg-white/[0.02] text-white/60 hover:text-white hover:border-white/20 transition-all text-sm disabled:opacity-40"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-line bg-surface text-ink-2 hover:text-white hover:border-line-control transition-all text-sm disabled:opacity-40"
           >
             <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
             Atualizar
@@ -271,7 +271,7 @@ export default function PublicadosPage() {
                 "flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm transition-all",
                 selectedAccount
                   ? "border-[#85B9E9]/40 bg-[#85B9E9]/10 text-[#85B9E9]"
-                  : "border-white/[0.08] bg-white/[0.02] text-white/60 hover:text-white hover:border-white/20"
+                  : "border-line bg-surface text-ink-2 hover:text-white hover:border-line-control"
               )}
             >
               <Filter size={14} />
@@ -305,15 +305,15 @@ export default function PublicadosPage() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -8, scale: 0.97 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute top-full left-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-white/[0.1] shadow-2xl z-50"
+                  className="absolute top-full left-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl border border-line shadow-2xl z-50"
                   style={{
                     background: "rgba(0,0,0,0.92)",
                     backdropFilter: "blur(28px) saturate(180%)",
                     WebkitBackdropFilter: "blur(28px) saturate(180%)",
                   }}
                 >
-                  <div className="p-2 border-b border-white/[0.06]">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/35 px-2 py-1.5">
+                  <div className="p-2 border-b border-line">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-ink-3 px-2 py-1.5">
                       Selecionar conta
                     </p>
                   </div>
@@ -326,7 +326,7 @@ export default function PublicadosPage() {
                         "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all",
                         !selectedAccountId
                           ? "bg-[#85B9E9]/10 text-[#85B9E9]"
-                          : "text-white/60 hover:bg-white/[0.05] hover:text-white"
+                          : "text-ink-2 hover:bg-surface-hover hover:text-ink"
                       )}
                     >
                       <Users size={15} className="flex-shrink-0" />
@@ -336,11 +336,11 @@ export default function PublicadosPage() {
                       )}
                     </button>
 
-                    <div className="my-1 border-t border-white/[0.06]" />
+                    <div className="my-1 border-t border-line" />
 
                     {/* Lista de contas */}
                     {accounts.length === 0 ? (
-                      <p className="text-white/30 text-xs text-center py-4">
+                      <p className="text-ink-3 text-xs text-center py-4">
                         Nenhuma conta ativa
                       </p>
                     ) : (
@@ -354,7 +354,7 @@ export default function PublicadosPage() {
                               "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all",
                               isSelected
                                 ? "bg-[#85B9E9]/10 text-[#85B9E9]"
-                                : "text-white/60 hover:bg-white/[0.05] hover:text-white"
+                                : "text-ink-2 hover:bg-surface-hover hover:text-ink"
                             )}
                           >
                             {acc.avatar_url ? (
@@ -376,7 +376,7 @@ export default function PublicadosPage() {
                             )}
                             <span className="font-medium truncate">@{acc.username}</span>
                             {acc.followers_count != null && (
-                              <span className="text-[10px] text-white/30 ml-auto flex-shrink-0">
+                              <span className="text-[10px] text-ink-3 ml-auto flex-shrink-0">
                                 {formatNumber(acc.followers_count)}
                               </span>
                             )}
@@ -394,7 +394,7 @@ export default function PublicadosPage() {
           </div>
 
           {/* Filtro por tipo */}
-          <div className="flex items-center gap-1 p-1 rounded-xl border border-white/[0.08] bg-white/[0.02]">
+          <div className="flex items-center gap-1 p-1 rounded-xl border border-line bg-surface">
             <TypeButton
               active={typeFilter === "all"}
               onClick={() => setTypeFilter("all")}
@@ -416,18 +416,18 @@ export default function PublicadosPage() {
 
           {/* Busca */}
           <div className="flex-1 min-w-[200px] relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-3" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar por conta, legenda ou ID..."
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.08] text-sm text-white/90 placeholder:text-white/25 focus:border-[#85B9E9]/40 focus:outline-none transition-colors"
+              className="w-full pl-9 pr-3 py-2 rounded-xl bg-surface-raised border border-line text-sm text-ink placeholder:text-ink-3/60 focus:border-accent/40 focus:outline-none transition-colors"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-3 hover:text-ink-2 transition-colors"
               >
                 <X size={14} />
               </button>
@@ -440,7 +440,7 @@ export default function PublicadosPage() {
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
-            className="mt-3 pt-3 border-t border-white/[0.06] flex items-center gap-2 text-xs text-white/40"
+            className="mt-3 pt-3 border-t border-line flex items-center gap-2 text-xs text-ink-3"
           >
             <span>
               Mostrando <span className="text-white font-semibold">{filteredItems.length}</span>{" "}
@@ -472,32 +472,32 @@ export default function PublicadosPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/[0.06]">
-                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/35">
+              <tr className="border-b border-line">
+                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-ink-3">
                   Publicado em
                 </th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/35">
+                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-ink-3">
                   Conta
                 </th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/35">
+                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-ink-3">
                   Tipo
                 </th>
-                <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/35">
+                <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-ink-3">
                   Views
                 </th>
-                <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/35 hidden sm:table-cell">
+                <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-ink-3 hidden sm:table-cell">
                   Alcance
                 </th>
-                <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/35 hidden md:table-cell">
+                <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-ink-3 hidden md:table-cell">
                   Likes
                 </th>
-                <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/35 hidden lg:table-cell">
+                <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-ink-3 hidden lg:table-cell">
                   Comentários
                 </th>
-                <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/35 hidden lg:table-cell">
+                <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-ink-3 hidden lg:table-cell">
                   Compartilh.
                 </th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/35 hidden xl:table-cell">
+                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-ink-3 hidden xl:table-cell">
                   Legenda
                 </th>
               </tr>
@@ -507,10 +507,10 @@ export default function PublicadosPage() {
                 <tr>
                   <td colSpan={9} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
-                      <div className="w-14 h-14 rounded-2xl bg-white/[0.04] flex items-center justify-center">
-                        <CheckCircle2 size={24} className="text-white/20" />
+                      <div className="w-14 h-14 rounded-2xl bg-surface-raised flex items-center justify-center">
+                        <CheckCircle2 size={24} className="text-ink-3/50" />
                       </div>
-                      <p className="text-white/30 text-sm">
+                      <p className="text-ink-3 text-sm">
                         {searchQuery || selectedAccount || typeFilter !== "all"
                           ? "Nenhuma publicação encontrada com esses filtros"
                           : "Nenhuma publicação ainda"}
@@ -525,15 +525,15 @@ export default function PublicadosPage() {
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: Math.min(idx * 0.02, 0.3) }}
-                    className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors"
+                    className="border-b border-line hover:bg-surface-hover transition-colors"
                   >
                     {/* Data */}
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex flex-col">
-                        <span className="text-white/70 text-xs font-medium">
+                        <span className="text-ink-2 text-xs font-medium">
                           {formatDate(item.published_at)}
                         </span>
-                        <span className="text-white/25 text-[10px]">
+                        <span className="text-ink-3 text-[10px]">
                           {timeAgo(item.published_at)}
                         </span>
                       </div>
@@ -559,7 +559,7 @@ export default function PublicadosPage() {
                             <Instagram size={11} className="text-white" />
                           </div>
                         )}
-                        <span className="text-white/70 text-xs font-medium truncate">
+                        <span className="text-ink-2 text-xs font-medium truncate">
                           @{item.username ?? "conta removida"}
                         </span>
                       </div>
@@ -582,42 +582,42 @@ export default function PublicadosPage() {
 
                     {/* Views */}
                     <td className="px-4 py-3 text-right">
-                      <span className="text-white/80 text-xs font-semibold tabular-nums">
+                      <span className="text-ink text-xs font-semibold tabular-nums">
                         {formatNumber(item.views)}
                       </span>
                     </td>
 
                     {/* Reach */}
                     <td className="px-4 py-3 text-right hidden sm:table-cell">
-                      <span className="text-white/50 text-xs tabular-nums">
+                      <span className="text-ink-3 text-xs tabular-nums">
                         {formatNumber(item.reach)}
                       </span>
                     </td>
 
                     {/* Likes */}
                     <td className="px-4 py-3 text-right hidden md:table-cell">
-                      <span className="text-white/50 text-xs tabular-nums">
+                      <span className="text-ink-3 text-xs tabular-nums">
                         {formatNumber(item.likes)}
                       </span>
                     </td>
 
                     {/* Comments */}
                     <td className="px-4 py-3 text-right hidden lg:table-cell">
-                      <span className="text-white/50 text-xs tabular-nums">
+                      <span className="text-ink-3 text-xs tabular-nums">
                         {formatNumber(item.comments)}
                       </span>
                     </td>
 
                     {/* Shares */}
                     <td className="px-4 py-3 text-right hidden lg:table-cell">
-                      <span className="text-white/50 text-xs tabular-nums">
+                      <span className="text-ink-3 text-xs tabular-nums">
                         {formatNumber(item.shares)}
                       </span>
                     </td>
 
                     {/* Caption */}
                     <td className="px-4 py-3 hidden xl:table-cell max-w-[200px]">
-                      <p className="text-white/40 text-xs truncate" title={item.caption ?? ""}>
+                      <p className="text-ink-3 text-xs truncate" title={item.caption ?? ""}>
                         {item.caption ?? "—"}
                       </p>
                     </td>
@@ -630,7 +630,7 @@ export default function PublicadosPage() {
 
         {/* Footer */}
         {filteredItems.length > 0 && (
-          <div className="px-4 py-3 border-t border-white/[0.06] flex items-center justify-between text-xs text-white/35">
+          <div className="px-4 py-3 border-t border-line flex items-center justify-between text-xs text-ink-3">
             <span>
               Mostrando {filteredItems.length} de {total} publicações
             </span>
@@ -671,7 +671,7 @@ function StatCard({
     <div className={cn("rounded-xl border p-3.5", bgColor, borderColor)}>
       <div className="flex items-center gap-2 mb-1.5">
         <span className={color}>{icon}</span>
-        <span className="text-[10px] font-bold uppercase tracking-widest text-white/35">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-ink-3">
           {label}
         </span>
       </div>
@@ -698,7 +698,7 @@ function TypeButton({
         "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
         active
           ? "bg-[#85B9E9]/15 text-[#85B9E9]"
-          : "text-white/40 hover:text-white/70 hover:bg-white/[0.04]"
+          : "text-ink-3 hover:text-ink-2 hover:bg-surface-raised"
       )}
     >
       {icon}

@@ -145,8 +145,8 @@ function CustomTooltip({
   if (!active || !payload?.length) return null;
   const v = payload[0]?.value ?? 0;
   return (
-    <div className="px-3 py-2 rounded-xl bg-black/90 border border-white/10 text-xs backdrop-blur-xl shadow-xl">
-      <p className="text-white/40 mb-1">{label}</p>
+    <div className="px-3 py-2 rounded-xl bg-black/90 border border-line-2 text-xs backdrop-blur-xl shadow-xl">
+      <p className="text-ink-3 mb-1">{label}</p>
       <p style={{ color: payload[0]?.color ?? MATRIX }} className="font-bold">
         {valueLabel ?? valueKey ?? ""}: {valueFmt ? valueFmt(v) : v.toLocaleString("pt-BR")}
       </p>
@@ -176,12 +176,12 @@ function KpiCard({
       <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent" />
       <div className="relative space-y-3">
         <div className="flex items-center justify-between">
-          <Icon size={14} className="text-white/30" />
+          <Icon size={14} className="text-ink-3" />
           {delta !== undefined && !loading && (
             <div className={cn(
               "flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
               isPositive ? "text-emerald-400 bg-emerald-500/10" :
-              isNeutral  ? "text-white/30 bg-white/5" :
+              isNeutral  ? "text-ink-3 bg-surface-hover" :
                            "text-red-400 bg-red-500/10"
             )}>
               {isPositive ? <ArrowUpRight size={10} /> : isNeutral ? <Minus size={10} /> : <ArrowDownRight size={10} />}
@@ -191,15 +191,15 @@ function KpiCard({
         </div>
         {loading ? (
           <div className="space-y-1.5">
-            <div className="h-7 w-20 rounded bg-white/8 animate-pulse" />
-            <div className="h-3 w-14 rounded bg-white/5 animate-pulse" />
+            <div className="h-7 w-20 rounded bg-line-control/20 animate-pulse" />
+            <div className="h-3 w-14 rounded bg-surface-hover animate-pulse" />
           </div>
         ) : (
           <div>
             <p className="text-2xl font-bold text-white tracking-tight">{value}</p>
-            <p className="text-[10px] text-white/35 mt-0.5">{sub ?? label}</p>
+            <p className="text-[10px] text-ink-3 mt-0.5">{sub ?? label}</p>
             {deltaLabel && delta !== undefined && (
-              <p className="text-[10px] text-white/20 mt-0.5">{deltaLabel}</p>
+              <p className="text-[10px] text-ink-3 mt-0.5">{deltaLabel}</p>
             )}
           </div>
         )}
@@ -231,18 +231,18 @@ function EmptyGrowthState({ onSync, syncing }: { onSync: () => void; syncing: bo
       animate={{ opacity: 1, y: 0 }}
       className="glass-card p-12 flex flex-col items-center text-center"
     >
-      <div className="w-16 h-16 rounded-2xl bg-[var(--matrix)]/8 border border-[var(--matrix)]/15 flex items-center justify-center mb-5">
-        <BarChartIcon size={26} className="text-[var(--matrix)]/50" />
+      <div className="w-16 h-16 rounded-2xl bg-[var(--brand-blue)]/8 border border-[var(--brand-blue)]/15 flex items-center justify-center mb-5">
+        <BarChartIcon size={26} className="text-[var(--brand-blue)]/50" />
       </div>
-      <p className="text-white/70 font-semibold text-base mb-2">Coletando dados...</p>
-      <p className="text-sm text-white/30 max-w-xs leading-relaxed mb-6">
+      <p className="text-ink-2 font-semibold text-base mb-2">Coletando dados...</p>
+      <p className="text-sm text-ink-3 max-w-xs leading-relaxed mb-6">
         Os gráficos de crescimento estarão disponíveis após a primeira sincronização.
         Geralmente ocorre automaticamente às 2h UTC — ou clique abaixo para iniciar agora.
       </p>
       <button
         onClick={onSync}
         disabled={syncing}
-        className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[var(--matrix)]/30 bg-[var(--matrix)]/8 text-[var(--matrix)] text-sm font-semibold hover:bg-[var(--matrix)]/15 transition-all disabled:opacity-50"
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[var(--brand-blue)]/30 bg-[var(--brand-blue)]/8 text-[var(--brand-blue)] text-sm font-semibold hover:bg-[var(--brand-blue)]/15 transition-all disabled:opacity-50"
       >
         {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
         {syncing ? "Sincronizando..." : "Iniciar coleta de dados"}
@@ -276,7 +276,7 @@ function PostRow({
             "w-14 h-20 sm:w-10 sm:h-14 rounded-xl bg-gradient-to-br flex items-center justify-center",
             account ? accountGradient(account.username) : "from-gray-600 to-gray-700"
           )}>
-            <Instagram size={16} className="text-white/60" />
+            <Instagram size={16} className="text-ink-2" />
           </div>
         )}
       </div>
@@ -293,16 +293,16 @@ function PostRow({
             ) : (
               <AccountAvatar username={account.username} size="sm" />
             )}
-            <span className="text-sm font-medium text-white/80">@{account.username}</span>
+            <span className="text-sm font-medium text-ink">@{account.username}</span>
           </div>
         ) : (
-          <p className="text-sm text-white/40 mb-1">Conta removida</p>
+          <p className="text-sm text-ink-3 mb-1">Conta removida</p>
         )}
-        <p className="text-xs text-white/35">{timeAgo(post.published_at)}</p>
+        <p className="text-xs text-ink-3">{timeAgo(post.published_at)}</p>
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-white/50 line-clamp-2">
+        <p className="text-sm text-ink-2 line-clamp-2">
           {post.caption || <span className="italic">Sem legenda</span>}
         </p>
       </div>
@@ -317,8 +317,8 @@ function PostRow({
           { icon: Bookmark, label: "Salvos", value: post.insights_saved, color: "text-blue-400" },
         ].map(({ icon: Icon, label, value, color }) => (
           <div key={label} className="flex flex-col items-center gap-0.5 min-w-[40px]">
-            <Icon size={13} className={cn(value !== null ? color : "text-white/15")} />
-            <span className={cn("text-xs font-semibold", value !== null ? "text-white/80" : "text-white/20")}>
+            <Icon size={13} className={cn(value !== null ? color : "text-ink-3/40")} />
+            <span className={cn("text-xs font-semibold", value !== null ? "text-ink" : "text-ink-3")}>
               {fmt(value)}
             </span>
           </div>
@@ -332,15 +332,15 @@ function PostRow({
           className={cn(
             "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all",
             refreshing
-              ? "bg-white/5 text-white/30 cursor-not-allowed"
-              : "bg-white/[0.07] text-white/60 hover:bg-white/[0.12] hover:text-white border border-white/10"
+              ? "bg-surface-hover text-ink-3 cursor-not-allowed"
+              : "bg-line-control/15 text-ink-2 hover:bg-line-control/25 hover:text-white border border-line-2"
           )}
         >
           <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
           {refreshing ? "Buscando..." : "Atualizar"}
         </button>
         {hasInsights && post.insights_fetched_at && (
-          <p className="text-[10px] text-white/20">{timeAgo(post.insights_fetched_at)}</p>
+          <p className="text-[10px] text-ink-3">{timeAgo(post.insights_fetched_at)}</p>
         )}
       </div>
     </motion.div>
@@ -493,7 +493,7 @@ export default function AnalyticsPage() {
             <button
               onClick={handleSync}
               disabled={syncing}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--matrix)]/20 bg-[var(--matrix)]/[0.05] text-xs text-[var(--matrix)]/70 hover:text-[var(--matrix)] hover:border-[var(--matrix)]/40 transition-all disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--brand-blue)]/20 bg-[var(--brand-blue)]/[0.05] text-xs text-[var(--brand-blue)]/70 hover:text-[var(--brand-blue)] hover:border-[var(--brand-blue)]/40 transition-all disabled:opacity-50"
             >
               {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
               Sincronizar dados
@@ -503,7 +503,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* ── Tabs ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/[0.06] w-fit">
+      <div className="flex items-center gap-1 p-1 rounded-xl bg-surface-raised border border-line w-fit">
         {([
           { key: "growth", label: "Relatório do Chefe", icon: TrendingUp },
           { key: "posts",  label: "Posts Publicados",  icon: BarChart2    },
@@ -514,8 +514,8 @@ export default function AnalyticsPage() {
             className={cn(
               "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
               tab === key
-                ? "bg-[var(--matrix)]/15 text-[var(--matrix)] border border-[var(--matrix)]/20"
-                : "text-white/40 hover:text-white/70"
+                ? "bg-[var(--brand-blue)]/15 text-[var(--brand-blue)] border border-[var(--brand-blue)]/20"
+                : "text-ink-3 hover:text-ink-2"
             )}
           >
             <Icon size={14} />
@@ -534,11 +534,11 @@ export default function AnalyticsPage() {
           <div className="relative w-fit">
             <button
               onClick={() => setSelectorOpen((o) => !o)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/10 bg-white/[0.03] text-sm text-white/70 hover:text-white hover:border-white/20 transition-all"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-line-2 bg-surface-raised text-sm text-ink-2 hover:text-ink hover:border-line-control transition-all"
             >
-              <Users size={14} className="text-white/40" />
+              <Users size={14} className="text-ink-3" />
               <span>{selectorLabel}</span>
-              <ChevronDown size={14} className={cn("text-white/30 transition-transform", selectorOpen && "rotate-180")} />
+              <ChevronDown size={14} className={cn("text-ink-3 transition-transform", selectorOpen && "rotate-180")} />
             </button>
 
             <AnimatePresence>
@@ -547,7 +547,7 @@ export default function AnalyticsPage() {
                   initial={{ opacity: 0, y: -6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
-                  className="absolute top-full mt-2 left-0 z-40 min-w-[220px] glass rounded-xl border border-white/10 shadow-2xl overflow-hidden"
+                  className="absolute top-full mt-2 left-0 z-40 min-w-[220px] glass rounded-xl border border-line-2 shadow-2xl overflow-hidden"
                 >
                   <div className="py-1">
                     <button
@@ -555,8 +555,8 @@ export default function AnalyticsPage() {
                       className={cn(
                         "w-full text-left px-4 py-2.5 text-sm transition-colors",
                         !selectedAccountId && !selectedFolderId
-                          ? "text-[var(--matrix)] bg-[var(--matrix)]/8"
-                          : "text-white/60 hover:text-white hover:bg-white/[0.05]"
+                          ? "text-[var(--brand-blue)] bg-[var(--brand-blue)]/8"
+                          : "text-ink-2 hover:text-white hover:bg-surface-hover"
                       )}
                     >
                       Todas as contas ({growthData.accounts.length})
@@ -564,7 +564,7 @@ export default function AnalyticsPage() {
 
                     {growthData.folders.length > 0 && (
                       <>
-                        <p className="px-4 py-1.5 text-[10px] text-white/25 uppercase tracking-wider">Pastas</p>
+                        <p className="px-4 py-1.5 text-[10px] text-ink-3 uppercase tracking-wider">Pastas</p>
                         {growthData.folders.map((f) => (
                           <button
                             key={f.id}
@@ -572,8 +572,8 @@ export default function AnalyticsPage() {
                             className={cn(
                               "w-full text-left px-4 py-2.5 text-sm transition-colors",
                               selectedFolderId === f.id
-                                ? "text-[var(--matrix)] bg-[var(--matrix)]/8"
-                                : "text-white/60 hover:text-white hover:bg-white/[0.05]"
+                                ? "text-[var(--brand-blue)] bg-[var(--brand-blue)]/8"
+                                : "text-ink-2 hover:text-white hover:bg-surface-hover"
                             )}
                           >
                             📁 {f.name}
@@ -584,7 +584,7 @@ export default function AnalyticsPage() {
 
                     {growthData.accounts.length > 0 && (
                       <>
-                        <p className="px-4 py-1.5 text-[10px] text-white/25 uppercase tracking-wider">Contas</p>
+                        <p className="px-4 py-1.5 text-[10px] text-ink-3 uppercase tracking-wider">Contas</p>
                         {growthData.accounts.map((a) => (
                           <button
                             key={a.id}
@@ -592,15 +592,15 @@ export default function AnalyticsPage() {
                             className={cn(
                               "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2",
                               selectedAccountId === a.id
-                                ? "text-[var(--matrix)] bg-[var(--matrix)]/8"
-                                : "text-white/60 hover:text-white hover:bg-white/[0.05]"
+                                ? "text-[var(--brand-blue)] bg-[var(--brand-blue)]/8"
+                                : "text-ink-2 hover:text-white hover:bg-surface-hover"
                             )}
                           >
                             <AccountAvatar username={a.username} size="sm" />
                             <div className="min-w-0">
                               <span className="block truncate">@{a.username}</span>
                               {a.followers_count !== null && (
-                                <span className="text-[10px] text-white/30">{fmt(a.followers_count)} seguidores</span>
+                                <span className="text-[10px] text-ink-3">{fmt(a.followers_count)} seguidores</span>
                               )}
                             </div>
                           </button>
@@ -622,7 +622,7 @@ export default function AnalyticsPage() {
               delta={kpi?.followers_growth_pct}
               deltaLabel={`vs. ${growthData?.days ?? 30} dias atrás`}
               icon={Users}
-              accent="border-[var(--matrix)]/15"
+              accent="border-[var(--brand-blue)]/15"
               loading={growthLoading}
             />
             <KpiCard
@@ -657,8 +657,8 @@ export default function AnalyticsPage() {
           <div className="glass-card p-5">
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h2 className="text-sm font-semibold text-white/90">Crescimento de Seguidores</h2>
-                <p className="text-[10px] text-white/30 mt-0.5">
+                <h2 className="text-sm font-semibold text-ink">Crescimento de Seguidores</h2>
+                <p className="text-[10px] text-ink-3 mt-0.5">
                   {hasHistory
                     ? `${kpi!.days_with_data} dias com dados históricos`
                     : "Aguardando primeira sincronização"}
@@ -667,13 +667,13 @@ export default function AnalyticsPage() {
               {hasHistory && (
                 <div className="flex items-center gap-1.5">
                   <div className="w-2 h-2 rounded-full" style={{ background: MATRIX }} />
-                  <span className="text-[10px] text-white/30">Seguidores</span>
+                  <span className="text-[10px] text-ink-3">Seguidores</span>
                 </div>
               )}
             </div>
 
             {growthLoading ? (
-              <div className="h-52 rounded-xl bg-white/[0.03] animate-pulse" />
+              <div className="h-52 rounded-xl bg-surface-raised animate-pulse" />
             ) : !hasHistory ? (
               <EmptyGrowthState onSync={handleSync} syncing={syncing} />
             ) : (
@@ -727,7 +727,7 @@ export default function AnalyticsPage() {
             <div className="glass-card p-5">
               <div className="flex items-center gap-2 mb-5">
                 <div className="w-2 h-2 rounded-full" style={{ background: ELECTRIC }} />
-                <h2 className="text-sm font-semibold text-white/90">Posts Automáticos por Dia</h2>
+                <h2 className="text-sm font-semibold text-ink">Posts Automáticos por Dia</h2>
               </div>
               <ResponsiveContainer width="100%" height={160}>
                 <BarChart data={growthData!.chart_data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -768,16 +768,16 @@ export default function AnalyticsPage() {
                   <Trophy size={14} className="text-amber-400" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-semibold text-white/90">Top 3 Vídeos Mais Vistos</h2>
-                  <p className="text-[10px] text-white/30">por número de plays registrados</p>
+                  <h2 className="text-sm font-semibold text-ink">Top 3 Vídeos Mais Vistos</h2>
+                  <p className="text-[10px] text-ink-3">por número de plays registrados</p>
                 </div>
               </div>
 
               {!growthData?.top_videos.length ? (
                 <div className="flex flex-col items-center py-8 text-center">
-                  <Film size={24} className="text-white/15 mb-3" />
-                  <p className="text-sm text-white/30">Nenhum vídeo com dados de plays ainda</p>
-                  <p className="text-xs text-white/20 mt-1">
+                  <Film size={24} className="text-ink-3/40 mb-3" />
+                  <p className="text-sm text-ink-3">Nenhum vídeo com dados de plays ainda</p>
+                  <p className="text-xs text-ink-3 mt-1">
                     Clique em &quot;Atualizar&quot; nos posts da aba Posts Publicados para buscar métricas
                   </p>
                 </div>
@@ -789,14 +789,14 @@ export default function AnalyticsPage() {
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.08 }}
-                      className="flex items-center gap-4 p-3 rounded-xl bg-white/[0.025] border border-white/[0.05] hover:bg-white/[0.04] transition-colors"
+                      className="flex items-center gap-4 p-3 rounded-xl bg-surface-hover border border-line hover:bg-surface-raised transition-colors"
                     >
                       {/* Rank */}
                       <div className={cn(
                         "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0",
                         i === 0 ? "bg-amber-500/20 text-amber-400" :
-                        i === 1 ? "bg-white/8 text-white/50" :
-                                  "bg-white/5 text-white/30"
+                        i === 1 ? "bg-line-control/20 text-ink-2" :
+                                  "bg-surface-hover text-ink-3"
                       )}>
                         #{i + 1}
                       </div>
@@ -807,21 +807,21 @@ export default function AnalyticsPage() {
                           <video src={video.video_url} className="w-full h-full object-cover" muted />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
-                            <Film size={14} className="text-white/20" />
+                            <Film size={14} className="text-ink-3" />
                           </div>
                         )}
                       </div>
 
                       {/* Info */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white/70 line-clamp-1 font-medium">
+                        <p className="text-sm text-ink-2 line-clamp-1 font-medium">
                           {video.caption || "Sem legenda"}
                         </p>
                         <div className="flex items-center gap-3 mt-1">
                           {video.account_username && (
-                            <span className="text-[10px] text-white/30">@{video.account_username}</span>
+                            <span className="text-[10px] text-ink-3">@{video.account_username}</span>
                           )}
-                          <span className="text-[10px] text-white/20">{timeAgo(video.published_at)}</span>
+                          <span className="text-[10px] text-ink-3">{timeAgo(video.published_at)}</span>
                         </div>
                       </div>
 
@@ -829,18 +829,18 @@ export default function AnalyticsPage() {
                       <div className="flex items-center gap-4 flex-shrink-0">
                         <div className="text-center">
                           <p className="text-sm font-bold text-emerald-400">{fmt(video.plays)}</p>
-                          <p className="text-[10px] text-white/25">plays</p>
+                          <p className="text-[10px] text-ink-3">plays</p>
                         </div>
                         {video.reach !== null && (
                           <div className="text-center hidden sm:block">
                             <p className="text-sm font-bold text-[#85B9E9]">{fmt(video.reach)}</p>
-                            <p className="text-[10px] text-white/25">alcance</p>
+                            <p className="text-[10px] text-ink-3">alcance</p>
                           </div>
                         )}
                         {video.likes !== null && (
                           <div className="text-center hidden sm:block">
                             <p className="text-sm font-bold text-pink-400">{fmt(video.likes)}</p>
-                            <p className="text-[10px] text-white/25">curtidas</p>
+                            <p className="text-[10px] text-ink-3">curtidas</p>
                           </div>
                         )}
                       </div>
@@ -854,7 +854,7 @@ export default function AnalyticsPage() {
           {/* Per-account current stats table */}
           {!growthLoading && (growthData?.accounts.length ?? 0) > 1 && (
             <div className="glass-card p-5">
-              <h2 className="text-sm font-semibold text-white/90 mb-4">Seguidores por Conta</h2>
+              <h2 className="text-sm font-semibold text-ink mb-4">Seguidores por Conta</h2>
               <div className="space-y-2">
                 {growthData!.accounts
                   .sort((a, b) => (b.followers_count ?? 0) - (a.followers_count ?? 0))
@@ -866,10 +866,10 @@ export default function AnalyticsPage() {
                         <AccountAvatar username={acc.username} size="sm" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs text-white/70">@{acc.username}</span>
-                            <span className="text-xs text-white/50 tabular-nums">{fmt(acc.followers_count)}</span>
+                            <span className="text-xs text-ink-2">@{acc.username}</span>
+                            <span className="text-xs text-ink-2 tabular-nums">{fmt(acc.followers_count)}</span>
                           </div>
-                          <div className="h-1 rounded-full bg-white/[0.05]">
+                          <div className="h-1 rounded-full bg-surface-hover">
                             <div
                               className="h-1 rounded-full transition-all duration-500"
                               style={{ width: `${pct}%`, background: MATRIX }}
@@ -891,7 +891,7 @@ export default function AnalyticsPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
-                className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-sm font-medium bg-[var(--matrix)]/15 border border-[var(--matrix)]/30 text-[var(--matrix)]"
+                className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-sm font-medium bg-[var(--brand-blue)]/15 border border-[var(--brand-blue)]/30 text-[var(--brand-blue)]"
               >
                 <CheckCircle2 size={15} />
                 {syncToast}
@@ -907,14 +907,14 @@ export default function AnalyticsPage() {
       {tab === "posts" && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-white/35">
+            <p className="text-sm text-ink-3">
               {postsLoading ? "Carregando..." : `${postSummary?.total_published ?? 0} posts publicados`}
             </p>
             {!postsLoading && posts.length > 0 && (
               <button
                 onClick={() => posts.filter((p) => p.media_id).forEach((p) => handleRefresh(p.id))}
                 disabled={!!refreshingId}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium bg-white/[0.06] border border-white/10 text-white/60 hover:text-white hover:bg-white/[0.10] transition-all disabled:opacity-40"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium bg-line-control/15 border border-line-2 text-ink-2 hover:text-white hover:bg-line-control/20 transition-all disabled:opacity-40"
               >
                 <RefreshCw size={13} className={refreshingId ? "animate-spin" : ""} />
                 Atualizar todos
@@ -939,7 +939,7 @@ export default function AnalyticsPage() {
                     <Icon size={18} className="text-white" />
                   </div>
                   <div>
-                    <p className="text-xs text-white/40 mb-0.5">{label}</p>
+                    <p className="text-xs text-ink-3 mb-0.5">{label}</p>
                     <p className="text-xl font-bold text-white">{value}</p>
                   </div>
                 </div>
@@ -958,16 +958,16 @@ export default function AnalyticsPage() {
           {postsLoading ? (
             <div className="space-y-3">
               {[...Array(4)].map((_, i) => (
-                <div key={i} className="h-24 rounded-2xl bg-white/[0.04] animate-pulse" />
+                <div key={i} className="h-24 rounded-2xl bg-surface-raised animate-pulse" />
               ))}
             </div>
           ) : posts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-white/[0.04] flex items-center justify-center mb-4">
-                <BarChart2 size={28} className="text-white/20" />
+              <div className="w-16 h-16 rounded-2xl bg-surface-raised flex items-center justify-center mb-4">
+                <BarChart2 size={28} className="text-ink-3" />
               </div>
-              <p className="text-white/50 font-medium mb-1">Nenhum post publicado ainda</p>
-              <p className="text-sm text-white/25">Publique posts via Postagens → as métricas aparecerão aqui</p>
+              <p className="text-ink-2 font-medium mb-1">Nenhum post publicado ainda</p>
+              <p className="text-sm text-ink-3">Publique posts via Postagens → as métricas aparecerão aqui</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -978,7 +978,7 @@ export default function AnalyticsPage() {
           )}
 
           {!postsLoading && posts.length > 0 && posts.every((p) => p.insights_likes === null) && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.04] border border-white/[0.07] text-sm text-white/40">
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-surface-raised border border-line text-sm text-ink-3">
               <TrendingUp size={15} className="flex-shrink-0" />
               <p>Clique em <strong>Atualizar</strong> em cada post para buscar as métricas da Meta API.</p>
             </div>

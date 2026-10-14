@@ -86,7 +86,7 @@ function PasswordStrength({ password }: { password: string }) {
             key={i}
             className={cn(
               "h-1 flex-1 rounded-full transition-all duration-300",
-              i <= score ? bar[score] : "bg-white/[0.08]"
+              i <= score ? bar[score] : "bg-line-control/20"
             )}
           />
         ))}
@@ -108,9 +108,9 @@ function Section({
 }) {
   return (
     <div className="glass-card overflow-hidden">
-      <div className="flex items-center gap-2.5 px-6 py-4 border-b border-white/[0.06]">
-        <span className="text-white/30">{icon}</span>
-        <h2 className="text-sm font-semibold text-white/65 uppercase tracking-wider">
+      <div className="flex items-center gap-2.5 px-6 py-4 border-b border-line">
+        <span className="text-ink-3">{icon}</span>
+        <h2 className="text-sm font-semibold text-ink-2 uppercase tracking-wider">
           {title}
         </h2>
       </div>
@@ -485,8 +485,8 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <p className="text-sm font-semibold text-white/75">Foto de perfil</p>
-              <p className="text-xs text-white/30 mt-0.5">JPG, PNG, WebP · Máx 5 MB</p>
+              <p className="text-sm font-semibold text-ink">Foto de perfil</p>
+              <p className="text-xs text-ink-3 mt-0.5">JPG, PNG, WebP · Máx 5 MB</p>
               <button
                 type="button"
                 disabled={uploadingAvatar}
@@ -512,7 +512,7 @@ export default function SettingsPage() {
           )}
 
           {loadingUser ? (
-            <div className="flex items-center gap-2 py-2 text-white/30 text-sm">
+            <div className="flex items-center gap-2 py-2 text-ink-3 text-sm">
               <Loader2 size={15} className="animate-spin" />
               Carregando dados...
             </div>
@@ -520,7 +520,7 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Nome Completo */}
               <div className="sm:col-span-2">
-                <label className="text-[11px] font-medium text-white/35 block mb-1.5">
+                <label className="text-[11px] font-medium text-ink-3 block mb-1.5">
                   Nome Completo
                 </label>
                 <input
@@ -535,7 +535,7 @@ export default function SettingsPage() {
 
               {/* Nome de Exibição */}
               <div>
-                <label className="text-[11px] font-medium text-white/35 block mb-1.5">
+                <label className="text-[11px] font-medium text-ink-3 block mb-1.5">
                   Nome de Exibição
                 </label>
                 <input
@@ -550,7 +550,7 @@ export default function SettingsPage() {
 
               {/* Nome de Usuário */}
               <div>
-                <label className="text-[11px] font-medium text-white/35 block mb-1.5">
+                <label className="text-[11px] font-medium text-ink-3 block mb-1.5">
                   Nome de Usuário
                 </label>
                 <input
@@ -562,12 +562,12 @@ export default function SettingsPage() {
                   pattern="[a-z0-9_.]+"
                   className="input-glass w-full text-sm py-2.5"
                 />
-                <p className="text-[10px] text-white/25 mt-1">Apenas letras minúsculas, números, _ e .</p>
+                <p className="text-[10px] text-ink-3 mt-1">Apenas letras minúsculas, números, _ e .</p>
               </div>
 
               {/* Telefone */}
               <div>
-                <label className="text-[11px] font-medium text-white/35 block mb-1.5">
+                <label className="text-[11px] font-medium text-ink-3 block mb-1.5">
                   Telefone
                 </label>
                 <input
@@ -581,12 +581,12 @@ export default function SettingsPage() {
 
               {/* E-mail readonly */}
               <div className="sm:col-span-2">
-                <label className="text-[11px] font-medium text-white/35 block mb-1.5">
+                <label className="text-[11px] font-medium text-ink-3 block mb-1.5">
                   E-mail{" "}
-                  <span className="text-white/20 font-normal">(somente leitura)</span>
+                  <span className="text-ink-3/50 font-normal">(somente leitura)</span>
                 </label>
-                <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.07] text-white/40 text-sm select-none">
-                  <Mail size={13} className="flex-shrink-0 text-white/20" />
+                <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-surface-raised border border-line text-ink-3 text-sm select-none">
+                  <Mail size={13} className="flex-shrink-0 text-ink-3/50" />
                   <span className="truncate">{email || "—"}</span>
                 </div>
               </div>
@@ -624,7 +624,7 @@ export default function SettingsPage() {
         {pwStep === "form" ? (
           <form onSubmit={handleSendCode} className="space-y-4">
             <div>
-              <label className="text-[11px] font-medium text-white/35 block mb-1.5">
+              <label className="text-[11px] font-medium text-ink-3 block mb-1.5">
                 Nova Senha
               </label>
               <div className="relative">
@@ -638,7 +638,7 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => setShowNewPw(!showNewPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-3 hover:text-ink-2 transition-colors"
                 >
                   {showNewPw ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
@@ -646,7 +646,7 @@ export default function SettingsPage() {
               <PasswordStrength password={newPassword} />
             </div>
 
-            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-[#85B9E9]/[0.05] border border-[#85B9E9]/15 text-[11px] text-white/45">
+            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-[#85B9E9]/[0.05] border border-[#85B9E9]/15 text-[11px] text-ink-3">
               <Mail size={13} className="flex-shrink-0 mt-0.5 text-[#85B9E9]/70" />
               <span>
                 Por segurança, enviaremos um código de verificação para o email
@@ -684,17 +684,17 @@ export default function SettingsPage() {
           </form>
         ) : (
           <form onSubmit={handleConfirmPassword} className="space-y-4">
-            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-[#00498D]/[0.05] border border-[#00498D]/15 text-[11px] text-white/50">
+            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-[#00498D]/[0.05] border border-[#00498D]/15 text-[11px] text-ink-3">
               <Mail size={13} className="flex-shrink-0 mt-0.5 text-[#00498D]/70" />
               <span>
                 Enviamos um código de 6 dígitos para{" "}
-                <span className="font-semibold text-white/75">{email}</span>.
+                <span className="font-semibold text-ink">{email}</span>.
                 Digite-o abaixo para confirmar a alteração da senha.
               </span>
             </div>
 
             <div>
-              <label className="text-[11px] font-medium text-white/35 block mb-1.5">
+              <label className="text-[11px] font-medium text-ink-3 block mb-1.5">
                 Código de Verificação
               </label>
               <input
@@ -723,7 +723,7 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={handleCancelCode}
-                  className="text-xs text-white/35 hover:text-white/60 transition-colors"
+                  className="text-xs text-ink-3 hover:text-ink-2 transition-colors"
                 >
                   Cancelar
                 </button>
@@ -757,7 +757,7 @@ export default function SettingsPage() {
 
           {/* Header */}
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs text-white/30">
+            <p className="text-xs text-ink-3">
               Dispositivos que acessaram sua conta. Selecione e revogue sessões suspeitas.
             </p>
             {/* Botão Selecionar — só aparece quando há outros dispositivos */}
@@ -766,7 +766,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     onClick={toggleSelectAll}
-                    className="text-[11px] text-white/40 hover:text-white/70 transition-colors whitespace-nowrap"
+                    className="text-[11px] text-ink-3 hover:text-ink-2 transition-colors whitespace-nowrap"
                   >
                     {selectedIds.size === sessions.filter(s => s.id !== currentSessionId).length
                       ? "Desmarcar todos"
@@ -774,7 +774,7 @@ export default function SettingsPage() {
                   </button>
                   <button
                     onClick={exitSelectMode}
-                    className="text-[11px] text-white/35 hover:text-white/60 transition-colors"
+                    className="text-[11px] text-ink-3 hover:text-ink-2 transition-colors"
                   >
                     <X size={13} />
                   </button>
@@ -783,8 +783,8 @@ export default function SettingsPage() {
                 <button
                   onClick={() => { setSelectMode(true); setRevokeConfirm(null); }}
                   className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-medium
-                    bg-white/[0.05] border border-white/[0.08] text-white/45
-                    hover:bg-white/[0.08] hover:text-white/70 transition-all"
+                    bg-surface-raised border border-line text-ink-3
+                    hover:bg-line-control/20 hover:text-ink-2 transition-all"
                 >
                   Selecionar
                 </button>
@@ -794,12 +794,12 @@ export default function SettingsPage() {
 
           {/* Lista de sessões */}
           {loadingSessions ? (
-            <div className="flex items-center gap-2 py-4 text-white/30 text-sm">
+            <div className="flex items-center gap-2 py-4 text-ink-3 text-sm">
               <Loader2 size={14} className="animate-spin" />
               Carregando dispositivos...
             </div>
           ) : sessions.length === 0 ? (
-            <div className="text-center py-6 text-white/25 text-sm">
+            <div className="text-center py-6 text-ink-3 text-sm">
               Nenhum dispositivo registrado ainda.
             </div>
           ) : (
@@ -820,8 +820,8 @@ export default function SettingsPage() {
                         : isSelected
                         ? "bg-red-500/[0.07] border-red-500/30 cursor-pointer"
                         : isSelectable
-                        ? "bg-white/[0.02] border-white/[0.06] cursor-pointer hover:bg-white/[0.05] hover:border-white/[0.10]"
-                        : "bg-white/[0.02] border-white/[0.06]"
+                        ? "bg-surface border-line cursor-pointer hover:bg-surface-raised hover:border-line-control"
+                        : "bg-surface border-line"
                     )}
                   >
                     {/* Checkbox (modo seleção) ou ícone do dispositivo */}
@@ -830,7 +830,7 @@ export default function SettingsPage() {
                         "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 border-2 transition-all",
                         isSelected
                           ? "bg-red-500/20 border-red-500/60"
-                          : "bg-white/[0.04] border-white/[0.12]"
+                          : "bg-surface-raised border-line-control"
                       )}>
                         {isSelected
                           ? <Check size={14} className="text-red-400" />
@@ -840,7 +840,7 @@ export default function SettingsPage() {
                     ) : (
                       <div className={cn(
                         "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5",
-                        isCurrent ? "bg-[#00498D]/10" : "bg-white/[0.05]"
+                        isCurrent ? "bg-[#00498D]/10" : "bg-surface-raised"
                       )}>
                         <DeviceIcon type={s.device_type} />
                       </div>
@@ -851,7 +851,7 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className={cn(
                           "text-sm font-medium",
-                          isSelected ? "text-red-300" : "text-white/80"
+                          isSelected ? "text-red-300" : "text-ink"
                         )}>
                           {s.browser} · {s.os}
                         </span>
@@ -869,7 +869,7 @@ export default function SettingsPage() {
 
                       <div className="mt-1 space-y-0.5">
                         {(s.city || s.country) && (
-                          <div className="flex items-center gap-1.5 text-xs text-white/35">
+                          <div className="flex items-center gap-1.5 text-xs text-ink-3">
                             <MapPin size={10} className="flex-shrink-0" />
                             <span>
                               {countryFlag(s.country)}{" "}
@@ -878,14 +878,14 @@ export default function SettingsPage() {
                           </div>
                         )}
                         {s.ip_address && (
-                          <p className="text-[11px] text-white/25 font-mono pl-4">
+                          <p className="text-[11px] text-ink-3 font-mono pl-4">
                             {s.ip_address}
                           </p>
                         )}
-                        <div className="flex items-center gap-1.5 text-[11px] text-white/25">
+                        <div className="flex items-center gap-1.5 text-[11px] text-ink-3">
                           <Clock size={10} className="flex-shrink-0" />
                           <span>Visto por último {timeAgo(s.last_seen_at)}</span>
-                          <span className="text-white/15">·</span>
+                          <span className="text-ink-3/40">·</span>
                           <span>Desde {new Date(s.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}</span>
                         </div>
                       </div>
@@ -902,11 +902,11 @@ export default function SettingsPage() {
               "rounded-xl border px-4 py-3 flex items-center gap-3 transition-all",
               selectedIds.size > 0
                 ? "bg-red-500/[0.07] border-red-500/25"
-                : "bg-white/[0.03] border-white/[0.07]"
+                : "bg-surface-raised border-line"
             )}>
               <span className={cn(
                 "text-sm font-medium flex-1",
-                selectedIds.size > 0 ? "text-red-300" : "text-white/35"
+                selectedIds.size > 0 ? "text-red-300" : "text-ink-3"
               )}>
                 {selectedIds.size === 0
                   ? "Nenhuma sessão selecionada"
@@ -927,7 +927,7 @@ export default function SettingsPage() {
                     </button>
                     <button
                       onClick={() => setRevokeConfirm(null)}
-                      className="px-3 py-1.5 rounded-lg text-xs text-white/35 hover:text-white/60 transition-colors"
+                      className="px-3 py-1.5 rounded-lg text-xs text-ink-3 hover:text-ink-2 transition-colors"
                     >
                       Cancelar
                     </button>
@@ -960,7 +960,7 @@ export default function SettingsPage() {
 
           {/* Ações globais — só quando NÃO está em modo seleção */}
           {!selectMode && !loadingSessions && sessions.length > 0 && (
-            <div className="pt-1 border-t border-white/[0.06] flex flex-col sm:flex-row gap-2 mt-1">
+            <div className="pt-1 border-t border-line flex flex-col sm:flex-row gap-2 mt-1">
               {/* Revogar outros */}
               {sessions.length > 1 && (
                 revokeConfirm === "others" ? (
@@ -978,7 +978,7 @@ export default function SettingsPage() {
                     </button>
                     <button
                       onClick={() => setRevokeConfirm(null)}
-                      className="px-3 py-1.5 rounded-lg text-xs text-white/35 hover:text-white/60 transition-colors"
+                      className="px-3 py-1.5 rounded-lg text-xs text-ink-3 hover:text-ink-2 transition-colors"
                     >
                       Cancelar
                     </button>
@@ -987,8 +987,8 @@ export default function SettingsPage() {
                   <button
                     onClick={() => setRevokeConfirm("others")}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold flex-1 justify-center
-                      bg-white/[0.04] border border-white/[0.08] text-white/50
-                      hover:bg-white/[0.07] hover:text-white/75 hover:border-white/[0.12]
+                      bg-surface-raised border border-line text-ink-3
+                      hover:bg-line-control/15 hover:text-ink hover:border-line-control
                       transition-all duration-150"
                   >
                     <LogOut size={14} />
@@ -1011,7 +1011,7 @@ export default function SettingsPage() {
                   </button>
                   <button
                     onClick={() => setRevokeConfirm(null)}
-                    className="px-3 py-1.5 rounded-lg text-xs text-white/35 hover:text-white/60 transition-colors"
+                    className="px-3 py-1.5 rounded-lg text-xs text-ink-3 hover:text-ink-2 transition-colors"
                   >
                     Cancelar
                   </button>
@@ -1038,7 +1038,7 @@ export default function SettingsPage() {
         <div className="space-y-5">
           <PushNotificationManager />
           <div>
-            <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Alertas automáticos</p>
+            <p className="text-xs font-semibold text-ink-3 uppercase tracking-wider mb-3">Alertas automáticos</p>
             <NotificationAlertSettings />
           </div>
         </div>

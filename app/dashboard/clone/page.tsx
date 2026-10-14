@@ -622,7 +622,7 @@ export default function ClonePage() {
       {/* Header */}
       <div>
         <h1 className="page-title flex items-center gap-2">
-          <Copy size={20} style={{ color: "var(--matrix)" }} />
+          <Copy size={20} style={{ color: "var(--brand-blue)" }} />
           Clonar Perfil
         </h1>
         <p className="page-subtitle">Puxe Reels de um perfil e agende direto nas suas contas — sem passar pela Biblioteca.</p>
@@ -632,7 +632,7 @@ export default function ClonePage() {
       <div className="glass-card p-4 rounded-2xl">
         <div className="flex gap-3">
           <div className="relative flex-1">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-3 pointer-events-none" />
             <input
               type="text"
               placeholder="@username ou nome do perfil..."
@@ -663,16 +663,16 @@ export default function ClonePage() {
               exit={{ opacity: 0, height: 0 }}
               className="mt-3 overflow-hidden"
             >
-              <div className="flex items-center gap-2 text-sm text-white/40">
-                <Loader2 size={14} className="animate-spin" style={{ color: "var(--matrix)" }} />
+              <div className="flex items-center gap-2 text-sm text-ink-3">
+                <Loader2 size={14} className="animate-spin" style={{ color: "var(--brand-blue)" }} />
                 Raspando Reels de @{query.replace(/^@/, "").trim()}…
               </div>
-              <div className="mt-2 h-1 rounded-full bg-white/[0.05] overflow-hidden">
+              <div className="mt-2 h-1 rounded-full bg-surface-raised overflow-hidden">
                 <motion.div
                   animate={{ x: ["-100%", "100%"] }}
                   transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
                   className="h-full w-1/3 rounded-full"
-                  style={{ background: "linear-gradient(90deg, transparent, var(--matrix), transparent)" }}
+                  style={{ background: "linear-gradient(90deg, transparent, var(--brand-blue), transparent)" }}
                 />
               </div>
             </motion.div>
@@ -696,7 +696,7 @@ export default function ClonePage() {
       <div>
         <div className="flex items-center gap-2 mb-3">
           <Bookmark size={14} style={{ color: "var(--electric)" }} />
-          <h2 className="text-sm font-bold uppercase tracking-widest text-white/50">Perfis Salvos</h2>
+          <h2 className="text-sm font-bold uppercase tracking-widest text-ink-2">Perfis Salvos</h2>
         </div>
 
         <AnimatePresence mode="wait">
@@ -706,8 +706,8 @@ export default function ClonePage() {
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="glass-card rounded-2xl p-6 text-center"
             >
-              <Bookmark size={22} className="mx-auto mb-2 text-white/15" />
-              <p className="text-xs text-white/25">Busque um perfil e clique em Salvar para guardar a análise aqui.</p>
+              <Bookmark size={22} className="mx-auto mb-2 text-ink-3/40" />
+              <p className="text-xs text-ink-3">Busque um perfil e clique em Salvar para guardar a análise aqui.</p>
             </motion.div>
           ) : (
             <motion.div
@@ -731,7 +731,7 @@ export default function ClonePage() {
                 >
                   {/* Avatar */}
                   {sp.profilePicUrl ? (
-                    <img src={sp.profilePicUrl} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-white/10" />
+                    <img src={sp.profilePicUrl} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-line-2" />
                   ) : (
                     <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
                       style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", color: "#000" }}>
@@ -740,15 +740,15 @@ export default function ClonePage() {
                   )}
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-white truncate">@{sp.username}</p>
-                    <p className="text-[10px] text-white/35 mt-0.5">
+                    <p className="text-xs font-semibold text-ink truncate">@{sp.username}</p>
+                    <p className="text-[10px] text-ink-3 mt-0.5">
                       {fmt(sp.followersCount)} seguidores · {sp.reelCount} reels
                     </p>
                   </div>
                   {/* Remove button */}
                   <button
                     onClick={e => { e.stopPropagation(); handleUnsaveProfile(sp.username); }}
-                    className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center text-white/20 hover:text-white/60 hover:bg-white/10 transition-all opacity-0 group-hover:opacity-100"
+                    className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center text-ink-3/50 hover:text-ink-2 hover:bg-line-control/20 transition-all opacity-0 group-hover:opacity-100"
                   >
                     ×
                   </button>
@@ -793,15 +793,15 @@ export default function ClonePage() {
                           className="absolute inset-0 rounded-full flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity"
                           title="Baixar foto de perfil"
                         >
-                          <Download size={18} className="text-white drop-shadow" />
+                          <Download size={18} className="text-ink drop-shadow" />
                         </a>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h2 className="font-bold text-white text-lg leading-tight">{profile.fullName}</h2>
-                          <span className="text-sm text-white/40">@{profile.username}</span>
+                          <h2 className="font-bold text-ink text-lg leading-tight">{profile.fullName}</h2>
+                          <span className="text-sm text-ink-3">@{profile.username}</span>
                         </div>
                         <button
                           onClick={profileSaved ? () => handleUnsaveProfile(profile.username) : handleSaveProfile}
@@ -810,7 +810,7 @@ export default function ClonePage() {
                             "flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
                             profileSaved
                               ? "border-matrix/40 text-matrix bg-matrix/10"
-                              : "border-white/10 text-white/40 hover:text-matrix hover:border-matrix/30"
+                              : "border-line-2 text-ink-3 hover:text-matrix hover:border-matrix/30"
                           )}
                         >
                           <Bookmark size={12} className={profileSaved ? "fill-current" : ""} />
@@ -818,7 +818,7 @@ export default function ClonePage() {
                         </button>
                       </div>
                       {profile.bio && (
-                        <p className="text-sm text-white/50 mt-1 line-clamp-2">{profile.bio}</p>
+                        <p className="text-sm text-ink-2 mt-1 line-clamp-2">{profile.bio}</p>
                       )}
                     </div>
                   </div>
@@ -832,9 +832,9 @@ export default function ClonePage() {
                       { label: "Engajamento", value: stats.engagementRate > 0 ? `${stats.engagementRate}%` : "—", icon: TrendingUp },
                     ].map(({ label, value, icon: Icon }) => (
                       <div key={label} className="rounded-xl p-3 text-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                        <Icon size={14} className="mx-auto mb-1 text-white/25" />
+                        <Icon size={14} className="mx-auto mb-1 text-ink-3" />
                         <div className="font-bold text-base" style={{ color: "var(--electric)" }}>{value}</div>
-                        <div className="text-[10px] text-white/35 mt-0.5">{label}</div>
+                        <div className="text-[10px] text-ink-3 mt-0.5">{label}</div>
                       </div>
                     ))}
                   </div>
@@ -846,22 +846,22 @@ export default function ClonePage() {
                 className="flex flex-col items-center justify-center py-20 text-center glass-card rounded-2xl">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
                   style={{ background: "rgba(0,73,141,0.06)", border: "1px solid rgba(0,73,141,0.12)" }}>
-                  <Loader2 size={28} className="animate-spin" style={{ color: "var(--matrix)" }} />
+                  <Loader2 size={28} className="animate-spin" style={{ color: "var(--brand-blue)" }} />
                 </div>
-                <h3 className="text-lg font-semibold text-white/60 mb-1">
+                <h3 className="text-lg font-semibold text-ink-2 mb-1">
                   Buscando reels de @{query.replace(/^@/, "").trim()}…
                 </h3>
-                <p className="text-sm text-white/30 max-w-sm">Isso pode levar 30–60 segundos.</p>
+                <p className="text-sm text-ink-3 max-w-sm">Isso pode levar 30–60 segundos.</p>
               </motion.div>
             ) : (
               <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="flex flex-col items-center justify-center py-20 text-center glass-card rounded-2xl">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
                   style={{ background: "rgba(0,73,141,0.06)", border: "1px solid rgba(0,73,141,0.12)" }}>
-                  <Copy size={28} style={{ color: "var(--matrix)" }} />
+                  <Copy size={28} style={{ color: "var(--brand-blue)" }} />
                 </div>
-                <h3 className="text-lg font-semibold text-white/60 mb-1">Busque um perfil para começar</h3>
-                <p className="text-sm text-white/30 max-w-sm">
+                <h3 className="text-lg font-semibold text-ink-2 mb-1">Busque um perfil para começar</h3>
+                <p className="text-sm text-ink-3 max-w-sm">
                   Digite o username no campo acima. Configure as opções ao lado e clique em Clonar Perfil.
                 </p>
               </motion.div>
@@ -874,7 +874,7 @@ export default function ClonePage() {
 
           {/* Quantidade de posts */}
           <div className="glass-card p-4 rounded-2xl space-y-3">
-            <p className="text-xs font-bold uppercase tracking-widest text-white/35">Quantidade de posts</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-ink-3">Quantidade de posts</p>
             <div className="flex flex-wrap gap-2">
               {REEL_COUNT_OPTIONS.map(opt => (
                 <button
@@ -884,19 +884,19 @@ export default function ClonePage() {
                     "px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all",
                     reelCount === opt.value
                       ? "border-matrix/60 text-matrix"
-                      : "border-white/[0.08] text-white/40 hover:text-white/70 hover:border-white/20"
+                      : "border-line text-ink-3 hover:text-ink-2 hover:border-line-control"
                   )}
                   style={reelCount === opt.value ? { background: "rgba(0,73,141,0.08)" } : {}}
                 >
                   {opt.label}
                   {opt.value !== -1 && stats && opt.value > stats.reelCount && (
-                    <span className="ml-1 text-white/20">(máx {stats.reelCount})</span>
+                    <span className="ml-1 text-ink-3/50">(máx {stats.reelCount})</span>
                   )}
                 </button>
               ))}
             </div>
             {reels.length > 0 && (
-              <p className="text-[11px] text-white/30">
+              <p className="text-[11px] text-ink-3">
                 {usedCount} reel{usedCount !== 1 ? "s" : ""} serão agendados por conta
               </p>
             )}
@@ -904,7 +904,7 @@ export default function ClonePage() {
 
           {/* Posts por dia */}
           <div className="glass-card p-4 rounded-2xl space-y-3">
-            <p className="text-xs font-bold uppercase tracking-widest text-white/35">Posts por dia</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-ink-3">Posts por dia</p>
             <div className="flex flex-wrap gap-2">
               {PPD_OPTIONS.map(n => (
                 <button
@@ -914,7 +914,7 @@ export default function ClonePage() {
                     "px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all",
                     postsPerDay === n
                       ? "border-electric/60 text-electric"
-                      : "border-white/[0.08] text-white/40 hover:text-white/70 hover:border-white/20"
+                      : "border-line text-ink-3 hover:text-ink-2 hover:border-line-control"
                   )}
                   style={postsPerDay === n ? { background: "rgba(133,185,233,0.08)" } : {}}
                 >
@@ -923,13 +923,13 @@ export default function ClonePage() {
               ))}
             </div>
             {intervalMin > 0 && (
-              <p className="text-[11px] text-white/30">Intervalo: 1 post a cada {intervalMin} min</p>
+              <p className="text-[11px] text-ink-3">Intervalo: 1 post a cada {intervalMin} min</p>
             )}
           </div>
 
           {/* Data/hora início */}
           <div className="glass-card p-4 rounded-2xl space-y-3">
-            <p className="text-xs font-bold uppercase tracking-widest text-white/35">Data e hora de início</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-ink-3">Data e hora de início</p>
             <input
               type="datetime-local"
               value={startAt}
@@ -942,10 +942,10 @@ export default function ClonePage() {
           <div className="glass-card p-4 rounded-2xl">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Sparkles size={13} style={{ color: "var(--matrix)" }} />
+                <Sparkles size={13} style={{ color: "var(--brand-blue)" }} />
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-white/50">Legendas Automáticas</p>
-                  <p className="text-[10px] text-white/30 mt-0.5">Substitui legendas originais por curiosidades PT-BR</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-ink-2">Legendas Automáticas</p>
+                  <p className="text-[10px] text-ink-3 mt-0.5">Substitui legendas originais por curiosidades PT-BR</p>
                 </div>
               </div>
               <button
@@ -953,7 +953,7 @@ export default function ClonePage() {
                 onClick={() => setAutoCaptionEnabled(v => !v)}
                 className={cn(
                   "relative w-11 h-6 rounded-full transition-colors flex-shrink-0",
-                  autoCaptionEnabled ? "bg-[#00498D]/80" : "bg-white/10"
+                  autoCaptionEnabled ? "bg-[#00498D]/80" : "bg-line-control/20"
                 )}
               >
                 <span className={cn(
@@ -971,9 +971,9 @@ export default function ClonePage() {
                   transition={{ duration: 0.15 }}
                   className="overflow-hidden"
                 >
-                  <div className="mt-3 p-2.5 rounded-lg bg-black/30 border border-white/[0.05]">
-                    <p className="text-[9px] text-white/25 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma legenda diferente)</p>
-                    <p className="text-[10px] text-white/50 leading-relaxed italic whitespace-pre-line">
+                  <div className="mt-3 p-2.5 rounded-lg bg-black/30 border border-line">
+                    <p className="text-[9px] text-ink-3 uppercase tracking-wider mb-1">Exemplo (cada post recebe uma legenda diferente)</p>
+                    <p className="text-[10px] text-ink-2 leading-relaxed italic whitespace-pre-line">
                       {AUTO_CAPTION_PREVIEW_CLONE}
                     </p>
                   </div>
@@ -985,8 +985,8 @@ export default function ClonePage() {
           {/* Legenda */}
           <div className="glass-card p-4 rounded-2xl">
             <div className="flex items-center gap-2 mb-3">
-              <FileText size={13} className="text-white/35" />
-              <p className="text-xs font-bold uppercase tracking-widest text-white/50">Legenda</p>
+              <FileText size={13} className="text-ink-3" />
+              <p className="text-xs font-bold uppercase tracking-widest text-ink-2">Legenda</p>
             </div>
             <CaptionModeSelector
               value={captionMode}
@@ -1009,8 +1009,8 @@ export default function ClonePage() {
           {/* Exibição do Reel */}
           <div className="glass-card p-4 rounded-2xl">
             <div className="flex items-center gap-2 mb-3">
-              <LayoutGrid size={13} className="text-white/35" />
-              <p className="text-xs font-bold uppercase tracking-widest text-white/50">Exibição do Reel</p>
+              <LayoutGrid size={13} className="text-ink-3" />
+              <p className="text-xs font-bold uppercase tracking-widest text-ink-2">Exibição do Reel</p>
             </div>
             <ReelPlacementSelector value={shareToFeed} onChange={setShareToFeed} />
           </div>
@@ -1018,8 +1018,8 @@ export default function ClonePage() {
           {/* Processamento do vídeo */}
           <div className="glass-card p-4 rounded-2xl">
             <div className="flex items-center gap-2 mb-3">
-              <SlidersHorizontal size={13} className="text-white/35" />
-              <p className="text-xs font-bold uppercase tracking-widest text-white/50">Processamento do vídeo</p>
+              <SlidersHorizontal size={13} className="text-ink-3" />
+              <p className="text-xs font-bold uppercase tracking-widest text-ink-2">Processamento do vídeo</p>
             </div>
             <VideoProcessingSelector
               value={videoProcessingMode}
@@ -1030,8 +1030,8 @@ export default function ClonePage() {
           {/* Proxy do estoque (opt-in) */}
           <div className="glass-card p-4 rounded-2xl">
             <div className="flex items-center gap-2 mb-3">
-              <ShieldCheck size={13} className="text-white/35" />
-              <p className="text-xs font-bold uppercase tracking-widest text-white/50">Rota de publicação</p>
+              <ShieldCheck size={13} className="text-ink-3" />
+              <p className="text-xs font-bold uppercase tracking-widest text-ink-2">Rota de publicação</p>
             </div>
             <ProxyPoolToggle
               value={useProxyPool}
@@ -1042,11 +1042,11 @@ export default function ClonePage() {
           {/* Account selector */}
           <div className="glass-card p-4 rounded-2xl space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-widest text-white/35">Contas de destino</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-ink-3">Contas de destino</p>
               <div className="flex gap-2">
                 <button onClick={() => setSelected(new Set(accounts.map(a => a.id)))} className="text-[10px] text-matrix/70 hover:text-matrix transition-colors">Todas</button>
-                <span className="text-white/20 text-[10px]">/</span>
-                <button onClick={() => setSelected(new Set())} className="text-[10px] text-white/30 hover:text-white/60 transition-colors">Nenhuma</button>
+                <span className="text-ink-3/50 text-[10px]">/</span>
+                <button onClick={() => setSelected(new Set())} className="text-[10px] text-ink-3 hover:text-ink-2 transition-colors">Nenhuma</button>
               </div>
             </div>
 
@@ -1060,18 +1060,18 @@ export default function ClonePage() {
                   <div key={key}>
                     <div
                       onClick={() => toggleFolder(key)}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-white/[0.03] transition-colors group"
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-surface-hover transition-colors group"
                     >
-                      <ChevronRight size={12} className={cn("text-white/30 transition-transform flex-shrink-0", expanded && "rotate-90")} />
-                      <span className="text-xs font-semibold text-white/50 flex-1 truncate">{name}</span>
-                      <span className={cn("text-[10px]", someSel ? "text-matrix/70" : "text-white/20")}>
+                      <ChevronRight size={12} className={cn("text-ink-3 transition-transform flex-shrink-0", expanded && "rotate-90")} />
+                      <span className="text-xs font-semibold text-ink-2 flex-1 truncate">{name}</span>
+                      <span className={cn("text-[10px]", someSel ? "text-matrix/70" : "text-ink-3/50")}>
                         {fas.filter(a => selectedAccounts.has(a.id)).length}/{fas.length}
                       </span>
                       <button
                         onClick={e => toggleFolderSelect(e, fas)}
                         className={cn(
                           "text-[10px] px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-all",
-                          allSel ? "text-matrix/70 bg-matrix/10" : "text-white/40 bg-white/[0.05]"
+                          allSel ? "text-matrix/70 bg-matrix/10" : "text-ink-3 bg-surface-raised"
                         )}
                       >
                         {allSel ? "Desmarcar" : "Selecionar"}
@@ -1096,7 +1096,7 @@ export default function ClonePage() {
                                   onClick={() => toggleAccount(acc.id)}
                                   className={cn(
                                     "flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all text-xs",
-                                    sel ? "text-white" : "text-white/40 hover:text-white/70"
+                                    sel ? "text-ink" : "text-ink-3 hover:text-ink-2"
                                   )}
                                   style={sel ? { background: "rgba(0,73,141,0.05)", border: "1px solid rgba(0,73,141,0.15)" } : { border: "1px solid transparent" }}
                                 >
@@ -1109,7 +1109,7 @@ export default function ClonePage() {
                                     </div>
                                   )}
                                   <span className="truncate flex-1">@{acc.username}</span>
-                                  {sel && <CheckCircle2 size={12} style={{ color: "var(--matrix)", flexShrink: 0 }} />}
+                                  {sel && <CheckCircle2 size={12} style={{ color: "var(--brand-blue)", flexShrink: 0 }} />}
                                 </div>
                               );
                             })}
@@ -1121,12 +1121,12 @@ export default function ClonePage() {
                 );
               })}
               {accounts.length === 0 && (
-                <p className="text-xs text-white/30 text-center py-4">Nenhuma conta conectada.</p>
+                <p className="text-xs text-ink-3 text-center py-4">Nenhuma conta conectada.</p>
               )}
             </div>
 
             {selectedAccounts.size > 0 && (
-              <p className="text-[11px] text-white/40">
+              <p className="text-[11px] text-ink-3">
                 {selectedAccounts.size} conta{selectedAccounts.size !== 1 ? "s" : ""} selecionada{selectedAccounts.size !== 1 ? "s" : ""}
               </p>
             )}
@@ -1136,23 +1136,23 @@ export default function ClonePage() {
           <div className="glass-card p-4 rounded-2xl space-y-3">
             {selectedAccounts.size > 0 && usedCount > 0 && (
               <>
-                <p className="text-xs font-bold uppercase tracking-widest text-white/35">Resumo</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-ink-3">Resumo</p>
                 <div className="space-y-1.5 text-sm">
-                  <div className="flex justify-between text-white/50">
+                  <div className="flex justify-between text-ink-2">
                     <span>Total de posts</span>
-                    <span className="text-white font-semibold">{totalPosts.toLocaleString()}</span>
+                    <span className="text-ink font-semibold">{totalPosts.toLocaleString()}</span>
                   </div>
-                  <div className="flex justify-between text-white/50">
+                  <div className="flex justify-between text-ink-2">
                     <span>Duração estimada</span>
-                    <span className="text-white font-semibold">{daysEst} dia{daysEst !== 1 ? "s" : ""}</span>
+                    <span className="text-ink font-semibold">{daysEst} dia{daysEst !== 1 ? "s" : ""}</span>
                   </div>
-                  <div className="flex justify-between text-white/50">
+                  <div className="flex justify-between text-ink-2">
                     <span>Contas</span>
-                    <span className="text-white font-semibold">{selectedAccounts.size}</span>
+                    <span className="text-ink font-semibold">{selectedAccounts.size}</span>
                   </div>
-                  <div className="flex justify-between text-white/50">
+                  <div className="flex justify-between text-ink-2">
                     <span>Reels por conta</span>
-                    <span className="text-white font-semibold">{usedCount}</span>
+                    <span className="text-ink font-semibold">{usedCount}</span>
                   </div>
                 </div>
               </>
@@ -1195,13 +1195,13 @@ export default function ClonePage() {
                     <CheckCircle2 size={15} />
                     Agendamentos criados!
                   </div>
-                  <p className="text-xs text-white/50">
+                  <p className="text-xs text-ink-2">
                     {success.total_posts.toLocaleString()} posts ao longo de {success.days} dia{success.days !== 1 ? "s" : ""}. Primeiro disparo: {new Date(success.first_slot).toLocaleString("pt-BR")}.
                   </p>
                   <div className="flex gap-2">
                     <a href="/dashboard/monitor" className="text-xs text-electric underline">Ver Monitor</a>
-                    <span className="text-white/20">·</span>
-                    <button onClick={() => setSuccess(null)} className="text-xs text-white/30 hover:text-white/60">Fechar</button>
+                    <span className="text-ink-3/50">·</span>
+                    <button onClick={() => setSuccess(null)} className="text-xs text-ink-3 hover:text-ink-2">Fechar</button>
                   </div>
                 </motion.div>
               )}
@@ -1215,10 +1215,10 @@ export default function ClonePage() {
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <BarChart2 size={15} style={{ color: "var(--electric)" }} />
-            <h2 className="text-sm font-bold uppercase tracking-widest text-white/50">Histórico de Clones</h2>
+            <h2 className="text-sm font-bold uppercase tracking-widest text-ink-2">Histórico de Clones</h2>
             <button
               onClick={loadCampaigns}
-              className="ml-auto text-[11px] text-white/25 hover:text-white/50 transition-colors flex items-center gap-1"
+              className="ml-auto text-[11px] text-ink-3 hover:text-ink-2 transition-colors flex items-center gap-1"
             >
               <Loader2 size={11} /> Atualizar
             </button>
@@ -1249,7 +1249,7 @@ export default function ClonePage() {
                         <img
                           src={record.profile_pic_url}
                           alt={record.profile_username}
-                          className="w-12 h-12 rounded-full object-cover border border-white/10"
+                          className="w-12 h-12 rounded-full object-cover border border-line-2"
                         />
                       ) : (
                         <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0"
@@ -1263,13 +1263,13 @@ export default function ClonePage() {
                     <div className="flex-1 min-w-0 space-y-2">
                       {/* Top row: username + status + time */}
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-white text-sm">@{record.profile_username}</span>
+                        <span className="font-bold text-ink text-sm">@{record.profile_username}</span>
                         {campaign && campaign.pending > 0 ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(0,73,141,0.12)", color: "var(--matrix)", border: "1px solid rgba(0,73,141,0.2)" }}>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(0,73,141,0.12)", color: "var(--brand-blue)", border: "1px solid rgba(0,73,141,0.2)" }}>
                             Ativo
                           </span>
                         ) : isCancelled ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full text-white/30 font-semibold" style={{ background: "rgba(255,255,255,0.05)" }}>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full text-ink-3 font-semibold" style={{ background: "rgba(255,255,255,0.05)" }}>
                             Cancelado
                           </span>
                         ) : (
@@ -1277,7 +1277,7 @@ export default function ClonePage() {
                             Concluído
                           </span>
                         )}
-                        <span className="text-[11px] text-white/25 flex items-center gap-1 ml-auto">
+                        <span className="text-[11px] text-ink-3 flex items-center gap-1 ml-auto">
                           <Clock size={10} /> {timeAgo(record.created_at)}
                         </span>
                       </div>
@@ -1285,7 +1285,7 @@ export default function ClonePage() {
                       {/* Progress bar */}
                       {campaign && (
                         <div>
-                          <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                          <div className="h-1.5 rounded-full bg-line-control/15 overflow-hidden">
                             <motion.div
                               initial={{ width: 0 }}
                               animate={{ width: `${pct ?? 0}%` }}
@@ -1293,7 +1293,7 @@ export default function ClonePage() {
                               className="h-full rounded-full"
                               style={{
                                 background: campaign.pending > 0
-                                  ? "linear-gradient(90deg, var(--matrix), var(--electric))"
+                                  ? "linear-gradient(90deg, var(--brand-blue), var(--electric))"
                                   : "rgba(255,255,255,0.2)"
                               }}
                             />
@@ -1304,14 +1304,14 @@ export default function ClonePage() {
                       {/* Account chips */}
                       {accRows.length > 0 && (
                         <div className="space-y-1.5">
-                          <span className="text-[10px] text-white/25 uppercase tracking-wider">
+                          <span className="text-[10px] text-ink-3 uppercase tracking-wider">
                             {accRows.length} conta{accRows.length !== 1 ? "s" : ""}
                           </span>
                           <div className="flex flex-wrap gap-1.5">
                             {accRows.slice(0, 6).map(acc => (
                               <div
                                 key={acc.id}
-                                className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] text-white/60 flex-shrink-0"
+                                className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] text-ink-2 flex-shrink-0"
                                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
                               >
                                 {acc.avatar_url ? (
@@ -1327,7 +1327,7 @@ export default function ClonePage() {
                             ))}
                             {accRows.length > 6 && (
                               <div
-                                className="flex items-center px-2 py-1 rounded-lg text-[11px] text-white/35 flex-shrink-0"
+                                className="flex items-center px-2 py-1 rounded-lg text-[11px] text-ink-3 flex-shrink-0"
                                 style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
                               >
                                 +{accRows.length - 6} mais
@@ -1343,21 +1343,21 @@ export default function ClonePage() {
                       {/* Post counts */}
                       <div className="flex items-center gap-3 text-right">
                         <div className="text-center">
-                          <div className="text-sm font-bold text-white">{campaign?.total.toLocaleString() ?? "—"}</div>
-                          <div className="text-[9px] text-white/25 uppercase tracking-wider">Total</div>
+                          <div className="text-sm font-bold text-ink">{campaign?.total.toLocaleString() ?? "—"}</div>
+                          <div className="text-[9px] text-ink-3 uppercase tracking-wider">Total</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-sm font-bold" style={{ color: "var(--matrix)" }}>{campaign?.published.toLocaleString() ?? "0"}</div>
-                          <div className="text-[9px] text-white/25 uppercase tracking-wider">Publicados</div>
+                          <div className="text-sm font-bold" style={{ color: "var(--brand-blue)" }}>{campaign?.published.toLocaleString() ?? "0"}</div>
+                          <div className="text-[9px] text-ink-3 uppercase tracking-wider">Publicados</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-sm font-bold text-white/50">{campaign?.pending.toLocaleString() ?? "0"}</div>
-                          <div className="text-[9px] text-white/25 uppercase tracking-wider">Pendentes</div>
+                          <div className="text-sm font-bold text-ink-2">{campaign?.pending.toLocaleString() ?? "0"}</div>
+                          <div className="text-[9px] text-ink-3 uppercase tracking-wider">Pendentes</div>
                         </div>
                         {campaign && campaign.failed > 0 && (
                           <div className="text-center">
                             <div className="text-sm font-bold text-red-400">{campaign.failed.toLocaleString()}</div>
-                            <div className="text-[9px] text-white/25 uppercase tracking-wider">Falhas</div>
+                            <div className="text-[9px] text-ink-3 uppercase tracking-wider">Falhas</div>
                           </div>
                         )}
                       </div>
@@ -1371,7 +1371,7 @@ export default function ClonePage() {
                             "flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg border transition-all",
                             confirmCancel === record.campaign_id
                               ? "border-red-500/50 text-red-400 bg-red-500/10"
-                              : "border-white/10 text-white/30 hover:text-red-400 hover:border-red-500/30"
+                              : "border-line-2 text-ink-3 hover:text-red-400 hover:border-red-500/30"
                           )}
                         >
                           {cancellingId === record.campaign_id ? (
@@ -1394,7 +1394,7 @@ export default function ClonePage() {
                               exit={{ opacity: 0, scale: 0.95 }}
                               className="flex items-center gap-1.5"
                             >
-                              <span className="text-[11px] text-white/40">Tem certeza?</span>
+                              <span className="text-[11px] text-ink-3">Tem certeza?</span>
                               <button
                                 onClick={() => handleDeleteHistory(record.campaign_id)}
                                 disabled={deletingId === record.campaign_id}
@@ -1406,7 +1406,7 @@ export default function ClonePage() {
                               </button>
                               <button
                                 onClick={() => setConfirmDelete(null)}
-                                className="text-[11px] px-2.5 py-1.5 rounded-lg border border-white/10 text-white/30 hover:text-white/60 transition-all"
+                                className="text-[11px] px-2.5 py-1.5 rounded-lg border border-line-2 text-ink-3 hover:text-ink-2 transition-all"
                               >
                                 Não
                               </button>
@@ -1418,7 +1418,7 @@ export default function ClonePage() {
                               animate={{ opacity: 1 }}
                               exit={{ opacity: 0 }}
                               onClick={() => setConfirmDelete(record.campaign_id)}
-                              className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg border border-white/10 text-white/25 hover:text-red-400 hover:border-red-500/30 transition-all"
+                              className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg border border-line-2 text-ink-3 hover:text-red-400 hover:border-red-500/30 transition-all"
                             >
                               <Trash2 size={11} />
                               Excluir

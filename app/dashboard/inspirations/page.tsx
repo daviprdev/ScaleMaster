@@ -130,7 +130,7 @@ function ImportingModal({ username, done, sourceLabel }: { username: string; don
                 animate={{ scale: 1 }}
                 className="absolute inset-0 flex items-center justify-center"
               >
-                <CheckCircle2 size={28} style={{ color: "var(--matrix)" }} />
+                <CheckCircle2 size={28} className="text-brand-blue" />
               </motion.div>
             )}
           </div>
@@ -151,8 +151,7 @@ function ImportingModal({ username, done, sourceLabel }: { username: string; don
           </div>
           <div className="h-[3px] rounded-full" style={{ background: "rgba(255,255,255,0.07)" }}>
             <motion.div
-              className="h-full rounded-full"
-              style={{ background: "linear-gradient(90deg, var(--matrix), var(--electric))" }}
+              className="h-full rounded-full bg-gradient-to-r from-brand-blue to-accent"
               animate={{ width: `${progress}%` }}
               transition={{ duration: 0.4, ease: "easeOut" }}
             />
@@ -168,7 +167,7 @@ function ImportingModal({ username, done, sourceLabel }: { username: string; don
           ].map((step, i) => (
             <div key={i} className="flex items-center gap-3">
               {step.done ? (
-                <CheckCircle2 size={14} style={{ color: "var(--matrix)" }} className="flex-shrink-0" />
+                <CheckCircle2 size={14} className="text-brand-blue flex-shrink-0" />
               ) : (
                 <Loader2 size={14} style={{ color: "var(--electric)" }} className="animate-spin flex-shrink-0" />
               )}
@@ -294,7 +293,7 @@ function HistoryCard({
         <div className="min-w-0">
           <p className="text-sm font-semibold truncate" style={{ color: "rgba(255,255,255,0.85)" }}>@{profile.username}</p>
           {profile.full_name && profile.full_name !== profile.username && (
-            <p className="text-[11px] truncate" style={{ color: "rgba(255,255,255,0.3)" }}>{profile.full_name}</p>
+            <p className="text-[11px] truncate text-ink-3">{profile.full_name}</p>
           )}
         </div>
       </div>
@@ -303,7 +302,7 @@ function HistoryCard({
       <div className="flex items-center gap-2 relative z-10">
         <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
           style={{ background: "rgba(0,73,141,0.05)", border: "0.5px solid rgba(0,73,141,0.12)" }}>
-          <Film size={10} style={{ color: "var(--matrix)" }} />
+          <Film size={10} className="text-brand-blue" />
           <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.55)" }}>{profile.video_count} reels</span>
         </div>
         <span className="text-[11px] ml-auto" style={{ color: "rgba(255,255,255,0.22)" }}>{timeAgo(profile.scraped_at)}</span>
@@ -345,12 +344,12 @@ export default function InspiracoesPage() {
   const [reels, setReels] = useState<InspirationReel[]>([]);
   const [error, setError] = useState("");
 
-  // Fonte da busca: Apify (padrão) ou conta leitora dedicada (instagrapi).
-  const [source, setSource] = useState<"apify" | "reader">("apify");
+  // Fonte da busca: ScrapeCreators (padrão) ou conta leitora dedicada (instagrapi).
+  const [source, setSource] = useState<"scrapecreators" | "reader">("scrapecreators");
   const [readerAccounts, setReaderAccounts] = useState<ReaderAccountLite[]>([]);
   const [selectedReaderId, setSelectedReaderId] = useState("");
   // Quantidade de reels na fonte dedicada. 0 = todos (padrão) — a conta
-  // leitora pagina o perfil inteiro, que é a vantagem sobre a Apify.
+  // leitora pagina o perfil inteiro via instagrapi (alternativa à ScrapeCreators).
   const [readerLimit, setReaderLimit] = useState(0);
   const [sortBy, setSortBy] = useState<SortKey>("views");
   const [showFilters, setShowFilters] = useState(false);
@@ -366,7 +365,7 @@ export default function InspiracoesPage() {
   const [bulkSaveProgress, setBulkSaveProgress] = useState<{ done: number; total: number } | null>(null);
   const [bulkSaveResult, setBulkSaveResult] = useState<{ saved: number; errors: number } | null>(null);
   // Fase do salvamento: "saving" (baixando+subindo) ou "refreshing" (renovando
-  // URLs expiradas do CDN via Apify antes de retentar). null = ocioso.
+  // URLs expiradas do CDN via ScrapeCreators antes de retentar). null = ocioso.
   const [bulkSavePhase, setBulkSavePhase] = useState<"saving" | "refreshing" | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -511,7 +510,7 @@ export default function InspiracoesPage() {
     }
 
     // A raspagem roda no cron (a cada ~10 min na 1ª calibração) — polling mais
-    // longo que o da Apify, que é síncrono via Apify runs.
+    // longo que o da ScrapeCreators, que é síncrono via paginação direta.
     const MAX_POLLS = 180; // 180 × 5s = 15 min (perfil grande + fila do cron)
     for (let i = 0; i < MAX_POLLS; i++) {
       await new Promise<void>((r) => setTimeout(r, 5000));
@@ -568,7 +567,7 @@ export default function InspiracoesPage() {
     }
 
     try {
-      // ── Step 1: start N Apify runs (one per token) in parallel ───
+      // ── Step 1: inicia busca via ScrapeCreators (paginação completa) ───
       const startText = await fetch("/api/inspirations/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -852,8 +851,8 @@ export default function InspiracoesPage() {
     // ── Passe 2 — renova URLs expiradas do CDN e retenta ────────────
     // As URLs assinadas do fbcdn morrem em poucas horas; num perfil grande a
     // maioria já expirou quando o usuário manda salvar. Renovamos em chunks
-    // (uma run de Apify por chunk, vários reels por run) — só os que
-    // realmente falharam por expiração. Se nada expirou, zero Apify aqui.
+    // via ScrapeCreators (post detail) — só os que realmente falharam por
+    // expiração. Se nada expirou, zero chamadas extras aqui.
     let stillExpired = 0;
     if (expired.length > 0) {
       setBulkSavePhase("refreshing");
@@ -884,7 +883,7 @@ export default function InspiracoesPage() {
           } else {
             console.warn(`[bulk-save] refresh-urls: ${data.error ?? res.status}`);
             if (res.status === 429 || res.status === 503) {
-              setError(data.error ?? "Sem tokens de Apify disponíveis para renovar as URLs.");
+              setError(data.error ?? "Falha ao renovar as URLs via ScrapeCreators.");
               break;
             }
           }
@@ -926,7 +925,7 @@ export default function InspiracoesPage() {
   return (
     <>
       <AnimatePresence>
-        {showModal && <ImportingModal username={username} done={modalDone} sourceLabel={source === "reader" ? "conta dedicada" : "Apify"} />}
+        {showModal && <ImportingModal username={username} done={modalDone} sourceLabel={source === "reader" ? "conta dedicada" : "ScrapeCreators"} />}
       </AnimatePresence>
 
       <div className="space-y-6 max-w-full">
@@ -940,7 +939,7 @@ export default function InspiracoesPage() {
         >
           <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ background: "linear-gradient(135deg, rgba(0,73,141,0.15), rgba(133,185,233,0.1))", border: "0.5px solid rgba(0,73,141,0.25)", boxShadow: "0 0 18px rgba(0,73,141,0.12)" }}>
-            <Sparkles size={18} style={{ color: "var(--matrix)" }} />
+            <Sparkles size={18} className="text-brand-blue" />
           </div>
           <div>
             <h1 className="page-title">Inspirações e Scraper</h1>
@@ -977,12 +976,12 @@ export default function InspiracoesPage() {
               Digite o @ de qualquer perfil público para visualizar os Reels e preparar downloads
             </p>
 
-            {/* Source selector — Apify vs conta leitora dedicada */}
+            {/* Source selector — ScrapeCreators vs conta leitora dedicada */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
               <div className="flex items-center gap-1 p-1 rounded-xl"
                 style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.08)" }}>
                 {([
-                  { key: "apify" as const, label: "Apify", icon: Cpu },
+                  { key: "scrapecreators" as const, label: "ScrapeCreators", icon: Cpu },
                   { key: "reader" as const, label: "Conta dedicada", icon: BookUser },
                 ]).map((opt) => (
                   <button
@@ -1050,7 +1049,7 @@ export default function InspiracoesPage() {
             {/* Input row */}
             <div className="flex gap-3">
               <div className="relative flex-1">
-                <AtSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: "var(--matrix)" }} />
+                <AtSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-blue" />
                 <input
                   ref={inputRef}
                   value={username}
@@ -1100,7 +1099,7 @@ export default function InspiracoesPage() {
           <div className="flex justify-end">
             <button
               onClick={() => dismissError()}
-              className="text-xs px-2.5 py-1 rounded-lg transition-colors hover:text-white/70"
+              className="text-xs px-2.5 py-1 rounded-lg transition-colors hover:text-ink-2"
               style={{ color: "rgba(255,255,255,0.35)", border: "0.5px solid rgba(255,255,255,0.08)" }}
             >
               Dispensar todos ({failedSearches.length})
@@ -1119,8 +1118,7 @@ export default function InspiracoesPage() {
             <button
               onClick={() => dismissError(s.id)}
               title="Dispensar este aviso"
-              style={{ color: "rgba(255,255,255,0.3)" }}
-              className="hover:text-white/60 transition-colors"
+              className="text-ink-3 hover:text-ink-2 transition-colors"
             >✕</button>
           </div>
         ))}
@@ -1133,7 +1131,7 @@ export default function InspiracoesPage() {
             <button
               onClick={handleRecover}
               disabled={recovering}
-              title="Importa buscas que terminaram na Apify nos últimos 4 dias e não foram salvas. Não gasta créditos."
+              title="Importa buscas que terminaram nos últimos 4 dias e não foram salvas. Não gasta créditos."
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-50"
               style={{ border: "0.5px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.55)" }}
             >
@@ -1155,7 +1153,7 @@ export default function InspiracoesPage() {
             >
               <AlertCircle size={15} />
               <span className="flex-1">{error}</span>
-              <button onClick={() => setError("")} style={{ color: "rgba(255,255,255,0.3)" }} className="hover:text-white/60 transition-colors">✕</button>
+              <button onClick={() => setError("")} className="text-ink-3" className="hover:text-ink-2 transition-colors">✕</button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1183,7 +1181,7 @@ export default function InspiracoesPage() {
                   <p className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.8)" }}>
                     <span className="metric-value text-sm">{reels.length}</span> Reels encontrados
                   </p>
-                  <p className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>de @{activeUsername}</p>
+                  <p className="text-xs" className="text-ink-3">de @{activeUsername}</p>
                 </div>
               </div>
 

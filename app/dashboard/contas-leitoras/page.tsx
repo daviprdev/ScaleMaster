@@ -182,7 +182,7 @@ export default function ContasLeitorasPage() {
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ background: "linear-gradient(135deg, rgba(0,73,141,0.15), rgba(133,185,233,0.1))", border: "0.5px solid rgba(0,73,141,0.25)", boxShadow: "0 0 18px rgba(0,73,141,0.12)" }}>
-            <BookUser size={18} style={{ color: "var(--matrix)" }} />
+            <BookUser size={18} className="text-brand-blue" />
           </div>
           <div>
             <h1 className="page-title">Contas Leitoras</h1>
@@ -219,7 +219,7 @@ export default function ContasLeitorasPage() {
           >
             <AlertCircle size={15} />
             <span className="flex-1">{error}</span>
-            <button onClick={() => setError("")} className="hover:text-white/60">✕</button>
+            <button onClick={() => setError("")} className="hover:text-ink-2">✕</button>
           </motion.div>
         )}
       </AnimatePresence>
