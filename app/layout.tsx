@@ -1,20 +1,24 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const geist = Geist({
-  subsets: ["latin"],
+const geist = localFont({
+  src: "../public/fonts/geist-latin.woff2",
   variable: "--font-sans",
   display: "swap",
-  weight: ["400", "500", "600"],
+  weight: "400 600",
 });
 
-const geistMono = Geist_Mono({
-  subsets: ["latin"],
+const geistMono = localFont({
+  src: "../public/fonts/geist-mono-latin.woff2",
   variable: "--font-mono",
   display: "swap",
-  weight: ["400", "500"],
+  weight: "400 500",
 });
+
+// Instrument Serif mantida via Google Fonts (fonte decorativa secundária);
+// se também falhar em ambientes offline, substituir por localFont analogamente.
+import { Instrument_Serif } from "next/font/google";
 
 const instrumentSerif = Instrument_Serif({
   subsets: ["latin"],

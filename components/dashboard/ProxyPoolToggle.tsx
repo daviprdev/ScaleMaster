@@ -51,7 +51,7 @@ export function ProxyPoolToggle({
               "text-sm font-medium transition-colors",
               value ? "text-[#85B9E9]" : "text-white/60"
             )}>
-              Usar proxies do estoque nesta publicação
+              Usar minhas proxies
             </p>
             <p className="text-[10px] text-white/35 leading-relaxed mt-0.5">
               {value
