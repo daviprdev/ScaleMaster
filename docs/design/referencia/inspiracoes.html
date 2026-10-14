@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scale Master — Inspirações (referência)</title>
+<!-- Referência visual do redesign. Gerada a partir da amostra aprovada (canvas "Redesign Scale Master").
+     Abra no navegador. Cores e medidas vêm de theme.css (= tokens do Design System). Não é código de produção. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;family=Instrument+Serif:ital@1&amp;display=swap">
+<link rel="stylesheet" href="theme.css">
+<style>
+body{margin:0;background:#05070c}
+a{color:#7fb2e8}a:hover{color:#a9cbf0}
+input::placeholder{color:var(--ink-3)}
+</style>
+</head>
+<body>
+<div data-theme="dark" style="min-height: 1290px; display: flex; flex-wrap: wrap; align-items: stretch; background: var(--bg); color: var(--ink); font-family: var(--font-sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased;">
+
+  <!-- Sidebar -->
+  <aside style="flex: 1 1 240px; box-sizing: border-box; padding: 12px; background: var(--surface); border-right: 1px solid var(--line); display: flex; flex-direction: column;">
+    <a href="visao-geral.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 6px; margin-bottom: 4px; text-decoration: none;">
+      <img src="scale-master-logo.jpg" alt="" style="width: 26px; height: 26px; border-radius: 7px; display: block;">
+      <span style="font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--wordmark);">Scale Master</span>
+    </a>
+    <nav aria-label="Principal" style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+      <div style="padding: 14px 10px 6px; font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Início</div>
+      <a href="visao-geral.html" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
+        Visão geral
+      </a>
+
+      <div style="padding: 14px 10px 6px; font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Contas</div>
+      <a href="contas.html" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        Contas
+        <span style="margin-left: auto; font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: var(--ink-3);">42</span>
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        Contas leitoras
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>
+        Proxies
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>
+        Failover
+      </a>
+
+      <div style="padding: 14px 10px 6px; font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Publicar</div>
+      <a href="postar.html" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22 11 13 2 9 22 2z"></path></svg>
+        Postar
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 9 3-3 3 3"></path><path d="M13 18H7a2 2 0 0 1-2-2V6"></path><path d="m22 15-3 3-3-3"></path><path d="M11 6h6a2 2 0 0 1 2 2v10"></path></svg>
+        Loop
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg>
+        Stories
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+        Fila
+        <span style="margin-left: auto; font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: var(--ink-3);">12</span>
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
+        Publicados
+      </a>
+
+      <div style="padding: 14px 10px 6px; font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Conteúdo</div>
+      <a href="inspiracoes.html" aria-current="page" style="position: relative; display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; background: var(--surface-hover); color: var(--ink); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <span aria-hidden="true" style="position: absolute; left: -12px; top: 9px; bottom: 9px; width: 2px; border-radius: 2px; background: var(--accent);"></span>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent);"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 17v4"></path><path d="M17 19h4"></path></svg>
+        Inspirações
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2"></path></svg>
+        Clonar
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"></path></svg>
+        Biblioteca
+      </a>
+
+      <div style="padding: 14px 10px 6px; font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Dados</div>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+        Monitor
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"></path><path d="M16 7h6v6"></path></svg>
+        Analytics
+      </a>
+    </nav>
+    <a href="#" style="display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px 6px 4px; border-top: 1px solid var(--line); text-decoration: none;">
+      <span style="width: 28px; height: 28px; border-radius: 999px; background: var(--surface-hover); display: grid; place-items: center; font-size: 12px; font-weight: 600; color: var(--ink-2);">B</span>
+      <span style="display: flex; flex-direction: column;">
+        <span style="font-size: 13px; line-height: 16px; font-weight: 500; color: var(--ink);">Bruce</span>
+        <span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Configurações e conta</span>
+      </span>
+    </a>
+  </aside>
+
+  <!-- Coluna principal -->
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <header style="min-height: 56px; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 32px; border-bottom: 1px solid var(--line);">
+      <div style="font-size: 13px; line-height: 18px; color: var(--ink-3);">Conteúdo / <span style="color: var(--ink); font-weight: 500;">Inspirações</span></div>
+      <label style="margin-left: auto; flex: 0 1 320px; min-width: 200px; display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box; padding: 0 8px 0 12px; background: var(--surface); border: 1px solid var(--line-control); border-radius: 8px; color: var(--ink-3);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none;"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        <input type="search" aria-label="Buscar" placeholder="Buscar contas, posts, páginas…" style="flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 14px; outline: none;">
+        <kbd style="display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);">⌘K</kbd>
+      </label>
+      <button type="button" aria-label="Notificações" style="position: relative; display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); cursor: pointer;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg>
+        <span aria-hidden="true" style="position: absolute; top: 8px; right: 9px; width: 6px; height: 6px; border-radius: 999px; background: var(--accent);"></span>
+      </button>
+    </header>
+
+    <main style="width: 100%; max-width: 1200px; box-sizing: border-box; padding: 28px 32px 48px; display: flex; flex-direction: column; gap: 24px;">
+      <div>
+        <div style="font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Conteúdo</div>
+        <h1 style="margin: 4px 0 0; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.02em;">Inspirações</h1>
+        <p style="margin: 4px 0 0; font-size: 14px; line-height: 22px; color: var(--ink-2);">Encontre conteúdos virais para modelar e adicionar à sua biblioteca.</p>
+      </div>
+
+      <!-- Busca -->
+      <section style="padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px;">
+        <div style="flex: 2 1 240px; display: flex; flex-direction: column; gap: 6px;">
+          <label for="perfil" style="font-size: 13px; line-height: 18px; font-weight: 500;">Perfil</label>
+          <input id="perfil" type="text" value="@organiza.casa" readonly="" style="height: 36px; box-sizing: border-box; padding: 0 12px; background: var(--bg); border: 1px solid var(--line-control); border-radius: 8px; color: var(--ink); font-family: var(--font-sans); font-size: 14px; outline: none;">
+        </div>
+        <div style="flex: 2 1 220px; display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 13px; line-height: 18px; font-weight: 500;">Conta leitora</span>
+          <button type="button" aria-label="Conta leitora: @leitora.01" style="display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box; padding: 0 12px; background: var(--bg); border: 1px solid var(--line-control); border-radius: 8px; color: var(--ink); font-family: var(--font-sans); font-size: 14px; text-align: left; cursor: pointer;"><span style="flex: 1;">@leitora.01</span><span style="font-size: 12px; color: var(--ink-3);">proxy dedicado</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--ink-3);"><path d="m6 9 6 6 6-6"></path></svg></button>
+        </div>
+        <div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 13px; line-height: 18px; font-weight: 500;">Quantos reels</span>
+          <div role="radiogroup" aria-label="Quantos reels" style="display: flex; gap: 2px; padding: 3px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;">
+            <button type="button" role="radio" aria-checked="true" style="flex: 1; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--surface-hover); color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Até 120</button>
+            <button type="button" role="radio" aria-checked="false" style="flex: 1; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">300</button>
+            <button type="button" role="radio" aria-checked="false" style="flex: 1; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">600</button>
+            <button type="button" role="radio" aria-checked="false" style="flex: 1; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Todos</button>
+          </div>
+        </div>
+        <button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 16px; border: 0; border-radius: 8px; background: var(--primary); color: var(--on-primary); font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+          Buscar Reels
+        </button>
+      </section>
+
+      <!-- Resultados -->
+      <section style="display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+          <div style="margin-right: auto;">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em;">@organiza.casa</h2>
+            <p style="margin: 2px 0 0; font-size: 13px; line-height: 18px; color: var(--ink-3);">120 reels · busca concluída há 3 min</p>
+          </div>
+          <div role="radiogroup" aria-label="Ordenar" style="display: inline-flex; gap: 2px; padding: 3px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;">
+            
+              <button type="button" role="radio" aria-checked="true" style="height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: var(--surface-hover); color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Mais vistos</button>
+            
+              <button type="button" role="radio" style="height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Mais curtidos</button>
+            
+              <button type="button" role="radio" style="height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Mais comentados</button>
+            
+              <button type="button" role="radio" style="height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Mais longos</button>
+            
+          </div>
+          <button type="button" aria-label="Salvar em: Reels virais — out" style="display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-control); background: var(--surface); color: var(--ink); font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer;"><span style="color: var(--ink-3); font-weight: 400;">Salvar em:</span> Reels virais — out<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--ink-3);"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line-control); background: var(--surface); color: var(--ink); font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"></path></svg>
+            Salvar todos na Biblioteca
+          </button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px;">
+          
+            <article style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); overflow: hidden;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+                <span style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">0:24</span>
+                
+                <span style="position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>1,2 mi</span>
+              </div>
+              <div style="display: flex; gap: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>98,4 mil</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"></path></svg>1.820</span>
+              </div>
+              <p style="margin: 0; height: 36px; overflow: hidden; font-size: 13px; line-height: 18px; color: var(--ink-2);">3 truques de organização que ninguém te contou</p>
+              <div style="display: flex; gap: 6px;">
+                
+                  <button type="button" style="flex: 1; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Salvar</button>
+                
+                
+                <button type="button" aria-label="Baixar no dispositivo" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              </div>
+            </article>
+          
+            <article style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); overflow: hidden;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+                <span style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">0:31</span>
+                
+                <span style="position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>860 mil</span>
+              </div>
+              <div style="display: flex; gap: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>112 mil</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"></path></svg>2.410</span>
+              </div>
+              <p style="margin: 0; height: 36px; overflow: hidden; font-size: 13px; line-height: 18px; color: var(--ink-2);">Antes e depois: cozinha pequena em um dia</p>
+              <div style="display: flex; gap: 6px;">
+                
+                  <button type="button" style="flex: 1; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Salvar</button>
+                
+                
+                <button type="button" aria-label="Baixar no dispositivo" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              </div>
+            </article>
+          
+            <article style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); overflow: hidden;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+                <span style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">0:18</span>
+                
+                  <span style="position: absolute; top: 8px; left: 8px; display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--overlay); color: #4cc79a; font-size: 11px; font-weight: 500;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>Na Biblioteca</span>
+                
+                <span style="position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>742 mil</span>
+              </div>
+              <div style="display: flex; gap: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>51,2 mil</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"></path></svg>960</span>
+              </div>
+              <p style="margin: 0; height: 36px; overflow: hidden; font-size: 13px; line-height: 18px; color: var(--ink-2);">O erro que todo iniciante comete</p>
+              <div style="display: flex; gap: 6px;">
+                
+                
+                  <button type="button" disabled="" style="flex: 1; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--success-soft); color: var(--success); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: default;">Salvo</button>
+                
+                <button type="button" aria-label="Baixar no dispositivo" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              </div>
+            </article>
+          
+            <article style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); overflow: hidden;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+                <span style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">0:45</span>
+                
+                <span style="position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>615 mil</span>
+              </div>
+              <div style="display: flex; gap: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>70,8 mil</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"></path></svg>3.150</span>
+              </div>
+              <p style="margin: 0; height: 36px; overflow: hidden; font-size: 13px; line-height: 18px; color: var(--ink-2);">Teste: produto de R$ 20 contra o de R$ 200</p>
+              <div style="display: flex; gap: 6px;">
+                
+                  <button type="button" style="flex: 1; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Salvar</button>
+                
+                
+                <button type="button" aria-label="Baixar no dispositivo" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              </div>
+            </article>
+          
+            <article style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); overflow: hidden;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+                <span style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">0:12</span>
+                
+                <span style="position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>498 mil</span>
+              </div>
+              <div style="display: flex; gap: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>44,1 mil</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"></path></svg>610</span>
+              </div>
+              <p style="margin: 0; height: 36px; overflow: hidden; font-size: 13px; line-height: 18px; color: var(--ink-2);">Você sabia? Uma curiosidade em 12 segundos</p>
+              <div style="display: flex; gap: 6px;">
+                
+                  <button type="button" style="flex: 1; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Salvar</button>
+                
+                
+                <button type="button" aria-label="Baixar no dispositivo" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              </div>
+            </article>
+          
+            <article style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); overflow: hidden;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+                <span style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">0:58</span>
+                
+                <span style="position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>410 mil</span>
+              </div>
+              <div style="display: flex; gap: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>39,7 mil</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"></path></svg>1.240</span>
+              </div>
+              <p style="margin: 0; height: 36px; overflow: hidden; font-size: 13px; line-height: 18px; color: var(--ink-2);">Rotina de 5 minutos para começar o dia</p>
+              <div style="display: flex; gap: 6px;">
+                
+                  <button type="button" style="flex: 1; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Salvar</button>
+                
+                
+                <button type="button" aria-label="Baixar no dispositivo" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              </div>
+            </article>
+          
+            <article style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); overflow: hidden;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+                <span style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">0:22</span>
+                
+                <span style="position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>377 mil</span>
+              </div>
+              <div style="display: flex; gap: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>61,9 mil</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"></path></svg>880</span>
+              </div>
+              <p style="margin: 0; height: 36px; overflow: hidden; font-size: 13px; line-height: 18px; color: var(--ink-2);">Gaveta organizada com 3 itens baratos</p>
+              <div style="display: flex; gap: 6px;">
+                
+                  <button type="button" style="flex: 1; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Salvar</button>
+                
+                
+                <button type="button" aria-label="Baixar no dispositivo" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              </div>
+            </article>
+          
+            <article style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); overflow: hidden;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+                <span style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">0:37</span>
+                
+                <span style="position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>301 mil</span>
+              </div>
+              <div style="display: flex; gap: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>22,5 mil</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"></path></svg>2.760</span>
+              </div>
+              <p style="margin: 0; height: 36px; overflow: hidden; font-size: 13px; line-height: 18px; color: var(--ink-2);">Qual você escolheria? Comenta aqui</p>
+              <div style="display: flex; gap: 6px;">
+                
+                  <button type="button" style="flex: 1; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Salvar</button>
+                
+                
+                <button type="button" aria-label="Baixar no dispositivo" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              </div>
+            </article>
+          
+            <article style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); overflow: hidden;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+                <span style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">0:15</span>
+                
+                <span style="position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>254 mil</span>
+              </div>
+              <div style="display: flex; gap: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>18,3 mil</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"></path></svg>430</span>
+              </div>
+              <p style="margin: 0; height: 36px; overflow: hidden; font-size: 13px; line-height: 18px; color: var(--ink-2);">Achado da semana que vale cada centavo</p>
+              <div style="display: flex; gap: 6px;">
+                
+                  <button type="button" style="flex: 1; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Salvar</button>
+                
+                
+                <button type="button" aria-label="Baixar no dispositivo" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              </div>
+            </article>
+          
+            <article style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); overflow: hidden;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+                <span style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">0:41</span>
+                
+                <span style="position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>198 mil</span>
+              </div>
+              <div style="display: flex; gap: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>27,6 mil</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"></path></svg>390</span>
+              </div>
+              <p style="margin: 0; height: 36px; overflow: hidden; font-size: 13px; line-height: 18px; color: var(--ink-2);">Passo a passo sem complicação</p>
+              <div style="display: flex; gap: 6px;">
+                
+                  <button type="button" style="flex: 1; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Salvar</button>
+                
+                
+                <button type="button" aria-label="Baixar no dispositivo" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              </div>
+            </article>
+          
+            <article style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); overflow: hidden;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+                <span style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">0:27</span>
+                
+                <span style="position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>176 mil</span>
+              </div>
+              <div style="display: flex; gap: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>12,9 mil</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"></path></svg>1.510</span>
+              </div>
+              <p style="margin: 0; height: 36px; overflow: hidden; font-size: 13px; line-height: 18px; color: var(--ink-2);">Respondendo às dúvidas de vocês</p>
+              <div style="display: flex; gap: 6px;">
+                
+                  <button type="button" style="flex: 1; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Salvar</button>
+                
+                
+                <button type="button" aria-label="Baixar no dispositivo" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              </div>
+            </article>
+          
+            <article style="display: flex; flex-direction: column; gap: 10px; min-width: 0;">
+              <div style="position: relative; aspect-ratio: 9 / 16; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3); overflow: hidden;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+                <span style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">1:04</span>
+                
+                <span style="position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>143 mil</span>
+              </div>
+              <div style="display: flex; gap: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7z"></path></svg>9,8 mil</span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"></path></svg>270</span>
+              </div>
+              <p style="margin: 0; height: 36px; overflow: hidden; font-size: 13px; line-height: 18px; color: var(--ink-2);">Bastidores de uma gravação</p>
+              <div style="display: flex; gap: 6px;">
+                
+                  <button type="button" style="flex: 1; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 12px; font-weight: 500; cursor: pointer;">Salvar</button>
+                
+                
+                <button type="button" aria-label="Baixar no dispositivo" style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg></button>
+              </div>
+            </article>
+          
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+</body>
+</html>

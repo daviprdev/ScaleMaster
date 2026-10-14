@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scale Master — Postar — nova distribuição (referência)</title>
+<!-- Referência visual do redesign. Gerada a partir da amostra aprovada (canvas "Redesign Scale Master").
+     Abra no navegador. Cores e medidas vêm de theme.css (= tokens do Design System). Não é código de produção. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;family=Instrument+Serif:ital@1&amp;display=swap">
+<link rel="stylesheet" href="theme.css">
+<style>
+body{margin:0;background:#05070c}
+a{color:#7fb2e8}a:hover{color:#a9cbf0}
+input::placeholder{color:var(--ink-3)}
+</style>
+</head>
+<body>
+<div data-theme="dark" style="min-height: 1370px; display: flex; flex-wrap: wrap; align-items: stretch; background: var(--bg); color: var(--ink); font-family: var(--font-sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased;">
+
+  <!-- Sidebar -->
+  <aside style="flex: 1 1 240px; box-sizing: border-box; padding: 12px; background: var(--surface); border-right: 1px solid var(--line); display: flex; flex-direction: column;">
+    <a href="visao-geral.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 6px; margin-bottom: 4px; text-decoration: none;">
+      <img src="scale-master-logo.jpg" alt="" style="width: 26px; height: 26px; border-radius: 7px; display: block;">
+      <span style="font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: -0.01em; color: var(--wordmark);">Scale Master</span>
+    </a>
+    <nav aria-label="Principal" style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
+      <div style="padding: 14px 10px 6px; font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Início</div>
+      <a href="visao-geral.html" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
+        Visão geral
+      </a>
+
+      <div style="padding: 14px 10px 6px; font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Contas</div>
+      <a href="contas.html" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        Contas
+        <span style="margin-left: auto; font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: var(--ink-3);">42</span>
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        Contas leitoras
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>
+        Proxies
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"></path></svg>
+        Failover
+      </a>
+
+      <div style="padding: 14px 10px 6px; font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Publicar</div>
+      <a href="postar.html" aria-current="page" style="position: relative; display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; background: var(--surface-hover); color: var(--ink); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <span aria-hidden="true" style="position: absolute; left: -12px; top: 9px; bottom: 9px; width: 2px; border-radius: 2px; background: var(--accent);"></span>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent);"><path d="M22 2 11 13"></path><path d="M22 2 15 22 11 13 2 9 22 2z"></path></svg>
+        Postar
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 9 3-3 3 3"></path><path d="M13 18H7a2 2 0 0 1-2-2V6"></path><path d="m22 15-3 3-3-3"></path><path d="M11 6h6a2 2 0 0 1 2 2v10"></path></svg>
+        Loop
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"></path></svg>
+        Stories
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+        Fila
+        <span style="margin-left: auto; font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: var(--ink-3);">12</span>
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
+        Publicados
+      </a>
+
+      <div style="padding: 14px 10px 6px; font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Conteúdo</div>
+      <a href="inspiracoes.html" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 17v4"></path><path d="M17 19h4"></path></svg>
+        Inspirações
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="14" height="14" rx="2"></rect><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2"></path></svg>
+        Clonar
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"></path></svg>
+        Biblioteca
+      </a>
+
+      <div style="padding: 14px 10px 6px; font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Dados</div>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+        Monitor
+      </a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px; color: var(--ink-2); font-size: 13px; line-height: 18px; font-weight: 500; text-decoration: none;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"></path><path d="M16 7h6v6"></path></svg>
+        Analytics
+      </a>
+    </nav>
+    <a href="#" style="display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px 6px 4px; border-top: 1px solid var(--line); text-decoration: none;">
+      <span style="width: 28px; height: 28px; border-radius: 999px; background: var(--surface-hover); display: grid; place-items: center; font-size: 12px; font-weight: 600; color: var(--ink-2);">B</span>
+      <span style="display: flex; flex-direction: column;">
+        <span style="font-size: 13px; line-height: 16px; font-weight: 500; color: var(--ink);">Bruce</span>
+        <span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Configurações e conta</span>
+      </span>
+    </a>
+  </aside>
+
+  <!-- Coluna principal -->
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <header style="min-height: 56px; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 32px; border-bottom: 1px solid var(--line);">
+      <div style="font-size: 13px; line-height: 18px; color: var(--ink-3);">Publicar / <span style="color: var(--ink); font-weight: 500;">Postar</span></div>
+      <label style="margin-left: auto; flex: 0 1 320px; min-width: 200px; display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box; padding: 0 8px 0 12px; background: var(--surface); border: 1px solid var(--line-control); border-radius: 8px; color: var(--ink-3);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none;"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        <input type="search" aria-label="Buscar" placeholder="Buscar contas, posts, páginas…" style="flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 14px; outline: none;">
+        <kbd style="display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font-family: var(--font-mono); font-size: 11px; color: var(--ink-3);">⌘K</kbd>
+      </label>
+      <button type="button" aria-label="Notificações" style="position: relative; display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); cursor: pointer;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg>
+        <span aria-hidden="true" style="position: absolute; top: 8px; right: 9px; width: 6px; height: 6px; border-radius: 999px; background: var(--accent);"></span>
+      </button>
+    </header>
+
+    <main style="width: 100%; max-width: 1200px; box-sizing: border-box; padding: 28px 32px 48px; display: flex; flex-direction: column; gap: 24px;">
+      <div>
+        <div style="font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Publicar</div>
+        <h1 style="margin: 4px 0 0; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.02em;">Postar</h1>
+        <p style="margin: 4px 0 0; max-width: 640px; font-size: 14px; line-height: 22px; color: var(--ink-2);">Distribua os vídeos de uma pasta da Biblioteca entre várias contas, com cadência automática.</p>
+      </div>
+
+      <div role="tablist" aria-label="Modos de publicação" style="display: flex; flex-wrap: wrap; gap: 24px; border-bottom: 1px solid var(--line);">
+        <button type="button" role="tab" aria-selected="true" style="height: 40px; padding: 0; border: 0; border-bottom: 2px solid var(--accent); margin-bottom: -1px; background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer;">Nova distribuição</button>
+        <button type="button" role="tab" aria-selected="false" style="height: 40px; padding: 0; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: var(--ink-3); font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer;">Campanhas ativas <span style="font-family: var(--font-mono);">3</span></button>
+        <button type="button" role="tab" aria-selected="false" style="height: 40px; padding: 0; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: var(--ink-3); font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer;">Em massa</button>
+        <button type="button" role="tab" aria-selected="false" style="height: 40px; padding: 0; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: var(--ink-3); font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer;">Agendados</button>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
+        <!-- Formulário -->
+        <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+
+          <section style="padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--accent);">01</span>
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em;">Conteúdo</h2>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 16px;">
+              <div style="flex: 2 1 280px; display: flex; flex-direction: column; gap: 6px;">
+                <span style="font-size: 13px; line-height: 18px; font-weight: 500;">Pasta de mídia</span>
+                <button type="button" aria-label="Pasta de mídia: Reels virais — out, 48 vídeos" style="display: flex; align-items: center; gap: 10px; height: 36px; box-sizing: border-box; padding: 0 12px; background: var(--bg); border: 1px solid var(--line-control); border-radius: 8px; color: var(--ink); font-family: var(--font-sans); font-size: 14px; text-align: left; cursor: pointer;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--ink-3);"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"></path></svg>
+                  <span style="flex: 1;">Reels virais — out</span>
+                  <span style="font-family: var(--font-mono); font-size: 12px; color: var(--ink-3);">48 vídeos</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--ink-3);"><path d="m6 9 6 6 6-6"></path></svg>
+                </button>
+              </div>
+              <div style="flex: 1 1 180px; display: flex; flex-direction: column; gap: 6px;">
+                <label for="qtd-videos" style="font-size: 13px; line-height: 18px; font-weight: 500;">Quantos vídeos por conta</label>
+                <input id="qtd-videos" type="text" inputmode="numeric" value="24" readonly="" style="height: 36px; box-sizing: border-box; padding: 0 12px; background: var(--bg); border: 1px solid var(--line-control); border-radius: 8px; color: var(--ink); font-family: var(--font-mono); font-size: 14px; outline: none;">
+                <span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Até 48 — o total da pasta</span>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <span style="font-size: 13px; line-height: 18px; font-weight: 500;">Ordem de distribuição</span>
+              <div role="radiogroup" aria-label="Ordem de distribuição" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px;">
+                
+                  <button type="button" role="radio" aria-checked="true" style="display: flex; gap: 10px; padding: 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--accent); background: var(--info-soft); color: var(--ink); font-family: var(--font-sans); text-align: left; cursor: pointer;">
+                    <span style="flex: none; width: 16px; height: 16px; margin-top: 1px; box-sizing: border-box; border-radius: 999px; border: 1.5px solid var(--accent); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 999px; background: var(--accent);"></span></span>
+                    <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; line-height: 18px; font-weight: 500;">Mais visualizados</span><span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Começa pelos vídeos com mais views.</span></span>
+                  </button>
+                
+                  <button type="button" role="radio" style="display: flex; gap: 10px; padding: 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-family: var(--font-sans); text-align: left; cursor: pointer;">
+                    <span style="flex: none; width: 16px; height: 16px; margin-top: 1px; box-sizing: border-box; border-radius: 999px; border: 1.5px solid var(--line-control); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 999px; background: transparent;"></span></span>
+                    <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; line-height: 18px; font-weight: 500;">Menor uso</span><span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Prioriza os vídeos menos postados.</span></span>
+                  </button>
+                
+                  <button type="button" role="radio" style="display: flex; gap: 10px; padding: 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-family: var(--font-sans); text-align: left; cursor: pointer;">
+                    <span style="flex: none; width: 16px; height: 16px; margin-top: 1px; box-sizing: border-box; border-radius: 999px; border: 1.5px solid var(--line-control); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 999px; background: transparent;"></span></span>
+                    <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; line-height: 18px; font-weight: 500;">Aleatório</span><span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Sorteia sem considerar views nem histórico.</span></span>
+                  </button>
+                
+              </div>
+            </div>
+          </section>
+
+          <section style="padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--accent);">02</span>
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em;">Contas</h2>
+              <span style="margin-left: auto; font-size: 13px; color: var(--ink-2);"><span style="font-family: var(--font-mono); color: var(--ink);">18</span> selecionadas</span>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              <button type="button" aria-pressed="true" style="display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--accent); background: var(--info-soft); color: var(--ink); font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--accent);"><path d="M20 6 9 17l-5-5"></path></svg>Marca XYZ <span style="font-family: var(--font-mono); color: var(--ink-3);">18</span></button>
+              <button type="button" aria-pressed="false" style="display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer;">Cliente A <span style="font-family: var(--font-mono); color: var(--ink-3);">12</span></button>
+              <button type="button" aria-pressed="false" style="display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer;">Lote junho <span style="font-family: var(--font-mono); color: var(--ink-3);">8</span></button>
+              <button type="button" aria-pressed="false" style="display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-control); background: transparent; color: var(--ink-2); font-family: var(--font-sans); font-size: 13px; font-weight: 500; cursor: pointer;">Sem pasta <span style="font-family: var(--font-mono); color: var(--ink-3);">4</span></button>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+              <div aria-hidden="true" style="display: flex;">
+                <span style="width: 28px; height: 28px; border-radius: 999px; border: 2px solid var(--surface); background: var(--surface-hover); display: grid; place-items: center; font-size: 10px; font-weight: 600; color: var(--ink-2);">LO</span>
+                <span style="width: 28px; height: 28px; margin-left: -8px; border-radius: 999px; border: 2px solid var(--surface); background: var(--surface-raised); display: grid; place-items: center; font-size: 10px; font-weight: 600; color: var(--ink-2);">AC</span>
+                <span style="width: 28px; height: 28px; margin-left: -8px; border-radius: 999px; border: 2px solid var(--surface); background: var(--surface-hover); display: grid; place-items: center; font-size: 10px; font-weight: 600; color: var(--ink-2);">VB</span>
+                <span style="width: 28px; height: 28px; margin-left: -8px; border-radius: 999px; border: 2px solid var(--surface); background: var(--surface-raised); display: grid; place-items: center; font-size: 10px; font-weight: 600; color: var(--ink-2);">MX</span>
+                <span style="width: 28px; height: 28px; margin-left: -8px; border-radius: 999px; border: 2px solid var(--surface); background: var(--surface-hover); display: grid; place-items: center; font-size: 10px; font-weight: 600; color: var(--ink-2);">+14</span>
+              </div>
+              <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); cursor: pointer;"><input type="checkbox" style="width: 16px; height: 16px; margin: 0; accent-color: var(--primary);">Selecionar todas as contas de todas as pastas</label>
+            </div>
+          </section>
+
+          <section style="padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--accent);">03</span>
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em;">Cadência</h2>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label for="posts-dia" style="font-size: 13px; line-height: 18px; font-weight: 500;">Posts por dia por conta</label>
+                <input id="posts-dia" type="text" inputmode="numeric" value="2" readonly="" style="height: 36px; box-sizing: border-box; padding: 0 12px; background: var(--bg); border: 1px solid var(--line-control); border-radius: 8px; color: var(--ink); font-family: var(--font-mono); font-size: 14px; outline: none;">
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <span style="font-size: 13px; line-height: 18px; font-weight: 500;">Intervalo entre contas</span>
+                <button type="button" aria-label="Intervalo entre contas: automático" style="display: flex; align-items: center; justify-content: space-between; height: 36px; box-sizing: border-box; padding: 0 12px; background: var(--bg); border: 1px solid var(--line-control); border-radius: 8px; color: var(--ink); font-family: var(--font-sans); font-size: 14px; cursor: pointer;">Automático<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: var(--ink-3);"><path d="m6 9 6 6 6-6"></path></svg></button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label for="inicio" style="font-size: 13px; line-height: 18px; font-weight: 500;">Data e hora do primeiro post</label>
+                <input id="inicio" type="text" value="14/10/2026, 09:00" readonly="" style="height: 36px; box-sizing: border-box; padding: 0 12px; background: var(--bg); border: 1px solid var(--line-control); border-radius: 8px; color: var(--ink); font-family: var(--font-mono); font-size: 14px; outline: none;">
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: var(--ink-3);">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none;"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+              Stagger automático entre contas — sem disparos simultâneos.
+            </div>
+          </section>
+
+          <section style="padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--accent);">04</span>
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em;">Legenda e vídeo</h2>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <span style="font-size: 13px; line-height: 18px; font-weight: 500;">Legenda</span>
+              <div role="radiogroup" aria-label="Legenda" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 8px;">
+                
+                  <button type="button" role="radio" aria-checked="true" style="display: flex; gap: 10px; padding: 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--accent); background: var(--info-soft); color: var(--ink); font-family: var(--font-sans); text-align: left; cursor: pointer;">
+                    <span style="flex: none; width: 16px; height: 16px; margin-top: 1px; box-sizing: border-box; border-radius: 999px; border: 1.5px solid var(--accent); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 999px; background: var(--accent);"></span></span>
+                    <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; line-height: 18px; font-weight: 500;">Original</span><span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Usa a legenda capturada junto do Reel.</span></span>
+                  </button>
+                
+                  <button type="button" role="radio" style="display: flex; gap: 10px; padding: 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-family: var(--font-sans); text-align: left; cursor: pointer;">
+                    <span style="flex: none; width: 16px; height: 16px; margin-top: 1px; box-sizing: border-box; border-radius: 999px; border: 1.5px solid var(--line-control); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 999px; background: transparent;"></span></span>
+                    <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; line-height: 18px; font-weight: 500;">Personalizada</span><span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Use sua própria legenda.</span></span>
+                  </button>
+                
+                  <button type="button" role="radio" style="display: flex; gap: 10px; padding: 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-family: var(--font-sans); text-align: left; cursor: pointer;">
+                    <span style="flex: none; width: 16px; height: 16px; margin-top: 1px; box-sizing: border-box; border-radius: 999px; border: 1.5px solid var(--line-control); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 999px; background: transparent;"></span></span>
+                    <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; line-height: 18px; font-weight: 500;">Automática</span><span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Curiosidades únicas em PT-BR por post.</span></span>
+                  </button>
+                
+                  <button type="button" role="radio" style="display: flex; gap: 10px; padding: 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-family: var(--font-sans); text-align: left; cursor: pointer;">
+                    <span style="flex: none; width: 16px; height: 16px; margin-top: 1px; box-sizing: border-box; border-radius: 999px; border: 1.5px solid var(--line-control); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 999px; background: transparent;"></span></span>
+                    <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; line-height: 18px; font-weight: 500;">Sem legenda</span><span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Publica sem texto na descrição.</span></span>
+                  </button>
+                
+              </div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 16px;">
+              <div style="flex: 1 1 300px; display: flex; flex-direction: column; gap: 8px;">
+                <span style="font-size: 13px; line-height: 18px; font-weight: 500;">Processamento do vídeo</span>
+                <div role="radiogroup" aria-label="Processamento do vídeo" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px;">
+                  
+                    <button type="button" role="radio" style="display: flex; gap: 10px; padding: 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-family: var(--font-sans); text-align: left; cursor: pointer;">
+                      <span style="flex: none; width: 16px; height: 16px; margin-top: 1px; box-sizing: border-box; border-radius: 999px; border: 1.5px solid var(--line-control); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 999px; background: transparent;"></span></span>
+                      <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; line-height: 18px; font-weight: 500;">Sem limpeza</span><span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Publica o arquivo como está.</span></span>
+                    </button>
+                  
+                    <button type="button" role="radio" aria-checked="true" style="display: flex; gap: 10px; padding: 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--accent); background: var(--info-soft); color: var(--ink); font-family: var(--font-sans); text-align: left; cursor: pointer;">
+                      <span style="flex: none; width: 16px; height: 16px; margin-top: 1px; box-sizing: border-box; border-radius: 999px; border: 1.5px solid var(--accent); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 999px; background: var(--accent);"></span></span>
+                      <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; line-height: 18px; font-weight: 500;">Limpeza de metadados</span><span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Remove os metadados antes de publicar.</span></span>
+                    </button>
+                  
+                </div>
+              </div>
+              <div style="flex: 1 1 300px; display: flex; flex-direction: column; gap: 8px;">
+                <span style="font-size: 13px; line-height: 18px; font-weight: 500;">Exibição do Reel</span>
+                <div role="radiogroup" aria-label="Exibição do Reel" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px;">
+                  
+                    <button type="button" role="radio" aria-checked="true" style="display: flex; gap: 10px; padding: 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--accent); background: var(--info-soft); color: var(--ink); font-family: var(--font-sans); text-align: left; cursor: pointer;">
+                      <span style="flex: none; width: 16px; height: 16px; margin-top: 1px; box-sizing: border-box; border-radius: 999px; border: 1.5px solid var(--accent); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 999px; background: var(--accent);"></span></span>
+                      <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; line-height: 18px; font-weight: 500;">Reels + grade</span><span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Na grade do perfil e na aba Reels.</span></span>
+                    </button>
+                  
+                    <button type="button" role="radio" style="display: flex; gap: 10px; padding: 12px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font-family: var(--font-sans); text-align: left; cursor: pointer;">
+                      <span style="flex: none; width: 16px; height: 16px; margin-top: 1px; box-sizing: border-box; border-radius: 999px; border: 1.5px solid var(--line-control); display: grid; place-items: center;"><span style="width: 8px; height: 8px; border-radius: 999px; background: transparent;"></span></span>
+                      <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 13px; line-height: 18px; font-weight: 500;">Somente Reels</span><span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Apenas na aba Reels do perfil.</span></span>
+                    </button>
+                  
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Resumo -->
+        <aside style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+          <section style="padding: 20px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px;">
+            <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em;">Resumo</h2>
+            <div style="margin-top: 16px; display: flex; flex-direction: column;">
+              <div style="display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px;"><span style="color: var(--ink-3);">Total de posts</span><span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">432</span></div>
+              <div style="display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px;"><span style="color: var(--ink-3);">Contas</span><span><span style="font-family: var(--font-mono);">18</span> · Marca XYZ</span></div>
+              <div style="display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px;"><span style="color: var(--ink-3);">Cadência</span><span>2 por dia por conta</span></div>
+              <div style="display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px;"><span style="color: var(--ink-3);">Início</span><span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">14 out, 09:00</span></div>
+              <div style="display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px;"><span style="color: var(--ink-3);">Fim estimado</span><span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">25 out, 18:40</span></div>
+              <div style="display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; font-size: 13px;"><span style="color: var(--ink-3);">Duração</span><span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">12 dias</span></div>
+            </div>
+            <button type="button" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 44px; margin-top: 16px; border: 0; border-radius: 8px; background: var(--primary); color: var(--on-primary); font-family: var(--font-sans); font-size: 14px; font-weight: 500; cursor: pointer;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22 11 13 2 9 22 2z"></path></svg>
+              Criar distribuição
+            </button>
+            <p style="margin: 10px 0 0; text-align: center; font-size: 12px; line-height: 16px; color: var(--ink-3);">Você pode editar legendas e cadência depois.</p>
+          </section>
+
+          <section style="padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <h2 style="margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em;">Campanhas ativas</h2>
+              <a href="#" style="font-size: 12px; font-weight: 500; color: var(--ink-2); text-decoration: none;">Ver todas</a>
+            </div>
+            <div style="margin-top: 12px; padding: 12px 0; border-bottom: 1px solid var(--line);">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;"><span style="font-size: 13px; font-weight: 500;">Reels virais — set</span><span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--info-soft); color: var(--accent); font-size: 12px; font-weight: 500;"><span style="width: 6px; height: 6px; border-radius: 999px; background: currentColor;"></span>Publicando</span></div>
+              <div style="display: flex; justify-content: space-between; margin: 8px 0 6px; font-size: 12px; line-height: 16px; color: var(--ink-3);"><span>186 de 288 posts</span><span style="font-family: var(--font-mono);">64%</span></div>
+              <div style="height: 6px; border-radius: 999px; background: var(--surface-hover); overflow: hidden;"><div style="width: 64%; height: 100%; background: var(--primary);"></div></div>
+            </div>
+            <div style="padding: 12px 0; border-bottom: 1px solid var(--line);">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;"><span style="font-size: 13px; font-weight: 500;">Achadinhos — lote 3</span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--surface-hover); color: var(--ink-2); font-size: 12px; font-weight: 500;">Na fila</span></div>
+              <div style="margin-top: 6px; font-size: 12px; line-height: 16px; color: var(--ink-3);">Começa amanhã, 08:00 · 96 posts</div>
+            </div>
+            <div style="padding: 12px 0 0;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;"><span style="font-size: 13px; font-weight: 500;">Receitas — out</span><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-size: 12px; font-weight: 500;">Atrasada</span></div>
+              <div style="margin-top: 6px; font-size: 12px; line-height: 16px; color: var(--ink-3);">2 contas sem token válido · 4 falhas</div>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

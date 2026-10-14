@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scale Master — Landing (referência)</title>
+<!-- Referência visual do redesign. Gerada a partir da amostra aprovada (canvas "Redesign Scale Master").
+     Abra no navegador. Cores e medidas vêm de theme.css (= tokens do Design System). Não é código de produção. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;family=Instrument+Serif:ital@1&amp;display=swap">
+<link rel="stylesheet" href="theme.css">
+<style>
+body{margin:0;background:#05070c}
+a{color:#7fb2e8}a:hover{color:#a9cbf0}
+summary{list-style:none;cursor:pointer}summary::-webkit-details-marker{display:none}
+</style>
+</head>
+<body>
+<div data-theme="dark" style="background: var(--bg); color: var(--ink); font-family: var(--font-sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased; overflow: hidden;">
+
+  <!-- Hero com brilho horizonte -->
+  <section style="position: relative; isolation: isolate; overflow: hidden; padding: 0 24px 72px;">
+    <div aria-hidden="true" style="position: absolute; z-index: -1; left: 50%; top: -360px; width: 1100px; height: 680px; transform: translateX(-50%); background: radial-gradient(closest-side, var(--brand-blue), var(--brand-navy) 55%, transparent); opacity: 0.55; pointer-events: none;"></div>
+
+    <nav style="max-width: 1120px; margin: 0 auto; min-height: 72px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 32px;">
+      <a href="#topo" style="display: flex; align-items: center; gap: 10px; text-decoration: none;">
+        <img src="scale-master-logo.jpg" alt="" style="width: 28px; height: 28px; border-radius: 7px; display: block;">
+        <span style="font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.01em; color: var(--brand-silver);">Scale Master</span>
+      </a>
+      <div style="display: flex; flex-wrap: wrap; gap: 4px 24px; font-size: 13px; line-height: 18px; font-weight: 500;">
+        <a href="#recursos" style="color: var(--ink-2); text-decoration: none;">Recursos</a>
+        <a href="#como-funciona" style="color: var(--ink-2); text-decoration: none;">Como funciona</a>
+        <a href="#preco" style="color: var(--ink-2); text-decoration: none;">Preço</a>
+        <a href="#faq" style="color: var(--ink-2); text-decoration: none;">FAQ</a>
+      </div>
+      <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+        <a href="login.html" style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 8px; color: var(--ink-2); font-size: 13px; font-weight: 500; text-decoration: none;">Entrar</a>
+        <a href="login.html" style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 8px; background: var(--primary); color: var(--on-primary); font-size: 13px; font-weight: 500; text-decoration: none;">Criar conta</a>
+      </div>
+    </nav>
+
+    <div id="topo" style="max-width: 1120px; margin: 0 auto; padding: 88px 0 56px; text-align: center;">
+      <span style="display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 12px; line-height: 16px; font-weight: 500; color: var(--ink-2);">
+        <span style="width: 6px; height: 6px; border-radius: 999px; background: var(--success);"></span>
+        API oficial da Meta · Reels, Stories e Feed
+      </span>
+      <h1 style="margin: 24px auto 0; max-width: 860px; font-size: clamp(40px, 4.6vw, 60px); line-height: 1.04; font-weight: 600; letter-spacing: -0.035em; color: var(--ink);">Dezenas de perfis.<br><em style="font-family: var(--font-serif); font-style: italic; font-weight: 400; letter-spacing: -0.01em; font-size: 1.1em; color: var(--accent);">Um</em> só painel.</h1>
+      <p style="margin: 20px auto 0; max-width: 600px; font-size: 17px; line-height: 28px; color: var(--ink-2);">Conecte suas contas do Instagram, encontre conteúdo que performa e publique no automático — com métricas de cada perfil em tempo real.</p>
+      <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 32px;">
+        <a href="login.html" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 20px; border-radius: 8px; background: var(--primary); color: var(--on-primary); font-size: 14px; font-weight: 500; text-decoration: none;">
+          Começar agora
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg>
+        </a>
+        <a href="#como-funciona" style="display: inline-flex; align-items: center; height: 44px; padding: 0 20px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line-control); color: var(--ink); font-size: 14px; font-weight: 500; text-decoration: none;">Ver como funciona</a>
+      </div>
+    </div>
+
+    <!-- Frame do produto -->
+    <div style="max-width: 1040px; margin: 0 auto; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-frame); overflow: hidden;">
+      <div style="display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-bottom: 1px solid var(--line);">
+        <span style="width: 10px; height: 10px; border-radius: 999px; background: var(--surface-hover);"></span>
+        <span style="width: 10px; height: 10px; border-radius: 999px; background: var(--surface-hover);"></span>
+        <span style="width: 10px; height: 10px; border-radius: 999px; background: var(--surface-hover);"></span>
+        <span style="margin-left: 12px; font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--ink-3);">scalemaster.tech/dashboard</span>
+      </div>
+      <div style="padding: 20px; background: var(--bg); display: flex; flex-direction: column; gap: 12px; text-align: left;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+            <span style="font-size: 13px; line-height: 18px; font-weight: 500; color: var(--ink-2);">Visualizações hoje</span>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <span style="font-family: var(--font-mono); font-size: 26px; line-height: 32px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;">104.280</span>
+              <svg width="84" height="26" viewBox="0 0 96 28" aria-hidden="true"><polyline points="0,26 13.7,21.2 27.4,23.6 41.1,17.2 54.9,10.8 68.6,13.2 82.3,6.8 96,2" style="fill: none; stroke: var(--accent); stroke-width: 1.5;"></polyline></svg>
+            </div>
+            <div style="display: flex; gap: 8px; font-size: 12px; line-height: 16px; color: var(--ink-3);"><span style="font-family: var(--font-mono); color: var(--success);">↑ 9,2%</span><span>vs. ontem</span></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+            <span style="font-size: 13px; line-height: 18px; font-weight: 500; color: var(--ink-2);">Vendas hoje</span>
+            <span style="font-family: var(--font-mono); font-size: 26px; line-height: 32px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;">R$ 1.240</span>
+            <div style="display: flex; gap: 8px; font-size: 12px; line-height: 16px; color: var(--ink-3);"><span style="font-family: var(--font-mono); color: var(--success);">↑ 4,0%</span><span>vs. ontem</span></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+            <span style="font-size: 13px; line-height: 18px; font-weight: 500; color: var(--ink-2);">Vídeos publicados</span>
+            <span style="font-family: var(--font-mono); font-size: 26px; line-height: 32px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;">86</span>
+            <div style="font-size: 12px; line-height: 16px; color: var(--ink-3);">hoje · 12 na fila</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+            <span style="font-size: 13px; line-height: 18px; font-weight: 500; color: var(--ink-2);">Contas ativas</span>
+            <span style="font-family: var(--font-mono); font-size: 26px; line-height: 32px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;">41/42</span>
+            <div style="font-size: 12px; line-height: 16px; color: var(--ink-3);">1 caída · failover ativo</div>
+          </div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+          <div style="flex: 2 1 480px; min-width: 0; padding: 18px 18px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+              <span style="font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em;">Views das contas</span>
+              <span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Últimos 14 dias</span>
+            </div>
+            <svg viewBox="0 0 640 200" role="img" aria-label="Visualizações por dia nos últimos 14 dias, subindo de 42 mil para 104 mil" style="display: block; width: 100%; height: auto; margin-top: 8px;">
+              <line x1="24" x2="616" y1="176" y2="176" style="stroke: var(--line); stroke-width: 1;"></line>
+              <line x1="24" x2="616" y1="106.9" y2="106.9" style="stroke: var(--line); stroke-width: 1;"></line>
+              <line x1="24" x2="616" y1="37.8" y2="37.8" style="stroke: var(--line); stroke-width: 1;"></line>
+              <path d="M24,176 L24,118 L69.5,109.7 L115.1,113.8 L160.6,102.8 L206.2,91.7 L251.7,95.9 L297.2,84.8 L342.8,76.5 L388.3,80.6 L433.8,65.5 L479.4,57.2 L524.9,61.3 L570.5,44.7 L616,32.3 L616,176 Z" style="fill: var(--chart-fill);"></path>
+              <polyline points="24,118 69.5,109.7 115.1,113.8 160.6,102.8 206.2,91.7 251.7,95.9 297.2,84.8 342.8,76.5 388.3,80.6 433.8,65.5 479.4,57.2 524.9,61.3 570.5,44.7 616,32.3" style="fill: none; stroke: var(--accent); stroke-width: 1.75;"></polyline>
+              <text x="0" y="110" style="font-family: var(--font-mono); font-size: 10px; fill: var(--ink-3);">50k</text>
+              <text x="0" y="41" style="font-family: var(--font-mono); font-size: 10px; fill: var(--ink-3);">100k</text>
+            </svg>
+          </div>
+          <div style="flex: 1 1 260px; min-width: 0; box-sizing: border-box; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 10px;">
+            <span style="font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.01em;">Saúde das contas</span>
+            <span style="font-size: 12px; line-height: 16px; color: var(--ink-3);">Tokens válidos · 38 de 42</span>
+            <div style="height: 6px; border-radius: 999px; background: var(--surface-hover); overflow: hidden;"><div style="width: 90%; height: 100%; background: var(--primary);"></div></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding-top: 6px; font-size: 13px; color: var(--ink-2);">Token expira em ≤ 7 dias <span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-size: 12px; font-weight: 500;">3 contas</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2);">Proxies respondendo <span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--success-soft); color: var(--success); font-size: 12px; font-weight: 500;"><span style="width: 6px; height: 6px; border-radius: 999px; background: currentColor;"></span>24/24</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Faixa de fatos -->
+  <section style="padding: 0 24px;">
+    <div style="max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);">
+      <div style="padding: 24px; border-right: 1px solid var(--line);">
+        <div style="font-size: 15px; line-height: 22px; font-weight: 600;">API oficial</div>
+        <div style="font-size: 13px; line-height: 20px; color: var(--ink-3);">Login pela Meta, sem senha salva</div>
+      </div>
+      <div style="padding: 24px; border-right: 1px solid var(--line);">
+        <div style="font-size: 15px; line-height: 22px; font-weight: 600;">Reels, Stories e Feed</div>
+        <div style="font-size: 13px; line-height: 20px; color: var(--ink-3);">Distribuídos, agendados ou em loop</div>
+      </div>
+      <div style="padding: 24px; border-right: 1px solid var(--line);">
+        <div style="font-size: 15px; line-height: 22px; font-weight: 600;">Failover automático</div>
+        <div style="font-size: 13px; line-height: 20px; color: var(--ink-3);">Conta caiu, outra assume</div>
+      </div>
+      <div style="padding: 24px;">
+        <div style="font-size: 15px; line-height: 22px; font-weight: 600;">Instala como app</div>
+        <div style="font-size: 13px; line-height: 20px; color: var(--ink-3);">PWA com notificações push</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Como funciona -->
+  <section id="como-funciona" style="padding: 96px 24px 0;">
+    <div style="max-width: 1120px; margin: 0 auto;">
+      <div style="font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Como funciona</div>
+      <h2 style="margin: 12px 0 0; max-width: 600px; font-size: 40px; line-height: 44px; font-weight: 600; letter-spacing: -0.03em;">Do perfil novo ao post publicado em <em style="font-family: var(--font-serif); font-style: italic; font-weight: 400; letter-spacing: -0.01em; font-size: 1.1em; color: var(--accent);">quatro</em> passos.</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 40px;">
+        <div style="padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+          <div style="font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--accent);">01</div>
+          <h3 style="margin: 28px 0 6px; font-size: 15px; line-height: 22px; font-weight: 600;">Conecte</h3>
+          <p style="margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2);">Autorize cada conta pela Meta em um clique. Organize em pastas e defina um proxy por conta.</p>
+        </div>
+        <div style="padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+          <div style="font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--accent);">02</div>
+          <h3 style="margin: 28px 0 6px; font-size: 15px; line-height: 22px; font-weight: 600;">Encontre</h3>
+          <p style="margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2);">Inspirações e clonagem trazem os Reels que já performam no seu nicho direto para a biblioteca.</p>
+        </div>
+        <div style="padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+          <div style="font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--accent);">03</div>
+          <h3 style="margin: 28px 0 6px; font-size: 15px; line-height: 22px; font-weight: 600;">Publique</h3>
+          <p style="margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2);">Distribua uma pasta entre dezenas de contas com cadência automática, legenda e loop.</p>
+        </div>
+        <div style="padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+          <div style="font-family: var(--font-mono); font-size: 12px; line-height: 16px; color: var(--accent);">04</div>
+          <h3 style="margin: 28px 0 6px; font-size: 15px; line-height: 22px; font-weight: 600;">Acompanhe</h3>
+          <p style="margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2);">Views, vendas e saúde das contas num painel só, com alertas no celular.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Recursos -->
+  <section id="recursos" style="padding: 96px 24px 0;">
+    <div style="max-width: 1120px; margin: 0 auto;">
+      <div style="font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Recursos</div>
+      <h2 style="margin: 12px 0 0; max-width: 640px; font-size: 40px; line-height: 44px; font-weight: 600; letter-spacing: -0.03em;">O que a operação precisa, <em style="font-family: var(--font-serif); font-style: italic; font-weight: 400; letter-spacing: -0.01em; font-size: 1.1em; color: var(--accent);">nada</em> além disso.</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-top: 40px;">
+
+        <div style="display: flex; flex-direction: column; gap: 20px; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+          <div style="height: 240px; box-sizing: border-box; padding: 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start;">
+            <div style="position: relative; aspect-ratio: 9 / 16; max-height: 206px; border-radius: 8px; background: var(--surface-hover); display: grid; place-items: center; color: var(--ink-3);">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+              <span style="position: absolute; left: 6px; bottom: 6px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">1,2 mi</span>
+            </div>
+            <div style="position: relative; aspect-ratio: 9 / 16; max-height: 206px; border-radius: 8px; background: var(--surface-raised); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-3);">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+              <span style="position: absolute; left: 6px; bottom: 6px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">860 mil</span>
+            </div>
+            <div style="position: relative; aspect-ratio: 9 / 16; max-height: 206px; border-radius: 8px; background: var(--surface-hover); display: grid; place-items: center; color: var(--ink-3);">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16l13-8z"></path></svg>
+              <span style="position: absolute; left: 6px; bottom: 6px; padding: 2px 6px; border-radius: 6px; background: var(--overlay); font-family: var(--font-mono); font-size: 11px; line-height: 16px; color: #edf0f5;">410 mil</span>
+            </div>
+          </div>
+          <div>
+            <h3 style="margin: 0 0 6px; font-size: 17px; line-height: 24px; font-weight: 600; letter-spacing: -0.01em;">Inspirações</h3>
+            <p style="margin: 0; font-size: 14px; line-height: 22px; color: var(--ink-2);">Busque os Reels que mais performam em qualquer perfil, ordene por views ou curtidas e salve direto na biblioteca.</p>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 20px; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+          <div style="height: 240px; box-sizing: border-box; padding: 16px 18px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div style="display: flex; justify-content: space-between; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 13px;"><span style="color: var(--ink-3);">Pasta</span><span>Reels virais — out · 48 vídeos</span></div>
+            <div style="display: flex; justify-content: space-between; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 13px;"><span style="color: var(--ink-3);">Contas</span><span>18 selecionadas</span></div>
+            <div style="display: flex; justify-content: space-between; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 13px;"><span style="color: var(--ink-3);">Cadência</span><span>2 por dia por conta</span></div>
+            <div style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px;"><span style="color: var(--ink-3);">Fim estimado</span><span style="font-family: var(--font-mono); font-variant-numeric: tabular-nums;">25 out, 18:40</span></div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 12px; line-height: 16px; color: var(--ink-3); margin-bottom: 6px;"><span>Publicando</span><span style="font-family: var(--font-mono);">37%</span></div>
+              <div style="height: 6px; border-radius: 999px; background: var(--surface-hover); overflow: hidden;"><div style="width: 37%; height: 100%; background: var(--primary);"></div></div>
+            </div>
+          </div>
+          <div>
+            <h3 style="margin: 0 0 6px; font-size: 17px; line-height: 24px; font-weight: 600; letter-spacing: -0.01em;">Distribuição</h3>
+            <p style="margin: 0; font-size: 14px; line-height: 22px; color: var(--ink-2);">Escolha a pasta, as contas e a cadência. O Scale Master espalha os posts entre as contas, sem disparos simultâneos.</p>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 20px; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+          <div style="height: 240px; box-sizing: border-box; padding: 16px 18px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line);">
+              <span style="width: 28px; height: 28px; border-radius: 999px; background: var(--surface-hover); display: grid; place-items: center; font-size: 11px; font-weight: 600; color: var(--ink-2);">LO</span>
+              <span style="flex: 1; font-size: 13px;">@loja.oficial</span>
+              <span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--success-soft); color: var(--success); font-size: 12px; font-weight: 500;"><span style="width: 6px; height: 6px; border-radius: 999px; background: currentColor;"></span>Ativa</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line);">
+              <span style="width: 28px; height: 28px; border-radius: 999px; background: var(--surface-hover); display: grid; place-items: center; font-size: 11px; font-weight: 600; color: var(--ink-2);">MS</span>
+              <span style="flex: 1; font-size: 13px;">@moda.sp</span>
+              <span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-size: 12px; font-weight: 500;">Token expira em 3 dias</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="width: 28px; height: 28px; border-radius: 999px; background: var(--surface-hover); display: grid; place-items: center; font-size: 11px; font-weight: 600; color: var(--ink-2);">CD</span>
+              <span style="flex: 1; font-size: 13px;">@casa.decor</span>
+              <span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--danger-soft); color: var(--danger); font-size: 12px; font-weight: 500;">Caída</span>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; background: var(--surface-raised); box-shadow: var(--shadow-pop); font-size: 12px; line-height: 18px; color: var(--ink-2);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 1px; color: var(--accent);"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg>
+              <span><b style="color: var(--ink); font-weight: 500;">@casa.decor parou de publicar.</b> O failover tirou a conta dos loops.</span>
+            </div>
+          </div>
+          <div>
+            <h3 style="margin: 0 0 6px; font-size: 17px; line-height: 24px; font-weight: 600; letter-spacing: -0.01em;">Monitor e failover</h3>
+            <p style="margin: 0; font-size: 14px; line-height: 22px; color: var(--ink-2);">Acompanhe a saúde de cada conta e receba alerta no celular quando algo cair — sem travar o resto da operação.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Preço -->
+  <section id="preco" style="padding: 96px 24px 0;">
+    <div style="max-width: 1120px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 48px; align-items: center;">
+      <div style="flex: 1 1 360px; min-width: 0;">
+        <div style="font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">Preço</div>
+        <h2 style="margin: 12px 0 0; max-width: 460px; font-size: 40px; line-height: 44px; font-weight: 600; letter-spacing: -0.03em;">Um plano para <em style="font-family: var(--font-serif); font-style: italic; font-weight: 400; letter-spacing: -0.01em; font-size: 1.1em; color: var(--accent);">toda</em> a operação.</h2>
+        <p style="margin: 16px 0 0; max-width: 440px; font-size: 17px; line-height: 28px; color: var(--ink-2);">Conecte suas contas, distribua conteúdo e acompanhe os resultados no mesmo painel.</p>
+      </div>
+      <div style="flex: 1 1 420px; min-width: 0; max-width: 480px; box-sizing: border-box; padding: 32px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 16px;">
+        <div style="font-size: 15px; line-height: 22px; font-weight: 600;">Scale Master</div>
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 12px;">
+          <span style="font-family: var(--font-mono); font-size: 40px; line-height: 48px; font-weight: 500; letter-spacing: -0.02em;">[SEU PREÇO]</span>
+          <span style="font-size: 14px; color: var(--ink-3);">/ [PERÍODO]</span>
+        </div>
+        <ul style="list-style: none; margin: 24px 0 0; padding: 24px 0 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 20px; color: var(--ink-2);">
+          <li style="display: flex; gap: 10px; align-items: flex-start;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Conexão oficial com a Meta (Instagram Login)</li>
+          <li style="display: flex; gap: 10px; align-items: flex-start;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Distribuição com cadência automática entre contas</li>
+          <li style="display: flex; gap: 10px; align-items: flex-start;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Inspirações e clonagem de Reels</li>
+          <li style="display: flex; gap: 10px; align-items: flex-start;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Loop, Stories e agendamentos</li>
+          <li style="display: flex; gap: 10px; align-items: flex-start;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Monitor, failover e alertas no celular</li>
+          <li style="display: flex; gap: 10px; align-items: flex-start;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--success);"><path d="M20 6 9 17l-5-5"></path></svg>Vendas do SharkBot e ApexVips no painel</li>
+        </ul>
+        <a href="login.html" style="display: flex; align-items: center; justify-content: center; height: 44px; margin-top: 28px; border-radius: 8px; background: var(--primary); color: var(--on-primary); font-size: 14px; font-weight: 500; text-decoration: none;">Começar agora</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq" style="padding: 96px 24px 0;">
+    <div style="max-width: 760px; margin: 0 auto;">
+      <div style="font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3);">FAQ</div>
+      <h2 style="margin: 12px 0 32px; font-size: 40px; line-height: 44px; font-weight: 600; letter-spacing: -0.03em;">Perguntas frequentes</h2>
+      <details open="" style="border-top: 1px solid var(--line); padding: 20px 0;">
+        <summary style="display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: 16px; line-height: 24px; font-weight: 500;">Preciso passar a senha do Instagram?<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--ink-3);"><path d="m6 9 6 6 6-6"></path></svg></summary>
+        <p style="margin: 10px 0 0; font-size: 14px; line-height: 22px; color: var(--ink-2);">Não. A conexão é feita pelo login oficial da Meta: você autoriza a conta e o Scale Master recebe só a permissão para publicar e ler métricas.</p>
+      </details>
+      <details style="border-top: 1px solid var(--line); padding: 20px 0;">
+        <summary style="display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: 16px; line-height: 24px; font-weight: 500;">Que tipo de conta posso conectar?<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--ink-3);"><path d="m6 9 6 6 6-6"></path></svg></summary>
+        <p style="margin: 10px 0 0; font-size: 14px; line-height: 22px; color: var(--ink-2);">Contas profissionais do Instagram (Empresa ou Criador de conteúdo), exigidas pela API oficial.</p>
+      </details>
+      <details style="border-top: 1px solid var(--line); padding: 20px 0;">
+        <summary style="display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: 16px; line-height: 24px; font-weight: 500;">O que acontece se uma conta cair?<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--ink-3);"><path d="m6 9 6 6 6-6"></path></svg></summary>
+        <p style="margin: 10px 0 0; font-size: 14px; line-height: 22px; color: var(--ink-2);">O monitor detecta, avisa no celular e o failover tira a conta dos loops para o resto da operação seguir.</p>
+      </details>
+      <details style="border-top: 1px solid var(--line); padding: 20px 0;">
+        <summary style="display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: 16px; line-height: 24px; font-weight: 500;">Funciona no celular?<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--ink-3);"><path d="m6 9 6 6 6-6"></path></svg></summary>
+        <p style="margin: 10px 0 0; font-size: 14px; line-height: 22px; color: var(--ink-2);">Sim. O painel instala como app (PWA) e envia notificações push de vendas, metas e contas com problema.</p>
+      </details>
+      <details style="border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 20px 0;">
+        <summary style="display: flex; justify-content: space-between; align-items: center; gap: 16px; font-size: 16px; line-height: 24px; font-weight: 500;">Consigo acompanhar minhas vendas?<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; color: var(--ink-3);"><path d="m6 9 6 6 6-6"></path></svg></summary>
+        <p style="margin: 10px 0 0; font-size: 14px; line-height: 22px; color: var(--ink-2);">Sim. Conecte o webhook do SharkBot ou do ApexVips e as vendas aparecem na visão geral, ao lado das views.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- CTA final -->
+  <section style="position: relative; isolation: isolate; overflow: hidden; margin-top: 96px; padding: 112px 24px; text-align: center; border-top: 1px solid var(--line);">
+    <div aria-hidden="true" style="position: absolute; z-index: -1; left: 50%; top: -420px; width: 1100px; height: 680px; transform: translateX(-50%); background: radial-gradient(closest-side, var(--brand-blue), var(--brand-navy) 55%, transparent); opacity: 0.45; pointer-events: none;"></div>
+    <h2 style="margin: 0 auto; max-width: 640px; font-size: 40px; line-height: 44px; font-weight: 600; letter-spacing: -0.03em;">Pronto para escalar sem perder o <em style="font-family: var(--font-serif); font-style: italic; font-weight: 400; letter-spacing: -0.01em; font-size: 1.1em; color: var(--accent);">controle</em>?</h2>
+    <p style="margin: 16px auto 0; max-width: 520px; font-size: 17px; line-height: 28px; color: var(--ink-2);">Crie sua conta, conecte o primeiro perfil e veja o painel funcionando em minutos.</p>
+    <a href="login.html" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; margin-top: 32px; padding: 0 20px; border-radius: 8px; background: var(--primary); color: var(--on-primary); font-size: 14px; font-weight: 500; text-decoration: none;">
+      Criar conta
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg>
+    </a>
+  </section>
+
+  <!-- Rodapé -->
+  <footer style="padding: 32px 24px 40px; border-top: 1px solid var(--line);">
+    <div style="max-width: 1120px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <img src="scale-master-logo.jpg" alt="" style="width: 24px; height: 24px; border-radius: 6px; display: block;">
+        <span style="font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: var(--brand-silver);">Scale Master</span>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 4px 24px; font-size: 13px;">
+        <a href="#recursos" style="color: var(--ink-3); text-decoration: none;">Recursos</a>
+        <a href="#preco" style="color: var(--ink-3); text-decoration: none;">Preço</a>
+        <a href="#faq" style="color: var(--ink-3); text-decoration: none;">FAQ</a>
+        <a href="login.html" style="color: var(--ink-3); text-decoration: none;">Entrar</a>
+      </div>
+      <div style="margin-left: auto; font-size: 12px; line-height: 16px; color: var(--ink-3);">© 2026 Scale Master · scalemaster.tech</div>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

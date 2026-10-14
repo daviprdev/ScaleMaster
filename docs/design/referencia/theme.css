@@ -1,0 +1,77 @@
+/* Scale Master — variáveis dos tokens (Design System "Scale Master"), escuro e claro. */
+:root,
+[data-theme="dark"] {
+  --bg: #05070c;
+  --surface: #0a0e17;
+  --surface-raised: #0f1521;
+  --surface-hover: #151c2b;
+  --line: #1b2333;
+  --line-control: #56627d;
+  --ink: #edf0f5;
+  --ink-2: #a7b0c0;
+  --ink-3: #7d879c;
+  --brand-navy: #001244;
+  --brand-blue: #00498d;
+  --brand-silver: #beb8bc;
+  --wordmark: #beb8bc;
+  --primary: #1b64b5;
+  --primary-hover: #2a72c4;
+  --on-primary: #ffffff;
+  --accent: #7fb2e8;
+  --focus: #7fb2e8;
+  --success: #4cc79a;
+  --success-soft: rgba(76, 199, 154, 0.12);
+  --warning: #e6b450;
+  --warning-soft: rgba(230, 180, 80, 0.12);
+  --danger: #f07178;
+  --danger-soft: rgba(240, 113, 120, 0.12);
+  --info-soft: rgba(127, 178, 232, 0.12);
+  --overlay: rgba(2, 4, 8, 0.72);
+  --chart-fill: rgba(127, 178, 232, 0.10);
+  --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-frame: 0 40px 120px rgba(0, 18, 68, 0.55);
+  --horizon-opacity: 0.55;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-hover: #eef1f5;
+  --line: #e3e7ed;
+  --line-control: #7f889c;
+  --ink: #0a1220;
+  --ink-2: #475166;
+  --ink-3: #5f6b80;
+  --wordmark: #0a1220;
+  --primary: #00498d;
+  --primary-hover: #003b73;
+  --on-primary: #ffffff;
+  --accent: #00498d;
+  --focus: #1b64b5;
+  --success: #12704c;
+  --success-soft: rgba(18, 112, 76, 0.08);
+  --warning: #8a5a00;
+  --warning-soft: rgba(138, 90, 0, 0.08);
+  --danger: #b42332;
+  --danger-soft: rgba(180, 35, 50, 0.08);
+  --info-soft: rgba(0, 73, 141, 0.08);
+  --overlay: rgba(10, 18, 32, 0.40);
+  --chart-fill: rgba(0, 73, 141, 0.08);
+  --shadow-pop: 0 16px 40px rgba(10, 18, 32, 0.12), 0 0 0 1px rgba(10, 18, 32, 0.04);
+  --shadow-frame: 0 40px 120px rgba(0, 73, 141, 0.16);
+  --horizon-opacity: 0.14;
+  color-scheme: light;
+}
+
+:root {
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 999px;
+}

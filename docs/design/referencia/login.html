@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scale Master — Login (referência)</title>
+<!-- Referência visual do redesign. Gerada a partir da amostra aprovada (canvas "Redesign Scale Master").
+     Abra no navegador. Cores e medidas vêm de theme.css (= tokens do Design System). Não é código de produção. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;family=Instrument+Serif:ital@1&amp;display=swap">
+<link rel="stylesheet" href="theme.css">
+<style>
+body{margin:0;background:#05070c}
+a{color:#7fb2e8}a:hover{color:#a9cbf0}
+input::placeholder{color:#7d879c}
+</style>
+</head>
+<body>
+<div data-theme="dark" style="position: relative; isolation: isolate; overflow: hidden; min-height: 900px; box-sizing: border-box; display: flex; flex-direction: column; padding: 0 24px; background: var(--bg); color: var(--ink); font-family: var(--font-sans); font-size: 14px; line-height: 22px; -webkit-font-smoothing: antialiased;">
+  <div aria-hidden="true" style="position: absolute; z-index: -1; left: 50%; top: -380px; width: 1100px; height: 700px; transform: translateX(-50%); background: radial-gradient(closest-side, var(--brand-blue), var(--brand-navy) 55%, transparent); opacity: 0.55; pointer-events: none;"></div>
+
+  <header style="max-width: 1120px; width: 100%; margin: 0 auto; height: 72px; display: flex; align-items: center;">
+    <a href="landing.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none;">
+      <img src="scale-master-logo.jpg" alt="" style="width: 28px; height: 28px; border-radius: 7px; display: block;">
+      <span style="font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.01em; color: var(--brand-silver);">Scale Master</span>
+    </a>
+  </header>
+
+  <main style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 32px 0 48px;">
+    <div style="width: 100%; max-width: 400px; box-sizing: border-box; padding: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+      <img src="scale-master-logo.jpg" alt="Scale Master" style="width: 40px; height: 40px; border-radius: 10px; display: block;">
+      <h1 style="margin: 20px 0 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.03em;">Bem-vindo de volta</h1>
+      <p style="margin: 6px 0 0; font-size: 14px; line-height: 22px; color: var(--ink-2);">Entre na sua conta para continuar.</p>
+
+      <form style="margin: 28px 0 0; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label for="login-email" style="font-size: 13px; line-height: 18px; font-weight: 500;">E-mail ou nome de usuário</label>
+          <input id="login-email" type="text" placeholder="seu@email.com ou usuario" autocomplete="username" style="height: 44px; box-sizing: border-box; padding: 0 12px; background: var(--bg); border: 1px solid var(--line-control); border-radius: 8px; color: var(--ink); font-family: var(--font-sans); font-size: 14px; outline: none;">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px;">
+            <label for="login-senha" style="font-size: 13px; line-height: 18px; font-weight: 500;">Senha</label>
+            <a href="#" style="font-size: 12px; line-height: 16px; color: var(--accent); text-decoration: none;">Esqueceu a senha?</a>
+          </div>
+          <input id="login-senha" type="password" placeholder="••••••••" autocomplete="current-password" style="height: 44px; box-sizing: border-box; padding: 0 12px; background: var(--bg); border: 1px solid var(--line-control); border-radius: 8px; color: var(--ink); font-family: var(--font-sans); font-size: 14px; outline: none;">
+        </div>
+        <a href="visao-geral.html" style="display: flex; align-items: center; justify-content: center; height: 44px; margin-top: 4px; border-radius: 8px; background: var(--primary); color: var(--on-primary); font-size: 14px; font-weight: 500; text-decoration: none;">Entrar</a>
+      </form>
+
+      <div style="display: flex; align-items: center; gap: 12px; margin: 20px 0; font-size: 12px; line-height: 16px; color: var(--ink-3);">
+        <span style="flex: 1; height: 1px; background: var(--line);"></span>ou<span style="flex: 1; height: 1px; background: var(--line);"></span>
+      </div>
+      <a href="visao-geral.html" style="display: flex; align-items: center; justify-content: center; height: 44px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line-control); color: var(--ink); font-size: 14px; font-weight: 500; text-decoration: none;">Continuar com Google</a>
+
+      <p style="margin: 24px 0 0; text-align: center; font-size: 13px; line-height: 20px; color: var(--ink-2);">Não tem conta? <a href="#" style="color: var(--accent); text-decoration: none; font-weight: 500;">Criar conta</a></p>
+    </div>
+  </main>
+
+  <footer style="max-width: 1120px; width: 100%; margin: 0 auto; padding: 0 0 28px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; font-size: 12px; line-height: 16px; color: var(--ink-3);">
+    <span>API oficial da Meta</span>
+    <span>scalemaster.tech</span>
+  </footer>
+</div>
+</body>
+</html>
