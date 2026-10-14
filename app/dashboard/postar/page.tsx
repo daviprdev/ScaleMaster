@@ -26,6 +26,7 @@ import {
   Slider,
   Dialog,
   ProgressBar,
+  Switch,
 } from "@/components/ui";
 import {
   validateInstagramCaption,
