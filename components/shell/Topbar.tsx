@@ -2,10 +2,10 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
-import { Menu, Search, Bell, ChevronRight } from "lucide-react";
+import { Menu, Search, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { IconButton } from "@/components/ui/icon-button";
 import { Kbd } from "@/components/ui/kbd";
+import { NotificationPopover } from "./NotificationPopover";
 
 interface TopbarProps extends React.HTMLAttributes<HTMLDivElement> {
   onMenuClick: () => void;
@@ -123,13 +123,7 @@ export function Topbar({
       </button>
 
       {/* Notifications bell */}
-      <IconButton
-        icon={<Bell size={17} strokeWidth={1.75} />}
-        aria-label="Notificações"
-        className="relative"
-      >
-        {/* Notification dot placeholder — will be wired in Fase 2/3 */}
-      </IconButton>
+      <NotificationPopover notifications={[]} />
     </header>
   );
 }
