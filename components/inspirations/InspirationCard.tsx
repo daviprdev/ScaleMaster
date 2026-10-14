@@ -26,7 +26,7 @@ export interface InspirationReel {
   videoUrl: string;
   /** Legenda para exibição ("" quando não há). */
   caption: string;
-  /** Forma crua: null = o Apify não trouxe o campo; "" = Reel sem legenda. */
+  /** Forma crua: null = a fonte não trouxe o campo; "" = Reel sem legenda. */
   originalCaption?: string | null;
   /** Permalink da publicação original. */
   sourceUrl?: string | null;

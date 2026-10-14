@@ -1,30 +1,64 @@
 /**
- * lib/inspiration-scrape.ts — busca de perfil nas Inspirações via Apify,
+ * lib/inspiration-scrape.ts — busca de perfil nas Inspirações via ScrapeCreators,
  * DURÁVEL no servidor.
  *
  * Fluxo:
- *   1. POST /api/inspirations/scrape inicia N runs (1 por token) e grava uma
- *      linha em `inspiration_scrape_searches` (status 'running').
- *   2. `advanceSearch` confere os runs; quando todos terminam, junta os itens,
- *      normaliza e grava em `scraped_profiles` (histórico) — com await.
- *   3. Quem chama `advanceSearch`: o polling da página E o cron
- *      finalize-inspiration-scrapes. Se o usuário sair da página, o cron
- *      termina o trabalho; a busca paga nunca se perde.
+ *   1. POST /api/inspirations/scrape cria uma linha em `inspiration_scrape_searches`
+ *      (status 'running') e inicia a coleta paginada por ScrapeCreators.
+ *   2. `advanceSearch` percorre páginas usando `max_id`; cada página é salva
+ *      incrementalmente em `scraped_profiles`. Se o usuário sair da página,
+ *      o cron finalize-inspiration-scrapes retoma de onde parou.
+ *   3. A busca termina quando `more_available === false` OU quando um erro
+ *      permanente ocorre. Reels fixados não são cobertos pela rota de reels
+ *      da ScrapeCreators — a execução é marcada como parcial nesse caso.
  *
- * Um claim atômico (`processing_until`) impede que página e cron avancem a
- * mesma busca ao mesmo tempo — o que poderia iniciar o run de fallback (pago)
- * duas vezes.
+ * Claim atômico (`processing_until`) impede que página e cron avancem a
+ * mesma busca ao mesmo tempo.
  */
 
-import { ApifyClient } from "apify-client";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { resolveApifyTokens } from "@/lib/apify-token-pool";
-import { normalizeScrapedReel, resolveVideoUrl } from "@/lib/scraped-reel";
+import {
+  fetchUserReels,
+  fetchPostDetail,
+  type ReelItem,
+} from "@/lib/scrapecreators-client";
 
-export const APIFY_ACTOR = "apify/instagram-scraper";
-/** Busca 'running' mais velha que isso vira erro (runs da Apify não duram tanto). */
+// ── Compatibilidade com Clone (uso compartilhado de Apify) ────────────────────
+// O Clone ainda usa Apify e importa `listAllItems` desta lib. A função foi
+// movida para cá para manter o contrato de importação sem quebrar o build.
+// Não é usada pelo fluxo de Inspirações (que agora usa ScrapeCreators).
+import type { ApifyClient } from "apify-client";
+
+/**
+ * Lista todos os itens de um dataset do Apify, paginando automaticamente.
+ * Usado pelo Clone (app/api/clone/search/poll) — NÃO usado por Inspirações.
+ */
+export async function listAllItems(
+  client: ApifyClient,
+  datasetId: string,
+  limit = 1000
+): Promise<Record<string, unknown>[]> {
+  const all: Record<string, unknown>[] = [];
+  let offset = 0;
+  while (true) {
+    const { items } = await client.dataset(datasetId).listItems({
+      offset,
+      limit,
+    });
+    if (!items || items.length === 0) break;
+    all.push(...(items as Record<string, unknown>[]));
+    if (items.length < limit) break;
+    offset += items.length;
+  }
+  return all;
+}
+
+/** Tempo máximo de uma busca antes de expirar (3h). */
 export const SEARCH_EXPIRE_MS = 3 * 60 * 60 * 1000;
 const CLAIM_MS = 55_000;
+
+/** Limite de segurança contra loops infinitos de paginação. */
+const MAX_PAGES = 500;
 
 const GRADIENTS = [
   "from-violet-600 to-purple-800",
@@ -41,14 +75,6 @@ const GRADIENTS = [
   "from-orange-500 to-amber-700",
 ];
 
-export const actorInput = (url: string, limit: number) => ({
-  directUrls: [url],
-  resultsType: "posts",
-  resultsLimit: limit,
-  maxRequestsPerCrawl: Math.max(600, limit * 2),
-  proxyConfiguration: { useApifyProxy: true },
-});
-
 export interface SearchRow {
   id: string;
   user_id: string;
@@ -58,6 +84,9 @@ export interface SearchRow {
   limit_items: number;
   status: "running" | "done" | "error";
   created_at: string;
+  updated_at: string;
+  error_message: string | null;
+  reel_count: number | null;
 }
 
 export type AdvanceResult =
@@ -65,54 +94,135 @@ export type AdvanceResult =
   | { status: "done"; reels: InspirationReelPayload[] }
   | { status: "error"; error: string };
 
-export type InspirationReelPayload = ReturnType<typeof processItems>[number];
+export interface InspirationReelPayload {
+  id: string;
+  shortCode: string;
+  thumbnailUrl: string | null;
+  videoUrl: string;
+  caption: string;
+  originalCaption: string | null;
+  sourceUrl: string | null;
+  views: number;
+  likes: number;
+  comments: number;
+  duration: number;
+  owner: string;
+  gradient: string;
+}
 
 export function normalizeUsername(raw: string): string {
   return raw.trim().replace(/^@/, "").replace(/\/+$/, "").toLowerCase();
 }
 
-export function processItems(items: unknown[], username: string) {
-  return (items as Record<string, unknown>[])
-    .filter((item) => item.type === "Video" || resolveVideoUrl(item))
-    .map((item, i) => {
-      const videoUrl = resolveVideoUrl(item);
-      // Normalização central (lib/scraped-reel.ts). Legenda vai INTEIRA.
-      const reel = normalizeScrapedReel(item, username, i);
-      return {
-        id: reel.id,
-        shortCode: reel.shortCode,
-        thumbnailUrl: reel.thumbnailUrl,
-        videoUrl,
-        caption: reel.originalCaption ?? "",
-        originalCaption: reel.originalCaption,
-        sourceUrl: reel.sourceUrl,
-        views: reel.views,
-        likes: reel.likes,
-        comments: reel.comments,
-        duration: reel.duration,
-        owner: reel.sourceUsername ?? username,
-        gradient: GRADIENTS[i % GRADIENTS.length],
-      };
-    });
+// ── Normalização de ReelItem (ScrapeCreators) → InspirationReelPayload ────────
+
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.trim() !== "" ? v : null;
 }
 
-/** Grava no histórico (scraped_profiles). Lança em erro — o chamador decide. */
+function num(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Extrai a melhor URL de vídeo disponível. */
+function extractVideoUrl(media: ReelItem["media"]): string {
+  const versions = media.video_versions;
+  if (Array.isArray(versions) && versions.length > 0) {
+    // Pega a de maior resolução (maior width)
+    const sorted = [...versions].sort((a, b) => (b.width ?? 0) - (a.width ?? 0));
+    return sorted[0]?.url ?? "";
+  }
+  return "";
+}
+
+/** Extrai thumbnail. */
+function extractThumbnail(media: ReelItem["media"]): string | null {
+  if (str(media.display_uri)) return media.display_uri!;
+  const candidates = media.image_versions2?.candidates;
+  if (Array.isArray(candidates) && candidates.length > 0) {
+    const sorted = [...candidates].sort((a, b) => (b.width ?? 0) - (a.width ?? 0));
+    return sorted[0]?.url ?? null;
+  }
+  return null;
+}
+
+/**
+ * Converte um ReelItem da ScrapeCreators no formato interno do Scale Master.
+ *
+ * A legenda vem de `caption.text` quando disponível. A documentação informa
+ * que a listagem pode não trazer legendas — nesse caso, `originalCaption`
+ * fica null e pode ser complementado via fetchPostDetail.
+ */
+export function normalizeReelItem(
+  item: ReelItem,
+  fallbackUsername: string,
+  index: number
+): InspirationReelPayload {
+  const m = item.media;
+  const captionText = m.caption?.text ?? null;
+  const owner = m.owner?.username ?? m.user?.username ?? fallbackUsername;
+  const shortCode = m.code ?? "";
+  const permalink = m.url ?? (shortCode ? `https://www.instagram.com/reel/${shortCode}/` : null);
+
+  return {
+    id: m.pk ?? m.id ?? shortCode ?? String(index),
+    shortCode,
+    thumbnailUrl: extractThumbnail(m),
+    videoUrl: extractVideoUrl(m),
+    caption: captionText ?? "",
+    originalCaption: captionText,
+    sourceUrl: permalink,
+    views: num(m.play_count ?? m.ig_play_count),
+    likes: num(m.like_count),
+    comments: num(m.comment_count),
+    duration: num(m.video_duration),
+    owner,
+    gradient: GRADIENTS[index % GRADIENTS.length],
+  };
+}
+
+/**
+ * Complementa legendas ausentes chamando o endpoint de detalhe do post.
+ * Faz isso em lotes pequenos para não estourar créditos desnecessariamente.
+ * Só chama para itens que realmente precisam (originalCaption === null).
+ */
+async function enrichCaptions(
+  reels: InspirationReelPayload[],
+  maxEnrichments = 20
+): Promise<void> {
+  const missing = reels.filter((r) => r.originalCaption === null && r.sourceUrl);
+  const toEnrich = missing.slice(0, maxEnrichments);
+
+  for (const reel of toEnrich) {
+    try {
+      const detail = await fetchPostDetail(reel.sourceUrl!);
+      const edges = detail.data?.xdt_shortcode_media?.edge_media_to_caption?.edges;
+      if (edges && edges.length > 0) {
+        const text = edges[0].node.text;
+        reel.originalCaption = text;
+        reel.caption = text;
+      } else {
+        // Endpoint respondeu mas sem legenda → marca como vazia (não null)
+        reel.originalCaption = "";
+      }
+    } catch {
+      // Falha no enrichment não quebra a busca — legenda fica null
+    }
+  }
+}
+
+// ── Persistência no histórico ─────────────────────────────────────────────────
+
+/** Grava/atualiza o perfil no histórico (scraped_profiles). */
 export async function saveToHistory(
   admin: SupabaseClient,
   userId: string,
   username: string,
-  reels: object[],
-  items: unknown[]
+  reels: InspirationReelPayload[],
+  profilePicUrl: string | null,
+  fullName: string
 ): Promise<void> {
-  const first = (items[0] ?? {}) as Record<string, unknown>;
-  const ownerObj = (first.owner ?? {}) as Record<string, unknown>;
-  const fullName = String(first.ownerFullName ?? first.ownerUsername ?? username);
-  const profilePicUrl =
-    (first.ownerProfilePicUrl as string | null | undefined) ||
-    (first.profilePicUrl as string | null | undefined) ||
-    (ownerObj.profilePicUrl as string | null | undefined) ||
-    null;
-
   const { error } = await (admin as any).from("scraped_profiles").upsert(
     {
       user_id: userId,
@@ -128,44 +238,21 @@ export async function saveToHistory(
   if (error) throw new Error(`scraped_profiles: ${error.message}`);
 }
 
-/** Localiza o run em algum token do pool (cada run pertence a um token). */
-async function findRun(runId: string, tokens: string[]) {
-  for (const token of tokens) {
-    try {
-      const client = new ApifyClient({ token });
-      const run = (await client.run(runId).get()) as Record<string, unknown> | undefined;
-      if (run) return { client, status: run.status as string, datasetId: run.defaultDatasetId as string };
-    } catch { /* token errado — tenta o próximo */ }
-  }
-  return null;
-}
+// ── Deduplicação ──────────────────────────────────────────────────────────────
 
-/** Lê TODOS os itens do dataset, paginando (perfis com 500+ vídeos). */
-export async function listAllItems(client: ApifyClient, datasetId: string): Promise<unknown[]> {
-  const out: unknown[] = [];
-  const PAGE = 500;
-  for (let offset = 0; ; offset += PAGE) {
-    const { items } = await client.dataset(datasetId).listItems({ offset, limit: PAGE });
-    const list = Array.isArray(items) ? items : [];
-    out.push(...list);
-    if (list.length < PAGE) break;
-  }
-  return out;
-}
-
-function dedupByShortCode(lists: unknown[][]): unknown[] {
+function dedupByShortCode(reels: InspirationReelPayload[]): InspirationReelPayload[] {
   const seen = new Set<string>();
-  const out: unknown[] = [];
-  for (const list of lists) {
-    for (const item of list) {
-      const sc = String((item as Record<string, unknown>).shortCode ?? "");
-      if (sc && seen.has(sc)) continue;
-      if (sc) seen.add(sc);
-      out.push(item);
-    }
+  const out: InspirationReelPayload[] = [];
+  for (const r of reels) {
+    const key = r.shortCode || r.id;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
   }
   return out;
 }
+
+// ── Helpers de banco ──────────────────────────────────────────────────────────
 
 async function finish(admin: SupabaseClient, id: string, patch: Record<string, unknown>) {
   await (admin as any)
@@ -174,19 +261,58 @@ async function finish(admin: SupabaseClient, id: string, patch: Record<string, u
     .eq("id", id);
 }
 
+// ── Estado de paginação persistido em run_ids ─────────────────────────────────
+// Reaproveitamos a coluna `run_ids` (text[]) para guardar o estado da paginação:
+//   run_ids[0] = último max_id processado (cursor)
+//   run_ids[1] = páginas já processadas (como string numérica)
+//   run_ids[2] = total de reels acumulados (como string numérica)
+// Isso evita criar migration nova e mantém compatibilidade com o schema existente.
+
+interface PageState {
+  cursor: string | null;
+  pagesProcessed: number;
+  reelsAccumulated: number;
+}
+
+function readPageState(search: SearchRow): PageState {
+  return {
+    cursor: search.run_ids[0] || null,
+    pagesProcessed: Number(search.run_ids[1]) || 0,
+    reelsAccumulated: Number(search.run_ids[2]) || 0,
+  };
+}
+
+function writePageState(state: PageState): string[] {
+  return [
+    state.cursor ?? "",
+    String(state.pagesProcessed),
+    String(state.reelsAccumulated),
+  ];
+}
+
+// ── advanceSearch ─────────────────────────────────────────────────────────────
+
 /**
- * Avança uma busca: se todos os runs terminaram, salva no histórico e marca
- * 'done'. Seguro para chamadas concorrentes (claim atômico).
+ * Avança uma busca: processa a próxima página de ScrapeCreators.
+ * Seguro para chamadas concorrentes (claim atômico).
+ *
+ * Cada chamada processa UMA página e retorna. O polling/cron chama
+ * repetidamente até `more_available === false`.
  */
-export async function advanceSearch(admin: SupabaseClient, searchId: string): Promise<AdvanceResult> {
+export async function advanceSearch(
+  admin: SupabaseClient,
+  searchId: string
+): Promise<AdvanceResult> {
   const nowIso = new Date().toISOString();
+
+  // Claim atômico
   const { data: claimed } = await (admin as any)
     .from("inspiration_scrape_searches")
     .update({ processing_until: new Date(Date.now() + CLAIM_MS).toISOString(), updated_at: nowIso })
     .eq("id", searchId)
     .eq("status", "running")
     .or(`processing_until.is.null,processing_until.lt.${nowIso}`)
-    .select("id, user_id, username, run_ids, fallback_run_ids, limit_items, status, created_at");
+    .select("id, user_id, username, run_ids, fallback_run_ids, limit_items, status, created_at, updated_at, error_message, reel_count");
 
   const search = (claimed?.[0] ?? null) as SearchRow | null;
 
@@ -212,88 +338,154 @@ export async function advanceSearch(admin: SupabaseClient, searchId: string): Pr
   }
 
   try {
+    // Expiração
     if (Date.now() - new Date(search.created_at).getTime() > SEARCH_EXPIRE_MS) {
       await finish(admin, search.id, {
         status: "error",
-        error_message: "A busca expirou sem terminar na Apify.",
+        error_message: "A busca expirou sem terminar.",
         finished_at: nowIso,
       });
-      return { status: "error", error: "A busca expirou sem terminar na Apify." };
+      return { status: "error", error: "A busca expirou sem terminar." };
     }
 
-    const tokens = resolveApifyTokens();
-    const pending: string[] = [];
-    const fallbacks = new Set(search.fallback_run_ids);
-    const newFallbacks: string[] = [];
-    /** Runs vazios substituídos por um fallback — saem da lista. */
-    const replaced = new Set<string>();
-    const lists: unknown[][] = [];
+    const pageState = readPageState(search);
 
-    for (const runId of search.run_ids) {
-      const found = await findRun(runId, tokens);
-      if (!found) {
-        console.warn(`[inspiration-scrape] run ${runId} não encontrado em nenhum token — ignorando`);
-        continue;
-      }
-      if (found.status === "RUNNING" || found.status === "READY") {
-        pending.push(runId);
-        continue;
-      }
-      if (found.status !== "SUCCEEDED") {
-        console.warn(`[inspiration-scrape] run ${runId} terminou com ${found.status}`);
-        continue;
-      }
-
-      const items = await listAllItems(found.client, found.datasetId);
-      if (items.length === 0 && !fallbacks.has(runId)) {
-        // /reels/ vazio: tenta a URL do perfil principal com o mesmo token.
-        try {
-          const fb = await found.client
-            .actor(APIFY_ACTOR)
-            .start(actorInput(`https://www.instagram.com/${search.username}/`, search.limit_items));
-          pending.push(fb.id);
-          newFallbacks.push(fb.id);
-          replaced.add(runId);
-          console.log(`[inspiration-scrape] @${search.username}: run ${runId} vazio — fallback ${fb.id}`);
-        } catch (err) {
-          console.warn(`[inspiration-scrape] fallback falhou: ${err}`);
-        }
-        continue;
-      }
-      lists.push(items);
-    }
-
-    if (pending.length > 0) {
-      // Runs já concluídos com itens continuam na lista (são relidos ao final);
-      // runs vazios trocados por fallback saem, e o fallback entra.
+    // Limite de segurança contra loops
+    if (pageState.pagesProcessed >= MAX_PAGES) {
       await finish(admin, search.id, {
-        run_ids: [...search.run_ids.filter((r) => !replaced.has(r)), ...newFallbacks],
-        fallback_run_ids: [...search.fallback_run_ids, ...newFallbacks],
+        status: "error",
+        error_message: `Limite de ${MAX_PAGES} páginas atingido. A coleta pode estar incompleta.`,
+        finished_at: nowIso,
       });
+      return { status: "error", error: `Limite de ${MAX_PAGES} páginas atingido.` };
+    }
+
+    // Chama ScrapeCreators
+    let response;
+    try {
+      response = await fetchUserReels(search.username, pageState.cursor);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+
+      // Erros permanentes
+      if (msg.includes("HTTP 404") || msg.includes("HTTP 403")) {
+        await finish(admin, search.id, {
+          status: "error",
+          error_message: `Perfil @${search.username} não encontrado ou não é público.`,
+          finished_at: nowIso,
+        });
+        return { status: "error", error: `Perfil não encontrado ou não é público.` };
+      }
+
+      // Erro temporário — libera o claim para retentar
+      console.error(`[inspiration-scrape] busca ${search.id} falhou nesta tentativa:`, msg);
+      await finish(admin, search.id, {});
       return { status: "running" };
     }
 
-    const allItems = dedupByShortCode(lists);
-    const reels = processItems(allItems, search.username);
-
-    if (reels.length === 0) {
-      const msg = `Nenhum conteúdo encontrado para @${search.username}. O perfil pode ser privado ou inexistente.`;
-      await finish(admin, search.id, { status: "error", error_message: msg, finished_at: new Date().toISOString() });
-      return { status: "error", error: msg };
+    if (!response.success || !Array.isArray(response.items)) {
+      console.error(`[inspiration-scrape] resposta inválida para @${search.username}:`, response.status);
+      await finish(admin, search.id, {});
+      return { status: "running" };
     }
 
-    await saveToHistory(admin, search.user_id, search.username, reels, allItems);
+    // Página vazia com more_available = true → inconsistência
+    if (response.items.length === 0 && response.paging_info.more_available) {
+      console.warn(`[inspiration-scrape] @${search.username}: página vazia mas more_available=true`);
+      await finish(admin, search.id, {
+        status: "error",
+        error_message: "A fonte retornou uma página vazia indicando que há mais conteúdo. Coleta parcial.",
+        finished_at: nowIso,
+      });
+      return { status: "error", error: "Página vazia inesperada. Coleta parcial." };
+    }
+
+    // Cursor repetido → loop detectado
+    const nextCursor = response.paging_info.max_id;
+    if (nextCursor && nextCursor === pageState.cursor) {
+      console.warn(`[inspiration-scrape] @${search.username}: cursor repetido, interrompendo`);
+      await finish(admin, search.id, {
+        status: "error",
+        error_message: "Cursor de paginação repetido. Coleta parcial.",
+        finished_at: nowIso,
+      });
+      return { status: "error", error: "Cursor repetido. Coleta parcial." };
+    }
+
+    // Normaliza os itens desta página
+    const newReels = response.items.map((item, i) =>
+      normalizeReelItem(item, search.username, pageState.reelsAccumulated + i)
+    );
+
+    // Carrega reels existentes do histórico para merge
+    const { data: existingProfile } = await (admin as any)
+      .from("scraped_profiles")
+      .select("videos_data, profile_pic_url, full_name")
+      .eq("user_id", search.user_id)
+      .eq("username", search.username)
+      .maybeSingle();
+
+    const existingReels = (existingProfile?.videos_data ?? []) as InspirationReelPayload[];
+    const merged = dedupByShortCode([...existingReels, ...newReels]);
+
+    // Extrai info de perfil do primeiro item (se disponível)
+    const firstMedia = response.items[0]?.media;
+    const profilePicUrl = firstMedia?.owner?.profile_pic_url
+      ?? firstMedia?.user?.profile_pic_url
+      ?? existingProfile?.profile_pic_url
+      ?? null;
+    const fullName = firstMedia?.owner?.full_name
+      ?? firstMedia?.user?.full_name
+      ?? existingProfile?.full_name
+      ?? search.username;
+
+    // Salva incrementalmente no histórico
+    await saveToHistory(admin, search.user_id, search.username, merged, profilePicUrl, fullName);
+
+    // Atualiza estado de paginação
+    const newState: PageState = {
+      cursor: nextCursor ?? null,
+      pagesProcessed: pageState.pagesProcessed + 1,
+      reelsAccumulated: merged.length,
+    };
+
+    const moreAvailable = response.paging_info.more_available;
+
+    if (!moreAvailable) {
+      // Coleta terminou — enriquece legendas ausentes
+      await enrichCaptions(merged);
+
+      // Re-salva com legendas enriquecidas
+      if (merged.some((r) => r.originalCaption !== null)) {
+        await saveToHistory(admin, search.user_id, search.username, merged, profilePicUrl, fullName);
+      }
+
+      // Marca como done com aviso sobre reels fixados
+      const pinnedNote = "Nota: Reels fixados podem não estar incluídos (limitação da fonte).";
+      await finish(admin, search.id, {
+        status: "done",
+        reel_count: merged.length,
+        error_message: pinnedNote,
+        finished_at: new Date().toISOString(),
+        run_ids: writePageState(newState),
+      });
+
+      console.log(
+        `[inspiration-scrape] @${search.username}: ${merged.length} reels salvos em ${newState.pagesProcessed} páginas`
+      );
+      return { status: "done", reels: merged };
+    }
+
+    // Mais páginas disponíveis — atualiza estado e retorna running
     await finish(admin, search.id, {
-      status: "done",
-      reel_count: reels.length,
-      error_message: null,
-      finished_at: new Date().toISOString(),
+      run_ids: writePageState(newState),
+      reel_count: merged.length,
     });
-    console.log(`[inspiration-scrape] @${search.username}: ${reels.length} reels salvos no histórico`);
-    return { status: "done", reels };
+
+    return { status: "running" };
   } catch (err) {
-    // Erro transitório (Apify/banco): libera o claim; tenta de novo no próximo ciclo.
-    console.error(`[inspiration-scrape] busca ${search.id} falhou nesta tentativa:`, err);
+    // Erro inesperado — libera o claim
+    console.error(`[inspiration-scrape] busca ${search.id} falhou:`, err);
     await finish(admin, search.id, {});
     return { status: "running" };
   }

@@ -1,107 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  withApifyTokenPool,
-  APIFY_RATE_LIMIT_MESSAGE,
-} from "@/lib/apify-token-pool";
-import { ApifyClient } from "apify-client";
 import { createClient } from "@/lib/supabase/server";
+import { fetchPostDetail } from "@/lib/scrapecreators-client";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 /**
- * Renovação de URLs de vídeo expiradas — EM LOTE, numa ÚNICA run de Apify.
+ * Renovação de URLs de vídeo expiradas — EM LOTE via ScrapeCreators.
  *
  * Contexto: as URLs de vídeo do CDN do Instagram (fbcdn) são ASSINADAS e
  * expiram em poucas horas. Quando o usuário raspa um perfil grande e só depois
  * manda "Salvar todos na Biblioteca", a maioria das URLs da raspagem já está
- * morta → o download devolve HTTP 403 e o salvamento falha em massa
- * (400+ reels, só ~20 salvos — incidente de 2026-09-15).
+ * morta → o download devolve HTTP 403 e o salvamento falha em massa.
  *
- * `refetch-reel` resolve UM reel por run — a 400 reels seriam 400 runs de
- * Apify, o que estoura o orçamento de tokens (justamente a dor do usuário).
- * Aqui passamos VÁRIOS reels como `directUrls` na MESMA run: um único run do
- * `apify/instagram-scraper` devolve URLs frescas para todos os shortCodes do
- * lote. O frontend chama isto só quando o download realmente falha por
- * expiração — se as URLs ainda estão frescas, zero Apify extra.
+ * Aqui buscamos os detalhes de cada Reel individualmente via /v1/instagram/post
+ * da ScrapeCreators para obter URLs frescas. Cada chamada custa 1 crédito.
  *
- * Body: { shortCodes: string[] }  (o frontend fatia em chunks — ver page.tsx)
+ * Body: { shortCodes: string[] }
  * Resp: { urls: { [shortCode]: freshVideoUrl } }
  */
 
 const MAX_SHORTCODES = 50;
 
-function extractShortCode(item: Record<string, unknown>): string | null {
-  const direct =
-    (item.shortCode as string | undefined) ||
-    (item.shortcode as string | undefined) ||
-    (item.code as string | undefined);
-  if (direct) return direct;
-
-  // Fallback: derivar do permalink (…/reel/{code}/ ou …/p/{code}/)
-  const url = (item.url as string | undefined) || (item.postUrl as string | undefined);
-  if (url) {
-    const m = url.match(/\/(?:reel|p|tv)\/([^/?#]+)/i);
-    if (m) return m[1];
-  }
-  return null;
-}
-
-function extractVideoUrl(item: Record<string, unknown>): string {
-  return (
-    (item.videoUrl as string | undefined) ||
-    (item.video_url as string | undefined) ||
-    (item.videoPlayUrl as string | undefined) ||
-    (item.playVideoUrl as string | undefined) ||
-    ""
-  );
-}
-
-async function refreshBatch(
-  client: ApifyClient,
-  shortCodes: string[]
-): Promise<Record<string, string>> {
-  const directUrls = shortCodes.map(
-    (sc) => `https://www.instagram.com/reel/${sc}/`
-  );
-
-  const run = await client.actor("apify/instagram-scraper").call({
-    directUrls,
-    resultsType: "posts",
-    resultsLimit: shortCodes.length,
-    // Folga para o crawler resolver todos os permalinks do lote.
-    maxRequestsPerCrawl: Math.max(30, shortCodes.length * 2),
-    proxyConfiguration: {
-      useApifyProxy: true,
-      apifyProxyGroups: ["RESIDENTIAL"],
-    },
-  });
-
-  if (run.status !== "SUCCEEDED") {
-    throw new Error(`Apify status: ${run.status}`);
-  }
-
-  const { items } = await client.dataset(run.defaultDatasetId).listItems();
-  const map: Record<string, string> = {};
-
-  if (Array.isArray(items)) {
-    for (const raw of items) {
-      const item = raw as Record<string, unknown>;
-      const sc = extractShortCode(item);
-      const videoUrl = extractVideoUrl(item);
-      if (sc && videoUrl) map[sc] = videoUrl;
-    }
-  }
-
-  return map;
-}
-
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+
+  if (!process.env.SCRAPECREATORS_API_KEY?.trim()) {
+    return NextResponse.json(
+      { error: "SCRAPECREATORS_API_KEY não configurado." },
+      { status: 503 }
+    );
+  }
 
   let body: { shortCodes?: unknown };
   try {
@@ -124,20 +55,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  try {
-    const urls = await withApifyTokenPool((client) => refreshBatch(client, shortCodes));
-    console.log(
-      `[refresh-urls] renovadas ${Object.keys(urls).length}/${shortCodes.length} URLs numa run`
-    );
-    return NextResponse.json({ urls });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.startsWith("NO_TOKENS:")) {
-      return NextResponse.json({ error: msg.replace("NO_TOKENS: ", "") }, { status: 503 });
+  const urls: Record<string, string> = {};
+  const errors: string[] = [];
+
+  // Processa sequencialmente para respeitar rate limits
+  for (const sc of shortCodes) {
+    try {
+      const reelUrl = `https://www.instagram.com/reel/${sc}/`;
+      const detail = await fetchPostDetail(reelUrl);
+      const videoUrl = detail.data?.xdt_shortcode_media?.video_url;
+      if (videoUrl) {
+        urls[sc] = videoUrl;
+      } else {
+        errors.push(sc);
+      }
+    } catch (err) {
+      console.error(`[refresh-urls] falha ao renovar ${sc}:`, err instanceof Error ? err.message : err);
+      errors.push(sc);
     }
-    if (msg.startsWith("ALL_TOKENS_FAILED:")) {
-      return NextResponse.json({ error: APIFY_RATE_LIMIT_MESSAGE }, { status: 429 });
-    }
-    return NextResponse.json({ error: msg }, { status: 500 });
   }
+
+  console.log(
+    `[refresh-urls] renovadas ${Object.keys(urls).length}/${shortCodes.length} URLs via ScrapeCreators`
+  );
+
+  return NextResponse.json({ urls, errors: errors.length > 0 ? errors : undefined });
 }

@@ -29,7 +29,7 @@ interface ReelPayload {
   caption: string;
   /**
    * Legenda ORIGINAL crua vinda da normalização (lib/scraped-reel.ts).
-   * null = o payload do Apify não trouxe o campo; "" = Reel sem legenda.
+   * null = a fonte não trouxe o campo; "" = Reel sem legenda.
    * Quando ausente (payload antigo), cai para `caption`.
    */
   originalCaption?: string | null;
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
   let errors = 0;
   // Falhas por reel, para o frontend decidir o que renovar. `expired` = URL do
   // CDN morta (HTTP 403 / fetch failed) → recuperável via /refresh-urls numa
-  // única run de Apify. `other` = erro que renovar a URL não resolve.
+  // chamada extra à fonte. `other` = erro que renovar a URL não resolve.
   const failures: { id: string; shortCode: string; reason: "expired" | "other" }[] = [];
 
   // Filter reels with no usable video URL before processing
@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
           owner_username: reel.owner || null,
           caption: captionParaBanco(reel),
           source_url: reel.sourceUrl ?? null,
-          // Colunas inteiras no Postgres. O Apify manda `videoDuration`
+          // Colunas inteiras no Postgres. Fontes podem mandar `videoDuration`
           // fracionário (18.266666) e `Number(...)` preservava a fração,
           // fazendo o INSERT inteiro falhar — ver toIntegerColumn.
           views: toIntegerColumn(reel.views),
@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[save-to-library] reel ${reel.shortCode || reel.id}:`, msg);
       errors++;
-      // URL assinada do CDN morta → renovável numa run de Apify. Storage/DB e
+      // URL assinada do CDN morta → renovável via ScrapeCreators. Storage/DB e
       // demais erros não se resolvem trocando a URL.
       const expired = /HTTP 403|fetch failed|muito pequeno/i.test(msg);
       failures.push({

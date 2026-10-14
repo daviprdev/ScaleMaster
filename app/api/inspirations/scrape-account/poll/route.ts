@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 // GET ?jobId= — acompanha um job de raspagem via conta leitora.
 // Quando done, os reels são lidos de scraped_profiles (o cron gravou lá, na
-// MESMA tabela que a Apify usa) — assim o grid e o "Salvar na Biblioteca"
+// MESMA tabela que a ScrapeCreators usa) — assim o grid e o "Salvar na Biblioteca"
 // funcionam sem qualquer mudança.
 export async function GET(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {

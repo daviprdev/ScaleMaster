@@ -1,22 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ApifyClient } from "apify-client";
-import { resolveApifyTokens } from "@/lib/apify-token-pool";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { APIFY_ACTOR, actorInput, normalizeUsername } from "@/lib/inspiration-scrape";
+import { normalizeUsername } from "@/lib/inspiration-scrape";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-// POST — inicia a busca de um perfil e REGISTRA a busca no banco antes de
-// responder. A finalização (salvar no histórico) é do servidor: o polling da
-// página ou, se o usuário sair, o cron finalize-inspiration-scrapes.
+// POST — inicia a busca de um perfil via ScrapeCreators e REGISTRA a busca no
+// banco. A finalização (paginação completa + salvar no histórico) é feita pelo
+// polling da página OU pelo cron finalize-inspiration-scrapes.
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
-  let body: { username?: string; limit?: number };
+  // Verifica se a chave ScrapeCreators está configurada
+  if (!process.env.SCRAPECREATORS_API_KEY?.trim()) {
+    return NextResponse.json({
+      error: "SCRAPECREATORS_API_KEY não configurado. Adicione a variável de ambiente e faça um novo deploy.",
+    }, { status: 503 });
+  }
+
+  let body: { username?: string };
   try {
     body = await req.json();
   } catch {
@@ -24,7 +29,6 @@ export async function POST(req: NextRequest) {
   }
 
   const username = normalizeUsername(body.username ?? "");
-  const limit = Math.min(Math.max(Number(body.limit) || 500, 1), 2000);
 
   if (!username) {
     return NextResponse.json({ error: "O campo 'username' é obrigatório." }, { status: 400 });
@@ -35,7 +39,7 @@ export async function POST(req: NextRequest) {
 
   const admin = getSupabaseAdmin() as any;
 
-  // Já existe busca rodando desse perfil? Reaproveita — não paga de novo.
+  // Já existe busca rodando desse perfil? Reaproveita.
   const { data: existing } = await admin
     .from("inspiration_scrape_searches")
     .select("id, run_ids, limit_items")
@@ -48,52 +52,32 @@ export async function POST(req: NextRequest) {
 
   if (existing) {
     console.log(`[scrape] @${username} — reaproveitando busca em andamento ${existing.id}`);
-    return NextResponse.json({ searchId: existing.id, runIds: existing.run_ids, limit: existing.limit_items, resumed: true });
+    return NextResponse.json({ searchId: existing.id, resumed: true });
   }
 
-  const tokens = resolveApifyTokens();
-  if (tokens.length === 0) {
-    return NextResponse.json({
-      error: "APIFY_API_TOKEN não configurado. Adicione a variável de ambiente e faça um novo deploy.",
-    }, { status: 503 });
-  }
-
-  // Um run por token em paralelo — IPs diferentes; resultados deduplicados ao final.
-  const url = `https://www.instagram.com/${username}/reels/`;
-  const starts = await Promise.allSettled(
-    tokens.map(async (token) => {
-      const client = new ApifyClient({ token });
-      const run = await client.actor(APIFY_ACTOR).start(actorInput(url, limit));
-      return run.id;
-    })
-  );
-
-  const runIds = starts
-    .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled")
-    .map((r) => r.value);
-
-  if (runIds.length === 0) {
-    const firstErr = starts.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
-    const msg = firstErr?.reason instanceof Error ? firstErr.reason.message : "Erro ao iniciar busca.";
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
-
+  // Cria registro de busca. O estado de paginação é guardado em run_ids:
+  // run_ids[0] = cursor (max_id), run_ids[1] = páginas processadas, run_ids[2] = reels acumulados.
   const { data: search, error: insertErr } = await admin
     .from("inspiration_scrape_searches")
-    .insert({ user_id: user.id, username, run_ids: runIds, limit_items: limit, status: "running" })
+    .insert({
+      user_id: user.id,
+      username,
+      run_ids: ["", "0", "0"], // estado inicial: sem cursor, 0 páginas, 0 reels
+      fallback_run_ids: [],
+      limit_items: 0, // 0 = sem limite (pagina até o fim)
+      status: "running",
+    })
     .select("id")
     .single();
 
   if (insertErr || !search) {
-    // Runs já foram iniciados (e pagos). Loga os ids para recuperação manual
-    // via /api/inspirations/scrape/recover, que importa runs órfãos da Apify.
-    console.error(`[scrape] @${username} — FALHA ao registrar busca (${insertErr?.message}); runs: ${runIds.join(",")}`);
+    console.error(`[scrape] @${username} — FALHA ao registrar busca (${insertErr?.message})`);
     return NextResponse.json(
-      { error: "A busca foi iniciada, mas não consegui registrá-la. Use \"Recuperar buscas\" em alguns minutos." },
+      { error: "Falha ao registrar a busca. Tente novamente." },
       { status: 500 }
     );
   }
 
-  console.log(`[scrape] @${username} — busca ${search.id}, ${runIds.length}/${tokens.length} runs: ${runIds.join(",")}`);
-  return NextResponse.json({ searchId: search.id, runIds, limit });
+  console.log(`[scrape] @${username} — busca ${search.id} iniciada via ScrapeCreators`);
+  return NextResponse.json({ searchId: search.id });
 }

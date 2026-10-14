@@ -1153,7 +1153,7 @@ export default function InspiracoesPage() {
             >
               <AlertCircle size={15} />
               <span className="flex-1">{error}</span>
-              <button onClick={() => setError("")} className="text-ink-3" className="hover:text-ink-2 transition-colors">✕</button>
+              <button onClick={() => setError("")} className="text-ink-3 hover:text-ink-2 transition-colors">✕</button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1181,7 +1181,7 @@ export default function InspiracoesPage() {
                   <p className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.8)" }}>
                     <span className="metric-value text-sm">{reels.length}</span> Reels encontrados
                   </p>
-                  <p className="text-xs" className="text-ink-3">de @{activeUsername}</p>
+                  <p className="text-xs text-ink-3">de @{activeUsername}</p>
                 </div>
               </div>
 

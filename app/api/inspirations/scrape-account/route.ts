@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 // POST — enfileira uma raspagem de perfil via conta LEITORA dedicada
-// (fonte alternativa à Apify na aba Inspirações). Retorna { jobId }; o
+// (fonte alternativa à ScrapeCreators na aba Inspirações). Retorna { jobId }; o
 // frontend acompanha via /api/inspirations/scrape-account/poll.
 export async function POST(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {

@@ -1,62 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  withApifyTokenPool,
-  APIFY_RATE_LIMIT_MESSAGE,
-} from "@/lib/apify-token-pool";
-import { ApifyClient } from "apify-client";
 import { createClient } from "@/lib/supabase/server";
+import { fetchPostDetail } from "@/lib/scrapecreators-client";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-async function fetchSingleReel(
-  client: ApifyClient,
-  shortCode: string
-): Promise<string> {
-  const url = `https://www.instagram.com/reel/${shortCode}/`;
-
-  const run = await client.actor("apify/instagram-scraper").call({
-    directUrls: [url],
-    resultsType: "posts",
-    resultsLimit: 1,
-    maxRequestsPerCrawl: 30,
-    proxyConfiguration: {
-      useApifyProxy: true,
-      apifyProxyGroups: ["RESIDENTIAL"],
-    },
-  });
-
-  if (run.status !== "SUCCEEDED") {
-    throw new Error(`Apify status: ${run.status}`);
-  }
-
-  const { items } = await client.dataset(run.defaultDatasetId).listItems();
-
-  if (!Array.isArray(items) || items.length === 0) {
-    throw new Error("Reel não encontrado ou indisponível.");
-  }
-
-  const item = items[0] as Record<string, unknown>;
-  const videoUrl =
-    (item.videoUrl as string | undefined) ||
-    (item.video_url as string | undefined) ||
-    (item.videoPlayUrl as string | undefined) ||
-    (item.playVideoUrl as string | undefined) ||
-    "";
-
-  if (!videoUrl) {
-    throw new Error(
-      "URL do vídeo não disponível. O reel pode ser de uma conta restrita ou exigir autenticação."
-    );
-  }
-
-  return videoUrl;
-}
-
+/**
+ * Re-busca a URL de vídeo de um único Reel via ScrapeCreators (post detail).
+ * Usado quando a URL original expirou (CDN do Instagram assina URLs temporárias).
+ */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+
+  if (!process.env.SCRAPECREATORS_API_KEY?.trim()) {
+    return NextResponse.json(
+      { error: "SCRAPECREATORS_API_KEY não configurado." },
+      { status: 503 }
+    );
+  }
 
   let body: { shortCode?: string };
   try {
@@ -70,19 +33,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "shortCode obrigatório." }, { status: 400 });
   }
 
+  const reelUrl = `https://www.instagram.com/reel/${shortCode}/`;
+
   try {
-    const videoUrl = await withApifyTokenPool((client) =>
-      fetchSingleReel(client, shortCode)
-    );
+    const detail = await fetchPostDetail(reelUrl);
+    const media = detail.data?.xdt_shortcode_media;
+    const videoUrl = media?.video_url;
+
+    if (!videoUrl) {
+      return NextResponse.json(
+        { error: "URL do vídeo não disponível. O Reel pode ser privado ou ter sido removido." },
+        { status: 404 }
+      );
+    }
+
     return NextResponse.json({ videoUrl });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.startsWith("NO_TOKENS:")) {
-      return NextResponse.json({ error: msg.replace("NO_TOKENS: ", "") }, { status: 503 });
+    // Não vaza detalhes internos
+    if (msg.includes("HTTP 404")) {
+      return NextResponse.json(
+        { error: "Reel não encontrado ou indisponível." },
+        { status: 404 }
+      );
     }
-    if (msg.startsWith("ALL_TOKENS_FAILED:")) {
-      return NextResponse.json({ error: APIFY_RATE_LIMIT_MESSAGE }, { status: 429 });
+    if (msg.includes("HTTP 403")) {
+      return NextResponse.json(
+        { error: "Acesso negado ao Reel. Pode ser privado ou restrito." },
+        { status: 403 }
+      );
     }
-    return NextResponse.json({ error: msg }, { status: 500 });
+    console.error(`[refetch-reel] @${shortCode}:`, msg);
+    return NextResponse.json({ error: "Falha ao buscar URL do vídeo." }, { status: 500 });
   }
 }
