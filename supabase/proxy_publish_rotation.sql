@@ -16,7 +16,7 @@ CREATE OR REPLACE FUNCTION public.claim_next_publish_proxy(p_user_id uuid)
 RETURNS TABLE(id uuid, proxy_url text, proxy_hash text)
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
   selected_proxy public.proxy_pool%ROWTYPE;
