@@ -29,13 +29,13 @@
 ### Fase 2 — Casca
 | Item | Status | Commit | Notas |
 |------|--------|--------|-------|
-| AppShell | ⏳ | - | Sidebar + Topbar + main |
-| CommandPalette (⌘K) | ⏳ | - | |
-| Sheet celular | ⏳ | - | |
-| Banners | ⏳ | - | |
-| Popover sino | ⏳ | - | |
-| Loading entre rotas | ⏳ | - | |
-| Casca admin | ⏳ | - | |
+| AppShell | ✅ | f6b24b9 | Sidebar + Topbar + main |
+| CommandPalette (⌘K) | ✅ | f6b24b9 | Navegação + ações + tema |
+| Sheet celular | ✅ | f6b24b9 | Sidebar mobile overlay |
+| Banners | ⏳ | - | Banner global no layout |
+| Popover sino | ✅ | e23c6f6 | NotificationPopover integrado |
+| Loading entre rotas | ✅ | f6b24b9 | Skeleton em /dashboard/loading.tsx |
+| Casca admin | ⏳ | - | Layout admin separado |
 
 ### Fase 3 — Telas principais
 | Item | Status | Commit | Notas |
