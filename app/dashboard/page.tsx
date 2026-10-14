@@ -167,7 +167,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const supabase = getSupabase();
-    supabase.auth.getUser().then(({ data: { user } }) => {
+
+    const extractName = (user: any) => {
       if (user) {
         setDisplayName(
           user.user_metadata?.display_name ||
@@ -176,7 +177,23 @@ export default function DashboardPage() {
             ""
         );
       }
+    };
+
+    // Força refresh da sessão para pegar metadata atualizada do servidor
+    supabase.auth.refreshSession().then(({ data: { session } }) => {
+      extractName(session?.user);
     });
+
+    // Listener: atualiza displayName em tempo real quando o perfil é salvo
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === "USER_UPDATED" && session?.user) {
+          extractName(session.user);
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const loadStats = useCallback(async (silent = false) => {
