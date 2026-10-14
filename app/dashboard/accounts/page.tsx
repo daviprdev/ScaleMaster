@@ -2950,6 +2950,14 @@ export default function AccountsPage() {
                 <UserSearch size={14} />
                 Verificar
               </button>
+                            <button
+                onClick={() => setMagicLinkOpen(true)}
+                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-[#00498D]/30 text-[#85B9E9] hover:text-[#a8d1f5] hover:border-[#00498D]/50 hover:bg-[#00498D]/[0.08] transition-all"
+                title="Gerar link pessoal para adicionar contas sem login"
+              >
+                <LinkIcon size={14} />
+                Magic Link
+              </button>
                             <motion.button
                 onClick={() => { handleConnectClick(); }}
                 whileTap={{ scale: 0.97 }}

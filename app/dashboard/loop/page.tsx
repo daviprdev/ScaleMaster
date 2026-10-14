@@ -9,13 +9,14 @@ import {
   Loader2, AlertCircle, ChevronDown, Info, Film, AlertTriangle,
   BarChart2, Heart, MessageCircle, Eye, Crown, TrendingUp, ChevronUp,
   Save, Library, BookMarked, Shuffle, CheckCircle2,
-  ZoomIn, Waves, Droplets, Shield, Sparkles, SlidersHorizontal, LayoutGrid, FileText,
+  ZoomIn, Waves, Droplets, Shield, ShieldCheck, Sparkles, SlidersHorizontal, LayoutGrid, FileText,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
 import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
+import { ProxyPoolToggle } from "@/components/dashboard/ProxyPoolToggle";
 import type { CaptionMode } from "@/lib/reel-captions";
 
 // ── Types ─────────────────────────────────────────────────────
@@ -69,6 +70,7 @@ interface Loop {
   video_processing_mode?: string | null;
   share_to_feed?: boolean | null;
   caption_mode?: string | null;
+  use_proxy_pool?: boolean | null;
   caption_strip_hashtags?: boolean | null;
   caption_strip_mentions?: boolean | null;
   status: "active" | "paused";
@@ -103,6 +105,7 @@ interface FormData {
   autoCaptionType: string;
   accountStaggerSeconds: number | null;
   videoProcessingMode: VideoProcessingMode;
+  useProxyPool: boolean;
   shareToFeed: boolean;
   captionMode: CaptionMode;
   captionStripHashtags: boolean;
@@ -147,6 +150,7 @@ const DEFAULT_FORM: FormData = {
   autoCaptionType: AUTO_CAPTION_TYPE_VALUE,
   accountStaggerSeconds: null,
   videoProcessingMode: "original",
+  useProxyPool: false,
   shareToFeed: true,
   // "custom" = pool digitado/automático = comportamento histórico do Loop.
   captionMode: "custom",
@@ -1325,6 +1329,7 @@ function LoopFormModal({
         accountStaggerSeconds: (editingLoop as any).account_stagger_seconds ?? null,
         videoProcessingMode:
           editingLoop.video_processing_mode === "clean_metadata" ? "clean_metadata" : "original",
+        useProxyPool: editingLoop.use_proxy_pool === true,
         // Loop antigo sem escolha persistida (null) abre marcado como
         // "Reels + grade", mas só passa a enviar o parâmetro quando salvo.
         shareToFeed: editingLoop.share_to_feed !== false,
@@ -1804,6 +1809,23 @@ function LoopFormModal({
             />
           </div>
 
+          {/* Proxy do estoque (opt-in) */}
+          <div>
+            <SectionLabel icon={ShieldCheck} label="Rota de publicação" />
+            <ProxyPoolToggle
+              value={form.useProxyPool}
+              onChange={v => update("useProxyPool", v)}
+            />
+          </div>
+
+          <div>
+            <SectionLabel icon={Shield} label="Rota de publicação" />
+            <ProxyPoolToggle
+              value={form.useProxyPool}
+              onChange={v => update("useProxyPool", v)}
+            />
+          </div>
+
           {/* Efeitos criativos — pipeline próprio, re-encodam por definição */}
           <div>
             <SectionLabel icon={Contrast} label="Efeitos Criativos" />
@@ -1998,6 +2020,7 @@ export default function LoopPage() {
       auto_caption_type: form.autoCaptionEnabled ? form.autoCaptionType : null,
       account_stagger_seconds: form.accountStaggerSeconds,
       video_processing_mode: form.videoProcessingMode,
+      use_proxy_pool: form.useProxyPool,
       share_to_feed: form.shareToFeed,
       caption_mode: form.captionMode,
       caption_strip_hashtags: form.captionStripHashtags,

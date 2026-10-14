@@ -1,14 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { motion } from "framer-motion";
 import {
-  Instagram,
   CalendarCheck,
   ListOrdered,
   UserPlus,
   ShieldAlert,
-  ArrowUpRight,
   Play,
   Clock,
   CheckCircle2,
@@ -22,6 +19,17 @@ import {
   DollarSign,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
+import {
+  PageHeader,
+  StatTile,
+  Card,
+  Button,
+  Badge,
+  Skeleton,
+  EmptyState,
+  Segmented,
+} from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 // ── Types ────────────────────────────────────────────────────────
 interface DashboardStats {
@@ -100,162 +108,57 @@ function formatScheduled(dateStr: string): { label: string; time: string } {
   return { label: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), time };
 }
 
-// ── Animation variants ───────────────────────────────────────────
-const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
-};
-const stagger = { show: { transition: { staggerChildren: 0.08 } } };
-
-// ── Skeletons ────────────────────────────────────────────────────
-function StatSkeleton() {
-  return (
-    <div className="glass-card p-5 animate-pulse">
-      <div className="w-10 h-10 rounded-xl bg-white/[0.06] mb-4" />
-      <div className="h-7 w-14 rounded-lg bg-white/[0.08] mb-2" />
-      <div className="h-3 w-28 rounded bg-white/[0.05] mb-1.5" />
-      <div className="h-2.5 w-20 rounded bg-white/[0.03]" />
-    </div>
-  );
-}
-
-function BreakdownSkeleton() {
-  return (
-    <div className="glass-card p-5 animate-pulse">
-      <div className="flex items-center gap-3 mb-4">
-        <div className="w-10 h-10 rounded-xl bg-white/[0.06] flex-shrink-0" />
-        <div className="space-y-1.5">
-          <div className="h-6 w-10 rounded bg-white/[0.08]" />
-          <div className="h-2.5 w-24 rounded bg-white/[0.05]" />
-        </div>
-      </div>
-      <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/[0.06]">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="flex flex-col items-center gap-1.5">
-            <div className="h-4 w-6 rounded bg-white/[0.06]" />
-            <div className="h-2 w-10 rounded bg-white/[0.04]" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Reusable ambient glow wrapper (efeito de fundo transparente) ──
-function AmbientGlow({ color }: { color: string }) {
-  return (
-    <>
-      <div
-        className="absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl pointer-events-none transition-opacity duration-500 opacity-40 group-hover:opacity-90"
-        style={{ background: color }}
-      />
-      <div
-        className="absolute inset-0 pointer-events-none opacity-[0.05]"
-        style={{
-          background: `radial-gradient(120% 100% at 0% 0%, ${color}, transparent 60%)`,
-        }}
-      />
-    </>
-  );
-}
-
-// ── Views das contas por período ─────────────────────────────────
+// ── Views period selector ────────────────────────────────────────
 type ViewsPeriod = "today" | "yesterday" | "last_7d" | "last_30d" | "month";
 
-const VIEWS_PERIODS: { key: ViewsPeriod; label: string; hint: string }[] = [
-  { key: "today",     label: "Hoje",     hint: "Dia atual — zera às 21h (Brasília)" },
-  { key: "yesterday", label: "Ontem",    hint: "Dia anterior completo" },
-  { key: "last_7d",   label: "7 dias",   hint: "Últimos 7 dias, incluindo hoje" },
-  { key: "last_30d",  label: "30 dias",  hint: "Últimos 30 dias, incluindo hoje" },
-  { key: "month",     label: "Este mês", hint: "Desde o dia 1º — zera todo mês" },
+const VIEWS_PERIODS: { value: ViewsPeriod; label: string }[] = [
+  { value: "today", label: "Hoje" },
+  { value: "yesterday", label: "Ontem" },
+  { value: "last_7d", label: "7 dias" },
+  { value: "last_30d", label: "30 dias" },
+  { value: "month", label: "Este mês" },
 ];
 
-function ViewsPeriodCard({ views }: { views: DashboardStats["views"] }) {
-  // Abre em "Hoje" quando a Meta já liberou o dia; senão em "Ontem" (evita 0).
-  const [period, setPeriod] = useState<ViewsPeriod>(views.today_has_data ? "today" : "yesterday");
-  const current = VIEWS_PERIODS.find((p) => p.key === period)!;
-  const value = Number(views[period]) || 0;
-  const color = "#85B9E9";
-  const glow = "rgba(133,185,233,0.22)";
+const VIEWS_HINTS: Record<ViewsPeriod, string> = {
+  today: "Dia atual — zera às 21h (Brasília)",
+  yesterday: "Dia anterior completo",
+  last_7d: "Últimos 7 dias, incluindo hoje",
+  last_30d: "Últimos 30 dias, incluindo hoje",
+  month: "Desde o dia 1º — zera todo mês",
+};
 
-  return (
-    <div className="glass-card ticks p-5 group relative overflow-hidden">
-      <AmbientGlow color={glow} />
-
-      <div className="flex items-start justify-between gap-3 mb-4 relative z-10 flex-wrap">
-        <div className="flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: "rgba(255,255,255,0.04)", border: `0.5px solid ${color}33`, boxShadow: `0 0 14px ${glow}` }}
-          >
-            <Eye size={18} style={{ color }} strokeWidth={1.5} />
-          </div>
-          <div>
-            <div className="text-xs text-white/50 font-medium">Views das Contas</div>
-            <div className="text-[10px] text-white/25">Contas ativas e conectadas</div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1 flex-wrap">
-          {VIEWS_PERIODS.map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              title={p.hint}
-              onClick={() => setPeriod(p.key)}
-              className="text-[10px] px-2.5 py-1 rounded-full border transition-colors"
-              style={
-                period === p.key
-                  ? { background: "rgba(133,185,233,0.12)", borderColor: "rgba(133,185,233,0.4)", color }
-                  : { background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.4)" }
-              }
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div
-        className="text-3xl font-black mb-0.5 relative z-10"
-        style={{ color, textShadow: `0 0 20px ${glow}` }}
-      >
-        {value.toLocaleString("pt-BR")}
-      </div>
-      <div className="text-[10px] text-white/30 relative z-10">
-        {period === "today" && !views.today_has_data
-          ? "A Meta libera as views do dia com algumas horas de atraso — o número aparece ao longo do dia."
-          : current.hint}
-      </div>
-
-      {period === "month" && (
-        <div className="text-[10px] text-white/30 mt-2 pt-2 border-t border-white/[0.06] relative z-10">
-          Mês anterior: <span className="text-white/50 font-medium">{(Number(views.prev_month) || 0).toLocaleString("pt-BR")}</span>
-        </div>
-      )}
-    </div>
-  );
-}
+// ── Quick actions ────────────────────────────────────────────────
+const QUICK_ACTIONS = [
+  { label: "Postar", href: "/dashboard/postar", icon: Send, desc: "Distribuição de conteúdo" },
+  { label: "Loop", href: "/dashboard/loop", icon: Repeat2, desc: "Ciclo contínuo" },
+  { label: "Stories", href: "/dashboard/stories", icon: ImagePlay, desc: "Postar e importar" },
+] as const;
 
 // ── Page ─────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const [stats, setStats]           = useState<DashboardStats | null>(null);
-  const [loading, setLoading]       = useState(true);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [clearing, setClearing]     = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [displayName, setDisplayName] = useState<string>("");
+  const [viewsPeriod, setViewsPeriod] = useState<ViewsPeriod>("yesterday");
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Set initial views period based on data availability
+  useEffect(() => {
+    if (stats?.views.today_has_data) setViewsPeriod("today");
+  }, [stats?.views.today_has_data]);
 
   useEffect(() => {
     const supabase = getSupabase();
-    supabase.auth.getUser().then(({ data: { user } }: { data: { user: { user_metadata?: Record<string, string>; email?: string } | null } }) => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
         setDisplayName(
           user.user_metadata?.display_name ||
-          user.user_metadata?.full_name ||
-          user.email?.split("@")[0] ||
-          ""
+            user.user_metadata?.full_name ||
+            user.email?.split("@")[0] ||
+            ""
         );
       }
     });
@@ -270,7 +173,7 @@ export default function DashboardPage() {
       const data = await r.json();
       if (!data.error) setStats(data);
     } catch {
-      // Rede/JSON inválido — ignora silenciosamente, próximo tick (60s) tenta de novo
+      // Network/JSON error — silently ignore, next tick (60s) retries
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -300,462 +203,306 @@ export default function DashboardPage() {
     }
   }, [clearConfirm, loadStats]);
 
-  const simpleCards = stats
-    ? [
-        {
-          key: "views",
-          label: "Visualizações Hoje",
-          value: formatCompact(stats.views.today),
-          subLabel: "Total",
-          subValue: formatCompact(stats.views.total),
-          icon: Eye,
-          iconColor: "#85B9E9",
-          glow: "rgba(133,185,233,0.22)",
-        },
-        {
-          key: "videos",
-          label: "Vídeos Publicados",
-          value: String(stats.videos_published.total),
-          subLabel: "Hoje / Ontem",
-          subValue: `${stats.videos_published.today} / ${stats.videos_published.yesterday}`,
-          icon: Play,
-          iconColor: "#00498D",
-          glow: "rgba(0,73,141,0.22)",
-        },
-        {
-          key: "active",
-          label: "Contas Ativas Hoje",
-          value: String(stats.accounts_active_today),
-          subLabel: "Com health OK",
-          subValue: `${stats.accounts.total} total conectadas`,
-          icon: CheckCircle2,
-          iconColor: "#10B981",
-          glow: "rgba(16,185,129,0.22)",
-        },
-        {
-          key: "queue",
-          label: "Posts na Fila",
-          value: String(stats.queue.pending),
-          subLabel: "Aguardando",
-          subValue: "publicação",
-          icon: ListOrdered,
-          iconColor: "#00498D",
-          glow: "rgba(0,73,141,0.22)",
-        },
-      ]
-    : null;
-
-  const breakdownCards = stats
-    ? [
-        {
-          key: "added",
-          label: "Contas Adicionadas",
-          total: stats.accounts.added_7d,
-          totalLabel: "novas em 7 dias",
-          icon: UserPlus,
-          iconColor: "#00498D",
-          glow: "rgba(0,73,141,0.22)",
-          items: [
-            { label: "Hoje", value: stats.accounts.added_today },
-            { label: "Ontem", value: stats.accounts.added_yesterday },
-            { label: "7 dias", value: stats.accounts.added_7d },
-          ],
-        },
-        {
-          key: "down",
-          label: "Contas Caídas",
-          total: stats.accounts_down.total,
-          totalLabel: "com erro agora",
-          icon: ShieldAlert,
-          iconColor: "#FF3B3B",
-          glow: "rgba(255,59,59,0.22)",
-          items: [
-            { label: "Hoje", value: stats.accounts_down.down_today },
-            { label: "Ontem", value: stats.accounts_down.down_yesterday },
-            { label: "7 dias", value: stats.accounts_down.down_7d },
-          ],
-        },
-      ]
-    : null;
-
-  // Card único de vendas: diária em destaque + mensal abaixo
-
-  const quickActions = [
-    { label: "Postar", href: "/dashboard/postar", icon: Send, desc: "Distribuição de conteúdo", color: "#00498D" },
-    { label: "Loop", href: "/dashboard/loop", icon: Repeat2, desc: "Ciclo contínuo", color: "#00498D" },
-    { label: "Stories", href: "/dashboard/stories", icon: ImagePlay, desc: "Postar e importar", color: "#85B9E9" },
-  ];
+  // ── Derived data ───────────────────────────────────────────────
+  const viewsValue = stats ? Number(stats.views[viewsPeriod]) || 0 : 0;
 
   return (
-    <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6 max-w-7xl">
-
-      {/* Refresh */}
-      <motion.div variants={fadeUp} className="flex items-center justify-end">
-        <button
-          onClick={() => loadStats(true)}
-          disabled={loading || refreshing}
-          className="flex items-center gap-1.5 text-[11px] text-white/25 hover:text-[#00498D] transition-colors disabled:opacity-40"
-        >
-          <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
-          {refreshing ? "Atualizando…" : "Atualizar"}
-        </button>
-      </motion.div>
-
-      {/* Saudação */}
-      {displayName && (
-        <motion.div variants={fadeUp} className="mb-2">
-          <h2
-            className="text-3xl md:text-4xl font-black tracking-tight"
-            style={{
-              background: "linear-gradient(135deg, #ffffff 0%, #85B9E9 50%, #00498D 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              textShadow: "0 0 40px rgba(0,73,141,0.3)",
-            }}
+    <div className="flex flex-col gap-6">
+      {/* Header */}
+      <PageHeader
+        eyebrow="Dashboard"
+        title={displayName ? `Bem-vindo, ${displayName}` : "Visão geral"}
+        description="Acompanhe métricas, atividade recente e próximas publicações."
+        actions={
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />}
+            onClick={() => loadStats(true)}
+            disabled={loading || refreshing}
           >
-            Bem-Vindo, {displayName}
-          </h2>
-        </motion.div>
-      )}
+            {refreshing ? "Atualizando…" : "Atualizar"}
+          </Button>
+        }
+      />
 
-      {/* Vendas: card único com diária em destaque + mensal abaixo */}
-      <motion.div variants={fadeUp}>
-        {loading || !stats ? (
-          <StatSkeleton />
-        ) : (
-          <div className="glass-card ticks p-5 group relative overflow-hidden">
-            <AmbientGlow color="rgba(0,73,141,0.22)" />
+      {/* ── Stat tiles row ─────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Sales */}
+        <StatTile
+          label="Vendas Hoje"
+          value={loading ? "—" : formatBRL(stats?.sales.today ?? 0)}
+          icon={<DollarSign size={18} />}
+          hint={
+            loading
+              ? undefined
+              : `Ontem: ${formatBRL(stats?.sales.yesterday ?? 0)} · Mês: ${formatBRL(stats?.sales.month ?? 0)}`
+          }
+        >
+          {loading && <Skeleton height="4px" width="60%" />}
+        </StatTile>
 
-            <div className="flex items-start justify-between mb-4 relative z-10">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  border: "0.5px solid rgba(0,73,141,0.2)",
-                  boxShadow: "0 0 14px rgba(0,73,141,0.22)",
-                }}
-              >
-                <DollarSign size={18} style={{ color: "#00498D" }} strokeWidth={1.5} />
+        {/* Views */}
+        <StatTile
+          label="Visualizações"
+          value={loading ? "—" : formatCompact(viewsValue)}
+          icon={<Eye size={18} />}
+          hint={loading ? undefined : VIEWS_HINTS[viewsPeriod]}
+        >
+          {!loading && (
+            <Segmented
+              options={VIEWS_PERIODS}
+              value={viewsPeriod}
+              onChange={(v) => setViewsPeriod(v as ViewsPeriod)}
+              className="mt-1"
+            />
+          )}
+        </StatTile>
+
+        {/* Videos published */}
+        <StatTile
+          label="Vídeos Publicados"
+          value={loading ? "—" : String(stats?.videos_published.total ?? 0)}
+          icon={<Play size={18} />}
+          hint={
+            loading
+              ? undefined
+              : `Hoje: ${stats?.videos_published.today ?? 0} · Ontem: ${stats?.videos_published.yesterday ?? 0}`
+          }
+        />
+
+        {/* Active accounts */}
+        <StatTile
+          label="Contas Ativas Hoje"
+          value={loading ? "—" : String(stats?.accounts_active_today ?? 0)}
+          icon={<CheckCircle2 size={18} />}
+          tone="positive"
+          hint={
+            loading
+              ? undefined
+              : `${stats?.accounts.total ?? 0} total conectadas`
+          }
+        />
+      </div>
+
+      {/* ── Breakdown cards ────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* Accounts added */}
+        <Card
+          title="Contas Adicionadas"
+          description={loading ? undefined : `${stats?.accounts.added_7d ?? 0} novas em 7 dias`}
+        >
+          {loading ? (
+            <div className="flex flex-col gap-3">
+              <Skeleton height="24px" width="80px" />
+              <div className="grid grid-cols-3 gap-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} height="32px" />
+                ))}
               </div>
             </div>
-
-            <div
-              className="text-2xl font-black mb-0.5 relative z-10"
-              style={{ color: "#00498D", textShadow: "0 0 20px rgba(0,73,141,0.22)" }}
-            >
-              {formatBRL(stats.sales.today)}
+          ) : (
+            <div className="flex flex-col gap-3">
+              <span className="font-mono text-[28px] font-medium leading-[32px] tracking-[-0.02em] tabular-nums text-ink">
+                {stats?.accounts.added_7d ?? 0}
+              </span>
+              <div className="grid grid-cols-3 gap-2 border-t border-line pt-3">
+                {[
+                  { label: "Hoje", value: stats?.accounts.added_today ?? 0 },
+                  { label: "Ontem", value: stats?.accounts.added_yesterday ?? 0 },
+                  { label: "7 dias", value: stats?.accounts.added_7d ?? 0 },
+                ].map((item) => (
+                  <div key={item.label} className="flex flex-col items-center gap-0.5">
+                    <span className="font-mono text-sm font-semibold tabular-nums text-ink">
+                      {item.value}
+                    </span>
+                    <span className="text-[11px] text-ink-3">{item.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="text-xs text-white/50 font-medium relative z-10">Vendas Hoje</div>
-            <div className="text-[10px] text-white/25 mt-1 relative z-10">Ontem: {formatBRL(stats.sales.yesterday)}</div>
+          )}
+        </Card>
 
-            <div className="text-[10px] text-white/30 mt-3 pt-3 border-t border-white/[0.06] relative z-10">
-              Este mês: <span className="text-white/50 font-medium">{formatBRL(stats.sales.month)}</span>
-              <span className="mx-1.5 text-white/15">·</span>
-              Anterior: <span className="text-white/40">{formatBRL(stats.sales.prev_month)}</span>
-            </div>
-          </div>
-        )}
-      </motion.div>
-
-      {/* Views das contas por período (Hoje / Ontem / 7d / 30d / Este mês) */}
-      <motion.div variants={fadeUp}>
-        {loading || !stats ? <StatSkeleton /> : <ViewsPeriodCard views={stats.views} />}
-      </motion.div>
-
-      {/* Simple stat cards: Contas Conectadas / Postagens Hoje / Views Hoje / Fila */}
-      <motion.div variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {loading || !simpleCards
-          ? Array.from({ length: 4 }).map((_, i) => (
-              <motion.div key={i} variants={fadeUp}><StatSkeleton /></motion.div>
-            ))
-          : simpleCards.map((stat, i) => (
-              <motion.div
-                key={i}
-                variants={fadeUp}
-                className="glass-card ticks p-5 group relative overflow-hidden"
-              >
-                <AmbientGlow color={stat.glow} />
-
-                <div className="flex items-start justify-between mb-4 relative z-10">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{
-                      background: "rgba(255,255,255,0.04)",
-                      border: `0.5px solid ${stat.iconColor}33`,
-                      boxShadow: `0 0 14px ${stat.glow}`,
-                    }}
-                  >
-                    <stat.icon size={18} style={{ color: stat.iconColor }} strokeWidth={1.5} />
-                  </div>
-                </div>
-
-                <div
-                  className="text-2xl font-black mb-0.5 relative z-10"
-                  style={{ color: stat.iconColor, textShadow: `0 0 20px ${stat.glow}` }}
-                >
-                  {stat.value}
-                </div>
-                <div className="text-xs text-white/50 font-medium relative z-10">{stat.label}</div>
-
-                {"subLabel" in stat && stat.subLabel && (
-                  <div className="text-[10px] text-white/30 mt-3 pt-3 border-t border-white/[0.06] relative z-10">
-                    {stat.subLabel}:{" "}
-                    <span className="text-white/50 font-medium">{stat.subValue}</span>
-                  </div>
-                )}
-              </motion.div>
-            ))}
-      </motion.div>
-
-      {/* Breakdown cards: Contas Adicionadas / Contas Caídas */}
-      <motion.div variants={stagger} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {loading || !breakdownCards
-          ? Array.from({ length: 2 }).map((_, i) => (
-              <motion.div key={i} variants={fadeUp}><BreakdownSkeleton /></motion.div>
-            ))
-          : breakdownCards.map((card) => (
-              <motion.div
-                key={card.key}
-                variants={fadeUp}
-                className="glass-card ticks p-5 group relative overflow-hidden"
-              >
-                <AmbientGlow color={card.glow} />
-
-                <div className="flex items-center gap-3 mb-4 relative z-10">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{
-                      background: "rgba(255,255,255,0.04)",
-                      border: `0.5px solid ${card.iconColor}33`,
-                      boxShadow: `0 0 14px ${card.glow}`,
-                    }}
-                  >
-                    <card.icon size={18} style={{ color: card.iconColor }} strokeWidth={1.5} />
-                  </div>
-                  <div>
-                    <div
-                      className="text-2xl font-black leading-none"
-                      style={{ color: card.iconColor, textShadow: `0 0 20px ${card.glow}` }}
-                    >
-                      {card.total}
-                    </div>
-                    <div className="text-xs text-white/50 font-medium mt-1">{card.label}</div>
-                  </div>
-                </div>
-
-                <div className="text-[10px] text-white/20 relative z-10 mb-2">{card.totalLabel}</div>
-
-                <div className="grid grid-cols-3 gap-2 relative z-10 pt-3 border-t border-white/[0.06]">
-                  {card.items.map((item) => (
-                    <div key={item.label} className="flex flex-col items-center gap-0.5">
-                      <div className="text-sm font-bold text-white/75">{item.value}</div>
-                      <div className="text-[10px] text-white/25">{item.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            ))}
-      </motion.div>
-
-      {/* Two-column grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Atividade Recente */}
-        <motion.div variants={fadeUp} className="lg:col-span-2 glass-card p-5">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-sm font-semibold text-white/80 tracking-wide uppercase">Atividade Recente</h2>
-            <button className="text-[11px] text-[#00498D]/60 hover:text-[#00498D] transition-colors">
-              Ver tudo
-            </button>
-          </div>
-
+        {/* Accounts down */}
+        <Card
+          title="Contas Caídas"
+          description={loading ? undefined : `${stats?.accounts_down.total ?? 0} com erro agora`}
+        >
           {loading ? (
-            <div className="space-y-3 animate-pulse">
+            <div className="flex flex-col gap-3">
+              <Skeleton height="24px" width="80px" />
+              <div className="grid grid-cols-3 gap-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} height="32px" />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <span className="font-mono text-[28px] font-medium leading-[32px] tracking-[-0.02em] tabular-nums text-danger">
+                {stats?.accounts_down.total ?? 0}
+              </span>
+              <div className="grid grid-cols-3 gap-2 border-t border-line pt-3">
+                {[
+                  { label: "Hoje", value: stats?.accounts_down.down_today ?? 0 },
+                  { label: "Ontem", value: stats?.accounts_down.down_yesterday ?? 0 },
+                  { label: "7 dias", value: stats?.accounts_down.down_7d ?? 0 },
+                ].map((item) => (
+                  <div key={item.label} className="flex flex-col items-center gap-0.5">
+                    <span className="font-mono text-sm font-semibold tabular-nums text-ink">
+                      {item.value}
+                    </span>
+                    <span className="text-[11px] text-ink-3">{item.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* ── Two-column: Activity + Upcoming ────────────────────── */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Recent activity */}
+        <Card title="Atividade Recente" className="lg:col-span-2">
+          {loading ? (
+            <div className="flex flex-col gap-3">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 py-2.5 border-b border-white/[0.04] last:border-0">
-                  <div className="w-7 h-7 rounded-lg bg-white/[0.06] flex-shrink-0" />
-                  <div className="flex-1 h-3 rounded bg-white/[0.06]" />
-                  <div className="w-12 h-2.5 rounded bg-white/[0.04] flex-shrink-0" />
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton width="28px" height="28px" radius="var(--radius-md)" />
+                  <Skeleton height="14px" className="flex-1" />
+                  <Skeleton width="48px" height="10px" />
                 </div>
               ))}
             </div>
           ) : !stats || stats.recent_activity.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-white/20">
-              <Clock size={28} className="mb-2" />
-              <p className="text-sm">Nenhuma atividade recente</p>
-            </div>
+            <EmptyState
+              icon={<Clock size={24} />}
+              title="Nenhuma atividade recente"
+              description="As atividades de download e agendamento aparecerão aqui."
+            />
           ) : (
-            <div className="space-y-0">
+            <div className="flex flex-col divide-y divide-line">
               {stats.recent_activity.map((item, i) => (
-                <motion.div
+                <div
                   key={i}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.05 + i * 0.04 }}
-                  className="flex items-center gap-3 py-2.5 border-b border-white/[0.04] last:border-0"
+                  className="flex items-center gap-3 py-2.5 transition-colors hover:bg-surface-hover first:pt-0 last:pb-0"
                 >
                   <div
-                    className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{
-                      background: item.status === "success" ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
-                      border: `0.5px solid ${item.status === "success" ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)"}`,
-                    }}
+                    className={cn(
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border",
+                      item.status === "success"
+                        ? "bg-success-soft border-transparent text-success"
+                        : "bg-danger-soft border-transparent text-danger"
+                    )}
                   >
-                    {item.status === "success"
-                      ? <CheckCircle2 size={13} className="text-emerald-400" />
-                      : <AlertCircle size={13} className="text-red-400" />
-                    }
+                    {item.status === "success" ? (
+                      <CheckCircle2 size={13} strokeWidth={2} />
+                    ) : (
+                      <AlertCircle size={13} strokeWidth={2} />
+                    )}
                   </div>
-                  <p className="flex-1 text-sm text-white/55 truncate">{item.text}</p>
-                  <div className="flex items-center gap-1 text-[10px] text-white/20 flex-shrink-0">
-                    <Clock size={9} />
+                  <p className="flex-1 truncate text-sm text-ink-2">{item.text}</p>
+                  <span className="flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-ink-3">
+                    <Clock size={10} />
                     {timeAgo(item.created_at)}
-                  </div>
-                </motion.div>
+                  </span>
+                </div>
               ))}
             </div>
           )}
-        </motion.div>
+        </Card>
 
-        {/* Próximas Postagens */}
-        <motion.div variants={fadeUp} className="glass-card p-5">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-sm font-semibold text-white/80 tracking-wide uppercase">Próximas Postagens</h2>
+        {/* Upcoming posts */}
+        <Card
+          title="Próximas Postagens"
+          actions={
             <div className="flex items-center gap-2">
-              {loading && <div className="w-14 h-4 rounded-full bg-white/[0.06] animate-pulse" />}
-
               {!loading && stats && (
-                <span
-                  className="text-[10px] px-2 py-0.5 rounded-full"
-                  style={{
-                    background: "rgba(0,73,141,0.08)",
-                    border: "0.5px solid rgba(0,73,141,0.2)",
-                    color: "#00498D",
-                  }}
-                >
-                  {stats.queue.pending} na fila
-                </span>
+                <Badge tone="info">{stats.queue.pending} na fila</Badge>
               )}
-
               {!loading && stats && stats.queue.pending > 0 && (
-                <button
+                <Button
+                  variant={clearConfirm ? "danger" : "ghost"}
+                  size="sm"
+                  icon={clearing ? <RefreshCw size={12} className="animate-spin" /> : <Trash2 size={12} />}
                   onClick={handleClearQueue}
                   disabled={clearing}
-                  className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-all ${
-                    clearConfirm
-                      ? "bg-red-500/15 border-red-500/30 text-red-400"
-                      : "bg-white/[0.03] border-white/[0.08] text-white/25 hover:border-red-500/25 hover:text-red-400"
-                  }`}
                 >
-                  {clearing ? <RefreshCw size={9} className="animate-spin" /> : <Trash2 size={9} />}
                   {clearConfirm ? "Confirmar?" : "Limpar"}
-                </button>
+                </Button>
               )}
             </div>
-          </div>
-
+          }
+        >
           {loading ? (
-            <div className="space-y-3 animate-pulse">
+            <div className="flex flex-col gap-3">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl">
-                  <div className="w-9 h-9 rounded-lg bg-white/[0.06] flex-shrink-0" />
-                  <div className="flex-1 space-y-1.5">
-                    <div className="h-3 w-20 rounded bg-white/[0.06]" />
-                    <div className="h-2.5 w-14 rounded bg-white/[0.04]" />
+                <div key={i} className="flex items-center gap-3">
+                  <Skeleton width="36px" height="36px" radius="var(--radius-md)" />
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Skeleton width="80px" height="12px" />
+                    <Skeleton width="56px" height="10px" />
                   </div>
                 </div>
               ))}
             </div>
           ) : !stats || stats.upcoming_posts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-white/20">
-              <CalendarCheck size={28} className="mb-2" />
-              <p className="text-sm">Nenhuma agendada</p>
-            </div>
+            <EmptyState
+              icon={<CalendarCheck size={24} />}
+              title="Nenhuma agendada"
+              description="Posts agendados aparecerão aqui com data e horário."
+            />
           ) : (
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               {stats.upcoming_posts.map((post, i) => {
                 const { label, time } = formatScheduled(post.scheduled_at);
                 return (
-                  <motion.div
+                  <div
                     key={i}
-                    initial={{ opacity: 0, x: 8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.05 + i * 0.05 }}
-                    className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.03] transition-colors cursor-pointer group/post"
+                    className="flex items-center gap-3 rounded-lg p-2.5 transition-colors hover:bg-surface-hover"
                   >
-                    <div
-                      className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{
-                        background: "rgba(255,255,255,0.04)",
-                        border: "0.5px solid rgba(133,185,233,0.2)",
-                      }}
-                    >
-                      <Play size={13} style={{ color: "#85B9E9" }} />
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-hover text-accent">
+                      <Play size={13} strokeWidth={2} />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-white/70 truncate group-hover/post:text-white/90 transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-ink">
                         @{post.account_username}
                       </p>
-                      <p className="text-[10px] text-white/25">{label} às {time}</p>
+                      <p className="text-[11px] text-ink-3">
+                        {label} às {time}
+                      </p>
                     </div>
-                    <div
-                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                      style={{ background: "#00498D", boxShadow: "0 0 6px rgba(0,73,141,0.8)" }}
-                    />
-                  </motion.div>
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+                  </div>
                 );
               })}
             </div>
           )}
-        </motion.div>
+        </Card>
       </div>
 
-      {/* Ações Rápidas */}
-      <motion.div variants={fadeUp} className="glass-card p-5">
-        <h2 className="text-sm font-semibold text-white/80 tracking-wide uppercase mb-4">Ações Rápidas</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {quickActions.map((action, i) => (
-            <motion.a
-              key={i}
+      {/* ── Quick actions ──────────────────────────────────────── */}
+      <Card title="Ações Rápidas">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          {QUICK_ACTIONS.map((action) => (
+            <a
+              key={action.href}
               href={action.href}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.97 }}
-              className="flex flex-col items-center gap-3 p-4 rounded-xl cursor-pointer text-center group/action relative overflow-hidden transition-all duration-300"
-              style={{
-                background: "rgba(255,255,255,0.02)",
-                border: "0.5px solid rgba(255,255,255,0.07)",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLAnchorElement).style.border = `0.5px solid ${action.color}33`;
-                (e.currentTarget as HTMLAnchorElement).style.background = `${action.color}06`;
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLAnchorElement).style.border = "0.5px solid rgba(255,255,255,0.07)";
-                (e.currentTarget as HTMLAnchorElement).style.background = "rgba(255,255,255,0.02)";
-              }}
+              className="flex flex-col items-center gap-3 rounded-xl border border-line bg-surface p-4 text-center transition-colors duration-150 hover:border-line-control hover:bg-surface-hover"
             >
-              <div
-                className="absolute -top-6 -right-6 w-20 h-20 rounded-full blur-2xl pointer-events-none opacity-0 group-hover/action:opacity-60 transition-opacity duration-500"
-                style={{ background: `${action.color}55` }}
-              />
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center relative z-10"
-                style={{
-                  background: "rgba(255,255,255,0.04)",
-                  border: `0.5px solid ${action.color}22`,
-                }}
-              >
-                <action.icon size={18} style={{ color: action.color }} strokeWidth={1.5} />
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-hover text-accent">
+                <action.icon size={18} strokeWidth={1.75} />
               </div>
-              <div className="relative z-10">
-                <p className="text-xs font-medium text-white/70">{action.label}</p>
-                <p className="text-[10px] text-white/30 mt-0.5">{action.desc}</p>
+              <div>
+                <p className="text-xs font-medium text-ink">{action.label}</p>
+                <p className="mt-0.5 text-[11px] text-ink-3">{action.desc}</p>
               </div>
-            </motion.a>
+            </a>
           ))}
         </div>
-      </motion.div>
-
-    </motion.div>
+      </Card>
+    </div>
   );
 }

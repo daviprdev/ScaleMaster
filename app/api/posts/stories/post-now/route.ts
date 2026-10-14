@@ -13,6 +13,7 @@ interface PostNowBody {
   video_processing_mode?: string; // "original" (padrao) | "clean_metadata"
   /** Link direto divulgado junto do Story (URL externa). */
   story_link_url?: string | null;
+  use_proxy_pool?: boolean; // true = usar proxy do estoque na publicação (opt-in)
 }
 
 // Publica 1 mídia como Story AGORA para as contas selecionadas. Reaproveita o
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest) {
     post_type: "story",
     video_processing_mode: processingMode,
     story_link_url: storyLinkUrl,
+    use_proxy_pool: body.use_proxy_pool === true,
   }));
 
   const { error } = await admin.from("scheduled_posts").insert(rows);

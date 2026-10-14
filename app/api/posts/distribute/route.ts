@@ -92,6 +92,7 @@ interface DistributeBody {
   video_processing_mode?: string; // "original" (padrao) | "clean_metadata"
   share_to_feed?: boolean;        // true = Reels + grade | false = somente Reels
   priority_strategy?: string;     // "views" | "least_usage" | "random" (default: "views")
+  use_proxy_pool?: boolean;       // true = usar proxy do estoque na publicação (opt-in)
 }
 
 export async function POST(req: NextRequest) {
@@ -363,6 +364,7 @@ export async function POST(req: NextRequest) {
         campaign_id: campaignId,
         video_processing_mode: processingMode,
         share_to_feed: shareToFeed,
+        use_proxy_pool: body.use_proxy_pool === true,
       });
     }
   }
@@ -400,6 +402,7 @@ export async function POST(req: NextRequest) {
     share_to_feed: shareToFeed,
     priority_strategy: priorityStrategy,
     distribution_seed: distributionSeed,
+    use_proxy_pool: body.use_proxy_pool === true,
   });
   if (campaignInsertErr) {
     return NextResponse.json(

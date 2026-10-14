@@ -14,6 +14,7 @@ import {
   resolveMediaUrlForMode,
   type VideoProcessingMode,
 } from "@/lib/video-processing";
+import { selectProxyForPublish, closeProxyAgent } from "@/lib/publish-proxy-selector";
 import { requireCronAuth } from "@/lib/cron-auth";
 import { LOOP_SKIP_REASONS } from "@/lib/loop-readiness";
 import {
@@ -74,6 +75,7 @@ interface LoopRow {
   auto_caption_type?: string | null;
   video_processing_mode?: string | null;
   share_to_feed?: boolean | null;
+  use_proxy_pool?: boolean | null;
   caption_mode?: string | null;
   caption_strip_hashtags?: boolean | null;
   caption_strip_mentions?: boolean | null;
@@ -187,15 +189,31 @@ async function createContainerForAccount(
   // alterar o loop depois não muda o que já foi enviado à Meta.
   const shareToFeed = typeof loop.share_to_feed === "boolean" ? loop.share_to_feed : null;
 
-  const creationId = await createMediaContainerOnly(
-    account.ig_business_account_id!,
-    videoUrl,
-    caption,
-    tokenToUse,
-    "REELS",
-    shareToFeed
-  );
+  const containerId = crypto.randomUUID();
+  const useProxyPool = loop.use_proxy_pool === true;
+  const creationProxy = useProxyPool
+    ? await selectProxyForPublish(admin, loop.user_id, containerId)
+    : null;
+  if (useProxyPool && !creationProxy) {
+    throw new Error("Proxy do estoque ativado, mas não há proxy livre e válido para esta publicação.");
+  }
+
+  let creationId: string;
+  try {
+    creationId = await createMediaContainerOnly(
+      account.ig_business_account_id!,
+      videoUrl,
+      caption,
+      tokenToUse,
+      "REELS",
+      shareToFeed,
+      creationProxy?.agent
+    );
+  } finally {
+    await closeProxyAgent(creationProxy);
+  }
   const insertData: Record<string, unknown> = {
+    id: containerId,
     user_id: loop.user_id,
     loop_id: loop.id,
     account_id: account.id,
@@ -206,6 +224,7 @@ async function createContainerForAccount(
     cycle_number: cycleNumber,
     video_processing_mode: normalizeProcessingMode(loop.video_processing_mode),
     share_to_feed: shareToFeed,
+    use_proxy_pool: useProxyPool,
     // Auditoria: qual modo produziu o texto acima. A publicação usa `caption`
     // e nunca recalcula a partir daqui.
     caption_mode: normalizeCaptionMode(loop.caption_mode),
@@ -1435,7 +1454,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, user_id, name, folder_id, account_folder_id, is_infinite, cycles, cycles_done, current_cycle,
       interval_minutes, account_stagger_seconds, media_limit, captions, effect_mirror, effect_invert,
-      effect_zoom, effect_blur, effect_noise, effect_anti_ai, video_processing_mode, share_to_feed,
+      effect_zoom, effect_blur, effect_noise, effect_anti_ai, video_processing_mode, share_to_feed, use_proxy_pool,
       auto_caption_enabled, auto_caption_type,
       caption_mode, caption_strip_hashtags, caption_strip_mentions,
       priority_strategy, distribution_seed,

@@ -7,11 +7,13 @@ import {
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
   Shuffle, Zap, List, Library, Save, BookMarked, BarChart2,
   RefreshCw, ChevronDown, Sparkles, Pencil, SlidersHorizontal, LayoutGrid,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
 import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
+import { ProxyPoolToggle } from "@/components/dashboard/ProxyPoolToggle";
 import {
   validateInstagramCaption,
   INSTAGRAM_CAPTION_MAX_LENGTH,
@@ -1254,6 +1256,9 @@ export default function PostarPage() {
 
   // Onde o Reel aparece no perfil (share_to_feed da Meta). Padrão: Reels + grade.
   const [shareToFeed, setShareToFeed] = useState(true);
+
+  // Proxy do estoque para publicação (opt-in) — padrão: desligado (fluxo atual).
+  const [useProxyPool, setUseProxyPool] = useState(false);
   // "custom" preserva o comportamento histórico desta aba (pool digitado
   // ou legenda automática). Só muda se o usuário escolher outro modo.
   const [captionMode, setCaptionMode] = useState<CaptionMode>("custom");
@@ -1400,6 +1405,7 @@ export default function PostarPage() {
           caption_strip_hashtags: stripHashtags,
           caption_strip_mentions: stripMentions,
           priority_strategy: priorityStrategy,
+          use_proxy_pool: useProxyPool,
         }),
       });
 
@@ -2155,6 +2161,15 @@ export default function PostarPage() {
               <VideoProcessingSelector
                 value={videoProcessingMode}
                 onChange={setVideoProcessingMode}
+              />
+            </SectionCard>
+
+            {/* 7. Proxy do estoque (opt-in) */}
+            <SectionCard>
+              <SectionLabel Icon={ShieldCheck}>Rota de publicação</SectionLabel>
+              <ProxyPoolToggle
+                value={useProxyPool}
+                onChange={setUseProxyPool}
               />
             </SectionCard>
 

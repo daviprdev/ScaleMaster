@@ -3,3 +3,4 @@ export { Sidebar } from "./Sidebar";
 export { Topbar } from "./Topbar";
 export { CommandPalette } from "./CommandPalette";
 export { NotificationPopover } from "./NotificationPopover";
+export { GlobalBanner } from "./GlobalBanner";

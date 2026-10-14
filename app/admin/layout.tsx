@@ -1,26 +1,31 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import type { Metadata } from "next";
 import Link from "next/link";
-import {
-  Shield,
-  LayoutDashboard,
-  Users,
-  Instagram,
-  Headphones,
-  LogOut,
-  Activity,
-  Bell,
-} from "lucide-react";
+import { redirect } from "next/navigation";
+import { Shield, Users, FileText, Bell, MessageSquare, Settings } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/server";
 
-export const metadata = { title: "Admin — Scale Master" };
+export const metadata: Metadata = {
+  title: "Admin — Scale Master",
+  description: "Painel administrativo do Scale Master",
+};
 
-const NAV_ITEMS = [
-  { href: "/admin",              label: "Visão Geral",       icon: LayoutDashboard },
-  { href: "/admin/users",        label: "Usuários",           icon: Users },
-  { href: "/admin/accounts",     label: "Contas Conectadas",  icon: Instagram },
-  { href: "/admin/notifications",label: "Notificações",       icon: Bell },
-  { href: "/admin/logs",         label: "Logs",               icon: Activity },
-  { href: "/admin/support",      label: "Suporte",            icon: Headphones },
+// Admin pages depend on the signed-in user and must not be prerendered at build time.
+export const dynamic = "force-dynamic";
+
+interface AdminNavItem {
+  label: string;
+  href: string;
+  icon: React.ElementType;
+}
+
+const ADMIN_NAV: AdminNavItem[] = [
+  { label: "Visão geral", href: "/admin", icon: Shield },
+  { label: "Usuários", href: "/admin/users", icon: Users },
+  { label: "Contas", href: "/admin/accounts", icon: Users },
+  { label: "Logs", href: "/admin/logs", icon: FileText },
+  { label: "Notificações", href: "/admin/notifications", icon: Bell },
+  { label: "Suporte", href: "/admin/support", icon: MessageSquare },
 ];
 
 export default async function AdminLayout({
@@ -44,53 +49,91 @@ export default async function AdminLayout({
   if (roleData?.role !== "admin") redirect("/dashboard");
 
   return (
-    <div className="min-h-dvh bg-black text-white flex pt-safe pb-safe">
-      {/* Subtle grid overlay */}
-      <div className="fixed inset-0 grid-bg opacity-10 pointer-events-none" />
-
-      {/* ── Sidebar ── */}
-      <aside className="relative z-10 w-60 shrink-0 flex flex-col border-r border-white/[0.07] bg-black/70 backdrop-blur-[22px]">
+    <div className="flex h-screen w-full bg-bg">
+      {/* Sidebar */}
+      <aside className="hidden w-[var(--sidebar-width)] flex-col border-r border-line bg-surface lg:flex">
         {/* Logo */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-white/[0.07]">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#00498D]/[0.08] border border-[#00498D]/20">
-            <Shield className="w-4 h-4 text-[#00498D]" />
-          </div>
-          <div className="leading-none">
-            <p className="text-sm font-bold text-white">Scale Master</p>
-            <p className="text-[11px] text-[#00498D] font-medium mt-0.5 tracking-wide">Admin Panel</p>
-          </div>
+        <div className="flex h-[var(--topbar-height)] items-center gap-3 border-b border-line px-4">
+          <Link href="/admin" className="flex items-center gap-2.5">
+            <div className="relative h-[26px] w-[26px] shrink-0 overflow-hidden rounded-[7px]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/brand/scale-master-logo.jpg"
+                alt="Scale Master"
+                width={26}
+                height={26}
+                className="h-full w-full object-contain"
+              />
+            </div>
+            <span className="text-[15px] font-semibold tracking-tight text-wordmark">
+              Admin
+            </span>
+          </Link>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-white/45 hover:text-white hover:bg-[#00498D]/[0.06] transition-all duration-150 group"
-            >
-              <Icon className="w-4 h-4 shrink-0 group-hover:text-[#00498D] transition-colors" />
-              {label}
-            </Link>
-          ))}
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto px-2 py-4 custom-scrollbar">
+          <div className="flex flex-col gap-1">
+            {ADMIN_NAV.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "group flex h-[34px] items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium transition-colors duration-150 ease-in-out",
+                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
+                    "text-ink-2 hover:bg-surface-hover hover:text-ink"
+                  )}
+                >
+                  <Icon
+                    size={17}
+                    strokeWidth={1.75}
+                    className="shrink-0 text-ink-3 group-hover:text-ink-2"
+                  />
+                  <span className="truncate">{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         </nav>
 
         {/* Footer */}
-        <div className="px-3 py-4 border-t border-white/[0.07] space-y-0.5">
+        <div className="border-t border-line p-3">
           <Link
             href="/dashboard"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-white/35 hover:text-white/80 hover:bg-white/[0.05] transition-all duration-150 group"
+            className="flex h-8 items-center gap-2 rounded-md px-2 text-[13px] font-medium text-ink-3 hover:bg-surface-hover hover:text-ink transition-colors"
           >
-            <LogOut className="w-4 h-4 shrink-0 group-hover:text-[#85B9E9] transition-colors" />
-            Voltar ao Dashboard
+            <Settings size={16} strokeWidth={1.75} />
+            <span>Voltar ao painel</span>
           </Link>
-          <p className="px-3 pt-2 text-[11px] text-white/20 truncate">{user.email}</p>
         </div>
       </aside>
 
-      {/* ── Main content ── */}
-      <div className="relative z-10 flex-1 flex flex-col min-w-0">
-        <main className="flex-1 px-8 py-8">{children}</main>
+      {/* Main content */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Mobile header */}
+        <header className="flex h-[var(--topbar-height)] items-center gap-3 border-b border-line bg-bg px-4 lg:hidden">
+          <Link href="/admin" className="flex items-center gap-2">
+            <div className="relative h-[22px] w-[22px] shrink-0 overflow-hidden rounded-[6px]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/brand/scale-master-logo.jpg"
+                alt="Scale Master"
+                width={22}
+                height={22}
+                className="h-full w-full object-contain"
+              />
+            </div>
+            <span className="text-sm font-semibold text-wordmark">Admin</span>
+          </Link>
+        </header>
+
+        <main className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[var(--content-max)] px-4 py-7 sm:px-8">
+            {children}
+          </div>
+        </main>
       </div>
     </div>
   );

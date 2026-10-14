@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { ProxyPoolToggle } from "@/components/dashboard/ProxyPoolToggle";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -694,6 +695,7 @@ export default function StoriesPage() {
 
   // Publish
   const [publishing, setPublishing] = useState(false);
+  const [useProxyPool, setUseProxyPool] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   // Link direto divulgado junto do Story (URL externa; a API não anexa sticker).
   const [storyLinkUrl, setStoryLinkUrl] = useState("");
@@ -949,6 +951,7 @@ export default function StoriesPage() {
           media_type: media.media_type,
           // Stories não oferecem limpeza de metadados: sempre o arquivo original.
           video_processing_mode: "original",
+          use_proxy_pool: useProxyPool,
           story_link_url: storyLinkUrl.trim() || null,
         }),
       });
@@ -1181,6 +1184,10 @@ export default function StoriesPage() {
               className="w-full px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-sm text-white/90 placeholder:text-white/25 focus:border-[#85B9E9]/40 focus:outline-none transition-colors"
             />
             <p className="mt-1 text-[10px] text-white/30">URL externa anexada ao Story como sticker de link.</p>
+          </SectionCard>
+
+          <SectionCard>
+            <ProxyPoolToggle value={useProxyPool} onChange={setUseProxyPool} disabled={publishing} />
           </SectionCard>
 
           {/* Nota */}

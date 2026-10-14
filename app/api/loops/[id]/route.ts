@@ -41,7 +41,7 @@ export async function PATCH(
     "interval_minutes", "media_limit", "captions", "cover_image_url",
     "effect_mirror", "effect_invert", "effect_zoom", "effect_blur", "effect_noise", "effect_anti_ai",
     "auto_caption_enabled", "auto_caption_type", "account_stagger_seconds",
-    "video_processing_mode", "share_to_feed",
+    "video_processing_mode", "share_to_feed", "use_proxy_pool",
     "caption_mode", "caption_strip_hashtags", "caption_strip_mentions",
     "priority_strategy", "distribution_seed"];
   for (const key of scalars) {

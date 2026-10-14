@@ -4,6 +4,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { GlobalBanner } from "./GlobalBanner";
 
 interface AppShellProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
@@ -70,6 +71,8 @@ export function AppShell({ className, children, ...props }: AppShellProps) {
 
       {/* Main content column */}
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* Global banner placeholder — wired to state in Fase 3+ */}
+        {/* <GlobalBanner message="..." tone="warning" onDismiss={() => {}} /> */}
         <Topbar
           onMenuClick={openMobileSidebar}
           sidebarCollapsed={sidebarCollapsed}

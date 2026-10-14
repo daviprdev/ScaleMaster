@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Link2, Copy, ExternalLink, RefreshCw, ChevronDown, CheckCircle2, Loader2 } from "lucide-react";
+import { X, Link2, Copy, ExternalLink, RefreshCw, ChevronDown, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 import { getAppUrlClient } from "@/lib/app-url-client";
 
 interface UserMetaApp {
@@ -26,17 +26,25 @@ export default function MagicLinkModal({ open, onClose }: Props) {
   const [copied, setCopied] = useState(false);
   const [appsLoading, setAppsLoading] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const magicUrl = token ? `${APP_BASE}/add/${token}` : "";
 
   // Carrega lista de apps e token existente
   const loadData = useCallback(async () => {
     setAppsLoading(true);
+    setError(null);
     try {
       const [appsRes, tokenRes] = await Promise.all([
         fetch("/api/apps"),
         fetch("/api/magic-link"),
       ]);
+
+      if (!appsRes.ok || !tokenRes.ok) {
+        setError("Não foi possível carregar os dados. Verifique sua conexão e tente novamente.");
+        return;
+      }
+
       const appsData = await appsRes.json();
       const tokenData = await tokenRes.json();
 
@@ -46,7 +54,7 @@ export default function MagicLinkModal({ open, onClose }: Props) {
         setSelectedAppId(tokenData.app_id ?? "__global__");
       }
     } catch {
-      // silently fail
+      setError("Erro de conexão ao carregar os dados. Tente novamente.");
     } finally {
       setAppsLoading(false);
     }
@@ -58,6 +66,7 @@ export default function MagicLinkModal({ open, onClose }: Props) {
 
   async function handleGenerate() {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/magic-link", {
         method: "POST",
@@ -66,14 +75,29 @@ export default function MagicLinkModal({ open, onClose }: Props) {
           app_id: selectedAppId === "__global__" ? null : selectedAppId,
         }),
       });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Erro ao gerar o link. Tente novamente.");
+        return;
+      }
+
       const data = await res.json();
       if (data.token) {
         setToken(data.token);
-        // Copy automatically
-        await navigator.clipboard.writeText(`${APP_BASE}/add/${data.token}`);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2500);
+        // Copy automatically — fallback to manual if clipboard fails
+        try {
+          await navigator.clipboard.writeText(`${APP_BASE}/add/${data.token}`);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2500);
+        } catch {
+          // Clipboard blocked — link is visible in the input for manual copy
+        }
+      } else {
+        setError("Resposta inválida do servidor. Tente novamente.");
       }
+    } catch {
+      setError("Erro de conexão ao gerar o link. Verifique sua rede e tente novamente.");
     } finally {
       setLoading(false);
     }
@@ -139,6 +163,14 @@ export default function MagicLinkModal({ open, onClose }: Props) {
               </div>
 
               <div className="p-5 space-y-4">
+                {/* Error banner */}
+                {error && (
+                  <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-[13px] leading-relaxed">
+                    <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
                 {/* Description */}
                 <p className="text-white/50 text-[13px] leading-relaxed">
                   Salve este link nos favoritos ou compartilhe com quem vai conectar a conta. Ao acessar, o navegador é redirecionado automaticamente para o login do Instagram — <span className="text-white/70">sem precisar estar logado no SaaS</span>.

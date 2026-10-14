@@ -31,6 +31,7 @@ interface ScheduleBody {
   // true  → mesmo vídeo para todas as contas por disparo (1 vídeo a cada N min por conta)
   // false → vídeo diferente por conta em cada disparo (anti-spam)
   same_video_per_slot?: boolean;
+  use_proxy_pool?: boolean; // true = usar proxy do estoque na publicação (opt-in)
 }
 
 export async function POST(req: NextRequest) {
@@ -139,6 +140,7 @@ export async function POST(req: NextRequest) {
             user_id: user.id, account_id: accountId,
             video_id: video.id, video_url: video.public_url,
             caption, scheduled_at: slotTime, status: "pending", campaign_id: campaignId,
+            use_proxy_pool: body.use_proxy_pool === true,
           });
         }
       }
@@ -163,6 +165,7 @@ export async function POST(req: NextRequest) {
             user_id: user.id, account_id: accountId,
             video_id: video.id, video_url: video.public_url,
             caption, scheduled_at: slotTime, status: "pending", campaign_id: campaignId,
+            use_proxy_pool: body.use_proxy_pool === true,
           });
         }
       }

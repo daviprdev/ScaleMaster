@@ -31,7 +31,7 @@ export async function GET() {
       id, user_id, folder_id, account_folder_id, name, is_infinite, cycles, interval_minutes,
       account_stagger_seconds, media_limit, captions, cover_image_url,
       effect_mirror, effect_invert, effect_zoom, effect_blur, effect_noise, effect_anti_ai,
-      auto_caption_enabled, auto_caption_type, video_processing_mode, share_to_feed,
+      auto_caption_enabled, auto_caption_type, video_processing_mode, share_to_feed, use_proxy_pool,
       caption_mode, caption_strip_hashtags, caption_strip_mentions,
       priority_strategy, distribution_seed,
       status, created_at, last_skip_reason, last_skip_at,
@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
     account_stagger_seconds?: number | null;
     video_processing_mode?: string;
     share_to_feed?: boolean;
+    use_proxy_pool?: boolean;
     caption_mode?: string;
     caption_strip_hashtags?: boolean;
     caption_strip_mentions?: boolean;
@@ -168,6 +169,7 @@ export async function POST(req: NextRequest) {
       account_stagger_seconds: body.account_stagger_seconds ?? null,
       video_processing_mode: normalizeProcessingMode(body.video_processing_mode),
       share_to_feed: typeof body.share_to_feed === "boolean" ? body.share_to_feed : null,
+      use_proxy_pool: body.use_proxy_pool === true,
       // Modo de legenda. Ausente = "custom" = pool/automática, que é o
       // comportamento de sempre do Loop.
       caption_mode: normalizeCaptionMode(body.caption_mode),

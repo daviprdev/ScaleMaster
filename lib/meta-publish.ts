@@ -5,7 +5,7 @@ const GRAPH_API = "https://graph.instagram.com/v21.0";
 // Vercel — sem proxy residencial (decisão de arquitetura, ver CLAUDE.md).
 // undici.fetch em vez do fetch global do Next.js: o patch de cache do Next
 // pode alterar/reter respostas que aqui precisam ser lidas cruas.
-import { fetch as undiciFetch } from "undici";
+import { fetch as undiciFetch, type Dispatcher } from "undici";
 // Import relativo (e não `@/lib/...`) de propósito: a suíte de testes compila
 // este arquivo isolado com `tsc`, fora do resolver de paths do Next.
 import { validateInstagramCaption, InvalidCaptionError } from "./reel-captions";
@@ -87,7 +87,8 @@ async function createMediaContainer(
   caption: string,
   token: string,
   mediaType: "REELS" | "STORIES" = "REELS",
-  shareToFeed: ShareToFeed = null
+  shareToFeed: ShareToFeed = null,
+  dispatcher?: Dispatcher
 ): Promise<string> {
   // Sanitiza + normaliza: escopo LOCAL à chamada — nunca compartilhado entre contas.
   // Nunca envia undefined/"undefined" — causaria posts sem legenda de forma silenciosa.
@@ -136,12 +137,14 @@ async function createMediaContainer(
   );
 
   // undiciFetch: evita o fetch global patcheado pelo Next.js (cache/retentativa)
-  const res = await undiciFetch(`${GRAPH_API}/${igAccountId}/media`, {
+  const fetchOpts: Record<string, unknown> = {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: formBody,
     signal: AbortSignal.timeout(45_000),
-  });
+  };
+  if (dispatcher) fetchOpts.dispatcher = dispatcher;
+  const res = await undiciFetch(`${GRAPH_API}/${igAccountId}/media`, fetchOpts as any);
 
   // Lê como texto antes de parsear — captura warnings/messages ocultas que a Meta
   // inclui no body mesmo com 200 OK (ex: campo ignorado, scope insuficiente).
@@ -165,13 +168,16 @@ async function pollContainerStatus(
   token: string,
   // 6 tentativas × 8s = 48s max — fica dentro do orçamento de 60s do Hobby plan
   maxAttempts = 6,
-  intervalMs = 8_000
+  intervalMs = 8_000,
+  dispatcher?: Dispatcher
 ): Promise<void> {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, i === 0 ? 5_000 : intervalMs));
+    const pollOpts: Record<string, unknown> = { signal: AbortSignal.timeout(45_000) };
+    if (dispatcher) pollOpts.dispatcher = dispatcher;
     const res = await undiciFetch(
       `${GRAPH_API}/${creationId}?fields=status_code&access_token=${encodeURIComponent(token)}`,
-      { signal: AbortSignal.timeout(45_000) }
+      pollOpts as any
     );
     const data = (await res.json()) as {
       status_code?: string;
@@ -189,19 +195,22 @@ async function pollContainerStatus(
 async function publishContainer(
   igAccountId: string,
   creationId: string,
-  token: string
+  token: string,
+  dispatcher?: Dispatcher
 ): Promise<string> {
   const params = new URLSearchParams({
     creation_id: creationId,
     access_token: token,
   });
   console.log(`[meta] publish ig=${igAccountId.slice(0, 10)}… creation=${creationId.slice(0, 10)}…`);
-  const res = await undiciFetch(`${GRAPH_API}/${igAccountId}/media_publish`, {
+  const pubOpts: Record<string, unknown> = {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),
     signal: AbortSignal.timeout(45_000),
-  });
+  };
+  if (dispatcher) pubOpts.dispatcher = dispatcher;
+  const res = await undiciFetch(`${GRAPH_API}/${igAccountId}/media_publish`, pubOpts as any);
   const data = (await res.json()) as { id?: string; error?: { message: string } };
   if (!res.ok || !data.id) {
     throw new Error(data.error?.message ?? "Falha ao publicar o container de mídia.");
@@ -222,7 +231,8 @@ async function publishContainer(
 export async function updatePostCaption(
   mediaId: string,
   caption: string,
-  token: string
+  token: string,
+  dispatcher?: Dispatcher
 ): Promise<void> {
   const sanitized = sanitizeCaption(caption);
   if (!sanitized) return;
@@ -231,12 +241,14 @@ export async function updatePostCaption(
     `comment_enabled=1`,
     `access_token=${encodeURIComponent(token)}`,
   ].join("&");
-  const res = await undiciFetch(`${GRAPH_API}/${mediaId}`, {
+  const capOpts: Record<string, unknown> = {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: formBody,
     signal: AbortSignal.timeout(45_000),
-  });
+  };
+  if (dispatcher) capOpts.dispatcher = dispatcher;
+  const res = await undiciFetch(`${GRAPH_API}/${mediaId}`, capOpts as any);
   const rawText = await res.text();
   if (!res.ok) {
     console.warn(`[meta] caption update falhou media=${mediaId} http=${res.status}`);
@@ -258,9 +270,10 @@ export async function createMediaContainerOnly(
   caption: string,
   token: string,
   mediaType: "REELS" | "STORIES" = "REELS",
-  shareToFeed: ShareToFeed = null
+  shareToFeed: ShareToFeed = null,
+  dispatcher?: Dispatcher
 ): Promise<string> {
-  return createMediaContainer(igAccountId, videoUrl, caption, token, mediaType, shareToFeed);
+  return createMediaContainer(igAccountId, videoUrl, caption, token, mediaType, shareToFeed, dispatcher);
 }
 
 export type ContainerPollStatus = "finished" | "in_progress" | "error";
@@ -271,11 +284,14 @@ export type ContainerPollStatus = "finished" | "in_progress" | "error";
  */
 export async function pollContainerStatusOnce(
   creationId: string,
-  token: string
+  token: string,
+  dispatcher?: Dispatcher
 ): Promise<ContainerPollStatus> {
+  const pollOnceOpts: Record<string, unknown> = { signal: AbortSignal.timeout(45_000) };
+  if (dispatcher) pollOnceOpts.dispatcher = dispatcher;
   const res = await undiciFetch(
     `${GRAPH_API}/${creationId}?fields=status_code&access_token=${encodeURIComponent(token)}`,
-    { signal: AbortSignal.timeout(45_000) }
+    pollOnceOpts as any
   );
   const data = (await res.json()) as {
     status_code?: string;
@@ -294,9 +310,10 @@ export async function pollContainerStatusOnce(
 export async function publishReadyContainer(
   igAccountId: string,
   creationId: string,
-  token: string
+  token: string,
+  dispatcher?: Dispatcher
 ): Promise<string> {
-  return publishContainer(igAccountId, creationId, token);
+  return publishContainer(igAccountId, creationId, token, dispatcher);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -310,7 +327,8 @@ export async function publishViaMetaAPI(
   metaAccessToken: string,
   videoUrl: string,
   caption: string,
-  shareToFeed: ShareToFeed = null
+  shareToFeed: ShareToFeed = null,
+  dispatcher?: Dispatcher
 ): Promise<MetaPublishResult> {
   try {
     const creationId = await createMediaContainer(
@@ -319,13 +337,14 @@ export async function publishViaMetaAPI(
       caption,
       metaAccessToken,
       "REELS",
-      shareToFeed
+      shareToFeed,
+      dispatcher
     );
     // 4 tentativas × 6s = 5s inicial + 3×6s = 23s máx de espera.
     // Se a Meta não processar em 23s, retorna erro "não terminou de processar"
     // que o publish-scheduled trata como retryable (tenta de novo no próximo cron 1min).
-    await pollContainerStatus(creationId, metaAccessToken, 4, 6_000);
-    const mediaId = await publishContainer(igBusinessAccountId, creationId, metaAccessToken);
+    await pollContainerStatus(creationId, metaAccessToken, 4, 6_000, dispatcher);
+    const mediaId = await publishContainer(igBusinessAccountId, creationId, metaAccessToken, dispatcher);
     return { status: "ok", media_id: mediaId };
   } catch (err) {
     return {

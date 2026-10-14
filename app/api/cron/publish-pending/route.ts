@@ -7,6 +7,11 @@ import {
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { isAccountDeadError, markDeadAccounts, type DeadAccountCandidate } from "@/lib/account-health";
 import { requireCronAuth } from "@/lib/cron-auth";
+import {
+  selectProxyForPublish,
+  closeProxyAgent,
+  type SelectedProxy,
+} from "@/lib/publish-proxy-selector";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -35,6 +40,7 @@ interface PendingContainerRow {
   caption: string;
   created_at: string;
   retry_after: string | null;
+  use_proxy_pool: boolean | null;
   instagram_accounts: AccountRow | null;
 }
 
@@ -83,7 +89,7 @@ export async function GET(req: NextRequest) {
     .from("pending_containers")
     .select(`
       id, user_id, account_id, ig_business_account_id,
-      creation_id, caption, created_at, retry_after,
+      creation_id, caption, created_at, retry_after, use_proxy_pool,
       instagram_accounts (
         id, username, meta_access_token, token_expires_at, fb_page_id
       )
@@ -183,8 +189,22 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // Chamada oficial da Meta: conexão direta (sem proxy).
-      const pollStatus = await pollContainerStatusOnce(container.creation_id, tokenToUse);
+      // ── Seleção de proxy por publicação (opt-in) ──────────────────────
+      // O valor é snapshot da configuração do loop no momento em que o container foi criado.
+      let pendingProxy: SelectedProxy | null = null;
+      if (container.use_proxy_pool === true) {
+        pendingProxy = await selectProxyForPublish(admin, container.user_id, container.id);
+      }
+      let pollStatus: Awaited<ReturnType<typeof pollContainerStatusOnce>>;
+      try {
+        pollStatus = await pollContainerStatusOnce(
+          container.creation_id,
+          tokenToUse,
+          pendingProxy?.agent
+        );
+      } finally {
+        await closeProxyAgent(pendingProxy);
+      }
 
       if (pollStatus === "in_progress") {
         // Throttle de poll: aguarda 2 min antes do próximo check.
@@ -220,16 +240,24 @@ export async function GET(req: NextRequest) {
       }
       publishAttemptsInThisRun++;
 
+      // Re-seleciona proxy para a fase de publicação (mesmo proxy do poll).
+      let pubProxy: SelectedProxy | null = null;
+      if (container.use_proxy_pool === true) {
+        pubProxy = await selectProxyForPublish(admin, container.user_id, container.id);
+      }
       let mediaId = "";
       try {
         mediaId = await publishReadyContainer(
           container.ig_business_account_id,
           container.creation_id,
-          tokenToUse
+          tokenToUse,
+          pubProxy?.agent
         );
       } catch (pubErr) {
         const pubMsg = pubErr instanceof Error ? pubErr.message : String(pubErr);
         throw pubErr;
+      } finally {
+        await closeProxyAgent(pubProxy);
       }
 
       await (admin as any)

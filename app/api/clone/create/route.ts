@@ -32,6 +32,7 @@ interface CloneBody {
   caption_mode?: string;          // original (padrão AQUI) | custom | none
   caption_strip_hashtags?: boolean;
   caption_strip_mentions?: boolean;
+  use_proxy_pool?: boolean;       // true = usar proxy do estoque na publicação (opt-in)
 }
 
 function fisherYates<T>(arr: T[]): T[] {
@@ -190,6 +191,7 @@ export async function POST(req: NextRequest) {
         clone_source_profile: profile_username ?? null,
         video_processing_mode: processingMode,
         share_to_feed:         shareToFeed,
+        use_proxy_pool:        body.use_proxy_pool === true,
       });
     }
   }

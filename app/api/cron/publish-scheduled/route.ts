@@ -7,6 +7,11 @@ import {
 } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import {
+  selectProxyForPublish,
+  closeProxyAgent,
+  type SelectedProxy,
+} from "@/lib/publish-proxy-selector";
+import {
   normalizeProcessingMode,
   resolveMediaUrlForMode,
   isImageMedia,
@@ -56,6 +61,8 @@ interface PostRow {
   video_processing_mode: string | null;
   share_to_feed: boolean | null;
   campaign_id: string | null;
+  use_proxy_pool: boolean | null;
+  proxy_pool_id_used: string | null;
   instagram_accounts: AccountRow | null;
   videos_library: { public_url: string } | null;
 }
@@ -179,7 +186,7 @@ export async function GET(req: NextRequest) {
   // apenas para os campaign_ids presentes no batch.
   // Preservar posts de Loop/Clonar/Postar manual que não têm campanha.
   const SELECT_FIELDS =
-    "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, video_processing_mode, share_to_feed, campaign_id, " +
+    "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, video_processing_mode, share_to_feed, campaign_id, use_proxy_pool, proxy_pool_id_used, " +
     "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id), " +
     "videos_library(public_url)";
 
@@ -456,15 +463,54 @@ export async function GET(req: NextRequest) {
           `[publish-scheduled] Criando container @${account.username} | ${effectiveVideoUrl.slice(0, 70)}…`
         );
         const mediaType = post.post_type === "story" ? "STORIES" : "REELS";
-        // share_to_feed só existe para Reels; o helper ignora em STORIES.
-        creationId = await createMediaContainerOnly(
-          account.ig_business_account_id,
-          effectiveVideoUrl,
-          caption,
-          tokenToUse,
-          mediaType,
-          typeof post.share_to_feed === "boolean" ? post.share_to_feed : null
-        );
+
+        // ── Seleção de proxy por publicação (opt-in) ──────────────────────
+        // use_proxy_pool=true → seleciona proxy LIVRE do estoque do usuário
+        // no momento da execução (round-robin por post_id). A escolha é feita
+        // aqui, não no agendamento — proxies mortos/indisponíveis são ignorados.
+        // Sem fallback silencioso: se não há proxy ativo, falha explícita.
+        let publishProxy: SelectedProxy | null = null;
+        if (post.use_proxy_pool === true && !post.proxy_pool_id_used) {
+          publishProxy = await selectProxyForPublish(admin, post.user_id!, post.id);
+          if (!publishProxy) {
+            // Falha explícita — NÃO faz fallback direto silencioso.
+            await admin
+              .from("scheduled_posts")
+              .update({
+                status: "failed",
+                error_message: "[PROXY] Nenhum proxy ativo disponível no estoque. Desative a opção de proxy ou adicione proxies ao estoque.",
+              })
+              .eq("id", post.id);
+            summary.failed++;
+            console.error(
+              `[publish-scheduled] ⛔ @${account.username}: use_proxy_pool=true mas nenhum proxy livre no estoque.`
+            );
+            continue;
+          }
+          // Registra qual proxy foi selecionado para auditoria.
+          await admin
+            .from("scheduled_posts")
+            .update({ proxy_pool_id_used: publishProxy.poolId })
+            .eq("id", post.id);
+          console.log(
+            `[publish-scheduled] 🔀 @${account.username}: proxy ${publishProxy.safeLabel}… selecionado.`
+          );
+        }
+
+        try {
+          // share_to_feed só existe para Reels; o helper ignora em STORIES.
+          creationId = await createMediaContainerOnly(
+            account.ig_business_account_id,
+            effectiveVideoUrl,
+            caption,
+            tokenToUse,
+            mediaType,
+            typeof post.share_to_feed === "boolean" ? post.share_to_feed : null,
+            publishProxy?.agent
+          );
+        } finally {
+          await closeProxyAgent(publishProxy);
+        }
         await admin
           .from("scheduled_posts")
           .update({ creation_id: creationId })
@@ -477,7 +523,22 @@ export async function GET(req: NextRequest) {
       }
 
       // ── FASE 2: Poll status ───────────────────────────────────────────
-      const pollStatus = await pollContainerStatusOnce(creationId, tokenToUse);
+      // Para posts com proxy já registrado (retry), re-seleciona o mesmo proxy
+      // para manter consistência nas fases poll/publish.
+      let pollProxy: SelectedProxy | null = null;
+      if (post.use_proxy_pool === true) {
+        // Se já tem proxy_pool_id_used, tenta re-selecionar pelo mesmo pool ID.
+        // Se não tem (container criado neste run), usa null (o proxy já foi fechado acima).
+        if (post.proxy_pool_id_used) {
+          pollProxy = await selectProxyForPublish(admin, post.user_id!, post.id);
+        }
+      }
+      let pollStatus: Awaited<ReturnType<typeof pollContainerStatusOnce>>;
+      try {
+        pollStatus = await pollContainerStatusOnce(creationId, tokenToUse, pollProxy?.agent);
+      } finally {
+        await closeProxyAgent(pollProxy);
+      }
 
       if (pollStatus === "in_progress") {
         await admin
@@ -535,11 +596,22 @@ export async function GET(req: NextRequest) {
       publishAttemptsInThisRun++;
 
       console.log(`[publish-scheduled] Publicando ${creationId} (@${account.username})…`);
-      const mediaId = await publishReadyContainer(
-        account.ig_business_account_id,
-        creationId,
-        tokenToUse
-      );
+      // Re-seleciona proxy para a fase de publicação (mesmo proxy da criação).
+      let pubProxy: SelectedProxy | null = null;
+      if (post.use_proxy_pool === true) {
+        pubProxy = await selectProxyForPublish(admin, post.user_id!, post.id);
+      }
+      let mediaId: string;
+      try {
+        mediaId = await publishReadyContainer(
+          account.ig_business_account_id,
+          creationId,
+          tokenToUse,
+          pubProxy?.agent
+        );
+      } finally {
+        await closeProxyAgent(pubProxy);
+      }
 
       await admin
         .from("scheduled_posts")
