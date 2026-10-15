@@ -318,17 +318,18 @@ export async function POST(request: Request) {
 
   const stale = (accounts as unknown as AccountRow[]).filter((a) => {
     if (excludeIds.includes(a.id)) return false;
-    // Contas recém-conectadas (< 10 min) recebem grace period — a Meta precisa
-    // de tempo para ativar o token em todos os seus servidores. Sem o grace period,
-    // qualquer falha transitória nesse momento marcaria a conta como error
-    // logo após a conexão, antes mesmo de ela postar qualquer coisa.
-    // Vale mesmo em sync forçado pelo botão manual.
+    // Contas recém-conectadas (< 30 min) recebem grace period no sync AUTOMÁTICO
+    // — a Meta precisa de tempo para ativar o token em todos os seus servidores.
+    // Sem o grace period, qualquer falha transitória nesse momento marcaria a conta
+    // como error logo após a conexão, antes mesmo de ela postar qualquer coisa.
+    // Sync FORÇADO (botão manual) ignora o grace: o usuário quer ver os dados agora,
+    // incluindo stories ativos. Leitura de stories é operação de baixo risco.
     if (a.connected_at) {
       const ageMs = Date.now() - new Date(a.connected_at).getTime();
-      if (ageMs < NEW_ACCOUNT_GRACE_MS) {
+      if (!force && ageMs < NEW_ACCOUNT_GRACE_MS) {
         console.log(
           `[sync-all] @${a.username} conectada há ${Math.round(ageMs / 60_000)}min ` +
-          `— grace period ativo, pulando sync.`
+          `— grace period ativo, pulando sync automático.`
         );
         return false;
       }
