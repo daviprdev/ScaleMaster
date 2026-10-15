@@ -311,8 +311,15 @@ export async function GET(req: NextRequest) {
     const caption = post.caption ?? "";
 
     // ── Validações rápidas SEM claim ──────────────────────────────────────
-    if (!account || !account.is_active) {
-      await admin.from("scheduled_posts").update({ status: "failed", error_message: "Conta não encontrada ou inativa." }).eq("id", post.id);
+    // P1 CORREÇÃO (2026-10-15): Removido filtro is_active.
+    // O commit 167cd83 removeu o filtro is_active da UI "Postar" para permitir
+    // selecionar contas que existem mas estão com is_active=false (default do
+    // banco para contas novas). O cron ainda verificava is_active e rejeitava
+    // esses posts, causando falhas silenciosas. Agora só verifica se a conta
+    // existe (join retornou dados) — a validação de credenciais Meta abaixo
+    // já garante que só publica quem tem token válido.
+    if (!account) {
+      await admin.from("scheduled_posts").update({ status: "failed", error_message: "Conta não encontrada." }).eq("id", post.id);
       summary.failed++;
       continue;
     }
