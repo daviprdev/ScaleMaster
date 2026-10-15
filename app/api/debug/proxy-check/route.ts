@@ -12,9 +12,16 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const auth = req.headers.get("authorization");
+  // Fail-closed: se CRON_SECRET não estiver definida, rejeita a requisição
+  // em vez de expor detalhes de proxy/IP publicamente.
   if (!secret) {
-    console.warn("[debug/proxy-check] CRON_SECRET não definida — rota sem proteção.");
-  } else if (auth !== `Bearer ${secret}`) {
+    console.error("[debug/proxy-check] CRON_SECRET não definida — rota bloqueada.");
+    return NextResponse.json(
+      { error: "Endpoint desabilitado — CRON_SECRET não configurado." },
+      { status: 503 },
+    );
+  }
+  if (auth !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

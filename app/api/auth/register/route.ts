@@ -3,7 +3,24 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
 
+const REGISTER_SECRET = process.env.REGISTER_API_SECRET ?? "";
+
 export async function POST(req: NextRequest) {
+  // Fail-closed: se REGISTER_API_SECRET não estiver definido, rejeita todas as
+  // requisições. Este endpoint cria usuários confirmados sem verificação de
+  // e-mail e NÃO deve estar exposto publicamente.
+  if (!REGISTER_SECRET) {
+    return NextResponse.json(
+      { error: "Endpoint desabilitado — REGISTER_API_SECRET não configurado." },
+      { status: 503 },
+    );
+  }
+
+  const authHeader = req.headers.get("authorization");
+  if (authHeader !== `Bearer ${REGISTER_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { email, password, full_name } = await req.json() as {
     email?: string;
     password?: string;

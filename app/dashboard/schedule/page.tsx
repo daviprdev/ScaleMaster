@@ -280,13 +280,21 @@ export default function SchedulePage() {
     fetchPosts().finally(() => setLoading(false));
   }, [fetchPosts]);
 
-  // Auto-refresh a cada 15s enquanto houver posts em 'publishing'
+  // Auto-refresh a cada 15s enquanto houver posts em 'publishing'.
+  // Usa ref para evitar que o intervalo seja recriado a cada atualização de `posts`,
+  // o que causaria drift no timer (reset a cada fetch bem-sucedido).
+  const hasPublishingRef = useRef(posts.some(p => p.status === "publishing"));
   useEffect(() => {
-    const hasPublishing = posts.some(p => p.status === "publishing");
-    if (!hasPublishing) return;
-    const id = setInterval(fetchPosts, 15_000);
+    hasPublishingRef.current = posts.some(p => p.status === "publishing");
+  }, [posts]);
+
+  useEffect(() => {
+    if (!hasPublishingRef.current) return;
+    const id = setInterval(() => {
+      if (hasPublishingRef.current) fetchPosts();
+    }, 15_000);
     return () => clearInterval(id);
-  }, [posts, fetchPosts]);
+  }, [fetchPosts]);
 
   // Contadores por status
   const counts = useMemo(() => {

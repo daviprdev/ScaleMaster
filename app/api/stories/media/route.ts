@@ -58,7 +58,14 @@ export async function DELETE(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   if (row?.storage_path) {
-    await admin.storage.from("videos-library").remove([row.storage_path]).catch(() => {});
+    const { error: storageError } = await admin.storage
+      .from("videos-library")
+      .remove([row.storage_path]);
+    if (storageError) {
+      console.error(
+        `[stories/media] Falha ao remover arquivo do storage (path=${row.storage_path}): ${storageError.message}`,
+      );
+    }
   }
 
   return NextResponse.json({ success: true });

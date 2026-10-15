@@ -54,7 +54,11 @@ BUCKET: str = "videos-library"
 
 
 def verify_secret(authorization: str | None = Header(default=None)) -> None:
-    if SERVER_SECRET and authorization != f"Bearer {SERVER_SECRET}":
+    """Fail-closed: se PYTHON_SERVER_SECRET não estiver definido, rejeita
+    todas as requisições em vez de abrir os endpoints silenciosamente."""
+    if not SERVER_SECRET:
+        raise HTTPException(status_code=503, detail="PYTHON_SERVER_SECRET não configurado")
+    if authorization != f"Bearer {SERVER_SECRET}":
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 

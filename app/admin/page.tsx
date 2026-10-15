@@ -78,22 +78,39 @@ export default function AdminDashboardPage() {
   const [sales, setSales] = useState<SalesData | null>(null);
 
   useEffect(() => {
-    Promise.all([
+    // Usa Promise.allSettled para isolar falhas individuais — se um endpoint
+    // falhar, os demais dados ainda são exibidos ao admin.
+    Promise.allSettled([
       fetch("/api/admin/stats").then((r) => r.json()),
       fetch("/api/admin/announcements").then((r) => r.json()),
       fetch("/api/admin/sales").then((r) => r.json()),
-    ])
-      .then(([statsData, annData, salesData]) => {
-        if (statsData.error) throw new Error(statsData.error);
-        setStats(statsData);
-        if (annData.announcement) {
-          setAnnouncement(annData.announcement);
-          setAnnMsg(annData.announcement.message);
+    ]).then(([statsRes, annRes, salesRes]) => {
+      const errors: string[] = [];
+
+      if (statsRes.status === "fulfilled") {
+        if (statsRes.value?.error) errors.push(`Stats: ${statsRes.value.error}`);
+        else setStats(statsRes.value);
+      } else {
+        errors.push(`Stats: ${statsRes.reason?.message ?? "falha desconhecida"}`);
+      }
+
+      if (annRes.status === "fulfilled") {
+        if (annRes.value?.announcement) {
+          setAnnouncement(annRes.value.announcement);
+          setAnnMsg(annRes.value.announcement.message);
         }
-        if (!salesData.error) setSales(salesData);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      } else {
+        errors.push(`Anúncios: ${annRes.reason?.message ?? "falha desconhecida"}`);
+      }
+
+      if (salesRes.status === "fulfilled") {
+        if (!salesRes.value?.error) setSales(salesRes.value);
+      } else {
+        errors.push(`Vendas: ${salesRes.reason?.message ?? "falha desconhecida"}`);
+      }
+
+      if (errors.length > 0) setError(errors.join(" | "));
+    }).finally(() => setLoading(false));
   }, []);
 
   async function saveAnnouncement() {

@@ -243,15 +243,22 @@ export default function ClonePage() {
     setProfileSaved(saved.some(p => p.username === profile.username));
   }, [profile]);
 
-  // Auto-refresh history every 30s when there are active clones
+  // Auto-refresh history every 30s when there are active clones.
+  // Usa ref para evitar que o intervalo seja recriado a cada atualização de `campaigns`,
+  // o que causaria drift no timer (reset a cada fetch bem-sucedido).
+  const hasActiveRef = useRef(campaigns.some(c => c.pending > 0));
+  useEffect(() => {
+    hasActiveRef.current = campaigns.some(c => c.pending > 0);
+  }, [campaigns]);
+
   useEffect(() => {
     if (historyRefTimer.current) clearInterval(historyRefTimer.current);
-    const hasActive = campaigns.some(c => c.pending > 0);
-    if (hasActive) {
-      historyRefTimer.current = setInterval(loadCampaigns, 30_000);
-    }
+    if (!hasActiveRef.current) return;
+    historyRefTimer.current = setInterval(() => {
+      if (hasActiveRef.current) loadCampaigns();
+    }, 30_000);
     return () => { if (historyRefTimer.current) clearInterval(historyRefTimer.current); };
-  }, [campaigns]);
+  }, [loadCampaigns]);
 
   const loadCampaigns = useCallback(async () => {
     try {

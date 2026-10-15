@@ -170,17 +170,21 @@ export default function SettingsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setEmail(user.email ?? "");
-        setFullName(user.user_metadata?.full_name ?? "");
-        setDisplayName(user.user_metadata?.display_name ?? "");
-        setUsername(user.user_metadata?.username ?? "");
-        setPhone(user.user_metadata?.phone ?? "");
-        setAvatarUrl(user.user_metadata?.avatar_url ?? null);
-      }
-      setLoadingUser(false);
-    });
+    supabase.auth.getUser()
+      .then(({ data: { user } }) => {
+        if (user) {
+          setEmail(user.email ?? "");
+          setFullName(user.user_metadata?.full_name ?? "");
+          setDisplayName(user.user_metadata?.display_name ?? "");
+          setUsername(user.user_metadata?.username ?? "");
+          setPhone(user.user_metadata?.phone ?? "");
+          setAvatarUrl(user.user_metadata?.avatar_url ?? null);
+        }
+      })
+      .catch((err) => {
+        console.error("[settings] getUser falhou:", err);
+      })
+      .finally(() => setLoadingUser(false));
   }, [supabase]);
 
   const loadSessions = useCallback(async () => {

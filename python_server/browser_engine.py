@@ -233,6 +233,22 @@ def build_fingerprint(seed: str, browser_version: str, geo: ProxyGeo) -> dict:
 _xvfb_proc: subprocess.Popen | None = None
 
 
+def _cleanup_xvfb() -> None:
+    """Termina o processo Xvfb ao encerrar o Python, evitando zombies."""
+    global _xvfb_proc
+    if _xvfb_proc is not None and _xvfb_proc.poll() is None:
+        _xvfb_proc.terminate()
+        try:
+            _xvfb_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _xvfb_proc.kill()
+        _xvfb_proc = None
+
+
+import atexit
+atexit.register(_cleanup_xvfb)
+
+
 def _ensure_display() -> None:
     global _xvfb_proc
     if os.environ.get("DISPLAY"):

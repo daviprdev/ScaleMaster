@@ -53,6 +53,7 @@ interface DistributeCampaignRow {
   share_to_feed: boolean | null;
   priority_strategy: string | null;
   distribution_seed: string | null;
+  use_proxy_pool: boolean;
 }
 
 interface AccountState {
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest) {
   // Isso causava matrícula prematura de contas novas em campanhas parciais.
   const { data: campaigns, error } = await admin
     .from("distribute_campaigns")
-    .select("id, user_id, account_folder_ids, video_folder_id, video_count, posts_per_day, captions, auto_caption_enabled, auto_caption_type, caption_mode, caption_strip_hashtags, caption_strip_mentions, account_stagger_seconds, burst_mode, video_processing_mode, share_to_feed, priority_strategy, distribution_seed, status")
+    .select("id, user_id, account_folder_ids, video_folder_id, video_count, posts_per_day, captions, auto_caption_enabled, auto_caption_type, caption_mode, caption_strip_hashtags, caption_strip_mentions, account_stagger_seconds, burst_mode, video_processing_mode, share_to_feed, priority_strategy, distribution_seed, status, use_proxy_pool")
     .eq("status", "active");
 
   if (error) {
@@ -288,6 +289,7 @@ async function processCampaign(
       // Conta nova matriculada herda a decisao da campanha (congelada por post).
       video_processing_mode: normalizeProcessingMode(campaign.video_processing_mode),
       share_to_feed: typeof campaign.share_to_feed === "boolean" ? campaign.share_to_feed : null,
+      use_proxy_pool: campaign.use_proxy_pool ?? false,
     });
   });
 
