@@ -1306,7 +1306,6 @@ export default function PostarPage() {
       const { data } = await supabase
         .from("instagram_accounts")
         .select("id, username, display_name, avatar_url, is_active, ig_business_account_id, health_status, folder_id, account_folders(name)")
-        .eq("is_active", true)
         .order("connected_at", { ascending: false });
       setAccounts((data ?? []) as unknown as Account[]);
     } finally { setLoadingAccounts(false); }
