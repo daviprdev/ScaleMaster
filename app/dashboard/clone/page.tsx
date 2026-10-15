@@ -243,6 +243,16 @@ export default function ClonePage() {
     setProfileSaved(saved.some(p => p.username === profile.username));
   }, [profile]);
 
+  const loadCampaigns = useCallback(async () => {
+    try {
+      const res = await fetch("/api/campaigns");
+      if (res.ok) {
+        const data = await res.json();
+        setCampaigns(data.campaigns ?? []);
+      }
+    } catch {}
+  }, []);
+
   // Auto-refresh history every 30s when there are active clones.
   // Usa ref para evitar que o intervalo seja recriado a cada atualização de `campaigns`,
   // o que causaria drift no timer (reset a cada fetch bem-sucedido).
@@ -259,16 +269,6 @@ export default function ClonePage() {
     }, 30_000);
     return () => { if (historyRefTimer.current) clearInterval(historyRefTimer.current); };
   }, [loadCampaigns]);
-
-  const loadCampaigns = useCallback(async () => {
-    try {
-      const res = await fetch("/api/campaigns");
-      if (res.ok) {
-        const data = await res.json();
-        setCampaigns(data.campaigns ?? []);
-      }
-    } catch {}
-  }, []);
 
   // ── Account grouping ─────────────────────────────────────────────────────────
 
