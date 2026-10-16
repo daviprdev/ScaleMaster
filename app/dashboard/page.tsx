@@ -123,14 +123,14 @@ function formatScheduled(dateStr: string): { label: string; time: string } {
 }
 
 // ── Views period selector ────────────────────────────────────────
-type ViewsPeriod = "today" | "yesterday" | "last_7d" | "last_30d" | "month";
+type ViewsPeriod = "today" | "yesterday" | "last_7d" | "month";
 
+// Rótulos curtos: os botões ficam ao lado do ícone, num card de ~250px.
 const VIEWS_PERIODS: { value: ViewsPeriod; label: string }[] = [
   { value: "today", label: "Hoje" },
   { value: "yesterday", label: "Ontem" },
   { value: "last_7d", label: "7 dias" },
-  { value: "last_30d", label: "30 dias" },
-  { value: "month", label: "Este mês" },
+  { value: "month", label: "Mês" },
 ];
 
 // Complemento do título "Visualizações …" conforme o botão selecionado.
@@ -138,7 +138,6 @@ const VIEWS_TITLES: Record<ViewsPeriod, string> = {
   today: "hoje",
   yesterday: "ontem",
   last_7d: "últimos 7 dias",
-  last_30d: "últimos 30 dias",
   month: "este mês",
 };
 
@@ -265,9 +264,20 @@ export default function DashboardPage() {
 
         {/* Views — número grande segue o período escolhido; total de todas as contas embaixo */}
         <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-success-soft text-success">
-            <Eye size={18} />
-          </span>
+          {/* Botões ao lado do ícone; em cards estreitos (tela 1280 com sidebar aberta) descem para a linha de baixo */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success-soft text-success">
+              <Eye size={18} />
+            </span>
+            {!loading && (
+              <Segmented
+                size="sm"
+                options={VIEWS_PERIODS}
+                value={viewsPeriod}
+                onChange={(v) => setViewsPeriod(v as ViewsPeriod)}
+              />
+            )}
+          </div>
           <div className="flex flex-col gap-1">
             <span className="font-mono text-[28px] font-medium leading-[32px] tracking-[-0.02em] tabular-nums text-ink">
               {loading ? "—" : formatInt(viewsValue)}
@@ -283,14 +293,6 @@ export default function DashboardPage() {
               <TrendingUp size={12} strokeWidth={2} />
               {formatInt(stats?.views.total ?? 0)} no total
             </span>
-          )}
-          {!loading && (
-            <Segmented
-              options={VIEWS_PERIODS}
-              value={viewsPeriod}
-              onChange={(v) => setViewsPeriod(v as ViewsPeriod)}
-              className="flex-wrap self-start"
-            />
           )}
           {!loading && viewsPeriod === "today" && !stats?.views.today_has_data && (
             <p className="text-xs text-ink-3">A Meta ainda não liberou os dados de hoje.</p>

@@ -12,10 +12,17 @@ interface SegmentedProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onC
  value: string;
  onChange: (value: string) => void;
  name?: string;
+ /** "sm": botões compactos para caber em cards estreitos (ex.: ao lado de um ícone). */
+ size?: "md" | "sm";
 }
 
+const sizeStyles = {
+ md: "px-3 py-1.5 text-[13px] leading-[18px]",
+ sm: "px-1.5 py-1 text-[11px] leading-[14px] whitespace-nowrap",
+};
+
 export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(
- ({ className, options, value, onChange, name, ...props }, ref) => {
+ ({ className, options, value, onChange, name, size = "md", ...props }, ref) => {
  const generatedName = React.useId();
  const groupName = name || generatedName;
 
@@ -40,7 +47,8 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(
  disabled={opt.disabled}
  onClick={() => !opt.disabled && onChange(opt.value)}
  className={cn(
- "relative rounded-md px-3 py-1.5 text-[13px] font-medium leading-[18px] transition-colors duration-150 ease-in-out",
+ "relative rounded-md font-medium transition-colors duration-150 ease-in-out",
+ sizeStyles[size],
  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
  "disabled:opacity-40 disabled:pointer-events-none",
  isActive
