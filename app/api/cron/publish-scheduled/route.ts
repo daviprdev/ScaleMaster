@@ -174,50 +174,53 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Busca posts elegíveis ─────────────────────────────────────────────────
-  // P1 CORREÇÃO: Filtrar campanhas ativas antes de claimar posts.
+  // P1 CORREÇÃO: Filtrar campanhas não-ativas antes de claimar posts.
   // O código anterior buscava todos os posts "pending" sem verificar se a
   // campanha associada estava em estado "active". Isso permitia que workers
   // consumissem posts de campanhas ainda em "preparing" (incompletas), causando
   // publicação parcial e falhas silenciosas.
   //
-  // Solução: buscar posts SEM join com distribute_campaigns (a FK pode não estar
-  // no schema cache do PostgREST, causando erro 500). O filtro de campanha ativa
-  // é aplicado em memória após a consulta, usando uma segunda query cirúrgica
-  // apenas para os campaign_ids presentes no batch.
-  // Preservar posts de Loop/Clonar/Postar manual que não têm campanha.
+  // Sem join com distribute_campaigns (a FK pode não estar no schema cache do
+  // PostgREST, causando erro 500): as campanhas a barrar são listadas antes e
+  // excluídas na própria busca.
   const SELECT_FIELDS =
     "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, video_processing_mode, share_to_feed, campaign_id, use_proxy_pool, proxy_pool_id_used, " +
     "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id), " +
     "videos_library(public_url)";
 
-  // Campanhas pausadas pelo usuário (aba Postar) mantêm os posts 'pending' —
-  // a fila delas fica congelada. Elas precisam sair da busca no próprio banco:
-  // o filtro em memória mais abaixo também as barraria, mas aí os posts
-  // vencidos de uma campanha pausada ocupariam o lote inteiro a cada execução
-  // e travariam a fila de todas as outras. Fail-closed: sem saber quais estão
-  // pausadas, não publica nada nesta execução (o próximo minuto tenta de novo).
-  const { data: pausedRows, error: pausedErr } = await admin
+  // Barra só campanhas que TÊM linha em distribute_campaigns e não estão
+  // 'active': preparing (posts ainda sendo inseridos), failed (integridade
+  // quebrada) e paused (fila congelada pelo usuário). Só a aba Postar cria essa
+  // linha; Agendar (posts/schedule) e Clone gravam um campaign_id próprio, sem
+  // linha, e esses posts são tão legítimos quanto os sem campanha.
+  //
+  // O antigo filtro em memória exigia linha 'active' e descartava esses posts
+  // DEPOIS do limit: como nunca saíam de 'pending' e são os mais antigos,
+  // ocupavam o lote inteiro a cada execução e travavam a fila de todo mundo.
+  // Excluir no banco garante que o lote só traz o que pode ser publicado.
+  // Fail-closed: sem saber quais barrar, não publica nada nesta execução (o
+  // próximo minuto tenta de novo).
+  const { data: blockedRows, error: blockedErr } = await admin
     .from("distribute_campaigns")
     .select("id")
-    .eq("status", "paused");
+    .or("status.is.null,status.neq.active");
 
-  if (pausedErr) {
-    console.error("[publish-scheduled] Erro ao buscar campanhas pausadas:", pausedErr.message);
-    return NextResponse.json({ error: pausedErr.message }, { status: 500 });
+  if (blockedErr) {
+    console.error("[publish-scheduled] Erro ao buscar campanhas não-ativas:", blockedErr.message);
+    return NextResponse.json({ error: blockedErr.message }, { status: 500 });
   }
 
-  const pausedCampaignIds = ((pausedRows ?? []) as { id: string }[]).map((r) => r.id);
+  const blockedCampaignIds = ((blockedRows ?? []) as { id: string }[]).map((r) => r.id);
   // `campaign_id NOT IN (...)` sozinho descartaria também os posts sem campanha
   // (NULL NOT IN → NULL), por isso o OR explícito com campaign_id IS NULL.
-  const pausedFilter = pausedCampaignIds.length > 0
-    ? `campaign_id.is.null,campaign_id.not.in.(${pausedCampaignIds.join(",")})`
+  const campaignFilter = blockedCampaignIds.length > 0
+    ? `campaign_id.is.null,campaign_id.not.in.(${blockedCampaignIds.join(",")})`
     : null;
 
   // Stories furam a fila: usuário espera publicação quase imediata ("Postar agora"),
   // diferente de campanhas em massa (Postar/Clone/Loop) que já são agendadas de
   // propósito ao longo de dias. Busca stories elegíveis primeiro; só preenche o
   // restante do lote com os demais posts se sobrar espaço.
-  // P1: Filtrar por campanha ativa OU sem campanha (posts legítimos de outros fluxos).
   let storyQuery = admin
     .from("scheduled_posts")
     .select(SELECT_FIELDS)
@@ -225,7 +228,7 @@ export async function GET(req: NextRequest) {
     .eq("post_type", "story")
     .lte("scheduled_at", now)
     .not("video_url", "ilike", "%instagram.com%");
-  if (pausedFilter) storyQuery = storyQuery.or(pausedFilter);
+  if (campaignFilter) storyQuery = storyQuery.or(campaignFilter);
   const { data: storyRows, error: storyErr } = await storyQuery
     .order("scheduled_at", { ascending: true })
     .limit(BATCH_SIZE);
@@ -245,7 +248,7 @@ export async function GET(req: NextRequest) {
       .neq("post_type", "story")
       .lte("scheduled_at", now)
       .not("video_url", "ilike", "%instagram.com%");
-    if (pausedFilter) otherQuery = otherQuery.or(pausedFilter);
+    if (campaignFilter) otherQuery = otherQuery.or(campaignFilter);
     const { data, error: fetchErr } = await otherQuery
       .order("scheduled_at", { ascending: true })
       .limit(remainingSlots);
@@ -257,49 +260,10 @@ export async function GET(req: NextRequest) {
     otherRows = data ?? [];
   }
 
-  const rawPosts = [...(storyRows ?? []), ...otherRows] as unknown as PostRow[];
-
-  // ── Filtro de campanha ativa em memória (sem FK no schema cache) ─────────
-  // Coleta campaign_ids únicos do batch, busca status em distribute_campaigns
-  // e filtra posts cuja campanha não esteja 'active'. Posts sem campaign_id
-  // passam direto (fluxos Loop/Clonar/Postar manual).
-  const campaignIds = [
-    ...new Set(rawPosts.map((p) => p.campaign_id).filter(Boolean)),
-  ] as string[];
-
-  const campaignStatusMap = new Map<string, string>();
-  if (campaignIds.length > 0) {
-    const { data: campaigns, error: campErr } = await admin
-      .from("distribute_campaigns")
-      .select("id, status")
-      .in("id", campaignIds);
-
-    if (campErr) {
-      console.warn(
-        "[publish-scheduled] ⚠ Falha ao buscar campanhas para filtro:",
-        campErr.message,
-      );
-      // Em caso de falha, permite todos os posts para não bloquear a fila;
-      // o filtro é uma otimização de atomicidade, não um gate de segurança.
-    } else {
-      for (const c of campaigns ?? []) {
-        campaignStatusMap.set(c.id, c.status);
-      }
-    }
-  }
-
-  const posts = rawPosts.filter((post) => {
-    if (!post.campaign_id) return true; // sem campanha → legítimo
-    const status = campaignStatusMap.get(post.campaign_id);
-    if (status === "active") return true;
-    console.log(
-      `[publish-scheduled] ⏭ Post ${post.id} filtrado: campanha ${post.campaign_id} ` +
-        `status=${status ?? "não encontrada"} (esperado: active).`,
-    );
-    return false;
-  });
+  const posts = [...(storyRows ?? []), ...otherRows] as unknown as PostRow[];
   console.log(
-    `[publish-scheduled] ${posts.length} post(s) a processar (${storyRows?.length ?? 0} stories priorizados).`
+    `[publish-scheduled] ${posts.length} post(s) a processar (${storyRows?.length ?? 0} stories priorizados, ` +
+      `${blockedCampaignIds.length} campanha(s) não-ativa(s) excluída(s)).`
   );
 
   const summary = {
