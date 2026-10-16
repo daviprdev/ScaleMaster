@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { brtDateKey, brtMidnightUtc } from "@/lib/brt-time";
 
 export async function GET() {
   const supabase = await createClient();
@@ -56,13 +57,13 @@ export async function GET() {
   if (growthRaw && Array.isArray(growthRaw)) {
     userGrowth = growthRaw as { date: string; users: number }[];
   } else {
-    // Agrega a partir de authData
+    // Agrega a partir de authData, por dia de Brasília (o container roda em UTC)
     const countByDay: Record<string, number> = {};
-    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const cutoff = brtMidnightUtc(29).getTime();
     for (const u of authData?.users ?? []) {
       const ts = new Date(u.created_at).getTime();
       if (ts < cutoff) continue;
-      const day = u.created_at.slice(0, 10);
+      const day = brtDateKey(ts);
       countByDay[day] = (countByDay[day] ?? 0) + 1;
     }
     userGrowth = Object.entries(countByDay)
@@ -73,8 +74,7 @@ export async function GET() {
   // Preenche dias sem cadastro com zero (para o gráfico ficar contínuo)
   const filledGrowth: { date: string; users: number }[] = [];
   for (let i = 29; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86_400_000);
-    const key = d.toISOString().slice(0, 10);
+    const key = brtDateKey(Date.now() - i * 86_400_000);
     const found = userGrowth.find((g) => g.date === key);
     filledGrowth.push({ date: key, users: found?.users ?? 0 });
   }

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { toDatetimeLocalValue } from "@/lib/datetime-local";
 
 // ── Tipos ─────────────────────────────────────────────────────
 interface Video {
@@ -90,7 +91,7 @@ function defaultDatetime(): string {
   const d = new Date();
   d.setMinutes(0, 0, 0);
   d.setHours(d.getHours() + 1);
-  return d.toISOString().slice(0, 16);
+  return toDatetimeLocalValue(d);
 }
 
 function fmtDate(d: Date): string {
@@ -169,9 +170,12 @@ export default function PostsPage() {
   const [captions, setCaptions] = useState<string[]>([""]);
 
   // Config de lote
-  const [startDatetime, setStartDatetime] = useState(defaultDatetime);
+  // Padrão preenchido só no navegador: no SSR o container está em UTC.
+  const [startDatetime, setStartDatetime] = useState("");
   const [videosPerBatch, setVideosPerBatch] = useState(3);
   const [intervalHours, setIntervalHours] = useState(3);
+
+  useEffect(() => { setStartDatetime(defaultDatetime()); }, []);
 
   // Estado de ação
   const [scheduling, setScheduling] = useState(false);

@@ -17,3 +17,8 @@ export function brtMonthStartUtc(monthsAgo = 0): Date {
   const m = nowBrt.getUTCMonth();
   return new Date(Date.UTC(y, m - monthsAgo, 1, 0, 0, 0) + BRT_OFFSET_MS);
 }
+
+/** Data (YYYY-MM-DD) em BRT do instante informado — para agrupar registros por dia de Brasília. */
+export function brtDateKey(at: Date | string | number = Date.now()): string {
+  return new Date(new Date(at).getTime() - BRT_OFFSET_MS).toISOString().slice(0, 10);
+}

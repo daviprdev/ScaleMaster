@@ -10,6 +10,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toDatetimeLocalValue } from "@/lib/datetime-local";
 import { createClient } from "@/lib/supabase/client";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
@@ -1295,7 +1296,12 @@ export default function PostarPage() {
     accounts: number; first_slot: string; last_slot: string;
   } | null>(null);
 
-  const minDatetime = new Date(Date.now() + 5 * 60_000).toISOString().slice(0, 16);
+  // Calculado só no navegador (no SSR o container está em UTC); atualizado ao focar o input.
+  const [minDatetime, setMinDatetime] = useState<string>();
+  const refreshMinDatetime = useCallback(() => {
+    setMinDatetime(toDatetimeLocalValue(new Date(Date.now() + 5 * 60_000)));
+  }, []);
+  useEffect(() => { refreshMinDatetime(); }, [refreshMinDatetime]);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
 
@@ -1995,6 +2001,7 @@ export default function PostarPage() {
                         type="datetime-local"
                         value={startDatetime}
                         min={minDatetime}
+                        onFocus={refreshMinDatetime}
                         onChange={e => setStartDatetime(e.target.value)}
                         className="w-full px-4 py-3 rounded-xl bg-surface-raised border border-line-control text-ink text-sm focus:outline-none focus:border-brand-blue/40 focus:ring-1 focus:ring-brand-blue/20 transition-all [color-scheme:dark]"
                       />
