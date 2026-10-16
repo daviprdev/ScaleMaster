@@ -32,6 +32,10 @@ export interface PriorityContext {
    *  When > 1, assignVideos generates multiple rounds, each producing one
    *  assignment per account, respecting history and diversity across rounds. */
   videosPerAccount?: number;
+  /** accountId -> últimos vídeos postados/agendados pela conta, MAIS RECENTE
+   *  PRIMEIRO. Base do cooldown de recência: na virada de ciclo o pool volta a
+   *  conter tudo, inclusive o vídeo do post imediatamente anterior. */
+  recentByAccount?: Map<string, string[]>;
 }
 
 export interface AssignmentResult {
@@ -97,14 +101,47 @@ export function computeGlobalUsage(
 // Pool ranking
 // ---------------------------------------------------------------------------
 
+/**
+ * Ordena o pool pela estratégia.
+ *
+ * `batchUsage` (opcional): quantas vezes cada vídeo já saiu no lote atual, em
+ * qualquer conta. Em "views" e "random" ele vem ANTES da estratégia — sem isso,
+ * num lote de N rodadas todas as contas postavam a mesma sequência de top views
+ * deslocada de 1 slot (mesmo vídeo em várias contas na mesma janela, padrão que
+ * a Meta suprime no alcance). Em "least_usage" o `globalUsage` já inclui o lote.
+ */
 export function buildRankedPool(
   candidates: VideoCandidate[],
   strategy: PriorityStrategy,
   globalUsage: Map<string, number>,
   rng: () => number,
+  batchUsage?: Map<string, number>,
 ): VideoCandidate[] {
   if (candidates.length === 0) return [];
+  if (!batchUsage || batchUsage.size === 0 || strategy === "least_usage") {
+    return rankByStrategy(candidates, strategy, globalUsage, rng);
+  }
 
+  const levels = new Map<number, VideoCandidate[]>();
+  for (const v of candidates) {
+    const level = batchUsage.get(v.id) ?? 0;
+    const list = levels.get(level);
+    if (list) list.push(v);
+    else levels.set(level, [v]);
+  }
+  const result: VideoCandidate[] = [];
+  for (const level of [...levels.keys()].sort((a, b) => a - b)) {
+    result.push(...rankByStrategy(levels.get(level)!, strategy, globalUsage, rng));
+  }
+  return result;
+}
+
+function rankByStrategy(
+  candidates: VideoCandidate[],
+  strategy: PriorityStrategy,
+  globalUsage: Map<string, number>,
+  rng: () => number,
+): VideoCandidate[] {
   switch (strategy) {
     case "views": {
       // Sort DESC by views, ASC by global usage as tiebreak, then seeded shuffle within ties
@@ -179,23 +216,6 @@ export function buildRankedPool(
 }
 
 // ---------------------------------------------------------------------------
-// Per-account posted set helper
-// ---------------------------------------------------------------------------
-
-function getPostedSet(
-  usageByAccount: Map<string, Map<string, number>>,
-  accountId: string,
-): Set<string> {
-  const videoMap = usageByAccount.get(accountId);
-  if (!videoMap) return new Set();
-  const posted = new Set<string>();
-  for (const [videoId, count] of videoMap) {
-    if (count > 0) posted.add(videoId);
-  }
-  return posted;
-}
-
-// ---------------------------------------------------------------------------
 // P1 CORREÇÃO: Maximum bipartite matching com complexidade controlada
 // ---------------------------------------------------------------------------
 
@@ -220,6 +240,7 @@ function findMaximumMatching(
   eligibility: Map<string, VideoCandidate[]>,
   strategy: PriorityStrategy,
   globalUsage: Map<string, number>,
+  batchUsage: Map<string, number>,
   rng: () => number,
 ): Map<string, VideoCandidate> {
   const result = new Map<string, VideoCandidate>();
@@ -229,7 +250,7 @@ function findMaximumMatching(
   const rankedEligibility = new Map<string, VideoCandidate[]>();
   for (const accountId of accountIds) {
     const eligible = eligibility.get(accountId) ?? [];
-    rankedEligibility.set(accountId, buildRankedPool(eligible, strategy, globalUsage, rng));
+    rankedEligibility.set(accountId, buildRankedPool(eligible, strategy, globalUsage, rng, batchUsage));
   }
 
   // BFS para encontrar caminho aumentante a partir de uma conta não匹配ada
@@ -308,6 +329,25 @@ function findMaximumMatching(
 // Main assignment function
 // ---------------------------------------------------------------------------
 
+/** Últimos vídeos de cada conta que ficam fora do sorteio (mesmo valor do Loop). */
+const RECENT_COOLDOWN = 12;
+
+/**
+ * Atribui vídeos às contas, uma rodada por slot (`videosPerAccount` rodadas).
+ *
+ * Elegibilidade por conta = vídeos no MENOR nível de uso daquela conta
+ * (histórico + lote atual), fora do cooldown de recência. Conta nova → nível 0
+ * (inéditos). Conta que já postou a pasta inteira → nível 1: percorre a pasta
+ * toda de novo antes de repetir qualquer vídeo uma terceira vez.
+ *
+ * CORREÇÃO (2026-10-16): antes, a elegibilidade era só "nunca postado". Quando a
+ * conta esgotava os inéditos, o "reset de ciclo" reabria o pool inteiro
+ * (menos o último vídeo) e reordenava por views — a conta passava a receber o
+ * mesmo top-2 alternado (A, B, A, B…) pelo resto da campanha. E o "último
+ * vídeo" era inferido pelo maior contador de uso, não pela data: com
+ * contadores empatados ele apontava o vídeo errado e o mesmo vídeo saía duas
+ * vezes seguidas no cron de sincronização.
+ */
 export function assignVideos(ctx: PriorityContext): AssignmentResult[] {
   const {
     candidates,
@@ -318,12 +358,12 @@ export function assignVideos(ctx: PriorityContext): AssignmentResult[] {
     strategy,
     seed,
     videosPerAccount = 1,
+    recentByAccount,
   } = ctx;
 
   if (accountIds.length === 0 || candidates.length === 0 || videosPerAccount < 1) return [];
 
   const rng = mulberry32(seed);
-  const baseGlobalUsage = computeGlobalUsage(usageByAccount);
 
   // Filter out globally excluded videos (window claims + cooldown)
   const globallyAvailable = candidates.filter(
@@ -331,258 +371,107 @@ export function assignVideos(ctx: PriorityContext): AssignmentResult[] {
   );
 
   if (globallyAvailable.length === 0) return [];
+  const availableIds = new Set(globallyAvailable.map((v) => v.id));
+
+  // Cooldown nunca passa de metade do pool — sempre sobra a outra metade.
+  const cooldownSize = Math.min(RECENT_COOLDOWN, Math.floor(globallyAvailable.length / 2));
 
   const results: AssignmentResult[] = [];
-  // Mutable usage map that accumulates across ALL rounds and accounts.
-  // This ensures diversity: a video assigned to account A in round 0
-  // becomes "more used" and less likely to be picked again in round 1.
-  const liveUsage = new Map(baseGlobalUsage);
-  // Per-account mutable posted sets — tracks what each account received
-  // during this run so we don't repeat within the same batch.
-  const livePosted = new Map<string, Set<string>>();
+  // Uso global (todas as contas, histórico + lote): critério do least_usage e
+  // desempate do views. Acumula a cada rodada.
+  const liveUsage = computeGlobalUsage(usageByAccount);
+  // Quantas vezes cada vídeo já saiu NESTE lote, em qualquer conta.
+  const batchUsage = new Map<string, number>();
+  // Uso por conta (histórico + lote) e recência por conta (mais recente primeiro).
+  const liveCounts = new Map<string, Map<string, number>>();
+  const liveRecent = new Map<string, string[]>();
   for (const aid of accountIds) {
-    livePosted.set(aid, new Set(getPostedSet(usageByAccount, aid)));
+    liveCounts.set(aid, new Map(usageByAccount.get(aid) ?? []));
+    liveRecent.set(
+      aid,
+      (recentByAccount?.get(aid) ?? []).filter((id) => availableIds.has(id)),
+    );
   }
-  // Track last video per account to avoid immediate repetition on cycle reset.
-  const lastVideoPerAccount = new Map<string, string | null>();
-  for (const aid of accountIds) {
-    lastVideoPerAccount.set(aid, getLastPostedVideo(usageByAccount, aid));
-  }
+
+  const eligibleFor = (accountId: string): VideoCandidate[] => {
+    const counts = liveCounts.get(accountId)!;
+    const recentList = liveRecent.get(accountId)!;
+    const recent = new Set<string>();
+    for (const id of recentList) {
+      if (recent.size >= cooldownSize) break;
+      recent.add(id);
+    }
+
+    let pool = globallyAvailable.filter((v) => !recent.has(v.id));
+    if (pool.length === 0) {
+      // Pasta minúscula: ao menos nunca o vídeo imediatamente anterior.
+      pool = globallyAvailable.filter((v) => v.id !== recentList[0]);
+      if (pool.length === 0) pool = globallyAvailable;
+    }
+
+    let minLevel = Infinity;
+    for (const v of pool) minLevel = Math.min(minLevel, counts.get(v.id) ?? 0);
+    return pool.filter((v) => (counts.get(v.id) ?? 0) === minLevel);
+  };
 
   for (let round = 0; round < videosPerAccount; round++) {
-    // Collect assignments for this round first, then commit them all at once.
-    // This prevents ordering bias within a round (account[0] doesn't steal
-    // from account[N] because both see the same pre-round state).
-    const roundAssignments: { accountId: string; video: VideoCandidate; isCycleReset: boolean }[] = [];
-    // Videos claimed within this round — prevents two accounts getting the
-    // same video in the same round when alternatives exist.
-    const roundClaims = new Set<string>();
+    // Ordem das contas embaralhada por rodada: sem isso, account[0] sempre
+    // escolhe primeiro e leva o vídeo mais bem rankeado toda rodada.
+    const order = seededShuffle(accountIds, rng);
 
-    // Shuffle account order per round for fairness: without this, account[0]
-    // always picks first and gets the best-ranked video every round.
-    const shuffledAccountIndices = seededShuffle(
-      accountIds.map((_, i) => i),
-      rng,
-    );
+    const eligibility = new Map<string, VideoCandidate[]>();
+    for (const accountId of order) eligibility.set(accountId, eligibleFor(accountId));
 
-    // Scarcity: when globally available videos are fewer than accounts,
-    // some repetition within the round is inevitable. Use modular
-    // distribution to guarantee balanced assignment (e.g. 10/3 → 4/3/3,
-    // 2/1 → both accounts get the same video).
-    const scarcityDetected = globallyAvailable.length < shuffledAccountIndices.length;
+    // Matching máximo: vídeos distintos entre as contas na mesma rodada sempre
+    // que a elegibilidade individual permitir.
+    const matching = findMaximumMatching(order, eligibility, strategy, liveUsage, batchUsage, rng);
 
-    // P1: Matching bipartido para evitar reset guloso.
-    // Caso A: existe atribuição sem repetição, mas a seleção gulosa reinicia ciclos.
-    // Caso B: escassez ignora histórico individual.
-    // Solução: construir grafo de elegibilidade (conta → vídeos inéditos) e
-    // encontrar matching máximo antes de cair em fallback greedy.
-    const accountEligibility = new Map<string, VideoCandidate[]>();
-    for (const ai of shuffledAccountIndices) {
-      const accountId = accountIds[ai];
-      const posted = livePosted.get(accountId)!;
-      const eligible = globallyAvailable.filter(
-        (v) => !posted.has(v.id) && !roundClaims.has(v.id),
-      );
-      accountEligibility.set(accountId, eligible);
+    const roundAssignments: AssignmentResult[] = [];
+    const roundUsage = new Map<string, number>();
+    const assign = (accountId: string, video: VideoCandidate) => {
+      const used = liveCounts.get(accountId)!.get(video.id) ?? 0;
+      roundAssignments.push({ accountId, video, isCycleReset: used > 0 });
+      roundUsage.set(video.id, (roundUsage.get(video.id) ?? 0) + 1);
+    };
+
+    for (const [accountId, video] of matching) assign(accountId, video);
+
+    // Contas que o matching não cobriu (escassez: menos vídeos elegíveis do que
+    // contas). Cada uma fica no SEU nível mínimo — nunca troca um inédito por
+    // um repetido — e, entre os elegíveis, leva o menos usado nesta rodada,
+    // equilibrando a repetição inevitável (ex.: 10 contas / 3 vídeos → 4/3/3).
+    for (const accountId of order) {
+      if (matching.has(accountId)) continue;
+      const eligible = eligibility.get(accountId)!;
+      if (eligible.length === 0) continue;
+
+      const ranked = buildRankedPool(eligible, strategy, liveUsage, rng, batchUsage);
+      let selected = ranked[0];
+      let best = roundUsage.get(selected.id) ?? 0;
+      for (const v of ranked) {
+        if (best === 0) break;
+        const u = roundUsage.get(v.id) ?? 0;
+        if (u < best) {
+          best = u;
+          selected = v;
+        }
+      }
+      assign(accountId, selected);
     }
 
-    // Tenta matching máximo usando algoritmo guloso com backtracking simples.
-    // Para N contas e M vídeos, complexidade O(N*M) na prática.
-    const matchingResult = findMaximumMatching(
-      shuffledAccountIndices.map((i) => accountIds[i]),
-      accountEligibility,
-      strategy,
-      liveUsage,
-      rng,
-    );
-
-    if (matchingResult && matchingResult.size > 0) {
-      // P1 CORREÇÃO: Usar matching máximo (pode ser parcial ou perfeito).
-      // PROBLEMA ANTERIOR: Só usava matching se fosse PERFEITO (size === accounts).
-      // Isso fazia com que 11 contas/10 vídeos caíssem no fallback de escassez
-      // mesmo quando o matching máximo encontrava 10 atribuições distintas.
-      //
-      // SOLUÇÃO: Usar todas as atribuições do matching máximo, depois preencher
-      // contas restantes com fallback (greedy ou escassez conforme o caso).
-      for (const [accountId, video] of matchingResult) {
-        roundAssignments.push({ accountId, video, isCycleReset: false });
-        roundClaims.add(video.id);
-      }
-      // Se matching foi perfeito, pula fallback
-      if (matchingResult.size === shuffledAccountIndices.length) {
-        // Todas as contas atribuídas — commit e próxima rodada
-      } else if (scarcityDetected) {
-        // P1 CORREÇÃO: Escassez real — menos vídeos que contas.
-        // PROBLEMA ANTERIOR: O primeiro passa atribuía vídeos inéditos apenas para
-        // contas com elegibilidade NÃO usada, marcando o vídeo como "used" após
-        // a primeira atribuição. Isso impedia que outras contas com o mesmo vídeo
-        // inédito o recebessem, resultando em distribuição desigual (2/3 em vez
-        // de 3/3 no Caso B).
-        //
-        // SOLUÇÃO: Em escassez, permitir que múltiplas contas recebam o mesmo
-        // vídeo inédito se ele for a única opção elegível para elas. O matching
-        // máximo já tentou encontrar atribuições distintas; se falhou, é porque
-        // não há solução perfeita — então distribuir repetições equilibradas
-        // respeitando elegibilidade individual.
-        const rankedAll = buildRankedPool(globallyAvailable, strategy, liveUsage, rng);
-        if (rankedAll.length === 0) continue;
-
-        // Identifica vídeos inéditos por conta (não usados no histórico pessoal)
-        const accountUnpublished = new Map<string, VideoCandidate[]>();
-        for (const ai of shuffledAccountIndices) {
-          const accountId = accountIds[ai];
-          const posted = livePosted.get(accountId)!;
-          const eligible = accountEligibility.get(accountId) ?? [];
-          const unpublished = eligible.filter((v) => !posted.has(v.id));
-          accountUnpublished.set(accountId, unpublished);
-        }
-
-        // P1 CORREÇÃO: Híbrido — elegibilidade individual + distribuição modular.
-        // PROBLEMA ANTERIOR 1: Primeiro passa atribuía mesmo vídeo para todas
-        // as contas (191 para um vídeo em 200/10).
-        // PROBLEMA ANTERIOR 2: Distribuição modular pura ignorava elegibilidade
-        // individual, fazendo conta C receber v1 em vez de v2 (único inédito).
-        //
-        // SOLUÇÃO: Duas fases para contas não cobertas pelo matching:
-        // Fase 1: Contas com APENAS 1 vídeo inédito elegível recebem esse vídeo
-        //         (respeita elegibilidade individual crítica — Caso B).
-        // Fase 2: Contas restantes recebem distribuição modular dos vídeos
-        //         rankeados globalmente (garante equilíbrio em escassez extrema).
-        const assignedAccounts = new Set<string>(matchingResult.keys());
-        const remainingAccounts = shuffledAccountIndices
-          .map((i) => accountIds[i])
-          .filter((id) => !assignedAccounts.has(id));
-
-        // Fase 1: Priorizar contas com elegibilidade restrita (apenas 1 inédito)
-        const phase1Assigned = new Set<string>();
-        for (const accountId of remainingAccounts) {
-          const unpublished = accountUnpublished.get(accountId) ?? [];
-          if (unpublished.length === 1) {
-            // Única opção elegível — atribui sem hesitar
-            const selected = unpublished[0];
-            const posted = livePosted.get(accountId)!;
-            const isCycleReset = posted.has(selected.id);
-            roundAssignments.push({ accountId, video: selected, isCycleReset });
-            phase1Assigned.add(accountId);
-          }
-        }
-
-        // Fase 2: Distribuição modular para contas restantes
-        const phase2Accounts = remainingAccounts.filter(id => !phase1Assigned.has(id));
-        for (let si = 0; si < phase2Accounts.length; si++) {
-          const accountId = phase2Accounts[si];
-          const videoIndex = si % rankedAll.length;
-          const selected = rankedAll[videoIndex];
-          const posted = livePosted.get(accountId)!;
-          const isCycleReset = posted.has(selected.id);
-          roundAssignments.push({ accountId, video: selected, isCycleReset });
-        }
-      } else {
-        // Fallback greedy: matching parcial mas não é escassez. Usa lógica original
-        // mas com roundClaims para evitar duplicação na rodada.
-        for (const ai of shuffledAccountIndices) {
-          const accountId = accountIds[ai];
-          // Pula contas já atribuídas pelo matching
-          if (roundAssignments.some((r) => r.accountId === accountId)) continue;
-
-          const posted = livePosted.get(accountId)!;
-          let perAccountPool = globallyAvailable.filter(
-            (v) => !posted.has(v.id) && !roundClaims.has(v.id),
-          );
-
-          let isCycleReset = false;
-
-          // Cycle reset: personal pool exhausted → relax to all except last posted
-          if (perAccountPool.length === 0 && globallyAvailable.length > 0) {
-            isCycleReset = true;
-            const lastVideo = lastVideoPerAccount.get(accountId);
-            perAccountPool = globallyAvailable.filter(
-              (v) => v.id !== lastVideo && !roundClaims.has(v.id),
-            );
-            if (perAccountPool.length === 0) {
-              perAccountPool = globallyAvailable.filter((v) => !roundClaims.has(v.id));
-            }
-          }
-
-          if (perAccountPool.length === 0) continue;
-
-          const ranked = buildRankedPool(perAccountPool, strategy, liveUsage, rng);
-          if (ranked.length === 0) continue;
-
-          const selected = ranked[0];
-          roundAssignments.push({ accountId, video: selected, isCycleReset });
-          roundClaims.add(selected.id);
-        }
-      }
-    } else {
-      // Sem matching encontrado — fallback greedy completo
-      for (const ai of shuffledAccountIndices) {
-        const accountId = accountIds[ai];
-        const posted = livePosted.get(accountId)!;
-        let perAccountPool = globallyAvailable.filter(
-          (v) => !posted.has(v.id) && !roundClaims.has(v.id),
-        );
-
-        let isCycleReset = false;
-
-        if (perAccountPool.length === 0 && globallyAvailable.length > 0) {
-          isCycleReset = true;
-          const lastVideo = lastVideoPerAccount.get(accountId);
-          perAccountPool = globallyAvailable.filter(
-            (v) => v.id !== lastVideo && !roundClaims.has(v.id),
-          );
-          if (perAccountPool.length === 0) {
-            perAccountPool = globallyAvailable.filter((v) => !roundClaims.has(v.id));
-          }
-        }
-
-        if (perAccountPool.length === 0) continue;
-
-        const ranked = buildRankedPool(perAccountPool, strategy, liveUsage, rng);
-        if (ranked.length === 0) continue;
-
-        const selected = ranked[0];
-        roundAssignments.push({ accountId, video: selected, isCycleReset });
-        roundClaims.add(selected.id);
-      }
-    }
-
-    // Commit all round assignments at once
+    // Commit da rodada: as próximas rodadas enxergam o que saiu nesta.
     for (const assignment of roundAssignments) {
       results.push(assignment);
-      // Update live state for subsequent rounds
-      livePosted.get(assignment.accountId)!.add(assignment.video.id);
-      lastVideoPerAccount.set(assignment.accountId, assignment.video.id);
-      liveUsage.set(
-        assignment.video.id,
-        (liveUsage.get(assignment.video.id) ?? 0) + 1,
-      );
+      const { accountId, video } = assignment;
+      const counts = liveCounts.get(accountId)!;
+      counts.set(video.id, (counts.get(video.id) ?? 0) + 1);
+      liveRecent.get(accountId)!.unshift(video.id);
+      liveUsage.set(video.id, (liveUsage.get(video.id) ?? 0) + 1);
+      batchUsage.set(video.id, (batchUsage.get(video.id) ?? 0) + 1);
     }
   }
 
   return results;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function getLastPostedVideo(
-  usageByAccount: Map<string, Map<string, number>>,
-  accountId: string,
-): string | null {
-  const videoMap = usageByAccount.get(accountId);
-  if (!videoMap || videoMap.size === 0) return null;
-  // Return any video with the highest usage count as a proxy for "last"
-  let maxCount = -1;
-  let lastId: string | null = null;
-  for (const [videoId, count] of videoMap) {
-    if (count > maxCount) {
-      maxCount = count;
-      lastId = videoId;
-    }
-  }
-  return lastId;
 }
 
 /**

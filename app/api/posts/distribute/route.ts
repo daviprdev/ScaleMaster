@@ -6,7 +6,7 @@ import { getAutoCaption, getUniqueCaptions, type AutoCaptionType } from "@/lib/a
 import {
   normalizeCaptionMode, resolveCaption, captionRejectionMessage,
 } from "@/lib/reel-captions";
-import { fetchVideoUsage, fetchAllRows } from "@/lib/video-history";
+import { fetchVideoUsage, fetchRecentVideos, fetchAllRows } from "@/lib/video-history";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 import {
   assignVideos,
@@ -197,9 +197,18 @@ export async function POST(req: NextRequest) {
   // conta já tinha postado.
   //
   // account_id → (video_id → vezes postado)
+  // + últimos vídeos de cada conta antes do início da campanha (cooldown de
+  // recência: o 1º post da campanha não repete o último post da conta).
+  const startTime = burst_mode ? Date.now() : new Date(start_at).getTime();
+  if (Number.isNaN(startTime))
+    return NextResponse.json({ error: "Data e hora de início inválidas." }, { status: 400 });
   let postedCount: Map<string, Map<string, number>>;
+  let recentByAccount: Map<string, string[]>;
   try {
-    postedCount = await fetchVideoUsage(admin, account_ids);
+    [postedCount, recentByAccount] = await Promise.all([
+      fetchVideoUsage(admin, account_ids),
+      fetchRecentVideos(admin, account_ids, new Date(startTime).toISOString()),
+    ]);
   } catch (e) {
     console.error(`[distribute] ${(e as Error).message}`);
     return NextResponse.json(
@@ -243,9 +252,8 @@ export async function POST(req: NextRequest) {
   const distributionSeed = idempotencyKey;
   // Distribui uniformemente ao longo de 24h (ignorado em burst_mode)
   const intervalMinutes = burst_mode ? 0 : Math.floor((24 * 60) / posts_per_day);
-  // Modo Ciclo: tudo agendado para agora — o cron publish-scheduled drena a fila
-  // no ritmo máximo do pipeline (lotes por minuto, retry/backoff da Meta intactos).
-  const startTime = burst_mode ? Date.now() : new Date(start_at).getTime();
+  // Modo Ciclo: `startTime` (acima) é agora — o cron publish-scheduled drena a
+  // fila no ritmo máximo do pipeline (lotes por minuto, retry/backoff da Meta intactos).
 
   const rows: object[] = [];
   // Vídeos que o modo "original" encontrou sem legenda — publicam SEM legenda
@@ -267,11 +275,13 @@ export async function POST(req: NextRequest) {
     ? Math.max((account_stagger_seconds ?? 0) * 1_000, maxVideos * 2_000)
     : 0;
 
-  // Atribuição centralizada via media-priority: views DESC + diversidade entre
-  // contas na mesma rodada + balanceamento em escassez. Seed persistida na
-  // campanha para que retries e sync-distribute-accounts reproduzam a mesma
-  // atribuição. Sem windowClaims/recentGlobalCooldown aqui porque a distribuição
-  // cria scheduled_posts futuros (não containers imediatos como o Loop).
+  // Atribuição centralizada via media-priority: cada conta percorre a pasta
+  // pelo seu menor nível de uso (inéditos primeiro; esgotada a pasta, roda ela
+  // inteira de novo antes de repetir), com cooldown de recência e diversidade
+  // entre contas no lote. Seed persistida na campanha para que retries e
+  // sync-distribute-accounts reproduzam a mesma atribuição. Sem
+  // windowClaims/recentGlobalCooldown aqui porque a distribuição cria
+  // scheduled_posts futuros (não containers imediatos como o Loop).
   const assignments = assignVideos({
     candidates: allVideos.map((v) => ({
       id: v.id,
@@ -286,6 +296,7 @@ export async function POST(req: NextRequest) {
     strategy: priorityStrategy,
     seed: distributionSeed,
     videosPerAccount: maxVideos,
+    recentByAccount,
   });
 
   // Mapa rápido de vídeo por ID para resolver legenda/url durante a geração de linhas

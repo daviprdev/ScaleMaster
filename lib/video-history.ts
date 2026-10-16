@@ -15,6 +15,8 @@
  * (vídeos reservados no modo efeitos).
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 /** account_id → (video_id → nº de vezes que a conta usou o vídeo). */
 export type VideoUsageByAccount = Map<string, Map<string, number>>;
 
@@ -52,6 +54,79 @@ export async function fetchVideoUsage(
     usage.set(accountId, perVideo);
   }
   return usage;
+}
+
+/**
+ * Últimos vídeos de cada conta, MAIS RECENTE PRIMEIRO — base do cooldown de
+ * recência do `assignVideos` (lib/media-priority).
+ *
+ * O mapa de uso acima diz QUANTAS vezes a conta usou cada vídeo, mas não
+ * QUANDO; sem isto, na virada de ciclo da pasta o vídeo do post imediatamente
+ * anterior voltava ao sorteio e podia sair duas vezes seguidas.
+ *
+ * Uma query por conta e por origem (Postar/Clonar/Automatizar em
+ * `scheduled_posts`, Loop em `pending_containers`): um `.in(account_id)` com
+ * `.limit()` seria dominado pelas contas com milhares de posts pré-agendados.
+ * `beforeIso` corta pelo ponto onde os posts novos vão entrar — o que vem
+ * antes dele é o vizinho no tempo.
+ *
+ * Lança em caso de erro, como `fetchVideoUsage`.
+ */
+export async function fetchRecentVideos(
+  admin: SupabaseClient,
+  accountIds: string[],
+  beforeIso: string,
+  perAccount = 12
+): Promise<Map<string, string[]>> {
+  const recent = new Map<string, string[]>();
+  const CONCURRENCY = 10;
+
+  for (let i = 0; i < accountIds.length; i += CONCURRENCY) {
+    const chunk = accountIds.slice(i, i + CONCURRENCY);
+    await Promise.all(chunk.map(async (accountId) => {
+      const [postsRes, containersRes] = await Promise.all([
+        admin
+          .from("scheduled_posts")
+          .select("video_id, scheduled_at")
+          .eq("account_id", accountId)
+          .neq("status", "failed")
+          .not("video_id", "is", null)
+          .lte("scheduled_at", beforeIso)
+          .order("scheduled_at", { ascending: false })
+          .limit(perAccount),
+        admin
+          .from("pending_containers")
+          .select("video_id, created_at")
+          .eq("account_id", accountId)
+          .neq("status", "error")
+          .not("video_id", "is", null)
+          .lte("created_at", beforeIso)
+          .order("created_at", { ascending: false })
+          .limit(perAccount),
+      ]);
+      if (postsRes.error) {
+        throw new Error(`[video-history] recência de scheduled_posts falhou: ${postsRes.error.message}`);
+      }
+      if (containersRes.error) {
+        throw new Error(`[video-history] recência de pending_containers falhou: ${containersRes.error.message}`);
+      }
+
+      const merged = [
+        ...((postsRes.data ?? []) as { video_id: string; scheduled_at: string }[])
+          .map((r) => ({ videoId: r.video_id, at: r.scheduled_at })),
+        ...((containersRes.data ?? []) as { video_id: string; created_at: string }[])
+          .map((r) => ({ videoId: r.video_id, at: r.created_at })),
+      ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
+      const list: string[] = [];
+      for (const row of merged) {
+        if (list.length >= perAccount) break;
+        if (!list.includes(row.videoId)) list.push(row.videoId);
+      }
+      recent.set(accountId, list);
+    }));
+  }
+  return recent;
 }
 
 /** Conjunto de vídeos que a conta já usou (chaves do mapa de uso). */

@@ -518,6 +518,9 @@ async function assignVideosForLoop(
     strategy: loopStrategy,
     seed: loopSeed,
     videosPerAccount: 1, // Loop atribui 1 vídeo por conta por tick; quantidade é controlada pela frequência do cron
+    // Cooldown de recência por conta — calculado acima mas não repassado desde a
+    // migração para o media-priority, o que reabriu a repetição na virada de ciclo.
+    recentByAccount,
   });
 
   // Converte os resultados do media-priority de volta para o formato esperado

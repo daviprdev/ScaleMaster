@@ -24,7 +24,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
 import { normalizeCaptionMode, resolveCaption } from "@/lib/reel-captions";
 import { normalizeProcessingMode } from "@/lib/video-processing";
-import { fetchVideoUsage, fetchAllRows } from "@/lib/video-history";
+import { fetchVideoUsage, fetchRecentVideos, fetchAllRows } from "@/lib/video-history";
 import { requireCronAuth } from "@/lib/cron-auth";
 import {
   assignVideos as priorityAssignVideos,
@@ -203,9 +203,15 @@ async function processCampaign(
   // atravessa TODAS as origens (Loop, Postar, Clonar, Automatizar). Restrito à
   // campanha, a conta repetia na campanha nova o que já tinha postado por
   // outras abas.
+  // + últimos vídeos de cada conta due (cooldown de recência): sem isso, na
+  // virada de ciclo da pasta o vídeo do post anterior voltava ao sorteio.
   let usage: Awaited<ReturnType<typeof fetchVideoUsage>>;
+  let recentByAccount: Map<string, string[]>;
   try {
-    usage = await fetchVideoUsage(admin, dueAccountIds);
+    [usage, recentByAccount] = await Promise.all([
+      fetchVideoUsage(admin, dueAccountIds),
+      fetchRecentVideos(admin, dueAccountIds, new Date(now).toISOString()),
+    ]);
   } catch (e) {
     console.error(`[sync-distribute-accounts] Campanha ${campaign.id}: ${(e as Error).message} — pulando ciclo.`);
     return 0;
@@ -236,6 +242,7 @@ async function processCampaign(
     strategy: campaignStrategy,
     seed: cycleSeed,
     videosPerAccount: 1, // sync cria 1 post por conta por ciclo; quantidade total é controlada pelo cron
+    recentByAccount,
   });
 
   const videoById = new Map(allVideos.map((v) => [v.id, v]));
