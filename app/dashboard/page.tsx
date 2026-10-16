@@ -135,7 +135,7 @@ const VIEWS_PERIODS: { value: ViewsPeriod; label: string }[] = [
 ];
 
 const VIEWS_HINTS: Record<ViewsPeriod, string> = {
-  today: "Dia atual — zera às 21h (Brasília)",
+  today: "Dia atual — zera à meia-noite (Brasília)",
   yesterday: "Dia anterior completo",
   last_7d: "Últimos 7 dias, incluindo hoje",
   last_30d: "Últimos 30 dias, incluindo hoje",

@@ -34,8 +34,10 @@ export async function GET() {
   const now = new Date();
   const nowIso = now.toISOString();
 
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-  const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toISOString();
+  // Meia-noite de Brasília — o container roda em UTC, então `new Date(y, m, d)`
+  // virava o dia às 21h BRT.
+  const startOfToday = brtMidnightUtc(0).toISOString();
+  const startOfYesterday = brtMidnightUtc(1).toISOString();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   // All DB queries run in parallel
@@ -230,8 +232,6 @@ export async function GET() {
   const viewsSummary = viewsPostsRes.data;
 
   const salesRows = (salesRes.data ?? []) as { amount: number | null; created_at: string }[];
-  const todayStartIso = brtMidnightUtc(0).toISOString();
-  const yesterdayStartIso = brtMidnightUtc(1).toISOString();
   const monthStartIso = brtMonthStartUtc(0).toISOString();
   const prevMonthStartIso = brtMonthStartUtc(1).toISOString();
   const sumSales = (sinceIso: string) =>
@@ -243,8 +243,8 @@ export async function GET() {
 
   return NextResponse.json({
     sales: {
-      today: sumSales(todayStartIso),
-      yesterday: sumRange(yesterdayStartIso, todayStartIso),
+      today: sumSales(startOfToday),
+      yesterday: sumRange(startOfYesterday, startOfToday),
       month: sumSales(monthStartIso),
       prev_month: sumRange(prevMonthStartIso, monthStartIso),
     },
@@ -266,8 +266,9 @@ export async function GET() {
       loop: loopPublishedTodayRes.count ?? 0,
     },
     views: {
-      // Dias UTC (a Meta só soma sem sobreposição nessa granularidade): o dia
-      // vira às 21h de Brasília.
+      // Buckets são dias UTC (única granularidade em que a Meta soma sem
+      // sobreposição), mas "hoje" é escolhido pela data de Brasília: o card
+      // vira à meia-noite BRT. Ver supabase/account_views_brt_day.sql.
       total: Number(viewsSummary?.total ?? 0),
       today: Number(viewsSummary?.today ?? 0),
       yesterday: Number(viewsSummary?.yesterday ?? 0),
