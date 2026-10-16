@@ -38,7 +38,8 @@ interface AccountEngagement {
 }
 
 interface CampaignSummary extends RpcRow {
-  campaign_status: "running" | "completed";
+  campaign_status: "running" | "paused" | "completed";
+  paused_at: string | null;
   is_automation: boolean;
   is_synced: boolean;
   synced_folder_names: string[];
@@ -87,17 +88,24 @@ export async function GET(req: NextRequest) {
   }
 
   // Campanhas do Postar sincronizadas com pasta(s) de contas — contas novas
-  // entram sozinhas via cron sync-distribute-accounts.
+  // entram sozinhas via cron sync-distribute-accounts. Toda campanha do Postar
+  // tem linha em distribute_campaigns (desde a atomicidade), mas só as com
+  // pasta(s) em account_folder_ids são de fato sincronizadas.
+  // A mesma leitura traz as campanhas pausadas pelo usuário.
   const syncedFolderNames = new Map<string, string[]>();
+  const pausedAt = new Map<string, string | null>();
   {
-    const { data: syncRows } = await (admin as any)
+    const { data: distRows } = await (admin as any)
       .from("distribute_campaigns")
-      .select("id, account_folder_ids")
+      .select("id, account_folder_ids, status, paused_at")
       .eq("user_id", user.id);
-    if (syncRows?.length) {
-      const allFolderIds = Array.from(new Set(
-        (syncRows as { id: string; account_folder_ids: string[] }[]).flatMap(r => r.account_folder_ids ?? [])
-      ));
+    type DistRow = { id: string; account_folder_ids: string[] | null; status: string | null; paused_at: string | null };
+    for (const r of (distRows ?? []) as DistRow[]) {
+      if (r.status === "paused") pausedAt.set(r.id, r.paused_at);
+    }
+    const syncRows = ((distRows ?? []) as DistRow[]).filter(r => (r.account_folder_ids ?? []).length > 0);
+    if (syncRows.length) {
+      const allFolderIds = Array.from(new Set(syncRows.flatMap(r => r.account_folder_ids ?? [])));
       let folderNameById = new Map<string, string>();
       if (allFolderIds.length) {
         const { data: folderRows } = await (admin as any)
@@ -106,11 +114,14 @@ export async function GET(req: NextRequest) {
           .in("id", allFolderIds);
         folderNameById = new Map((folderRows ?? []).map((f: { id: string; name: string }) => [f.id, f.name]));
       }
-      for (const r of syncRows as { id: string; account_folder_ids: string[] }[]) {
+      for (const r of syncRows) {
         syncedFolderNames.set(r.id, (r.account_folder_ids ?? []).map(fid => folderNameById.get(fid) ?? "?"));
       }
     }
   }
+
+  // Ordem na lista: executando → pausadas → concluídas.
+  const STATUS_ORDER = { running: 0, paused: 1, completed: 2 } as const;
 
   let campaigns: CampaignSummary[] = ((data as RpcRow[]) ?? []).map(row => ({
     ...row,
@@ -120,13 +131,18 @@ export async function GET(req: NextRequest) {
     failed: Number(row.failed),
     cancelled: Number(row.cancelled),
     account_ids: row.account_ids ?? [],
-    campaign_status: (Number(row.pending) > 0 ? "running" : "completed") as "running" | "completed",
+    // Pausa é escolha explícita do usuário: vale mesmo sem posts pendentes
+    // (numa campanha sincronizada ela também segura a matrícula de contas novas).
+    campaign_status: (
+      pausedAt.has(row.campaign_id) ? "paused" : Number(row.pending) > 0 ? "running" : "completed"
+    ) as CampaignSummary["campaign_status"],
+    paused_at: pausedAt.get(row.campaign_id) ?? null,
     is_automation: automationIds.has(row.campaign_id),
     is_synced: syncedFolderNames.has(row.campaign_id),
     synced_folder_names: syncedFolderNames.get(row.campaign_id) ?? [],
   })).sort((a, b) => {
     if (a.campaign_status !== b.campaign_status) {
-      return a.campaign_status === "running" ? -1 : 1;
+      return STATUS_ORDER[a.campaign_status] - STATUS_ORDER[b.campaign_status];
     }
     return new Date(b.first_slot ?? b.last_slot ?? 0).getTime() - new Date(a.first_slot ?? a.last_slot ?? 0).getTime();
   });
@@ -441,6 +457,19 @@ export async function PATCH(req: NextRequest) {
     })
     .eq("id", campaignId)
     .eq("user_id", user.id);
+
+  // Campanha pausada: os horários acabaram de ser recalculados a partir de
+  // agora, então a pausa passa a contar daqui. Sem isso, ao retomar, o
+  // deslocamento (now - paused_at) somaria também o tempo em pausa anterior
+  // à edição e empurraria a fila além do necessário.
+  if (rows.length > 0) {
+    await (admin as any)
+      .from("distribute_campaigns")
+      .update({ paused_at: new Date().toISOString() })
+      .eq("id", campaignId)
+      .eq("user_id", user.id)
+      .eq("status", "paused");
+  }
 
   return NextResponse.json({ success: true, updated: rows.length });
 }

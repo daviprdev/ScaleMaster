@@ -7,7 +7,7 @@ import {
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
   Shuffle, Zap, List, Library, Save, BookMarked, BarChart2,
   RefreshCw, ChevronDown, Sparkles, Pencil, SlidersHorizontal, LayoutGrid,
-  ShieldCheck,
+  ShieldCheck, Pause, Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toDatetimeLocalValue } from "@/lib/datetime-local";
@@ -88,7 +88,8 @@ interface Campaign {
   last_published_at: string | null;
   last_error_message: string | null;
   account_ids: string[];
-  campaign_status: "running" | "completed";
+  campaign_status: "running" | "paused" | "completed";
+  paused_at?: string | null;
   created_at: string;
   is_clone?: boolean;
   is_automation?: boolean;
@@ -886,6 +887,8 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
   const [expandedEngagement, setExpandedEngagement] = useState<Set<string>>(new Set());
   const [tick, setTick] = useState(0);
   const [editCampaign, setEditCampaign] = useState<Campaign | null>(null);
+  const [pausingId, setPausingId] = useState<string | null>(null);
+  const [pauseError, setPauseError] = useState<{ id: string; message: string } | null>(null);
 
   const fetchCampaigns = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -937,6 +940,31 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
     } finally { setDeletingId(null); }
   };
 
+  // Pausar congela só a fila desta campanha; retomar empurra os horários
+  // pendentes pelo tempo em pausa (ver /api/campaigns/pause).
+  const handleTogglePause = async (campaign: Campaign) => {
+    const action = campaign.campaign_status === "paused" ? "resume" : "pause";
+    setPausingId(campaign.campaign_id);
+    setPauseError(null);
+    try {
+      const res = await fetch("/api/campaigns/pause", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaign_id: campaign.campaign_id, action }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        setPauseError({
+          id: campaign.campaign_id,
+          message: d.error ?? `Não foi possível ${action === "pause" ? "pausar" : "retomar"} a campanha.`,
+        });
+      }
+      await fetchCampaigns(true);
+    } catch {
+      setPauseError({ id: campaign.campaign_id, message: "Falha de conexão. Tente novamente." });
+    } finally { setPausingId(null); }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -961,6 +989,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
   }
 
   const running = campaigns.filter(c => c.campaign_status === "running");
+  const pausedCount = campaigns.filter(c => c.campaign_status === "paused").length;
 
   // Suppress lint warning — tick is read to force re-render for live time displays
   void tick;
@@ -975,6 +1004,12 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-[#00498D] shadow-[0_0_4px_#00498D] animate-pulse" />
               <span className="text-[#00498D]/70">{running.length} executando</span>
+            </span>
+          )}
+          {pausedCount > 0 && (
+            <span className="flex items-center gap-1.5 text-ink-2">
+              <Pause size={10} />
+              {pausedCount} pausada{pausedCount !== 1 ? "s" : ""}
             </span>
           )}
           <span>{campaigns.length} campanha{campaigns.length !== 1 ? "s" : ""}</span>
@@ -993,6 +1028,9 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
         {campaigns.map(campaign => {
           const progress     = campaign.total > 0 ? Math.round((campaign.published / campaign.total) * 100) : 0;
           const isRunning    = campaign.campaign_status === "running";
+          const isPaused     = campaign.campaign_status === "paused";
+          const isCompleted  = campaign.campaign_status === "completed";
+          const isPausing    = pausingId === campaign.campaign_id;
           const isDeleting   = deletingId === campaign.campaign_id;
           const isConfirming = confirmDelete === campaign.campaign_id;
           const campAccounts = campaign.account_ids.map(id => accountMap.get(id)).filter(Boolean) as Account[];
@@ -1003,7 +1041,9 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
 
           // Dynamic status
           let statusLabel: string, statusCls: string, statusBorder: string, dotCls: string, dotPulse = false;
-          if (!isRunning) {
+          if (isPaused) {
+            statusLabel = "Pausada"; statusCls = "bg-surface-raised text-ink-2"; statusBorder = "border-line-control"; dotCls = "bg-ink-3";
+          } else if (!isRunning) {
             statusLabel = "Concluída"; statusCls = "bg-[#00498D]/10 text-[#00498D]"; statusBorder = "border-[#00498D]/20"; dotCls = "bg-[#00498D]";
           } else if (isOverdue) {
             statusLabel = "Atrasada"; statusCls = "bg-amber-500/10 text-amber-400"; statusBorder = "border-amber-500/20"; dotCls = "bg-amber-400"; dotPulse = true;
@@ -1015,7 +1055,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
 
           const cardBorder = isOverdue
             ? "border-amber-500/15"
-            : hasFailed && !isRunning
+            : hasFailed && isCompleted
               ? "border-red-500/15"
               : isRunning
                 ? "border-[#85B9E9]/10"
@@ -1053,8 +1093,26 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                     {statusLabel === "Na Fila"    && <Clock size={9} />}
                     {statusLabel === "Publicando" && <Loader2 size={9} className="animate-spin" />}
                     {statusLabel === "Atrasada"   && <AlertCircle size={9} />}
+                    {statusLabel === "Pausada"    && <Pause size={9} />}
                     {statusLabel}
                   </span>
+                  {(isRunning || isPaused) && (
+                    <button
+                      onClick={() => handleTogglePause(campaign)}
+                      disabled={isPausing}
+                      title={isPaused ? "Retomar campanha" : "Pausar campanha (congela só a fila desta campanha)"}
+                      aria-label={isPaused ? "Retomar campanha" : "Pausar campanha"}
+                      className={cn(
+                        "w-7 h-7 rounded-lg border flex items-center justify-center transition-all",
+                        isPaused
+                          ? "bg-info-soft border-line text-accent hover:text-ink"
+                          : "bg-surface-raised border-line text-ink-3 hover:text-accent hover:border-accent/25",
+                        isPausing && "opacity-40 cursor-not-allowed"
+                      )}
+                    >
+                      {isPausing ? <Loader2 size={11} className="animate-spin" /> : isPaused ? <Play size={11} /> : <Pause size={11} />}
+                    </button>
+                  )}
                   <button
                     onClick={() => setEditCampaign(campaign)}
                     title="Editar legendas e cadência"
@@ -1087,7 +1145,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
                     transition={{ duration: 0.7, ease: "easeOut" }}
-                    className={cn("h-full rounded-full", hasFailed && !isRunning ? "bg-red-500/50" : "bg-gradient-to-r from-[#00498D]/70 to-[#85B9E9]/70")}
+                    className={cn("h-full rounded-full", hasFailed && isCompleted ? "bg-red-500/50" : isPaused ? "bg-line-control" : "bg-gradient-to-r from-[#00498D]/70 to-[#85B9E9]/70")}
                   />
                 </div>
               </div>
@@ -1096,7 +1154,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
               <div className="grid grid-cols-3 gap-2 text-[10px]">
                 <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-surface-raised border border-line">
                   <span className="text-ink-3 text-[9px] uppercase tracking-wider">Fila</span>
-                  <span className={cn("font-bold tabular-nums", campaign.pending > 0 ? "text-accent" : "text-ink-3")}>{campaign.pending}</span>
+                  <span className={cn("font-bold tabular-nums", campaign.pending > 0 ? (isPaused ? "text-ink-2" : "text-accent") : "text-ink-3")}>{campaign.pending}</span>
                 </div>
                 <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border", hasFailed ? "bg-danger-soft border-danger/15" : "bg-surface-raised border-line")}>
                   <span className="text-ink-3 text-[9px] uppercase tracking-wider">Falhas</span>
@@ -1168,9 +1226,11 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                 </div>
                 <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border", isOverdue ? "bg-warning-soft border-warning/15" : "bg-surface-raised border-line")}>
                   <span className="text-ink-3 text-[9px] uppercase tracking-wider">
-                    {isRunning ? "Próximo" : "Encerrada em"}
+                    {isPaused ? "Pausada" : isRunning ? "Próximo" : "Encerrada em"}
                   </span>
-                  {isRunning ? (
+                  {isPaused ? (
+                    <span className="font-medium text-ink-2">{campTimeAgo(campaign.paused_at ?? null)}</span>
+                  ) : isRunning ? (
                     <span className={cn("font-medium", isOverdue ? "text-warning" : "text-accent")}>
                       {isOverdue ? "⏱ " : ""}{campTimeIn(campaign.next_pending)}
                     </span>
@@ -1185,6 +1245,24 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-warning-soft border border-warning/15">
                   <AlertCircle size={11} className="text-warning/80 shrink-0" />
                   <span className="text-[10px] text-warning/80">Post atrasado — o cron publicará na próxima execução (≤1 min)</span>
+                </div>
+              )}
+
+              {/* ── Paused notice ── */}
+              {isPaused && (
+                <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-surface-raised border border-line">
+                  <Pause size={11} className="text-ink-2 shrink-0 mt-0.5" />
+                  <span className="text-[10px] text-ink-2 leading-relaxed">
+                    Fila congelada — nenhum post desta campanha é publicado{campaign.is_synced ? " e contas novas da pasta não entram" : ""} até você retomar. Ao retomar, os horários pendentes são adiados pelo tempo em pausa. As outras campanhas seguem normalmente.
+                  </span>
+                </div>
+              )}
+
+              {/* ── Pause/resume error ── */}
+              {pauseError?.id === campaign.campaign_id && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-danger-soft border border-danger/15">
+                  <AlertCircle size={11} className="text-danger shrink-0" />
+                  <span className="text-[10px] text-danger">{pauseError.message}</span>
                 </div>
               )}
 
@@ -1325,7 +1403,7 @@ export default function PostarPage() {
       .then(d => {
         const ids = new Set<string>();
         (d.campaigns ?? [])
-          .filter(c => c.campaign_status === "running")
+          .filter(c => c.campaign_status === "running" || c.campaign_status === "paused")
           .forEach(c => c.account_ids.forEach(id => ids.add(id)));
         setAccountsWithCampaign(ids);
       })

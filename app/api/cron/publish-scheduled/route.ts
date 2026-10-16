@@ -190,18 +190,43 @@ export async function GET(req: NextRequest) {
     "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id), " +
     "videos_library(public_url)";
 
+  // Campanhas pausadas pelo usuário (aba Postar) mantêm os posts 'pending' —
+  // a fila delas fica congelada. Elas precisam sair da busca no próprio banco:
+  // o filtro em memória mais abaixo também as barraria, mas aí os posts
+  // vencidos de uma campanha pausada ocupariam o lote inteiro a cada execução
+  // e travariam a fila de todas as outras. Fail-closed: sem saber quais estão
+  // pausadas, não publica nada nesta execução (o próximo minuto tenta de novo).
+  const { data: pausedRows, error: pausedErr } = await admin
+    .from("distribute_campaigns")
+    .select("id")
+    .eq("status", "paused");
+
+  if (pausedErr) {
+    console.error("[publish-scheduled] Erro ao buscar campanhas pausadas:", pausedErr.message);
+    return NextResponse.json({ error: pausedErr.message }, { status: 500 });
+  }
+
+  const pausedCampaignIds = ((pausedRows ?? []) as { id: string }[]).map((r) => r.id);
+  // `campaign_id NOT IN (...)` sozinho descartaria também os posts sem campanha
+  // (NULL NOT IN → NULL), por isso o OR explícito com campaign_id IS NULL.
+  const pausedFilter = pausedCampaignIds.length > 0
+    ? `campaign_id.is.null,campaign_id.not.in.(${pausedCampaignIds.join(",")})`
+    : null;
+
   // Stories furam a fila: usuário espera publicação quase imediata ("Postar agora"),
   // diferente de campanhas em massa (Postar/Clone/Loop) que já são agendadas de
   // propósito ao longo de dias. Busca stories elegíveis primeiro; só preenche o
   // restante do lote com os demais posts se sobrar espaço.
   // P1: Filtrar por campanha ativa OU sem campanha (posts legítimos de outros fluxos).
-  const { data: storyRows, error: storyErr } = await admin
+  let storyQuery = admin
     .from("scheduled_posts")
     .select(SELECT_FIELDS)
     .eq("status", "pending")
     .eq("post_type", "story")
     .lte("scheduled_at", now)
-    .not("video_url", "ilike", "%instagram.com%")
+    .not("video_url", "ilike", "%instagram.com%");
+  if (pausedFilter) storyQuery = storyQuery.or(pausedFilter);
+  const { data: storyRows, error: storyErr } = await storyQuery
     .order("scheduled_at", { ascending: true })
     .limit(BATCH_SIZE);
 
@@ -213,13 +238,15 @@ export async function GET(req: NextRequest) {
   const remainingSlots = BATCH_SIZE - (storyRows?.length ?? 0);
   let otherRows: unknown[] = [];
   if (remainingSlots > 0) {
-    const { data, error: fetchErr } = await admin
+    let otherQuery = admin
       .from("scheduled_posts")
       .select(SELECT_FIELDS)
       .eq("status", "pending")
       .neq("post_type", "story")
       .lte("scheduled_at", now)
-      .not("video_url", "ilike", "%instagram.com%")
+      .not("video_url", "ilike", "%instagram.com%");
+    if (pausedFilter) otherQuery = otherQuery.or(pausedFilter);
+    const { data, error: fetchErr } = await otherQuery
       .order("scheduled_at", { ascending: true })
       .limit(remainingSlots);
 
