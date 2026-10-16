@@ -17,6 +17,7 @@ import {
   ImagePlay,
   Eye,
   DollarSign,
+  TrendingUp,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import {
@@ -102,10 +103,8 @@ function timeAgo(dateStr: string): string {
   return `há ${Math.floor(hrs / 24)}d`;
 }
 
-function formatCompact(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
-  return String(n);
+function formatInt(n: number): string {
+  return n.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 }
 
 function formatBRL(v: number): string {
@@ -134,12 +133,13 @@ const VIEWS_PERIODS: { value: ViewsPeriod; label: string }[] = [
   { value: "month", label: "Este mês" },
 ];
 
-const VIEWS_HINTS: Record<ViewsPeriod, string> = {
-  today: "Dia atual — zera à meia-noite (Brasília)",
-  yesterday: "Dia anterior completo",
-  last_7d: "Últimos 7 dias, incluindo hoje",
-  last_30d: "Últimos 30 dias, incluindo hoje",
-  month: "Desde o dia 1º — zera todo mês",
+// Complemento do título "Visualizações …" conforme o botão selecionado.
+const VIEWS_TITLES: Record<ViewsPeriod, string> = {
+  today: "hoje",
+  yesterday: "ontem",
+  last_7d: "últimos 7 dias",
+  last_30d: "últimos 30 dias",
+  month: "este mês",
 };
 
 // ── Quick actions ────────────────────────────────────────────────
@@ -157,13 +157,8 @@ export default function DashboardPage() {
   const [clearing, setClearing] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [displayName, setDisplayName] = useState<string>("");
-  const [viewsPeriod, setViewsPeriod] = useState<ViewsPeriod>("yesterday");
+  const [viewsPeriod, setViewsPeriod] = useState<ViewsPeriod>("today");
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Set initial views period based on data availability
-  useEffect(() => {
-    if (stats?.views.today_has_data) setViewsPeriod("today");
-  }, [stats?.views.today_has_data]);
 
   // Busca display_name via API server-side (bypassa cache JWT do cliente)
   const loadDisplayName = useCallback(async () => {
@@ -268,22 +263,39 @@ export default function DashboardPage() {
           {loading && <Skeleton height="4px" width="60%" />}
         </StatTile>
 
-        {/* Views */}
-        <StatTile
-          label="Visualizações"
-          value={loading ? "—" : formatCompact(viewsValue)}
-          icon={<Eye size={18} />}
-          hint={loading ? undefined : VIEWS_HINTS[viewsPeriod]}
-        >
+        {/* Views — número grande segue o período escolhido; total de todas as contas embaixo */}
+        <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-success-soft text-success">
+            <Eye size={18} />
+          </span>
+          <div className="flex flex-col gap-1">
+            <span className="font-mono text-[28px] font-medium leading-[32px] tracking-[-0.02em] tabular-nums text-ink">
+              {loading ? "—" : formatInt(viewsValue)}
+            </span>
+            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-3">
+              Visualizações {VIEWS_TITLES[viewsPeriod]}
+            </span>
+          </div>
+          {loading ? (
+            <Skeleton height="14px" width="55%" />
+          ) : (
+            <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums text-success">
+              <TrendingUp size={12} strokeWidth={2} />
+              {formatInt(stats?.views.total ?? 0)} no total
+            </span>
+          )}
           {!loading && (
             <Segmented
               options={VIEWS_PERIODS}
               value={viewsPeriod}
               onChange={(v) => setViewsPeriod(v as ViewsPeriod)}
-              className="mt-1"
+              className="flex-wrap self-start"
             />
           )}
-        </StatTile>
+          {!loading && viewsPeriod === "today" && !stats?.views.today_has_data && (
+            <p className="text-xs text-ink-3">A Meta ainda não liberou os dados de hoje.</p>
+          )}
+        </div>
 
         {/* Videos published */}
         <StatTile
