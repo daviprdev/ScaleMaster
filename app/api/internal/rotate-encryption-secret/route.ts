@@ -1,7 +1,7 @@
 /**
  * POST /api/internal/rotate-encryption-secret — ROTA TEMPORÁRIA
  *
- * Rotaciona a ENCRYPTION_SECRET dentro do runtime da Vercel, sem ninguém
+ * Rotaciona a ENCRYPTION_SECRET dentro do runtime do servidor, sem ninguém
  * precisar ver a chave antiga: ela é lida de process.env.ENCRYPTION_SECRET e
  * nunca sai daqui. Só a chave NOVA chega pelo corpo da requisição.
  *
@@ -47,7 +47,7 @@ function secureEquals(a: string, b: string): boolean {
 // ─── Conexão Postgres ─────────────────────────────────────────────────────────
 // O app fala com o Supabase só pela API REST (supabase-js); nenhuma rota usa
 // connection string. A rotação precisa de transação de verdade, então procura
-// as variáveis que a integração Supabase↔Vercel costuma injetar, em ordem.
+// as variáveis de conexão Postgres mais comuns, em ordem.
 const DB_ENV_CANDIDATES = [
   "ROTATION_DATABASE_URL",
   "POSTGRES_URL_NON_POOLING",
@@ -65,8 +65,8 @@ function classify(raw: string): { kind: DbKind; rank: number } {
     if (u.hostname.endsWith(".pooler.supabase.com")) {
       return port === "6543" ? { kind: "pooler-transaction", rank: 1 } : { kind: "pooler-session", rank: 0 };
     }
-    // db.<ref>.supabase.co só resolve IPv6 (sem o add-on de IPv4) e a Vercel
-    // não tem saída IPv6 — fica por último.
+    // db.<ref>.supabase.co só resolve IPv6 (sem o add-on de IPv4) e nem todo
+    // ambiente tem saída IPv6 — fica por último.
     if (/^db\.[a-z0-9]+\.supabase\.co$/.test(u.hostname)) return { kind: "direct", rank: 3 };
     return { kind: port === "6543" ? "pooler-transaction" : "other", rank: 2 };
   } catch {

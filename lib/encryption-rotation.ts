@@ -3,7 +3,7 @@
  *
  * Usado por DOIS chamadores, com a mesma lógica:
  *   - scripts/rotate-encryption-secret.mjs  (roda local, chaves digitadas)
- *   - app/api/internal/rotate-encryption-secret/route.ts (roda na Vercel e lê
+ *   - app/api/internal/rotate-encryption-secret/route.ts (roda no servidor e lê
  *     a chave antiga do process.env, sem ninguém precisar vê-la)
  *
  * Formato (idêntico a lib/encrypt.ts e python_server/session_store.py):

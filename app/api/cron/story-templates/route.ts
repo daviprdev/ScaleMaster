@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 // Sem essa guarda, vários templates ou muitas contas por template facilmente
-// passam de 60s reais e a Vercel mata a function no meio do loop — as contas
+// passam do timeout do cron e a execução é cortada no meio do loop — as contas
 // ainda não alcançadas simplesmente não recebem o story naquele ciclo, sem
 // nenhum erro registrado. Corta o processamento antes disso pra devolver uma
 // resposta normal (o resto é pego no próximo ciclo, respeitando o claim).

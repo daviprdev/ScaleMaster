@@ -1,5 +1,5 @@
 """
-AutoScale — Raspagem de reels de um perfil via conta leitora dedicada
+ScaleMaster — Raspagem de reels de um perfil via conta leitora dedicada
 (instagrapi, API privada do app mobile).
 
 Complementa a Apify na aba Inspirações: a Apify nunca traz a lista completa de

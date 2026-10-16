@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY ?? "";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY ?? "";
-const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? "mailto:admin@autoscale.local";
+const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? "mailto:admin@scalemaster.tech";
 
 let vapidConfigured = false;
 function ensureVapid() {

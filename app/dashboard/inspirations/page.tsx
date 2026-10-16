@@ -683,7 +683,7 @@ export default function InspiracoesPage() {
       throw new Error("URL do vídeo indisponível para este reel.");
     }
 
-    const filename = `autoscale_reel_${reel.id || Date.now()}.mp4`;
+    const filename = `scalemaster_reel_${reel.id || Date.now()}.mp4`;
     const encoded  = `url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(filename)}`;
     // HEAD: validação rápida da URL — resolve em <500 ms
     const headUrl  = `/api/proxy-download?${encoded}`;

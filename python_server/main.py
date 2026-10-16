@@ -1,7 +1,7 @@
 """
-AutoScale Railway Worker — FastAPI
+ScaleMaster Python Server — FastAPI
 Responsável pelo processamento pesado de vídeo (FFmpeg) e pelo login
-automatizado de contas Instagram via instagrapi, fora da Vercel.
+automatizado de contas Instagram via instagrapi, fora do app Next.js.
 
 Endpoints:
   POST /video/effects       — aplica efeitos de vídeo e faz upload para Supabase
@@ -41,7 +41,7 @@ from onboarding import (
 # Config — lidas na inicialização; crash imediato se ausentes
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="AutoScale Railway Worker", version="1.0.0", redirect_slashes=False)
+app = FastAPI(title="ScaleMaster Python Server", version="1.0.0", redirect_slashes=False)
 
 SUPABASE_URL: str = os.environ["SUPABASE_URL"].rstrip("/")
 SUPABASE_SERVICE_KEY: str = os.environ["SUPABASE_SERVICE_ROLE_KEY"]

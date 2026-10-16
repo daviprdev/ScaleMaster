@@ -6,7 +6,7 @@ import { STORY_MAX_IMAGE_SIZE, STORY_MAX_VIDEO_SIZE, STORY_VALID_TYPES } from "@
 
 export const runtime = "nodejs";
 
-// O arquivo NÃO passa por esta função: a Vercel corta o corpo da requisição
+// O arquivo NÃO passa por esta função: a hospedagem anterior cortava o corpo da requisição
 // em 4,5 MB (413 FUNCTION_PAYLOAD_TOO_LARGE), o que derrubava todo upload de
 // vídeo. Esta rota só emite uma URL de upload assinada para um caminho que o
 // SERVIDOR escolhe; o navegador envia os bytes direto ao Supabase Storage e

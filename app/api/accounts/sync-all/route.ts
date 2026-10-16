@@ -356,7 +356,7 @@ export async function POST(request: Request) {
   // maxDuration=60 para sempre conseguir responder. Um `Promise.race` por lote
   // (não só um check ENTRE lotes) garante que, mesmo se um lote individual travar
   // além do esperado (proxy lento, retry de token), a função corta a espera e
-  // responde com o que já tem — em vez de deixar a Vercel matá-la à força no meio,
+  // responde com o que já tem — em vez de estourar o timeout do proxy no meio,
   // o que deixaria o fetch do frontend pendurado sem resposta alguma para sempre.
   const HARD_DEADLINE_MS = 40_000;
   const startedAt = Date.now();
@@ -442,8 +442,8 @@ export async function POST(request: Request) {
           .from("instagram_accounts")
           .update({ health_status: "error", profile_refreshed_at: new Date().toISOString() })
           .eq("id", r.id);
-        // IMPORTANTE: deve ser awaited — funções serverless da Vercel terminam ao enviar
-        // a response, cancelando qualquer promise fire-and-forget (void) em voo.
+        // IMPORTANTE: deve ser awaited — promise fire-and-forget (void) solta depois
+        // da response não tem garantia de terminar (restart do container, erro sem log).
         const { error: logErr } = await admin.from("failover_logs").insert({
           user_id: r.user_id,
           failed_account_id: r.id,

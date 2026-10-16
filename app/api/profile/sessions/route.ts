@@ -55,9 +55,10 @@ export async function POST(req: NextRequest) {
     req.headers.get("x-real-ip") ??
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     null;
-  // Vercel injeta esses headers automaticamente em produção
-  const country = req.headers.get("x-vercel-ip-country") ?? null;
-  const city    = req.headers.get("x-vercel-ip-city")    ?? null;
+  // Sem fonte de geolocalização na VPS (o nginx só repassa IP): país/cidade
+  // ficam nulos em vez de exibir dado inventado.
+  const country: string | null = null;
+  const city: string | null = null;
 
   const { browser, os, device } = parseUserAgent(ua);
   // Fingerprint estável: hash do UA + IP (sem exigir cookies adicionais)

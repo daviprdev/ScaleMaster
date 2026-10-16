@@ -30,7 +30,7 @@ const MAX_TRANSIENT_RETRIES = 6;
 // duração varia muito: ~10s num perfil pequeno, minutos num perfil com
 // milhares de reels. Em vez de um teto fixo por job, cada um recebe o tempo
 // que AINDA sobra do run — e só começa se sobrar o mínimo. Assim um perfil
-// grande pode usar quase o run inteiro sem que a Vercel mate a função no meio
+// grande pode usar quase o run inteiro sem que o timeout do timer mate a função no meio
 // (o que deixaria o job preso em 'processing' até o auto-healing).
 const HARD_RUN_MS = 285_000; // maxDuration=300 menos folga de resposta
 const MIN_JOB_MS = 45_000;   // não começa job novo com menos que isso

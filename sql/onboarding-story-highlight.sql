@@ -1,4 +1,4 @@
--- AutoScale - Adiciona colunas story/highlight na tabela onboarding_jobs
+-- ScaleMaster - Adiciona colunas story/highlight na tabela onboarding_jobs
 -- Executar no Supabase SQL Editor antes de deployar o código novo.
 
 ALTER TABLE onboarding_jobs

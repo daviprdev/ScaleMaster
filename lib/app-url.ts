@@ -1,6 +1,6 @@
 /**
  * Canonical app URL for server-side code.
- * NEVER falls back to a hardcoded Vercel URL.
+ * NEVER falls back to a hardcoded URL.
  * Throws in production RUNTIME if NEXT_PUBLIC_APP_URL is missing.
  * During build (NEXT_PHASE === 'phase-production-build'), returns a safe
  * placeholder so static generation does not fail — the real value is only

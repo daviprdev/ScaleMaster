@@ -12,7 +12,7 @@ export const maxDuration = 60;
 // POST dispara o pipeline de crons inteiro com o CRON_SECRET do servidor.
 // Antes bastava estar logado — qualquer usuário aprovado conseguia ler dados de
 // outros e forçar o processamento de todo mundo (abuso de rate limit da Meta e
-// de orçamento da Vercel). Agora exige CRON_SECRET ou papel de admin.
+// de recursos do servidor). Agora exige CRON_SECRET ou papel de admin.
 
 async function isAuthorized(req: NextRequest): Promise<boolean> {
   // hasValidCronSecret é fail-closed: com CRON_SECRET ausente/vazio devolve

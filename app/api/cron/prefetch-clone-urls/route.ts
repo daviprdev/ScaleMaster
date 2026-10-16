@@ -54,7 +54,7 @@ const BUDGET_MS = 250_000;
 const MAX_DOWNLOADS_PER_RUN = 6;
 /** Runs novos da Apify por ciclo (cada início ~1s, mas cada run é pago). */
 const MAX_NEW_RUNS = 8;
-/** Teto de bytes baixados por ciclo — evita surpresa de banda na Vercel. */
+/** Teto de bytes baixados por ciclo — evita surpresa de banda na VPS. */
 const MAX_BYTES_PER_RUN = 150 * 1024 * 1024;
 /** Tentativas por Reel antes de desistir (Reel apagado, privado, etc.). */
 const MAX_ATTEMPTS = 3;

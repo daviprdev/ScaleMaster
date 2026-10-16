@@ -1,4 +1,4 @@
--- AutoScale - Tabela de templates de onboarding
+-- ScaleMaster - Tabela de templates de onboarding
 -- Um template define a configuração padrão aplicada a um lote de contas importadas.
 -- Executar no Supabase SQL Editor.
 

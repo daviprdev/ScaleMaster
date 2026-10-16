@@ -3,7 +3,7 @@
  * Rotação da ENCRYPTION_SECRET — versão LOCAL (chaves digitadas).
  *
  * A lógica mora em lib/encryption-rotation.ts, a mesma usada pela rota
- * /api/internal/rotate-encryption-secret (que roda na Vercel e lê a chave
+ * /api/internal/rotate-encryption-secret (que roda no servidor e lê a chave
  * antiga do process.env). Ver o cabeçalho da lib para as garantias.
  *
  * Uso:

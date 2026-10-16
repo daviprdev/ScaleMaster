@@ -13,7 +13,7 @@
  * uma vez um lote de `video_count` posts (todo o futuro já agendado). Esse
  * modelo de "matrícula em lote" causou 3 incidentes documentados em produção
  * (667k linhas em 26/06, 51k+ linhas em 27/07, campanha duplicada 8x em
- * 22/07) e, confirmado nos logs da Vercel, 102 timeouts de 60s + 52 falhas de
+ * 22/07) e, confirmado nos logs de produção, 102 timeouts de 60s + 52 falhas de
  * "schema cache" no cron em 30 dias. Contas do lote clássico (matriculadas na
  * criação da campanha, em app/api/posts/distribute/route.ts) continuam
  * intocadas — só o mecanismo de conta nova entrando DEPOIS muda.

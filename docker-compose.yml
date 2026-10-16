@@ -1,3 +1,5 @@
+name: scalemaster
+
 services:
   app:
     build:
@@ -8,8 +10,8 @@ services:
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
         NEXT_PUBLIC_INSTAGRAM_APP_ID: ${NEXT_PUBLIC_INSTAGRAM_APP_ID:-}
         NEXT_PUBLIC_META_CLIENT_ID: ${NEXT_PUBLIC_META_CLIENT_ID:-}
-    image: autoscale-app:latest
-    container_name: autoscale-app-1
+    image: scalemaster-app:latest
+    container_name: scalemaster-app-1
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
@@ -38,8 +40,8 @@ services:
   python-server:
     build:
       context: ./python_server
-    image: autoscale-python-server:latest
-    container_name: autoscale-python-server-1
+    image: scalemaster-python-server:latest
+    container_name: scalemaster-python-server-1
     restart: unless-stopped
     env_file: .env.production
     environment:

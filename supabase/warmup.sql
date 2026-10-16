@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════
 -- Warmup de Contas Novas
 -- Contas com < 30 posts publicam em lotes de 10 com pausas de 8h.
--- Após 30 posts pelo AutoScale, is_warmed_up = true → modo normal.
+-- Após 30 posts pelo ScaleMaster, is_warmed_up = true → modo normal.
 --
 -- Execute no Supabase Dashboard → SQL Editor
 -- ═══════════════════════════════════════════════════════════════

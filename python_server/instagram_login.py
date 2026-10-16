@@ -1,5 +1,5 @@
 """
-AutoScale — Login automatizado via instagrapi (API privada do app mobile).
+ScaleMaster — Login automatizado via instagrapi (API privada do app mobile).
 
 Substitui o clique manual em contas que já existem (hoje feito com o
 MoreLogin), mantendo o mesmo isolamento por conta: device fingerprint

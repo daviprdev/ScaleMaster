@@ -31,7 +31,7 @@ function isAllowed(raw: string): boolean {
 }
 
 // Headers that mimic an iPhone Safari client — Instagram CDN is less likely to
-// 403 mobile requests than datacenter desktop UAs on Vercel egress IPs.
+// 403 mobile requests than datacenter desktop UAs on server egress IPs.
 const VIDEO_FETCH_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
@@ -50,7 +50,7 @@ const VIDEO_FETCH_HEADERS = {
 //
 // 1. Validates the URL against the allowlist (SSRF protection).
 // 2. Supabase Storage URLs: redirect 307 directly — video is served by Supabase CDN,
-//    zero bytes flow through Vercel.
+//    zero bytes flow through the server.
 // 3. Other CDN URLs: fetches server-side (bypasses CORS + Referer restrictions) and
 //    streams the body. Response is streamed (not buffered) to avoid OOM on large files.
 //
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
   }
 
   const url = req.nextUrl.searchParams.get("url");
-  const filename = req.nextUrl.searchParams.get("filename") ?? "autoscale_reel.mp4";
+  const filename = req.nextUrl.searchParams.get("filename") ?? "scalemaster_reel.mp4";
 
   if (!url || url.trim() === "") {
     return new NextResponse(
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Supabase Storage URLs — already on the Supabase CDN, publicly accessible.
-  // Redirect the browser directly: zero bytes flow through Vercel.
+  // Redirect the browser directly: zero bytes flow through the server.
   try {
     const { hostname } = new URL(url);
     if (hostname.endsWith(".supabase.co")) {

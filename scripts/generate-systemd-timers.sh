@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
 # generate-systemd-timers.sh
-# Generates systemd timer + service pairs for all AutoScale-IA cron endpoints.
-# Derived from vercel.json schedules. Each timer calls the local Next.js app
-# with CRON_SECRET bearer auth.
+# Generates systemd timer + service pairs for all ScaleMaster cron endpoints.
+# Each timer calls the local Next.js app with CRON_SECRET bearer auth.
 #
 # Usage:
 #   chmod +x scripts/generate-systemd-timers.sh
@@ -11,6 +10,9 @@
 #
 # Default output dir: ./systemd/ (relative to project root)
 # After generation, copy files to /etc/systemd/system/ and enable timers.
+#
+# CRON_SECRET em /opt/scalemaster/.env.cron precisa ser IGUAL ao do
+# .env.production (container): divergente, todo timer recebe 401 em silêncio.
 # =============================================================================
 set -euo pipefail
 
@@ -32,10 +34,11 @@ CRONS=(
   "process-scrape-jobs|/api/cron/process-scrape-jobs|*-*-* *:00/5:30|290"
   "sync-post-insights|/api/cron/sync-post-insights|*-*-* *:00/5:40|290"
   "sync-distribute-accounts|/api/cron/sync-distribute-accounts|*-*-* *:00/10:00|590"
-    "check-health-alerts|/api/cron/check-health-alerts|*-*-* *:00/10:40|590"
+  "check-health-alerts|/api/cron/check-health-alerts|*-*-* *:00/10:40|590"
   "sync-account-views|/api/cron/sync-account-views|*-*-* *:00/15:00|890"
   "daily-profit-notification|/api/cron/daily-profit-notification|*-*-* *:00/15:30|890"
   "story-templates|/api/cron/story-templates|*-*-* *:00/30:00|1790"
+  "check-views-goal|/api/cron/check-views-goal|*-*-* *:00:00|290"
   "refresh-tokens|/api/cron/refresh-tokens|*-*-* 00/12:00:00|3590"
   "analytics-sync|/api/analytics/sync|*-*-* 02:00:00|3590|POST"
 )
@@ -47,8 +50,8 @@ echo ""
 for entry in "${CRONS[@]}"; do
   IFS='|' read -r NAME ENDPOINT ON_CALENDAR TIMEOUT METHOD <<< "$entry"
 
-  SERVICE_FILE="$OUTPUT_DIR/autoscale-${NAME}.service"
-  TIMER_FILE="$OUTPUT_DIR/autoscale-${NAME}.timer"
+  SERVICE_FILE="$OUTPUT_DIR/scalemaster-${NAME}.service"
+  TIMER_FILE="$OUTPUT_DIR/scalemaster-${NAME}.timer"
 
   # Default to GET if no method specified
   CURL_METHOD="${METHOD:-GET}"
@@ -61,13 +64,13 @@ for entry in "${CRONS[@]}"; do
   # --- Service file ---
   cat > "$SERVICE_FILE" <<EOF
 [Unit]
-Description=AutoScale: ${NAME} cron
+Description=ScaleMaster: ${NAME} cron
 After=network-online.target
 Requires=network-online.target
 
 [Service]
 Type=oneshot
-EnvironmentFile=/opt/autoscale/.env.cron
+EnvironmentFile=/opt/scalemaster/.env.cron
 ExecStart=${CURL_CMD}
 TimeoutStartSec=${TIMEOUT}
 StandardOutput=journal
@@ -77,7 +80,7 @@ EOF
   # --- Timer file ---
   cat > "$TIMER_FILE" <<EOF
 [Unit]
-Description=AutoScale: ${NAME} (${ON_CALENDAR})
+Description=ScaleMaster: ${NAME} (${ON_CALENDAR})
 
 [Timer]
 OnCalendar=${ON_CALENDAR}
@@ -89,15 +92,15 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
-  echo "  ✓ autoscale-${NAME}.{service,timer}"
+  echo "  ✓ scalemaster-${NAME}.{service,timer}"
 done
 
 echo ""
 echo "# Done. To install:"
-echo "#   sudo cp ${OUTPUT_DIR}/autoscale-*.service ${OUTPUT_DIR}/autoscale-*.timer /etc/systemd/system/"
+echo "#   sudo cp ${OUTPUT_DIR}/scalemaster-*.service ${OUTPUT_DIR}/scalemaster-*.timer /etc/systemd/system/"
 echo "#   sudo systemctl daemon-reload"
-echo "#   sudo systemctl enable --now autoscale-*.timer"
+echo "#   sudo systemctl enable --now scalemaster-*.timer"
 echo ""
 echo "# Verify:"
-echo "#   systemctl list-timers --all | grep autoscale"
-echo "#   journalctl -u autoscale-publish-scheduled.service --no-pager -n 20"
+echo "#   systemctl list-timers --all | grep scalemaster"
+echo "#   journalctl -u scalemaster-publish-scheduled.service --no-pager -n 20"

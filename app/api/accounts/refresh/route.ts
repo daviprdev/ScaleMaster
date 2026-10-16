@@ -170,8 +170,8 @@ export async function POST(req: NextRequest) {
         .update({ health_status: "error" })
         .eq("id", accountId);
       // Grava no failover_logs para o diagnóstico mostrar o motivo real.
-      // IMPORTANTE: deve ser awaited — funções serverless da Vercel terminam ao enviar
-      // a response, cancelando qualquer promise fire-and-forget (void) em voo.
+      // IMPORTANTE: deve ser awaited — promise fire-and-forget (void) solta depois
+      // da response não tem garantia de terminar (restart do container, erro sem log).
       try {
         await (admin as any).from("failover_logs").insert({
           user_id: user.id,

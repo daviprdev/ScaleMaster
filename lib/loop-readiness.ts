@@ -4,7 +4,7 @@
  * Motivo de existir: um Loop podia ficar "Ativo" na tela, bonito e verde, sem
  * postar nada por tempo indefinido. O `process-loops` detectava o problema
  * (pasta de mídia vazia, nenhuma conta válida) e fazia `return "skipped"` com
- * um `console.warn` — visível só nos logs da Vercel. Do lado do usuário não
+ * um `console.warn` — visível só nos logs do servidor. Do lado do usuário não
  * havia sintoma nenhum além do silêncio.
  *
  * Agora o mesmo motivo é usado em dois momentos:

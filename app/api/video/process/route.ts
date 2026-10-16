@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 
 // Timeout estendido (necessário para vídeos grandes)
-// Vercel Free: máx 10s | Pro: máx 300s
+// Máx 300s por requisição (proxy_read_timeout do nginx na VPS)
 // Para produção com vídeos longos, considere uma fila (ex: Inngest, Trigger.dev)
 export const maxDuration = 300;
 

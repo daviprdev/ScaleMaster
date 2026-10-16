@@ -214,8 +214,8 @@ async function main() {
 
   check("rota /api/automations removida", !exists("app/api/automations"));
   check("cron process-automations removido", !exists("app/api/cron/process-automations"));
-  check("schedule do cron fora do vercel.json",
-    !src("vercel.json").includes("process-automations"));
+  check("schedule do cron fora dos timers systemd",
+    !src("scripts/generate-systemd-timers.sh").includes("process-automations"));
   check("Sidebar sem o item Automatizar",
     !src("components/dashboard/Sidebar.tsx").includes("/dashboard/automatizar"));
   check("Dashboard sem a ação rápida Automatizar",

@@ -440,7 +440,7 @@ export default function ClonePage() {
     setSuccess(null);
 
     try {
-      // Append timezone offset so the Vercel server (UTC) interprets the time correctly
+      // Append timezone offset so the server (UTC) interprets the time correctly
       const tzOffset   = localISOWithOffset().slice(16); // "+03:00" or "-03:00"
       const startAtISO = `${startAt}:00${tzOffset}`;    // "2026-06-22T10:30:00-03:00"
 

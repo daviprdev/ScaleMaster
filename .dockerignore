@@ -37,5 +37,4 @@ docs/prompts
 # Environment files with secrets — NEVER include in Docker context
 .env.cron
 .env.production
-.env.vercel-tmp
 .env.*.local

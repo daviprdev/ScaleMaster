@@ -1,5 +1,5 @@
 """
-AutoScale - Etapa magic_link do onboarding, automatizada no navegador.
+ScaleMaster - Etapa magic_link do onboarding, automatizada no navegador.
 
 Ultima etapa do onboarding (invite -> photo -> professional ->
 verify_professional -> magic_link). Ate aqui ela exigia um humano: copiar o

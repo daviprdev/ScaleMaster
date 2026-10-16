@@ -1,5 +1,5 @@
 """
-AutoScale - Onboarding automatizado de contas do Instagram (Fase Onboarding 1/3).
+ScaleMaster - Onboarding automatizado de contas do Instagram (Fase Onboarding 1/3).
 
 Etapas executadas aqui (uma chamada HTTP por etapa, orquestradas pelo cron
 /api/cron/process-onboarding-jobs no Next.js):

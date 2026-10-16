@@ -836,7 +836,7 @@ export default function AccountsPage() {
         try {
           data = await res.json();
         } catch {
-          // Resposta não é JSON válido (ex: Vercel edge truncou o body)
+          // Resposta não é JSON válido (ex: proxy truncou o body)
           break;
         }
         const processedThisCall = data.processed ?? 0;

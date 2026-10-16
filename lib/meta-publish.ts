@@ -1,8 +1,8 @@
 // Tokens gerados via Instagram Login funcionam com graph.instagram.com
 const GRAPH_API = "https://graph.instagram.com/v21.0";
 
-// Chamadas à Graph API oficial saem server-to-server, direto do runtime da
-// Vercel — sem proxy residencial (decisão de arquitetura, ver CLAUDE.md).
+// Chamadas à Graph API oficial saem server-to-server, direto da VPS —
+// sem proxy residencial (decisão de arquitetura, ver CLAUDE.md).
 // undici.fetch em vez do fetch global do Next.js: o patch de cache do Next
 // pode alterar/reter respostas que aqui precisam ser lidas cruas.
 import { fetch as undiciFetch, type Dispatcher } from "undici";

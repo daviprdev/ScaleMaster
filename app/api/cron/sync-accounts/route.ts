@@ -2,7 +2,7 @@
  * /api/cron/sync-accounts
  *
  * Sincroniza perfis de TODAS as contas de TODOS os usuários em background.
- * Roda a cada 1 min (vercel.json) e só pega contas paradas há mais de STALE_MINUTES,
+ * Pensado para rodar a cada 1 min e só pega contas paradas há mais de STALE_MINUTES,
  * ordenadas da mais velha pra mais nova — refresca o painel sozinho (~5 min de
  * frescor) sem sincronizar todas de uma vez (anti-burst / anti-checkpoint).
  *

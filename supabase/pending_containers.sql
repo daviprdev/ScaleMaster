@@ -3,7 +3,7 @@
 --
 -- Fase 1 (process-loops): cria o container na Meta e insere aqui.
 -- Fase 2 (publish-pending): verifica status e publica quando FINISHED.
--- Isso evita timeout do Vercel pelo polling inline do processamento de vídeo.
+-- Isso evita timeout da requisição pelo polling inline do processamento de vídeo.
 -- ═══════════════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS public.pending_containers (

@@ -555,7 +555,7 @@ type LoopOutcome = "processed" | "skipped" | "error";
 
 /**
  * Grava por que o loop não postou neste ciclo. Até 2026-09-21 esse motivo só
- * existia como console.warn nos logs da Vercel: o loop ficava "Ativo" na tela,
+ * existia como console.warn nos logs do servidor: o loop ficava "Ativo" na tela,
  * sem postar nada, e não havia nenhum sintoma visível para o usuário. Agora o
  * card do Loop mostra o texto e diz o que fazer.
  */

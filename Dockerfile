@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Multi-stage Dockerfile for AutoScale-IA Next.js app (standalone output)
+# Multi-stage Dockerfile for ScaleMaster Next.js app (standalone output)
 # Requires: output: 'standalone' in next.config.ts
 
 # ---------------------------------------------------------------------------

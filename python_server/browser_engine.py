@@ -1,5 +1,5 @@
 """
-AutoScale - Motor "browser" (Playwright) para contas do Instagram.
+ScaleMaster - Motor "browser" (Playwright) para contas do Instagram.
 
 Paralelo ao motor instagrapi (instagram_login.py / onboarding.py), que segue
 no ar sem alteração. Motivação: o login pela API privada mobile passou a

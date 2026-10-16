@@ -24,7 +24,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const BATCH_SIZE = 20;
-// maxDuration=300 já era liberado pela Vercel, mas o budget próprio ficava em
+// O timer systemd espera até 290s, mas o budget próprio ficava em
 // só 55s — bem menos que o necessário. O claim atômico por post (linha ~276)
 // protege contra processamento duplicado mesmo com invocações do cron (a cada
 // 1 min) se sobrepondo, então é seguro usar quase todo o maxDuration.

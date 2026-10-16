@@ -155,7 +155,7 @@ async function main() {
   check("D) referências derivadas server-side (não vêm do cliente)",
     orphanRoute.includes("coletarReferencias") && !orphanRoute.includes("req.json()"));
   check("D) NÃO existe cron apagando Storage automaticamente",
-    !src("vercel.json").includes("storage-orphans"));
+    !src("scripts/generate-systemd-timers.sh").includes("storage-orphans"));
 
   check("Ambas as rotas usam a definição canônica única",
     brokenRoute.includes('from "@/lib/library-integrity"') &&

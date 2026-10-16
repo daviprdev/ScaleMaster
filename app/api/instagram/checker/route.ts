@@ -301,7 +301,7 @@ export async function POST(req: Request) {
   // ── Via 2 (complementar): consulta anônima ao endpoint web ─────────────────
   // Mantida porque é a única que enxerga conta pessoal, e porque a proteção
   // anti-bot varia com o tempo/IP. Sai sempre por proxy residencial: pelo IP
-  // datacenter da Vercel o bloqueio é imediato. Empresta o proxy das contas
+  // datacenter do servidor o bloqueio é imediato. Empresta o proxy das contas
   // conectadas e, na falta delas, um que esteja LIVRE no estoque — emprestar
   // NÃO reivindica a entrada, o proxy segue disponível para a próxima conta.
   const proxyCandidates: { id: string; encrypted: string; from: "conta" | "estoque" }[] = [];

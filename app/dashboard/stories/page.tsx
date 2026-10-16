@@ -822,7 +822,7 @@ export default function StoriesPage() {
       setMedia(prev => prev && prev.previewUrl === previewUrl ? { ...prev, status: "error", error } : prev);
 
     // O arquivo vai DIRETO ao Supabase Storage via URL assinada — passar pela
-    // Vercel estourava o limite de 4,5 MB do corpo e todo vídeo falhava.
+    // API estourava o limite de 4,5 MB do corpo e todo vídeo falhava.
     try {
       const signRes = await fetch("/api/stories/upload", {
         method: "POST",

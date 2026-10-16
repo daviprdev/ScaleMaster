@@ -1,4 +1,4 @@
--- AutoScale - Biblioteca de mídias de onboarding
+-- ScaleMaster - Biblioteca de mídias de onboarding
 -- Armazena fotos de perfil e mídias de story (fotos/vídeos) reutilizáveis entre templates.
 -- Executar no Supabase SQL Editor.
 

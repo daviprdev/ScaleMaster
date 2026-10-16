@@ -10,7 +10,7 @@ import {
 
 export const runtime = "nodejs";
 
-// 300 s on Vercel Pro; Hobby is capped at 60 s regardless of this setting.
+// Limite de 300 s por requisição (proxy_read_timeout do nginx na VPS).
 // Each video takes ~3–10 s (download + Storage upload — sem FFmpeg).
 // Frontend sends batches of 3, so worst-case is ~30 s per request — safe on both plans.
 export const maxDuration = 300;

@@ -55,7 +55,7 @@ function buildProxyAgent(rawUrl: string, accountId: string): ProxyAgent | null {
  *
  * Ordem de prioridade:
  *   1. proxy_url individual no banco (AES-256-GCM)
- *   2. null → IP da Vercel (sem proxy)
+ *   2. null → IP do servidor (sem proxy)
  */
 export function getProxyForAccount(
   accountId: string,
@@ -77,7 +77,7 @@ export function getProxyForAccount(
     }
   }
 
-  // 2. Sem proxy dedicado — política do projeto é não cair pro IP da Vercel.
+  // 2. Sem proxy dedicado — política do projeto é não cair pro IP do servidor.
   return null;
 }
 
