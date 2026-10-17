@@ -77,7 +77,9 @@ export async function middleware(request: NextRequest) {
             { status: 403 }
           );
         }
-        if (accountStatus === "banned") {
+        // O botão "Banir" do admin grava role='banned' — sem olhar o role, um
+        // banido com account_status ainda 'approved' seguia usando a API.
+        if (accountStatus === "banned" || role === "banned") {
           return NextResponse.json(
             { error: "Conta banida." },
             { status: 403 }

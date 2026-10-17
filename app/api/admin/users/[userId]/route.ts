@@ -52,9 +52,13 @@ export async function PATCH(
       return NextResponse.json({ error: "Role inválida" }, { status: 400 });
     }
 
+    // Banir grava também account_status='banned': é o campo que o layout, o
+    // middleware e as checagens de aprovação olham (só role não bloqueava).
+    const patch = role === "banned" ? { role, account_status: "banned" } : { role };
+
     const { data: updated, error: updateErr } = await admin
       .from("user_roles")
-      .update({ role } as never)
+      .update(patch as never)
       .eq("user_id", userId)
       .select("user_id");
 
@@ -64,7 +68,7 @@ export async function PATCH(
     if (!updated || updated.length === 0) {
       const { error: insertErr } = await admin
         .from("user_roles")
-        .insert({ user_id: userId, role } as never);
+        .insert({ user_id: userId, ...patch } as never);
       if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });
     }
 

@@ -31,7 +31,7 @@ export default async function DashboardLayout({
 
   if (role !== "admin") {
     if (!roleData || accountStatus === "pending") redirect("/pending");
-    if (accountStatus === "banned") redirect("/auth/banned");
+    if (accountStatus === "banned" || role === "banned") redirect("/auth/banned");
   }
 
   // Impersonation banner data

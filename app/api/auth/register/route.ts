@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { secureEquals } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
   }
 
   const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${REGISTER_SECRET}`) {
+  if (!secureEquals(authHeader ?? "", `Bearer ${REGISTER_SECRET}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

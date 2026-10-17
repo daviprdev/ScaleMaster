@@ -4,6 +4,14 @@ import { isAllowedHost, fetchAllowlisted } from "@/lib/safe-media-fetch";
 
 export const runtime = "nodejs";
 
+const OWN_SUPABASE_HOST = (() => {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").hostname;
+  } catch {
+    return "";
+  }
+})();
+
 // Allowlist prevents use as a generic SSRF proxy — only CDN domains used by
 // Apify and Instagram are permitted.
 const ALLOWED_HOSTS = [
@@ -18,11 +26,10 @@ const ALLOWED_HOSTS = [
   "lookaside.instagram.com",
   // Google Cloud Storage (some Apify actors stage files here)
   "storage.googleapis.com",
-  // Supabase Storage (reels already uploaded)
-  "supabase.co",
-  // Allowed in development/mock mode so that mock URLs don't crash silently
-  "example.com",
-];
+  // Supabase Storage (reels already uploaded) — só o projeto deste app:
+  // "supabase.co" aceitava o projeto de qualquer um (proxy/redirect aberto).
+  OWN_SUPABASE_HOST,
+].filter(Boolean);
 
 // Allowlist + bloqueio de IP privado/metadata; revalidada a cada redirect
 // dentro de fetchAllowlisted (ver lib/safe-media-fetch.ts).
@@ -86,7 +93,7 @@ export async function GET(req: NextRequest) {
   // Redirect the browser directly: zero bytes flow through the server.
   try {
     const { hostname } = new URL(url);
-    if (hostname.endsWith(".supabase.co")) {
+    if (OWN_SUPABASE_HOST && hostname === OWN_SUPABASE_HOST) {
       console.log(`[proxy-download] supabase url — redirecting directly: ${url.slice(0, 100)}`);
       return NextResponse.redirect(url, 307);
     }
@@ -153,7 +160,7 @@ export async function HEAD(req: NextRequest) {
 
   try {
     const { hostname } = new URL(url);
-    if (hostname.endsWith(".supabase.co")) {
+    if (OWN_SUPABASE_HOST && hostname === OWN_SUPABASE_HOST) {
       return new NextResponse(null, { status: 200 });
     }
   } catch {

@@ -11,6 +11,7 @@
  */
 
 import { fetch as undiciFetch } from "undici";
+import { isAllowedHost } from "@/lib/safe-media-fetch";
 
 /** Headers de iPhone: o CDN do Instagram devolve 403 para User-Agents genéricos. */
 export const CDN_DOWNLOAD_HEADERS = {
@@ -23,28 +24,86 @@ export const CDN_DOWNLOAD_HEADERS = {
 };
 
 const MIN_VALID_BYTES = 1024;
+/** Teto por arquivo: o container tem 2 GB e o bucket aceita até 500 MB. */
+const MAX_MEDIA_BYTES = 250 * 1024 * 1024;
+const MAX_REDIRECTS = 4;
 
 /**
- * Baixa a mídia e devolve os bytes originais, sem nenhuma transformação.
+ * Origens de onde o servidor aceita baixar mídia (proteção SSRF): CDNs do
+ * Instagram/Facebook, Apify e o Storage do PRÓPRIO projeto Supabase. Sem isso,
+ * qualquer usuário fazia o servidor buscar http://python-server:8000,
+ * 127.0.0.1, 169.254.169.254… e devolvia a resposta numa URL pública.
+ */
+export function mediaSourceHosts(): string[] {
+  let ownSupabase = "";
+  try {
+    ownSupabase = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").hostname;
+  } catch { /* sem Supabase configurado */ }
+  return ["cdninstagram.com", "fbcdn.net", "apifyusercontent.com", "api.apify.com", ownSupabase].filter(Boolean);
+}
+
+/**
+ * Busca mídia remota com allowlist reavaliada a cada redirect e teto de bytes
+ * aplicado durante o download (não depois de bufferizar tudo).
  *
  * undici em vez do fetch global: o Next.js 15 patcheia o fetch global para o
  * sistema de cache dele e pode corromper respostas binárias do CDN do Instagram
  * (já causou downloads de áudio-only em produção).
  */
+export async function fetchMediaBytes(
+  url: string,
+  { timeoutMs = 60_000, headers = CDN_DOWNLOAD_HEADERS as Record<string, string> } = {}
+): Promise<Buffer> {
+  const allowed = mediaSourceHosts();
+  const signal = AbortSignal.timeout(timeoutMs);
+  let current = url;
+  let response: Awaited<ReturnType<typeof undiciFetch>>;
+
+  for (let hop = 0; ; hop++) {
+    if (!isAllowedHost(current, allowed)) {
+      let host = "desconhecida";
+      try { host = new URL(current).hostname; } catch { /* URL inválida */ }
+      throw new Error(`Origem de mídia não permitida: ${host}`);
+    }
+    response = await undiciFetch(current, { headers, signal, redirect: "manual" });
+    const location = response.headers.get("location");
+    if (response.status >= 300 && response.status < 400 && location) {
+      await response.body?.cancel().catch(() => {});
+      if (hop >= MAX_REDIRECTS) throw new Error("Excesso de redirects ao baixar a mídia.");
+      current = new URL(location, current).toString();
+      continue;
+    }
+    break;
+  }
+
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error(`Download falhou: HTTP ${response.status}`);
+  }
+  if (Number(response.headers.get("content-length") ?? 0) > MAX_MEDIA_BYTES) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error(`Mídia acima do limite de ${MAX_MEDIA_BYTES / 1024 / 1024} MB.`);
+  }
+
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of response.body ?? []) {
+    total += chunk.byteLength;
+    if (total > MAX_MEDIA_BYTES) {
+      await response.body?.cancel().catch(() => {});
+      throw new Error(`Mídia acima do limite de ${MAX_MEDIA_BYTES / 1024 / 1024} MB.`);
+    }
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks, total);
+}
+
+/** Baixa a mídia e devolve os bytes originais, sem nenhuma transformação. */
 export async function downloadOriginalMedia(
   url: string,
   timeoutMs = 60_000
 ): Promise<Buffer> {
-  const response = await undiciFetch(url, {
-    headers: CDN_DOWNLOAD_HEADERS,
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Download falhou: HTTP ${response.status}`);
-  }
-
-  const buf = Buffer.from(await response.arrayBuffer());
+  const buf = await fetchMediaBytes(url, { timeoutMs });
   if (buf.byteLength < MIN_VALID_BYTES) {
     throw new Error(`Arquivo muito pequeno para ser uma mídia válida: ${buf.byteLength} bytes`);
   }

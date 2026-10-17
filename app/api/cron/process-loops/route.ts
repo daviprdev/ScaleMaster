@@ -649,6 +649,9 @@ async function processOneLoop(
         .from("videos_library")
         .select("id, public_url, filename, file_size, caption, views")
         .eq("folder_id", loop.folder_id)
+        // Só vídeos do dono do loop — sem isso, linhas de outro usuário
+        // apontando para esta pasta entravam no pool de publicação.
+        .eq("user_id", loop.user_id)
         .order("created_at", { ascending: true })
         .range(from, to)
     );

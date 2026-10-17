@@ -11,8 +11,10 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
-      // Se um destino foi passado explicitamente, respeita
-      if (explicitNext) {
+      // Se um destino foi passado explicitamente, respeita — mas só caminho
+      // interno: "/x" sim; "//evil.com", "@evil.com" ou "/\evil.com" não
+      // (`${origin}${next}` com "@evil.com" vira https://scalemaster.tech@evil.com).
+      if (explicitNext && /^\/(?![/\\])/.test(explicitNext)) {
         return NextResponse.redirect(`${origin}${explicitNext}`);
       }
       // Caso contrário, redireciona conforme o role

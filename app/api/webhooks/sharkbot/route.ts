@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { sendPushNotification } from "@/lib/web-push";
+import { secureEquals } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +25,9 @@ interface SharkBotPayload {
 
 function isAuthorized(req: NextRequest, secret: string): boolean {
   const auth = req.headers.get("authorization");
-  if (auth === `Bearer ${secret}`) return true;
+  if (auth && secureEquals(auth, `Bearer ${secret}`)) return true;
   const querySecret = req.nextUrl.searchParams.get("secret");
-  return querySecret === secret;
+  return !!querySecret && secureEquals(querySecret, secret);
 }
 
 export async function POST(req: NextRequest) {

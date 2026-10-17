@@ -23,7 +23,10 @@ export function decrypt(ciphertext: string): string {
   const iv = Buffer.from(ivB64, "base64");
   const tag = Buffer.from(tagB64, "base64");
   const enc = Buffer.from(encB64, "base64");
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  // GCM com IV de 12 bytes e tag de 16: sem fixar o tamanho, o Node aceita
+  // tag truncada (mais fácil de forjar).
+  if (iv.length !== 12 || tag.length !== 16) throw new Error("Invalid ciphertext format");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
   decipher.setAuthTag(tag);
   return decipher.update(enc).toString("utf8") + decipher.final("utf8");
 }

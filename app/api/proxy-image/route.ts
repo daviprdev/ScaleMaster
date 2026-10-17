@@ -4,14 +4,27 @@ import { isAllowedHost, fetchAllowlisted } from "@/lib/safe-media-fetch";
 
 export const runtime = "nodejs";
 
-// Domínios CDN permitidos — evita uso como proxy genérico (SSRF)
+// Domínios CDN permitidos — evita uso como proxy genérico (SSRF). Supabase só
+// o host EXATO do projeto: "supabase.co" aceitava o projeto de qualquer um,
+// e um SVG com <script> hospedado lá rodava na origem scalemaster.tech (XSS).
+function ownSupabaseHost(): string {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").hostname;
+  } catch {
+    return "";
+  }
+}
 const ALLOWED_HOSTS = [
   "cdninstagram.com",
   "fbcdn.net",
   "instagram.com",
   "lookaside.fbsbx.com",
-  "supabase.co", // Supabase Storage (avatars bucket)
-];
+  ownSupabaseHost(), // Supabase Storage (avatars bucket)
+].filter(Boolean);
+
+// Só imagem raster — nunca SVG/HTML, que o navegador executaria.
+const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"]);
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
 // Allowlist + bloqueio de IP privado/metadata; revalidada a cada redirect
 // dentro de fetchAllowlisted (ver lib/safe-media-fetch.ts).
@@ -55,15 +68,26 @@ export async function GET(req: NextRequest) {
       return new NextResponse(`Upstream ${upstream.status}`, { status: 502 });
     }
 
-    const contentType = upstream.headers.get("content-type") ?? "image/jpeg";
+    const contentType = (upstream.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim().toLowerCase();
+    if (!IMAGE_TYPES.has(contentType)) {
+      return new NextResponse("Tipo de arquivo não permitido", { status: 415 });
+    }
+    if (Number(upstream.headers.get("content-length") ?? 0) > MAX_IMAGE_BYTES) {
+      return new NextResponse("Imagem grande demais", { status: 413 });
+    }
     const buffer = await upstream.arrayBuffer();
+    if (buffer.byteLength > MAX_IMAGE_BYTES) {
+      return new NextResponse("Imagem grande demais", { status: 413 });
+    }
 
     return new NextResponse(buffer, {
       headers: {
         "Content-Type": contentType,
         // Cache por 24h no CDN/browser, aceita stale por até 7 dias enquanto revalida
         "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
-        "Access-Control-Allow-Origin": "*",
+        "X-Content-Type-Options": "nosniff",
+        // Mesmo que algo passe, a resposta não executa script nem carrega nada.
+        "Content-Security-Policy": "default-src 'none'; sandbox",
       },
     });
   } catch (err) {

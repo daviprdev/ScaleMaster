@@ -113,8 +113,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ skipped: true, reason: "Supabase não configurado." });
   }
 
-  const url = new URL(req.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+  // Chama o próprio app pelo endereço interno — montar a URL a partir do Host
+  // da requisição deixava um Host forjado receber o Bearer CRON_SECRET.
+  const baseUrl = process.env.INTERNAL_APP_URL || "http://127.0.0.1:3000";
   const cronSecret = process.env.CRON_SECRET ?? "";
 
   const callCron = async (path: string): Promise<Record<string, unknown>> => {

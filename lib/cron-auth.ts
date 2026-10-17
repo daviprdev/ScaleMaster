@@ -25,7 +25,7 @@ export type CronAuthResult =
   | { ok: false; response: NextResponse };
 
 /** Comparação em tempo constante — evita distinguir segredos por timing. */
-function secureEquals(a: string, b: string): boolean {
+export function secureEquals(a: string, b: string): boolean {
   const bufA = Buffer.from(a, "utf8");
   const bufB = Buffer.from(b, "utf8");
   if (bufA.length !== bufB.length) return false;

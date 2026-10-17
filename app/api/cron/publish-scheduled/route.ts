@@ -41,6 +41,7 @@ const DEAD_ACCOUNT_CANCEL_MSG =
 
 interface AccountRow {
   id: string;
+  user_id: string | null;
   username: string;
   is_active: boolean;
   meta_access_token: string | null;
@@ -187,7 +188,7 @@ export async function GET(req: NextRequest) {
   // excluídas na própria busca.
   const SELECT_FIELDS =
     "id, user_id, video_id, video_url, creation_id, caption, scheduled_at, account_id, post_type, retry_count, video_processing_mode, share_to_feed, campaign_id, use_proxy_pool, proxy_pool_id_used, " +
-    "instagram_accounts(id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id), " +
+    "instagram_accounts(id, user_id, username, is_active, meta_access_token, ig_business_account_id, token_expires_at, fb_page_id), " +
     "videos_library(public_url)";
 
   // Barra só campanhas que TÊM linha em distribute_campaigns e não estão
@@ -354,6 +355,14 @@ export async function GET(req: NextRequest) {
     // já garante que só publica quem tem token válido.
     if (!account) {
       await admin.from("scheduled_posts").update({ status: "failed", error_message: "Conta não encontrada." }).eq("id", post.id);
+      summary.failed++;
+      continue;
+    }
+    // A conta precisa ser do mesmo dono do post: o cron usa o token Meta dela,
+    // então um post com account_id alheio publicaria na conta de outra pessoa.
+    if (account.user_id && post.user_id && account.user_id !== post.user_id) {
+      await admin.from("scheduled_posts").update({ status: "failed", error_message: "Conta não pertence ao dono do post." }).eq("id", post.id);
+      console.error(`[publish-scheduled] ✗ post ${post.id}: account ${account.id} de outro usuário — bloqueado.`);
       summary.failed++;
       continue;
     }

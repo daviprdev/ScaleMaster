@@ -48,7 +48,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
-import { fetch as undiciFetch } from "undici";
+import { fetchMediaBytes } from "@/lib/media-ingest";
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
@@ -83,19 +83,14 @@ export async function downloadAndCleanMetadata(videoUrl: string): Promise<Proces
   const inputPath = path.join(tmpDir, `clean_in_${uid}.mp4`);
   const outputPath = path.join(tmpDir, `clean_out_${uid}.mp4`);
 
-  // undici bypasses Next.js 15's patched global fetch (which strips dispatcher
-  // and can corrupt binary responses from Supabase Storage CDN redirects).
-  const response = await undiciFetch(videoUrl, {
-    signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
-  });
-  if (!response.ok) {
-    throw new Error(`Falha ao baixar vídeo: HTTP ${response.status}`);
-  }
-  const buffer = await response.arrayBuffer();
+  // Allowlist de origem + teto de bytes (SSRF/DoS): o source_url pode vir de
+  // um media_url informado pelo usuário. Sem User-Agent de CDN: o padrão do
+  // undici é o que já funcionava aqui (Storage do Supabase).
+  const buffer = await fetchMediaBytes(videoUrl, { timeoutMs: DOWNLOAD_TIMEOUT_MS, headers: {} });
   if (buffer.byteLength < 1024) {
     throw new Error(`Arquivo muito pequeno para ser um vídeo válido: ${buffer.byteLength} bytes`);
   }
-  fs.writeFileSync(inputPath, Buffer.from(buffer));
+  fs.writeFileSync(inputPath, buffer);
 
   const cleanupAll = () => {
     for (const p of [inputPath, outputPath]) {

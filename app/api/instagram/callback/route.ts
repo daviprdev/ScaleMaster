@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt } from "@/lib/encrypt";
 import { fetch as undiciFetch } from "undici";
 import { getAppUrl, getInstagramRedirectUri } from "@/lib/app-url";
+import { verifyMagicUserCookie } from "@/lib/oauth-cookie";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -361,7 +362,7 @@ export async function GET(req: NextRequest) {
   const state = searchParams.get("state") ?? "";
   const cookieState = req.cookies.get("ig_oauth_state")?.value ?? "";
   if (!state || !cookieState || state !== cookieState) {
-    console.error("[ig/callback] State inválido. state:", state, "| cookie:", cookieState);
+    console.error("[ig/callback] State inválido (state presente:", !!state, "| cookie presente:", !!cookieState, ")");
     return redirectWithError("state_mismatch", undefined, isMagicLink);
   }
 
@@ -370,7 +371,17 @@ export async function GET(req: NextRequest) {
 
   let userId: string;
   if (isMagicLink) {
-    userId = magicUserId;
+    // Cookie assinado (lib/oauth-cookie.ts) e amarrado a este state + app.
+    const verified = verifyMagicUserCookie(
+      magicUserId,
+      state,
+      req.cookies.get("ig_oauth_app_id")?.value ?? ""
+    );
+    if (!verified) {
+      console.error("[ig/callback] Cookie do link mágico com assinatura inválida.");
+      return redirectWithError("state_mismatch", undefined, true);
+    }
+    userId = verified;
   } else {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();

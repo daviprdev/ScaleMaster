@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import crypto from "crypto";
 import { decrypt } from "@/lib/encrypt";
 import { getAppUrl, getInstagramRedirectUri } from "@/lib/app-url";
+import { signMagicUserCookie } from "@/lib/oauth-cookie";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export async function GET(
     .single();
 
   if (error || !record) {
-    console.warn("[magic/add] Token inválido ou expirado:", token);
+    console.warn("[magic/add] Token inválido ou expirado:", `${String(token).slice(0, 6)}…`);
     return NextResponse.redirect(`${APP_URL}/add/error?reason=invalid_token`);
   }
 
@@ -79,7 +80,9 @@ export async function GET(
 
   // Cookies de contexto OAuth — o callback lerá estes para saber a quem vincular a conta
   response.cookies.set("ig_oauth_state", state, cookieOpts);
-  response.cookies.set("ig_oauth_magic_user_id", userId, cookieOpts);
+  // Assinado com HMAC (userId|state|appId): o callback não tem sessão e confia
+  // neste cookie para saber a quem vincular a conta.
+  response.cookies.set("ig_oauth_magic_user_id", signMagicUserCookie(userId, state, appId ?? ""), cookieOpts);
 
   if (appId) {
     response.cookies.set("ig_oauth_app_id", appId, cookieOpts);

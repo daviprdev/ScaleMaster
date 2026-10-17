@@ -135,6 +135,8 @@ async function processCampaign(
         .from("videos_library")
         .select("id, public_url, caption, views")
         .eq("folder_id", campaign.video_folder_id)
+        // Só vídeos do dono da campanha (mesma proteção do process-loops).
+        .eq("user_id", campaign.user_id)
         .order("created_at", { ascending: true })
         .range(from, to)
     );

@@ -3,6 +3,7 @@ import { fetch as undiciFetch } from "undici";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getProxyForAccount, getProxyLabel } from "@/lib/proxy";
 import crypto from "crypto";
+import { secureEquals } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
       { status: 503 },
     );
   }
-  if (auth !== `Bearer ${secret}`) {
+  if (!secureEquals(auth ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -18,7 +18,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Corpo inválido." }, { status: 400 });
   }
 
-  const { username, limit = 500 } = body;
+  const { username } = body;
+  // Teto: o limit ia direto para resultsLimit/maxRequestsPerCrawl do Apify
+  // (crédito compartilhado) sem limite superior.
+  const limit = Math.min(Math.max(1, Math.floor(Number(body.limit) || 500)), 1000);
   if (!username) {
     return NextResponse.json({ error: "O campo 'username' é obrigatório." }, { status: 400 });
   }
