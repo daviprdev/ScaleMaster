@@ -125,6 +125,11 @@ def fetch_user_reels(
     existing_settings: dict | None = None,
     time_budget_seconds: int = 100,
 ) -> ScrapeResult:
+    # O orçamento de tempo vale para a chamada INTEIRA (geo do proxy, ping da
+    # sessão e login inclusos). Antes contava só a partir da paginação: um
+    # proxy lento ou login com challenge estourava o timeout HTTP do Next, que
+    # abortava e jogava fora os reels E a sessão renovada.
+    start = time.monotonic()
     cl = Client()
     cl.delay_range = [1, 3]
     cl.set_proxy(proxy_url)
@@ -141,12 +146,24 @@ def fetch_user_reels(
     # ── 1. Garante sessão válida ────────────────────────────────────────────
     # Com sessão salva, valida com um ping barato (timeline feed) e só faz
     # login completo se a sessão morreu. Sem sessão salva, login direto.
+    # Só sessão realmente expirada (LoginRequired/ClientForbidden) leva a login
+    # com senha: timeout de proxy ou rate limit no ping viravam login completo
+    # à toa — mais checkpoint, sem resolver nada.
     need_login = existing_settings is None
     if existing_settings is not None:
         try:
             cl.get_timeline_feed()
-        except Exception:
-            need_login = True
+        except Exception as exc:
+            name = type(exc).__name__
+            if name in ("LoginRequired", "ClientForbidden") or "login_required" in str(exc).lower():
+                need_login = True
+            else:
+                error_code, error_message = _classify_error(exc)
+                return ScrapeResult(
+                    False,
+                    error_code=error_code,
+                    error_message=f"[{BUILD}][proxy_ip={proxy_ip}][ping da sessão] {error_message}"[:500],
+                )
 
     if need_login:
         err = authenticate_client(
@@ -163,7 +180,7 @@ def fetch_user_reels(
     # timeout HTTP. O instagrapi já dorme delay_range [1,3] a cada requisição
     # privada — nenhum sleep extra é necessário entre as páginas.
     wanted = max(0, int(limit))
-    deadline = time.monotonic() + max(20, int(time_budget_seconds))
+    deadline = start + max(20, int(time_budget_seconds))
     truncated = False
     pages = 0
     seen_pks: set[str] = set()

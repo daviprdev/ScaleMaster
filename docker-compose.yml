@@ -43,10 +43,19 @@ services:
     image: scalemaster-python-server:latest
     container_name: scalemaster-python-server-1
     restart: unless-stopped
-    env_file: .env.production
+    # Só o segredo que o servidor usa (só /instagram/scrape-profile + /health).
+    # Antes recebia o .env.production inteiro: service role do Supabase,
+    # ENCRYPTION_SECRET, segredos de webhook… — uma falha no container
+    # entregava tudo. `:?` faz o compose falhar se a variável faltar.
     environment:
       - PYTHONUNBUFFERED=1
-      - SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - PYTHON_SERVER_SECRET=${PYTHON_SERVER_SECRET:?PYTHON_SERVER_SECRET ausente}
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
       interval: 30s

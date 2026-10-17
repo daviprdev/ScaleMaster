@@ -269,7 +269,13 @@ def authenticate_client(
     if totp_secret:
         import pyotp
 
-        verification_code = pyotp.TOTP(totp_secret).now()
+        try:
+            verification_code = pyotp.TOTP(totp_secret).now()
+        except Exception:
+            # Segredo fora de base32: antes estourava fora do try abaixo e
+            # virava HTTP 500 genérico, que o Next tratava como transitório e
+            # repetia 7 vezes sem nunca marcar a conta.
+            return ("two_factor_required", "Segredo 2FA (TOTP) inválido — confira o código cadastrado na conta.")
 
     # A lib nunca deve bloquear esperando input() num servidor headless — os
     # handlers padrão (manual_input_code / manual_change_password) fazem

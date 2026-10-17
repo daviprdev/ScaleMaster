@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+# Nunca copiar segredos para a imagem (COPY . .)
+.env
+.env.*
