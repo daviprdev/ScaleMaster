@@ -263,8 +263,9 @@ export async function GET() {
     views: {
       // Buckets são dias UTC (única granularidade em que a Meta soma sem
       // sobreposição), mas "hoje" é escolhido pela data de Brasília: o card
-      // vira à meia-noite BRT. `total` soma todas as contas, inclusive as
-      // caídas. Ver supabase/account_views_total_all_accounts.sql.
+      // vira à meia-noite BRT. Total e recortes somam todas as contas que já
+      // existiram (caídas, desativadas e excluídas). Ver
+      // supabase/account_stats_keep_deleted.sql.
       total: Number(viewsSummary?.total ?? 0),
       today: Number(viewsSummary?.today ?? 0),
       yesterday: Number(viewsSummary?.yesterday ?? 0),

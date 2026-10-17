@@ -16,6 +16,10 @@
  * por dia BRT lidos da lista de mídias da conta. 1ª vez o histórico inteiro
  * (→ reels_backfilled_at); depois relê os últimos 3 dias BRT.
  *
+ * As linhas são chaveadas por (ig_user_id, day) e não têm FK para a conta:
+ * excluir uma conta do SaaS não apaga views/reels dela (o total da Dashboard
+ * soma todas as contas que já existiram).
+ *
  * Contas com health_status='error' ou sem token são puladas. Contas
  * desativadas (is_active=false, o padrão de conta nova) entram: o cron de
  * publicação posta nelas, então views e reels delas são reais. Rate limit da
@@ -127,12 +131,17 @@ export async function GET(request: NextRequest) {
             rows.map((r) => ({
               account_id: acc.id,
               user_id: acc.user_id,
+              ig_user_id: igId,
+              username: acc.username,
               day: r.day,
               views: r.views,
               reach: r.reach,
               updated_at: nowIso,
             })),
-            { onConflict: "account_id,day" }
+            // Chave pelo ID do Instagram: o histórico sobrevive à exclusão da
+            // conta e excluir+reconectar a mesma conta não conta em dobro
+            // (ver supabase/account_stats_keep_deleted.sql).
+            { onConflict: "ig_user_id,day" }
           );
           if (upErr) throw new Error(upErr.message);
           summary.days_upserted += rows.length;
@@ -152,11 +161,13 @@ export async function GET(request: NextRequest) {
             [...reels.days].map(([day, count]) => ({
               account_id: acc.id,
               user_id: acc.user_id,
+              ig_user_id: igId,
+              username: acc.username,
               day,
               reels: count,
               updated_at: nowIso,
             })),
-            { onConflict: "account_id,day" }
+            { onConflict: "ig_user_id,day" }
           );
           if (reelsErr) throw new Error(reelsErr.message);
           summary.reels_days_upserted += reels.days.size;
