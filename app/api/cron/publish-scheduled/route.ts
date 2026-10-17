@@ -36,6 +36,8 @@ const RUN_BUDGET_MS = 250_000;
 // — ver supabase/scheduled_posts_retry_cap.sql.
 const MAX_ERROR_EXPIRED_RETRIES = 5;
 
+const DEAD_ACCOUNT_CANCEL_MSG =
+  "Conta caída (checkpoint/token inválido) — post não enviado. Resolva no Instagram e restaure a conta em Failover para voltar a postar.";
 
 interface AccountRow {
   id: string;
@@ -217,6 +219,41 @@ export async function GET(req: NextRequest) {
     ? `campaign_id.is.null,campaign_id.not.in.(${blockedCampaignIds.join(",")})`
     : null;
 
+  // Contas caídas (health_status='error', marcadas por markDeadAccounts) não
+  // chamam mais a Meta. Antes, cada post delas era tentado no vencimento,
+  // falhava com o mesmo checkpoint e somava uma falha + um failover_log a cada
+  // 30 min. Agora os que já venceram viram 'cancelled' com o motivo; os
+  // futuros ficam 'pending' e, restaurada a conta em Failover, saem no horário
+  // original (sem rajada de atrasados). Campanhas pausadas não são tocadas.
+  // Fail-open: sem a lista, segue como antes (só desperdiça tentativas).
+  const { data: deadRows, error: deadErr } = await admin
+    .from("instagram_accounts")
+    .select("id")
+    .eq("health_status", "error");
+  if (deadErr) {
+    console.warn("[publish-scheduled] Erro ao buscar contas caídas (segue sem filtro):", deadErr.message);
+  }
+  const deadAccountIds = ((deadRows ?? []) as { id: string }[]).map((r) => r.id);
+  const deadAccountList = `(${deadAccountIds.join(",")})`;
+
+  let cancelledDeadCount = 0;
+  if (deadAccountIds.length > 0) {
+    let cancelQuery = admin
+      .from("scheduled_posts")
+      .update({ status: "cancelled", error_message: DEAD_ACCOUNT_CANCEL_MSG })
+      .eq("status", "pending")
+      .lte("scheduled_at", now)
+      .in("account_id", deadAccountIds);
+    if (campaignFilter) cancelQuery = cancelQuery.or(campaignFilter);
+    const { data: cancelledRows, error: cancelErr } = await cancelQuery.select("id");
+    if (cancelErr) {
+      console.error("[publish-scheduled] Erro ao cancelar posts de contas caídas:", cancelErr.message);
+    } else if (cancelledRows?.length) {
+      cancelledDeadCount = cancelledRows.length;
+      console.log(`[publish-scheduled] ⊘ ${cancelledDeadCount} post(s) de conta(s) caída(s) cancelado(s) sem chamar a Meta.`);
+    }
+  }
+
   // Stories furam a fila: usuário espera publicação quase imediata ("Postar agora"),
   // diferente de campanhas em massa (Postar/Clone/Loop) que já são agendadas de
   // propósito ao longo de dias. Busca stories elegíveis primeiro; só preenche o
@@ -229,6 +266,7 @@ export async function GET(req: NextRequest) {
     .lte("scheduled_at", now)
     .not("video_url", "ilike", "%instagram.com%");
   if (campaignFilter) storyQuery = storyQuery.or(campaignFilter);
+  if (deadAccountIds.length > 0) storyQuery = storyQuery.not("account_id", "in", deadAccountList);
   const { data: storyRows, error: storyErr } = await storyQuery
     .order("scheduled_at", { ascending: true })
     .limit(BATCH_SIZE);
@@ -249,6 +287,7 @@ export async function GET(req: NextRequest) {
       .lte("scheduled_at", now)
       .not("video_url", "ilike", "%instagram.com%");
     if (campaignFilter) otherQuery = otherQuery.or(campaignFilter);
+    if (deadAccountIds.length > 0) otherQuery = otherQuery.not("account_id", "in", deadAccountList);
     const { data, error: fetchErr } = await otherQuery
       .order("scheduled_at", { ascending: true })
       .limit(remainingSlots);
@@ -274,6 +313,7 @@ export async function GET(req: NextRequest) {
     in_progress: 0,
     failed: 0,
     skipped: 0,
+    cancelled_dead_account: cancelledDeadCount,
     unblocked: unblocked?.length ?? 0,
     healed_error: healedErrorCount,
     queue_pending: countPending ?? 0,
@@ -288,6 +328,9 @@ export async function GET(req: NextRequest) {
   // marcada após o loop com guarda de cascata (lib/account-health.ts).
   const attemptedAccounts = new Set<string>();
   const deadCandidates: DeadAccountCandidate[] = [];
+  // Conta que caiu NESTE run: os próximos posts dela no lote ficam 'pending'
+  // (o run seguinte, com a conta já marcada, cancela os vencidos).
+  const deadThisRun = new Set<string>();
 
   for (const post of posts) {
     // ── Budget global ──────────────────────────────────────────────────────
@@ -312,6 +355,10 @@ export async function GET(req: NextRequest) {
     if (!account) {
       await admin.from("scheduled_posts").update({ status: "failed", error_message: "Conta não encontrada." }).eq("id", post.id);
       summary.failed++;
+      continue;
+    }
+    if (deadThisRun.has(account.id)) {
+      summary.skipped++;
       continue;
     }
     if (!rawVideoUrl) {
@@ -694,6 +741,7 @@ export async function GET(req: NextRequest) {
           .eq("id", post.id);
         summary.failed++;
         // Conta caída de verdade (checkpoint/token morto) → candidata a vermelho.
+        if (isAccountDeadError(msg)) deadThisRun.add(account.id);
         if (post.user_id && isAccountDeadError(msg)) {
           deadCandidates.push({
             accountId: account.id,
