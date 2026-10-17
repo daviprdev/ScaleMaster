@@ -57,12 +57,8 @@ export async function POST(req: NextRequest) {
 
   if (readerErr) return NextResponse.json({ error: readerErr.message }, { status: 500 });
   if (!reader) return NextResponse.json({ error: "Conta leitora não encontrada." }, { status: 404 });
-  if (!reader.proxy_url) {
-    return NextResponse.json(
-      { error: "Esta conta leitora não tem proxy dedicado configurado." },
-      { status: 400 }
-    );
-  }
+  // Sem proxy (ou com proxy morto) tudo bem: o cron atribui um livre e testado
+  // do estoque antes da raspagem (ensureReaderProxy).
   if (reader.status === "error") {
     return NextResponse.json(
       { error: "Esta conta leitora está com erro. Reconecte-a em Contas Leitoras antes de usar." },

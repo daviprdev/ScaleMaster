@@ -20,6 +20,7 @@ import { encrypt, decryptMaybe } from "@/lib/encrypt";
 import { callPythonServer, hasPythonServer } from "@/lib/python-server";
 import { requireCronAuth } from "@/lib/cron-auth";
 import { normalizeInstagrapiReels, type RawInstagrapiReel } from "@/lib/instagrapi-reel";
+import { ensureReaderProxy } from "@/lib/proxy-pool";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -110,7 +111,7 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const nowIso = now.toISOString();
   const runStart = Date.now();
-  const summary = { checked: 0, done: 0, transient: 0, error: 0, skipped_no_proxy: 0, auto_healed: 0 };
+  const summary = { checked: 0, done: 0, transient: 0, error: 0, skipped_no_proxy: 0, proxy_swapped: 0, auto_healed: 0 };
 
   // ── AUTO-HEALING: jobs presos em 'processing' (>10 min) voltam pra fila ────
   {
@@ -196,15 +197,27 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
-    // Regra do projeto: sem proxy dedicado, nenhuma chamada em nome da conta.
-    if (!reader.proxy_url) {
+    // Regra do projeto: sem proxy dedicado VIVO, nenhuma chamada em nome da
+    // conta. Proxy morto (407 de credencial, 466 de franquia, timeout) é
+    // trocado aqui por um livre e testado do estoque — antes o job ia para o
+    // python-server, falhava como "network_error" e repetia 7 vezes.
+    const { proxyUrl, swapped } = await ensureReaderProxy(
+      admin, job.user_id, reader.id, reader.proxy_url
+    );
+    if (!proxyUrl) {
+      const msg = "Sem proxy vivo para a conta leitora: o proxy atual não responde e o estoque de proxies está vazio. Importe proxies em Contas.";
+      await (admin as any).from("reader_accounts").update({ last_error: msg }).eq("id", reader.id);
       await (admin as any).from("scrape_jobs").update({
         status: "queued",
-        error_message: "Aguardando proxy dedicado para a conta leitora.",
+        error_message: msg,
         retry_after: new Date(now.getTime() + 30 * 60_000).toISOString(),
       }).eq("id", job.id);
       summary.skipped_no_proxy++;
       continue;
+    }
+    if (swapped) {
+      console.log(`[scrape-cron] Conta leitora @${reader.username}: proxy morto trocado por um do estoque.`);
+      summary.proxy_swapped++;
     }
 
     // Anti-burst por TENTATIVA (não por sucesso) — igual a process-loops.
@@ -212,7 +225,6 @@ export async function GET(req: NextRequest) {
     attempts++;
 
     try {
-      const proxyUrl = decryptMaybe(reader.proxy_url)!;
       const password = decryptMaybe(reader.password_enc);
       const totpSecret = decryptMaybe(reader.totp_secret_enc);
       const existingSettings = reader.session_settings

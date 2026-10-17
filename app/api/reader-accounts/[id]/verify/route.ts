@@ -34,12 +34,8 @@ export async function POST(
   if (readerErr) return NextResponse.json({ error: readerErr.message }, { status: 500 });
   if (!reader) return NextResponse.json({ error: "Conta leitora não encontrada." }, { status: 404 });
 
-  if (!reader.proxy_url) {
-    return NextResponse.json(
-      { error: "Configure um proxy dedicado para esta conta antes de conectar." },
-      { status: 400 }
-    );
-  }
+  // Sem proxy próprio tudo bem: o cron process-scrape-jobs atribui um proxy
+  // livre e testado do estoque antes de logar (ensureReaderProxy).
 
   const admin = getSupabaseAdmin();
 

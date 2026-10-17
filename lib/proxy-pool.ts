@@ -186,6 +186,79 @@ export async function claimProxyForAccount(
   return { assigned: false };
 }
 
+// Proxy dedicado de CONTA LEITORA (aba Inspirações). Testa o proxy atual; se
+// estiver morto (provedor recusou credencial, plano esgotado, timeout), troca
+// por um proxy livre e vivo do estoque. O substituto SAI do estoque (delete
+// atômico como claim): a publicação usa os proxies livres do pool, e conta
+// leitora nunca deve dividir IP com conta de postagem.
+// Retorna a URL em texto puro pronta para uso, ou null se não há proxy vivo.
+export async function ensureReaderProxy(
+  admin: AdminClient,
+  userId: string,
+  readerId: string,
+  currentEncryptedProxyUrl: string | null
+): Promise<{ proxyUrl: string | null; swapped: boolean }> {
+  if (currentEncryptedProxyUrl) {
+    try {
+      const current = decrypt(currentEncryptedProxyUrl);
+      if (await isProxyAlive(current)) return { proxyUrl: current, swapped: false };
+      console.warn(`[proxy-pool] Proxy da conta leitora ${readerId} está morto — buscando substituto no estoque.`);
+    } catch (e) {
+      console.warn(`[proxy-pool] Proxy da conta leitora ${readerId} ilegível — buscando substituto: ${String(e)}`);
+    }
+  }
+
+  const { data: candidates } = await admin
+    .from("proxy_pool")
+    .select("id, proxy_url")
+    .eq("user_id", userId)
+    .is("assigned_account_id", null)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  for (const candidate of (candidates ?? []) as PoolRow[]) {
+    // Claim atômico: só quem apagar a linha fica com o proxy.
+    const { data: taken } = await admin
+      .from("proxy_pool")
+      .delete()
+      .eq("id", candidate.id)
+      .is("assigned_account_id", null)
+      .select("id");
+    if (!taken || taken.length === 0) continue; // perdeu a corrida
+
+    let plainUrl: string;
+    try {
+      plainUrl = decrypt(candidate.proxy_url);
+    } catch {
+      continue; // ilegível — já saiu do estoque, nada a fazer
+    }
+    if (!(await isProxyAlive(plainUrl))) {
+      console.warn(`[proxy-pool] Candidato ${candidate.id} não respondeu — descartado do estoque.`);
+      continue;
+    }
+
+    const { error: updErr } = await admin
+      .from("reader_accounts")
+      .update({ proxy_url: candidate.proxy_url })
+      .eq("id", readerId);
+    if (updErr) {
+      // Não gravou na conta: devolve o proxy (vivo) ao estoque.
+      await admin.from("proxy_pool").insert({
+        user_id: userId,
+        proxy_url: candidate.proxy_url,
+        proxy_hash: proxyHash(normalizeProxyUrl(plainUrl)),
+      });
+      console.error(`[proxy-pool] Falha ao gravar proxy na conta leitora ${readerId}: ${updErr.message}`);
+      return { proxyUrl: null, swapped: false };
+    }
+
+    console.log(`[proxy-pool] Conta leitora ${readerId} recebeu o proxy ${candidate.id} do estoque (verificado e vivo).`);
+    return { proxyUrl: plainUrl, swapped: true };
+  }
+
+  return { proxyUrl: null, swapped: false };
+}
+
 // Descarta o proxy atual da conta (morto — não volta ao estoque) e tenta
 // reivindicar um substituto livre. Usado pelo botão "Trocar proxies com falha"
 // quando o provedor cai: em vez de esperar o usuário reimportar a lista toda,
