@@ -55,7 +55,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    pids_limit: 256
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
       interval: 30s
@@ -67,6 +66,7 @@ services:
         limits:
           memory: 1G
           cpus: "1.0"
+          pids: 256
     logging:
       driver: json-file
       options:
