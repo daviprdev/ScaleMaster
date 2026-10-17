@@ -57,9 +57,7 @@ export async function GET() {
     upcomingRes,
     viewsPostsRes,
     salesRes,
-    videosTotalRes,
-    videosTodayRes,
-    videosYesterdayRes,
+    reelsRes,
     accountsActiveTodayRes,
   ] = await Promise.all([
     admin
@@ -154,33 +152,25 @@ export async function GET() {
       .from("sales")
       .select("amount, created_at")
       .not("amount", "is", null),
-    // Vídeos publicados — total
-    admin
-      .from("scheduled_posts")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("status", "published"),
-    // Vídeos publicados hoje
-    admin
-      .from("scheduled_posts")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("status", "published")
-      .gte("published_at", startOfToday),
-    // Vídeos publicados ontem
-    admin
-      .from("scheduled_posts")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("status", "published")
-      .gte("published_at", startOfYesterday)
-      .lt("published_at", startOfToday),
-    // Contas ativas hoje (health_status = ok)
+    // Reels publicados — lidos da lista de mídias de cada conta na Meta
+    // (account_reels_daily). Contar scheduled_posts zerava o card quando a
+    // campanha era excluída com "apagar posts".
+    (admin as unknown as {
+      rpc: (fn: string) => Promise<{
+        data: {
+          total: number; today: number; yesterday: number; last_7d: number; month: number;
+          accounts_synced: number;
+        } | null;
+        error: { message: string } | null;
+      }>;
+    }).rpc("get_reels_summary"),
+    // Contas ativas hoje — o sistema grava 'online' | 'error' | 'blocked';
+    // filtrar por 'ok' (valor que nunca é gravado) deixava o card sempre em 0.
     admin
       .from("instagram_accounts")
       .select("*", { count: "exact", head: true })
       .eq("user_id", user.id)
-      .eq("health_status", "ok"),
+      .eq("health_status", "online"),
   ]);
 
   // Contas Caídas — deduplica por conta dentro de cada janela (eventos de failover)
@@ -230,6 +220,11 @@ export async function GET() {
     console.error("[dashboard/stats] get_account_views_summary falhou:", viewsPostsRes.error.message);
   }
   const viewsSummary = viewsPostsRes.data;
+
+  if (reelsRes.error) {
+    console.error("[dashboard/stats] get_reels_summary falhou:", reelsRes.error.message);
+  }
+  const reelsSummary = reelsRes.data;
 
   const salesRows = (salesRes.data ?? []) as { amount: number | null; created_at: string }[];
   const monthStartIso = brtMonthStartUtc(0).toISOString();
@@ -283,9 +278,12 @@ export async function GET() {
       last_synced_at: viewsSummary?.last_synced_at ?? null,
     },
     videos_published: {
-      total: videosTotalRes.count ?? 0,
-      today: videosTodayRes.count ?? 0,
-      yesterday: videosYesterdayRes.count ?? 0,
+      total: Number(reelsSummary?.total ?? 0),
+      today: Number(reelsSummary?.today ?? 0),
+      yesterday: Number(reelsSummary?.yesterday ?? 0),
+      last_7d: Number(reelsSummary?.last_7d ?? 0),
+      month: Number(reelsSummary?.month ?? 0),
+      accounts_synced: Number(reelsSummary?.accounts_synced ?? 0),
     },
     accounts_active_today: accountsActiveTodayRes.count ?? 0,
     queue: {

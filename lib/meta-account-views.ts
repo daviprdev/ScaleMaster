@@ -15,9 +15,9 @@
 
 import { fetch as undiciFetch } from "undici";
 
-const GRAPH_API = "https://graph.instagram.com/v21.0";
+export const GRAPH_API = "https://graph.instagram.com/v21.0";
 const DAY_S = 86_400;
-const RATE_LIMIT_CODES = new Set([4, 17, 32, 613]);
+export const RATE_LIMIT_CODES = new Set([4, 17, 32, 613]);
 
 export class MetaRateLimitError extends Error {}
 

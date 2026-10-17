@@ -61,7 +61,14 @@ interface DashboardStats {
     accounts_synced: number;
     last_synced_at: string | null;
   };
-  videos_published: { total: number; today: number; yesterday: number };
+  videos_published: {
+    total: number;
+    today: number;
+    yesterday: number;
+    last_7d: number;
+    month: number;
+    accounts_synced: number;
+  };
   accounts_active_today: number;
   queue: { pending: number };
   recent_activity: {
@@ -122,24 +129,80 @@ function formatScheduled(dateStr: string): { label: string; time: string } {
   return { label: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), time };
 }
 
-// ── Views period selector ────────────────────────────────────────
-type ViewsPeriod = "today" | "yesterday" | "last_7d" | "month";
+// ── Period stat card (Visualizações / Reels publicados) ──────────
+type StatPeriod = "today" | "yesterday" | "last_7d" | "month";
 
 // Rótulos curtos: os botões ficam ao lado do ícone, num card de ~250px.
-const VIEWS_PERIODS: { value: ViewsPeriod; label: string }[] = [
+const PERIODS: { value: StatPeriod; label: string }[] = [
   { value: "today", label: "Hoje" },
   { value: "yesterday", label: "Ontem" },
   { value: "last_7d", label: "7 dias" },
   { value: "month", label: "Mês" },
 ];
 
-// Complemento do título "Visualizações …" conforme o botão selecionado.
-const VIEWS_TITLES: Record<ViewsPeriod, string> = {
+// Complemento do título ("Visualizações …") conforme o botão selecionado.
+const PERIOD_TITLES: Record<StatPeriod, string> = {
   today: "hoje",
   yesterday: "ontem",
   last_7d: "últimos 7 dias",
   month: "este mês",
 };
+
+// Número grande do período escolhido + total de todas as contas embaixo.
+function PeriodStatCard({
+  icon,
+  title,
+  values,
+  total,
+  loading,
+  note,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  values: Record<StatPeriod, number> | undefined;
+  total: number;
+  loading: boolean;
+  note?: (period: StatPeriod) => string | null;
+}) {
+  const [period, setPeriod] = useState<StatPeriod>("today");
+  const noteText = loading ? null : note?.(period) ?? null;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5">
+      {/* Botões ao lado do ícone; em cards estreitos (tela 1280 com sidebar aberta) descem para a linha de baixo */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success-soft text-success">
+          {icon}
+        </span>
+        {!loading && (
+          <Segmented
+            size="sm"
+            options={PERIODS}
+            value={period}
+            onChange={(v) => setPeriod(v as StatPeriod)}
+          />
+        )}
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="font-mono text-[28px] font-medium leading-[32px] tracking-[-0.02em] tabular-nums text-ink">
+          {loading ? "—" : formatInt(Number(values?.[period]) || 0)}
+        </span>
+        <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-3">
+          {title} {PERIOD_TITLES[period]}
+        </span>
+      </div>
+      {loading ? (
+        <Skeleton height="14px" width="55%" />
+      ) : (
+        <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums text-success">
+          <TrendingUp size={12} strokeWidth={2} />
+          {formatInt(total)} no total
+        </span>
+      )}
+      {noteText && <p className="text-xs text-ink-3">{noteText}</p>}
+    </div>
+  );
+}
 
 // ── Quick actions ────────────────────────────────────────────────
 const QUICK_ACTIONS = [
@@ -156,7 +219,6 @@ export default function DashboardPage() {
   const [clearing, setClearing] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
   const [displayName, setDisplayName] = useState<string>("");
-  const [viewsPeriod, setViewsPeriod] = useState<ViewsPeriod>("today");
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Busca display_name via API server-side (bypassa cache JWT do cliente)
@@ -215,9 +277,6 @@ export default function DashboardPage() {
     }
   }, [clearConfirm, loadStats]);
 
-  // ── Derived data ───────────────────────────────────────────────
-  const viewsValue = stats ? Number(stats.views[viewsPeriod]) || 0 : 0;
-
   return (
     <div className="flex flex-col gap-6">
       {/* Header — saudação dinâmica */}
@@ -262,52 +321,31 @@ export default function DashboardPage() {
           {loading && <Skeleton height="4px" width="60%" />}
         </StatTile>
 
-        {/* Views — número grande segue o período escolhido; total de todas as contas embaixo */}
-        <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5">
-          {/* Botões ao lado do ícone; em cards estreitos (tela 1280 com sidebar aberta) descem para a linha de baixo */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success-soft text-success">
-              <Eye size={18} />
-            </span>
-            {!loading && (
-              <Segmented
-                size="sm"
-                options={VIEWS_PERIODS}
-                value={viewsPeriod}
-                onChange={(v) => setViewsPeriod(v as ViewsPeriod)}
-              />
-            )}
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="font-mono text-[28px] font-medium leading-[32px] tracking-[-0.02em] tabular-nums text-ink">
-              {loading ? "—" : formatInt(viewsValue)}
-            </span>
-            <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-ink-3">
-              Visualizações {VIEWS_TITLES[viewsPeriod]}
-            </span>
-          </div>
-          {loading ? (
-            <Skeleton height="14px" width="55%" />
-          ) : (
-            <span className="inline-flex items-center gap-1 text-xs font-medium tabular-nums text-success">
-              <TrendingUp size={12} strokeWidth={2} />
-              {formatInt(stats?.views.total ?? 0)} no total
-            </span>
-          )}
-          {!loading && viewsPeriod === "today" && !stats?.views.today_has_data && (
-            <p className="text-xs text-ink-3">A Meta ainda não liberou os dados de hoje.</p>
-          )}
-        </div>
+        {/* Views — insight de conta da Meta */}
+        <PeriodStatCard
+          icon={<Eye size={18} />}
+          title="Visualizações"
+          values={stats?.views}
+          total={stats?.views.total ?? 0}
+          loading={loading}
+          note={(p) =>
+            p === "today" && stats && !stats.views.today_has_data
+              ? "A Meta ainda não liberou os dados de hoje."
+              : null
+          }
+        />
 
-        {/* Videos published */}
-        <StatTile
-          label="Vídeos Publicados"
-          value={loading ? "—" : String(stats?.videos_published.total ?? 0)}
+        {/* Reels publicados — lista de mídias de cada conta na Meta */}
+        <PeriodStatCard
           icon={<Play size={18} />}
-          hint={
-            loading
-              ? undefined
-              : `Hoje: ${stats?.videos_published.today ?? 0} · Ontem: ${stats?.videos_published.yesterday ?? 0}`
+          title="Reels publicados"
+          values={stats?.videos_published}
+          total={stats?.videos_published.total ?? 0}
+          loading={loading}
+          note={() =>
+            stats && stats.videos_published.accounts_synced === 0
+              ? "Sincronizando reels com o Instagram…"
+              : null
           }
         />
 
