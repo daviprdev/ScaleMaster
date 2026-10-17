@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { encrypt } from "@/lib/encrypt";
-import { parseProxyLine } from "@/lib/proxy-pool";
+import { parseProxyLine, returnProxyToPool } from "@/lib/proxy-pool";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -176,7 +176,9 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
-// DELETE — remove uma conta leitora (scrape_jobs em cascata via FK).
+// DELETE — remove uma conta leitora (scrape_jobs em cascata via FK). O proxy
+// dela, se vivo, volta ao estoque — senão se perdia junto com a conta (o
+// proxy pode ter vindo do próprio estoque via ensureReaderProxy).
 export async function DELETE(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
@@ -190,6 +192,13 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
 
+  const { data: reader } = await supabase
+    .from("reader_accounts")
+    .select("proxy_url")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("reader_accounts")
     .delete()
@@ -197,5 +206,8 @@ export async function DELETE(req: NextRequest) {
     .eq("user_id", user.id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // RLS do proxy_pool permite ao dono inserir no próprio estoque.
+  await returnProxyToPool(supabase, user.id, reader?.proxy_url ?? null);
   return NextResponse.json({ success: true });
 }

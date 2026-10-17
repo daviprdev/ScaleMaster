@@ -259,6 +259,33 @@ export async function ensureReaderProxy(
   return { proxyUrl: null, swapped: false };
 }
 
+// Devolve ao estoque o proxy de uma conta LEITORA excluída (mesma política das
+// contas de postagem: proxy de conta excluída volta LIVRE). Só se estiver vivo
+// — proxy morto não volta para o estoque. Retorna true se devolveu.
+export async function returnProxyToPool(
+  admin: AdminClient,
+  userId: string,
+  encryptedProxyUrl: string | null
+): Promise<boolean> {
+  if (!encryptedProxyUrl) return false;
+  let plain: string;
+  try {
+    plain = decrypt(encryptedProxyUrl);
+  } catch {
+    return false;
+  }
+  if (!(await isProxyAlive(plain))) return false;
+  const { error } = await admin.from("proxy_pool").upsert(
+    { user_id: userId, proxy_url: encryptedProxyUrl, proxy_hash: proxyHash(normalizeProxyUrl(plain)) },
+    { onConflict: "user_id,proxy_hash", ignoreDuplicates: true }
+  );
+  if (error) {
+    console.warn(`[proxy-pool] Falha ao devolver proxy de conta leitora ao estoque: ${error.message}`);
+    return false;
+  }
+  return true;
+}
+
 // Descarta o proxy atual da conta (morto — não volta ao estoque) e tenta
 // reivindicar um substituto livre. Usado pelo botão "Trocar proxies com falha"
 // quando o provedor cai: em vez de esperar o usuário reimportar a lista toda,
