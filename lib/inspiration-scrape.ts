@@ -367,6 +367,21 @@ export async function advanceSearch(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
 
+      // Erros permanentes de conta da ScrapeCreators: sem créditos (402) ou
+      // chave inválida (401). Antes caíam no "temporário" abaixo e a busca
+      // ficava tentando a cada poll até expirar em 3h, sem dizer o motivo.
+      if (msg.includes("HTTP 402") || msg.includes("HTTP 401")) {
+        const reason = msg.includes("HTTP 402")
+          ? "Os créditos da ScrapeCreators acabaram. Recarregue em scrapecreators.com ou use a fonte \"Conta leitora\"."
+          : "A chave da ScrapeCreators foi recusada (SCRAPECREATORS_API_KEY inválida).";
+        await finish(admin, search.id, {
+          status: "error",
+          error_message: reason,
+          finished_at: nowIso,
+        });
+        return { status: "error", error: reason };
+      }
+
       // Erros permanentes
       if (msg.includes("HTTP 404") || msg.includes("HTTP 403")) {
         await finish(admin, search.id, {
