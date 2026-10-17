@@ -14,10 +14,10 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
-  // Verifica se a chave ScrapeCreators está configurada
-  if (!process.env.SCRAPECREATORS_API_KEY?.trim()) {
+  // Precisa de uma fonte: HikerAPI (principal) ou ScrapeCreators (reserva).
+  if (!process.env.HIKERAPI_KEY?.trim() && !process.env.SCRAPECREATORS_API_KEY?.trim()) {
     return NextResponse.json({
-      error: "SCRAPECREATORS_API_KEY não configurado. Adicione a variável de ambiente e faça um novo deploy.",
+      error: "Nenhuma fonte configurada (HIKERAPI_KEY ou SCRAPECREATORS_API_KEY). Adicione a variável de ambiente e faça um novo deploy.",
     }, { status: 503 });
   }
 

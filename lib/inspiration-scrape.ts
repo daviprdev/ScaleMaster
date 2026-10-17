@@ -22,6 +22,13 @@ import {
   fetchPostDetail,
   type ReelItem,
 } from "@/lib/scrapecreators-client";
+import {
+  hikerConfigured,
+  hikerUserByUsername,
+  hikerUserClipsChunk,
+  HikerApiError,
+  type HikerMedia,
+} from "@/lib/hikerapi-client";
 
 // ── Compatibilidade com Clone (uso compartilhado de Apify) ────────────────────
 // O Clone ainda usa Apify e importa `listAllItems` desta lib. A função foi
@@ -182,6 +189,36 @@ export function normalizeReelItem(
   };
 }
 
+/** Converte uma mídia da HikerAPI no formato interno do Scale Master. */
+export function normalizeHikerMedia(
+  m: HikerMedia,
+  fallbackUsername: string,
+  index: number
+): InspirationReelPayload {
+  const shortCode = m.code ?? "";
+  // A HikerAPI devolve "" para reel sem legenda — já é a legenda definitiva,
+  // não precisa do enrichCaptions da ScrapeCreators.
+  const captionText = typeof m.caption_text === "string" ? m.caption_text : "";
+  // view_count costuma vir 0 em reels; play_count é o número que o Instagram mostra.
+  const views = num(m.play_count) || num(m.view_count);
+
+  return {
+    id: String(m.pk ?? m.id ?? shortCode ?? index),
+    shortCode,
+    thumbnailUrl: str(m.thumbnail_url),
+    videoUrl: m.video_url ?? "",
+    caption: captionText,
+    originalCaption: captionText,
+    sourceUrl: shortCode ? `https://www.instagram.com/reel/${shortCode}/` : null,
+    views,
+    likes: num(m.like_count),
+    comments: num(m.comment_count),
+    duration: num(m.video_duration),
+    owner: m.user?.username ?? fallbackUsername,
+    gradient: GRADIENTS[index % GRADIENTS.length],
+  };
+}
+
 /**
  * Complementa legendas ausentes chamando o endpoint de detalhe do post.
  * Faz isso em lotes pequenos para não estourar créditos desnecessariamente.
@@ -266,12 +303,14 @@ async function finish(admin: SupabaseClient, id: string, patch: Record<string, u
 //   run_ids[0] = último max_id processado (cursor)
 //   run_ids[1] = páginas já processadas (como string numérica)
 //   run_ids[2] = total de reels acumulados (como string numérica)
+//   run_ids[3] = pk do perfil na HikerAPI (resolvido na 1ª página)
 // Isso evita criar migration nova e mantém compatibilidade com o schema existente.
 
 interface PageState {
   cursor: string | null;
   pagesProcessed: number;
   reelsAccumulated: number;
+  userId: string | null;
 }
 
 function readPageState(search: SearchRow): PageState {
@@ -279,6 +318,7 @@ function readPageState(search: SearchRow): PageState {
     cursor: search.run_ids[0] || null,
     pagesProcessed: Number(search.run_ids[1]) || 0,
     reelsAccumulated: Number(search.run_ids[2]) || 0,
+    userId: search.run_ids[3] || null,
   };
 }
 
@@ -287,7 +327,119 @@ function writePageState(state: PageState): string[] {
     state.cursor ?? "",
     String(state.pagesProcessed),
     String(state.reelsAccumulated),
+    state.userId ?? "",
   ];
+}
+
+// ── HikerAPI ──────────────────────────────────────────────────────────────────
+
+/**
+ * Uma página da busca via HikerAPI (/v1/user/clips/chunk). Na 1ª página
+ * resolve o perfil (/v1/user/by/username). Cursor null = lista completa.
+ * Chamado por advanceSearch já com o claim feito.
+ */
+async function advanceWithHiker(
+  admin: SupabaseClient,
+  search: SearchRow,
+  pageState: PageState,
+  nowIso: string
+): Promise<AdvanceResult> {
+  const fail = async (message: string): Promise<AdvanceResult> => {
+    await finish(admin, search.id, { status: "error", error_message: message, finished_at: nowIso });
+    return { status: "error", error: message };
+  };
+
+  let userId = pageState.userId;
+  let profilePicUrl: string | null = null;
+  let fullName: string | null = null;
+
+  let items: HikerMedia[];
+  let nextCursor: string | null;
+  try {
+    if (!userId) {
+      const user = await hikerUserByUsername(search.username);
+      if (user.is_private) {
+        return fail(`O perfil @${search.username} é privado — só perfis públicos podem ser buscados.`);
+      }
+      userId = String(user.pk);
+      profilePicUrl = user.profile_pic_url ?? null;
+      fullName = user.full_name ?? null;
+    }
+    ({ items, nextCursor } = await hikerUserClipsChunk(userId, pageState.cursor));
+  } catch (err) {
+    const status = err instanceof HikerApiError ? err.status : 0;
+    if (status === 404) return fail(`Perfil @${search.username} não encontrado.`);
+    if (status === 402) return fail("O saldo da HikerAPI acabou. Recarregue em hikerapi.com.");
+    if (status === 401 || status === 403) {
+      return fail("A HikerAPI recusou o acesso (chave inválida ou sem saldo). Verifique em hikerapi.com.");
+    }
+    // Temporário (rede, 429, 5xx) — libera o claim; o próximo poll/cron tenta de novo.
+    console.error(
+      `[inspiration-scrape] busca ${search.id} (HikerAPI) falhou nesta tentativa:`,
+      err instanceof Error ? err.message : String(err)
+    );
+    await finish(admin, search.id, {});
+    return { status: "running" };
+  }
+
+  if (nextCursor && nextCursor === pageState.cursor) {
+    console.warn(`[inspiration-scrape] @${search.username}: cursor repetido na HikerAPI, encerrando`);
+    nextCursor = null;
+  }
+
+  // Só reels com vídeo (a lista de clips não traz foto, mas por garantia).
+  const newReels = items
+    .filter((m) => m.video_url)
+    .map((m, i) => normalizeHikerMedia(m, search.username, pageState.reelsAccumulated + i));
+
+  const { data: existingProfile } = await (admin as any)
+    .from("scraped_profiles")
+    .select("videos_data, profile_pic_url, full_name")
+    .eq("user_id", search.user_id)
+    .eq("username", search.username)
+    .maybeSingle();
+
+  // Busca nova (1ª página) substitui o histórico em vez de somar: um reel
+  // apagado do perfil não fica para sempre na lista.
+  const existingReels = pageState.pagesProcessed === 0
+    ? []
+    : ((existingProfile?.videos_data ?? []) as InspirationReelPayload[]);
+  const merged = dedupByShortCode([...existingReels, ...newReels]);
+
+  const firstUser = items[0]?.user;
+  await saveToHistory(
+    admin,
+    search.user_id,
+    search.username,
+    merged,
+    profilePicUrl ?? firstUser?.profile_pic_url ?? existingProfile?.profile_pic_url ?? null,
+    fullName ?? firstUser?.full_name ?? existingProfile?.full_name ?? search.username
+  );
+
+  const newState: PageState = {
+    cursor: nextCursor,
+    pagesProcessed: pageState.pagesProcessed + 1,
+    reelsAccumulated: merged.length,
+    userId,
+  };
+
+  // Fim da lista: sem cursor, ou página vazia (nada mais a devolver).
+  if (!nextCursor || items.length === 0) {
+    await finish(admin, search.id, {
+      status: "done",
+      reel_count: merged.length,
+      error_message: null,
+      finished_at: new Date().toISOString(),
+      run_ids: writePageState(newState),
+    });
+    console.log(
+      `[inspiration-scrape] @${search.username}: ${merged.length} reels salvos em ${newState.pagesProcessed} página(s) (HikerAPI)`
+    );
+    return { status: "done", reels: merged };
+  }
+
+  await finish(admin, search.id, { run_ids: writePageState(newState), reel_count: merged.length });
+  return { status: "running" };
 }
 
 // ── advanceSearch ─────────────────────────────────────────────────────────────
@@ -358,6 +510,12 @@ export async function advanceSearch(
         finished_at: nowIso,
       });
       return { status: "error", error: `Limite de ${MAX_PAGES} páginas atingido.` };
+    }
+
+    // Fonte principal: HikerAPI (lista completa de reels). Sem a chave, segue
+    // com a ScrapeCreators abaixo.
+    if (hikerConfigured()) {
+      return await advanceWithHiker(admin, search, pageState, nowIso);
     }
 
     // Chama ScrapeCreators
@@ -462,6 +620,7 @@ export async function advanceSearch(
       cursor: nextCursor ?? null,
       pagesProcessed: pageState.pagesProcessed + 1,
       reelsAccumulated: merged.length,
+      userId: pageState.userId,
     };
 
     const moreAvailable = response.paging_info.more_available;
@@ -501,6 +660,7 @@ export async function advanceSearch(
             cursor: recheckCursor ?? null,
             pagesProcessed: pageState.pagesProcessed + 1, // Conta a página original + esta verificação como progresso
             reelsAccumulated: mergedWithExtra.length,
+            userId: pageState.userId,
           };
 
           if (!recheckMore) {

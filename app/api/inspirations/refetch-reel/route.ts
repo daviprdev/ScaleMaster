@@ -1,22 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { fetchPostDetail } from "@/lib/scrapecreators-client";
+import { fetchFreshVideoUrl, reelSourceConfigured } from "@/lib/reel-video-url";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * Re-busca a URL de vídeo de um único Reel via ScrapeCreators (post detail).
- * Usado quando a URL original expirou (CDN do Instagram assina URLs temporárias).
+ * Re-busca a URL de vídeo de um único Reel (HikerAPI, ou ScrapeCreators como
+ * reserva). Usado quando a URL original expirou (CDN do Instagram assina URLs
+ * temporárias).
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
-  if (!process.env.SCRAPECREATORS_API_KEY?.trim()) {
+  if (!reelSourceConfigured()) {
     return NextResponse.json(
-      { error: "SCRAPECREATORS_API_KEY não configurado." },
+      { error: "Nenhuma fonte configurada (HIKERAPI_KEY ou SCRAPECREATORS_API_KEY)." },
       { status: 503 }
     );
   }
@@ -33,12 +34,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "shortCode obrigatório." }, { status: 400 });
   }
 
-  const reelUrl = `https://www.instagram.com/reel/${shortCode}/`;
-
   try {
-    const detail = await fetchPostDetail(reelUrl);
-    const media = detail.data?.xdt_shortcode_media;
-    const videoUrl = media?.video_url;
+    const videoUrl = await fetchFreshVideoUrl(shortCode);
 
     if (!videoUrl) {
       return NextResponse.json(

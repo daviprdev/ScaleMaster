@@ -344,7 +344,7 @@ export default function InspiracoesPage() {
   const [reels, setReels] = useState<InspirationReel[]>([]);
   const [error, setError] = useState("");
 
-  // Fonte da busca: ScrapeCreators (padrão) ou conta leitora dedicada (instagrapi).
+  // Fonte da busca: API externa (HikerAPI; ScrapeCreators como reserva no servidor) ou conta leitora dedicada (instagrapi). A chave "scrapecreators" é histórica.
   const [source, setSource] = useState<"scrapecreators" | "reader">("scrapecreators");
   const [readerAccounts, setReaderAccounts] = useState<ReaderAccountLite[]>([]);
   const [selectedReaderId, setSelectedReaderId] = useState("");
@@ -567,7 +567,7 @@ export default function InspiracoesPage() {
     }
 
     try {
-      // ── Step 1: inicia busca via ScrapeCreators (paginação completa) ───
+      // ── Step 1: inicia busca via API externa (HikerAPI, paginação completa) ───
       const startText = await fetch("/api/inspirations/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -883,7 +883,7 @@ export default function InspiracoesPage() {
           } else {
             console.warn(`[bulk-save] refresh-urls: ${data.error ?? res.status}`);
             if (res.status === 429 || res.status === 503) {
-              setError(data.error ?? "Falha ao renovar as URLs via ScrapeCreators.");
+              setError(data.error ?? "Falha ao renovar as URLs dos vídeos.");
               break;
             }
           }
@@ -925,7 +925,7 @@ export default function InspiracoesPage() {
   return (
     <>
       <AnimatePresence>
-        {showModal && <ImportingModal username={username} done={modalDone} sourceLabel={source === "reader" ? "conta dedicada" : "ScrapeCreators"} />}
+        {showModal && <ImportingModal username={username} done={modalDone} sourceLabel={source === "reader" ? "conta dedicada" : "HikerAPI"} />}
       </AnimatePresence>
 
       <div className="space-y-6 max-w-full">
@@ -976,12 +976,12 @@ export default function InspiracoesPage() {
               Digite o @ de qualquer perfil público para visualizar os Reels e preparar downloads
             </p>
 
-            {/* Source selector — ScrapeCreators vs conta leitora dedicada */}
+            {/* Source selector — HikerAPI vs conta leitora dedicada */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
               <div className="flex items-center gap-1 p-1 rounded-xl"
                 style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.08)" }}>
                 {([
-                  { key: "scrapecreators" as const, label: "ScrapeCreators", icon: Cpu },
+                  { key: "scrapecreators" as const, label: "HikerAPI", icon: Cpu },
                   { key: "reader" as const, label: "Conta dedicada", icon: BookUser },
                 ]).map((opt) => (
                   <button
