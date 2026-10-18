@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { createClient } from "@/lib/supabase/server";
+import { createTokenClient } from "@/lib/supabase/token-client";
 
 export const runtime = "nodejs";
 
@@ -13,9 +13,11 @@ export const runtime = "nodejs";
 // antiga (/api/auth/resolve-username) devolvia o e-mail de qualquer username,
 // sem login. Login por e-mail e Google continuam direto no navegador.
 //
-// Limite de tentativas fica no Nginx (zonas sm_login/sm_login_all): toda
-// chamada ao Supabase Auth daqui sai do IP da VPS e gasta o mesmo limite do
-// endpoint de token que o refresh de sessão e o retorno do OAuth usam.
+// O signInWithPassword usa createTokenClient: com SUPABASE_SECRET_KEY ele manda
+// o IP do cliente no Sb-Forwarded-For e o Supabase conta o limite do endpoint
+// de token por esse IP. Sem a chave, a chamada sai do IP da VPS e gasta o
+// limite que o refresh de sessão de todo mundo usa. Limite de tentativas por
+// IP fica no Nginx (zona sm_login).
 
 const INVALID = "Usuário ou senha inválidos.";
 
@@ -78,7 +80,7 @@ export async function POST(req: NextRequest) {
     return reply({ error: "Não foi possível entrar agora. Tente novamente." }, 500);
   }
 
-  const supabase = await createClient();
+  const supabase = await createTokenClient();
   for (const candidate of candidates.slice(0, MAX_CANDIDATES)) {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: candidate.email!,
@@ -86,7 +88,9 @@ export async function POST(req: NextRequest) {
     });
 
     if (!error && data.user) {
-      const { data: roleData } = await supabase
+      // Pelo admin: o client de token pode estar com a chave secreta, e não
+      // está documentado se o PostgREST roda como o usuário nesse caso.
+      const { data: roleData } = await getSupabaseAdmin()
         .from("user_roles")
         .select("role")
         .eq("user_id", data.user.id)
@@ -97,6 +101,12 @@ export async function POST(req: NextRequest) {
     if (error?.status === 429) {
       console.warn("[auth/login] Supabase Auth limitou as tentativas do servidor (429)");
       return reply({ error: "Muitas tentativas de login. Aguarde alguns minutos e tente de novo." }, 429);
+    }
+
+    // Chave secreta errada ou revogada também volta erro (401) e, sem log,
+    // viraria "senha inválida" para todo mundo.
+    if (error && error.code !== "invalid_credentials") {
+      console.warn(`[auth/login] Supabase Auth recusou o login: status=${error.status} code=${error.code}`);
     }
   }
 
