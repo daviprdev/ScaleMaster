@@ -30,39 +30,45 @@ export default function LoginPage() {
     setIsLoading(true);
     setError("");
 
-    const supabase = createClient();
     const trimmed = identifier.trim();
     const isEmail = trimmed.includes("@");
 
-    // Se não é email, resolve username → email via API segura (service role)
-    let loginEmail = trimmed;
-    if (!isEmail && trimmed.length > 0) {
+    // Username: o login acontece inteiro no servidor (que grava os cookies de
+    // sessão) — o e-mail da conta nunca chega ao navegador.
+    if (!isEmail) {
       try {
-        const res = await fetch("/api/auth/resolve-username", {
+        const res = await fetch("/api/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: trimmed }),
+          body: JSON.stringify({ username: trimmed, password }),
         });
-        const json = await res.json();
-        if (!json.found || !json.email) {
-          setError("Usuário não encontrado. Verifique o nome de usuário ou use seu e-mail.");
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string };
+        if (!res.ok || !json.ok) {
+          setError(
+            json.error ??
+              (res.status === 429
+                ? "Muitas tentativas. Aguarde um pouco e tente de novo."
+                : "Usuário ou senha inválidos.")
+          );
           setIsLoading(false);
           return;
         }
-        loginEmail = json.email;
+        router.push(json.redirect === "/admin" ? "/admin" : "/dashboard");
+        router.refresh();
       } catch {
-        setError("Erro ao verificar nome de usuário. Tente novamente.");
+        setError("Erro ao entrar. Tente novamente.");
         setIsLoading(false);
-        return;
       }
+      return;
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signInWithPassword({ email: trimmed, password });
 
     if (error) {
       setError(
         error.message === "Invalid login credentials"
-          ? "E-mail/username ou senha incorretos."
+          ? "E-mail ou senha incorretos."
           : error.message
       );
       setIsLoading(false);
