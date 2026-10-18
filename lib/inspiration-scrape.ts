@@ -369,7 +369,9 @@ async function advanceWithHiker(
   } catch (err) {
     const status = err instanceof HikerApiError ? err.status : 0;
     if (status === 404) return fail(`Perfil @${search.username} não encontrado.`);
-    if (status === 402) return fail("O saldo da HikerAPI acabou. Recarregue em hikerapi.com.");
+    if (status === 402) {
+      return fail("O saldo acabou em todos os tokens da HikerAPI. Recarregue em hikerapi.com (ou ative o teste grátis pelo Telegram).");
+    }
     if (status === 401 || status === 403) {
       return fail("A HikerAPI recusou o acesso (chave inválida ou sem saldo). Verifique em hikerapi.com.");
     }

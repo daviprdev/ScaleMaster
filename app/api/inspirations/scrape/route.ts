@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { normalizeUsername } from "@/lib/inspiration-scrape";
+import { hikerConfigured } from "@/lib/hikerapi-client";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   // Precisa de uma fonte: HikerAPI (principal) ou ScrapeCreators (reserva).
-  if (!process.env.HIKERAPI_KEY?.trim() && !process.env.SCRAPECREATORS_API_KEY?.trim()) {
+  if (!hikerConfigured() && !process.env.SCRAPECREATORS_API_KEY?.trim()) {
     return NextResponse.json({
       error: "Nenhuma fonte configurada (HIKERAPI_KEY ou SCRAPECREATORS_API_KEY). Adicione a variável de ambiente e faça um novo deploy.",
     }, { status: 503 });
