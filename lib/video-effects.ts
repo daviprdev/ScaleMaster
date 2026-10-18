@@ -23,15 +23,13 @@
  */
 
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
 import { fetch as undiciFetch } from "undici";
 import { getSupabaseAdmin } from "@/lib/supabase";
-
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+import { FFMPEG_INPUT_OPTIONS } from "@/lib/ffmpeg-input";
 
 // ── FNV-1a — hash determinístico por accountId ───────────────────────────────
 
@@ -145,7 +143,7 @@ export async function processVideoForAccount(
     if (userEffects.mirror) vf.push("hflip");
     if (userEffects.invert) vf.push("negate");
     if (userEffects.zoom) {
-      // Aritmética 20/23 garante dimensão par no FFmpeg 4.1 (yuv420p).
+      // Aritmética 20/23 garante dimensão par (exigência do yuv420p).
       vf.push(
         "scale=trunc(iw*23/40)*2:trunc(ih*23/40)*2," +
         "crop=trunc(iw*20/46)*2:trunc(ih*20/46)*2:(iw-trunc(iw*20/46)*2)/2:(ih-trunc(ih*20/46)*2)/2"
@@ -167,7 +165,7 @@ export async function processVideoForAccount(
     }
 
     // Base anti-fingerprint: noise luma único por conta (quebra pHash espacial)
-    // c0f=u: seed fixo por frame — estável no FFmpeg 4.1 (flags temporais causam ERANGE)
+    // c0f=u: seed fixo por frame (no FFmpeg 4.1 as flags temporais causavam ERANGE)
     const noiseLuma = userEffects.noise ? noiseLevel + 2 : noiseLevel; // noise ativo = mais intenso
     vf.push(`noise=c0s=${noiseLuma}:c0f=u`);
 
@@ -200,6 +198,7 @@ export async function processVideoForAccount(
     await new Promise<void>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const cmd = ffmpeg(input)
+        .inputOptions(FFMPEG_INPUT_OPTIONS)
         .outputOptions(outputOptions)
         .output(output)
         .on("end",   () => { clearTimeout(timer); resolve(); })

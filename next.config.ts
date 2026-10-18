@@ -12,8 +12,9 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [],
   },
-  // Não empacotar ffmpeg — usa o binário nativo do Node.js diretamente
-  serverExternalPackages: ["fluent-ffmpeg", "@ffmpeg-installer/ffmpeg"],
+  // fluent-ffmpeg fica fora do bundle: só monta os argumentos e chama o ffmpeg
+  // do sistema (ver lib/ffmpeg-input.ts)
+  serverExternalPackages: ["fluent-ffmpeg"],
   async headers() {
     return [
       {

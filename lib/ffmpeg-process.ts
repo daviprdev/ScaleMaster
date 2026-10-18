@@ -6,6 +6,9 @@
  * usuário escolheu explicitamente `video_processing_mode = "clean_metadata"`
  * na configuração da publicação — ver lib/video-processing.ts.
  *
+ * Entrada: FFmpeg do sistema, só arquivo local e só demuxer MOV/MP4 ou
+ * Matroska/WebM — ver lib/ffmpeg-input.ts.
+ *
  * Pipeline (STREAM COPY — nunca re-encoda):
  *   -map 0:v:0          — primeira trilha de vídeo; descarta data streams
  *   -map 0:a:0?         — primeira trilha de áudio (opcional)
@@ -43,14 +46,12 @@
  */
 
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
 import { fetchMediaBytes } from "@/lib/media-ingest";
-
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+import { FFMPEG_INPUT_OPTIONS } from "@/lib/ffmpeg-input";
 
 export interface ProcessResult {
   outputPath: string;
@@ -102,6 +103,7 @@ export async function downloadAndCleanMetadata(videoUrl: string): Promise<Proces
     await new Promise<void>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const cmd = ffmpeg(inputPath)
+        .inputOptions(FFMPEG_INPUT_OPTIONS)
         .outputOptions(CLEAN_METADATA_OUTPUT_OPTIONS)
         .output(outputPath)
         .on("end", () => { clearTimeout(timer); resolve(); })

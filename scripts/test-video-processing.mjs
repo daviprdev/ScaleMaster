@@ -16,10 +16,9 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { pathToFileURL, fileURLToPath } from "url";
-import { createRequire } from "module";
 
-const require = createRequire(import.meta.url);
-const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
+// O mesmo binário do container: o FFmpeg do sistema (FFMPEG_PATH ou PATH).
+const ffmpegPath = process.env.FFMPEG_PATH || "ffmpeg";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "asc-vp-"));
 
@@ -53,6 +52,9 @@ const ff = (args) => run(ffmpegPath, args);
 function src(relPath) {
   return fs.readFileSync(path.join(repoRoot, relPath), "utf8");
 }
+
+// As MESMAS opções de entrada de lib/ffmpeg-input.ts (checadas no fim).
+const INPUT_OPTS = ["-protocol_whitelist", "file", "-format_whitelist", "mov,matroska"];
 
 // As MESMAS opções usadas por lib/ffmpeg-process.ts. Se divergirem, a checagem
 // estrutural no fim falha — então esta lista não pode envelhecer em silêncio.
@@ -166,9 +168,12 @@ async function loadVideoProcessing() {
   const outFile = path.join(buildDir, "lib", "video-processing.js");
   if (!fs.existsSync(outFile)) throw new Error("falha ao compilar lib/video-processing.ts");
 
-  // tsc não reescreve o alias "@/..." — aponta para o arquivo irmão emitido.
-  const js = fs.readFileSync(outFile, "utf8").replace(/["']@\/lib\/ffmpeg-process["']/g, '"./ffmpeg-process.js"');
-  fs.writeFileSync(outFile, js);
+  // tsc não reescreve o alias "@/..." — aponta para os arquivos irmãos emitidos.
+  const libOut = path.dirname(outFile);
+  for (const name of fs.readdirSync(libOut).filter((n) => n.endsWith(".js"))) {
+    const file = path.join(libOut, name);
+    fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace(/["']@\/lib\/([\w-]+)["']/g, '"./$1.js"'));
+  }
 
   return import(pathToFileURL(outFile).href);
 }
@@ -213,7 +218,7 @@ async function main() {
 
   // ── clean_metadata: variante separada, original intacto, sem reencode ─────
   const variant = path.join(tmp, "variant.mp4");
-  await ff(["-y", "-i", origin, ...CLEAN_OPTS, variant]);
+  await ff(["-y", ...INPUT_OPTS, "-i", origin, ...CLEAN_OPTS, variant]);
 
   check("A variante é um arquivo distinto do original", sha256(variant) !== originHash);
   check("O arquivo original permanece intacto após gerar a variante", sha256(origin) === originHash);
@@ -236,8 +241,16 @@ async function main() {
   check("clean_metadata é stream copy: bitstream H.264 idêntico (zero reencode)", rawOrigin === rawVariant);
 
   const variant2 = path.join(tmp, "variant2.mp4");
-  await ff(["-y", "-i", origin, ...CLEAN_OPTS, variant2]);
+  await ff(["-y", ...INPUT_OPTS, "-i", origin, ...CLEAN_OPTS, variant2]);
   check("A variante do mesmo arquivo é reprodutível byte a byte", sha256(variant) === sha256(variant2));
+
+  // Playlist HLS com extensão .mp4: sem a whitelist de demuxer, o FFmpeg leria
+  // arquivos locais (/etc/passwd, /proc/self/environ) para dentro do vídeo.
+  const evil = path.join(tmp, "evil.mp4");
+  fs.writeFileSync(evil, "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nfile:///etc/passwd\n#EXT-X-ENDLIST\n");
+  const evilRejected = await ff(["-y", ...INPUT_OPTS, "-i", evil, ...CLEAN_OPTS, path.join(tmp, "evil_out.mp4")])
+    .then(() => false, () => true);
+  check("Entrada que não é MP4/MOV/WebM de verdade é recusada (HLS disfarçado)", evilRejected);
 
   console.log("\n== Parte 2: resolução de modo com admin simulado ==\n");
 
@@ -414,6 +427,11 @@ async function main() {
     forbidden.every((t) => !optsBlock.includes(t)));
   check("As opções testadas aqui são as mesmas de lib/ffmpeg-process.ts",
     CLEAN_OPTS.every((opt) => optsBlock.includes(`"${opt}"`)));
+  check("As opções de entrada testadas aqui são as mesmas de lib/ffmpeg-input.ts",
+    INPUT_OPTS.every((opt) => src("lib/ffmpeg-input.ts").includes(`"${opt}"`)));
+  check("Todo FFmpeg do app usa o binário do sistema com a entrada restrita",
+    [ffmpegProcess, effects].every((f) =>
+      f.includes(".inputOptions(FFMPEG_INPUT_OPTIONS)") && !f.includes("ffmpeg-installer") && !f.includes("setFfmpegPath")));
 
   fs.rmSync(tmp, { recursive: true, force: true });
   fs.rmSync(path.join(repoRoot, "node_modules", ".cache", "asc-video-test"), { recursive: true, force: true });

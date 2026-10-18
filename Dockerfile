@@ -66,7 +66,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# FFmpeg binary required by fluent-ffmpeg / @ffmpeg-installer/ffmpeg
+# FFmpeg do sistema — o único que o app usa (fluent-ffmpeg o acha no PATH).
+# Atualiza junto com a imagem base do Alpine; ver lib/ffmpeg-input.ts.
 RUN apk add --no-cache ffmpeg
 
 # Non-root user for security
