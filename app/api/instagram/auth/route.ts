@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { getInstagramRedirectUri } from "@/lib/app-url";
+import { getAppUrl, getInstagramRedirectUri } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
     // BYOC: load app credentials from DB
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.redirect(new URL("/auth/login", request.url));
+    // request.url chega como 0.0.0.0:3000 no standalone da VPS.
+    if (!user) return NextResponse.redirect(`${getAppUrl()}/auth/login`);
 
     const admin = getSupabaseAdmin();
     const { data: app } = await admin

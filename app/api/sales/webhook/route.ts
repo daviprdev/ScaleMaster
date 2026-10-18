@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { getAppUrl } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -22,7 +23,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Não foi possível gerar seu link" }, { status: 500 });
   }
 
-  const origin = req.nextUrl.origin;
+  // No build standalone da VPS o req.nextUrl.origin vale http://0.0.0.0:3000
+  // (HOSTNAME do container), e o link copiado no painel apontava para lá.
+  const origin = getAppUrl();
   const token = data.sales_webhook_token;
 
   return NextResponse.json({
