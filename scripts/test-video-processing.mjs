@@ -432,6 +432,8 @@ async function main() {
   check("Todo FFmpeg do app usa o binário do sistema com a entrada restrita",
     [ffmpegProcess, effects].every((f) =>
       f.includes(".inputOptions(FFMPEG_INPUT_OPTIONS)") && !f.includes("ffmpeg-installer") && !f.includes("setFfmpegPath")));
+  check("Os dois pipelines baixam a mídia com allowlist de origem e teto de bytes (fetchMediaBytes)",
+    [ffmpegProcess, effects].every((f) => f.includes("await fetchMediaBytes(videoUrl") && !f.includes("undiciFetch(")));
 
   fs.rmSync(tmp, { recursive: true, force: true });
   fs.rmSync(path.join(repoRoot, "node_modules", ".cache", "asc-video-test"), { recursive: true, force: true });

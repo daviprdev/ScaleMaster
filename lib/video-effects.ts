@@ -27,9 +27,9 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
-import { fetch as undiciFetch } from "undici";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { FFMPEG_INPUT_OPTIONS } from "@/lib/ffmpeg-input";
+import { fetchMediaBytes } from "@/lib/media-ingest";
 
 // ── FNV-1a — hash determinístico por accountId ───────────────────────────────
 
@@ -123,11 +123,11 @@ export async function processVideoForAccount(
 
   try {
     // ── 1. Download ──────────────────────────────────────────────────────────
-    // undici bypasses Next.js 15's patched global fetch (strips dispatcher,
-    // may corrupt binary responses from Supabase Storage CDN redirects).
-    const res = await undiciFetch(videoUrl, { signal: AbortSignal.timeout(60_000) });
-    if (!res.ok) throw new Error(`Download falhou: HTTP ${res.status}`);
-    const inputBuf = Buffer.from(await res.arrayBuffer());
+    // Allowlist de origem reavaliada a cada redirect + teto de 250 MB (SSRF/DoS),
+    // via undici (o fetch global patcheado do Next.js 15 corrompe binários).
+    // Sem User-Agent de CDN: o source_url é o Storage do Supabase, e o padrão
+    // do undici é o que sempre funcionou aqui.
+    const inputBuf = await fetchMediaBytes(videoUrl, { timeoutMs: 60_000, headers: {} });
     fs.writeFileSync(input, inputBuf);
     const inputSizeMB = (inputBuf.length / 1_048_576).toFixed(1);
 
