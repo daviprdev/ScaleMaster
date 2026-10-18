@@ -58,6 +58,7 @@ docker compose --env-file .env.production up -d --build app
 - `NEXT_PUBLIC_APP_URL=https://scalemaster.tech`
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase público
 - `SUPABASE_SERVICE_ROLE_KEY` — Admin access (apenas server-side)
+- `SUPABASE_SECRET_KEY` — chave `sb_secret_` (opcional): login por username e `/auth/callback` mandam o IP do cliente no `Sb-Forwarded-For` (exige IP Address Forwarding ligado no Supabase); sem ela, caem na anon key
 - `ENCRYPTION_SECRET` — AES-256-GCM para credenciais OAuth
 - `PYTHON_SERVER_URL=http://python-server:8000` — Comunicação interna
 - `PYTHON_SERVER_SECRET` — Auth entre app e python-server
