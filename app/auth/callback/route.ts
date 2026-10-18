@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getAppUrl } from "@/lib/app-url";
 
 // Rota chamada pelo Supabase após confirmação de e-mail ou OAuth
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  // No build standalone da VPS o request.url chega como http://0.0.0.0:3000
+  // (HOSTNAME do container), então o origin dele mandava o usuário para um
+  // endereço inacessível depois do login com Google.
+  const origin = getAppUrl();
   const code = searchParams.get("code");
   const explicitNext = searchParams.get("next");
 
