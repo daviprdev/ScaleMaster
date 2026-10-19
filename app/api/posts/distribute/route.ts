@@ -7,6 +7,7 @@ import {
   normalizeCaptionMode, resolveCaption, captionRejectionMessage,
 } from "@/lib/reel-captions";
 import { fetchVideoUsage, fetchRecentVideos, fetchAllRows } from "@/lib/video-history";
+import { fetchPerformanceTiers } from "@/lib/video-performance";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 import {
   assignVideos,
@@ -204,10 +205,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Data e hora de início inválidas." }, { status: 400 });
   let postedCount: Map<string, Map<string, number>>;
   let recentByAccount: Map<string, string[]>;
+  let performanceTiers: Awaited<ReturnType<typeof fetchPerformanceTiers>>;
   try {
-    [postedCount, recentByAccount] = await Promise.all([
+    [postedCount, recentByAccount, performanceTiers] = await Promise.all([
       fetchVideoUsage(admin, account_ids),
       fetchRecentVideos(admin, account_ids, new Date(startTime).toISOString()),
+      // Desempenho real nas contas do usuário (nunca lança): vídeo que a Meta
+      // não entrega fica fora da campanha, vencedor vem primeiro.
+      fetchPerformanceTiers(admin, user.id, allVideos.map((v) => v.id)),
     ]);
   } catch (e) {
     console.error(`[distribute] ${(e as Error).message}`);
@@ -297,6 +302,7 @@ export async function POST(req: NextRequest) {
     seed: distributionSeed,
     videosPerAccount: maxVideos,
     recentByAccount,
+    performanceTiers,
   });
 
   // Mapa rápido de vídeo por ID para resolver legenda/url durante a geração de linhas

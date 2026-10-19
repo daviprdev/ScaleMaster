@@ -5,6 +5,9 @@
  * Deterministic given the same seed: retries produce identical assignments.
  */
 
+import type { PerformanceTier } from "./video-performance";
+import { MIN_ALIVE_POOL } from "./video-performance";
+
 export type PriorityStrategy = "views" | "least_usage" | "random";
 
 export interface VideoCandidate {
@@ -36,6 +39,10 @@ export interface PriorityContext {
    *  PRIMEIRO. Base do cooldown de recência: na virada de ciclo o pool volta a
    *  conter tudo, inclusive o vídeo do post imediatamente anterior. */
   recentByAccount?: Map<string, string[]>;
+  /** videoId -> desempenho real nas contas do usuário (lib/video-performance).
+   *  "dead" sai do sorteio enquanto restarem MIN_ALIVE_POOL vídeos vivos;
+   *  "winner" vem antes dos demais na estratégia "views". Ausente = sem efeito. */
+  performanceTiers?: Map<string, PerformanceTier>;
 }
 
 export interface AssignmentResult {
@@ -116,10 +123,11 @@ export function buildRankedPool(
   globalUsage: Map<string, number>,
   rng: () => number,
   batchUsage?: Map<string, number>,
+  tiers?: Map<string, PerformanceTier>,
 ): VideoCandidate[] {
   if (candidates.length === 0) return [];
   if (!batchUsage || batchUsage.size === 0 || strategy === "least_usage") {
-    return rankByStrategy(candidates, strategy, globalUsage, rng);
+    return rankByStrategy(candidates, strategy, globalUsage, rng, tiers);
   }
 
   const levels = new Map<number, VideoCandidate[]>();
@@ -131,7 +139,7 @@ export function buildRankedPool(
   }
   const result: VideoCandidate[] = [];
   for (const level of [...levels.keys()].sort((a, b) => a - b)) {
-    result.push(...rankByStrategy(levels.get(level)!, strategy, globalUsage, rng));
+    result.push(...rankByStrategy(levels.get(level)!, strategy, globalUsage, rng, tiers));
   }
   return result;
 }
@@ -141,11 +149,22 @@ function rankByStrategy(
   strategy: PriorityStrategy,
   globalUsage: Map<string, number>,
   rng: () => number,
+  tiers?: Map<string, PerformanceTier>,
 ): VideoCandidate[] {
   switch (strategy) {
     case "views": {
+      // Vencedor nas contas do usuário vem antes das views da origem: é a
+      // resposta da Meta a ESTE vídeo nestas contas, não no perfil de origem.
+      // Morto só chega aqui quando o pool vivo é pequeno demais: vai por último.
+      const tierRank = (v: VideoCandidate) => {
+        const t = tiers?.get(v.id);
+        return t === "winner" ? 0 : t === "dead" ? 2 : 1;
+      };
       // Sort DESC by views, ASC by global usage as tiebreak, then seeded shuffle within ties
       const sorted = candidates.slice().sort((a, b) => {
+        const ta = tierRank(a);
+        const tb = tierRank(b);
+        if (ta !== tb) return ta - tb;
         if (b.views !== a.views) return b.views - a.views;
         const ua = globalUsage.get(a.id) ?? 0;
         const ub = globalUsage.get(b.id) ?? 0;
@@ -158,7 +177,7 @@ function rankByStrategy(
       for (let i = 1; i < sorted.length; i++) {
         const prev = sorted[i - 1];
         const curr = sorted[i];
-        const sameViews = curr.views === prev.views;
+        const sameViews = curr.views === prev.views && tierRank(curr) === tierRank(prev);
         const sameUsage =
           (globalUsage.get(curr.id) ?? 0) === (globalUsage.get(prev.id) ?? 0);
         if (sameViews && sameUsage) {
@@ -242,6 +261,7 @@ function findMaximumMatching(
   globalUsage: Map<string, number>,
   batchUsage: Map<string, number>,
   rng: () => number,
+  tiers?: Map<string, PerformanceTier>,
 ): Map<string, VideoCandidate> {
   const result = new Map<string, VideoCandidate>();
   const videoToAccount = new Map<string, string>();
@@ -250,7 +270,7 @@ function findMaximumMatching(
   const rankedEligibility = new Map<string, VideoCandidate[]>();
   for (const accountId of accountIds) {
     const eligible = eligibility.get(accountId) ?? [];
-    rankedEligibility.set(accountId, buildRankedPool(eligible, strategy, globalUsage, rng, batchUsage));
+    rankedEligibility.set(accountId, buildRankedPool(eligible, strategy, globalUsage, rng, batchUsage, tiers));
   }
 
   // BFS para encontrar caminho aumentante a partir de uma conta não匹配ada
@@ -359,6 +379,7 @@ export function assignVideos(ctx: PriorityContext): AssignmentResult[] {
     seed,
     videosPerAccount = 1,
     recentByAccount,
+    performanceTiers: tiers,
   } = ctx;
 
   if (accountIds.length === 0 || candidates.length === 0 || videosPerAccount < 1) return [];
@@ -366,9 +387,16 @@ export function assignVideos(ctx: PriorityContext): AssignmentResult[] {
   const rng = mulberry32(seed);
 
   // Filter out globally excluded videos (window claims + cooldown)
-  const globallyAvailable = candidates.filter(
+  const notClaimed = candidates.filter(
     (v) => !windowClaims.has(v.id) && !recentGlobalCooldown.has(v.id),
   );
+
+  // Vídeo que a Meta não entrega nestas contas (lib/video-performance) sai do
+  // sorteio — mas só enquanto restarem MIN_ALIVE_POOL vivos: com menos que
+  // isso, as contas repetiriam os mesmos 1–2 vídeos em sequência.
+  const alive = tiers?.size ? notClaimed.filter((v) => tiers.get(v.id) !== "dead") : notClaimed;
+  const globallyAvailable =
+    alive.length >= Math.min(MIN_ALIVE_POOL, notClaimed.length) ? alive : notClaimed;
 
   if (globallyAvailable.length === 0) return [];
   const availableIds = new Set(globallyAvailable.map((v) => v.id));
@@ -424,7 +452,7 @@ export function assignVideos(ctx: PriorityContext): AssignmentResult[] {
 
     // Matching máximo: vídeos distintos entre as contas na mesma rodada sempre
     // que a elegibilidade individual permitir.
-    const matching = findMaximumMatching(order, eligibility, strategy, liveUsage, batchUsage, rng);
+    const matching = findMaximumMatching(order, eligibility, strategy, liveUsage, batchUsage, rng, tiers);
 
     const roundAssignments: AssignmentResult[] = [];
     const roundUsage = new Map<string, number>();
@@ -445,7 +473,7 @@ export function assignVideos(ctx: PriorityContext): AssignmentResult[] {
       const eligible = eligibility.get(accountId)!;
       if (eligible.length === 0) continue;
 
-      const ranked = buildRankedPool(eligible, strategy, liveUsage, rng, batchUsage);
+      const ranked = buildRankedPool(eligible, strategy, liveUsage, rng, batchUsage, tiers);
       let selected = ranked[0];
       let best = roundUsage.get(selected.id) ?? 0;
       for (const v of ranked) {

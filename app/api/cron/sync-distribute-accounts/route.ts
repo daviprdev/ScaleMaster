@@ -25,6 +25,7 @@ import { getAutoCaption, type AutoCaptionType } from "@/lib/auto-captions";
 import { normalizeCaptionMode, resolveCaption } from "@/lib/reel-captions";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 import { fetchVideoUsage, fetchRecentVideos, fetchAllRows } from "@/lib/video-history";
+import { fetchPerformanceTiers } from "@/lib/video-performance";
 import { requireCronAuth } from "@/lib/cron-auth";
 import {
   assignVideos as priorityAssignVideos,
@@ -209,10 +210,14 @@ async function processCampaign(
   // virada de ciclo da pasta o vídeo do post anterior voltava ao sorteio.
   let usage: Awaited<ReturnType<typeof fetchVideoUsage>>;
   let recentByAccount: Map<string, string[]>;
+  let performanceTiers: Awaited<ReturnType<typeof fetchPerformanceTiers>>;
   try {
-    [usage, recentByAccount] = await Promise.all([
+    [usage, recentByAccount, performanceTiers] = await Promise.all([
       fetchVideoUsage(admin, dueAccountIds),
       fetchRecentVideos(admin, dueAccountIds, new Date(now).toISOString()),
+      // Desempenho real nas contas do usuário (nunca lança): vídeo que a Meta
+      // não entrega sai do sorteio, vencedor vem primeiro.
+      fetchPerformanceTiers(admin, campaign.user_id, allVideos.map((v) => v.id)),
     ]);
   } catch (e) {
     console.error(`[sync-distribute-accounts] Campanha ${campaign.id}: ${(e as Error).message} — pulando ciclo.`);
@@ -245,6 +250,7 @@ async function processCampaign(
     seed: cycleSeed,
     videosPerAccount: 1, // sync cria 1 post por conta por ciclo; quantidade total é controlada pelo cron
     recentByAccount,
+    performanceTiers,
   });
 
   const videoById = new Map(allVideos.map((v) => [v.id, v]));
