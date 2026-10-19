@@ -18,6 +18,12 @@ import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelec
 import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
 import { ProxyPoolToggle } from "@/components/dashboard/ProxyPoolToggle";
 import type { CaptionMode } from "@/lib/reel-captions";
+import {
+  TEXT_OVERLAY_MAX_CHARS,
+  droppedOverlayChars,
+  usableTextPool,
+  type TextOverlayPosition,
+} from "@/lib/video-text-overlay";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -67,6 +73,10 @@ interface Loop {
   effect_blur:     boolean;
   effect_noise:    boolean;
   effect_anti_ai:  boolean;
+  // Ausentes enquanto supabase/loops_text_overlay.sql não roda.
+  effect_text_enabled?:  boolean | null;
+  effect_text_pool?:     string[] | null;
+  effect_text_position?: string | null;
   video_processing_mode?: string | null;
   share_to_feed?: boolean | null;
   caption_mode?: string | null;
@@ -101,6 +111,10 @@ interface FormData {
   effectBlur:    boolean;
   effectNoise:   boolean;
   effectAntiAi:  boolean;
+  effectText:    boolean;
+  /** Textarea crua: uma frase por linha. */
+  effectTextPool: string;
+  effectTextPosition: TextOverlayPosition;
   autoCaptionEnabled: boolean;
   autoCaptionType: string;
   accountStaggerSeconds: number | null;
@@ -146,6 +160,9 @@ const DEFAULT_FORM: FormData = {
   effectBlur:   false,
   effectNoise:  false,
   effectAntiAi: true,
+  effectText:   false,
+  effectTextPool: "",
+  effectTextPosition: "top",
   autoCaptionEnabled: false,
   autoCaptionType: AUTO_CAPTION_TYPE_VALUE,
   accountStaggerSeconds: null,
@@ -262,6 +279,131 @@ function SectionLabel({ icon: Icon, label }: { icon: React.ElementType; label: s
     <div className="flex items-center gap-2 mb-3">
       <Icon size={13} className="text-[#85B9E9]/80" />
       <span className="text-[10px] font-bold uppercase tracking-widest text-ink-3">{label}</span>
+    </div>
+  );
+}
+
+// ── TextOverlayEffect ─────────────────────────────────────────
+// Efeito "Texto na tela": pool de frases de gancho queimadas no vídeo, uma por
+// conta/publicação (lib/video-text-overlay.ts escolhe e desenha).
+
+function TextOverlayEffect({
+  enabled,
+  pool,
+  position,
+  otherEffectsOn,
+  migrationPending,
+  onEnabled,
+  onPool,
+  onPosition,
+}: {
+  enabled: boolean;
+  pool: string;
+  position: TextOverlayPosition;
+  otherEffectsOn: boolean;
+  migrationPending: boolean;
+  onEnabled: (v: boolean) => void;
+  onPool: (v: string) => void;
+  onPosition: (v: TextOverlayPosition) => void;
+}) {
+  const lines = useMemo(() => pool.split(/\r?\n/), [pool]);
+  const usable = useMemo(() => usableTextPool(lines), [lines]);
+  const dropped = useMemo(() => droppedOverlayChars(pool).slice(0, 8), [pool]);
+  const tooLong = lines.filter(l => Array.from(l.trim()).length > TEXT_OVERLAY_MAX_CHARS).length;
+  const preview = usable[0] ?? "Wait for the end";
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-raised">
+      <div className="flex items-center justify-between p-3.5">
+        <div className="flex items-center gap-3">
+          <Type size={15} className="text-[#85B9E9]/60" />
+          <div>
+            <p className="text-sm text-ink font-medium">Texto na tela</p>
+            <p className="text-xs text-ink-3">Frase de gancho no vídeo, diferente em cada conta</p>
+          </div>
+        </div>
+        <Toggle checked={enabled} onChange={onEnabled} />
+      </div>
+
+      {enabled && (
+        <div className="px-3.5 pb-3.5 pt-3 space-y-3 border-t border-line">
+          {migrationPending && (
+            <p className="flex items-start gap-1.5 text-[11px] text-amber-400">
+              <AlertTriangle size={12} className="mt-0.5 flex-shrink-0" />
+              Falta aplicar a migração loops_text_overlay.sql no Supabase — até lá o loop não salva com este efeito ligado.
+            </p>
+          )}
+
+          <div className="flex gap-3">
+            <div className="flex-1 min-w-0">
+              <textarea
+                rows={5}
+                value={pool}
+                onChange={e => onPool(e.target.value)}
+                placeholder={"Wait for the end\nShe didn't expect this\nPOV: you found her page"}
+                className="w-full px-3 py-2.5 rounded-xl bg-surface-hover border border-line-2 text-white text-sm placeholder-white/20 resize-y focus:outline-none focus:border-[#00498D]/40 focus:ring-1 focus:ring-[#00498D]/20 transition-all leading-relaxed"
+              />
+              <p className="mt-1 text-[10px] text-ink-3">
+                Uma frase por linha · {usable.length} frase{usable.length === 1 ? "" : "s"} · até {TEXT_OVERLAY_MAX_CHARS} caracteres.
+                Em inglês o Reel alcança público fora do Brasil.
+              </p>
+            </div>
+
+            {/* Prévia 9:16 — posição e caixa como saem no vídeo */}
+            <div className="hidden sm:block relative w-[84px] h-[150px] flex-shrink-0 rounded-lg overflow-hidden border border-line-2 bg-gradient-to-b from-[#1b2a44] via-[#33405a] to-[#0b1220]">
+              <div
+                className={cn(
+                  "absolute inset-x-[8%] flex justify-center",
+                  position === "middle" ? "top-[44%] -translate-y-1/2" : "top-[16%]"
+                )}
+              >
+                <span className="bg-black/55 text-white font-bold text-[7px] leading-[1.35] text-center px-1 py-0.5 break-words">
+                  {preview}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {dropped.length > 0 && (
+            <p className="text-[11px] text-amber-400">
+              Emojis e símbolos não aparecem no vídeo e serão removidos: {dropped.join(" ")}
+            </p>
+          )}
+          {tooLong > 0 && (
+            <p className="text-[11px] text-amber-400">
+              {tooLong} frase{tooLong === 1 ? "" : "s"} com mais de {TEXT_OVERLAY_MAX_CHARS} caracteres {tooLong === 1 ? "será cortada" : "serão cortadas"}.
+            </p>
+          )}
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-ink-3">Posição</span>
+            {([
+              { value: "top", label: "Topo" },
+              { value: "middle", label: "Meio" },
+            ] as const).map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onPosition(opt.value)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold border transition-all",
+                  position === opt.value
+                    ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30"
+                    : "bg-surface-hover text-ink-3 border-line hover:border-line-2 hover:text-ink-2"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          <p className="text-[10px] text-ink-3">
+            {otherEffectsOn
+              ? "Com outros efeitos ligados, o vídeo também leva a cor/ruído deles. Para máxima qualidade, deixe só o Texto na tela."
+              : "Ligado sozinho, o vídeo é re-encodado em alta qualidade, sem ruído nem mudança de cor."}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -599,7 +741,7 @@ function LoopCard({
           <Clock size={11} />
           {formatInterval(loop.interval_minutes)}
         </span>
-        {(loop.effect_mirror || loop.effect_invert || loop.effect_zoom || loop.effect_blur || loop.effect_noise || loop.effect_anti_ai) && (
+        {(loop.effect_mirror || loop.effect_invert || loop.effect_zoom || loop.effect_blur || loop.effect_noise || loop.effect_anti_ai || loop.effect_text_enabled) && (
           <span className="flex items-center gap-1">
             {loop.effect_mirror   && <FlipHorizontal size={10} className="text-[#85B9E9]/60" />}
             {loop.effect_invert   && <Contrast       size={10} className="text-[#85B9E9]/60" />}
@@ -607,6 +749,7 @@ function LoopCard({
             {loop.effect_blur     && <Droplets       size={10} className="text-[#85B9E9]/60" />}
             {loop.effect_noise    && <Waves          size={10} className="text-[#85B9E9]/60" />}
             {loop.effect_anti_ai  && <Shield         size={10} className="text-[#85B9E9]/60" />}
+            {loop.effect_text_enabled && <Type       size={10} className="text-[#85B9E9]/60" />}
           </span>
         )}
       </div>
@@ -1293,6 +1436,7 @@ function LoopFormModal({
   accounts,
   folders,
   accountFolders,
+  textOverlayReady,
   onSave,
   onClose,
 }: {
@@ -1300,6 +1444,8 @@ function LoopFormModal({
   accounts: Account[];
   folders: Folder[];
   accountFolders: AccountFolder[];
+  /** false = colunas do Texto na tela ainda não existem no banco. */
+  textOverlayReady: boolean;
   onSave: (form: FormData, loopId?: string) => Promise<void>;
   onClose: () => void;
 }) {
@@ -1324,6 +1470,9 @@ function LoopFormModal({
         effectBlur:   editingLoop.effect_blur   ?? false,
         effectNoise:  editingLoop.effect_noise  ?? false,
         effectAntiAi: editingLoop.effect_anti_ai ?? true,
+        effectText:   editingLoop.effect_text_enabled === true,
+        effectTextPool: (editingLoop.effect_text_pool ?? []).join("\n"),
+        effectTextPosition: editingLoop.effect_text_position === "middle" ? "middle" : "top",
         autoCaptionEnabled: editingLoop.auto_caption_enabled ?? false,
         autoCaptionType: editingLoop.auto_caption_type ?? AUTO_CAPTION_TYPE_VALUE,
         accountStaggerSeconds: (editingLoop as any).account_stagger_seconds ?? null,
@@ -1368,6 +1517,10 @@ function LoopFormModal({
     if (form.accountMode === "folder" && !form.accountFolderId) { setError("Selecione uma pasta de contas."); return; }
     if (form.accountMode === "specific" && form.accountIds.length === 0) { setError("Selecione pelo menos uma conta."); return; }
     if (!form.folderId) { setError("Selecione uma pasta da biblioteca."); return; }
+    if (form.effectText && usableTextPool(form.effectTextPool.split(/\r?\n/)).length === 0) {
+      setError("Adicione pelo menos uma frase (com texto, não só emoji) ao Texto na tela.");
+      return;
+    }
     setError(null);
     setSaving(true);
     try {
@@ -1891,6 +2044,20 @@ function LoopFormModal({
                 </div>
                 <Toggle checked={form.effectAntiAi} onChange={v => update("effectAntiAi", v)} />
               </div>
+
+              <TextOverlayEffect
+                enabled={form.effectText}
+                pool={form.effectTextPool}
+                position={form.effectTextPosition}
+                otherEffectsOn={
+                  form.effectMirror || form.effectInvert || form.effectZoom ||
+                  form.effectBlur   || form.effectNoise  || form.effectAntiAi
+                }
+                migrationPending={!textOverlayReady}
+                onEnabled={v => update("effectText", v)}
+                onPool={v => update("effectTextPool", v)}
+                onPosition={v => update("effectTextPosition", v)}
+              />
             </div>
           </div>
 
@@ -1934,6 +2101,7 @@ function LoopFormModal({
 
 export default function LoopPage() {
   const [loops, setLoops] = useState<Loop[]>([]);
+  const [textOverlayReady, setTextOverlayReady] = useState(true);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [accountFolders, setAccountFolders] = useState<AccountFolder[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -1946,8 +2114,9 @@ export default function LoopPage() {
     setLoading(true);
     try {
       const res = await fetch("/api/loops");
-      const data = await res.json() as { loops: Loop[] };
+      const data = await res.json() as { loops: Loop[]; text_overlay_ready?: boolean };
       setLoops(data.loops ?? []);
+      setTextOverlayReady(data.text_overlay_ready !== false);
     } finally {
       setLoading(false);
     }
@@ -2008,6 +2177,9 @@ export default function LoopPage() {
       effect_blur:    form.effectBlur,
       effect_noise:   form.effectNoise,
       effect_anti_ai: form.effectAntiAi,
+      effect_text_enabled:  form.effectText,
+      effect_text_pool:     form.effectTextPool.split(/\r?\n/).map(l => l.trim()).filter(Boolean),
+      effect_text_position: form.effectTextPosition,
       auto_caption_enabled: form.autoCaptionEnabled,
       auto_caption_type: form.autoCaptionEnabled ? form.autoCaptionType : null,
       account_stagger_seconds: form.accountStaggerSeconds,
@@ -2079,6 +2251,7 @@ export default function LoopPage() {
             accounts={accounts}
             folders={folders}
             accountFolders={accountFolders}
+            textOverlayReady={textOverlayReady}
             onSave={handleSave}
             onClose={closeForm}
           />

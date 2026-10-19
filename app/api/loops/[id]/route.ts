@@ -5,6 +5,13 @@ import { normalizeProcessingMode } from "@/lib/video-processing";
 import { normalizeCaptionMode } from "@/lib/reel-captions";
 import { checkCreateReadiness } from "@/lib/loop-readiness";
 import { normalizePriorityStrategy } from "@/lib/media-priority";
+import {
+  TEXT_OVERLAY_COLUMN_NAMES,
+  TEXT_OVERLAY_MIGRATION_PENDING,
+  isMissingTextOverlayColumn,
+  normalizeTextPool,
+  normalizeTextPosition,
+} from "@/lib/video-text-overlay";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -40,6 +47,7 @@ export async function PATCH(
   const scalars = ["status", "name", "folder_id", "account_folder_id", "is_infinite", "cycles",
     "interval_minutes", "media_limit", "captions", "cover_image_url",
     "effect_mirror", "effect_invert", "effect_zoom", "effect_blur", "effect_noise", "effect_anti_ai",
+    ...TEXT_OVERLAY_COLUMN_NAMES,
     "auto_caption_enabled", "auto_caption_type", "account_stagger_seconds",
     "video_processing_mode", "share_to_feed", "use_proxy_pool",
     "caption_mode", "caption_strip_hashtags", "caption_strip_mentions",
@@ -75,6 +83,21 @@ export async function PATCH(
 
     if (key === "priority_strategy") {
       updatePayload[key] = normalizePriorityStrategy(body[key] as string | undefined);
+      continue;
+    }
+
+    // Texto na tela: só vale para jobs enfileirados daqui em diante — os já
+    // na fila guardam a frase escolhida na época.
+    if (key === "effect_text_enabled") {
+      updatePayload[key] = body[key] === true;
+      continue;
+    }
+    if (key === "effect_text_pool") {
+      updatePayload[key] = normalizeTextPool(body[key]);
+      continue;
+    }
+    if (key === "effect_text_position") {
+      updatePayload[key] = normalizeTextPosition(body[key]);
       continue;
     }
 
@@ -175,11 +198,21 @@ export async function PATCH(
   }
 
   if (Object.keys(updatePayload).length > 0) {
-    const { error } = await anyAdmin
+    const updateLoop = () => anyAdmin
       .from("loops")
       .update(updatePayload)
       .eq("id", id)
       .eq("user_id", user.id);
+    let { error } = await updateLoop();
+    if (isMissingTextOverlayColumn(error)) {
+      // Migração do Texto na tela pendente: salva o resto da edição; só recusa
+      // se o usuário tentou ligar o efeito.
+      if (updatePayload.effect_text_enabled === true) {
+        return NextResponse.json({ error: TEXT_OVERLAY_MIGRATION_PENDING }, { status: 400 });
+      }
+      for (const col of TEXT_OVERLAY_COLUMN_NAMES) delete updatePayload[col];
+      ({ error } = Object.keys(updatePayload).length > 0 ? await updateLoop() : { error: null });
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

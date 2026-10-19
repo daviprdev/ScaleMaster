@@ -49,6 +49,17 @@ function run(bin, args) {
 
 const ff = (args) => run(ffmpegPath, args);
 
+// Sem shell (o filtro drawtext tem `|` e parênteses) e devolvendo o stdout.
+function runDirect(bin, args) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(bin, args, { stdio: ["ignore", "pipe", "ignore"] });
+    let out = "";
+    p.stdout.on("data", (d) => { out += d; });
+    p.on("close", (code) => (code === 0 ? resolve(out) : reject(new Error(`${bin} exit ${code}`))));
+    p.on("error", reject);
+  });
+}
+
 function src(relPath) {
   return fs.readFileSync(path.join(repoRoot, relPath), "utf8");
 }
@@ -159,6 +170,7 @@ async function loadVideoProcessing() {
     files: [
       path.join(repoRoot, "lib/video-processing.ts"),
       path.join(repoRoot, "lib/ffmpeg-process.ts"),
+      path.join(repoRoot, "lib/video-text-overlay.ts"),
     ],
   }, null, 2));
 
@@ -328,6 +340,59 @@ async function main() {
   check("TESTE 4: publicação imediata (resolveMediaUrlNow) também não cai para o original",
     rNow.ok === false && JSON.stringify(rNow).includes(ORIGINAL_URL) === false);
 
+  console.log("\n== Parte 2b: Texto na tela renderizado de verdade (drawtext) ==\n");
+
+  const overlayFont = [
+    process.env.OVERLAY_FONT_FILE,
+    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "C:\\Windows\\Fonts\\arialbd.ttf",
+  ].find((p) => p && fs.existsSync(p));
+
+  if (!overlayFont) {
+    console.log("  SKIP  nenhuma fonte TTF nesta máquina (a imagem do app instala font-dejavu)");
+  } else {
+    const ov = await import(pathToFileURL(
+      path.join(repoRoot, "node_modules", ".cache", "asc-video-test", "lib", "video-text-overlay.js"),
+    ).href);
+    // Tudo que quebraria um drawtext text= mal escapado: : ' % , [ ] ; e emoji.
+    const phrase = ov.sanitizeOverlayText("POV: 100% real, it's [ok]; 50% off 😳");
+    const layout = ov.layoutTextOverlay(phrase, { width: 720, height: 1280 });
+    const textFile = path.join(tmp, "overlay.txt");
+    fs.writeFileSync(textFile, layout.lines.join("\n"), "utf8");
+    const filter = ov.buildDrawtextFilter({ fontFile: overlayFont, textFile, layout, position: "top" });
+
+    const gray = path.join(tmp, "overlay.gray");
+    await runDirect(ffmpegPath, [
+      "-y", "-f", "lavfi", "-i", "color=c=black:s=720x1280:d=1",
+      "-vf", filter, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", gray,
+    ]);
+    const px = fs.readFileSync(gray);
+    const brightRows = (y0, y1) => {
+      let n = 0;
+      for (let y = y0; y < y1; y++) for (let x = 0; x < 720; x++) if (px[y * 720 + x] > 200) n++;
+      return n;
+    };
+    check("Texto na tela: a frase aparece no quadro (pixels brancos na faixa do topo)",
+      phrase === "POV: 100% real, it's [ok]; 50% off" && brightRows(Math.round(1280 * 0.14), Math.round(1280 * 0.4)) > 500);
+    check("Texto na tela: nada fora da safe area (cabeçalho e terço de baixo intactos)",
+      brightRows(0, Math.round(1280 * 0.12)) === 0 && brightRows(Math.round(1280 * 0.5), 1280) === 0);
+
+    // Encode limpo de ponta a ponta (como no pipeline quando só o texto está ligado).
+    const textOut = path.join(tmp, "overlay_out.mp4");
+    await runDirect(ffmpegPath, [
+      "-y", ...INPUT_OPTS, "-i", origin, "-map", "0:v:0", "-map", "0:a:0?", "-vf", filter,
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-map_metadata", "-1", "-f", "mp4", textOut,
+    ]);
+    const probe = await runDirect(process.env.FFPROBE_PATH || "ffprobe", [
+      "-v", "error", "-show_entries", "stream=codec_name,pix_fmt,sample_rate", "-of", "compact", textOut,
+    ]);
+    check("Texto na tela: saída h264 yuv420p + AAC 48 kHz",
+      probe.includes("codec_name=h264") && probe.includes("pix_fmt=yuv420p") &&
+        probe.includes("codec_name=aac") && probe.includes("sample_rate=48000"));
+  }
+
   console.log("\n== Parte 3: garantias estruturais no código ==\n");
 
   const clean = src("lib/video-processing.ts");
@@ -380,6 +445,27 @@ async function main() {
       effects.includes("libx264"));
   check("TESTE 6: os filtros criativos continuam intactos (hflip/negate/zoom/blur/noise/antiAi)",
     ["hflip", "negate", "smartblur", "noise=c0s=", "eq=contrast=", "asetrate="].every((t) => effects.includes(t)));
+
+  // TESTE 9 — Texto na tela: entra na fila só com frase, vai por último e não
+  // muda nada para loop sem ele.
+  const overlay = src("lib/video-text-overlay.ts");
+  check("TESTE 9: Texto na tela só liga o caminho FFmpeg com pool utilizável",
+    /hasActiveEffects =[\s\S]{0,250}textPool\.length > 0/.test(processLoops) &&
+      processLoops.includes("loopTextOverlayPool(loop)"));
+  check("TESTE 9: a frase é escolhida no enfileiramento e gravada no job (retry não troca)",
+    (processLoops.match(/effects:\s+effectsPayloadFor\(account\.id, assignment\.video\.id\)/g) ?? []).length === 2 &&
+      processLoops.includes("pickOverlayText("));
+  check("TESTE 9: sem a migração, process-loops cai para a consulta sem as colunas novas",
+    processLoops.includes("isMissingTextOverlayColumn(fetchErr)"));
+  check("TESTE 9: o texto vai por arquivo (textfile + expansion=none), nunca na linha de comando",
+    overlay.includes("textfile=") && overlay.includes('"expansion=none"') && !/text=\$\{/.test(overlay));
+  check("TESTE 9: drawtext é o último filtro (texto não sai espelhado nem granulado)",
+    effects.indexOf("buildDrawtextFilter({") > effects.indexOf("noise=c0s="));
+  check("TESTE 9: só o texto ligado → encode limpo (CRF 20, yuv420p, AAC 48 kHz), sem eq/ruído/pitch",
+    /cleanEncode\s*\?\s*\[[\s\S]*?"-crf",\s*"20"[\s\S]*?"yuv420p"[\s\S]*?"48000"[\s\S]*?\]\s*:/.test(effects) &&
+      /if \(!cleanEncode\) \{[\s\S]*?noise=c0s=/.test(effects));
+  check("TESTE 9: a imagem do app instala a fonte do drawtext",
+    /apk add --no-cache ffmpeg font-dejavu/.test(src("Dockerfile")));
 
   // TESTE 7 — efeitos não injetam metadata artificial.
   // Só o array de argumentos, sem comentários (que citam "-metadata" em texto).

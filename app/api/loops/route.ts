@@ -5,6 +5,14 @@ import { normalizeProcessingMode } from "@/lib/video-processing";
 import { normalizeCaptionMode } from "@/lib/reel-captions";
 import { checkCreateReadiness } from "@/lib/loop-readiness";
 import { normalizePriorityStrategy } from "@/lib/media-priority";
+import {
+  TEXT_OVERLAY_COLUMNS,
+  TEXT_OVERLAY_COLUMN_NAMES,
+  TEXT_OVERLAY_MIGRATION_PENDING,
+  isMissingTextOverlayColumn,
+  normalizeTextPool,
+  normalizeTextPosition,
+} from "@/lib/video-text-overlay";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,18 +27,13 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   // Tabela nova não existe nos tipos gerados — cast necessário
-  const admin = getSupabaseAdmin() as unknown as Record<string, (...args: unknown[]) => unknown>;
-  const query = (admin.from as (t: string) => {
-    select: (s: string) => {
-      eq: (c: string, v: string) => {
-        order: (c: string, o: object) => Promise<{ data: unknown[] | null; error: { message: string } | null }>
-      }
-    }
-  })("loops")
+  const anyAdmin = getSupabaseAdmin() as any;
+  const selectLoops = (textColumns: string) => anyAdmin
+    .from("loops")
     .select(`
       id, user_id, folder_id, account_folder_id, name, is_infinite, cycles, interval_minutes,
       account_stagger_seconds, media_limit, captions, cover_image_url,
-      effect_mirror, effect_invert, effect_zoom, effect_blur, effect_noise, effect_anti_ai,
+      effect_mirror, effect_invert, effect_zoom, effect_blur, effect_noise, effect_anti_ai, ${textColumns}
       auto_caption_enabled, auto_caption_type, video_processing_mode, share_to_feed, use_proxy_pool,
       caption_mode, caption_strip_hashtags, caption_strip_mentions,
       priority_strategy, distribution_seed,
@@ -41,10 +44,17 @@ export async function GET() {
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
-  const { data, error } = await query;
+  // Sem a migração do Texto na tela, a lista continua abrindo — só o toggle
+  // do efeito avisa que ela falta (text_overlay_ready=false).
+  let { data, error } = await selectLoops(`${TEXT_OVERLAY_COLUMNS},`);
+  let textOverlayReady = true;
+  if (isMissingTextOverlayColumn(error)) {
+    textOverlayReady = false;
+    ({ data, error } = await selectLoops(""));
+  }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ loops: data ?? [] });
+  return NextResponse.json({ loops: data ?? [], text_overlay_ready: textOverlayReady });
 }
 
 export async function POST(req: NextRequest) {
@@ -68,6 +78,9 @@ export async function POST(req: NextRequest) {
     effect_blur: boolean;
     effect_noise: boolean;
     effect_anti_ai: boolean;
+    effect_text_enabled?: boolean;
+    effect_text_pool?: string[];
+    effect_text_position?: string;
     auto_caption_enabled?: boolean;
     auto_caption_type?: string | null;
     account_stagger_seconds?: number | null;
@@ -145,42 +158,53 @@ export async function POST(req: NextRequest) {
     console.log(`[loops-api] Loop "${body.name?.trim() ?? "?"}" — ${captionsToSave.length} legenda(s) salva(s): ${JSON.stringify(captionsToSave.slice(0, 3))}`);
   }
 
-  const { data: loop, error: loopError } = await anyAdmin
-    .from("loops")
-    .insert({
-      user_id: user.id,
-      folder_id: body.folder_id || null,
-      account_folder_id: body.account_folder_id || null,
-      name: body.name.trim() || "Meu Loop",
-      is_infinite: body.is_infinite,
-      cycles: body.cycles,
-      interval_minutes: Math.max(10, body.interval_minutes),
-      media_limit: body.media_limit ?? null,
-      captions: captionsToSave,
-      cover_image_url: body.cover_image_url || null,
-      effect_mirror:   body.effect_mirror,
-      effect_invert:   body.effect_invert,
-      effect_zoom:     body.effect_zoom    ?? false,
-      effect_blur:     body.effect_blur    ?? false,
-      effect_noise:    body.effect_noise   ?? false,
-      effect_anti_ai:  body.effect_anti_ai ?? false,
-      auto_caption_enabled: autoEnabled,
-      auto_caption_type:    autoEnabled ? (body.auto_caption_type ?? "curiosidades-gerais") : null,
-      account_stagger_seconds: body.account_stagger_seconds ?? null,
-      video_processing_mode: normalizeProcessingMode(body.video_processing_mode),
-      share_to_feed: typeof body.share_to_feed === "boolean" ? body.share_to_feed : null,
-      use_proxy_pool: body.use_proxy_pool === true,
-      // Modo de legenda. Ausente = "custom" = pool/automática, que é o
-      // comportamento de sempre do Loop.
-      caption_mode: normalizeCaptionMode(body.caption_mode),
-      caption_strip_hashtags: body.caption_strip_hashtags === true,
-      caption_strip_mentions: body.caption_strip_mentions === true,
-      priority_strategy: priorityStrategy,
-      distribution_seed: distributionSeed,
-      status: "active",
-    })
-    .select()
-    .single();
+  const insertPayload: Record<string, unknown> = {
+    user_id: user.id,
+    folder_id: body.folder_id || null,
+    account_folder_id: body.account_folder_id || null,
+    name: body.name.trim() || "Meu Loop",
+    is_infinite: body.is_infinite,
+    cycles: body.cycles,
+    interval_minutes: Math.max(10, body.interval_minutes),
+    media_limit: body.media_limit ?? null,
+    captions: captionsToSave,
+    cover_image_url: body.cover_image_url || null,
+    effect_mirror:   body.effect_mirror,
+    effect_invert:   body.effect_invert,
+    effect_zoom:     body.effect_zoom    ?? false,
+    effect_blur:     body.effect_blur    ?? false,
+    effect_noise:    body.effect_noise   ?? false,
+    effect_anti_ai:  body.effect_anti_ai ?? false,
+    effect_text_enabled:  body.effect_text_enabled === true,
+    effect_text_pool:     normalizeTextPool(body.effect_text_pool),
+    effect_text_position: normalizeTextPosition(body.effect_text_position),
+    auto_caption_enabled: autoEnabled,
+    auto_caption_type:    autoEnabled ? (body.auto_caption_type ?? "curiosidades-gerais") : null,
+    account_stagger_seconds: body.account_stagger_seconds ?? null,
+    video_processing_mode: normalizeProcessingMode(body.video_processing_mode),
+    share_to_feed: typeof body.share_to_feed === "boolean" ? body.share_to_feed : null,
+    use_proxy_pool: body.use_proxy_pool === true,
+    // Modo de legenda. Ausente = "custom" = pool/automática, que é o
+    // comportamento de sempre do Loop.
+    caption_mode: normalizeCaptionMode(body.caption_mode),
+    caption_strip_hashtags: body.caption_strip_hashtags === true,
+    caption_strip_mentions: body.caption_strip_mentions === true,
+    priority_strategy: priorityStrategy,
+    distribution_seed: distributionSeed,
+    status: "active",
+  };
+
+  const insertLoop = () => anyAdmin.from("loops").insert(insertPayload).select().single();
+  let { data: loop, error: loopError } = await insertLoop();
+  if (isMissingTextOverlayColumn(loopError)) {
+    // Migração do Texto na tela pendente: sem o efeito ligado, cria o loop
+    // normalmente; com ele ligado, avisa em vez de criar sem o texto.
+    if (insertPayload.effect_text_enabled === true) {
+      return NextResponse.json({ error: TEXT_OVERLAY_MIGRATION_PENDING }, { status: 400 });
+    }
+    for (const col of TEXT_OVERLAY_COLUMN_NAMES) delete insertPayload[col];
+    ({ data: loop, error: loopError } = await insertLoop());
+  }
 
   if (loopError) return NextResponse.json({ error: loopError.message }, { status: 500 });
 

@@ -22,6 +22,13 @@ import {
   normalizePriorityStrategy,
 } from "@/lib/media-priority";
 import { fetchPerformanceTiers, MIN_ALIVE_POOL } from "@/lib/video-performance";
+import {
+  TEXT_OVERLAY_COLUMNS,
+  isMissingTextOverlayColumn,
+  loopTextOverlayPool,
+  normalizeTextPosition,
+  pickOverlayText,
+} from "@/lib/video-text-overlay";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -66,6 +73,10 @@ interface LoopRow {
   effect_blur: boolean;
   effect_noise: boolean;
   effect_anti_ai: boolean;
+  // Ausentes até supabase/loops_text_overlay.sql rodar.
+  effect_text_enabled?: boolean | null;
+  effect_text_pool?: string[] | null;
+  effect_text_position?: string | null;
   account_folder_id: string | null;
   account_stagger_seconds: number | null;
   last_posted_at: string | null;
@@ -829,13 +840,23 @@ async function processOneLoop(
     let pipelineInserts  = 0;
     let waitingAccounts  = 0; // contas com job queued/processing — aguardando process-videos
 
-    const effectsPayload = {
-      mirror: loop.effect_mirror,
-      invert: loop.effect_invert,
-      zoom:   loop.effect_zoom,
-      blur:   loop.effect_blur,
-      noise:  loop.effect_noise,
-      antiAi: loop.effect_anti_ai,
+    // Texto na tela: uma frase por conta/vídeo, escolhida AQUI e gravada no
+    // payload do job — retry do process-videos reusa a mesma frase.
+    const textPool = loopTextOverlayPool(loop);
+    const textPosition = normalizeTextPosition(loop.effect_text_position);
+    const textAccountIds = validAccounts.map(a => a.id);
+
+    const effectsPayloadFor = (accountId: string, videoId: string) => {
+      const text = pickOverlayText(textPool, { accountId, videoId, accountIds: textAccountIds });
+      return {
+        mirror: loop.effect_mirror,
+        invert: loop.effect_invert,
+        zoom:   loop.effect_zoom,
+        blur:   loop.effect_blur,
+        noise:  loop.effect_noise,
+        antiAi: loop.effect_anti_ai,
+        ...(text ? { text, textPosition } : {}),
+      };
     };
 
     // Se nenhum efeito criativo está ativo, pula o pipeline FFmpeg completamente:
@@ -845,7 +866,8 @@ async function processOneLoop(
     // todos os posts quando a tabela não existe ou o FFmpeg falha.
     const hasActiveEffects =
       loop.effect_mirror || loop.effect_invert || loop.effect_zoom ||
-      loop.effect_blur   || loop.effect_noise  || loop.effect_anti_ai;
+      loop.effect_blur   || loop.effect_noise  || loop.effect_anti_ai ||
+      textPool.length > 0;
 
     if (!hasActiveEffects) {
       // Caminho direto: sem efeito criativo ativo, nao existe re-encode.
@@ -935,7 +957,7 @@ async function processOneLoop(
             account_id: account.id,
             video_id:   assignment.video.id,
             source_url: assignment.video.public_url,
-            effects:    effectsPayload,
+            effects:    effectsPayloadFor(account.id, assignment.video.id),
             expires_at: new Date(Date.now() + jobExpiresMs).toISOString(),
           });
           pipelineInserts++;
@@ -947,7 +969,7 @@ async function processOneLoop(
             account_id: account.id,
             video_id:   assignment.video.id,
             source_url: assignment.video.public_url,
-            effects:    effectsPayload,
+            effects:    effectsPayloadFor(account.id, assignment.video.id),
             expires_at: new Date(Date.now() + jobExpiresMs).toISOString(),
           });
           firstTimeInserts++;
@@ -1467,12 +1489,12 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Busca todos os loops ativos com suas contas ──────────────────────────
-  const { data: loopRows, error: fetchErr } = await (admin as any)
+  const selectActiveLoops = (textColumns: string) => (admin as any)
     .from("loops")
     .select(`
       id, user_id, name, folder_id, account_folder_id, is_infinite, cycles, cycles_done, current_cycle,
       interval_minutes, account_stagger_seconds, media_limit, captions, effect_mirror, effect_invert,
-      effect_zoom, effect_blur, effect_noise, effect_anti_ai, video_processing_mode, share_to_feed, use_proxy_pool,
+      effect_zoom, effect_blur, effect_noise, effect_anti_ai, ${textColumns}video_processing_mode, share_to_feed, use_proxy_pool,
       auto_caption_enabled, auto_caption_type,
       caption_mode, caption_strip_hashtags, caption_strip_mentions,
       priority_strategy, distribution_seed,
@@ -1488,6 +1510,13 @@ export async function GET(req: NextRequest) {
       )
     `)
     .eq("status", "active");
+
+  let { data: loopRows, error: fetchErr } = await selectActiveLoops(`${TEXT_OVERLAY_COLUMNS}, `);
+  if (isMissingTextOverlayColumn(fetchErr)) {
+    // Migração do Texto na tela ainda não aplicada: os loops seguem postando sem ele.
+    console.warn("[loop-cron] Colunas do Texto na tela ausentes — rode supabase/loops_text_overlay.sql.");
+    ({ data: loopRows, error: fetchErr } = await selectActiveLoops(""));
+  }
 
   if (fetchErr) {
     console.error("[loop-cron] Erro ao buscar loops:", fetchErr.message);

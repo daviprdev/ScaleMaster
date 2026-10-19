@@ -57,6 +57,9 @@ interface JobRow {
     blur?:   boolean;
     noise?:  boolean;
     antiAi?: boolean;
+    /** Texto na tela: frase escolhida no enfileiramento (retry reusa a mesma). */
+    text?:   string;
+    textPosition?: string;
   };
   loop_id: string | null;
 }

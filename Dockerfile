@@ -68,7 +68,9 @@ ENV HOSTNAME="0.0.0.0"
 
 # FFmpeg do sistema — o único que o app usa (fluent-ffmpeg o acha no PATH).
 # Atualiza junto com a imagem base do Alpine; ver lib/ffmpeg-input.ts.
-RUN apk add --no-cache ffmpeg
+# font-dejavu: fonte do efeito "Texto na tela" do Loop (drawtext), em
+# /usr/share/fonts/dejavu/DejaVuSans-Bold.ttf — ver lib/video-effects.ts.
+RUN apk add --no-cache ffmpeg font-dejavu
 
 # Non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \
