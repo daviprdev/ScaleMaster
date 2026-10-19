@@ -21,7 +21,6 @@ import {
   assignVideos as priorityAssignVideos,
   normalizePriorityStrategy,
 } from "@/lib/media-priority";
-import { fetchPerformanceTiers, MIN_ALIVE_POOL } from "@/lib/video-performance";
 import {
   TEXT_OVERLAY_COLUMNS,
   isMissingTextOverlayColumn,
@@ -410,7 +409,7 @@ async function assignVideosForLoop(
   // acabara de postar. Era a causa do mesmo vídeo sair 6-7× seguidas na mesma
   // conta mesmo com 330 vídeos na pasta.
   const accountIds = allLoopAccounts.map(a => a.id);
-  const [usage, windowClaimsRes, recentRes, globalRecentRes, performanceTiers] = await Promise.all([
+  const [usage, windowClaimsRes, recentRes, globalRecentRes] = await Promise.all([
     // Cobre pending_containers (Loop) + scheduled_posts (Postar/Clonar/
     // Automatizar) + video_processing_jobs (vídeos reservados no modo efeitos:
     // o container vem do job enfileirado no ciclo anterior, não da atribuição
@@ -451,10 +450,6 @@ async function assignVideosForLoop(
       .not("video_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(1000),
-    // Desempenho real de cada vídeo nas contas do usuário: tira do sorteio os
-    // que a Meta não entrega e prioriza os que estouraram (lib/video-performance).
-    // Nunca lança — sem dados, a atribuição segue como antes.
-    fetchPerformanceTiers(admin, loop.user_id, allVideos.map(v => v.id)),
   ]);
 
   // Uso global por vídeo entre as contas do loop: base do balanceamento que
@@ -494,13 +489,8 @@ async function assignVideosForLoop(
   // ACUMULADO, então vídeos empatados no mínimo continuam podendo sair juntos.
   //
   // Metade do pool: garante que sempre reste a outra metade disponível, então o
-  // guard nunca esvazia o sorteio. Conta só os vídeos VIVOS (lib/video-performance):
-  // os mortos saem do sorteio, e metade da pasta inteira podia cobrir todos os
-  // vivos — o sorteio cairia de volta nos mortos.
-  const aliveCount = allVideos.filter(v => performanceTiers.get(v.id) !== "dead").length;
-  const globalCooldownSize = Math.floor(
-    (aliveCount >= MIN_ALIVE_POOL ? aliveCount : allVideos.length) / 2
-  );
+  // guard nunca esvazia o sorteio.
+  const globalCooldownSize = Math.floor(allVideos.length / 2);
   const recentlyUsedGlobally = new Set<string>();
   for (const row of (((globalRecentRes as { data?: { video_id: string }[] }).data) ?? [])) {
     if (recentlyUsedGlobally.size >= globalCooldownSize) break;
@@ -542,7 +532,6 @@ async function assignVideosForLoop(
     // Cooldown de recência por conta — calculado acima mas não repassado desde a
     // migração para o media-priority, o que reabriu a repetição na virada de ciclo.
     recentByAccount,
-    performanceTiers,
   });
 
   // Converte os resultados do media-priority de volta para o formato esperado
