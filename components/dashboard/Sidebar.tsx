@@ -171,7 +171,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
       <motion.aside
         animate={{ width: collapsed ? 72 : 240 }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
-        className="relative flex-shrink-0 h-screen hidden md:flex flex-col
+        className="relative flex-shrink-0 h-full hidden md:flex flex-col
           border-r border-white/[0.07] overflow-hidden z-20"
         style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(22px) saturate(160%)", WebkitBackdropFilter: "blur(22px) saturate(160%)" }}
       >
@@ -189,7 +189,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
         </div>
 
         {/* Nav */}
-        <nav className="relative flex-1 px-3 py-3 overflow-y-auto overflow-x-hidden space-y-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        <nav className="relative flex-1 min-h-0 px-3 py-3 overflow-y-auto overflow-x-hidden space-y-0.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           {navGroups.map((group, gi) => (
             <div key={group.label} className={cn(gi > 0 ? "pt-2" : "")}>
               {/* Group label */}
@@ -320,7 +320,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
         </nav>
 
         {/* User trigger */}
-        <div className="p-3 border-t border-white/[0.06]">
+        <div className="flex-shrink-0 p-3 border-t border-white/[0.06]">
           <div
             ref={triggerRef}
             onClick={menuOpen ? closeMenu : openMenu}
