@@ -787,6 +787,29 @@ export default function AccountsPage() {
     return () => clearInterval(id);
   }, [fetchAccounts]);
 
+  // Contas pausadas pelo limite de publicação da Meta (estado dos crons, em
+  // memória do servidor — lib/publish-limits). Mesmo ritmo do auto-refresh.
+  const [publishPauses, setPublishPauses] = useState<Record<string, { until: string; reason: string }>>({});
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/accounts/publish-pauses");
+        if (!res.ok) return;
+        const data = (await res.json()) as { pauses?: Record<string, { until: string; reason: string }> };
+        if (!cancelled) setPublishPauses(data.pauses ?? {});
+      } catch {
+        /* painel segue sem o selo */
+      }
+    };
+    load();
+    const id = setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   const handleSyncAll = useCallback(async () => {
     if (syncingAll) return;
     setSyncingAll(true);
@@ -2836,6 +2859,7 @@ export default function AccountsPage() {
                 selectMode={selectMode}
                 selected={selectedIds.has(account.id)}
                 onSelect={() => toggleSelect(account.id)}
+                publishPause={publishPauses[account.id] ?? null}
               />
             ))}
           </AnimatePresence>

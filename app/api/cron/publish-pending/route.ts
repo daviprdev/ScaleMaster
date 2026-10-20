@@ -8,6 +8,14 @@ import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { isAccountDeadError, markDeadAccounts, type DeadAccountCandidate } from "@/lib/account-health";
 import { requireCronAuth } from "@/lib/cron-auth";
 import {
+  checkPublishGate,
+  isMetaLimitError,
+  notePublished,
+  pauseForMetaLimit,
+  type LimitAccount,
+  type PublishPause,
+} from "@/lib/publish-limits";
+import {
   selectProxyForPublish,
   closeProxyAgent,
   type SelectedProxy,
@@ -22,6 +30,29 @@ export const maxDuration = 300;
 const CONTAINER_TTL_MS = 90 * 60_000;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Conta pausada por limite da Meta (lib/publish-limits). Se o container ainda
+ * estará dentro do TTL quando a pausa acabar, ele só espera (retry_after); senão
+ * vira erro com o motivo — o vídeo volta para o sorteio e o process-loops cria
+ * um container novo quando a conta voltar (conta pausada não recebe container).
+ */
+async function deferForMetaPause(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  container: { id: string; created_at: string },
+  pause: PublishPause
+): Promise<void> {
+  const fitsTtl =
+    Date.parse(pause.until) - Date.parse(container.created_at) < CONTAINER_TTL_MS - 5 * 60_000;
+  await (admin as any)
+    .from("pending_containers")
+    .update(
+      fitsTtl
+        ? { status: "pending", retry_after: pause.until }
+        : { status: "error", error_message: `[PAUSA META] ${pause.reason} O Loop posta de novo quando a conta voltar.` }
+    )
+    .eq("id", container.id);
+}
 
 interface AccountRow {
   id: string;
@@ -56,7 +87,7 @@ export async function GET(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const now = new Date();
   const nowIso = now.toISOString();
-  const summary = { checked: 0, published: 0, in_progress: 0, expired: 0, errors: 0, auto_healed: 0 };
+  const summary = { checked: 0, published: 0, in_progress: 0, expired: 0, errors: 0, auto_healed: 0, paused_meta_limit: 0 };
 
   // ── AUTO-HEALING: Containers expirados (>90 min em pending/publishing) ──────
   // Exclui containers com stagger inicial ainda pendente (retry_after > now) —
@@ -169,6 +200,22 @@ export async function GET(req: NextRequest) {
         .update({ status: "error", error_message: "Conta sem token de acesso." })
         .eq("id", container.id);
       summary.errors++;
+      continue;
+    }
+
+    // Pausa por limite da Meta: conta com a cota oficial cheia ou recusada pelo
+    // freio antispam espera a próxima vaga da janela de 24h (lib/publish-limits).
+    const limitAccount: LimitAccount = {
+      id: account.id,
+      username: account.username,
+      igUserId: container.ig_business_account_id,
+      token: account.meta_access_token,
+    };
+    const activePause = await checkPublishGate(limitAccount);
+    if (activePause) {
+      await deferForMetaPause(admin, container, activePause);
+      summary.paused_meta_limit++;
+      console.log(`[publish-pending] ⏸ @${account.username}: pausada até ${activePause.until}.`);
       continue;
     }
 
@@ -300,6 +347,7 @@ export async function GET(req: NextRequest) {
         .eq("id", container.id);
 
       summary.published++;
+      notePublished(account.id);
       console.log(`[publish-pending] ✓ @${account.username} → media_id: ${mediaId}`);
 
       const captionStored = container.caption ?? "";
@@ -318,6 +366,15 @@ export async function GET(req: NextRequest) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const lower = msg.toLowerCase();
+
+      // Recusa por limite da Meta: pausa a conta até a próxima vaga em vez de
+      // tentar de novo a cada 5 min.
+      if (isMetaLimitError(msg)) {
+        const pause = await pauseForMetaLimit(limitAccount, "action", msg);
+        await deferForMetaPause(admin, container, pause);
+        summary.paused_meta_limit++;
+        continue;
+      }
 
       // Erros TRANSITÓRIOS: proxy, rate-limit, timeout → retry com backoff 5 min.
       // Não destroem o container — o próximo publish-pending tentará novamente.
