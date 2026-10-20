@@ -69,7 +69,7 @@ interface DashboardStats {
     month: number;
     accounts_synced: number;
   };
-  queue: { pending: number; scheduled: number; loop: number };
+  queue: { pending: number; total: number; scheduled: number; loop: number };
   recent_activity: {
     type: "download" | "schedule";
     text: string;
@@ -348,10 +348,10 @@ export default function DashboardPage() {
           }
         />
 
-        {/* Posts na fila — agendados + containers do Loop ainda não publicados */}
+        {/* Posts na fila — agendados + o que os loops ainda vão postar */}
         <StatTile
           label="Posts na Fila"
-          value={loading ? "—" : formatInt(stats?.queue.pending ?? 0)}
+          value={loading ? "—" : formatInt(stats?.queue.total ?? 0)}
           icon={<ListOrdered size={18} />}
           hint={
             loading

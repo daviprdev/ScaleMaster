@@ -15,6 +15,59 @@ const GRADIENTS = [
   "from-[#00346D] to-[#00498D]",
 ];
 
+// Quanto os loops ainda vão postar. A fila do Loop não existe como linhas — o
+// cron cria o container na hora de postar —, então é a mesma conta dos
+// "restantes" da aba Loop (/api/loops/[id]/analytics): vídeos da pasta ×
+// contas − já publicados. Loops concluídos ficam de fora.
+async function loopRemaining(admin: ReturnType<typeof getSupabaseAdmin>, userId: string): Promise<number> {
+  const db = admin as any;
+  const { data: loops, error } = await db
+    .from("loops")
+    .select("id, folder_id, account_folder_id")
+    .eq("user_id", userId)
+    .in("status", ["active", "paused"]);
+  if (error) {
+    console.error("[dashboard/stats] falha ao ler loops:", error.message);
+    return 0;
+  }
+
+  const perLoop = await Promise.all(
+    ((loops ?? []) as { id: string; folder_id: string | null; account_folder_id: string | null }[]).map(
+      async (loop) => {
+        if (!loop.folder_id) return 0;
+        const [videosRes, accountsRes, publishedRes] = await Promise.all([
+          db
+            .from("videos_library")
+            .select("id", { count: "exact", head: true })
+            .eq("folder_id", loop.folder_id),
+          // Modo pasta: contas ativas e sem erro da pasta. Modo específico: loop_accounts.
+          loop.account_folder_id
+            ? db
+                .from("instagram_accounts")
+                .select("id", { count: "exact", head: true })
+                .eq("folder_id", loop.account_folder_id)
+                .eq("user_id", userId)
+                .eq("is_active", true)
+                .neq("health_status", "error")
+            : db
+                .from("loop_accounts")
+                .select("instagram_accounts!inner(user_id)", { count: "exact", head: true })
+                .eq("loop_id", loop.id)
+                .eq("instagram_accounts.user_id", userId),
+          db
+            .from("pending_containers")
+            .select("id", { count: "exact", head: true })
+            .eq("loop_id", loop.id)
+            .eq("status", "published"),
+        ]);
+        const target = (videosRes.count ?? 0) * Math.max(1, accountsRes.count ?? 0);
+        return Math.max(0, target - (publishedRes.count ?? 0));
+      }
+    )
+  );
+  return perLoop.reduce((sum, n) => sum + n, 0);
+}
+
 // ── Main handler ─────────────────────────────────────────────────
 export async function GET() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -58,6 +111,7 @@ export async function GET() {
     viewsPostsRes,
     salesRes,
     reelsRes,
+    loopRemainingCount,
   ] = await Promise.all([
     admin
       .from("instagram_accounts")
@@ -163,6 +217,7 @@ export async function GET() {
         error: { message: string } | null;
       }>;
     }).rpc("get_reels_summary"),
+    loopRemaining(admin, user.id),
   ]);
 
   // Contas Caídas — deduplica por conta dentro de cada janela (eventos de failover)
@@ -279,9 +334,13 @@ export async function GET() {
       accounts_synced: Number(reelsSummary?.accounts_synced ?? 0),
     },
     queue: {
+      // O que o botão "Limpar" de Próximas Postagens apaga.
       pending: (queuePendingScheduledRes.count ?? 0) + (queuePendingContainersRes.count ?? 0),
+      // Card "Posts na Fila": agendados + tudo que os loops ainda vão postar
+      // (os containers em andamento já estão dentro dos restantes do loop).
+      total: (queuePendingScheduledRes.count ?? 0) + loopRemainingCount,
       scheduled: queuePendingScheduledRes.count ?? 0,
-      loop: queuePendingContainersRes.count ?? 0,
+      loop: loopRemainingCount,
     },
     recent_activity: activity,
     upcoming_posts: (upcomingRes.data ?? []).map((p, i) => ({
