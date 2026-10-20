@@ -24,7 +24,6 @@ import {
   Tag,
   Check,
   UserCog,
-  PauseCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge, Button, IconButton } from "@/components/ui";
@@ -278,8 +277,6 @@ interface AccountCardProps {
   selectMode?: boolean;
   selected?: boolean;
   onSelect?: () => void;
-  /** Pausada pelo limite de publicação da Meta (lib/publish-limits). */
-  publishPause?: { until: string; reason: string } | null;
 }
 
 export function AccountCard({
@@ -301,7 +298,6 @@ export function AccountCard({
   selectMode,
   selected,
   onSelect,
-  publishPause,
 }: AccountCardProps) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
@@ -479,19 +475,6 @@ export function AccountCard({
                   )}
                 />
                 {account.is_active ? "ATIVA" : "INATIVA"}
-              </Badge>
-            )}
-            {publishPause && !accountFell && (
-              <Badge
-                tone="warning"
-                title={publishPause.reason}
-                className="px-1.5 py-0 text-[9px] leading-3"
-              >
-                <PauseCircle size={8} className="mr-0.5" />
-                {`PAUSADA ATÉ ${new Date(publishPause.until).toLocaleTimeString("pt-BR", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}`}
               </Badge>
             )}
           </div>

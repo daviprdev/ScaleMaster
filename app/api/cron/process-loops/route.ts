@@ -28,7 +28,6 @@ import {
   normalizeTextPosition,
   pickOverlayText,
 } from "@/lib/video-text-overlay";
-import { checkPublishGate, isMetaLimitError, pauseForMetaLimit } from "@/lib/publish-limits";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -774,43 +773,6 @@ async function processOneLoop(
       `(${cappedCount} no teto de ciclos).`
     );
 
-    // ── Pausa por limite da Meta (lib/publish-limits) ─────────────────────────
-    // Conta com a cota oficial cheia ou recusada pelo freio antispam não recebe
-    // vídeo nem container: continua "devida" e volta sozinha quando a próxima
-    // vaga da janela de 24h abrir. Lotes de 10 para não disparar dezenas de
-    // leituras de cota de uma vez (a cota fica em cache por 10 min).
-    const pausedIds = new Set<string>();
-    const pausedLabels: string[] = [];
-    for (let i = 0; i < dueAccounts.length; i += 10) {
-      const chunk = dueAccounts.slice(i, i + 10);
-      const pauses = await Promise.all(chunk.map((a) =>
-        a.meta_access_token && a.ig_business_account_id
-          ? checkPublishGate({
-              id: a.id,
-              username: a.username,
-              igUserId: a.ig_business_account_id,
-              token: a.meta_access_token,
-            })
-          : Promise.resolve(null)
-      ));
-      chunk.forEach((a, j) => {
-        const p = pauses[j];
-        if (!p) return;
-        pausedIds.add(a.id);
-        pausedLabels.push(`@${a.username} até ${p.until.slice(11, 16)} UTC`);
-      });
-    }
-    if (pausedIds.size > 0) {
-      for (let i = dueAccounts.length - 1; i >= 0; i--) {
-        if (pausedIds.has(dueAccounts[i].id)) dueAccounts.splice(i, 1);
-      }
-      console.log(
-        `[loop-cron] "${loop.name}": ${pausedIds.size} conta(s) pausada(s) pelo limite da Meta: ` +
-        pausedLabels.slice(0, 10).join(", ") + (pausedLabels.length > 10 ? "…" : "")
-      );
-      if (dueAccounts.length === 0) return "skipped";
-    }
-
     const windowStartIso = now.toISOString();
 
     // ── FASE 1: Atribuição atômica de vídeos (só para quem está devido) ──────
@@ -1333,22 +1295,6 @@ async function processOneLoop(
         // O próximo ciclo (interval_minutes) tentará de novo automaticamente.
         // Gravar container de erro aqui causaria acúmulo infinito de erros no monitor
         // e chamadas desnecessárias à Meta API enquanto a conta está throttled.
-        if (isMetaLimitError(msg) && account.meta_access_token && account.ig_business_account_id) {
-          // Limite da Meta: pausa a conta até a próxima vaga (lib/publish-limits)
-          // em vez de tentar de novo no próximo tick.
-          await pauseForMetaLimit(
-            {
-              id: account.id,
-              username: account.username,
-              igUserId: account.ig_business_account_id,
-              token: account.meta_access_token,
-            },
-            "action",
-            msg
-          );
-          continue;
-        }
-
         if (isRateLimitError(msg)) {
           console.warn(
             `[loop-cron] ⏸ @${account.username}: rate limit Meta ("${msg.slice(0, 80)}") — ` +

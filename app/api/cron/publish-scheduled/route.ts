@@ -19,13 +19,6 @@ import {
 } from "@/lib/video-processing";
 import { isAccountDeadError, markDeadAccounts, type DeadAccountCandidate } from "@/lib/account-health";
 import { requireCronAuth } from "@/lib/cron-auth";
-import {
-  checkPublishGate,
-  isMetaLimitError,
-  notePublished,
-  pauseForMetaLimit,
-  type LimitAccount,
-} from "@/lib/publish-limits";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -327,7 +320,6 @@ export async function GET(req: NextRequest) {
     queue_pending: countPending ?? 0,
     queue_eligible: countEligible ?? 0,
     queue_failed_total: countFailed ?? 0,
-    paused_meta_limit: 0,
   };
 
   let publishAttemptsInThisRun = 0;
@@ -401,28 +393,6 @@ export async function GET(req: NextRequest) {
 
     // Filtro de campanha ativa já aplicado em memória antes do loop
     // (ver bloco "Filtro de campanha ativa em memória" acima).
-
-    // ── Pausa por limite da Meta (lib/publish-limits) ─────────────────────
-    // Conta com a cota oficial cheia ou recusada pelo freio antispam fica
-    // pausada até a próxima vaga da janela de 24h: o post vai para esse horário
-    // em vez de ser tentado (e recusado) a cada execução.
-    const limitAccount: LimitAccount = {
-      id: account.id,
-      username: account.username,
-      igUserId: account.ig_business_account_id,
-      token: account.meta_access_token,
-    };
-    const activePause = await checkPublishGate(limitAccount);
-    if (activePause) {
-      await admin
-        .from("scheduled_posts")
-        .update({ scheduled_at: activePause.until, error_message: `[PAUSA META] ${activePause.reason}` })
-        .eq("id", post.id)
-        .eq("status", "pending");
-      summary.paused_meta_limit++;
-      console.log(`[publish-scheduled] ⏸ @${account.username}: pausada até ${activePause.until} — post adiado.`);
-      continue;
-    }
 
     attemptedAccounts.add(account.id);
 
@@ -745,24 +715,11 @@ export async function GET(req: NextRequest) {
         .eq("id", post.id);
 
       summary.published++;
-      notePublished(account.id);
       console.log(
         `[publish-scheduled] ✓ @${account.username} → media_id: ${mediaId} | ${Math.round((Date.now() - runStart) / 1000)}s`
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-
-      // Recusa por limite da Meta: pausa a CONTA até a próxima vaga e manda o
-      // post para esse horário (o container, se já existe, é reaproveitado).
-      if (isMetaLimitError(msg)) {
-        const pause = await pauseForMetaLimit(limitAccount, "action", msg);
-        await admin
-          .from("scheduled_posts")
-          .update({ status: "pending", scheduled_at: pause.until, error_message: `[PAUSA META] ${pause.reason}` })
-          .eq("id", post.id);
-        summary.paused_meta_limit++;
-        continue;
-      }
 
       if (isTransientError(msg)) {
         console.warn(`[publish-scheduled] ⏸ @${account.username} (${post.id}): transitório → retry. ${msg.slice(0, 100)}`);
