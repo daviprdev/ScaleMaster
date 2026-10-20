@@ -8,7 +8,8 @@ export type AuditAction =
   | "access_revoked"
   | "account_connected"
   | "account_revoked"
-  | "impersonation_started";
+  | "impersonation_started"
+  | "sales_webhook_ignored";
 
 export async function logAudit(params: {
   action: AuditAction;

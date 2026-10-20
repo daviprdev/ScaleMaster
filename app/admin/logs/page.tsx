@@ -33,6 +33,7 @@ const ACTION_META: Record<string, { label: string; icon: React.ElementType; colo
   account_connected:    { label: "Conta conectada",          icon: Instagram,  color: "text-[#00498D] bg-[#00498D]/10 border-[#00498D]/20" },
   account_revoked:      { label: "Conta revogada",           icon: Trash2,     color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
   impersonation_started:{ label: "Impersonação iniciada",    icon: Eye,        color: "text-purple-400 bg-purple-500/10 border-purple-500/20" },
+  sales_webhook_ignored:{ label: "Webhook de venda ignorado", icon: AlertCircle, color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
 };
 
 function getActionMeta(action: string) {

@@ -1,8 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { sendPushNotification } from "@/lib/web-push";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
+
+// O formato abaixo foi copiado da ApexVips e ainda não foi conferido com um aviso
+// real da SharkBot. Para acertar sem guardar dados do cliente, o log leva só a
+// estrutura: nome e tipo de cada campo. Valores só de campos que dizem o evento
+// ou o preço — é o que decide se o aviso vira venda e quanto ela vale.
+const SAFE_VALUE_KEYS = /^(event|event_type|type|status|action|currency)$|value|amount|price|valor|preco|total/i;
+
+function describeShape(value: unknown, key = "", depth = 0): unknown {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return value.length ? [describeShape(value[0], key, depth + 1)] : [];
+  if (typeof value === "object") {
+    if (depth >= 6) return "object";
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, describeShape(v, k, depth + 1)])
+    );
+  }
+  const safe = SAFE_VALUE_KEYS.test(key) && (typeof value === "number" || (typeof value === "string" && value.length <= 60));
+  return safe ? `${typeof value}:${value}` : typeof value;
+}
 
 // Formato SharkBot — mesma estrutura da ApexVips para manter compatibilidade.
 // Eventos: payment_approved é venda confirmada; demais são ignorados.
@@ -37,19 +57,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   }
   const userId = owner.user_id as string;
 
+  const contentType = req.headers.get("content-type");
+  const raw = await req.text();
   let payload: SharkBotPayload;
   try {
-    payload = await req.json();
+    payload = JSON.parse(raw);
   } catch {
+    console.warn("[sharkbot-webhook][token] corpo não é JSON:", JSON.stringify({ contentType, length: raw.length }));
+    await logAudit({
+      action: "sales_webhook_ignored",
+      targetId: userId,
+      details: { source: "sharkbot", reason: "invalid_json", contentType, length: raw.length },
+    });
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  console.log(
-    "[sharkbot-webhook][token] evento recebido:",
-    JSON.stringify({ event: payload.event, sale_code: payload.transaction?.sale_code, plan_value: payload.transaction?.plan_value })
-  );
+  const shape = describeShape(payload);
+  console.log("[sharkbot-webhook][token] evento recebido:", JSON.stringify({ contentType, shape }));
 
   if (payload.event !== "payment_approved") {
+    await logAudit({
+      action: "sales_webhook_ignored",
+      targetId: userId,
+      details: { source: "sharkbot", reason: "event_not_handled", contentType, shape },
+    });
     return NextResponse.json({ ok: true, ignored: payload.event ?? "unknown" });
   }
 
