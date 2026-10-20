@@ -2,26 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { sendPushNotification } from "@/lib/web-push";
 import { secureEquals } from "@/lib/cron-auth";
+import { parseSharkBotSale, type SharkBotPayload } from "@/lib/sharkbot";
 
 export const dynamic = "force-dynamic";
-
-// Formato SharkBot — mesma estrutura da ApexVips para manter compatibilidade.
-// Eventos: payment_approved é venda confirmada; demais são ignorados.
-interface SharkBotPayload {
-  event?: string;
-  transaction?: {
-    sale_code?: string;
-    plan_name?: string;
-    plan_value?: number; // em centavos
-    currency?: string;
-  };
-  customer?: {
-    full_name?: string;
-    username?: string;
-    phone?: string;
-    profile_name?: string;
-  };
-}
 
 function isAuthorized(req: NextRequest, secret: string): boolean {
   const auth = req.headers.get("authorization");
@@ -46,22 +29,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
+  const sale = parseSharkBotSale(payload);
   console.log(
     "[sharkbot-webhook][global] evento recebido:",
-    JSON.stringify({ event: payload.event, sale_code: payload.transaction?.sale_code, plan_value: payload.transaction?.plan_value })
+    JSON.stringify({ event: payload.event, transaction_id: sale.externalId, amount: sale.amount })
   );
 
   if (payload.event !== "payment_approved") {
     return NextResponse.json({ ok: true, ignored: payload.event ?? "unknown" });
   }
 
-  const tx = payload.transaction ?? {};
-  const customer = payload.customer ?? {};
-
-  const amount = typeof tx.plan_value === "number" ? tx.plan_value / 100 : null;
-  const currency = tx.currency ?? "BRL";
-  const externalId = tx.sale_code ?? null;
-  const customerIdentifier = customer.full_name ?? customer.username ?? customer.profile_name ?? customer.phone ?? null;
+  const { amount, currency, externalId, customerIdentifier } = sale;
 
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
