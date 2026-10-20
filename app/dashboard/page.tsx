@@ -69,8 +69,7 @@ interface DashboardStats {
     month: number;
     accounts_synced: number;
   };
-  accounts_active_today: number;
-  queue: { pending: number };
+  queue: { pending: number; scheduled: number; loop: number };
   recent_activity: {
     type: "download" | "schedule";
     text: string;
@@ -349,16 +348,15 @@ export default function DashboardPage() {
           }
         />
 
-        {/* Active accounts */}
+        {/* Posts na fila — agendados + containers do Loop ainda não publicados */}
         <StatTile
-          label="Contas Ativas Hoje"
-          value={loading ? "—" : String(stats?.accounts_active_today ?? 0)}
-          icon={<CheckCircle2 size={18} />}
-          tone="positive"
+          label="Posts na Fila"
+          value={loading ? "—" : formatInt(stats?.queue.pending ?? 0)}
+          icon={<ListOrdered size={18} />}
           hint={
             loading
               ? undefined
-              : `${stats?.accounts.total ?? 0} total conectadas`
+              : `${formatInt(stats?.queue.scheduled ?? 0)} agendados · ${formatInt(stats?.queue.loop ?? 0)} no loop`
           }
         />
       </div>

@@ -58,7 +58,6 @@ export async function GET() {
     viewsPostsRes,
     salesRes,
     reelsRes,
-    accountsActiveTodayRes,
   ] = await Promise.all([
     admin
       .from("instagram_accounts")
@@ -164,13 +163,6 @@ export async function GET() {
         error: { message: string } | null;
       }>;
     }).rpc("get_reels_summary"),
-    // Contas ativas hoje — o sistema grava 'online' | 'error' | 'blocked';
-    // filtrar por 'ok' (valor que nunca é gravado) deixava o card sempre em 0.
-    admin
-      .from("instagram_accounts")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("health_status", "online"),
   ]);
 
   // Contas Caídas — deduplica por conta dentro de cada janela (eventos de failover)
@@ -286,9 +278,10 @@ export async function GET() {
       month: Number(reelsSummary?.month ?? 0),
       accounts_synced: Number(reelsSummary?.accounts_synced ?? 0),
     },
-    accounts_active_today: accountsActiveTodayRes.count ?? 0,
     queue: {
       pending: (queuePendingScheduledRes.count ?? 0) + (queuePendingContainersRes.count ?? 0),
+      scheduled: queuePendingScheduledRes.count ?? 0,
+      loop: queuePendingContainersRes.count ?? 0,
     },
     recent_activity: activity,
     upcoming_posts: (upcomingRes.data ?? []).map((p, i) => ({
