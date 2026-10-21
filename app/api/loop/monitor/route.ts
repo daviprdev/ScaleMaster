@@ -56,13 +56,10 @@ export async function GET() {
   const loops     = (loopsRes.data     ?? []) as { id: string; name: string; status: string; loop_accounts: { account_id: string }[] }[];
   const allContainers = (containersRes.data ?? []) as { id: string; account_id: string; loop_id: string | null; status: string; retry_after: string | null; retry_count: number; created_at: string; error_message: string | null; media_id: string | null }[];
 
-  // Filtra containers cujas contas já foram excluídas
+  // Mostra só containers das contas ativas+online. Não apaga os demais: são o
+  // histórico de views das contas pausadas/fora do ar. Containers de contas
+  // excluídas já somem pelo ON DELETE CASCADE de pending_containers.account_id.
   const accountIds = new Set(accounts.map(a => a.id));
-  const orphanIds  = allContainers.filter(c => !accountIds.has(c.account_id)).map(c => c.id);
-  if (orphanIds.length > 0) {
-    // Limpa silenciosamente os containers órfãos
-    await admin.from("pending_containers").delete().in("id", orphanIds);
-  }
   const containers = allContainers.filter(c => accountIds.has(c.account_id));
 
   // Build loop membership map: accountId → loopName
