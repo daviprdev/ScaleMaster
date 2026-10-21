@@ -24,6 +24,14 @@ const CONTAINER_TTL_MS = 90 * 60_000;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** 42703 (Postgres) / PGRST204 (PostgREST) ou mensagem citando published_at = fila_ideal.sql ainda não aplicado. */
+function isMissingPublishedAtColumn(
+  err: { code?: string | null; message?: string | null } | null | undefined,
+): boolean {
+  if (!err) return false;
+  return err.code === "42703" || err.code === "PGRST204" || (err.message ?? "").includes("published_at");
+}
+
 interface AccountRow {
   id: string;
   username: string;
@@ -295,10 +303,18 @@ export async function GET(req: NextRequest) {
         await closeProxyAgent(pubProxy);
       }
 
-      await (admin as any)
+      // published_at = hora real da publicação (Raio-X da fila). A coluna vem de
+      // supabase/fila_ideal.sql, aplicado à mão: sem ela, repete sem a coluna.
+      const { error: publishedErr } = await (admin as any)
         .from("pending_containers")
-        .update({ status: "published", media_id: mediaId })
+        .update({ status: "published", media_id: mediaId, published_at: new Date().toISOString() })
         .eq("id", container.id);
+      if (isMissingPublishedAtColumn(publishedErr)) {
+        await (admin as any)
+          .from("pending_containers")
+          .update({ status: "published", media_id: mediaId })
+          .eq("id", container.id);
+      }
 
       summary.published++;
       console.log(`[publish-pending] ✓ @${account.username} → media_id: ${mediaId}`);

@@ -891,7 +891,7 @@ export default function AnalyticsPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
-                className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-sm font-medium bg-[var(--brand-blue)]/15 border border-[var(--brand-blue)]/30 text-[var(--brand-blue)]"
+                className="fixed bottom-24 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-pop text-sm font-medium bg-surface-raised border border-line text-accent"
               >
                 <CheckCircle2 size={15} />
                 {syncToast}
@@ -993,10 +993,8 @@ export default function AnalyticsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
                 className={cn(
-                  "fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl text-sm font-medium",
-                  postToast.ok
-                    ? "bg-emerald-500/20 border border-emerald-500/30 text-emerald-300"
-                    : "bg-red-500/20 border border-red-500/30 text-red-300"
+                  "fixed bottom-24 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-pop text-sm font-medium bg-surface-raised border border-line",
+                  postToast.ok ? "text-success" : "text-danger"
                 )}
               >
                 {postToast.ok ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}

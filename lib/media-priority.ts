@@ -486,3 +486,49 @@ export function normalizePriorityStrategy(
   }
   return "least_usage";
 }
+
+// ---------------------------------------------------------------------------
+// Rodízio fixo — modo "fila ideal" do Raio-X da fila
+// ---------------------------------------------------------------------------
+
+/** Mesmo formato que o distribute consome de assignVideos (só usa accountId e video.id). */
+export interface RotationAssignment {
+  accountId: string;
+  video: Pick<VideoCandidate, "id">;
+  /** Sempre false: o rodízio ignora o histórico (repost é permitido). */
+  isCycleReset: boolean;
+}
+
+/**
+ * Rodízio da fila ideal (docs/fila-ideal.md §5 e §12): na rodada `k` a conta
+ * da posição `i` recebe `videoIds[(i + k) mod N]`, para k = 0..N−1.
+ *
+ * - A ordem dos vídeos (score) e a das contas (ranking) definem o rodízio.
+ * - Repost permitido: o histórico da conta é ignorado de propósito — a lista
+ *   já são os vídeos que mais renderam na fila.
+ * - Nunca o mesmo vídeo 2× para a mesma conta no ciclo: cada conta passa por
+ *   cada vídeo exatamente uma vez.
+ * - Com M > N, as contas i e i+N seguem a mesma sequência (o stagger entre
+ *   contas separa as duas publicações do mesmo vídeo).
+ *
+ * Puro e determinístico. Ids repetidos são ignorados (fica a 1ª ocorrência).
+ * Resultado em ordem de rodada, contas na ordem recebida — igual ao assignVideos.
+ */
+export function assignRotation(accountIds: string[], videoIds: string[]): RotationAssignment[] {
+  const accounts = [...new Set(accountIds)];
+  const videos = [...new Set(videoIds)];
+  const n = videos.length;
+  if (accounts.length === 0 || n === 0) return [];
+
+  const results: RotationAssignment[] = [];
+  for (let k = 0; k < n; k++) {
+    for (let i = 0; i < accounts.length; i++) {
+      results.push({
+        accountId: accounts[i],
+        video: { id: videos[(i + k) % n] },
+        isCycleReset: false,
+      });
+    }
+  }
+  return results;
+}

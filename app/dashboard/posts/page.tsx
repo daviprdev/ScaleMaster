@@ -747,7 +747,7 @@ export default function PostsPage() {
       </SectionCard>
 
       {/* ── Barra de ação sticky ── */}
-      <div className="sticky bottom-0 -mx-6 px-6 pb-5 pt-4 bg-gradient-to-t from-[#030712] via-[#030712]/80 to-transparent pointer-events-none">
+      <div className="sticky bottom-0 -mx-6 px-6 pr-20 pb-5 pt-4 bg-gradient-to-t from-[#030712] via-[#030712]/80 to-transparent pointer-events-none">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}

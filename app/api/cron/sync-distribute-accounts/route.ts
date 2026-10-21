@@ -83,7 +83,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const watched = ((campaigns ?? []) as DistributeCampaignRow[]).filter(c => c.account_folder_ids?.length > 0 && !c.burst_mode);
+  // Só campanhas com pasta de contas E pasta de vídeos. Guarda defensiva: a
+  // fila ideal do Raio-X (lista fixa em rodízio) nunca tem pasta de contas e
+  // não pode ser sorteada de novo daqui a partir da pasta inteira.
+  const watched = ((campaigns ?? []) as DistributeCampaignRow[]).filter(
+    c => c.account_folder_ids?.length > 0 && !!c.video_folder_id && !c.burst_mode,
+  );
   if (!watched.length) return NextResponse.json({ posts_created: 0, campaigns: 0 });
 
   let totalCreated = 0;

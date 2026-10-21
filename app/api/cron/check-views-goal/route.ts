@@ -7,6 +7,9 @@
  *
  * Roda a cada 1 hora via systemd timer — dispara no horário configurado
  * pelo usuário (18:00, 20:00 ou 22:00 BRT), uma vez por dia.
+ *
+ * Depois, toda hora, apaga as leituras de views (post_views_snapshots, Raio-X
+ * da fila) com mais de 7 dias.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -37,11 +40,51 @@ function parseTimeToMinutes(hhmm: string): number | null {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+// Leituras de views guardadas pelo trigger de supabase/fila_ideal.sql: o Raio-X
+// da fila só olha as últimas 48h, então 7 dias sobram.
+const SNAPSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
 export async function GET(request: NextRequest) {
   const cronAuth = requireCronAuth(request);
   if (!cronAuth.ok) return cronAuth.response;
 
   const admin = getSupabaseAdmin();
+  try {
+    return await checkViewsGoal(admin);
+  } finally {
+    // Toda hora, inclusive quando ninguém está no horário da meta.
+    await purgeOldViewSnapshots(admin);
+  }
+}
+
+/**
+ * Apaga as leituras de post_views_snapshots com mais de 7 dias. Nunca derruba
+ * o cron: sem a tabela (SQL ainda não aplicado) fica quieto; outro erro só vai
+ * para o log.
+ */
+async function purgeOldViewSnapshots(admin: ReturnType<typeof getSupabaseAdmin>): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - SNAPSHOT_RETENTION_MS).toISOString();
+    const { count, error } = await admin
+      .from("post_views_snapshots")
+      .delete({ count: "exact" })
+      .lt("read_at", cutoff);
+    if (error) {
+      const msg = error.message ?? "";
+      const missingTable = error.code === "42P01" || error.code === "PGRST205" ||
+        (msg.includes("post_views_snapshots") && /does not exist|schema cache/i.test(msg));
+      if (!missingTable) {
+        console.warn("[cron/check-views-goal] Falha ao purgar post_views_snapshots:", error.message);
+      }
+      return;
+    }
+    if (count) console.log(`[cron/check-views-goal] ${count} leitura(s) de views com +7 dias apagadas.`);
+  } catch (err) {
+    console.warn("[cron/check-views-goal] Falha ao purgar post_views_snapshots:", err);
+  }
+}
+
+async function checkViewsGoal(admin: ReturnType<typeof getSupabaseAdmin>): Promise<NextResponse> {
   const nowUtc = new Date();
   const todayStartIso = brtMidnightUtc(0).toISOString();
   const dateKey = todayStartIso.slice(0, 10); // YYYY-MM-DD

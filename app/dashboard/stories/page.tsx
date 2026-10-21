@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { ProxyPoolToggle } from "@/components/dashboard/ProxyPoolToggle";
+import { VideoThumb } from "@/components/ui/video-thumb";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -26,46 +27,6 @@ interface Account {
 interface FolderItem {
   id: string;
   name: string;
-}
-
-/**
- * Miniatura de vídeo que NÃO fica preta.
- *
- * Um <video preload="metadata"> sem `poster` renderiza um quadro PRETO: o
- * browser carrega só os metadados e não decodifica nenhum frame. O truque do
- * media fragment `#t=0.1` na URL nem sempre pinta (depende do browser/preload).
- * Aqui forçamos via JS: ao ter os metadados, damos um seek para ~0,1s — o
- * browser decodifica e pinta esse frame como capa, sem precisar dar play.
- * Funciona com URLs do Storage (suportam Range) e com blob: de upload local.
- */
-function VideoThumb({ src, className }: { src: string; className?: string }) {
-  const ref = useRef<HTMLVideoElement>(null);
-
-  const seekToFrame = useCallback(() => {
-    const v = ref.current;
-    if (!v) return;
-    try {
-      // Pequeno offset evita o frame 0 (às vezes preto/keyframe vazio).
-      const t = v.duration && isFinite(v.duration) ? Math.min(0.1, v.duration / 2) : 0.1;
-      if (v.currentTime < t) v.currentTime = t;
-    } catch {
-      /* alguns browsers barram seek antes de "canplay" — o onLoadedData retenta */
-    }
-  }, []);
-
-  return (
-    <video
-      ref={ref}
-      src={src}
-      className={className}
-      muted
-      playsInline
-      preload="metadata"
-      // dois gatilhos: metadados prontos e primeiro frame carregado.
-      onLoadedMetadata={seekToFrame}
-      onLoadedData={seekToFrame}
-    />
-  );
 }
 
 interface UploadedMedia {

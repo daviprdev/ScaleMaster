@@ -1,21 +1,24 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, Film, CalendarDays, Send, FolderOpen, X, Check,
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
   Shuffle, Zap, List, Library, Save, BookMarked, BarChart2,
   RefreshCw, ChevronDown, Sparkles, Pencil, SlidersHorizontal, LayoutGrid,
-  ShieldCheck, Pause, Play,
+  ShieldCheck, Pause, Play, Repeat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toDatetimeLocalValue } from "@/lib/datetime-local";
 import { createClient } from "@/lib/supabase/client";
+import { takeHandoff, type IdealQueueHandoff } from "@/lib/queue-insights/handoff";
 import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
 import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
 import { ProxyPoolToggle } from "@/components/dashboard/ProxyPoolToggle";
+import { VideoThumb } from "@/components/ui/video-thumb";
 import {
   PageHeader,
   Card,
@@ -102,6 +105,28 @@ interface Campaign {
   total_reach?: number;
 }
 
+/** Vídeo da fila ideal — vem pronto no handoff do Raio-X da fila. */
+interface IdealVideo {
+  id: string;
+  publicUrl: string | null;
+  caption: string | null;
+}
+
+interface IdealMeta {
+  /** "ideal" = Montar essa fila; "republish" = Publicar nas outras contas. */
+  kind: IdealQueueHandoff["kind"];
+  /** Pasta da fila de origem (vai como folder_id; pode ser null). */
+  folderId: string | null;
+  sourceLabel: string;
+  /** Contas da fila ideal que não estão mais conectadas e ficaram de fora. */
+  missingAccounts: number;
+  /** Tipo de legenda automática da fila de origem (null = o padrão do Postar). */
+  autoCaptionType: string | null;
+}
+
+/** Teto do distribute para a lista da fila ideal. */
+const MAX_IDEAL_VIDEOS = 50;
+
 // ── Campaign helpers ────────────────────────────────────────────────────────
 
 function campTimeAgo(dateStr: string | null): string {
@@ -161,12 +186,15 @@ function DistributePreview({
   postsPerDay,
   startDatetime,
   captionCount,
+  rotation = false,
 }: {
   videosPerAccount: number;
   totalAccounts: number;
   postsPerDay: number;
   startDatetime: string;
   captionCount: number;
+  /** Modo fila ideal: rodízio fixo em vez de ordem aleatória. */
+  rotation?: boolean;
 }) {
   const intervalMinutes = Math.floor((24 * 60) / Math.max(1, postsPerDay));
   const days = videosPerAccount > 0 ? Math.ceil(videosPerAccount / Math.max(1, postsPerDay)) : 0;
@@ -239,9 +267,13 @@ function DistributePreview({
           </div>
 
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-blue/5 border border-brand-blue/20">
-            <Shuffle size={12} className="text-brand-blue flex-shrink-0" />
+            {rotation
+              ? <Repeat size={12} className="text-brand-blue flex-shrink-0" />
+              : <Shuffle size={12} className="text-brand-blue flex-shrink-0" />}
             <p className="text-[10px] text-brand-blue/80">
-              Cada conta recebe os vídeos em ordem aleatória única
+              {rotation
+                ? "Rodízio: cada conta começa num vídeo diferente e não repete vídeo no ciclo"
+                : "Cada conta recebe os vídeos em ordem aleatória única"}
             </p>
           </div>
 
@@ -1317,6 +1349,160 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
   );
 }
 
+// ── IdealQueueLoader ───────────────────────────────────────────────────────
+// Lê ?ideal=<id> (aberto pelo "Montar essa fila" do Raio-X da fila), pega a
+// fila no localStorage UMA vez — só depois que as contas carregaram, para
+// aplicar só as que existem — e tira o parâmetro da URL. Componente próprio
+// dentro de <Suspense>: no Next 15 o useSearchParams exige o boundary.
+
+function IdealQueueLoader({
+  ready,
+  onApply,
+  onExpired,
+}: {
+  ready: boolean;
+  onApply: (handoff: IdealQueueHandoff) => void;
+  onExpired: () => void;
+}) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const idealId = searchParams.get("ideal");
+  // takeHandoff APAGA a fila: o ref impede a 2ª leitura (StrictMode, re-render).
+  const takenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!idealId || !ready || takenRef.current === idealId) return;
+    takenRef.current = idealId;
+
+    const handoff = takeHandoff(idealId);
+    if (handoff === "expired") onExpired();
+    else onApply(handoff);
+
+    const rest = new URLSearchParams(searchParams.toString());
+    rest.delete("ideal");
+    const qs = rest.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [idealId, ready, onApply, onExpired, router, pathname, searchParams]);
+
+  return null;
+}
+
+// ── IdealQueueCard ─────────────────────────────────────────────────────────
+// Modo fila ideal: no lugar do seletor de pasta, a lista que veio do Raio-X.
+// A ordem é a do score e define o rodízio (a conta da posição i começa no
+// vídeo i), então a lista só permite remover — não reordenar.
+
+function IdealVideoThumb({ publicUrl }: { publicUrl: string | null }) {
+  if (!publicUrl) {
+    return (
+      <div className="w-10 h-14 rounded-md bg-surface border border-line flex items-center justify-center flex-shrink-0">
+        <Film size={12} className="text-ink-3" />
+      </div>
+    );
+  }
+  return (
+    <VideoThumb
+      src={publicUrl}
+      className="w-10 h-14 rounded-md object-cover bg-surface border border-line flex-shrink-0"
+    />
+  );
+}
+
+function IdealQueueCard({
+  meta,
+  videos,
+  accountCount,
+  onRemove,
+  onExit,
+}: {
+  meta: IdealMeta;
+  videos: IdealVideo[];
+  accountCount: number;
+  onRemove: (videoId: string) => void;
+  onExit: () => void;
+}) {
+  const n = videos.length;
+  const title = meta.kind === "republish"
+    ? "Publicar nas outras contas"
+    : `Fila ideal do Raio-X — ${n} vídeo${n !== 1 ? "s" : ""} × ${accountCount} conta${accountCount !== 1 ? "s" : ""}`;
+
+  return (
+    <SectionCard>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="flex items-start gap-2 min-w-0">
+          <Sparkles size={14} className="text-accent flex-shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink">{title}</p>
+            <p className="text-[11px] text-ink-3 truncate">
+              {meta.kind === "republish"
+                ? `${n} vídeo${n !== 1 ? "s" : ""} × ${accountCount} conta${accountCount !== 1 ? "s" : ""}`
+                : "Melhores vídeos × melhores contas"}
+              {meta.sourceLabel ? ` · ${meta.sourceLabel}` : ""}
+            </p>
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onExit} icon={<X size={12} />}>
+          Sair do modo fila ideal
+        </Button>
+      </div>
+
+      {meta.missingAccounts > 0 && (
+        <Banner tone="warning" className="mb-3">
+          {meta.missingAccounts === 1
+            ? "1 conta da fila ideal não está mais conectada e ficou de fora."
+            : `${meta.missingAccounts} contas da fila ideal não estão mais conectadas e ficaram de fora.`}
+        </Banner>
+      )}
+
+      {n === 0 ? (
+        <p className="text-ink-3 text-sm py-4 text-center">
+          Nenhum vídeo na lista. Saia do modo fila ideal ou abra de novo pelo Raio-X da fila.
+        </p>
+      ) : (
+        <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+          {videos.map((v, i) => (
+            <div key={v.id} className="flex items-center gap-3 px-2.5 py-2 rounded-xl border border-line bg-surface-raised">
+              <span className="w-5 text-center text-[11px] font-mono text-ink-3 flex-shrink-0">{i + 1}</span>
+              <IdealVideoThumb publicUrl={v.publicUrl} />
+              <p className="flex-1 min-w-0 text-xs text-ink-2 leading-relaxed line-clamp-2">
+                {v.caption?.trim() || <span className="italic text-ink-3">Sem legenda original</span>}
+              </p>
+              {/* A última fica: lista vazia não vira campanha. */}
+              {n > 1 && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(v.id)}
+                  title="Tirar este vídeo da fila"
+                  aria-label="Tirar este vídeo da fila"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-3 hover:text-danger hover:bg-danger-soft transition-colors flex-shrink-0"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {n > MAX_IDEAL_VIDEOS && (
+        <p className="mt-2 text-[11px] text-warning">
+          A fila ideal aceita até {MAX_IDEAL_VIDEOS} vídeos — remova {n - MAX_IDEAL_VIDEOS} da lista.
+        </p>
+      )}
+
+      <div className="mt-3 flex items-start gap-2 px-3 py-2.5 rounded-xl bg-info-soft border border-line">
+        <Repeat size={12} className="text-accent flex-shrink-0 mt-0.5" />
+        <p className="text-[11px] text-ink-2 leading-relaxed">
+          {n === 1
+            ? "Cada conta posta o vídeo uma vez, separadas pelo intervalo entre contas. Conta que já postou esse vídeo antes posta de novo."
+            : `Cada conta posta os ${n} vídeos uma vez cada, em rodízio: cada conta começa num vídeo diferente e nenhuma repete vídeo no ciclo. Conta que já postou um desses vídeos antes posta de novo.`}
+        </p>
+      </div>
+    </SectionCard>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function PostarPage() {
@@ -1365,6 +1551,14 @@ export default function PostarPage() {
   const [captionMode, setCaptionMode] = useState<CaptionMode>("custom");
   const [stripHashtags, setStripHashtags] = useState(false);
   const [stripMentions, setStripMentions] = useState(false);
+
+  // Modo fila ideal (Raio-X da fila): lista fixa de vídeos em rodízio no lugar
+  // da pasta. null = formulário normal.
+  const [idealVideos, setIdealVideos] = useState<IdealVideo[] | null>(null);
+  const [idealMeta, setIdealMeta] = useState<IdealMeta | null>(null);
+  const [idealExpired, setIdealExpired] = useState(false);
+  // posts/dia herdado que não é um dos botões fixos — aparece como botão extra.
+  const [extraPostsPerDay, setExtraPostsPerDay] = useState<number | null>(null);
 
   // Submit
   const [submitting, setSubmitting] = useState(false);
@@ -1423,11 +1617,88 @@ export default function PostarPage() {
     setFolderVideoCount(folder?.video_count ?? 0);
   }, [selectedFolderId, folders]);
 
+  // ── Fila ideal ─────────────────────────────────────────────────────────────
+
+  // Aplica a fila montada no Raio-X. Roda uma vez, com as contas já carregadas:
+  // só entram as que ainda existem, na ordem do ranking (ela define o rodízio).
+  const applyHandoff = useCallback((h: IdealQueueHandoff) => {
+    const existing = new Set(accounts.map(a => a.id));
+    const wanted = [...new Set(h.accountIds)];
+    const accountIds = wanted.filter(id => existing.has(id));
+    const videoById = new Map((h.videos ?? []).map(v => [v.id, v]));
+    const videos: IdealVideo[] = [...new Set(h.videoIds)].map(id => {
+      const v = videoById.get(id);
+      return { id, publicUrl: v?.publicUrl ?? null, caption: v?.caption ?? null };
+    });
+    const ppd = Math.min(1440, Math.max(1, Math.round(h.postsPerDay) || 1));
+    // A fila pode ter ficado aberta: início no passado vira agora + 5 min.
+    const startMs = Math.max(new Date(h.startAt).getTime() || 0, Date.now() + 5 * 60_000);
+    const d = h.defaults;
+
+    setActiveTab("create");
+    setSuccess(null);
+    setSubmitError(null);
+    setIdealExpired(false);
+    setSelectedAccountIds(accountIds);
+    setIdealVideos(videos);
+    setIdealMeta({
+      kind: h.kind,
+      folderId: d.folderId ?? null,
+      sourceLabel: h.sourceQueue?.label ?? "",
+      missingAccounts: wanted.length - accountIds.length,
+      autoCaptionType: d.autoCaptionType ?? null,
+    });
+    // Pré-seleciona a pasta de origem para quando o dono sair do modo fila ideal.
+    setSelectedFolderId(d.folderId ?? "");
+    setVideoCount(videos.length);
+    setPostsPerDay(ppd);
+    setExtraPostsPerDay(POSTS_PER_DAY_OPTIONS.includes(ppd) ? null : ppd);
+    setStartDatetime(toDatetimeLocalValue(new Date(startMs)));
+    setAccountStaggerSeconds(d.accountStaggerSeconds || null);
+    setCaptionMode(d.captionMode === "original" || d.captionMode === "none" ? d.captionMode : "custom");
+    setCaptions(d.captions?.length ? [...d.captions] : ["", ""]);
+    setAutoCaptionEnabled(!!d.autoCaptionType);
+    setStripHashtags(!!d.stripHashtags);
+    setStripMentions(!!d.stripMentions);
+    setVideoProcessingMode(d.videoProcessingMode === "clean_metadata" ? "clean_metadata" : "original");
+    setShareToFeed(d.shareToFeed !== false);
+    setUseProxyPool(d.useProxyPool === true);
+    setBurstMode(false);
+    setSyncFolders(false);
+  }, [accounts]);
+
+  const handleIdealExpired = useCallback(() => {
+    setIdealExpired(true);
+    setActiveTab("create");
+  }, []);
+
+  // Volta ao formulário normal (pasta + quantidade); o resto do que veio fica.
+  const exitIdeal = () => {
+    setIdealVideos(null);
+    setIdealMeta(null);
+    setVideoCount(20);
+    setSubmitError(null);
+  };
+
+  const removeIdealVideo = (videoId: string) => {
+    if (!idealVideos) return;
+    const next = idealVideos.filter(v => v.id !== videoId);
+    setIdealVideos(next);
+    setVideoCount(next.length);
+  };
+
   // ── Computed ───────────────────────────────────────────────────────────────
 
-  const videosPerAccount = videoCount === -1
-    ? folderVideoCount
-    : Math.min(videoCount, folderVideoCount);
+  // Fila ideal: quantidade fixa = tamanho da lista.
+  const videosPerAccount = idealVideos
+    ? idealVideos.length
+    : videoCount === -1
+      ? folderVideoCount
+      : Math.min(videoCount, folderVideoCount);
+
+  const postsPerDayOptions = extraPostsPerDay != null && !POSTS_PER_DAY_OPTIONS.includes(extraPostsPerDay)
+    ? [...POSTS_PER_DAY_OPTIONS, extraPostsPerDay].sort((a, b) => a - b)
+    : POSTS_PER_DAY_OPTIONS;
 
   const validCaptions = captions.filter(c => c.trim().length > 0);
   const selectedFolder = folders.find(f => f.id === selectedFolderId);
@@ -1486,8 +1757,14 @@ export default function PostarPage() {
 
   const handleSubmit = async () => {
     if (selectedAccountIds.length === 0) { setSubmitError("Selecione ao menos 1 conta."); return; }
-    if (!selectedFolderId) { setSubmitError("Selecione uma pasta de mídia."); return; }
-    if (folderVideoCount === 0) { setSubmitError("A pasta selecionada está vazia."); return; }
+    if (idealVideos) {
+      // Fila ideal: a lista substitui a pasta — nada de pasta obrigatória.
+      if (idealVideos.length === 0) { setSubmitError("A fila ideal ficou sem vídeos — saia do modo fila ideal ou abra de novo pelo Raio-X da fila."); return; }
+      if (idealVideos.length > MAX_IDEAL_VIDEOS) { setSubmitError(`A fila ideal aceita até ${MAX_IDEAL_VIDEOS} vídeos — remova alguns da lista.`); return; }
+    } else {
+      if (!selectedFolderId) { setSubmitError("Selecione uma pasta de mídia."); return; }
+      if (folderVideoCount === 0) { setSubmitError("A pasta selecionada está vazia."); return; }
+    }
     if (!burstMode && !startDatetime) { setSubmitError("Defina a data e hora de início."); return; }
 
     setSubmitError(null);
@@ -1499,15 +1776,19 @@ export default function PostarPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           account_ids: selectedAccountIds,
-          folder_id: selectedFolderId,
-          video_count: videoCount,
+          // Fila ideal: pasta da fila de origem (pode ser null — o distribute
+          // usa a do 1º vídeo) + a lista na ordem do score.
+          folder_id: idealVideos ? (idealMeta?.folderId ?? null) : selectedFolderId,
+          video_count: idealVideos ? idealVideos.length : videoCount,
           posts_per_day: postsPerDay,
           start_at: burstMode ? new Date().toISOString() : new Date(startDatetime).toISOString(),
           captions: autoCaptionEnabled ? [] : validCaptions,
-          auto_caption_type: autoCaptionEnabled ? AUTO_CAPTION_TYPE_VALUE : undefined,
+          auto_caption_type: autoCaptionEnabled
+            ? (idealVideos && idealMeta?.autoCaptionType) || AUTO_CAPTION_TYPE_VALUE
+            : undefined,
           account_stagger_seconds: accountStaggerSeconds,
           burst_mode: burstMode,
-          sync_folder_ids: syncFolders ? fullySelectedFolders.map(g => g.id) : [],
+          sync_folder_ids: syncFolders && !idealVideos ? fullySelectedFolders.map(g => g.id) : [],
           video_processing_mode: videoProcessingMode,
           share_to_feed: shareToFeed,
           caption_mode: captionMode,
@@ -1515,6 +1796,7 @@ export default function PostarPage() {
           caption_strip_mentions: stripMentions,
           priority_strategy: priorityStrategy,
           use_proxy_pool: useProxyPool,
+          ...(idealVideos ? { video_ids: idealVideos.map(v => v.id) } : {}),
         }),
       });
 
@@ -1539,6 +1821,9 @@ export default function PostarPage() {
       setAccountStaggerSeconds(null);
       setBurstMode(false);
       setSyncFolders(false);
+      setIdealVideos(null);
+      setIdealMeta(null);
+      setExtraPostsPerDay(null);
 
       setSuccess({
         total_posts: data.total_posts ?? 0,
@@ -1569,6 +1854,9 @@ export default function PostarPage() {
     setAccountStaggerSeconds(null);
     setBurstMode(false);
     setSyncFolders(false);
+    setIdealVideos(null);
+    setIdealMeta(null);
+    setExtraPostsPerDay(null);
     setActiveTab("create");
   };
 
@@ -1576,6 +1864,10 @@ export default function PostarPage() {
 
   return (
     <div className="mx-auto max-w-[var(--content-max)] px-4 py-7 sm:px-8">
+      <Suspense fallback={null}>
+        <IdealQueueLoader ready={!loadingAccounts} onApply={applyHandoff} onExpired={handleIdealExpired} />
+      </Suspense>
+
       <PageHeader
         eyebrow="Postar"
         title="Distribuição de Conteúdo"
@@ -1612,6 +1904,12 @@ export default function PostarPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {idealExpired && (
+        <Banner tone="warning" className="mb-5" onClose={() => setIdealExpired(false)}>
+          A fila ideal expirou — abra de novo pelo Raio-X da fila
+        </Banner>
+      )}
 
       {activeTab === "campaigns" ? (
         <CampaignsList accounts={accounts} onCreateNew={handleReset} />
@@ -1788,7 +2086,8 @@ export default function PostarPage() {
                 </p>
               )}
 
-              {fullySelectedFolders.length > 0 && (
+              {/* Fila ideal não sincroniza com pasta: a lista de contas é fixa. */}
+              {fullySelectedFolders.length > 0 && !idealVideos && (
                 <div className="mt-3 p-3.5 rounded-xl border border-line bg-surface">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -1818,8 +2117,17 @@ export default function PostarPage() {
               )}
             </SectionCard>
 
-            {/* 2. Pasta + Quantidade */}
-            {/* z-30 quando o dropdown está aberto — .glass-card cria stacking context (backdrop-filter) e o card seguinte pintava por cima da lista */}
+            {/* 2. Pasta + Quantidade — no modo fila ideal, a lista do Raio-X no lugar */}
+            {idealVideos && idealMeta ? (
+              <IdealQueueCard
+                meta={idealMeta}
+                videos={idealVideos}
+                accountCount={selectedAccountIds.length}
+                onRemove={removeIdealVideo}
+                onExit={exitIdeal}
+              />
+            ) : (
+            /* z-30 quando o dropdown está aberto — .glass-card cria stacking context (backdrop-filter) e o card seguinte pintava por cima da lista */
             <SectionCard className={folderOpen ? "relative z-30" : undefined}>
               <SectionLabel Icon={FolderOpen}>Pasta de Mídia</SectionLabel>
 
@@ -1919,12 +2227,14 @@ export default function PostarPage() {
               </div>
               )}
             </SectionCard>
+            )}
 
             {/* 3. Cadência */}
             <SectionCard>
               <SectionLabel Icon={CalendarDays}>Cadência</SectionLabel>
 
-              {/* Toggle Modo Ciclo */}
+              {/* Toggle Modo Ciclo — escondido na fila ideal (o rodízio precisa da cadência) */}
+              {!idealVideos && (
               <div className="mb-5 rounded-xl border border-line bg-surface p-3.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
@@ -2032,6 +2342,7 @@ export default function PostarPage() {
                   )}
                 </AnimatePresence>
               </div>
+              )}
 
               {/* Posts por dia + data de início — ocultos no Modo Ciclo */}
               <AnimatePresence initial={false}>
@@ -2047,7 +2358,7 @@ export default function PostarPage() {
                     <div className="mb-5">
                       <p className="text-xs text-ink-3 font-medium mb-3 uppercase tracking-wider">Posts por dia por conta</p>
                       <div className="flex flex-wrap gap-2">
-                        {POSTS_PER_DAY_OPTIONS.map(n => {
+                        {postsPerDayOptions.map(n => {
                           const mins = Math.floor((24 * 60) / n);
                           const hint = mins >= 60
                             ? `${Math.floor(mins / 60)}h`
@@ -2162,7 +2473,9 @@ export default function PostarPage() {
                           <span className="text-accent font-semibold">{selectedAccountIds.length}</span> conta{selectedAccountIds.length !== 1 ? "s" : ""} ={" "}
                           <span className="text-ink font-semibold">{totalPosts}</span> posts ao longo de{" "}
                           <span className="text-ink font-semibold">{days}</span> dia{days !== 1 ? "s" : ""}.
-                          {" "}Cada conta recebe os vídeos em ordem aleatória única.
+                          {idealVideos
+                            ? " Rodízio: cada conta começa num vídeo diferente e não repete vídeo no ciclo."
+                            : " Cada conta recebe os vídeos em ordem aleatória única."}
                         </p>
                       );
                     })()}
@@ -2294,7 +2607,11 @@ export default function PostarPage() {
                 ? (burstMode ? "Postando agora..." : "Criando distribuição...")
                 : (
                   <>
-                    {burstMode ? "Postar Tudo Agora" : "Criar Distribuição"}
+                    {burstMode
+                      ? "Postar Tudo Agora"
+                      : idealMeta?.kind === "republish" && idealVideos
+                        ? "Publicar nas outras contas"
+                        : "Criar Distribuição"}
                     {videosPerAccount > 0 && selectedAccountIds.length > 0 && (
                       <span className="ml-1 opacity-70">
                         ({videosPerAccount * selectedAccountIds.length} posts · {selectedAccountIds.length} conta{selectedAccountIds.length !== 1 ? "s" : ""})
@@ -2313,12 +2630,15 @@ export default function PostarPage() {
               postsPerDay={postsPerDay}
               startDatetime={startDatetime}
               captionCount={validCaptions.length}
+              rotation={!!idealVideos}
             />
 
             <div className="mt-4 glass-card rounded-2xl p-4 space-y-2.5">
               <p className="text-[10px] text-ink-3 uppercase tracking-wider">Como funciona</p>
               {[
-                { icon: Shuffle, text: "Cada conta recebe os vídeos em uma ordem aleatória diferente" },
+                idealVideos
+                  ? { icon: Repeat, text: "Rodízio da fila ideal: cada conta começa num vídeo diferente" }
+                  : { icon: Shuffle, text: "Cada conta recebe os vídeos em uma ordem aleatória diferente" },
                 { icon: CalendarDays, text: "Posts distribuídos uniformemente ao longo do dia" },
                 { icon: Clock, text: accountStaggerSeconds ? `${accountStaggerSeconds}s de stagger entre contas` : "Stagger automático entre contas — sem burst simultâneo" },
               ].map(({ icon: Icon, text }) => (

@@ -1,0 +1,51 @@
+"use client";
+
+import { Avatar } from "@/components/ui";
+import type { PostCard, Summary } from "@/lib/queue-insights/types";
+import { fmtAgo, fmtCompact, fmtMultiple } from "./format";
+import { Eyebrow, LazyThumb, MiniStat, Num, ViewOnInstagram } from "./parts";
+
+/** Resumo dos 30 dias da fila + o post de mais views. */
+export function SummarySection({ summary }: { summary: Summary }) {
+  return (
+    <section aria-label="Resumo dos últimos 30 dias" className="flex flex-col gap-3">
+      <div className="grid grid-cols-3 gap-2">
+        <MiniStat label="Posts 30 dias" value={summary.posts} />
+        <MiniStat label="Views" value={summary.totalViews} valueClassName="text-success" />
+        <MiniStat
+          label="Views/post"
+          value={summary.viewsPerPost}
+          hint={summary.medianViews != null ? `mediana ${fmtCompact(summary.medianViews)}` : undefined}
+        />
+      </div>
+
+      {summary.bestPost && <BestPostCard post={summary.bestPost} />}
+    </section>
+  );
+}
+
+function BestPostCard({ post }: { post: PostCard }) {
+  return (
+    <div className="flex gap-3 rounded-xl border border-line bg-surface p-3">
+      <LazyThumb src={post.publicUrl} className="w-[72px]" label={`Vídeo do post de @${post.username}`} />
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <Eyebrow tone="success">Melhor post dos 30 dias</Eyebrow>
+        <div className="flex min-w-0 items-center gap-2">
+          <Avatar size="sm" src={post.avatarUrl} alt={post.username} />
+          <span className="truncate text-[13px] font-medium text-ink">@{post.username}</span>
+        </div>
+        <p className="text-[13px] text-ink-2">
+          <Num value={post.views} className="font-mono text-base font-semibold text-success" /> views
+          {post.multiple != null && (
+            <>
+              {" · "}
+              <span className="text-ink">{fmtMultiple(post.multiple)}</span> o normal da conta
+            </>
+          )}
+        </p>
+        <p className="text-xs text-ink-3">{fmtAgo(post.publishedAt)}</p>
+        <ViewOnInstagram post={post} />
+      </div>
+    </div>
+  );
+}

@@ -10,6 +10,7 @@ import { fetchVideoUsage, fetchRecentVideos, fetchAllRows } from "@/lib/video-hi
 import { normalizeProcessingMode } from "@/lib/video-processing";
 import {
   assignVideos,
+  assignRotation,
   normalizePriorityStrategy,
   type PriorityStrategy,
 } from "@/lib/media-priority";
@@ -57,8 +58,25 @@ function computeContentFingerprint(body: DistributeBody, userId: string): string
     processingMode: body.video_processing_mode ?? "original",
     shareToFeed: body.share_to_feed ?? null,
     priorityStrategy: body.priority_strategy ?? "views",
+    // Fila ideal: a lista (na ordem — ela define o rodízio) entra no hash.
+    // Só quando veio `video_ids`: campanhas normais continuam com o mesmo hash.
+    ...(body.video_ids != null ? { videoIds: body.video_ids, assignment: "rotation" } : {}),
   };
   return createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+}
+
+/** Lista de vídeos da fila ideal: 1–50, sem repetir. */
+const MAX_ROTATION_VIDEOS = 50;
+
+/**
+ * SQL manual (supabase/fila_ideal.sql) ainda não aplicado: o PostgREST responde
+ * 42703 ou PGRST204 citando a coluna video_ids. A campanha nasce sem ela — os
+ * posts já carregam os vídeos, a coluna é só registro.
+ */
+function isMissingVideoIdsColumn(err: { code?: string | null; message?: string | null }): boolean {
+  const msg = err.message ?? "";
+  return (err.code === "42703" || err.code === "PGRST204" || /schema cache|does not exist/i.test(msg)) &&
+    msg.includes("video_ids");
 }
 
 function computeOperationId(body: DistributeBody, userId: string): string {
@@ -77,7 +95,8 @@ function computeOperationId(body: DistributeBody, userId: string): string {
 
 interface DistributeBody {
   account_ids: string[];
-  folder_id: string;
+  folder_id: string | null;       // opcional só com video_ids (fila ideal)
+  video_ids?: string[];           // fila ideal do Raio-X: 1–50 vídeos em rodízio, na ordem do score
   video_count: number;            // -1 = todos, ou 10/20/50
   posts_per_day: number;          // 1–1440 (ignorado em burst_mode)
   start_at: string;               // ISO datetime (ignorado em burst_mode)
@@ -113,9 +132,31 @@ export async function POST(req: NextRequest) {
   // comportamento anterior (parâmetro não enviado à Meta).
   const shareToFeed = typeof body.share_to_feed === "boolean" ? body.share_to_feed : null;
 
+  // Modo fila ideal (Raio-X da fila, docs/fila-ideal.md §12): em vez de sortear
+  // da pasta, cada conta percorre uma lista fixa de vídeos em rodízio.
+  const isRotation = body.video_ids != null;
+  let videoIds: string[] = [];
+
   if (!account_ids?.length)
     return NextResponse.json({ error: "Selecione ao menos 1 conta." }, { status: 400 });
-  if (!folder_id)
+  if (isRotation) {
+    const raw: unknown = body.video_ids;
+    if (
+      !Array.isArray(raw) || raw.length < 1 || raw.length > MAX_ROTATION_VIDEOS ||
+      raw.some((id) => typeof id !== "string" || !id)
+    )
+      return NextResponse.json({ error: `A fila ideal precisa de 1 a ${MAX_ROTATION_VIDEOS} vídeos.` }, { status: 400 });
+    if (new Set(raw).size !== raw.length)
+      return NextResponse.json({ error: "A fila ideal tem vídeo repetido." }, { status: 400 });
+    // Conta repetida postaria cada vídeo 2× no ciclo — quebra a regra do rodízio.
+    if (new Set(account_ids).size !== account_ids.length)
+      return NextResponse.json({ error: "A fila ideal tem conta repetida." }, { status: 400 });
+    if (burst_mode)
+      return NextResponse.json({ error: "A fila ideal não funciona com o Modo Ciclo." }, { status: 400 });
+    if (Array.isArray(sync_folder_ids) && sync_folder_ids.length > 0)
+      return NextResponse.json({ error: "A fila ideal não sincroniza com pasta de contas." }, { status: 400 });
+    videoIds = raw as string[];
+  } else if (!folder_id)
     return NextResponse.json({ error: "Selecione uma pasta de mídia." }, { status: 400 });
   if (!burst_mode && (!posts_per_day || posts_per_day < 1 || posts_per_day > 1440))
     return NextResponse.json({ error: "Posts por dia deve ser entre 1 e 1440." }, { status: 400 });
@@ -163,27 +204,84 @@ export async function POST(req: NextRequest) {
   // uma pasta com mais de 1000 vídeos teria o excedente ignorado em silêncio.
   // `views` incluído para ranking por prioridade.
   let allVideos: { id: string; public_url: string; caption: string | null; views: number }[];
-  try {
-    allVideos = await fetchAllRows<{ id: string; public_url: string; caption: string | null; views: number }>((from, to) =>
-      admin
-        .from("videos_library")
-        .select("id, public_url, caption, views")
-        .eq("folder_id", folder_id)
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: true })
-        .range(from, to)
+  // Pasta gravada na linha da campanha (video_folder_id é NOT NULL).
+  let campaignFolderId = folder_id;
+  if (isRotation) {
+    // Fila ideal: só os vídeos pedidos, do próprio usuário e ainda existentes,
+    // na ordem do pedido (ela define o rodízio). Até 50 ids — cabe numa consulta.
+    const { data: picked, error: pickedErr } = await admin
+      .from("videos_library")
+      .select("id, public_url, caption, views, folder_id")
+      .in("id", videoIds)
+      .eq("user_id", user.id);
+    if (pickedErr) {
+      console.error(`[distribute] fila ideal: ${pickedErr.message}`);
+      return NextResponse.json({ error: "Falha ao ler os vídeos da fila ideal." }, { status: 503 });
+    }
+    const pickedById = new Map(
+      ((picked ?? []) as { id: string; public_url: string; caption: string | null; views: number; folder_id: string | null }[])
+        .map((v) => [v.id, v]),
     );
-  } catch (e) {
-    console.error(`[distribute] ${(e as Error).message}`);
-    return NextResponse.json({ error: "Falha ao ler a pasta de mídia." }, { status: 503 });
+    const missing = videoIds.filter((id) => !pickedById.has(id));
+    if (missing.length > 0) {
+      return NextResponse.json(
+        {
+          error: missing.length === 1
+            ? "1 vídeo da fila ideal não existe mais na Biblioteca. Remova-o da lista e tente de novo."
+            : `${missing.length} vídeos da fila ideal não existem mais na Biblioteca. Remova-os da lista e tente de novo.`,
+        },
+        { status: 400 },
+      );
+    }
+    const ordered = videoIds.map((id) => pickedById.get(id)!);
+    allVideos = ordered;
+
+    // Pasta da fila de origem quando ainda é do usuário; senão a do 1º vídeo.
+    // Sem a checagem, uma pasta apagada derrubaria o insert pela FK e uma pasta
+    // alheia ficaria registrada na campanha.
+    campaignFolderId = null;
+    if (folder_id) {
+      const { data: folderRow } = await admin
+        .from("library_folders")
+        .select("id")
+        .eq("id", folder_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (folderRow) campaignFolderId = folder_id;
+    }
+    campaignFolderId = campaignFolderId ?? ordered[0].folder_id;
+    if (!campaignFolderId) {
+      return NextResponse.json(
+        { error: "O 1º vídeo da fila ideal está fora de qualquer pasta. Coloque-o numa pasta da Biblioteca e tente de novo." },
+        { status: 400 },
+      );
+    }
+  } else {
+    try {
+      allVideos = await fetchAllRows<{ id: string; public_url: string; caption: string | null; views: number }>((from, to) =>
+        admin
+          .from("videos_library")
+          .select("id, public_url, caption, views")
+          .eq("folder_id", folder_id)
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: true })
+          .range(from, to)
+      );
+    } catch (e) {
+      console.error(`[distribute] ${(e as Error).message}`);
+      return NextResponse.json({ error: "Falha ao ler a pasta de mídia." }, { status: 503 });
+    }
   }
 
   if (!allVideos.length)
     return NextResponse.json({ error: "Nenhum vídeo encontrado na pasta." }, { status: 400 });
 
-  const maxVideos = video_count === -1
+  // Fila ideal: cada conta posta a lista inteira uma vez (N = nº de vídeos).
+  const maxVideos = isRotation
     ? allVideos.length
-    : Math.min(video_count, allVideos.length);
+    : video_count === -1
+      ? allVideos.length
+      : Math.min(video_count, allVideos.length);
 
   // Histórico por conta atravessando TODAS as origens (Postar/Clonar/Automatizar
   // via scheduled_posts + Loop via pending_containers). Antes, o subconjunto era
@@ -202,19 +300,22 @@ export async function POST(req: NextRequest) {
   const startTime = burst_mode ? Date.now() : new Date(start_at).getTime();
   if (Number.isNaN(startTime))
     return NextResponse.json({ error: "Data e hora de início inválidas." }, { status: 400 });
-  let postedCount: Map<string, Map<string, number>>;
-  let recentByAccount: Map<string, string[]>;
-  try {
-    [postedCount, recentByAccount] = await Promise.all([
-      fetchVideoUsage(admin, account_ids),
-      fetchRecentVideos(admin, account_ids, new Date(startTime).toISOString()),
-    ]);
-  } catch (e) {
-    console.error(`[distribute] ${(e as Error).message}`);
-    return NextResponse.json(
-      { error: "Falha ao ler o histórico de vídeos das contas. Tente novamente." },
-      { status: 503 }
-    );
+  let postedCount: Map<string, Map<string, number>> = new Map();
+  let recentByAccount: Map<string, string[]> = new Map();
+  // Fila ideal: o rodízio ignora o histórico (repost permitido) — nada a ler.
+  if (!isRotation) {
+    try {
+      [postedCount, recentByAccount] = await Promise.all([
+        fetchVideoUsage(admin, account_ids),
+        fetchRecentVideos(admin, account_ids, new Date(startTime).toISOString()),
+      ]);
+    } catch (e) {
+      console.error(`[distribute] ${(e as Error).message}`);
+      return NextResponse.json(
+        { error: "Falha ao ler o histórico de vídeos das contas. Tente novamente." },
+        { status: 503 }
+      );
+    }
   }
 
   // P1 CORREÇÃO: Idempotência com identidade estável durante retry.
@@ -282,22 +383,26 @@ export async function POST(req: NextRequest) {
   // sync-distribute-accounts reproduzam a mesma atribuição. Sem
   // windowClaims/recentGlobalCooldown aqui porque a distribuição cria
   // scheduled_posts futuros (não containers imediatos como o Loop).
-  const assignments = assignVideos({
-    candidates: allVideos.map((v) => ({
-      id: v.id,
-      views: v.views ?? 0,
-      public_url: v.public_url,
-      caption: v.caption,
-    })),
-    accountIds: account_ids,
-    usageByAccount: postedCount,
-    windowClaims: new Set(),
-    recentGlobalCooldown: new Set(),
-    strategy: priorityStrategy,
-    seed: distributionSeed,
-    videosPerAccount: maxVideos,
-    recentByAccount,
-  });
+  // Fila ideal: rodízio fixo (assignRotation) — na rodada k a conta da posição
+  // i recebe videoIds[(i + k) mod N]; nunca o mesmo vídeo 2× na mesma conta.
+  const assignments: { accountId: string; video: { id: string } }[] = isRotation
+    ? assignRotation(account_ids, videoIds)
+    : assignVideos({
+      candidates: allVideos.map((v) => ({
+        id: v.id,
+        views: v.views ?? 0,
+        public_url: v.public_url,
+        caption: v.caption,
+      })),
+      accountIds: account_ids,
+      usageByAccount: postedCount,
+      windowClaims: new Set(),
+      recentGlobalCooldown: new Set(),
+      strategy: priorityStrategy,
+      seed: distributionSeed,
+      videosPerAccount: maxVideos,
+      recentByAccount,
+    });
 
   // Mapa rápido de vídeo por ID para resolver legenda/url durante a geração de linhas
   const videoById = new Map(allVideos.map((v) => [v.id, v]));
@@ -392,14 +497,15 @@ export async function POST(req: NextRequest) {
   // P1 CORREÇÃO: Schema exige uuid[] NOT NULL DEFAULT '{}'.
   // O código anterior enviava null quando não havia pastas de sincronização,
   // causando falha de constraint no banco. Enviar array vazio explicitamente.
-  const { error: campaignInsertErr } = await admin.from("distribute_campaigns").insert({
+  const campaignRow = {
     id: campaignId,
     user_id: user.id,
     idempotency_key: idempotencyKey,
     status: "preparing", // Estado inicial: ainda montando posts
     account_folder_ids: Array.isArray(sync_folder_ids) && sync_folder_ids.length > 0 ? sync_folder_ids : [],
-    video_folder_id: folder_id,
-    video_count,
+    video_folder_id: campaignFolderId,
+    // Fila ideal: N fixo (a lista inteira por conta).
+    video_count: isRotation ? videoIds.length : video_count,
     posts_per_day: burst_mode ? 1 : posts_per_day,
     captions: isAutoCaption ? [] : validCaptions,
     auto_caption_enabled: isAutoCaption,
@@ -414,7 +520,15 @@ export async function POST(req: NextRequest) {
     priority_strategy: priorityStrategy,
     distribution_seed: distributionSeed,
     use_proxy_pool: body.use_proxy_pool === true,
-  });
+  };
+  const firstInsert: Record<string, unknown> = isRotation ? { ...campaignRow, video_ids: videoIds } : campaignRow;
+  let { error: campaignInsertErr } = await admin.from("distribute_campaigns").insert(firstInsert);
+  // Coluna video_ids ainda não existe (SQL manual pendente): tenta de novo sem
+  // ela. A falha anterior não criou linha, então o mesmo id serve.
+  if (campaignInsertErr && isRotation && isMissingVideoIdsColumn(campaignInsertErr)) {
+    console.warn("[distribute] distribute_campaigns.video_ids ausente — campanha da fila ideal criada sem a lista (falta supabase/fila_ideal.sql).");
+    ({ error: campaignInsertErr } = await admin.from("distribute_campaigns").insert(campaignRow));
+  }
   if (campaignInsertErr) {
     return NextResponse.json(
       { error: `Falha ao criar campanha: ${campaignInsertErr.message}` },
