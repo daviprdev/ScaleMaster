@@ -194,7 +194,7 @@ export function IdealSection({ data, ctl }: { data: QueueInsightsResponse; ctl: 
         <p className="text-xs font-medium text-ink-2">
           {plural(videos.length, "vídeo", "vídeos")} · {fmtCompact(ideal.postsPerCycle)} publicações por ciclo
         </p>
-        <ul className="grid grid-cols-4 gap-2">
+        <ul className="grid grid-cols-4 gap-2 md:grid-cols-6 lg:grid-cols-8">
           {videos.map(({ id, score }, i) => (
             <li key={id} className="flex min-w-0 flex-col gap-1">
               <LazyThumb src={score?.publicUrl ?? null} label={`Vídeo ${i + 1} da fila ideal`} />

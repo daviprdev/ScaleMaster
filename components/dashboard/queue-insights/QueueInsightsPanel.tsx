@@ -30,7 +30,8 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), select:not([disabled]), input:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
 
 /**
- * Raio-X da fila — gaveta lateral aberta pelo botão flutuante. Carregada sob
+ * Raio-X da fila — janela central (tela cheia no celular) aberta pelo botão
+ * flutuante. Carregada sob
  * demanda (next/dynamic) no primeiro clique; depois o componente fica montado
  * (com o cache) e o conteúdo sai do DOM quando a animação de fechar termina.
  * O painel só lê: os botões abrem o Postar preenchido, nada é criado aqui.
@@ -104,9 +105,9 @@ export default function QueueInsightsPanel({ open, onClose }: { open: boolean; o
 
   // Saída feita à mão (não AnimatePresence): ao fechar, o painel já para de
   // receber clique na hora — senão um clique rápido no botão flutuante cairia no
-  // "Montar essa fila" que ainda está deslizando para fora.
-  const shown = reduceMotion ? { opacity: 1 } : { x: 0 };
-  const hidden = reduceMotion ? { opacity: 0 } : { x: "100%" };
+  // "Montar essa fila" que ainda está sumindo.
+  const shown = reduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 };
+  const hidden = reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 12 };
 
   return createPortal(
     <>
@@ -118,27 +119,31 @@ export default function QueueInsightsPanel({ open, onClose }: { open: boolean; o
         onClick={onClose}
         aria-hidden="true"
       />
-      <motion.aside
-        ref={asideRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="qi-title"
-        aria-hidden={open ? undefined : true}
-        onKeyDown={trapFocus}
-        initial={hidden}
-        animate={open ? shown : hidden}
-        transition={{ duration: 0.28, ease: "easeOut" }}
-        onAnimationComplete={() => {
-          if (!openRef.current) setPresent(false);
-        }}
-        className={cn(
-          "fixed inset-y-0 right-0 z-[70] flex h-dvh w-full flex-col border-l border-line bg-surface-raised pt-safe shadow-pop sm:w-[440px]",
-          !open && "pointer-events-none"
-        )}
-      >
-        <PanelHeader insights={insights} onClose={onClose} closeRef={closeRef} />
-        <PanelBody insights={insights} onClose={onClose} />
-      </motion.aside>
+      {/* Centraliza a janela; o clique fora dela cai no fundo escuro acima. */}
+      <div className="pointer-events-none fixed inset-0 z-[70] flex items-stretch justify-center sm:items-center sm:p-6">
+        <motion.aside
+          ref={asideRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="qi-title"
+          aria-hidden={open ? undefined : true}
+          onKeyDown={trapFocus}
+          initial={hidden}
+          animate={open ? shown : hidden}
+          transition={{ duration: 0.22, ease: "easeOut" }}
+          onAnimationComplete={() => {
+            if (!openRef.current) setPresent(false);
+          }}
+          className={cn(
+            "flex h-dvh w-full flex-col overflow-hidden bg-surface-raised pt-safe shadow-pop",
+            "sm:h-[min(880px,calc(100dvh-3rem))] sm:max-w-4xl sm:rounded-2xl sm:border sm:border-line sm:pt-0",
+            open ? "pointer-events-auto" : "pointer-events-none"
+          )}
+        >
+          <PanelHeader insights={insights} onClose={onClose} closeRef={closeRef} />
+          <PanelBody insights={insights} onClose={onClose} />
+        </motion.aside>
+      </div>
     </>,
     document.body
   );
@@ -404,9 +409,12 @@ function InsightsContent({ data, onNavigate }: { data: QueueInsightsResponse; on
             )}
 
             <SummarySection summary={data.summary} />
-            <HotSection hot={data.hot} onRepublish={republish} />
+            {/* Na janela larga, "bombando" e horário/dia lado a lado; a fila ideal ocupa a largura toda. */}
+            <div className="grid items-start gap-4 md:grid-cols-2">
+              <HotSection hot={data.hot} onRepublish={republish} />
+              <TimingSection bestHour={data.bestHour} bestDay={data.bestDay} />
+            </div>
             <IdealSection data={data} ctl={ideal} />
-            <TimingSection bestHour={data.bestHour} bestDay={data.bestDay} />
             <HowWeCalculate />
           </div>
         </ScrollRootContext.Provider>
