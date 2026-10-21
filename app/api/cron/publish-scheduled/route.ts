@@ -11,6 +11,7 @@ import {
   closeProxyAgent,
   type SelectedProxy,
 } from "@/lib/publish-proxy-selector";
+import { vpsPublishDispatcher } from "@/lib/vps-publish-proxy";
 import {
   normalizeProcessingMode,
   resolveMediaUrlForMode,
@@ -569,7 +570,7 @@ export async function GET(req: NextRequest) {
             tokenToUse,
             mediaType,
             typeof post.share_to_feed === "boolean" ? post.share_to_feed : null,
-            publishProxy?.agent
+            publishProxy?.agent ?? (await vpsPublishDispatcher(post.id))
           );
         } finally {
           await closeProxyAgent(publishProxy);
@@ -610,7 +611,11 @@ export async function GET(req: NextRequest) {
       }
       let pollStatus: Awaited<ReturnType<typeof pollContainerStatusOnce>>;
       try {
-        pollStatus = await pollContainerStatusOnce(creationId, tokenToUse, pollProxy?.agent);
+        pollStatus = await pollContainerStatusOnce(
+          creationId,
+          tokenToUse,
+          pollProxy?.agent ?? (await vpsPublishDispatcher(post.id))
+        );
       } finally {
         await closeProxyAgent(pollProxy);
       }
@@ -698,7 +703,7 @@ export async function GET(req: NextRequest) {
           account.ig_business_account_id,
           creationId,
           tokenToUse,
-          pubProxy?.agent
+          pubProxy?.agent ?? (await vpsPublishDispatcher(post.id))
         );
       } finally {
         await closeProxyAgent(pubProxy);

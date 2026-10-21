@@ -15,6 +15,7 @@ import {
   type VideoProcessingMode,
 } from "@/lib/video-processing";
 import { selectProxyForPublish, closeProxyAgent } from "@/lib/publish-proxy-selector";
+import { vpsPublishDispatcher } from "@/lib/vps-publish-proxy";
 import { requireCronAuth } from "@/lib/cron-auth";
 import { LOOP_SKIP_REASONS } from "@/lib/loop-readiness";
 import {
@@ -218,7 +219,8 @@ async function createContainerForAccount(
       tokenToUse,
       "REELS",
       shareToFeed,
-      creationProxy?.agent
+      // Mesmo id do container que o publish-pending usa → mesma proxy da VPS.
+      creationProxy?.agent ?? (await vpsPublishDispatcher(containerId))
     );
   } finally {
     await closeProxyAgent(creationProxy);

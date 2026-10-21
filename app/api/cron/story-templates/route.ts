@@ -8,6 +8,7 @@ import {
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { normalizeProcessingMode, resolveMediaUrlForMode } from "@/lib/video-processing";
 import { requireCronAuth } from "@/lib/cron-auth";
+import { vpsPublishDispatcher } from "@/lib/vps-publish-proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -175,25 +176,29 @@ export async function GET(req: NextRequest) {
           }
         }
 
+        // As três fases do story saem pela mesma proxy da VPS.
+        const dispatcher = await vpsPublishDispatcher(crypto.randomUUID());
         const creationId = await createMediaContainerOnly(
           account.ig_business_account_id,
           mediaUrlToPost,
           "",
           token,
-          "STORIES"
+          "STORIES",
+          null,
+          dispatcher
         );
 
         // Poll simples — stories processam rápido, mas dá algumas tentativas.
         let finished = false;
         for (let i = 0; i < 4 && !finished; i++) {
           if (i > 0) await new Promise((r) => setTimeout(r, 4_000));
-          const pollStatus = await pollContainerStatusOnce(creationId, token);
+          const pollStatus = await pollContainerStatusOnce(creationId, token, dispatcher);
           if (pollStatus === "finished") finished = true;
           else if (pollStatus === "error") throw new Error("Container retornou erro no processamento.");
         }
         if (!finished) throw new Error("Timeout aguardando processamento do container.");
 
-        await publishReadyContainer(account.ig_business_account_id, creationId, token);
+        await publishReadyContainer(account.ig_business_account_id, creationId, token, dispatcher);
         summary.published++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

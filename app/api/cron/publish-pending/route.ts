@@ -12,6 +12,7 @@ import {
   closeProxyAgent,
   type SelectedProxy,
 } from "@/lib/publish-proxy-selector";
+import { vpsPublishDispatcher } from "@/lib/vps-publish-proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -218,7 +219,7 @@ export async function GET(req: NextRequest) {
         pollStatus = await pollContainerStatusOnce(
           container.creation_id,
           tokenToUse,
-          pendingProxy?.agent
+          pendingProxy?.agent ?? (await vpsPublishDispatcher(container.id))
         );
       } finally {
         await closeProxyAgent(pendingProxy);
@@ -285,7 +286,7 @@ export async function GET(req: NextRequest) {
           container.ig_business_account_id,
           container.creation_id,
           tokenToUse,
-          pubProxy?.agent
+          pubProxy?.agent ?? (await vpsPublishDispatcher(container.id))
         );
       } catch (pubErr) {
         const pubMsg = pubErr instanceof Error ? pubErr.message : String(pubErr);

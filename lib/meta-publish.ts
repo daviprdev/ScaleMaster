@@ -1,14 +1,17 @@
 // Tokens gerados via Instagram Login funcionam com graph.instagram.com
 const GRAPH_API = "https://graph.instagram.com/v21.0";
 
-// Chamadas à Graph API oficial saem server-to-server, direto da VPS —
-// sem proxy residencial (decisão de arquitetura, ver CLAUDE.md).
+// Chamadas à Graph API oficial saem server-to-server: pelo proxy do estoque
+// quando o post usa "Usar minhas proxies" (dispatcher vindo do chamador), senão
+// pelas proxies da VPS (PUBLISH_PROXIES, lib/vps-publish-proxy) ou direto.
 // undici.fetch em vez do fetch global do Next.js: o patch de cache do Next
 // pode alterar/reter respostas que aqui precisam ser lidas cruas.
+import { randomUUID } from "crypto";
 import { fetch as undiciFetch, type Dispatcher } from "undici";
 // Import relativo (e não `@/lib/...`) de propósito: a suíte de testes compila
 // este arquivo isolado com `tsc`, fora do resolver de paths do Next.
 import { validateInstagramCaption, InvalidCaptionError } from "./reel-captions";
+import { vpsPublishDispatcher } from "./vps-publish-proxy";
 
 /**
  * Sanitização de TRANSPORTE — e nada além disso.
@@ -331,6 +334,8 @@ export async function publishViaMetaAPI(
   dispatcher?: Dispatcher
 ): Promise<MetaPublishResult> {
   try {
+    // Fluxo de uma vez só: as três fases saem pela mesma proxy da VPS.
+    dispatcher ??= await vpsPublishDispatcher(randomUUID());
     const creationId = await createMediaContainer(
       igBusinessAccountId,
       videoUrl,
