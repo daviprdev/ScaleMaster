@@ -44,8 +44,11 @@ interface PublishedItem {
   comments: number | null;
   shares: number | null;
   saved: number | null;
+  /** Hora da última leitura de views; nulo = ainda sem leitura. */
+  views_read_at: string | null;
   caption: string | null;
   media_id: string | null;
+  video_id: string | null;
   video_url: string | null;
   published_at: string;
   campaign_id: string | null;
@@ -54,6 +57,8 @@ interface PublishedItem {
 
 interface Stats {
   total_views: number;
+  postar_views?: number;
+  loop_views?: number;
   total_reach: number;
   stories: number;
   reels: number;
@@ -110,6 +115,17 @@ function timeAgo(dateStr: string | null): string {
   return formatDate(dateStr);
 }
 
+// Idade da última leitura de views: o número da Meta vale para aquela hora,
+// não para agora (reel novo lido nos primeiros minutos mostra quase 0).
+function readAgo(dateStr: string | null): string {
+  if (!dateStr) return "aguardando 1ª leitura";
+  const diff = Math.max(0, Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000));
+  if (diff < 60) return "lido agora";
+  if (diff < 3600) return `lido há ${Math.floor(diff / 60)}min`;
+  if (diff < 86400) return `lido há ${Math.floor(diff / 3600)}h`;
+  return `lido há ${Math.floor(diff / 86400)}d`;
+}
+
 // ── Página principal ──────────────────────────────────────────
 export default function PublicadosPage() {
   // Dados
@@ -119,6 +135,7 @@ export default function PublicadosPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Filtros
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
@@ -146,9 +163,13 @@ export default function PublicadosPage() {
         setAccounts(data.accounts ?? []);
         setStats(data.stats ?? { total_views: 0, total_reach: 0, stories: 0, reels: 0 });
         setTotal(data.total ?? 0);
+        setLoadError(null);
+      } else {
+        setLoadError(data?.error ?? "Não foi possível carregar as publicações.");
       }
     } catch (err) {
       console.error("[publicados] Erro ao buscar:", err);
+      setLoadError("Não foi possível carregar as publicações.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -461,6 +482,13 @@ export default function PublicadosPage() {
         )}
       </motion.div>
 
+      {/* Erro da última busca (a lista abaixo pode ser a anterior) */}
+      {loadError && (
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-danger-soft border border-danger/20 text-danger text-xs">
+          {loadError} Clique em Atualizar para tentar de novo.
+        </div>
+      )}
+
       {/* ── Tabela de publicações ── */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -582,9 +610,17 @@ export default function PublicadosPage() {
 
                     {/* Views */}
                     <td className="px-4 py-3 text-right">
-                      <span className="text-ink text-xs font-semibold tabular-nums">
-                        {formatNumber(item.views)}
-                      </span>
+                      <div className="flex flex-col items-end">
+                        <span className="text-ink text-xs font-semibold tabular-nums">
+                          {formatNumber(item.views)}
+                        </span>
+                        <span
+                          className="text-ink-3 text-[10px] whitespace-nowrap"
+                          title={item.views_read_at ? `Última leitura: ${formatDate(item.views_read_at)}` : undefined}
+                        >
+                          {readAgo(item.views_read_at)}
+                        </span>
+                      </div>
                     </td>
 
                     {/* Reach */}
@@ -635,9 +671,12 @@ export default function PublicadosPage() {
               Mostrando {filteredItems.length} de {total} publicações
             </span>
             <span className="flex items-center gap-3">
-              <span className="flex items-center gap-1">
-                <Eye size={11} className="text-emerald-400" />
-                {formatNumber(stats.total_views)} views totais
+              <span
+                className="flex items-center gap-1"
+                title={`Soma das ${items.length} publicações carregadas — Postar ${formatNumber(stats.postar_views ?? null)} + Loop ${formatNumber(stats.loop_views ?? null)}`}
+              >
+                <Eye size={11} className="text-success" />
+                {formatNumber(stats.total_views)} views (Postar + Loop)
               </span>
               <span className="flex items-center gap-1">
                 <TrendingUp size={11} className="text-[#85B9E9]" />

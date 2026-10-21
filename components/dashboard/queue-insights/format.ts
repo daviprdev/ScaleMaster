@@ -3,6 +3,9 @@
  * (mesma regra de lib/brt-time.ts — o Brasil não tem horário de verão).
  */
 
+// Caminho relativo (não "@/"): o vitest do projeto não resolve o alias e este arquivo tem teste.
+import { MATURE_HOURS } from "../../../lib/queue-insights/constants";
+
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 const compactFmt = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
@@ -58,6 +61,33 @@ export function fmtAgo(iso: string, now = new Date()): string {
   if (h < 24) return `há ${h}h`;
   const d = Math.floor(h / 24);
   return `há ${d} dia${d > 1 ? "s" : ""}`;
+}
+
+/** Igual a fmtAgo, mas com minuto na primeira hora: "há 3 min", "há 2h". */
+export function fmtAgoMin(iso: string, now = new Date()): string {
+  const min = Math.floor((now.getTime() - new Date(iso).getTime()) / 60_000);
+  if (min < 1) return "agora há pouco";
+  if (min < 60) return `há ${min} min`;
+  return fmtAgo(iso, now);
+}
+
+/**
+ * Quanto depois da publicação as views foram lidas: "2 min após publicar",
+ * "1h30 após publicar", "3 dias após publicar". Leitura antes da publicação
+ * (horário estimado do Loop, erro de ~3 min) conta como "logo após".
+ */
+export function fmtReadAfterPublish(publishedAt: string, readAt: string): string {
+  const min = Math.round((new Date(readAt).getTime() - new Date(publishedAt).getTime()) / 60_000);
+  if (!isFinite(min) || min < 1) return "logo após publicar";
+  if (min < 24 * 60) return `${fmtMinutes(min)} após publicar`;
+  const d = Math.floor(min / (24 * 60));
+  return `${d} dia${d > 1 ? "s" : ""} após publicar`;
+}
+
+/** Leitura feita antes das 4h de publicado — o número ainda vai subir (mesma régua do post maduro). */
+export function isInitialRead(publishedAt: string, readAt: string | null): boolean {
+  if (!readAt) return false;
+  return new Date(readAt).getTime() - new Date(publishedAt).getTime() < MATURE_HOURS * 3_600_000;
 }
 
 /** "2026-10-14" (já em BRT) → "terça, 14/10". */

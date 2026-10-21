@@ -39,8 +39,9 @@ const METRICS: Record<InsightsMediaKind, string> = {
   story: "views,reach,shares",
 };
 
-// Códigos de limite de uso da Graph API (app/usuário/página/recurso).
-const RATE_LIMIT_CODES = new Set([4, 17, 32, 613]);
+// Códigos de limite de uso da Graph API (app/usuário/página/recurso) e 80002,
+// o freio por conta do Instagram (muitas chamadas para a mesma conta).
+const RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80002]);
 
 interface GraphError { message?: string; code?: number }
 

@@ -7,6 +7,12 @@ import { fetchAllRows } from "@/lib/video-history";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Cache curto do engagement por conta: o Postar faz polling a cada 15 s e as
+// views só mudam a cada rodada do sync (5 min). Sem ele, cada poll relia todos
+// os posts publicados das campanhas, em páginas de 1000.
+const ENGAGEMENT_CACHE_MS = 60_000;
+const engagementCache = new Map<string, { at: number; rows: any[] }>();
+
 interface RpcRow {
   campaign_id: string;
   total: number;
@@ -34,7 +40,12 @@ interface AccountEngagement {
   total_comments: number;
   total_reach: number;
   published_count: number;
+  /** Posts com pelo menos uma leitura de insights (≠ views 0). */
   synced_posts: number;
+  /** Leitura mais recente entre os posts da conta (null = nenhum lido ainda). */
+  last_read_at: string | null;
+  /** Posts cuja última leitura veio < 30 min após publicar (números de primeiros minutos). */
+  early_only: number;
 }
 
 interface CampaignSummary extends RpcRow {
@@ -164,26 +175,50 @@ export async function GET(req: NextRequest) {
   // Métricas de engagement por conta para cada campanha (views, likes, comments, reach)
   if (campaigns.length > 0) {
     const campaignIds = campaigns.map(c => c.campaign_id);
-    const { data: engRows } = await (admin as any)
-      .from("scheduled_posts")
-      .select(`
-        campaign_id,
-        account_id,
-        insights_plays,
-        insights_likes,
-        insights_comments,
-        insights_reach,
-        insights_fetched_at,
-        status,
-        instagram_accounts!inner(id, username, avatar_url)
-      `)
-      .eq("user_id", user.id)
-      .in("campaign_id", campaignIds)
-      .eq("status", "published");
+    // Paginado: sem `.range()` o PostgREST devolve só 1000 posts publicados e
+    // campanhas grandes apareciam com views/likes subcontados, em silêncio.
+    // Falha aqui não derruba a lista — as campanhas só saem sem engagement.
+    let engRows: any[] = [];
+    const cacheKey = `${user.id}:${[...campaignIds].sort().join(",")}`;
+    const cached = engagementCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < ENGAGEMENT_CACHE_MS) engRows = cached.rows;
+    else try {
+      engRows = await fetchAllRows((from, to) =>
+        (admin as any)
+          .from("scheduled_posts")
+          .select(`
+            campaign_id,
+            account_id,
+            insights_plays,
+            insights_likes,
+            insights_comments,
+            insights_reach,
+            insights_fetched_at,
+            published_at,
+            status,
+            instagram_accounts!inner(id, username, avatar_url)
+          `)
+          .eq("user_id", user.id)
+          .in("campaign_id", campaignIds)
+          .eq("status", "published")
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
+      for (const [key, entry] of engagementCache) {
+        if (Date.now() - entry.at >= ENGAGEMENT_CACHE_MS) engagementCache.delete(key);
+      }
+      engagementCache.set(cacheKey, { at: Date.now(), rows: engRows });
+    } catch (e) {
+      console.error("[campaigns] engagement por conta falhou:", (e as Error).message);
+    }
+
+    // Leitura feita até 30 min após publicar = número de primeiros minutos
+    // (o Reel ainda está subindo); conta separado para a UI avisar.
+    const EARLY_READ_MS = 30 * 60_000;
 
     // Agrupa por campanha → conta
     const engMap = new Map<string, Map<string, AccountEngagement>>();
-    for (const row of (engRows ?? []) as any[]) {
+    for (const row of engRows) {
       const cid = row.campaign_id as string;
       const aid = row.account_id as string;
       if (!engMap.has(cid)) engMap.set(cid, new Map());
@@ -196,6 +231,7 @@ export async function GET(req: NextRequest) {
           avatar_url: acc?.avatar_url ?? null,
           total_plays: 0, total_likes: 0, total_comments: 0, total_reach: 0,
           published_count: 0, synced_posts: 0,
+          last_read_at: null, early_only: 0,
         });
       }
       const e = accMap.get(aid)!;
@@ -204,7 +240,16 @@ export async function GET(req: NextRequest) {
       e.total_likes += row.insights_likes ?? 0;
       e.total_comments += row.insights_comments ?? 0;
       e.total_reach += row.insights_reach ?? 0;
-      if (row.insights_fetched_at) e.synced_posts++;
+      if (row.insights_fetched_at) {
+        e.synced_posts++;
+        const readMs = new Date(row.insights_fetched_at).getTime();
+        if (!e.last_read_at || readMs > new Date(e.last_read_at).getTime()) {
+          e.last_read_at = row.insights_fetched_at;
+        }
+        if (row.published_at && readMs - new Date(row.published_at).getTime() < EARLY_READ_MS) {
+          e.early_only++;
+        }
+      }
     }
 
     // Injeta nas campanhas e calcula totais globais da campanha

@@ -75,7 +75,11 @@ interface AccountEngagement {
   total_comments: number;
   total_reach: number;
   published_count: number;
+  /** Posts com leitura de insights — 0 = conta ainda não lida (≠ views 0). */
   synced_posts: number;
+  last_read_at?: string | null;
+  /** Posts cuja última leitura veio < 30 min após publicar. */
+  early_only?: number;
 }
 
 interface Campaign {
@@ -1214,10 +1218,26 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                       <ChevronDown size={12} className={cn("text-ink-3 transition-transform duration-200", expandedEngagement.has(campaign.campaign_id) ? "rotate-0" : "-rotate-90")} />
                       <span className="text-[9px] uppercase tracking-wider text-ink-3 group-hover:text-ink-2 transition-colors">Engagement por conta</span>
                     </div>
-                    {(campaign.total_plays ?? 0) > 0 && (
+                    {/* 0 lido é número; "—" só enquanto nenhuma conta foi lida */}
+                    {campaign.account_engagement.some(e => e.synced_posts > 0) ? (
                       <span className="text-[9px] tabular-nums text-[#85B9E9]/60">{(campaign.total_plays ?? 0).toLocaleString("pt-BR")} views totais</span>
+                    ) : (
+                      <span className="text-[9px] tabular-nums text-ink-3/60" title="ainda não lido">— views totais</span>
                     )}
                   </button>
+                  {/* Idade da leitura: views de primeiros minutos ficam bem abaixo das do Instagram */}
+                  {(() => {
+                    const reads = campaign.account_engagement.map(e => e.last_read_at).filter((d): d is string => !!d);
+                    if (reads.length === 0) return null;
+                    const mins = Math.max(0, Math.floor((Date.now() - Math.max(...reads.map(d => new Date(d).getTime()))) / 60_000));
+                    const ago = mins < 60 ? `${mins} min` : mins < 1440 ? `${Math.floor(mins / 60)}h` : `${Math.floor(mins / 1440)}d`;
+                    const early = campaign.account_engagement.reduce((s, e) => s + (e.early_only ?? 0), 0);
+                    return (
+                      <p className="text-[9px] text-ink-3 px-1">
+                        views lidas há {ago}{early > 0 && ` · ${early} ${early === 1 ? "post" : "posts"} só com a 1ª leitura`}
+                      </p>
+                    );
+                  })()}
                   {expandedEngagement.has(campaign.campaign_id) && (
                     <>
                       <div className="space-y-1">
@@ -1233,9 +1253,9 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                             }
                             <span className="flex-1 truncate text-ink-2">@{eng.username}</span>
                             <div className="flex items-center gap-2.5 tabular-nums">
-                              <span className={cn("font-bold", eng.total_plays > 0 ? "text-accent" : "text-ink-3/40")} title="Views">{eng.total_plays > 0 ? eng.total_plays.toLocaleString("pt-BR") : "—"}</span>
-                              <span className={cn("font-medium", eng.total_likes > 0 ? "text-pink-400" : "text-ink-3/40")} title="Likes">{eng.total_likes > 0 ? eng.total_likes.toLocaleString("pt-BR") : "—"}</span>
-                              <span className={cn("font-medium", eng.total_comments > 0 ? "text-warning" : "text-ink-3/40")} title="Comentários">{eng.total_comments > 0 ? eng.total_comments.toLocaleString("pt-BR") : "—"}</span>
+                              <span className={cn("font-bold", eng.synced_posts === 0 ? "text-ink-3/40" : eng.total_plays > 0 ? "text-accent" : "text-ink-3")} title={eng.synced_posts > 0 ? "Views" : "Views · ainda não lido"}>{eng.synced_posts > 0 ? eng.total_plays.toLocaleString("pt-BR") : "—"}</span>
+                              <span className={cn("font-medium", eng.synced_posts === 0 ? "text-ink-3/40" : eng.total_likes > 0 ? "text-pink-400" : "text-ink-3")} title={eng.synced_posts > 0 ? "Likes" : "Likes · ainda não lido"}>{eng.synced_posts > 0 ? eng.total_likes.toLocaleString("pt-BR") : "—"}</span>
+                              <span className={cn("font-medium", eng.synced_posts === 0 ? "text-ink-3/40" : eng.total_comments > 0 ? "text-warning" : "text-ink-3")} title={eng.synced_posts > 0 ? "Comentários" : "Comentários · ainda não lido"}>{eng.synced_posts > 0 ? eng.total_comments.toLocaleString("pt-BR") : "—"}</span>
                             </div>
                           </div>
                         ))}

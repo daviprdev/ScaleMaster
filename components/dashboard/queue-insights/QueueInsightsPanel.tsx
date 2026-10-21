@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { Banner, Button, EmptyState, IconButton, Select, Skeleton } from "@/components/ui";
 import { saveHandoff } from "@/lib/queue-insights/handoff";
 import type { PostCard, QueueInsightsResponse, QueueListItem } from "@/lib/queue-insights/types";
-import { fmtReadAt, plural } from "./format";
+import { fmtAgoMin, fmtReadAt, plural } from "./format";
 import { ScrollRootContext } from "./parts";
 import { SummarySection } from "./SummarySection";
 import { HotSection } from "./HotSection";
@@ -209,18 +209,34 @@ function PanelHeader({
   );
 }
 
+/**
+ * Frescor das views. Primeiro quantos posts ainda estão com a leitura dos
+ * primeiros minutos (o número de verdade só chega na leitura de 4h), depois
+ * há quanto tempo foi a última leitura — a hora exata fica no `title`.
+ */
 function FreshnessLine({ data }: { data: QueueInsightsResponse }) {
   const f = data.freshness;
-  const parts = [
-    f.viewsReadUntil ? `views lidas até ${fmtReadAt(f.viewsReadUntil)}` : "nenhuma leitura de views ainda",
+  const initial =
     f.awaitingMatureRead > 0
-      ? plural(f.awaitingMatureRead, "post aguardando leitura de 4h", "posts aguardando leitura de 4h")
-      : null,
+      ? `${plural(f.awaitingMatureRead, "post ainda com a leitura inicial", "posts ainda com a leitura inicial")} — os números sobem nas próximas horas`
+      : null;
+  const lastRead = f.viewsReadUntil ? `última leitura ${fmtAgoMin(f.viewsReadUntil)}` : "nenhuma leitura de views ainda";
+  const frozen =
     f.frozenAccountPosts > 0
       ? plural(f.frozenAccountPosts, "post de conta fora do ar", "posts de contas fora do ar")
-      : null,
-  ].filter(Boolean);
-  return <p className="text-xs leading-4 text-ink-3">{parts.join(" · ")}</p>;
+      : null;
+  return (
+    <p className="text-xs leading-4 text-ink-3">
+      {initial && (
+        <>
+          <span className="text-warning">{initial}</span>
+          {" · "}
+        </>
+      )}
+      <span title={f.viewsReadUntil ? `Views lidas até ${fmtReadAt(f.viewsReadUntil)}` : undefined}>{lastRead}</span>
+      {frozen && ` · ${frozen}`}
+    </p>
+  );
 }
 
 // ── Corpo ────────────────────────────────────────────────────

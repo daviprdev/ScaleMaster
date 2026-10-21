@@ -3,7 +3,7 @@
 import { Send, TrendingUp } from "lucide-react";
 import { Avatar, Badge, Button } from "@/components/ui";
 import type { HotSection as HotData, PostCard } from "@/lib/queue-insights/types";
-import { fmtAgo, fmtMultiple, plural } from "./format";
+import { fmtAgo, fmtAgoMin, fmtMultiple, fmtReadAt, plural } from "./format";
 import { InsightCard, LazyThumb, Num, ViewOnInstagram } from "./parts";
 
 /** Post fora da curva das últimas 48h e o atalho para levar o vídeo às outras contas. */
@@ -52,6 +52,15 @@ export function HotSection({ hot, onRepublish }: { hot: HotData; onRepublish: (p
   );
 }
 
+/** " lidas há 12 min" logo depois de "views" — a hora exata vai no `title`. */
+function readAgo(post: PostCard): string {
+  return post.viewsReadAt ? ` lidas ${fmtAgoMin(post.viewsReadAt)}` : "";
+}
+
+function readTitle(post: PostCard): string | undefined {
+  return post.viewsReadAt ? `Views lidas em ${fmtReadAt(post.viewsReadAt)}` : undefined;
+}
+
 function RisingBadge({ text }: { text: string | null }) {
   if (!text) return null;
   return (
@@ -73,7 +82,9 @@ function BigPost({ post }: { post: PostCard }) {
         </div>
         <div className="flex flex-col">
           <Num value={post.views} className="font-mono text-[22px] font-semibold leading-7 text-success" />
-          <span className="text-xs text-ink-3">views</span>
+          <span className="text-xs text-ink-3" title={readTitle(post)}>
+            views{readAgo(post)}
+          </span>
         </div>
         {post.multiple != null && (
           <p className="text-[13px] text-ink-2">
@@ -94,8 +105,8 @@ function CompactPost({ post }: { post: PostCard }) {
       <LazyThumb src={post.publicUrl} className="w-10 rounded-md" label={`Vídeo do post de @${post.username}`} />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-[13px] font-medium text-ink">@{post.username}</span>
-        <span className="text-xs text-ink-3">
-          <Num value={post.views} className="font-medium text-success" /> views
+        <span className="text-xs text-ink-3" title={readTitle(post)}>
+          <Num value={post.views} className="font-medium text-success" /> views{readAgo(post)}
           {post.multiple != null && ` · ${fmtMultiple(post.multiple)} o normal`}
           {` · ${fmtAgo(post.publishedAt)}`}
         </span>

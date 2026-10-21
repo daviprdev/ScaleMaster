@@ -1,8 +1,16 @@
 "use client";
 
-import { Avatar } from "@/components/ui";
+import { Avatar, Badge } from "@/components/ui";
 import type { PostCard, Summary } from "@/lib/queue-insights/types";
-import { fmtAgo, fmtCompact, fmtMultiple } from "./format";
+import {
+  fmtAgo,
+  fmtAgoMin,
+  fmtCompact,
+  fmtMultiple,
+  fmtReadAfterPublish,
+  fmtReadAt,
+  isInitialRead,
+} from "./format";
 import { Eyebrow, LazyThumb, MiniStat, Num, ViewOnInstagram } from "./parts";
 
 /** Resumo dos 30 dias da fila + o post de mais views. */
@@ -43,9 +51,31 @@ function BestPostCard({ post }: { post: PostCard }) {
             </>
           )}
         </p>
-        <p className="text-xs text-ink-3">{fmtAgo(post.publishedAt)}</p>
+        <p className="text-xs text-ink-3">publicado {fmtAgo(post.publishedAt)}</p>
+        <ReadTiming post={post} />
         <ViewOnInstagram post={post} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Quando as views foram lidas. Leitura dos primeiros minutos fica marcada:
+ * o número ainda sobe até a leitura de 4h.
+ */
+function ReadTiming({ post }: { post: PostCard }) {
+  if (!post.viewsReadAt) return null;
+  const initial = isInitialRead(post.publishedAt, post.viewsReadAt);
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <p className="text-xs text-ink-3" title={`Views lidas em ${fmtReadAt(post.viewsReadAt)}`}>
+        views lidas {fmtReadAfterPublish(post.publishedAt, post.viewsReadAt)} · {fmtAgoMin(post.viewsReadAt)}
+      </p>
+      {initial && (
+        <Badge tone="warning" title="Lida antes das 4h de publicado — o número sobe na próxima leitura.">
+          leitura inicial
+        </Badge>
+      )}
     </div>
   );
 }
