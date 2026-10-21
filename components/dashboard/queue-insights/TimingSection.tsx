@@ -5,7 +5,7 @@ import type { BestDay, BestHour, DayPattern } from "@/lib/queue-insights/types";
 import { fmtCompact, fmtDayKey, fmtHourRange, fmtInt, fmtMinutes, fmtMultiple } from "./format";
 import { InsightCard } from "./parts";
 
-/** Melhor horário e melhor dia da fila (14 dias, BRT). */
+/** Melhor horário e melhor dia da fila (posts dela, até 14 dias, BRT). */
 export function TimingSection({ bestHour, bestDay }: { bestHour: BestHour | null; bestDay: BestDay | null }) {
   return (
     <>
@@ -20,7 +20,7 @@ function BestHourCard({ bestHour }: { bestHour: BestHour | null }) {
     return (
       <InsightCard eyebrow="Melhor horário" tone="neutral" title="O horário não fez diferença nesta fila">
         <p className="text-[13px] leading-5 text-ink-2">
-          Nenhuma hora rendeu claramente acima das outras nos últimos 14 dias — dá para postar ao longo do dia.
+          Nenhuma hora rendeu claramente acima das outras nos posts desta fila — dá para postar ao longo do dia.
         </p>
       </InsightCard>
     );

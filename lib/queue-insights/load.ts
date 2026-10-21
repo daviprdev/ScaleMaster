@@ -48,8 +48,6 @@ const HOT_WINDOW_MS = 48 * H;
 const MATURE_MS = 4 * H;
 /** O container do Loop nasce antes da publicação (processamento, backoff): margem na busca por created_at. */
 const LOOP_CREATED_MARGIN_MS = D;
-/** Pausadas e terminadas só entram no seletor se publicaram nos últimos 7 dias. */
-const LIST_RECENT_MS = 7 * D;
 
 /** Teto de linhas por resposta do PostgREST. */
 const PAGE = 1000;
@@ -1385,9 +1383,9 @@ async function countPublishedSince(
 const STATE_ORDER: Record<QueueState, number> = { running: 0, running_synced: 0, paused: 1, finished: 2 };
 
 /**
- * Filas do seletor: as rodando primeiro, depois pausadas e terminadas que
- * publicaram nos últimos 7 dias. Abre na única rodando, ou na rodando com mais
- * posts nas últimas 24h (sem nenhuma rodando, na primeira da lista).
+ * Filas do seletor: só as que estão rodando agora (campanhas ativas do Postar
+ * e Loops ativos) — o Raio-X lê a fila que está no ar, nunca uma terminada.
+ * Campanhas vêm antes dos Loops; abre na com mais posts nas últimas 24h.
  */
 export async function loadQueueList(admin: SupabaseClient, userId: string, now: Date): Promise<QueueListResponse> {
   const lim = createLimiter(CONCURRENCY);
@@ -1421,28 +1419,26 @@ export async function loadQueueList(admin: SupabaseClient, userId: string, now: 
     ? await loadCampaignStats(admin, lim, userId, campaigns)
     : new Map<string, CampaignStats>();
 
-  // ── 2. Quem entra: rodando sempre; pausada/terminada só com post nos últimos 7 dias ──
-  const recentSince = nowMs - LIST_RECENT_MS;
+  // ── 2. Quem entra: só fila rodando (pausada ou terminada fica de fora) ──
   const listedCampaigns = campaigns
     .map((c) => {
       const s = campaignStats.get(c.id) ?? { inflight: 0, lastPublishedAt: null, accountIds: [] };
       return { row: c, stats: s, state: campaignState(c, s.inflight, s.lastPublishedAt, nowMs) };
     })
-    .filter(({ state, stats }) => isRunning(state) || (!!stats.lastPublishedAt && ms(stats.lastPublishedAt) >= recentSince));
+    .filter(({ state }) => isRunning(state));
 
-  // last_posted_at (criação do último container) é o filtro barato; a contagem de 7 dias confirma.
   const listedLoops = loops
     .map((l) => ({ row: l, state: loopState(l.status) }))
-    .filter(({ row, state }) => isRunning(state) || (!!row.last_posted_at && ms(row.last_posted_at) >= recentSince));
+    .filter(({ state }) => isRunning(state));
 
-  // ── 3. Nomes de pasta, contas das pastas e contagens 24h/7d ──
+  // ── 3. Nomes de pasta, contas das pastas e contagens 24h ──
   const videoFolderIds = uniq(listedCampaigns.map((c) => c.row.video_folder_id).filter((v): v is string => !!v));
   const accountFolderIds = uniq([
     ...listedCampaigns.flatMap((c) => c.row.account_folder_ids ?? []),
     ...listedLoops.map((l) => l.row.account_folder_id).filter((v): v is string => !!v),
   ]);
 
-  const [folderNames, folderAccounts, campaign24h, loop24h, loop7d] = await Promise.all([
+  const [folderNames, folderAccounts, campaign24h, loop24h] = await Promise.all([
     videoFolderIds.length
       ? lim.run(() => admin.from("library_folders").select("id, name").eq("user_id", userId).in("id", videoFolderIds))
       : Promise.resolve({ data: [], error: null }),
@@ -1453,11 +1449,6 @@ export async function loadQueueList(admin: SupabaseClient, userId: string, now: 
       : Promise.resolve([] as { id: string; folder_id: string | null }[]),
     Promise.all(listedCampaigns.map((c) => countPublishedSince(admin, lim, userId, "postar", c.row.id, nowMs - D))),
     Promise.all(listedLoops.map((l) => countPublishedSince(admin, lim, userId, "loop", l.row.id, nowMs - D))),
-    Promise.all(
-      listedLoops.map((l) =>
-        isRunning(l.state) ? Promise.resolve(1) : countPublishedSince(admin, lim, userId, "loop", l.row.id, recentSince),
-      ),
-    ),
   ]);
 
   const folderNameById = new Map(
@@ -1490,7 +1481,6 @@ export async function loadQueueList(admin: SupabaseClient, userId: string, now: 
     });
   });
   listedLoops.forEach(({ row, state }, i) => {
-    if (loop7d[i] === 0) return;
     const accountCount = row.account_folder_id
       ? (accountsByFolder.get(row.account_folder_id) ?? []).length
       : uniq((row.loop_accounts ?? []).map((la) => la.account_id)).length;
@@ -1510,11 +1500,12 @@ export async function loadQueueList(admin: SupabaseClient, userId: string, now: 
   queues.sort(
     (a, b) =>
       STATE_ORDER[a.state] - STATE_ORDER[b.state] ||
+      (a.source === b.source ? 0 : a.source === "postar" ? -1 : 1) ||
       b.publishedLast24h - a.publishedLast24h ||
       ms(b.createdAt) - ms(a.createdAt),
   );
 
-  // A ordenação já põe a rodando com mais posts em 24h na frente.
+  // A ordenação já põe a campanha com mais posts em 24h na frente.
   const first = queues[0];
   const defaultQueue = first ? { source: first.source, id: first.id } : null;
 

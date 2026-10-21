@@ -233,6 +233,8 @@ export interface Readiness {
 
 export interface Summary {
   windowDays: 30;
+  /** ISO do início do resumo: o começo da fila, ou 30 dias atrás numa fila mais antiga. */
+  since: string;
   posts: number;
   totalViews: number;
   /** Média dos posts maduros com views. */

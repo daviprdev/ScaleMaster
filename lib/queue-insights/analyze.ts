@@ -156,7 +156,11 @@ export function analyzeQueue(input: AnalyzeInput, now: Date): Omit<QueueInsights
 
   // Topo do painel (itens 8 e 10).
   const freshness = computeFreshness(scored, accountById, nowMs);
-  const summary = computeSummary(scored, cards);
+  const createdMs = toMs(queue.createdAt);
+  const since = new Date(
+    Math.max(Number.isFinite(createdMs) ? createdMs : 0, nowMs - SUMMARY_DAYS * DAY_MS),
+  ).toISOString();
+  const summary = computeSummary(scored, cards, since);
   const hot = buildHotSection({ queue, posts: scored, nowMs, cards, usedKeysByAccount, keyOf });
 
   // Prontidão (item 9).

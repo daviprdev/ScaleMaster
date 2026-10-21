@@ -6,6 +6,7 @@ import {
   fmtAgo,
   fmtAgoMin,
   fmtCompact,
+  fmtDayMonth,
   fmtMultiple,
   fmtReadAfterPublish,
   fmtReadAt,
@@ -13,12 +14,13 @@ import {
 } from "./format";
 import { Eyebrow, LazyThumb, MiniStat, Num, ViewOnInstagram } from "./parts";
 
-/** Resumo dos 30 dias da fila + o post de mais views. */
+/** Resumo da fila (desde o começo dela) + o post de mais views. */
 export function SummarySection({ summary }: { summary: Summary }) {
+  const since = summary.since ? `desde ${fmtDayMonth(summary.since)}` : undefined;
   return (
-    <section aria-label="Resumo dos últimos 30 dias" className="flex flex-col gap-3">
+    <section aria-label="Resumo da fila" className="flex flex-col gap-3">
       <div className="grid grid-cols-3 gap-2">
-        <MiniStat label="Posts 30 dias" value={summary.posts} />
+        <MiniStat label="Posts da fila" value={summary.posts} hint={since} />
         <MiniStat label="Views" value={summary.totalViews} valueClassName="text-success" />
         <MiniStat
           label="Views/post"
@@ -37,7 +39,7 @@ function BestPostCard({ post }: { post: PostCard }) {
     <div className="flex gap-3 rounded-xl border border-line bg-surface p-3">
       <LazyThumb src={post.publicUrl} className="w-[72px]" label={`Vídeo do post de @${post.username}`} />
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <Eyebrow tone="success">Melhor post dos 30 dias</Eyebrow>
+        <Eyebrow tone="success">Melhor post da fila</Eyebrow>
         <div className="flex min-w-0 items-center gap-2">
           <Avatar size="sm" src={post.avatarUrl} alt={post.username} />
           <span className="truncate text-[13px] font-medium text-ink">@{post.username}</span>

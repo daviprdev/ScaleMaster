@@ -11,10 +11,11 @@ import { mean, median, roundOrNull } from "./stats";
 import { toMs } from "./time";
 
 /**
- * 30 dias da fila. totalViews soma tudo (inclui contas fora do ar, valor
- * congelado); média e mediana só dos maduros; melhor post = mais views.
+ * Posts da fila desde `since` (o começo dela, ou 30 dias numa fila antiga).
+ * totalViews soma tudo (inclui contas fora do ar, valor congelado); média e
+ * mediana só dos maduros; melhor post = mais views.
  */
-export function computeSummary(posts: readonly ScoredPost[], cards: CardContext): Summary {
+export function computeSummary(posts: readonly ScoredPost[], cards: CardContext, since: string): Summary {
   const matureViews = posts.filter((sp) => sp.mature).map((sp) => sp.post.views as number);
   let totalViews = 0;
   let best: ScoredPost | null = null;
@@ -25,6 +26,7 @@ export function computeSummary(posts: readonly ScoredPost[], cards: CardContext)
   }
   return {
     windowDays: SUMMARY_DAYS,
+    since,
     posts: posts.length,
     totalViews,
     viewsPerPost: roundOrNull(mean(matureViews)),

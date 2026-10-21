@@ -90,6 +90,13 @@ export function isInitialRead(publishedAt: string, readAt: string | null): boole
   return new Date(readAt).getTime() - new Date(publishedAt).getTime() < MATURE_HOURS * 3_600_000;
 }
 
+/** ISO → "21/10" (dia em BRT). */
+export function fmtDayMonth(iso: string): string {
+  const d = new Date(new Date(iso).getTime() - 3 * 3_600_000);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}`;
+}
+
 /** "2026-10-14" (já em BRT) → "terça, 14/10". */
 export function fmtDayKey(key: string): string {
   const [y, m, d] = key.split("-").map(Number);

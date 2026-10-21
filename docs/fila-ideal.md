@@ -4,6 +4,8 @@ Painel aberto pelo botão flutuante do canto inferior direito do dashboard. Para
 
 Contratos: `lib/queue-insights/types.ts` (dados) e `lib/queue-insights/handoff.ts` (passagem para o Postar).
 
+**Quais filas:** o seletor mostra só as filas rodando agora — campanhas ativas do Postar (primeiro) e Loops ativos. Pausada ou terminada não aparece. Tudo que o painel mostra vem dos posts da fila escolhida; o resumo conta desde o começo dela (até 30 dias). Só o "normal da conta" olha os outros posts da própria conta.
+
 ## Constantes
 
 | Nome | Valor | Uso |
