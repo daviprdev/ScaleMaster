@@ -41,10 +41,16 @@ Tudo fail-open: sem a coluna (SQL pendente) ou com erro de leitura, nada é paus
 
 No Postar (Nova Distribuição) e no Loop (Contas específicas), a conta que já está numa fila aparece em verde; passar o mouse mostra qual ("na fila: Postar · pasta VITORIAOFZ"). O botão "Novas (N)" do Postar seleciona só as que não estão em verde. Rota `GET /api/accounts/queues`, regra em `lib/fila/account-queues.ts`.
 
-Em fila = a conta vai postar por uma campanha do Postar ou Loop ativa ou pausada:
+Em fila = a conta posta (ou vai postar) por uma campanha do Postar ou Loop ativa ou pausada:
 
-- Postar: tem post pendente/publicando na campanha; ou a campanha está sincronizada com a pasta de contas dela, a conta está ativa e sem erro e ainda não chegou ao teto de vídeos (o `sync-distribute-accounts` a matricula sozinho, mesmo antes do 1º post).
-- Loop: as contas ativas e sem erro da pasta de contas dele, ou as contas escolhidas.
+- **Matriculada** (já posta pela fila): no Postar, tem post pendente/publicando na campanha, ou a campanha é sincronizada com a pasta dela, a conta está ativa e sem erro, já postou nela e não chegou ao teto de vídeos; no Loop, foi escolhida (contas específicas) ou, em modo pasta, postou por ele nos últimos 2 dias.
+- **A caminho**: a fila ainda não postou na conta, mas vai puxá-la pela pasta (conta ativa e sem erro na pasta sincronizada/do Loop). Só conta se a conta não estiver matriculada em outra fila.
 - Editando um Loop, as contas dele não contam.
 
-Conta recém-conectada entra inativa: fica livre (sem verde) até ser ativada — mas, ativa numa pasta sincronizada com uma campanha, ela é puxada por essa campanha.
+Conta recém-conectada entra inativa: fica livre (sem verde) até ser ativada.
+
+## Fila por pasta não puxa conta de outra fila
+
+A campanha sincronizada do Postar (`sync-distribute-accounts`) e o Loop em modo pasta (`process-loops`) puxam sozinhos as contas ativas da pasta. Desde 22/10, conta **nova nessa fila** (ainda sem post nela) que já está **matriculada em outra fila** não é puxada — no log: "N conta(s) nova(s) da pasta já em outra fila — não puxada(s)". Conta que já posta pela fila segue normalmente, mesmo que esteja em outra também (sem isso, duas filas sincronizadas com a mesma conta travariam uma à outra). A regra é a mesma do verde (`findAccountsBusyElsewhere` → `loadAccountQueues`); erro de leitura não barra ninguém.
+
+Caso que motivou: pastas de contas separadas por modelo. Contas novas na pasta VITORIAOFZ ganham uma fila nova sem que a campanha antiga, sincronizada com a mesma pasta, puxe as mesmas contas quando elas forem ativadas.

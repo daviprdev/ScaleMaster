@@ -20,6 +20,8 @@ import {
 import type { QueueListItem } from "@/lib/queue-insights/types";
 import {
   buildAccountQueues,
+  isBusyElsewhere,
+  type AccountQueueRef,
   type AccountQueuesResponse,
   type QueueAccount,
   type QueueCampaign,
@@ -289,6 +291,9 @@ interface AccountStateDb {
 
 type CampaignStates = Map<string, { total: number; inflight: number }>;
 
+/** Loop em modo pasta: conta que postou por ele nesse período conta como matriculada. */
+const LOOP_RECENT_MS = 2 * D;
+
 /** Posts de cada conta na campanha (total e em voo): o RPC do sync; sem ele, só as linhas em voo. */
 async function loadCampaignStates(
   admin: SupabaseClient,
@@ -354,7 +359,11 @@ export async function loadAccountQueues(admin: SupabaseClient, userId: string): 
     new Set(campaignRows.map((c) => c.video_folder_id).filter((v): v is string => !!v)),
   );
 
-  const [namesRes, folderCounts, states] = await Promise.all([
+  // Loop em modo pasta: quem postou por ele nos últimos 2 dias já está matriculado.
+  const folderLoopIds = loopRows.filter((l) => l.account_folder_id).map((l) => l.id);
+  const since = new Date(Date.now() - LOOP_RECENT_MS).toISOString();
+
+  const [namesRes, folderCounts, states, recentContainers] = await Promise.all([
     videoFolderIds.length
       ? lim.run(() => admin.from("library_folders").select("id, name").eq("user_id", userId).in("id", videoFolderIds))
       : Promise.resolve({ data: [], error: null }),
@@ -373,7 +382,23 @@ export async function loadAccountQueues(admin: SupabaseClient, userId: string): 
       ),
     ),
     Promise.all(campaignRows.map((c) => loadCampaignStates(admin, lim, userId, c.id, accountIds))),
+    folderLoopIds.length
+      ? fetchPaged<{ id: string; account_id: string; loop_id: string }>(
+          admin, lim, "pending_containers", "id, account_id, loop_id",
+          (q) =>
+            q.eq("user_id", userId)
+              .in("loop_id", folderLoopIds)
+              .in("status", ["pending", "publishing", "published"])
+              .gte("created_at", since),
+        )
+      : Promise.resolve([] as { id: string; account_id: string; loop_id: string }[]),
   ]);
+  const recentByLoop = new Map<string, Set<string>>();
+  for (const r of recentContainers) {
+    const set = recentByLoop.get(r.loop_id) ?? new Set<string>();
+    set.add(r.account_id);
+    recentByLoop.set(r.loop_id, set);
+  }
   const nameById = new Map(
     ((namesRes.data ?? []) as { id: string; name: string | null }[]).map((f) => [f.id, f.name?.trim() || "sem nome"]),
   );
@@ -396,6 +421,7 @@ export async function loadAccountQueues(admin: SupabaseClient, userId: string): 
     label: `Loop · ${l.name?.trim() || "Meu Loop"}${l.status === "paused" ? " (pausado)" : ""}`,
     accountFolderId: l.account_folder_id,
     accountIds: (l.loop_accounts ?? []).map((la) => la.account_id),
+    recentAccountIds: recentByLoop.get(l.id) ?? new Set<string>(),
   }));
   const queueAccounts: QueueAccount[] = accounts.map((a) => ({
     id: a.id,
@@ -405,4 +431,29 @@ export async function loadAccountQueues(admin: SupabaseClient, userId: string): 
   }));
 
   return { accounts: buildAccountQueues(queueAccounts, campaigns, loops) };
+}
+
+/**
+ * Guarda das filas que puxam conta sozinhas pela pasta (campanha sincronizada
+ * do Postar, Loop em modo pasta): das contas que vão entrar AGORA em `self`
+ * (ainda não postaram nela), as que já postam por outra fila — essas não são
+ * puxadas. Fail-open: erro de leitura → nenhuma barrada (comportamento antigo).
+ */
+export async function findAccountsBusyElsewhere(
+  admin: SupabaseClient,
+  userId: string,
+  candidateIds: string[],
+  self: Pick<AccountQueueRef, "source" | "id">,
+): Promise<Set<string>> {
+  const busy = new Set<string>();
+  if (!candidateIds.length) return busy;
+  try {
+    const { accounts } = await loadAccountQueues(admin, userId);
+    for (const id of candidateIds) {
+      if (isBusyElsewhere(accounts[id], self)) busy.add(id);
+    }
+  } catch (e) {
+    console.warn(`[fila] guarda "já está em outra fila" falhou (segue sem ela): ${(e as Error).message}`);
+  }
+  return busy;
 }

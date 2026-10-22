@@ -27,6 +27,7 @@ import { normalizeProcessingMode } from "@/lib/video-processing";
 import { fetchVideoUsage, fetchRecentVideos, fetchAllRows } from "@/lib/video-history";
 import { requireCronAuth } from "@/lib/cron-auth";
 import { fetchPausedVideoIds } from "@/lib/fila/pause";
+import { findAccountsBusyElsewhere } from "@/lib/fila/load";
 import {
   assignVideos as priorityAssignVideos,
   normalizePriorityStrategy,
@@ -189,6 +190,21 @@ async function processCampaign(
   }
 
   if (!dueAccountIds.length) return 0;
+
+  // Conta nova na pasta (ainda sem post nesta campanha) que já posta por outra
+  // fila não é puxada (findAccountsBusyElsewhere, docs/fila-pausa.md). Quem já
+  // posta por esta campanha segue normalmente.
+  const freshIds = dueAccountIds.filter(id => !stateByAccount.has(id));
+  if (freshIds.length) {
+    const busy = await findAccountsBusyElsewhere(admin, campaign.user_id, freshIds, { source: "postar", id: campaign.id });
+    if (busy.size) {
+      console.log(`[sync-distribute-accounts] Campanha ${campaign.id}: ${busy.size} conta(s) nova(s) da pasta já em outra fila — não puxada(s).`);
+      for (let i = dueAccountIds.length - 1; i >= 0; i--) {
+        if (busy.has(dueAccountIds[i])) dueAccountIds.splice(i, 1);
+      }
+      if (!dueAccountIds.length) return 0;
+    }
+  }
 
   // Vídeo pausado na aba Fila não entra no sorteio (lib/fila/pause). O teto
   // (maxVideos) segue o da pasta inteira: a conta mantém o ritmo com os ativos.

@@ -19,6 +19,7 @@ import { vpsPublishDispatcher } from "@/lib/vps-publish-proxy";
 import { requireCronAuth } from "@/lib/cron-auth";
 import { LOOP_SKIP_REASONS } from "@/lib/loop-readiness";
 import { fetchPausedVideoIds } from "@/lib/fila/pause";
+import { findAccountsBusyElsewhere } from "@/lib/fila/load";
 import {
   assignVideos as priorityAssignVideos,
   normalizePriorityStrategy,
@@ -768,6 +769,22 @@ async function processOneLoop(
       console.log(`[loop-cron] "${loop.name}": todas as contas atingiram o limite de ciclos/mídia → completed.`);
       await (admin as any).from("loops").update({ status: "completed" }).eq("id", loop.id);
       return "skipped";
+    }
+
+    // Modo pasta: conta nova (ainda sem post neste loop) que já posta por outra
+    // fila não é puxada (findAccountsBusyElsewhere, docs/fila-pausa.md). Quem
+    // já posta por este loop segue normalmente.
+    if (loop.account_folder_id) {
+      const freshIds = dueAccounts.filter(a => !accountLastContainer.has(a.id)).map(a => a.id);
+      if (freshIds.length) {
+        const busy = await findAccountsBusyElsewhere(admin, loop.user_id, freshIds, { source: "loop", id: loop.id });
+        if (busy.size) {
+          console.log(`[loop-cron] "${loop.name}": ${busy.size} conta(s) nova(s) da pasta já em outra fila — não puxada(s).`);
+          for (let i = dueAccounts.length - 1; i >= 0; i--) {
+            if (busy.has(dueAccounts[i].id)) dueAccounts.splice(i, 1);
+          }
+        }
+      }
     }
 
     if (dueAccounts.length === 0) {
