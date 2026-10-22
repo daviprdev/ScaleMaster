@@ -28,7 +28,7 @@ export interface FilaVideoInput {
  * Posts, views e média (views ÷ posts) de cada vídeo da pasta, e o resumo das
  * filas. A média é a conta simples, igual à do print de referência: post ainda
  * sem leitura entra com 0. O resumo conta todos os posts das filas, inclusive
- * de vídeo que já saiu da pasta — é a média da fila, a régua do "abaixo da média".
+ * de vídeo que já saiu da pasta.
  */
 export function aggregateFila(
   videos: FilaVideoInput[],
@@ -72,63 +72,20 @@ export function aggregateFila(
   };
 }
 
-/** Média do vídeo abaixo da média da fila (só com posts dos dois lados). */
-export function isBelowAverage(video: Pick<FilaVideo, "avgViews">, queueAvg: number | null): boolean {
-  return video.avgViews != null && queueAvg != null && video.avgViews < queueAvg;
-}
-
-// ---------------------------------------------------------------------------
-// Ordem e filtro da lista
-// ---------------------------------------------------------------------------
-
-export type FilaSort = "views_asc" | "views_desc" | "avg_asc" | "avg_desc" | "posts_desc";
-export type FilaFilter = "all" | "active" | "paused";
-
-export const FILA_SORTS: { value: FilaSort; label: string }[] = [
-  { value: "views_asc", label: "Menos views primeiro" },
-  { value: "views_desc", label: "Mais views primeiro" },
-  { value: "avg_asc", label: "Menor média por post" },
-  { value: "avg_desc", label: "Maior média por post" },
-  { value: "posts_desc", label: "Mais posts primeiro" },
-];
-
-export function isFilaSort(value: unknown): value is FilaSort {
-  return FILA_SORTS.some((s) => s.value === value);
-}
-
 /**
- * Vídeo sem post nenhum não tem número para comparar: fica sempre no fim, do
- * mais novo na pasta para o mais antigo. Empate desfeito pelo id (ordem estável).
+ * Ordem da lista, como no print de referência: menos views primeiro. Vídeo sem
+ * post nenhum não tem número para comparar e fica no fim, do mais novo na
+ * pasta para o mais antigo. Empate desfeito pelo id (ordem estável).
  */
-export function sortFilaVideos(videos: FilaVideo[], sort: FilaSort): FilaVideo[] {
-  const key = (v: FilaVideo): number => {
-    switch (sort) {
-      case "views_asc":
-        return v.views;
-      case "views_desc":
-        return -v.views;
-      case "avg_asc":
-        return v.avgViews ?? 0;
-      case "avg_desc":
-        return -(v.avgViews ?? 0);
-      case "posts_desc":
-        return -v.posts;
-    }
-  };
+export function sortFilaVideos(videos: FilaVideo[]): FilaVideo[] {
   const created = (v: FilaVideo) => (v.createdAt ? Date.parse(v.createdAt) || 0 : 0);
   return videos.slice().sort((a, b) => {
     const aEmpty = a.posts === 0;
     const bEmpty = b.posts === 0;
     if (aEmpty !== bEmpty) return aEmpty ? 1 : -1;
     if (aEmpty) return created(b) - created(a) || a.id.localeCompare(b.id);
-    return key(a) - key(b) || a.id.localeCompare(b.id);
+    return a.views - b.views || a.id.localeCompare(b.id);
   });
-}
-
-export function filterFilaVideos(videos: FilaVideo[], filter: FilaFilter): FilaVideo[] {
-  if (filter === "active") return videos.filter((v) => !v.pausedAt);
-  if (filter === "paused") return videos.filter((v) => v.pausedAt);
-  return videos;
 }
 
 // ---------------------------------------------------------------------------

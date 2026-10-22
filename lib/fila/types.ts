@@ -55,7 +55,7 @@ export interface FilaSummary {
   /** Reels publicados pelas filas da pasta (inclui vídeo que já saiu da pasta). */
   posts: number;
   views: number;
-  /** Média da fila: views ÷ posts; null sem posts. É a régua do "abaixo da média". */
+  /** Média da fila: views ÷ posts; null sem posts. */
   avgViews: number | null;
   videos: number;
   paused: number;

@@ -1,12 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  aggregateFila,
-  filterFilaVideos,
-  isBelowAverage,
-  pickSwapTarget,
-  sortFilaVideos,
-  type FilaVideoInput,
-} from "../lib/fila/stats";
+import { aggregateFila, pickSwapTarget, sortFilaVideos, type FilaVideoInput } from "../lib/fila/stats";
 import type { FilaVideo } from "../lib/fila/types";
 
 function input(id: string, extra: Partial<FilaVideoInput> = {}): FilaVideoInput {
@@ -74,51 +67,28 @@ describe("aggregateFila", () => {
   });
 });
 
-describe("isBelowAverage", () => {
-  it("só marca com média dos dois lados", () => {
-    expect(isBelowAverage({ avgViews: 100 }, 254)).toBe(true);
-    expect(isBelowAverage({ avgViews: 254 }, 254)).toBe(false);
-    expect(isBelowAverage({ avgViews: null }, 254)).toBe(false);
-    expect(isBelowAverage({ avgViews: 10 }, null)).toBe(false);
-  });
-});
-
 describe("sortFilaVideos", () => {
   const list = [
     video("alto", 10, 20000),
     video("baixo", 10, 500),
-    video("medio", 40, 8000), // média 200
+    video("medio", 40, 8000),
     video("novo", 0, 0, { createdAt: "2026-10-22T12:00:00.000Z" }),
     video("velho", 0, 0, { createdAt: "2026-10-01T12:00:00.000Z" }),
   ];
 
   it("menos views primeiro, vídeos sem post sempre no fim (mais novo antes)", () => {
-    expect(sortFilaVideos(list, "views_asc").map((v) => v.id)).toEqual(["baixo", "medio", "alto", "novo", "velho"]);
+    expect(sortFilaVideos(list).map((v) => v.id)).toEqual(["baixo", "medio", "alto", "novo", "velho"]);
   });
 
-  it("mais views primeiro", () => {
-    expect(sortFilaVideos(list, "views_desc").map((v) => v.id)).toEqual(["alto", "medio", "baixo", "novo", "velho"]);
-  });
-
-  it("por média e por posts", () => {
-    expect(sortFilaVideos(list, "avg_asc").map((v) => v.id).slice(0, 3)).toEqual(["baixo", "medio", "alto"]);
-    expect(sortFilaVideos(list, "avg_desc").map((v) => v.id).slice(0, 3)).toEqual(["alto", "medio", "baixo"]);
-    expect(sortFilaVideos(list, "posts_desc").map((v) => v.id)[0]).toBe("medio");
+  it("pausado não muda de lugar", () => {
+    const withPaused = list.map((v) => (v.id === "baixo" ? { ...v, pausedAt: "2026-10-22T10:00:00.000Z" } : v));
+    expect(sortFilaVideos(withPaused)[0].id).toBe("baixo");
   });
 
   it("não mexe na lista original", () => {
     const copy = list.slice();
-    sortFilaVideos(list, "views_desc");
+    sortFilaVideos(list);
     expect(list).toEqual(copy);
-  });
-});
-
-describe("filterFilaVideos", () => {
-  const list = [video("a", 1, 1), video("b", 1, 1, { pausedAt: "2026-10-22T10:00:00.000Z" })];
-  it("separa ativos e pausados", () => {
-    expect(filterFilaVideos(list, "all")).toHaveLength(2);
-    expect(filterFilaVideos(list, "active").map((v) => v.id)).toEqual(["a"]);
-    expect(filterFilaVideos(list, "paused").map((v) => v.id)).toEqual(["b"]);
   });
 });
 

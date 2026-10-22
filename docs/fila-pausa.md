@@ -2,13 +2,14 @@
 
 Menu PUBLICAÇÃO → **Fila** (`/dashboard/fila`). Escolhe uma pasta da Biblioteca que tem fila rodando e vê cada vídeo dela com posts, média por post e views, e um liga/desliga que tira o vídeo da fila. Serve para não deixar vídeo ruim queimar a fila.
 
+Desenho = o print de referência que o dono mandou (SaaS de um amigo): por linha, capa, "↻ POSTS", "↗ MÉDIA/POST", "👁 VIEWS", Ativo/Pausado e play. Nada além disso na tela — ideia extra vira pergunta antes.
+
 Código: `lib/fila` (dados e pausa), `app/api/fila` (rotas), `app/dashboard/fila` + `components/dashboard/fila` (tela).
 
 ## Pastas
 
 - Só pastas com fila rodando: campanha ativa do Postar ou Loop ativo — o mesmo seletor do Raio-X (`loadQueueList`), agrupado pela pasta de vídeos da fila.
 - Abre na pasta da fila com mais posts nas últimas 24h; a tela lembra a última pasta escolhida.
-- Embaixo do seletor: as filas rodando na pasta ("Postar · 55 contas · desde 20/10").
 
 ## Números de cada vídeo
 
@@ -17,9 +18,8 @@ Código: `lib/fila` (dados e pausa), `app/api/fila` (rotas), `app/dashboard/fila
 | Posts | reels publicados com o vídeo pelas filas rodando da pasta (Postar: `scheduled_posts.campaign_id`; Loop: `pending_containers.loop_id`), desde o começo de cada fila, até 30 dias (mesma janela do Raio-X) |
 | Views | soma da leitura mais recente de cada post (post sem leitura conta 0) |
 | Média/post | views ÷ posts — conta simples, como no print de referência |
-| Média da fila | views ÷ posts de todas as filas da pasta (inclui vídeo que já saiu da pasta); média do vídeo abaixo dela fica em amarelo |
 
-Ordem padrão: menos views primeiro. Vídeo sem post fica sempre no fim.
+Ordem: menos views primeiro (como no print). Vídeo sem post fica no fim. A rota também devolve o resumo da fila (`summary`: posts, views e média views ÷ posts de todas as filas da pasta), que a tela não mostra.
 
 ## Pausar
 
