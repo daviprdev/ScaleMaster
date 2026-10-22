@@ -45,6 +45,10 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     title: "Novo Post",
     subtitle: "Publique agora ou agende para uma data específica",
   },
+  "/dashboard/fila": {
+    title: "Fila",
+    subtitle: "Os vídeos da fila, um por um",
+  },
   "/dashboard/apps": {
     title: "Meus Apps",
     subtitle: "Gerencie suas credenciais Meta",

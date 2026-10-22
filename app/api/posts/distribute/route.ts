@@ -8,6 +8,7 @@ import {
 } from "@/lib/reel-captions";
 import { fetchVideoUsage, fetchRecentVideos, fetchAllRows } from "@/lib/video-history";
 import { normalizeProcessingMode } from "@/lib/video-processing";
+import { fetchPausedVideoIds } from "@/lib/fila/pause";
 import {
   assignVideos,
   assignRotation,
@@ -270,6 +271,19 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       console.error(`[distribute] ${(e as Error).message}`);
       return NextResponse.json({ error: "Falha ao ler a pasta de mídia." }, { status: 503 });
+    }
+
+    // Vídeo pausado na aba Fila não entra em campanha nova (lib/fila/pause).
+    // A fila ideal acima é uma escolha explícita e fica como veio.
+    const pausedVideoIds = await fetchPausedVideoIds(admin, { userId: user.id, folderId: folder_id });
+    if (pausedVideoIds.size && allVideos.length) {
+      allVideos = allVideos.filter((v) => !pausedVideoIds.has(v.id));
+      if (!allVideos.length) {
+        return NextResponse.json(
+          { error: "Todos os vídeos dessa pasta estão pausados na aba Fila. Reative algum para criar a campanha." },
+          { status: 400 },
+        );
+      }
     }
   }
 

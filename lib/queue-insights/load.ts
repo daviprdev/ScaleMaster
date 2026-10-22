@@ -167,14 +167,14 @@ interface DbResult {
 // Utilitários
 // ---------------------------------------------------------------------------
 
-interface Limiter {
+export interface Limiter {
   run<T>(task: () => PromiseLike<T>): Promise<T>;
   /** Requisições feitas — só para o log de tempo. */
   readonly requests: number;
 }
 
 /** Fila de requisições com no máximo `max` em voo. Só envolve chamadas-folha (nunca outra função limitada). */
-function createLimiter(max: number): Limiter {
+export function createLimiter(max: number): Limiter {
   let active = 0;
   let requests = 0;
   const waiting: (() => void)[] = [];
@@ -251,7 +251,7 @@ class DbReadError extends Error {
  * última volta cheia e a leitura segue até uma página curta; o id desfaz
  * duplicatas de borda.
  */
-async function fetchPaged<T extends { id: string | number }>(
+export async function fetchPaged<T extends { id: string | number }>(
   admin: SupabaseClient,
   lim: Limiter,
   table: string,

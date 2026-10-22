@@ -20,6 +20,7 @@ import {
 } from "@/lib/video-processing";
 import { isAccountDeadError, markDeadAccounts, type DeadAccountCandidate } from "@/lib/account-health";
 import { requireCronAuth } from "@/lib/cron-auth";
+import { deferPausedPosts } from "@/lib/fila/pause";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -256,6 +257,22 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Vídeo pausado na aba Fila (lib/fila/pause): o post vencido com ele troca
+  // de vídeo com um post posterior da mesma conta na campanha — a conta mantém
+  // o ritmo — ou é cancelado se não houver com quem trocar. Fail-open.
+  let pausedVideoPosts = { swapped: 0, cancelled: 0 };
+  try {
+    pausedVideoPosts = await deferPausedPosts(admin, now);
+    if (pausedVideoPosts.swapped || pausedVideoPosts.cancelled) {
+      console.log(
+        `[publish-scheduled] ⏭ vídeo pausado na Fila: ${pausedVideoPosts.swapped} post(s) trocado(s) de vídeo, ` +
+          `${pausedVideoPosts.cancelled} cancelado(s).`
+      );
+    }
+  } catch (e) {
+    console.warn("[publish-scheduled] Etapa dos vídeos pausados falhou (segue sem ela):", (e as Error).message);
+  }
+
   // Stories furam a fila: usuário espera publicação quase imediata ("Postar agora"),
   // diferente de campanhas em massa (Postar/Clone/Loop) que já são agendadas de
   // propósito ao longo de dias. Busca stories elegíveis primeiro; só preenche o
@@ -316,6 +333,8 @@ export async function GET(req: NextRequest) {
     failed: 0,
     skipped: 0,
     cancelled_dead_account: cancelledDeadCount,
+    paused_video_swapped: pausedVideoPosts.swapped,
+    paused_video_cancelled: pausedVideoPosts.cancelled,
     unblocked: unblocked?.length ?? 0,
     healed_error: healedErrorCount,
     queue_pending: countPending ?? 0,

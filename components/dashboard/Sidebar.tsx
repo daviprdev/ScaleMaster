@@ -32,6 +32,7 @@ import {
   UserPlus,
   Bot,
   CheckCircle2,
+  ListVideo,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Postar", href: "/dashboard/postar", icon: Send },
       { label: "Loop", href: "/dashboard/loop", icon: Repeat2 },
+      { label: "Fila", href: "/dashboard/fila", icon: ListVideo },
       { label: "Stories", href: "/dashboard/stories", icon: ImagePlay },
       { label: "Publicados", href: "/dashboard/publicados", icon: CheckCircle2 },
     ],

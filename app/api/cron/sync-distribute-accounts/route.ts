@@ -26,6 +26,7 @@ import { normalizeCaptionMode, resolveCaption } from "@/lib/reel-captions";
 import { normalizeProcessingMode } from "@/lib/video-processing";
 import { fetchVideoUsage, fetchRecentVideos, fetchAllRows } from "@/lib/video-history";
 import { requireCronAuth } from "@/lib/cron-auth";
+import { fetchPausedVideoIds } from "@/lib/fila/pause";
 import {
   assignVideos as priorityAssignVideos,
   normalizePriorityStrategy,
@@ -189,6 +190,20 @@ async function processCampaign(
 
   if (!dueAccountIds.length) return 0;
 
+  // Vídeo pausado na aba Fila não entra no sorteio (lib/fila/pause). O teto
+  // (maxVideos) segue o da pasta inteira: a conta mantém o ritmo com os ativos.
+  const pausedVideoIds = await fetchPausedVideoIds(admin, {
+    userId: campaign.user_id,
+    folderId: campaign.video_folder_id,
+  });
+  const candidateVideos = pausedVideoIds.size
+    ? allVideos.filter(v => !pausedVideoIds.has(v.id))
+    : allVideos;
+  if (!candidateVideos.length) {
+    console.log(`[sync-distribute-accounts] Campanha ${campaign.id}: todos os vídeos da pasta estão pausados na aba Fila — nada a criar.`);
+    return 0;
+  }
+
   // Anti-burst: se várias contas ficarem due no mesmo ciclo (ex.: pasta
   // grande sincronizada pela primeira vez), espalha o scheduled_at em vez de
   // criar tudo em `now` — mesmo princípio do Loop, evita "too many actions".
@@ -236,7 +251,7 @@ async function processCampaign(
   const persistedSeed = (campaign as unknown as Record<string, unknown>).distribution_seed as string | null;
   const cycleSeed = persistedSeed || `${campaign.id}:${now}`;
   const priorityResults = priorityAssignVideos({
-    candidates: allVideos.map((v) => ({
+    candidates: candidateVideos.map((v) => ({
       id: v.id,
       views: v.views ?? 0,
       public_url: v.public_url,

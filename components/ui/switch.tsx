@@ -31,14 +31,15 @@ export const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
  className
  )}
  aria-hidden="true"
- >
+ />
+ {/* Irmão do input (não filho do trilho): peer-checked só alcança irmãos. */}
  <div
  className={cn(
- "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-150 ease-in-out",
- "peer-checked:translate-x-4"
+ "pointer-events-none absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-150 ease-in-out",
+ "peer-checked:translate-x-4 peer-disabled:opacity-60"
  )}
+ aria-hidden="true"
  />
- </div>
  </label>
  {label && (
  <label

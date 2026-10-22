@@ -40,6 +40,10 @@ export const LOOP_SKIP_REASONS = {
 
   noVideoAvailable: () =>
     "Todas as contas já postaram todos os vídeos da pasta neste ciclo. Adicione vídeos novos à pasta para continuar.",
+
+  allVideosPaused: (folderName?: string | null) =>
+    `Todos os vídeos da pasta${folderName ? ` "${folderName}"` : ""} estão pausados na aba Fila. ` +
+    "Reative algum vídeo na aba Fila para o loop voltar a postar.",
 } as const;
 
 export interface LoopReadinessInput {

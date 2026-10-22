@@ -18,6 +18,7 @@ import { selectProxyForPublish, closeProxyAgent } from "@/lib/publish-proxy-sele
 import { vpsPublishDispatcher } from "@/lib/vps-publish-proxy";
 import { requireCronAuth } from "@/lib/cron-auth";
 import { LOOP_SKIP_REASONS } from "@/lib/loop-readiness";
+import { fetchPausedVideoIds } from "@/lib/fila/pause";
 import {
   assignVideos as priorityAssignVideos,
   normalizePriorityStrategy,
@@ -677,7 +678,14 @@ async function processOneLoop(
     return noteSkip(admin, loop, LOOP_SKIP_REASONS.emptyMediaFolder(loop.library_folders?.name ?? null));
   }
 
-  const allVideos = allVideoRows;
+  // Vídeo pausado na aba Fila sai do sorteio (lib/fila/pause).
+  const pausedVideoIds = await fetchPausedVideoIds(admin, { userId: loop.user_id, folderId: loop.folder_id });
+  const allVideos = pausedVideoIds.size
+    ? allVideoRows.filter(v => !pausedVideoIds.has(v.id))
+    : allVideoRows;
+  if (!allVideos.length) {
+    return noteSkip(admin, loop, LOOP_SKIP_REASONS.allVideosPaused(loop.library_folders?.name ?? null));
+  }
 
   const isAutoCaption = loop.auto_caption_enabled === true && !!loop.auto_caption_type;
 
