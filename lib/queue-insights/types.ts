@@ -1,7 +1,7 @@
 /**
  * Raio-X da fila — contratos compartilhados entre o cálculo (lib/queue-insights),
  * as rotas (app/api/queue-insights), o painel (components/dashboard/queue-insights)
- * e o modo "fila ideal" do Postar.
+ * e o modo "fila ideal" do Postar. Regras em docs/fila-ideal.md.
  *
  * O painel só LÊ. Nada aqui muda a distribuição automática: a fila ideal só vira
  * campanha quando o dono confirma no Postar.
@@ -12,7 +12,7 @@ export type QueueSource = "postar" | "loop";
 /** rodando | rodando com pasta de contas sincronizada | pausada | terminada. */
 export type QueueState = "running" | "running_synced" | "paused" | "finished";
 
-/** Uma entrada do seletor de filas. */
+/** Uma entrada do seletor de filas (só filas rodando). */
 export interface QueueListItem {
   source: QueueSource;
   id: string;
@@ -95,32 +95,31 @@ export interface VideoInfo {
   sourceUrl: string | null;
 }
 
-/** Uma leitura de views guardada pelo trigger (post_views_snapshots). */
-export interface SnapshotRow {
-  postId: string;
-  source: QueueSource;
-  readAt: string;
-  views: number;
-}
-
 /** Tudo que o cálculo precisa; montado por lib/queue-insights/load.ts. */
 export interface AnalyzeInput {
   queue: QueueConfig;
-  /** Posts desta fila nos últimos 30 dias. */
+  /** Posts publicados (reels) DESTA fila, desde o começo dela (até 30 dias). */
   queuePosts: PostRow[];
-  /** Reels de TODAS as origens das contas da fila nos últimos 17 dias (14 + margem da janela local). */
-  accountPosts: PostRow[];
   accounts: AccountInfo[];
   videos: VideoInfo[];
-  /** Leituras guardadas dos posts da fila publicados nas últimas 48h (vazio sem o SQL). */
-  snapshots: SnapshotRow[];
-  /** account_id → video_ids que a conta já usou em qualquer origem (inclui agendados). */
-  usedVideoIdsByAccount: Record<string, string[]>;
-  /** Recursos do SQL manual que ainda não existem no banco. */
-  missingSql: string[];
 }
 
-export interface PostCard {
+/** Linha de números do topo (igual ao Hotler). */
+export interface Summary {
+  /** ISO do começo da contagem: o início da fila (ou 30 dias numa fila mais antiga). */
+  since: string;
+  /** Reels publicados da fila. */
+  posts: number;
+  /** Soma das views. */
+  totalViews: number;
+  /** Média das views dos posts contados (com 1h+ de publicação e views lidas). */
+  viewsPerPost: number | null;
+  /** Maior views de um post da fila. */
+  bestPostViews: number | null;
+}
+
+/** "Um post seu está indo muito bem agora". */
+export interface HotPost {
   postId: string;
   source: QueueSource;
   accountId: string;
@@ -130,209 +129,81 @@ export interface PostCard {
   publicUrl: string | null;
   mediaId: string | null;
   views: number;
-  /** views ÷ normal local da conta; null quando a conta não tem normal confiável. */
-  multiple: number | null;
   publishedAt: string;
-  viewsReadAt: string | null;
-  /** "+380 views desde a leitura das 14h" — só com histórico. */
-  risingText: string | null;
-}
-
-export interface HotSection {
-  /** Até 3 posts fora da curva (≥5× o normal E ≥ p90 da fila), o 1º em destaque. */
-  highlighted: PostCard[];
-  /** Sem destaque: o melhor post maduro das últimas 48h. */
-  fallback: PostCard | null;
-  /** Contas da fila (ativas, sem erro) que nunca usaram o vídeo do 1º destaque (ou do fallback). */
+  /** Mediana das views desse vídeo nos posts contados da fila ("publicação típica dele"). */
+  videoTypicalViews: number | null;
+  /** Contas da fila (ativas, sem erro) que não publicaram esse vídeo nas últimas 24h. */
   republishAccountIds: string[];
-  text: { title: string; body: string };
+  /** "108.834 views em 09/10 às 09h". */
+  eyebrow: string;
+  title: string;
+  body: string;
 }
 
-export type VideoStatus = "passes" | "below_bar" | "few_accounts" | "removed" | "not_in_folder";
-
-export interface VideoScore {
-  videoKey: string;
-  /** video_id que está na pasta da fila (o que vai para o Postar). */
-  videoId: string | null;
+export interface IdealVideo {
+  videoId: string;
   publicUrl: string | null;
   caption: string | null;
-  /** Mediana dos votos das contas (cada voto = mediana dos múltiplos daquela conta). */
-  score: number | null;
-  votingAccounts: number;
-  accountsAboveNormal: number;
+  /** Média das views por post desse vídeo na fila. */
+  avgViews: number;
   posts: number;
-  matureViewsMedian: number | null;
-  matureViewsMean: number | null;
-  status: VideoStatus;
+  accounts: number;
 }
 
-export type AccountStatus = "good" | "weak" | "no_data" | "inactive";
-
-export interface AccountScore {
+export interface IdealAccount {
   accountId: string;
   username: string;
   avatarUrl: string | null;
-  /** Normal ATUAL (mediana dos posts maduros dos últimos 3/7/14 dias, ≥20 posts). */
-  currentNormal: number | null;
-  normalWindowDays: 3 | 7 | 14 | null;
-  postsInQueue: number;
-  status: AccountStatus;
-}
-
-export interface BestHour {
-  /** Hora BRT 0–23. */
-  hour: number;
-  /** Mediana do múltiplo na hora. */
-  score: number;
-  /** Mediana das views brutas na hora (das contas escolhidas se ≥5 posts, senão da fila). */
-  typicalViews: number;
-  /** Score por hora qualificada (≥10 posts e ≥3 contas); usado para escolher o início. */
-  hourScores: Record<number, number>;
-}
-
-export interface DayPattern {
-  /** YYYY-MM-DD (BRT). */
-  date: string;
-  accounts: number;
+  /** Média das views por post dessa conta na fila. */
+  avgViews: number;
   posts: number;
-  /** Mediana entre contas da mediana dos intervalos entre posts da conta no dia; null em Modo Ciclo/sem dado. */
-  medianIntervalMinutes: number | null;
-  /** p10–p90 da hora BRT dos posts. */
-  hourFrom: number | null;
-  hourTo: number | null;
-  /** Mesma conta + mesmo vídeo 2× no dia. */
-  repeatedSameDay: number;
-  /** Posts em que a conta já tinha usado o vídeo antes (qualquer origem). */
-  repeatedFromBefore: number;
-  /** Contas que também postaram por outras filas nesse dia. */
-  accountsAlsoInOtherQueues: number;
 }
 
-export interface BestDay extends DayPattern {
-  medianMultiple: number;
-  meanViews: number;
-  medianViews: number;
-  /** O padrão de hoje até agora (sem views — os posts de hoje ainda não amadureceram). */
-  today: DayPattern | null;
-}
-
-export type ReadinessState = "collecting" | "few_good" | "no_accounts" | "ready" | "impossible";
-
-export interface Readiness {
-  state: ReadinessState;
-  /** Vídeos com 3+ contas com post maduro nesta fila. */
-  coveredVideos: number;
-  passingVideos: number;
-  /** Vídeos em só 1–2 contas. */
-  videosInFewAccounts: number;
-  postsAwaitingMatureRead: number;
-  /** Previsão para o estado "collecting"; null quando não dá para estimar. */
-  etaHours: number | null;
-  message: string;
-}
-
-export interface Summary {
-  windowDays: 30;
-  /** ISO do início do resumo: o começo da fila, ou 30 dias atrás numa fila mais antiga. */
-  since: string;
-  posts: number;
-  totalViews: number;
-  /** Média dos posts maduros com views. */
-  viewsPerPost: number | null;
-  medianViews: number | null;
-  bestPost: PostCard | null;
-}
-
-export interface Freshness {
-  /** max(viewsReadAt) dos posts da fila. */
-  viewsReadUntil: string | null;
-  /** Posts da fila das últimas 48h ainda sem leitura de 4h. */
-  awaitingMatureRead: number;
-  /** Posts da fila (30 dias) de contas hoje inativas ou com erro — views congeladas. */
-  frozenAccountPosts: number;
-}
-
-/** Entradas que o painel usa para recalcular a fila ideal no navegador quando o dono mexe em N e M. */
-export interface IdealInputs {
-  /** Vídeos que passam, em ordem de ranking. */
-  videos: VideoScore[];
-  /** Contas da fila em ordem de ranking (boas primeiro, depois as demais com aviso). */
-  accounts: AccountScore[];
-  defaultN: number;
-  defaultM: number;
-  maxN: number;
-  /** Intervalo por conta que a fila ideal herda (minutos). */
-  intervalMinutes: number;
-  /** clamp(round(1440/intervalMinutes), 1, 48). */
-  postsPerDay: number;
-  accountStaggerSeconds: number | null;
-  /** Fator do repost (mediana do múltiplo do 2º+ post ÷ 1º post da mesma conta). 1 até haver 30 pares. */
-  repostFactor: number;
-  repostPairs: number;
-  /** account_id → video_ids já usados (para aplicar o repostFactor). */
-  usedVideoIdsByAccount: Record<string, string[]>;
-  /** A fila de hoje medida na mesma régua: média de normal_atual(conta) × score(vídeo) nos posts dos últimos 7 dias. */
-  currentTypicalPerPost: number | null;
-  currentMeanAccountNormal: number | null;
-  currentMeanVideoScore: number | null;
-  /** Mediana real observada da fila (posts maduros, 14 dias). */
-  currentObservedMedian: number | null;
-  bestHour: BestHour | null;
-  /** Sugestão de início vinda da origem; recalculada por buildIdealQueue conforme N. */
-  nowIso: string;
-}
-
-/** Resultado de buildIdealQueue (servidor e navegador). */
+/** "A sua fila ideal, montada com o que já funciona". */
 export interface IdealQueue {
-  n: number;
-  m: number;
-  videoIds: string[];
-  accountIds: string[];
+  /** Em ordem de média — a ordem define o rodízio no Postar. */
+  videos: IdealVideo[];
+  /** Em ordem de média. */
+  accounts: IdealAccount[];
+  /** N × M. */
   postsPerCycle: number;
-  /** Pares em que a conta já tinha usado o vídeo (repost permitido, nunca 2× no mesmo ciclo). */
-  alreadyPostedPairs: number;
-  expectedPerPost: number | null;
-  /** Quanto a mais por post vem dos vídeos e quanto das contas (fatores multiplicativos). */
-  videosFactor: number | null;
-  accountsFactor: number | null;
+  /** Minutos entre posts de uma mesma conta (herdado da fila). */
   intervalMinutes: number;
+  /** clamp(round(1440 / intervalo), 1, 48) — vai para o Postar. */
   postsPerDay: number;
-  /** Duração do ciclo por conta = n × intervalo. */
-  cycleMinutes: number;
-  /** De quantos em quantos segundos o mesmo vídeo sai em outra conta na mesma rodada; null se m ≤ n. */
-  sameVideoGapSeconds: number | null;
-  /** ISO do início sugerido (próxima hora da melhor fase, ou agora + 10 min). */
+  /** Views esperadas por publicação ("~868 views por publicação"). */
+  expectedPerPost: number;
+  /** Mediana das views por post da fila ("contra 29 do seu material mediano"). */
+  medianPerPost: number | null;
+  /** Hora BRT 0–23 em que as contas escolhidas mais renderam; null se não deu para medir. */
+  bestHour: number | null;
+  bestHourViews: number | null;
+  /** "20/08": melhor dia da fila, quando nele nenhuma conta repetiu vídeo. */
+  patternDay: string | null;
+  /** ISO do início sugerido no Postar (próxima melhor hora ou agora + 10 min). */
   startAt: string;
-  /** Hora BRT sugerida para o início, ou null quando o horário não faz diferença. */
-  startHour: number | null;
-  /** Aviso do repost (r < 0,8) ou de fila curta (n < 5). */
-  warnings: string[];
-  text: { title: string; body: string };
+  /** "~868 views por publicação". */
+  eyebrow: string;
+  title: string;
+  body: string;
+  footnote: string;
 }
 
 /** Resposta de GET /api/queue-insights/[source]/[id]. */
 export interface QueueInsightsResponse {
   queue: QueueConfig;
   generatedAt: string;
-  freshness: Freshness;
   summary: Summary;
-  hot: HotSection;
-  readiness: Readiness;
-  videos: VideoScore[];
-  accounts: AccountScore[];
-  idealInputs: IdealInputs;
-  /** null enquanto a régua não fecha (readiness ≠ ready). */
+  /** null quando a fila ainda não tem post com views. */
+  hot: HotPost | null;
+  /** null quando ainda não dá para montar — o motivo vai em idealUnavailable. */
   ideal: IdealQueue | null;
-  bestHour: BestHour | null;
-  bestDay: BestDay | null;
-  /** Carga por conta nas próximas 24h (publicados 24h + pendentes 24h + Loops ativos) — para o aviso do freio de ~50/dia. */
-  accountLoad24h: Record<string, number>;
-  missingSql: string[];
+  idealUnavailable: string | null;
 }
 
 /** Resposta de GET /api/queue-insights. */
 export interface QueueListResponse {
   queues: QueueListItem[];
-  /** Fila em que o painel abre: a única rodando, ou a rodando com mais posts nas últimas 24h. */
+  /** Fila em que o painel abre: a campanha rodando com mais posts nas últimas 24h. */
   defaultQueue: { source: QueueSource; id: string } | null;
 }

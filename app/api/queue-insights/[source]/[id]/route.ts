@@ -11,8 +11,9 @@ export const maxDuration = 60;
 
 /**
  * GET /api/queue-insights/[source]/[id] — Raio-X de uma fila (postar = campanha
- * do Postar, loop = Loop) do usuário. Só lê: lê o banco (lib/queue-insights/load)
- * e calcula (lib/queue-insights/analyze). Regras em docs/fila-ideal.md.
+ * do Postar, loop = Loop) do usuário: números do topo, post indo bem agora e a
+ * fila ideal. Só lê: lê o banco (lib/queue-insights/load) e calcula
+ * (lib/queue-insights/analyze). Regras em docs/fila-ideal.md.
  */
 export async function GET(
   _req: NextRequest,
@@ -44,9 +45,9 @@ export async function GET(
   if (!loaded) return NextResponse.json({ error: "Fila não encontrada." }, { status: 404 });
 
   const loadMs = Date.now() - startedAt;
-  let analysis: ReturnType<typeof analyzeQueue>;
+  let body: QueueInsightsResponse;
   try {
-    analysis = analyzeQueue(loaded.input, now);
+    body = analyzeQueue(loaded.input, now);
   } catch (e) {
     console.error(`${tag}: cálculo falhou: ${(e as Error).message}`);
     return NextResponse.json({ error: "Não foi possível analisar essa fila. Tente de novo." }, { status: 500 });
@@ -54,12 +55,9 @@ export async function GET(
 
   const s = loaded.stats;
   console.log(
-    `${tag}: leitura ${loadMs}ms (${s.requests} req, ${s.queuePosts} posts da fila, ` +
-    `${s.accountPosts} das contas, ${s.videos} vídeos, ${s.snapshots} leituras) | ` +
-    `cálculo ${Date.now() - startedAt - loadMs}ms` +
-    (loaded.input.missingSql.length ? ` | SQL pendente: ${loaded.input.missingSql.length}` : "")
+    `${tag}: leitura ${loadMs}ms (${s.requests} req, ${s.queuePosts} posts da fila, ${s.videos} vídeos) | ` +
+    `cálculo ${Date.now() - startedAt - loadMs}ms`
   );
 
-  const body: QueueInsightsResponse = { ...analysis, accountLoad24h: loaded.accountLoad24h };
   return NextResponse.json(body);
 }

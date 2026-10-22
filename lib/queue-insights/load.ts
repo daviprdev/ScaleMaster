@@ -2,8 +2,8 @@
  * Raio-X da fila — leitura do banco.
  *
  * Monta o AnalyzeInput de UMA fila (campanha do Postar ou Loop) para
- * analyzeQueue, a carga por conta das próximas 24h e a lista do seletor de
- * filas. Só LÊ: nada aqui grava no banco nem mexe na distribuição.
+ * analyzeQueue e a lista do seletor de filas. Só LÊ: nada aqui grava no banco
+ * nem mexe na distribuição. Regras em docs/fila-ideal.md.
  *
  * Velocidade: um Loop de 50 contas a cada 30 min passa de 70 mil posts em 30
  * dias, e o PostgREST corta toda resposta em 1000 linhas. Cada leitura grande
@@ -11,15 +11,13 @@
  * colunas mínimas e um limite único de requisições simultâneas para o load
  * inteiro (nada de 40 páginas disparando de uma vez contra o Supabase).
  *
- * SQL manual (supabase/fila_ideal.sql): até ser aplicado, cada peça que falta
- * é detectada por uma sonda barata e o cálculo cai para as estimativas
- * (published_at do Loop por created_at/retry_after, insights_fetched_at no
- * lugar de insights_plays_at, sem histórico de leituras). O que falta vai em
- * missingSql para o painel avisar.
+ * SQL manual (supabase/fila_ideal.sql, aplicado em 21/10/2026): se uma coluna
+ * nova faltar no banco, a leitura refaz sem ela e o cálculo cai nas
+ * estimativas (published_at do Loop por created_at/retry_after,
+ * insights_fetched_at no lugar de insights_plays_at, campanha sem video_ids).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fetchVideoUsage } from "@/lib/video-history";
 import { brtDateKey } from "@/lib/brt-time";
 import { shortCodeFromUrl } from "@/lib/clone-media";
 import { normalizeCaptionMode } from "@/lib/reel-captions";
@@ -34,18 +32,14 @@ import type {
   QueueListResponse,
   QueueSource,
   QueueState,
-  SnapshotRow,
   VideoInfo,
 } from "./types";
 
 const H = 60 * 60_000;
 const D = 24 * H;
 
-/** Janelas de leitura (docs/fila-ideal.md): resumo de 30 dias; normal das contas em 17 (14 + margem da janela local). */
+/** Posts da fila desde o começo dela, até 30 dias (docs/fila-ideal.md). */
 const QUEUE_POSTS_DAYS = 30;
-const ACCOUNT_POSTS_DAYS = 17;
-const HOT_WINDOW_MS = 48 * H;
-const MATURE_MS = 4 * H;
 /** O container do Loop nasce antes da publicação (processamento, backoff): margem na busca por created_at. */
 const LOOP_CREATED_MARGIN_MS = D;
 
@@ -55,9 +49,6 @@ const PAGE = 1000;
 const CONCURRENCY = 6;
 /** Tamanho dos `.in()` — 150 uuids cabem folgado na URL. */
 const IN_CHUNK = 150;
-/** Até aqui o histórico de leituras da fila vem inteiro; acima, só dos posts que podem virar destaque. */
-const SNAPSHOT_FULL_MAX = 6000;
-const SNAPSHOT_SUBSET_MAX = 1000;
 
 // ---------------------------------------------------------------------------
 // Linhas do banco (só as colunas lidas)
@@ -154,21 +145,6 @@ interface VideoDb {
   created_at: string | null;
 }
 
-interface SnapshotDb {
-  id: number;
-  post_id: string;
-  source: string;
-  read_at: string;
-  views: number;
-}
-
-interface ActiveLoopDb {
-  id: string;
-  interval_minutes: number | null;
-  account_folder_id: string | null;
-  loop_accounts: { account_id: string }[] | null;
-}
-
 interface DbError {
   code?: string | null;
   message?: string | null;
@@ -234,7 +210,7 @@ function started<T>(p: Promise<T>): Promise<T> {
   return p;
 }
 
-/** id de fila/conta/post — também protege os filtros `.or()` montados com ele. */
+/** id de fila/conta/post — também protege os filtros montados com ele. */
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -262,6 +238,13 @@ export function isMissingSchemaError(err: DbError | null | undefined): boolean {
   return /does not exist|schema cache|could not find the/i.test(`${err.message ?? ""} ${err.details ?? ""}`);
 }
 
+/** Falha de leitura com o erro do PostgREST junto (para reconhecer coluna que falta). */
+class DbReadError extends Error {
+  constructor(message: string, readonly dbError: DbError) {
+    super(message);
+  }
+}
+
 /**
  * Todas as linhas de uma consulta: contagem exata (head) e páginas de 1000 em
  * paralelo, ordenadas por id. Se entrou linha entre a contagem e as páginas, a
@@ -274,14 +257,10 @@ async function fetchPaged<T extends { id: string | number }>(
   table: string,
   columns: string,
   filter: Filter,
-  knownTotal?: number,
 ): Promise<T[]> {
-  let total = knownTotal;
-  if (total === undefined) {
-    const head = await lim.run<DbResult>(() => filter(admin.from(table).select("id", { count: "exact", head: true })));
-    if (head.error) throw new Error(`contagem de ${table} falhou: ${head.error.message}`);
-    total = (head.count as number | null) ?? 0;
-  }
+  const head = await lim.run<DbResult>(() => filter(admin.from(table).select("id", { count: "exact", head: true })));
+  if (head.error) throw new DbReadError(`contagem de ${table} falhou: ${head.error.message}`, head.error);
+  const total = (head.count as number | null) ?? 0;
   if (!total) return [];
 
   const page = async (i: number): Promise<T[]> => {
@@ -290,7 +269,7 @@ async function fetchPaged<T extends { id: string | number }>(
         .order("id", { ascending: true })
         .range(i * PAGE, (i + 1) * PAGE - 1),
     );
-    if (res.error) throw new Error(`leitura de ${table} falhou: ${res.error.message}`);
+    if (res.error) throw new DbReadError(`leitura de ${table} falhou: ${res.error.message}`, res.error);
     return (res.data ?? []) as T[];
   };
 
@@ -315,103 +294,33 @@ async function fetchPaged<T extends { id: string | number }>(
   return out;
 }
 
-/** fetchPaged em blocos de contas (`.in("account_id")`), todos em paralelo. */
-async function fetchByAccounts<T extends { id: string | number }>(
+// Colunas do SQL manual: faltando, a tabela fica lembrada por 1 min (para não
+// errar toda leitura e para enxergar logo depois de aplicado).
+const newColumnsMissingAt = new Map<string, number>();
+const MISSING_RETRY_MS = 60_000;
+
+/** fetchPaged com as colunas novas; se o banco não tiver alguma, refaz só com as antigas. */
+async function fetchPagedWithNewColumns<T extends { id: string | number }>(
   admin: SupabaseClient,
   lim: Limiter,
   table: string,
-  columns: string,
-  accountIds: string[],
+  baseColumns: string[],
+  newColumns: string[],
   filter: Filter,
 ): Promise<T[]> {
-  if (!accountIds.length) return [];
-  const parts = await Promise.all(
-    chunk(accountIds, IN_CHUNK).map((ids) =>
-      fetchPaged<T>(admin, lim, table, columns, (q) => filter(q.in("account_id", ids))),
-    ),
-  );
-  return parts.flat();
-}
-
-// ---------------------------------------------------------------------------
-// SQL manual: sondas
-// ---------------------------------------------------------------------------
-
-interface SchemaFlags {
-  postsPlaysAt: boolean;
-  containersPlaysAt: boolean;
-  containersPublishedAt: boolean;
-  campaignVideoIds: boolean;
-  snapshots: boolean;
-}
-
-const SCHEMA_PROBES: { key: keyof SchemaFlags; table: string; column: string; label: string }[] = [
-  {
-    key: "postsPlaysAt",
-    table: "scheduled_posts",
-    column: "insights_plays_at",
-    label: "Hora da leitura de views do Postar (scheduled_posts.insights_plays_at)",
-  },
-  {
-    key: "containersPlaysAt",
-    table: "pending_containers",
-    column: "insights_plays_at",
-    label: "Hora da leitura de views do Loop (pending_containers.insights_plays_at)",
-  },
-  {
-    key: "containersPublishedAt",
-    table: "pending_containers",
-    column: "published_at",
-    label: "Hora real de publicação do Loop (pending_containers.published_at)",
-  },
-  {
-    key: "campaignVideoIds",
-    table: "distribute_campaigns",
-    column: "video_ids",
-    label: "Vídeos da campanha em modo fila ideal (distribute_campaigns.video_ids)",
-  },
-  {
-    key: "snapshots",
-    table: "post_views_snapshots",
-    column: "id",
-    label: "Histórico de leituras de views (tabela post_views_snapshots)",
-  },
-];
-
-// O SQL só muda à mão: a resposta da sonda fica em memória (30 min se existe,
-// 1 min se falta — para o painel enxergar logo depois de aplicado).
-const schemaCache = new Map<string, { ok: boolean; at: number }>();
-const SCHEMA_OK_TTL_MS = 30 * 60_000;
-const SCHEMA_MISSING_TTL_MS = 60_000;
-
-async function probeColumn(admin: SupabaseClient, lim: Limiter, table: string, column: string): Promise<boolean> {
-  const key = `${table}.${column}`;
-  const hit = schemaCache.get(key);
-  if (hit && Date.now() - hit.at < (hit.ok ? SCHEMA_OK_TTL_MS : SCHEMA_MISSING_TTL_MS)) return hit.ok;
-
-  const { error } = await lim.run(() => admin.from(table).select(column).limit(1));
-  if (error && !isMissingSchemaError(error)) {
-    // Falha de outra natureza: não conclui nada e deixa a leitura principal acusar.
-    console.warn(`[queue-insights] sonda ${key} falhou: ${error.message}`);
-    return true;
+  const missingAt = newColumnsMissingAt.get(table);
+  if (missingAt === undefined || Date.now() - missingAt >= MISSING_RETRY_MS) {
+    try {
+      const rows = await fetchPaged<T>(admin, lim, table, [...baseColumns, ...newColumns].join(", "), filter);
+      newColumnsMissingAt.delete(table);
+      return rows;
+    } catch (e) {
+      if (!(e instanceof DbReadError) || !isMissingSchemaError(e.dbError)) throw e;
+      newColumnsMissingAt.set(table, Date.now());
+      console.warn(`[queue-insights] ${table} sem ${newColumns.join("/")} (SQL manual pendente) — usando as estimativas`);
+    }
   }
-  const ok = !error;
-  schemaCache.set(key, { ok, at: Date.now() });
-  return ok;
-}
-
-async function loadSchema(
-  admin: SupabaseClient,
-  lim: Limiter,
-): Promise<{ flags: SchemaFlags; missingSql: string[] }> {
-  const results = await Promise.all(SCHEMA_PROBES.map((p) => probeColumn(admin, lim, p.table, p.column)));
-  const flags = {} as SchemaFlags;
-  const missingSql: string[] = [];
-  SCHEMA_PROBES.forEach((p, i) => {
-    flags[p.key] = results[i];
-    if (!results[i]) missingSql.push(p.label);
-  });
-  return { flags, missingSql };
+  return fetchPaged<T>(admin, lim, table, baseColumns.join(", "), filter);
 }
 
 // ---------------------------------------------------------------------------
@@ -520,7 +429,7 @@ function handoffDefaults(
 }
 
 // ---------------------------------------------------------------------------
-// Posts → PostRow
+// Posts da fila → PostRow
 // ---------------------------------------------------------------------------
 
 /** insights_plays_at (só leituras que trouxeram views) ?? insights_fetched_at (anda até quando a Meta falha). */
@@ -567,122 +476,63 @@ function fromContainer(r: ContainerDb, accountById: Map<string, AccountDb>): Pos
   };
 }
 
-function isMature(p: PostRow, nowMs: number): boolean {
-  if (p.views == null || !p.viewsReadAt) return false;
-  const pub = ms(p.publishedAt);
-  return nowMs - pub >= MATURE_MS && ms(p.viewsReadAt) - pub >= MATURE_MS;
-}
+const SCHEDULED_COLUMNS = [
+  "id", "account_id", "campaign_id", "video_id", "published_at",
+  "insights_plays", "insights_fetched_at", "media_id",
+];
+const SCHEDULED_NEW_COLUMNS = ["insights_plays_at"];
 
-function scheduledColumns(flags: SchemaFlags): string {
-  return [
-    "id", "account_id", "campaign_id", "video_id", "published_at",
-    "insights_plays", "insights_fetched_at", "media_id",
-    ...(flags.postsPlaysAt ? ["insights_plays_at"] : []),
-  ].join(", ");
-}
-
-function containerColumns(flags: SchemaFlags): string {
-  return [
-    "id", "account_id", "loop_id", "video_id", "ig_business_account_id", "created_at", "retry_after",
-    "insights_plays", "insights_fetched_at", "media_id",
-    ...(flags.containersPlaysAt ? ["insights_plays_at"] : []),
-    ...(flags.containersPublishedAt ? ["published_at"] : []),
-  ].join(", ");
-}
-
-/** Reels publicados do Postar a partir de `sinceIso` (story não entra no Raio-X). */
-function scheduledFilter(userId: string, sinceIso: string): Filter {
-  return (q) =>
-    q.eq("user_id", userId)
-      .eq("status", "published")
-      .neq("post_type", "story")
-      .not("published_at", "is", null)
-      .gte("published_at", sinceIso);
-}
-
-/** Containers publicados do Loop; a busca é por created_at com margem e o corte fino vem em memória. */
-function containerFilter(userId: string, sinceMs: number): Filter {
-  return (q) =>
-    q.eq("user_id", userId)
-      .eq("status", "published")
-      .not("media_id", "is", null)
-      .gte("created_at", toIso(sinceMs - LOOP_CREATED_MARGIN_MS));
-}
-
-interface RawPosts {
-  scheduled: ScheduledDb[];
-  containers: ContainerDb[];
-}
-
-/** Posts DESTA fila nos últimos 30 dias. */
-async function loadQueueRaw(
-  admin: SupabaseClient,
-  lim: Limiter,
-  userId: string,
-  source: QueueSource,
-  queueId: string,
-  flags: SchemaFlags,
-  nowMs: number,
-): Promise<RawPosts> {
-  const sinceMs = nowMs - QUEUE_POSTS_DAYS * D;
-  if (source === "postar") {
-    const scheduled = await fetchPaged<ScheduledDb>(admin, lim, "scheduled_posts", scheduledColumns(flags), (q) =>
-      scheduledFilter(userId, toIso(sinceMs))(q.eq("campaign_id", queueId)),
-    );
-    return { scheduled, containers: [] };
-  }
-  const containers = await fetchPaged<ContainerDb>(admin, lim, "pending_containers", containerColumns(flags), (q) =>
-    containerFilter(userId, sinceMs)(q.eq("loop_id", queueId)),
-  );
-  return { scheduled: [], containers };
-}
+const CONTAINER_COLUMNS = [
+  "id", "account_id", "loop_id", "video_id", "ig_business_account_id", "created_at", "retry_after",
+  "insights_plays", "insights_fetched_at", "media_id",
+];
+const CONTAINER_NEW_COLUMNS = ["insights_plays_at", "published_at"];
 
 /**
- * Reels das contas nos últimos 17 dias, de TODAS as origens, sem os posts
- * desta fila (que já vieram em loadQueueRaw — ler de novo dobraria o maior
- * volume do load). `.neq` sozinho descartaria as linhas com fila nula.
+ * Reels publicados DESTA fila a partir de `sinceMs` (story não entra no
+ * Raio-X). Loop: a busca é por created_at com margem e o corte fino por
+ * publishedAt vem em memória.
  */
-async function loadOtherRaw(
+async function loadQueuePosts(
   admin: SupabaseClient,
   lim: Limiter,
   userId: string,
-  accountIds: string[],
   source: QueueSource,
   queueId: string,
-  flags: SchemaFlags,
-  nowMs: number,
-): Promise<RawPosts> {
-  if (!accountIds.length) return { scheduled: [], containers: [] };
-  const sinceMs = nowMs - ACCOUNT_POSTS_DAYS * D;
-  const [scheduled, containers] = await Promise.all([
-    fetchByAccounts<ScheduledDb>(admin, lim, "scheduled_posts", scheduledColumns(flags), accountIds, (q) => {
-      const base = scheduledFilter(userId, toIso(sinceMs))(q);
-      return source === "postar" ? base.or(`campaign_id.is.null,campaign_id.neq.${queueId}`) : base;
-    }),
-    fetchByAccounts<ContainerDb>(admin, lim, "pending_containers", containerColumns(flags), accountIds, (q) => {
-      const base = containerFilter(userId, sinceMs)(q);
-      return source === "loop" ? base.or(`loop_id.is.null,loop_id.neq.${queueId}`) : base;
-    }),
-  ]);
-  return { scheduled, containers };
-}
+  sinceMs: number,
+  accountById: Map<string, AccountDb>,
+): Promise<PostRow[]> {
+  if (source === "postar") {
+    const rows = await fetchPagedWithNewColumns<ScheduledDb>(
+      admin, lim, "scheduled_posts", SCHEDULED_COLUMNS, SCHEDULED_NEW_COLUMNS,
+      (q) =>
+        q.eq("user_id", userId)
+          .eq("campaign_id", queueId)
+          .eq("status", "published")
+          .neq("post_type", "story")
+          .not("published_at", "is", null)
+          .gte("published_at", toIso(sinceMs)),
+    );
+    return rows.filter((r) => r.published_at).map((r) => fromScheduled(r, accountById));
+  }
 
-function normalizeRaw(raw: RawPosts, accountById: Map<string, AccountDb>, sinceMs: number): PostRow[] {
-  const out: PostRow[] = [];
-  for (const r of raw.scheduled) {
-    if (!r.published_at) continue;
-    out.push(fromScheduled(r, accountById));
-  }
-  for (const r of raw.containers) {
-    if (!r.media_id) continue;
-    const p = fromContainer(r, accountById);
-    if (ms(p.publishedAt) >= sinceMs) out.push(p);
-  }
-  return out;
+  const rows = await fetchPagedWithNewColumns<ContainerDb>(
+    admin, lim, "pending_containers", CONTAINER_COLUMNS, CONTAINER_NEW_COLUMNS,
+    (q) =>
+      q.eq("user_id", userId)
+        .eq("loop_id", queueId)
+        .eq("status", "published")
+        .not("media_id", "is", null)
+        .gte("created_at", toIso(sinceMs - LOOP_CREATED_MARGIN_MS)),
+  );
+  return rows
+    .filter((r) => r.media_id)
+    .map((r) => fromContainer(r, accountById))
+    .filter((p) => ms(p.publishedAt) >= sinceMs);
 }
 
 // ---------------------------------------------------------------------------
-// Fila, contas, vídeos, histórico
+// Fila, contas, vídeos, histórico de uso
 // ---------------------------------------------------------------------------
 
 const CAMPAIGN_COLUMNS =
@@ -806,20 +656,13 @@ async function loadFolderName(admin: SupabaseClient, lim: Limiter, userId: strin
   return (data as { name?: string | null } | null)?.name ?? null;
 }
 
-/** Vídeos por id em blocos; legenda só onde o painel mostra (vídeos dos posts da fila). */
-async function loadVideosById(
-  admin: SupabaseClient,
-  lim: Limiter,
-  userId: string,
-  ids: string[],
-  withCaption: boolean,
-): Promise<VideoDb[]> {
+/** Vídeos por id em blocos, com legenda (o painel mostra a dos vídeos da fila ideal). */
+async function loadVideosById(admin: SupabaseClient, lim: Limiter, userId: string, ids: string[]): Promise<VideoDb[]> {
   if (!ids.length) return [];
-  const columns = withCaption ? `${VIDEO_COLUMNS}, caption` : VIDEO_COLUMNS;
   const parts = await Promise.all(
     chunk(ids, IN_CHUNK).map(async (part) => {
       const { data, error } = await lim.run(() =>
-        admin.from("videos_library").select(columns).eq("user_id", userId).in("id", part),
+        admin.from("videos_library").select(`${VIDEO_COLUMNS}, caption`).eq("user_id", userId).in("id", part),
       );
       if (error) throw new Error(`vídeos: ${error.message}`);
       return (data ?? []) as unknown as VideoDb[];
@@ -828,188 +671,14 @@ async function loadVideosById(
   return parts.flat();
 }
 
-/**
- * Posts que podem virar destaque ou fallback do "bombando agora": publicados
- * nas 48h, maduros, com views ≥ p85 das views maduras de 30 dias (folga sobre o
- * p90 da regra) + o de mais views. Usado só quando o histórico da fila é grande
- * demais para vir inteiro.
- */
-function hotCandidateIds(queuePosts: PostRow[], recent: PostRow[], nowMs: number): string[] {
-  const matureViews = queuePosts
-    .filter((p) => isMature(p, nowMs))
-    .map((p) => p.views as number)
-    .sort((a, b) => a - b);
-  const threshold = matureViews.length ? matureViews[Math.floor(0.85 * (matureViews.length - 1))] : 0;
-  return recent
-    .filter((p) => isMature(p, nowMs))
-    .sort((a, b) => (b.views as number) - (a.views as number))
-    .filter((p, i) => i === 0 || (p.views as number) >= threshold)
-    .slice(0, SNAPSHOT_SUBSET_MAX)
-    .map((p) => p.postId);
-}
-
-const SNAPSHOT_COLUMNS = "id, post_id, source, read_at, views";
-
-/** Leituras guardadas pelo trigger dos posts da fila publicados nas últimas 48h. */
-async function loadSnapshots(
-  admin: SupabaseClient,
-  lim: Limiter,
-  queueId: string,
-  queuePosts: PostRow[],
-  nowMs: number,
-): Promise<SnapshotRow[]> {
-  const recent = queuePosts.filter((p) => nowMs - ms(p.publishedAt) <= HOT_WINDOW_MS);
-  if (!recent.length) return [];
-  const recentIds = new Set(recent.map((p) => p.postId));
-  const sinceIso = toIso(nowMs - HOT_WINDOW_MS);
-  const byQueue: Filter = (q) => q.eq("queue_id", queueId).gte("read_at", sinceIso);
-
-  const head = await lim.run<DbResult>(() =>
-    byQueue(admin.from("post_views_snapshots").select("id", { count: "exact", head: true })),
-  );
-  if (head.error) throw new Error(`post_views_snapshots: ${head.error.message}`);
-  const total = (head.count as number | null) ?? 0;
-
-  let rows: SnapshotDb[];
-  if (total <= SNAPSHOT_FULL_MAX) {
-    rows = await fetchPaged<SnapshotDb>(admin, lim, "post_views_snapshots", SNAPSHOT_COLUMNS, byQueue, total);
-  } else {
-    // Fila enorme (~12 leituras por post em 48h): só o histórico de quem pode virar destaque.
-    const ids = hotCandidateIds(queuePosts, recent, nowMs);
-    const parts = await Promise.all(
-      chunk(ids, IN_CHUNK).map((part) =>
-        fetchPaged<SnapshotDb>(admin, lim, "post_views_snapshots", SNAPSHOT_COLUMNS, (q) => q.in("post_id", part)),
-      ),
-    );
-    rows = parts.flat();
-  }
-
-  return rows
-    .filter((r) => recentIds.has(r.post_id) && r.views != null && r.read_at)
-    .map((r) => ({
-      postId: r.post_id,
-      source: r.source === "loop" ? "loop" : "postar",
-      readAt: toIso(r.read_at),
-      views: Number(r.views),
-    }));
-}
-
-async function loadUsage(admin: SupabaseClient, accountIds: string[]): Promise<Record<string, string[]>> {
-  const out: Record<string, string[]> = {};
-  if (!accountIds.length) return out;
-  try {
-    const usage = await fetchVideoUsage(admin, accountIds);
-    usage.forEach((perVideo, accountId) => {
-      out[accountId] = Array.from(perVideo.keys());
-    });
-  } catch (e) {
-    // O painel só lê: sem o histórico, o fator de repost e o "Publicar nas
-    // outras contas" ficam sem filtro — melhor que derrubar o Raio-X inteiro.
-    console.warn(`[queue-insights] ${(e as Error).message}`);
-  }
-  return out;
-}
-
-// ---------------------------------------------------------------------------
-// Carga por conta (freio de ~50/24h) — docs/fila-ideal.md §11
-// ---------------------------------------------------------------------------
-
-async function loadActiveLoops(admin: SupabaseClient, lim: Limiter, userId: string): Promise<ActiveLoopDb[]> {
-  const { data, error } = await lim.run(() =>
-    admin
-      .from("loops")
-      .select("id, interval_minutes, account_folder_id, loop_accounts ( account_id )")
-      .eq("user_id", userId)
-      .eq("status", "active"),
-  );
-  if (error) throw new Error(`loops ativos: ${error.message}`);
-  return (data ?? []) as unknown as ActiveLoopDb[];
-}
-
-async function loadPausedCampaignIds(admin: SupabaseClient, lim: Limiter, userId: string): Promise<Set<string>> {
-  const { data, error } = await lim.run(() =>
-    admin.from("distribute_campaigns").select("id").eq("user_id", userId).eq("status", "paused"),
-  );
-  if (error) throw new Error(`campanhas pausadas: ${error.message}`);
-  return new Set(((data ?? []) as { id: string }[]).map((r) => r.id));
-}
-
-interface LoadParts {
-  /** Stories publicados nas últimas 24h (passam pela mesma cota de publicação da Meta). */
-  stories: { id: string; account_id: string }[];
-  /** Pendentes/publicando até daqui a 24h (inclui os atrasados, que saem no próximo minuto). */
-  pending: { id: string; account_id: string; campaign_id: string | null }[];
-}
-
-async function loadAccountLoadParts(
-  admin: SupabaseClient,
-  lim: Limiter,
-  userId: string,
-  accountIds: string[],
-  nowMs: number,
-): Promise<LoadParts> {
-  const [stories, pending] = await Promise.all([
-    fetchByAccounts<{ id: string; account_id: string }>(admin, lim, "scheduled_posts", "id, account_id", accountIds, (q) =>
-      q.eq("user_id", userId).eq("status", "published").eq("post_type", "story").gte("published_at", toIso(nowMs - D)),
-    ),
-    fetchByAccounts<{ id: string; account_id: string; campaign_id: string | null }>(
-      admin,
-      lim,
-      "scheduled_posts",
-      "id, account_id, campaign_id",
-      accountIds,
-      (q) => q.eq("user_id", userId).in("status", ["pending", "publishing"]).lte("scheduled_at", toIso(nowMs + D)),
-    ),
-  ]);
-  return { stories, pending };
-}
-
-/**
- * Publicados nas últimas 24h (Postar + Loop) + pendentes nas próximas 24h de
- * campanhas não pausadas + round(1440 / interval_minutes) de cada Loop ativo
- * da conta. O painel soma o ritmo da fila ideal e avisa acima de 45; nada é
- * pausado sozinho.
- */
-function computeAccountLoad(
-  accountIds: string[],
-  accountPosts: PostRow[],
-  parts: LoadParts,
-  pausedCampaignIds: Set<string>,
-  activeLoops: ActiveLoopDb[],
-  accounts: AccountDb[],
-  nowMs: number,
-): Record<string, number> {
-  const load: Record<string, number> = {};
-  for (const id of accountIds) load[id] = 0;
-  const bump = (id: string, n = 1) => {
-    if (id in load) load[id] += n;
-  };
-
-  for (const p of accountPosts) {
-    if (nowMs - ms(p.publishedAt) <= D) bump(p.accountId);
-  }
-  for (const s of parts.stories) bump(s.account_id);
-  for (const p of parts.pending) {
-    if (!p.campaign_id || !pausedCampaignIds.has(p.campaign_id)) bump(p.account_id);
-  }
-  for (const loop of activeLoops) {
-    const interval = loop.interval_minutes ?? 0;
-    if (interval <= 0) continue;
-    const perDay = Math.round(1440 / interval);
-    for (const id of loopAccountIds(loop, accounts)) bump(id, perDay);
-  }
-  return load;
-}
-
 // ---------------------------------------------------------------------------
 // Raio-X de uma fila
 // ---------------------------------------------------------------------------
 
 export interface QueueInsightsLoad {
   input: AnalyzeInput;
-  accountLoad24h: Record<string, number>;
   /** Tamanho do que foi lido — só para o log de tempo da rota. */
-  stats: { requests: number; queuePosts: number; accountPosts: number; videos: number; snapshots: number };
+  stats: { requests: number; queuePosts: number; videos: number };
 }
 
 /**
@@ -1027,23 +696,24 @@ export async function loadQueueInsightsInput(
   const lim = createLimiter(CONCURRENCY);
   const nowMs = now.getTime();
 
-  // ── 1. Fila, contas do usuário, sondas do SQL e o que a carga por conta usa ──
-  const [schema, campaign, loop, accounts, activeLoops, pausedCampaignIds, campaignVideoIds] = await Promise.all([
-    loadSchema(admin, lim),
+  // ── 1. Fila, contas do usuário e a lista fixa da campanha (modo fila ideal) ──
+  const [campaign, loop, accounts, campaignVideoIds] = await Promise.all([
     source === "postar" ? loadCampaignRow(admin, lim, userId, id) : Promise.resolve(null),
     source === "loop" ? loadLoopRow(admin, lim, userId, id) : Promise.resolve(null),
     loadUserAccounts(admin, lim, userId),
-    loadActiveLoops(admin, lim, userId),
-    loadPausedCampaignIds(admin, lim, userId),
     source === "postar" ? loadCampaignVideoIds(admin, lim, userId, id) : Promise.resolve([] as string[]),
   ]);
   if (source === "postar" ? !campaign : !loop) return null;
-  const { flags } = schema;
   const accountById = new Map(accounts.map((a) => [a.id, a]));
+
+  // Começo da contagem: o início da fila, ou 30 dias atrás numa fila mais antiga.
+  const createdMs = ms(campaign ? campaign.created_at : loop!.created_at);
+  const floorMs = nowMs - QUEUE_POSTS_DAYS * D;
+  const sinceMs = Number.isFinite(createdMs) ? Math.max(createdMs, floorMs) : floorMs;
 
   // ── 2. Posts da fila e vídeos da pasta já saem; as contas da campanha vêm do RPC ──
   const folderId = campaign ? campaign.video_folder_id : loop!.folder_id;
-  const queueRawP = started(loadQueueRaw(admin, lim, userId, source, id, flags, nowMs));
+  const queuePostsP = started(loadQueuePosts(admin, lim, userId, source, id, sinceMs, accountById));
   const folderVideosP = started(folderId ? loadFolderVideos(admin, lim, userId, folderId) : Promise.resolve([] as VideoDb[]));
   const folderNameP = started(folderId ? loadFolderName(admin, lim, userId, folderId) : Promise.resolve(null));
 
@@ -1051,56 +721,19 @@ export async function loadQueueInsightsInput(
     ? await loadCampaignAccounts(admin, lim, userId, campaign, accounts)
     : { accountIds: loopAccountIds(loop!, accounts), inflight: 0 };
 
-  const otherRawP = started(loadOtherRaw(admin, lim, userId, accountIds, source, id, flags, nowMs));
-  const usageP = started(loadUsage(admin, accountIds));
-  const loadPartsP = started(loadAccountLoadParts(admin, lim, userId, accountIds, nowMs));
 
-  const [queueRaw, folderVideos, folderName] = await Promise.all([queueRawP, folderVideosP, folderNameP]);
-  const queuePosts = normalizeRaw(queueRaw, accountById, nowMs - QUEUE_POSTS_DAYS * D);
+  const [queuePosts, folderVideos, folderName] = await Promise.all([queuePostsP, folderVideosP, folderNameP]);
 
-  // ── 3. Contas que postaram nesta fila e já saíram dela (ex.: tirada do Loop):
-  //       o normal local delas também precisa dos posts das outras origens ──
-  const accountSince = nowMs - ACCOUNT_POSTS_DAYS * D;
-  const queueAccountSet = new Set(accountIds);
-  const orphanIds = uniq(
-    queuePosts.filter((p) => ms(p.publishedAt) >= accountSince && !queueAccountSet.has(p.accountId)).map((p) => p.accountId),
+  // ── 3. Vídeos citados (posts da fila + lista fixa da campanha), com legenda ──
+  const referencedIds = uniq(
+    [...queuePosts.map((p) => p.videoId), ...campaignVideoIds].filter((v): v is string => !!v),
   );
-  const orphanRawP = started(loadOtherRaw(admin, lim, userId, orphanIds, source, id, flags, nowMs));
-  // Histórico é só o selo "ainda subindo": se a leitura falhar, o Raio-X segue sem ele.
-  const snapshotsP = started(
-    flags.snapshots
-      ? loadSnapshots(admin, lim, id, queuePosts, nowMs).catch((e: Error) => {
-          console.warn(`[queue-insights] histórico de leituras: ${e.message}`);
-          return [] as SnapshotRow[];
-        })
-      : Promise.resolve([] as SnapshotRow[]),
-  );
-
-  const [otherRaw, orphanRaw] = await Promise.all([otherRawP, orphanRawP]);
-  const otherPosts = [
-    ...normalizeRaw(otherRaw, accountById, accountSince),
-    ...normalizeRaw(orphanRaw, accountById, accountSince),
-  ];
-  const accountPosts = [...queuePosts.filter((p) => ms(p.publishedAt) >= accountSince), ...otherPosts];
-
-  // ── 4. Vídeos citados (videoKey de todos os posts; legenda só dos da fila) ──
-  const folderIds = new Set(folderVideos.map((v) => v.id));
-  const queueVideoIds = uniq(queuePosts.map((p) => p.videoId).filter((v): v is string => !!v));
-  const queueVideoSet = new Set(queueVideoIds);
-  const otherVideoIds = uniq(
-    [...otherPosts.map((p) => p.videoId), ...campaignVideoIds].filter(
-      (v): v is string => !!v && !queueVideoSet.has(v) && !folderIds.has(v),
-    ),
-  );
-  const [captioned, others] = await Promise.all([
-    loadVideosById(admin, lim, userId, queueVideoIds, true),
-    loadVideosById(admin, lim, userId, otherVideoIds, false),
-  ]);
+  const referenced = await loadVideosById(admin, lim, userId, referencedIds);
   const videoById = new Map<string, VideoDb>();
   for (const v of folderVideos) videoById.set(v.id, { ...v, caption: null });
-  for (const v of others) videoById.set(v.id, { ...v, caption: null });
-  for (const v of captioned) videoById.set(v.id, v);
+  for (const v of referenced) videoById.set(v.id, v);
 
+  // Mesmo Reel importado 2× na Biblioteca = um vídeo só (shortcode do source_url).
   const keyCache = new Map<string, string>();
   const videoKeyOf = (videoId: string): string => {
     let key = keyCache.get(videoId);
@@ -1111,13 +744,12 @@ export async function loadQueueInsightsInput(
     }
     return key;
   };
-  for (const p of [...queuePosts, ...otherPosts]) {
+  for (const p of queuePosts) {
     p.videoKey = p.videoId ? videoKeyOf(p.videoId) : null;
   }
 
-  // Mais recente primeiro: com o mesmo Reel importado 2× na pasta, vai para o
-  // Postar a cópia com o post mais recente nesta fila; sem posts, a 1ª desta
-  // ordem (docs §3).
+  // Mais recente primeiro: com o mesmo Reel importado 2× na pasta, a cópia
+  // mais nova vem antes.
   const videos: VideoInfo[] = Array.from(videoById.values())
     .sort((a, b) => (ms(b.created_at) || 0) - (ms(a.created_at) || 0))
     .map((v) => ({
@@ -1129,12 +761,12 @@ export async function loadQueueInsightsInput(
     }));
 
   // Campanha em modo fila ideal: a lista fixa É a "pasta" da fila — a pasta de
-  // origem só serve para a linha da campanha. Medir pela pasta inteira daria
-  // "a régua não vai fechar" numa fila que o próprio painel montou.
+  // origem só serve para a linha da campanha. Medir pela pasta inteira deixaria
+  // de fora da fila ideal os vídeos que o próprio painel escolheu.
   const fixedList = campaignVideoIds.filter((v) => videoById.has(v));
   const folderVideoIds = fixedList.length > 0 ? uniq(fixedList) : uniq(folderVideos.map((v) => v.id));
 
-  // ── 5. Config da fila ──
+  // ── 4. Config da fila ──
   const lastPublishedAt = queuePosts.reduce<string | null>(
     (acc, p) => (!acc || ms(p.publishedAt) > ms(acc) ? p.publishedAt : acc),
     null,
@@ -1192,7 +824,7 @@ export async function loadQueueInsightsInput(
     };
   }
 
-  // ── 6. Contas citadas (as da fila + as que postaram nela) ──
+  // ── 5. Contas citadas (as da fila + as que postaram nela) ──
   const infoIds = uniq([...accountIds, ...queuePosts.map((p) => p.accountId)]);
   const accountInfos: AccountInfo[] = infoIds
     .map((accId) => accountById.get(accId))
@@ -1206,36 +838,17 @@ export async function loadQueueInsightsInput(
       igAccountKey: a.ig_business_account_id || a.id,
     }));
 
-  const [snapshots, usedVideoIdsByAccount, loadParts] = await Promise.all([snapshotsP, usageP, loadPartsP]);
-
-  const accountLoad24h = computeAccountLoad(
-    accountIds,
-    accountPosts,
-    loadParts,
-    pausedCampaignIds,
-    activeLoops,
-    accounts,
-    nowMs,
-  );
-
   return {
     input: {
       queue,
       queuePosts,
-      accountPosts,
       accounts: accountInfos,
       videos,
-      snapshots,
-      usedVideoIdsByAccount,
-      missingSql: schema.missingSql,
     },
-    accountLoad24h,
     stats: {
       requests: lim.requests,
       queuePosts: queuePosts.length,
-      accountPosts: accountPosts.length,
       videos: videos.length,
-      snapshots: snapshots.length,
     },
   };
 }

@@ -1,7 +1,7 @@
 /**
  * Raio-X da fila — hora e dia em BRT (offset fixo −3h, como lib/brt-time.ts).
  *
- * Puro: nada de Date.now() — o instante sempre vem de fora (now / nowIso).
+ * Puro: nada de Date.now() — o instante sempre vem de fora (now).
  */
 
 import { brtDateKey } from "../brt-time";
@@ -41,8 +41,8 @@ export function ceilToMinutes(ms: number, minutes: number): number {
   return Math.ceil(ms / step) * step;
 }
 
-/** Próxima `hour`:00 BRT que seja ≥ `notBeforeMs`. */
+/** Próxima `hour`:00 BRT que seja ≥ `notBeforeMs` (vira o dia BRT quando precisa). */
 export function nextBrtHourAtOrAfter(hour: number, notBeforeMs: number): number {
   const sameDay = brtHourStartMs(brtDay(notBeforeMs), hour);
-  return sameDay >= notBeforeMs ? sameDay : brtHourStartMs(brtDay(notBeforeMs + 24 * HOUR_MS), hour);
+  return sameDay >= notBeforeMs ? sameDay : brtHourStartMs(shiftDay(brtDay(notBeforeMs), 1), hour);
 }

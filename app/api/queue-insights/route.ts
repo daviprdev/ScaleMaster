@@ -9,9 +9,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 /**
- * GET /api/queue-insights — filas do seletor do Raio-X (campanhas do Postar e
- * Loops): as rodando primeiro, depois pausadas/terminadas que publicaram nos
- * últimos 7 dias, e a fila em que o painel abre. Só lê.
+ * GET /api/queue-insights — filas do seletor do Raio-X: só as rodando
+ * (campanhas ativas do Postar primeiro, depois Loops ativos) e a fila em que o
+ * painel abre. Só lê.
  */
 export async function GET() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
