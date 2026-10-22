@@ -17,6 +17,8 @@ import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/
 import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
 import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
 import { ProxyPoolToggle } from "@/components/dashboard/ProxyPoolToggle";
+import { queueTitle, useAccountQueues } from "@/components/dashboard/fila/useAccountQueues";
+import type { AccountQueueRef } from "@/lib/fila/account-queues";
 import type { CaptionMode } from "@/lib/reel-captions";
 import {
   TEXT_OVERLAY_MAX_CHARS,
@@ -955,10 +957,13 @@ function AccountsMultiSelect({
   accounts,
   selected,
   onChange,
+  queued,
 }: {
   accounts: Account[];
   selected: string[];
   onChange: (ids: string[]) => void;
+  /** Contas que já estão numa fila do Postar ou Loop (ficam em verde). */
+  queued: Map<string, AccountQueueRef[]>;
 }) {
   const toggle = (id: string) => {
     onChange(selected.includes(id) ? selected.filter(s => s !== id) : [...selected, id]);
@@ -1094,20 +1099,24 @@ function AccountsMultiSelect({
                 {groupAccounts.map(acc => {
                   const isSel = selected.includes(acc.id);
                   const fell = acc.health_status === "error" || acc.health_status === "blocked";
+                  // Verde = já está numa fila do Postar ou Loop.
+                  const queues = queued.get(acc.id);
                   return (
                     <button
                       key={acc.id}
                       type="button"
                       onClick={() => !fell && toggle(acc.id)}
                       disabled={fell}
-                      title={fell ? `@${acc.username} está desconectada` : `@${acc.username}`}
+                      title={fell ? `@${acc.username} está desconectada` : queueTitle(acc.username, queues)}
                       className={cn(
                         "flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border transition-all",
                         fell
                           ? "border-red-500/15 bg-red-500/[0.06] text-red-400/50 cursor-not-allowed"
                           : isSel
                             ? "border-[#00498D]/40 bg-[#00498D]/15 text-[#AFBDD0] cursor-pointer hover:bg-[#00498D]/25"
-                            : "border-line bg-surface-raised text-ink-3 cursor-pointer hover:text-ink-2 hover:border-line-2"
+                            : queues
+                              ? "border-success bg-success-soft text-success cursor-pointer"
+                              : "border-line bg-surface-raised text-ink-3 cursor-pointer hover:text-ink-2 hover:border-line-2"
                       )}
                     >
                       {fell && <AlertTriangle size={8} className="flex-shrink-0 text-red-400/60" />}
@@ -1449,6 +1458,8 @@ function LoopFormModal({
   onSave: (form: FormData, loopId?: string) => Promise<void>;
   onClose: () => void;
 }) {
+  // Contas já em fila (verde). Editando um Loop, as contas dele não contam.
+  const queuedAccounts = useAccountQueues(editingLoop ? { source: "loop", id: editingLoop.id } : null);
   const [form, setForm] = useState<FormData>(() => {
     if (editingLoop) {
       return {
@@ -1647,6 +1658,7 @@ function LoopFormModal({
                 accounts={accounts}
                 selected={form.accountIds}
                 onChange={ids => update("accountIds", ids)}
+                queued={queuedAccounts}
               />
             )}
           </div>

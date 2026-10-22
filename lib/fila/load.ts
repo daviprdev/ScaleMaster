@@ -18,6 +18,13 @@ import {
   type Limiter,
 } from "@/lib/queue-insights/load";
 import type { QueueListItem } from "@/lib/queue-insights/types";
+import {
+  buildAccountQueues,
+  type AccountQueuesResponse,
+  type QueueAccount,
+  type QueueCampaign,
+  type QueueLoop,
+} from "./account-queues";
 import { aggregateFila, type FilaPost, type FilaVideoInput } from "./stats";
 import type { FilaFolder, FilaFolderResponse, FilaListResponse, FilaQueue } from "./types";
 
@@ -244,4 +251,158 @@ export async function loadFilaFolder(
     videos: rows,
     pauseAvailable,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Contas em fila — o verde dos seletores de contas do Postar e do Loop
+// ---------------------------------------------------------------------------
+
+interface QueueAccountDb {
+  id: string;
+  folder_id: string | null;
+  is_active: boolean | null;
+  health_status: string | null;
+}
+
+interface QueueCampaignDb {
+  id: string;
+  status: string | null;
+  account_folder_ids: string[] | null;
+  video_folder_id: string | null;
+  video_count: number | null;
+  burst_mode: boolean | null;
+}
+
+interface QueueLoopDb {
+  id: string;
+  name: string | null;
+  status: string | null;
+  account_folder_id: string | null;
+  loop_accounts: { account_id: string }[] | null;
+}
+
+interface AccountStateDb {
+  account_id: string;
+  total_count: number | string;
+  inflight_count: number | string;
+}
+
+type CampaignStates = Map<string, { total: number; inflight: number }>;
+
+/** Posts de cada conta na campanha (total e em voo): o RPC do sync; sem ele, só as linhas em voo. */
+async function loadCampaignStates(
+  admin: SupabaseClient,
+  lim: Limiter,
+  userId: string,
+  campaignId: string,
+  accountIds: string[],
+): Promise<CampaignStates> {
+  const out: CampaignStates = new Map();
+  const { data, error } = await lim.run(() =>
+    admin.rpc("get_distribute_account_states", { p_campaign_id: campaignId, p_account_ids: accountIds }),
+  );
+  if (!error) {
+    for (const r of (data ?? []) as AccountStateDb[]) {
+      out.set(r.account_id, { total: Number(r.total_count) || 0, inflight: Number(r.inflight_count) || 0 });
+    }
+    return out;
+  }
+  console.warn(`[fila] get_distribute_account_states falhou (${error.message}) — lendo os posts em voo`);
+  const rows = await fetchPaged<{ id: string; account_id: string }>(admin, lim, "scheduled_posts", "id, account_id", (q) =>
+    q.eq("user_id", userId).eq("campaign_id", campaignId).in("status", ["pending", "publishing"]),
+  );
+  for (const r of rows) {
+    const s = out.get(r.account_id) ?? { total: 0, inflight: 0 };
+    s.total++;
+    s.inflight++;
+    out.set(r.account_id, s);
+  }
+  return out;
+}
+
+/** Contas do usuário que já estão numa fila do Postar ou Loop ativa ou pausada (regra em ./account-queues). */
+export async function loadAccountQueues(admin: SupabaseClient, userId: string): Promise<AccountQueuesResponse> {
+  const lim = createLimiter(CONCURRENCY);
+  const [accounts, campaignsRes, loopsRes] = await Promise.all([
+    fetchPaged<QueueAccountDb>(admin, lim, "instagram_accounts", "id, folder_id, is_active, health_status", (q) =>
+      q.eq("user_id", userId),
+    ),
+    lim.run(() =>
+      admin
+        .from("distribute_campaigns")
+        .select("id, status, account_folder_ids, video_folder_id, video_count, burst_mode")
+        .eq("user_id", userId)
+        .in("status", ["active", "paused"]),
+    ),
+    lim.run(() =>
+      admin
+        .from("loops")
+        .select("id, name, status, account_folder_id, loop_accounts ( account_id )")
+        .eq("user_id", userId)
+        .in("status", ["active", "paused"]),
+    ),
+  ]);
+  if (campaignsRes.error) throw new Error(`campanhas: ${campaignsRes.error.message}`);
+  if (loopsRes.error) throw new Error(`loops: ${loopsRes.error.message}`);
+  const campaignRows = (campaignsRes.data ?? []) as QueueCampaignDb[];
+  const loopRows = (loopsRes.data ?? []) as unknown as QueueLoopDb[];
+  if (!accounts.length || (!campaignRows.length && !loopRows.length)) return { accounts: {} };
+
+  const accountIds = accounts.map((a) => a.id);
+  const isSynced = (c: QueueCampaignDb) => (c.account_folder_ids ?? []).length > 0 && c.burst_mode !== true;
+  const videoFolderIds = Array.from(
+    new Set(campaignRows.map((c) => c.video_folder_id).filter((v): v is string => !!v)),
+  );
+
+  const [namesRes, folderCounts, states] = await Promise.all([
+    videoFolderIds.length
+      ? lim.run(() => admin.from("library_folders").select("id, name").eq("user_id", userId).in("id", videoFolderIds))
+      : Promise.resolve({ data: [], error: null }),
+    // Teto da sincronizada = o do cron: vídeos da pasta (pausados inclusos), ou video_count.
+    Promise.all(
+      campaignRows.map((c) =>
+        isSynced(c) && c.video_folder_id
+          ? lim.run(() =>
+              admin
+                .from("videos_library")
+                .select("id", { count: "exact", head: true })
+                .eq("user_id", userId)
+                .eq("folder_id", c.video_folder_id!),
+            )
+          : Promise.resolve(null),
+      ),
+    ),
+    Promise.all(campaignRows.map((c) => loadCampaignStates(admin, lim, userId, c.id, accountIds))),
+  ]);
+  const nameById = new Map(
+    ((namesRes.data ?? []) as { id: string; name: string | null }[]).map((f) => [f.id, f.name?.trim() || "sem nome"]),
+  );
+
+  const campaigns: QueueCampaign[] = campaignRows.map((c, i) => {
+    const folderCount = folderCounts[i]?.count ?? null;
+    const videoCount = c.video_count ?? -1;
+    const folderName = c.video_folder_id ? (nameById.get(c.video_folder_id) ?? "apagada") : "apagada";
+    return {
+      id: c.id,
+      label: `Postar · pasta ${folderName}${c.status === "paused" ? " (pausada)" : ""}`,
+      accountFolderIds: c.account_folder_ids ?? [],
+      burstMode: c.burst_mode === true,
+      maxVideos: folderCount == null ? null : videoCount < 0 ? folderCount : Math.min(videoCount, folderCount),
+      states: states[i],
+    };
+  });
+  const loops: QueueLoop[] = loopRows.map((l) => ({
+    id: l.id,
+    label: `Loop · ${l.name?.trim() || "Meu Loop"}${l.status === "paused" ? " (pausado)" : ""}`,
+    accountFolderId: l.account_folder_id,
+    accountIds: (l.loop_accounts ?? []).map((la) => la.account_id),
+  }));
+  const queueAccounts: QueueAccount[] = accounts.map((a) => ({
+    id: a.id,
+    folderId: a.folder_id,
+    isActive: a.is_active,
+    healthStatus: a.health_status,
+  }));
+
+  return { accounts: buildAccountQueues(queueAccounts, campaigns, loops) };
 }

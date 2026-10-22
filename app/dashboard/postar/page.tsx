@@ -18,6 +18,7 @@ import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/
 import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
 import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
 import { ProxyPoolToggle } from "@/components/dashboard/ProxyPoolToggle";
+import { queueTitle, useAccountQueues } from "@/components/dashboard/fila/useAccountQueues";
 import { VideoThumb } from "@/components/ui/video-thumb";
 import {
   PageHeader,
@@ -1533,7 +1534,8 @@ export default function PostarPage() {
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [accountsWithCampaign, setAccountsWithCampaign] = useState<Set<string>>(new Set());
+  // Contas que já estão numa fila do Postar ou Loop (ficam em verde no seletor).
+  const accountQueues = useAccountQueues();
   const [syncFolders, setSyncFolders] = useState(false);
 
   // Folder
@@ -1610,19 +1612,6 @@ export default function PostarPage() {
   }, []);
 
   useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
-
-  useEffect(() => {
-    fetch("/api/campaigns")
-      .then(r => r.json() as Promise<{ campaigns: Campaign[] }>)
-      .then(d => {
-        const ids = new Set<string>();
-        (d.campaigns ?? [])
-          .filter(c => c.campaign_status === "running" || c.campaign_status === "paused")
-          .forEach(c => c.account_ids.forEach(id => ids.add(id)));
-        setAccountsWithCampaign(ids);
-      })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     setLoadingFolders(true);
@@ -1722,7 +1711,7 @@ export default function PostarPage() {
 
   const validCaptions = captions.filter(c => c.trim().length > 0);
   const selectedFolder = folders.find(f => f.id === selectedFolderId);
-  const accountsWithoutCampaign = accounts.filter(a => !accountsWithCampaign.has(a.id));
+  const accountsWithoutCampaign = accounts.filter(a => !accountQueues.has(a.id));
 
   // Agrupa contas por pasta — sem pasta fica no final
   const accountsByFolder = useMemo(() => {
@@ -1955,7 +1944,7 @@ export default function PostarPage() {
                     <button onClick={() => setSelectedAccountIds([])} className="text-xs text-ink-3 hover:text-ink-2 transition-colors">
                       Nenhuma
                     </button>
-                    {accountsWithCampaign.size > 0 && accountsWithoutCampaign.length > 0 && (
+                    {accountQueues.size > 0 && accountsWithoutCampaign.length > 0 && (
                       <>
                         <span className="text-line text-xs">·</span>
                         <button
@@ -2059,25 +2048,23 @@ export default function PostarPage() {
                               <div className="flex flex-wrap gap-1.5 pt-2 pl-2 pb-1">
                                 {group.accounts.map(acc => {
                                   const isSelected = selectedAccountIds.includes(acc.id);
-                                  const hasCampaign = accountsWithCampaign.has(acc.id);
-                                  const isNew = !hasCampaign && accountsWithCampaign.size > 0;
+                                  // Verde = já está numa fila do Postar ou Loop.
+                                  const queues = accountQueues.get(acc.id);
                                   return (
                                     <button
                                       key={acc.id}
                                       type="button"
                                       onClick={() => toggleAccount(acc.id)}
+                                      title={queueTitle(acc.username, queues)}
                                       className={cn(
                                         "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all relative",
                                         isSelected
                                           ? "border-brand-blue/40 bg-brand-blue/8 text-brand-blue"
-                                          : isNew
-                                            ? "border-danger/30 bg-danger-soft text-ink-2 hover:border-danger/50"
+                                          : queues
+                                            ? "border-success bg-success-soft text-success"
                                             : "border-line bg-surface text-ink-2 hover:border-line-control hover:text-ink"
                                       )}
                                     >
-                                      {isNew && !isSelected && (
-                                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-400/80" />
-                                      )}
                                       {acc.avatar_url ? (
                                         <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
                                       ) : (

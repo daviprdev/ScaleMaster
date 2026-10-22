@@ -36,3 +36,15 @@ Pausado = fora da fila até ser reativado:
 Reativar devolve o vídeo ao sorteio; o post que foi para o fim da fila sai no horário dele.
 
 Tudo fail-open: sem a coluna (SQL pendente) ou com erro de leitura, nada é pausado e a publicação segue como antes. A tela mostra os números e avisa que o botão depende do SQL.
+
+## Contas em fila (verde nos seletores)
+
+No Postar (Nova Distribuição) e no Loop (Contas específicas), a conta que já está numa fila aparece em verde; passar o mouse mostra qual ("na fila: Postar · pasta VITORIAOFZ"). O botão "Novas (N)" do Postar seleciona só as que não estão em verde. Rota `GET /api/accounts/queues`, regra em `lib/fila/account-queues.ts`.
+
+Em fila = a conta vai postar por uma campanha do Postar ou Loop ativa ou pausada:
+
+- Postar: tem post pendente/publicando na campanha; ou a campanha está sincronizada com a pasta de contas dela, a conta está ativa e sem erro e ainda não chegou ao teto de vídeos (o `sync-distribute-accounts` a matricula sozinho, mesmo antes do 1º post).
+- Loop: as contas ativas e sem erro da pasta de contas dele, ou as contas escolhidas.
+- Editando um Loop, as contas dele não contam.
+
+Conta recém-conectada entra inativa: fica livre (sem verde) até ser ativada — mas, ativa numa pasta sincronizada com uma campanha, ela é puxada por essa campanha.
