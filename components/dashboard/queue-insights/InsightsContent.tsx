@@ -268,20 +268,7 @@ function IdealCard({
         </ul>
       )}
 
-      {ideal.accounts.length > 0 && (
-        <ul className="grid border-t border-line sm:grid-cols-2 sm:gap-x-6" aria-label="Contas da fila ideal">
-          {ideal.accounts.map((a) => (
-            <li
-              key={a.accountId}
-              className="flex items-center justify-between gap-3 border-b border-line py-2 text-[13px] leading-5"
-            >
-              <span className="min-w-0 truncate text-ink">@{a.username}</span>
-              <span className="shrink-0 tabular-nums text-success">{fmtViews(a.avgViews)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
+      {/* A lista de contas saiu a pedido do dono; elas continuam indo marcadas para o Postar. */}
       {ideal.footnote && <p className="text-xs leading-4 text-ink-3">{ideal.footnote}</p>}
 
       <ActionButton size="lg" disabledReason={disabledReason} onClick={onBuild}>

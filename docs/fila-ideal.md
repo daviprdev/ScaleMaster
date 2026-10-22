@@ -4,7 +4,7 @@ Botão no canto inferior direito do dashboard → janela central "Raio-X da fila
 
 1. **Números do topo** — publicações da fila, visualizações, views por publicação, seu melhor post.
 2. **"Um post seu está indo muito bem agora"** — o post de mais views + botão **Publicar nas outras contas**.
-3. **"A sua fila ideal, montada com o que já funciona"** — melhores vídeos × melhores contas + botão **Montar essa fila**, que abre o Postar com esses vídeos (e contas) já selecionados.
+3. **"A sua fila ideal, montada com o que já funciona"** — melhores vídeos × melhores contas + botão **Montar essa fila**, que abre o Postar com esses vídeos (e contas) já selecionados. O card mostra só os vídeos; a lista de contas saiu a pedido do dono (22/10), mas as contas continuam indo marcadas para o Postar.
 
 O painel só lê. Nada muda a distribuição automática: a fila ideal só vira campanha quando o dono confirma no Postar.
 
