@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Slot } from "@radix-ui/react-slot";
+import { Slot, Slottable } from "@radix-ui/react-slot";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -71,7 +71,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ) : (
           icon
         )}
-        {children}
+        {/* Com asChild o Slot exige um filho só: o Slottable marca qual é (o
+            Link) e os ícones vão para dentro dele. */}
+        <Slottable>{children}</Slottable>
         {!loading && iconRight}
       </Comp>
     );
