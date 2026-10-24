@@ -6,6 +6,7 @@ import { Link2, Copy, Check, Loader2 } from "lucide-react";
 interface WebhookUrls {
   apexvips?: string;
   sharkbot?: string;
+  sharkbot_gringa?: string;
 }
 
 export default function SalesWebhookCard() {
@@ -28,7 +29,12 @@ export default function SalesWebhookCard() {
 
   const entries: { key: string; label: string; desc: string }[] = [
     { key: "apexvips", label: "ApexVips", desc: "Cole no campo de Webhook dos bots da ApexVips." },
-    { key: "sharkbot", label: "SharkBot", desc: "Cole no campo de Webhook dos bots da SharkBot." },
+    { key: "sharkbot", label: "SharkBot", desc: "Cole no campo de Webhook dos bots da conta principal." },
+    {
+      key: "sharkbot_gringa",
+      label: "SharkBot · Gringa",
+      desc: "Cole nos bots da conta gringa. Dólar/euro entra convertido em reais.",
+    },
   ];
 
   return (

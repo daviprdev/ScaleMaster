@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { parseSharkBotSale, type SharkBotPayload } from "../lib/sharkbot";
+import { describe, it, expect, vi } from "vitest";
+import {
+  parseSharkBotSale,
+  saleAmountBrl,
+  saleNotificationBody,
+  type SharkBotPayload,
+  type SharkBotSale,
+} from "../lib/sharkbot";
 
 // Mesma estrutura dos avisos reais da SharkBot recebidos em 20/10/2026
 // (valores de cliente trocados por exemplos).
@@ -37,5 +43,51 @@ describe("parseSharkBotSale", () => {
       currency: "BRL",
       customerIdentifier: null,
     });
+  });
+
+  it("normaliza a moeda e cai em BRL quando ela vem estranha", () => {
+    const tx = approved.data!.transaction!;
+    const withCurrency = (currency: string) => ({ ...approved, data: { ...approved.data, transaction: { ...tx, currency } } });
+    expect(parseSharkBotSale(withCurrency(" usd ")).currency).toBe("USD");
+    expect(parseSharkBotSale(withCurrency("R$")).currency).toBe("BRL");
+  });
+});
+
+// toLocaleString separa símbolo e número com espaço não separável.
+const plain = (s: string) => s.replace(/\s/g, " ");
+
+const brSale: SharkBotSale = { externalId: "tx_1", amount: 11.87, currency: "BRL", customerIdentifier: null };
+const usdSale: SharkBotSale = { externalId: "tx_2", amount: 9.9, currency: "USD", customerIdentifier: null };
+
+describe("saleAmountBrl", () => {
+  it("venda em reais passa direto, sem buscar cotação", async () => {
+    const getRate = vi.fn();
+    expect(await saleAmountBrl(brSale, getRate)).toBe(11.87);
+    expect(getRate).not.toHaveBeenCalled();
+  });
+
+  it("venda da gringa entra convertida para reais, arredondada em centavos", async () => {
+    // 9,90 × 4,9652 = 49,15548
+    expect(await saleAmountBrl(usdSale, async () => 4.9652)).toBe(49.16);
+  });
+
+  it("sem cotação ou sem valor fica nula (não soma dólar como real)", async () => {
+    expect(await saleAmountBrl(usdSale, async () => null)).toBeNull();
+    expect(await saleAmountBrl({ ...usdSale, amount: null }, async () => 5)).toBeNull();
+  });
+});
+
+describe("saleNotificationBody", () => {
+  it("mostra reais na venda do Brasil", () => {
+    expect(plain(saleNotificationBody(brSale, 11.87))).toBe("R$ 11,87");
+  });
+
+  it("mostra o valor original e o convertido na venda da gringa", () => {
+    expect(plain(saleNotificationBody(usdSale, 49.16))).toBe("US$ 9,90 · R$ 49,16");
+    expect(plain(saleNotificationBody(usdSale, null))).toBe("US$ 9,90");
+  });
+
+  it("sem valor avisa só que entrou pagamento", () => {
+    expect(saleNotificationBody({ ...brSale, amount: null }, null)).toBe("Novo pagamento recebido.");
   });
 });

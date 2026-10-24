@@ -31,6 +31,7 @@ export async function GET() {
   return NextResponse.json({
     apexvips: `${origin}/api/webhooks/apexvips/${token}`,
     sharkbot: `${origin}/api/webhooks/sharkbot/${token}`,
+    sharkbot_gringa: `${origin}/api/webhooks/sharkbot/${token}/gringa`,
     // Compatibilidade retroativa: campos antigos que esperam { url }
     url: `${origin}/api/webhooks/apexvips/${token}`,
   });
