@@ -12,7 +12,7 @@ export type QueueSource = "postar" | "loop";
 /** rodando | rodando com pasta de contas sincronizada | pausada | terminada. */
 export type QueueState = "running" | "running_synced" | "paused" | "finished";
 
-/** Uma entrada do seletor de filas (só filas rodando). */
+/** Uma entrada do seletor de filas (só filas rodando; sem nenhuma, a última fila). */
 export interface QueueListItem {
   source: QueueSource;
   id: string;
@@ -204,6 +204,6 @@ export interface QueueInsightsResponse {
 /** Resposta de GET /api/queue-insights. */
 export interface QueueListResponse {
   queues: QueueListItem[];
-  /** Fila em que o painel abre: a campanha rodando com mais posts nas últimas 24h. */
+  /** Fila em que o painel abre: a campanha rodando com mais posts nas últimas 24h (sem nenhuma rodando, a última fila). */
   defaultQueue: { source: QueueSource; id: string } | null;
 }

@@ -1,6 +1,6 @@
 # Raio-X da fila — regras (v2, igual ao Hotler)
 
-Botão no canto inferior direito do dashboard → janela central "Raio-X da fila". Lê UMA fila rodando (campanha ativa do Postar; Loop ativo também entra) e mostra três blocos, no layout do print do Hotler que o dono mandou:
+Botão no canto inferior direito do dashboard → janela central "Raio-X da fila". Lê UMA fila rodando (campanha ativa do Postar; Loop ativo também entra; sem nenhuma rodando, a última fila) e mostra três blocos, no layout do print do Hotler que o dono mandou:
 
 1. **Números do topo** — publicações da fila, visualizações, views por publicação, seu melhor post.
 2. **"Um post seu está indo muito bem agora"** — o post de mais views + botão **Publicar nas outras contas**.
@@ -13,6 +13,8 @@ Contratos: `lib/queue-insights/types.ts` (dados) e `lib/queue-insights/handoff.t
 ## Quais filas
 
 O seletor mostra só filas rodando — campanhas ativas do Postar primeiro, depois Loops ativos. Pausada ou terminada não aparece. Abre na campanha com mais posts nas últimas 24h. Com uma fila só, não mostra seletor.
+
+Sem nenhuma fila rodando, o Raio-X abre na **última fila** — a de publicação mais recente, mesmo terminada ou pausada —, com os mesmos três blocos e o **Montar essa fila** funcionando (pedido do dono em 24/10: a fila acabou antes de ele montar a fila ideal). É só ela: as outras terminadas continuam fora. Fila excluída não volta, porque a exclusão apaga os posts.
 
 ## Posts que entram
 

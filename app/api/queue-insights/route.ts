@@ -10,8 +10,8 @@ export const maxDuration = 30;
 
 /**
  * GET /api/queue-insights — filas do seletor do Raio-X: só as rodando
- * (campanhas ativas do Postar primeiro, depois Loops ativos) e a fila em que o
- * painel abre. Só lê.
+ * (campanhas ativas do Postar primeiro, depois Loops ativos; sem nenhuma, a
+ * última fila) e a fila em que o painel abre. Só lê.
  */
 export async function GET() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {

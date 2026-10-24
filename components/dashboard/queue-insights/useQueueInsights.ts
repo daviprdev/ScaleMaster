@@ -19,7 +19,7 @@ function parseKey(key: string): { source: QueueSource; id: string } | null {
 }
 
 /**
- * Fila em que o painel abre: a escolhida pelo dono (se ainda está rodando), a
+ * Fila em que o painel abre: a escolhida pelo dono (se ainda está na lista), a
  * sugerida pela API (mais posts nas últimas 24h) ou a primeira da lista.
  */
 export function pickQueueKey(
@@ -60,7 +60,7 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
 }
 
 export interface QueueInsightsState {
-  /** Filas rodando; null até a primeira resposta. */
+  /** Filas rodando (sem nenhuma, a última fila); null até a primeira resposta. */
   queues: QueueListItem[] | null;
   selectedKey: string | null;
   /** Raio-X da fila escolhida, sempre da abertura atual do painel. */

@@ -231,6 +231,16 @@ function ms(iso: string | null | undefined): number {
   return iso ? Date.parse(iso) : NaN;
 }
 
+/** O item de data mais recente; item sem data não conta. */
+function latestBy<T>(items: T[], at: (item: T) => string | null): { item: T; at: number } | null {
+  let best: { item: T; at: number } | null = null;
+  for (const item of items) {
+    const t = ms(at(item));
+    if (Number.isFinite(t) && (!best || t > best.at)) best = { item, at: t };
+  }
+  return best;
+}
+
 /** Coluna/tabela do SQL manual ainda não criada (Postgres 42703/42P01, PostgREST PGRST204/PGRST205). */
 export function isMissingSchemaError(err: DbError | null | undefined): boolean {
   if (!err) return false;
@@ -997,8 +1007,9 @@ const STATE_ORDER: Record<QueueState, number> = { running: 0, running_synced: 0,
 
 /**
  * Filas do seletor: só as que estão rodando agora (campanhas ativas do Postar
- * e Loops ativos) — o Raio-X lê a fila que está no ar, nunca uma terminada.
- * Campanhas vêm antes dos Loops; abre na com mais posts nas últimas 24h.
+ * e Loops ativos). Sem nenhuma rodando, entra só a última fila (a de publicação
+ * mais recente), mesmo terminada. Campanhas vêm antes dos Loops; abre na com
+ * mais posts nas últimas 24h.
  */
 export async function loadQueueList(admin: SupabaseClient, userId: string, now: Date): Promise<QueueListResponse> {
   const lim = createLimiter(CONCURRENCY);
@@ -1032,17 +1043,24 @@ export async function loadQueueList(admin: SupabaseClient, userId: string, now: 
     ? await loadCampaignStats(admin, lim, userId, campaigns)
     : new Map<string, CampaignStats>();
 
-  // ── 2. Quem entra: só fila rodando (pausada ou terminada fica de fora) ──
-  const listedCampaigns = campaigns
-    .map((c) => {
-      const s = campaignStats.get(c.id) ?? { inflight: 0, lastPublishedAt: null, accountIds: [] };
-      return { row: c, stats: s, state: campaignState(c, s.inflight, s.lastPublishedAt, nowMs) };
-    })
-    .filter(({ state }) => isRunning(state));
+  // ── 2. Quem entra: só fila rodando; sem nenhuma, a última fila ──
+  const campaignEntries = campaigns.map((c) => {
+    const s = campaignStats.get(c.id) ?? { inflight: 0, lastPublishedAt: null, accountIds: [] };
+    return { row: c, stats: s, state: campaignState(c, s.inflight, s.lastPublishedAt, nowMs) };
+  });
+  const loopEntries = loops.map((l) => ({ row: l, state: loopState(l.status) }));
 
-  const listedLoops = loops
-    .map((l) => ({ row: l, state: loopState(l.status) }))
-    .filter(({ state }) => isRunning(state));
+  let listedCampaigns = campaignEntries.filter(({ state }) => isRunning(state));
+  let listedLoops = loopEntries.filter(({ state }) => isRunning(state));
+
+  // Nada rodando: entra só a última fila, mesmo terminada — a fila acabou antes
+  // de o dono montar a fila ideal dela, e o Raio-X ainda mostra os vídeos.
+  if (!listedCampaigns.length && !listedLoops.length) {
+    const lastCampaign = latestBy(campaignEntries, (e) => e.stats.lastPublishedAt);
+    const lastLoop = latestBy(loopEntries, (e) => e.row.last_posted_at);
+    if (lastCampaign && (!lastLoop || lastCampaign.at >= lastLoop.at)) listedCampaigns = [lastCampaign.item];
+    else if (lastLoop) listedLoops = [lastLoop.item];
+  }
 
   // ── 3. Nomes de pasta, contas das pastas e contagens 24h ──
   const videoFolderIds = uniq(listedCampaigns.map((c) => c.row.video_folder_id).filter((v): v is string => !!v));
