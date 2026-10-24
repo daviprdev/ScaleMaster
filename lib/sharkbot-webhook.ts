@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { sendPushNotification } from "@/lib/web-push";
-import {
-  SHARKBOT_ACCOUNTS,
-  parseSharkBotSale,
-  saleAmountBrl,
-  saleNotificationBody,
-  type SharkBotAccount,
-  type SharkBotPayload,
-} from "@/lib/sharkbot";
+import { SHARKBOT_ACCOUNTS, parseSharkBotSale, type SharkBotAccount, type SharkBotPayload } from "@/lib/sharkbot";
 
 /**
  * Aviso de venda da SharkBot pelo link do usuário — o token no path diz de
@@ -40,28 +33,25 @@ export async function receiveSharkBotSale(req: NextRequest, token: string, accou
   const sale = parseSharkBotSale(payload);
   console.log(
     `[sharkbot-webhook][${account}] evento recebido:`,
-    JSON.stringify({ event: payload.event, transaction_id: sale.externalId, amount: sale.amount, currency: sale.currency })
+    JSON.stringify({ event: payload.event, transaction_id: sale.externalId, amount: sale.amount })
   );
 
   if (payload.event !== "payment_approved") {
     return NextResponse.json({ ok: true, ignored: payload.event ?? "unknown" });
   }
 
-  const amount = await saleAmountBrl(sale);
-  if (sale.amount != null && amount == null) {
-    console.error(`[sharkbot-webhook][${account}] sem cotação ${sale.currency}-BRL — venda gravada sem valor.`);
-  }
+  const { amount, currency, externalId, customerIdentifier } = sale;
 
   const { data, error } = await admin
     .from("sales")
     .upsert(
       {
         user_id: userId,
-        external_id: sale.externalId,
+        external_id: externalId,
         amount,
-        currency: "BRL",
+        currency,
         source,
-        customer_identifier: sale.customerIdentifier,
+        customer_identifier: customerIdentifier,
         raw_payload: payload,
       },
       { onConflict: "external_id", ignoreDuplicates: true }
@@ -73,7 +63,7 @@ export async function receiveSharkBotSale(req: NextRequest, token: string, accou
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  if (sale.externalId && (!data || data.length === 0)) {
+  if (externalId && (!data || data.length === 0)) {
     return NextResponse.json({ ok: true, duplicate: true });
   }
 
@@ -90,7 +80,10 @@ export async function receiveSharkBotSale(req: NextRequest, token: string, accou
         targetUserId: userId,
         type: "sale",
         title: `🔥 Venda Aprovada (${label}) 🔥`,
-        body: saleNotificationBody(sale, amount),
+        body:
+          amount != null
+            ? amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+            : "Novo pagamento recebido.",
         url: "/dashboard",
       });
     }

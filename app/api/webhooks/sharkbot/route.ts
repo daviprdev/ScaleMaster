@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { sendPushNotification } from "@/lib/web-push";
 import { secureEquals } from "@/lib/cron-auth";
-import { parseSharkBotSale, saleAmountBrl, saleNotificationBody, type SharkBotPayload } from "@/lib/sharkbot";
+import { parseSharkBotSale, type SharkBotPayload } from "@/lib/sharkbot";
 
 export const dynamic = "force-dynamic";
 
@@ -39,8 +39,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ignored: payload.event ?? "unknown" });
   }
 
-  const { externalId, customerIdentifier } = sale;
-  const amount = await saleAmountBrl(sale);
+  const { amount, currency, externalId, customerIdentifier } = sale;
 
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
@@ -49,7 +48,7 @@ export async function POST(req: NextRequest) {
       {
         external_id: externalId,
         amount,
-        currency: "BRL",
+        currency,
         source: "sharkbot",
         customer_identifier: customerIdentifier,
         raw_payload: payload,
@@ -72,7 +71,10 @@ export async function POST(req: NextRequest) {
       targetType: "admins",
       type: "sale",
       title: "🔥 Venda Aprovada (SharkBot) 🔥",
-      body: saleNotificationBody(sale, amount),
+      body:
+        amount != null
+          ? amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+          : "Novo pagamento recebido.",
       url: "/admin",
     });
   } catch (err: any) {

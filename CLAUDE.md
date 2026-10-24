@@ -101,7 +101,7 @@ journalctl -u scalemaster-publish-scheduled.service --since "-10 min" --no-pager
 |------------|------|--------|-------|
 | Meta/Instagram | OAuth oficial | ✅ Ativo | Graph API, credenciais por usuário ou global |
 | Supabase | DB/Auth/Storage | ✅ Ativo | Projeto único, dados preservados |
-| SharkBot | Webhook vendas | ✅ Seguro | Fail-closed, secret obrigatório. Duas contas pelo link do token: principal `/api/webhooks/sharkbot/<token>` e gringa `.../<token>/gringa` (`source = sharkbot_gringa`); dólar/euro é gravado já em BRL na cotação da hora (`lib/fx-rate.ts`) |
+| SharkBot | Webhook vendas | ✅ Seguro | Fail-closed, secret obrigatório. Duas contas pelo link do token: principal `/api/webhooks/sharkbot/<token>` e gringa `.../<token>/gringa` (`source = sharkbot_gringa`); o valor já chega em reais nas duas (a SharkBot converte) |
 | ApexVips | Webhook vendas | ✅ Seguro | Fail-closed, secret obrigatório |
 | Push (VAPID) | Notificações | ✅ Configurado | Requer inscrição no navegador |
 | Apify | Scraper externo | ⚠️ Opcional | Token configurado, billing externo |

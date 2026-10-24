@@ -30,11 +30,7 @@ export default function SalesWebhookCard() {
   const entries: { key: string; label: string; desc: string }[] = [
     { key: "apexvips", label: "ApexVips", desc: "Cole no campo de Webhook dos bots da ApexVips." },
     { key: "sharkbot", label: "SharkBot", desc: "Cole no campo de Webhook dos bots da conta principal." },
-    {
-      key: "sharkbot_gringa",
-      label: "SharkBot · Gringa",
-      desc: "Cole nos bots da conta gringa. Dólar/euro entra convertido em reais.",
-    },
+    { key: "sharkbot_gringa", label: "SharkBot · Gringa", desc: "Cole no campo de Webhook dos bots da conta gringa." },
   ];
 
   return (
