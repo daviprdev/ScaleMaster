@@ -67,7 +67,7 @@ docker compose --env-file .env.production up -d --build app
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — Push notifications
 - `SHARKBOT_WEBHOOK_SECRET`, `APEXVIPS_WEBHOOK_SECRET` — Webhooks de vendas
 - `APIFY_API_TOKEN` — Scraper externo (integração opcional)
-- `PUBLISH_PROXIES` — proxies da VPS (URLs separadas por vírgula) para publicar posts **sem** "Usar minhas proxies"; cada post cai numa delas pelo hash do id, proxy morta é pulada, sem nenhuma viva sai direto (`lib/vps-publish-proxy.ts`)
+- `PUBLISH_PROXIES` — proxies da VPS (URLs separadas por vírgula) para publicar posts **sem** "Usar minhas proxies"; cada post cai numa delas pelo hash do id, proxy morta é pulada, sem nenhuma viva sai direto (`lib/vps-publish-proxy.ts`). **Vazio desde 2026-10-31** (a pedido: posts sem a opção saem direto da VPS); as 3 URLs antigas estão comentadas logo acima no `.env.production`
 
 ### VPS (.env.cron)
 - `CRON_SECRET` — lido pelos timers systemd (`EnvironmentFile=/opt/scalemaster/.env.cron`)
