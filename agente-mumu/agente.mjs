@@ -38,7 +38,7 @@ import { esperar } from "./lib/processo.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.5.0";
+const VERSAO = "1.5.1";
 /** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
 const PASTA = path.dirname(fileURLToPath(import.meta.url));
@@ -225,11 +225,11 @@ async function rodarJob(mumu, job, reportar, aguardarResposta) {
     await aparelho.conectar();
     return aparelho;
   };
-  const perguntar = async (tipo, texto) => {
+  const perguntar = async (tipo, texto, { sinal } = {}) => {
     prompt = { tipo, texto };
     enviar("running");
     try {
-      return await aguardarResposta(job.id, ESPERA_RESPOSTA_MS);
+      return await aguardarResposta(job.id, ESPERA_RESPOSTA_MS, sinal);
     } finally {
       prompt = null;
       enviar("running");
@@ -282,17 +282,20 @@ async function rodarAgente() {
   };
   /** Contas paradas esperando o dono responder na aba: id → entrega da resposta. */
   const esperandoResposta = new Map();
-  const aguardarResposta = (id, ms) =>
+  /** Espera a resposta da aba; `sinal` abortado = o dono resolveu na instância (devolve null). */
+  const aguardarResposta = (id, ms, sinal) =>
     new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        esperandoResposta.delete(id);
-        reject(new Error(`Ninguém respondeu em ${Math.round(ms / 60_000)} min.`));
-      }, ms);
-      esperandoResposta.set(id, (resposta) => {
+      const terminar = (fim) => {
         clearTimeout(timer);
         esperandoResposta.delete(id);
-        resolve(resposta);
-      });
+        fim();
+      };
+      const timer = setTimeout(
+        () => terminar(() => reject(new Error(`Ninguém respondeu em ${Math.round(ms / 60_000)} min.`))),
+        ms
+      );
+      esperandoResposta.set(id, (resposta) => terminar(() => resolve(resposta)));
+      sinal?.addEventListener("abort", () => terminar(() => resolve(null)), { once: true });
     });
   let mumu = null;
   let versaoMumu = null;
@@ -483,7 +486,11 @@ async function main(args) {
         ultimo = u;
         if (u.prompt) console.log(`>>> ${u.prompt.texto}`);
       },
-      () => new Promise((resolve) => rl.question("resposta: ", resolve))
+      (_id, _ms, sinal) =>
+        new Promise((resolve) => {
+          rl.question("resposta: ", resolve);
+          sinal?.addEventListener("abort", () => resolve(null), { once: true });
+        })
     );
     rl.close();
     return console.log(JSON.stringify(ultimo, null, 2));

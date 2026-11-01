@@ -57,6 +57,10 @@ function campoPor(nos, rotulos) {
   return nos.find((n) => /EditText/.test(n.classe)) ?? null;
 }
 
+function ehTelaCodigo(nos) {
+  return temTexto(nos, ["código de confirmação", "confirmation code", "Introduz o código", "Insira o código", "Enter the code"]);
+}
+
 function botao(nos, textos) {
   return acharTexto(nos, textos, { exato: true });
 }
@@ -125,10 +129,38 @@ async function preencherNascimento(d, nos, nascimento) {
  */
 export async function cadastrarInstagram({ d, conta, perguntar, log }) {
   const estado = { errosIdioma: 0, termosAceitos: false, usuarioFinal: conta.usuario || null, ultima: null, repeticoes: 0, desconhecidas: 0 };
+  /**
+   * Pergunta na aba e, enquanto espera, olha a tela a cada 3 s: se `aindaIgual`
+   * deixar de valer, o dono resolveu direto na instância e a automação segue
+   * sozinha (devolve null, sem precisar da resposta na aba).
+   */
+  const perguntarVigiando = async (tipo, texto, aindaIgual) => {
+    const controle = new AbortController();
+    const vigia = (async () => {
+      while (!controle.signal.aborted) {
+        await esperar(3000);
+        const agora = await d.tela().catch(() => null);
+        if (agora && agora.length > 0 && !aindaIgual(agora)) controle.abort();
+      }
+    })();
+    try {
+      return await perguntar(tipo, texto, { sinal: controle.signal });
+    } finally {
+      controle.abort();
+      await vigia;
+    }
+  };
+
   const manual = async (texto, nos) => {
     if (nos) salvarTela(nos, texto);
     log(`esperando você: ${texto}`);
-    await perguntar("manual", `${texto} Resolva na instância e clique em "Já resolvi, continuar".`);
+    const antes = nos ? resumoTela(nos) : null;
+    const resposta = await perguntarVigiando(
+      "manual",
+      `${texto} Resolva na instância e clique em "Já resolvi, continuar".`,
+      (agora) => antes === null || resumoTela(agora) === antes
+    );
+    if (resposta === null) log("a tela mudou na instância: seguindo");
     estado.repeticoes = 0;
     estado.desconhecidas = 0;
   };
@@ -168,15 +200,20 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
     },
     {
       nome: "codigo",
-      teste: (nos) => temTexto(nos, ["código de confirmação", "confirmation code", "Introduz o código", "Insira o código", "Enter the code"]),
+      teste: (nos) => ehTelaCodigo(nos),
       agir: async (nos) => {
         const recusado = temTexto(nos, ["não é válido", "isn't valid", "inválido", "incorreto", "incorrect", "expirou", "expired"]);
-        const codigo = await perguntar(
+        const codigo = await perguntarVigiando(
           "codigo",
           recusado
             ? `O Instagram não aceitou o código. Confira o último e-mail em ${conta.email} e digite de novo.`
-            : `Digite o código que o Instagram mandou para ${conta.email}.`
+            : `Digite o código que o Instagram mandou para ${conta.email}.`,
+          (agora) => ehTelaCodigo(agora)
         );
+        if (codigo === null) {
+          log("código digitado direto na instância: seguindo");
+          return;
+        }
         const atual = await d.tela();
         const campo = campoPor(atual, ["Código", "Code", "Confirmation code", "Código de confirmação"]);
         if (!campo) throw new Error("Não achei o campo do código.");
