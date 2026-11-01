@@ -39,6 +39,33 @@ export interface EmulatorJob {
   updatedAt: string;
 }
 
+/**
+ * Fim da conta quando o Instagram trava pedindo telefone: o agente desliga a
+ * instância e a conta termina com este erro exato (igual a ALERTA_TELEFONE em
+ * agente-mumu/fluxos/nova-conta.mjs). A aba mostra em vermelho na linha da instância.
+ */
+export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telefone";
+
+/**
+ * Avisos por índice de instância de um PC. O MuMu reaproveita índices de
+ * instância apagada, então o aviso só vale se a instância ainda tem o nome que
+ * a conta deu a ela (mensagem da etapa "nome").
+ */
+export function instanceAlerts(
+  jobs: readonly EmulatorJob[],
+  agentId: string,
+  instances: ReadonlyArray<{ index: number; name: string }>
+): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const job of jobs) {
+    if (job.agentId !== agentId || job.error !== ALERTA_TELEFONE || job.instanceIndex === null) continue;
+    const nome = job.steps.find((s) => s.key === "nome")?.message;
+    const inst = instances.find((i) => i.index === job.instanceIndex);
+    if (inst && nome && inst.name === nome && !out.has(inst.index)) out.set(inst.index, ALERTA_TELEFONE);
+  }
+  return out;
+}
+
 /** Etapas na ordem. O Instagram baixa antes da proxy para os 275 MB não passarem por ela. */
 export const NOVA_CONTA_FLUXO: ReadonlyArray<{ key: string; label: string }> = [
   { key: "copiar", label: "Copiar a instância padrão" },

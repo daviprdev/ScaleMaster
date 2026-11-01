@@ -8,7 +8,7 @@ import { ConnectDialog } from "@/components/dashboard/emulador/ConnectDialog";
 import { ContasCard } from "@/components/dashboard/emulador/ContasCard";
 import { NovaContaDialog } from "@/components/dashboard/emulador/NovaContaDialog";
 import { instanceKey, latestCommandByInstance } from "@/lib/emulador/view";
-import type { EmulatorJob } from "@/lib/emulador/jobs";
+import { instanceAlerts, type EmulatorJob } from "@/lib/emulador/jobs";
 import type { EmuladorResponse, EmulatorAgent } from "@/lib/emulador/types";
 
 // O agente faz sync a cada ~3 s; a tela acompanha no mesmo ritmo enquanto está visível.
@@ -203,6 +203,7 @@ export default function EmuladorPage() {
                 onCommand={sendCommand}
                 onDisconnect={setDisconnecting}
                 onCreateInstance={data.jobsAvailable ? setNovaContaFor : undefined}
+                alerts={instanceAlerts(data.jobs, agent.id, agent.instances)}
               />
               {data.jobsAvailable && agent.lastSeenAt && (
                 <ContasCard

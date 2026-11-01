@@ -1,9 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { NOVA_CONTA_FLUXO, parseJobPrompt, parseJobSteps, parseJobUpdates } from "../lib/emulador/jobs";
+import {
+  ALERTA_TELEFONE,
+  NOVA_CONTA_FLUXO,
+  instanceAlerts,
+  parseJobPrompt,
+  parseJobSteps,
+  parseJobUpdates,
+  type EmulatorJob,
+} from "../lib/emulador/jobs";
 import { parseNovaContaInput } from "../lib/emulador/nova-conta-input";
 import { instanceName } from "../lib/emulador/payload";
 import { digitoLuhn, gerarAndroidId, gerarImei, gerarMac, imeiValido } from "../agente-mumu/lib/ids.mjs";
-import { NOVA_CONTA, nomeDaInstancia } from "../agente-mumu/fluxos/nova-conta.mjs";
+import { ALERTA_TELEFONE as ALERTA_AGENTE, NOVA_CONTA, nomeDaInstancia } from "../agente-mumu/fluxos/nova-conta.mjs";
 import { lerProxy } from "../agente-mumu/fluxos/nekobox.mjs";
 
 const UUID = "33333333-3333-4333-8333-333333333333";
@@ -127,5 +135,38 @@ describe("identidade da cópia", () => {
       expect(mac).toMatch(/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/);
       expect(parseInt(mac.slice(0, 2), 16) & 0x03).toBe(0);
     }
+  });
+});
+
+describe("aviso de conta travada no telefone", () => {
+  const job = (over: Partial<EmulatorJob>): EmulatorJob => ({
+    id: UUID,
+    agentId: "pc",
+    label: "julia",
+    templateIndex: 0,
+    instanceIndex: 1,
+    steps: [{ key: "nome", status: "done", message: "julia_santana4738" }],
+    status: "error",
+    error: ALERTA_TELEFONE,
+    prompt: null,
+    createdAt: "2026-11-01T19:00:00Z",
+    updatedAt: "2026-11-01T19:10:00Z",
+    ...over,
+  });
+
+  it("o texto é o mesmo no agente e no SaaS", () => {
+    expect(ALERTA_AGENTE).toBe(ALERTA_TELEFONE);
+    expect(ALERTA_TELEFONE).toBe("Conta ERRO CRIAÇÃO, verificar com numero telefone");
+  });
+
+  it("marca a instância que ainda tem o nome que a conta deu", () => {
+    const inst = [{ index: 0, name: "Android Device" }, { index: 1, name: "julia_santana4738" }];
+    expect(instanceAlerts([job({})], "pc", inst)).toEqual(new Map([[1, ALERTA_TELEFONE]]));
+  });
+
+  it("não marca índice reaproveitado por outra instância, outro PC nem outro erro", () => {
+    expect(instanceAlerts([job({})], "pc", [{ index: 1, name: "outra_conta" }]).size).toBe(0);
+    expect(instanceAlerts([job({ agentId: "outro" })], "pc", [{ index: 1, name: "julia_santana4738" }]).size).toBe(0);
+    expect(instanceAlerts([job({ error: "Proxy no NekoBox: falhou" })], "pc", [{ index: 1, name: "julia_santana4738" }]).size).toBe(0);
   });
 });

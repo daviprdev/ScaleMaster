@@ -37,7 +37,7 @@ import { esperar } from "./lib/processo.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.3.0";
+const VERSAO = "1.3.1";
 /** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
 const PASTA = path.dirname(fileURLToPath(import.meta.url));
@@ -251,7 +251,7 @@ async function rodarJob(mumu, job, reportar, aguardarResposta) {
       step.status = "error";
       step.message = String(e.message).slice(0, 300);
       logJob(`${etapa.rotulo} falhou: ${e.message}`);
-      return enviar("error", `${etapa.rotulo}: ${e.message}`);
+      return enviar("error", e.semPrefixo ? e.message : `${etapa.rotulo}: ${e.message}`);
     }
   }
   logJob("terminou");

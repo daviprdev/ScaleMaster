@@ -20,6 +20,14 @@ import { acharId, acharTexto, preencher, temTexto, tocarNo } from "./tela.mjs";
  * agente-mumu/telas/ para virar automação depois.
  */
 
+/** O Instagram travou a conta nova pedindo telefone: não há o que automatizar, a etapa encerra. */
+export class ContaTravadaTelefone extends Error {
+  constructor() {
+    super("O Instagram pediu um número de telefone para confirmar a conta.");
+    this.name = "ContaTravadaTelefone";
+  }
+}
+
 const PASTA_TELAS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "telas");
 const ig = (nome) => `${INSTAGRAM}:id/${nome}`;
 
@@ -153,8 +161,10 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
       teste: (nos) =>
         temTexto(nos, ["Insere o teu número de telemóvel", "Enter your mobile number", "Insira seu número de celular", "Insira o seu número de celular"]) &&
         temTexto(nos, ["SMS", "WhatsApp"]),
-      agir: (nos) =>
-        manual("A conta foi criada, mas o Instagram pediu um número de telefone para confirmar (código por SMS ou WhatsApp).", nos),
+      agir: (nos) => {
+        salvarTela(nos, "verificação por telefone");
+        throw new ContaTravadaTelefone();
+      },
     },
     {
       nome: "codigo",

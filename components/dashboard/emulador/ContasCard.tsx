@@ -4,7 +4,7 @@ import * as React from "react";
 import { CheckCircle2, Circle, Loader2, RotateCw, Send, Trash2, UserPlus, XCircle } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Input, type BadgeTone } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { NOVA_CONTA_FLUXO, type EmulatorJob, type JobStatus } from "@/lib/emulador/jobs";
+import { ALERTA_TELEFONE, NOVA_CONTA_FLUXO, type EmulatorJob, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
 
 const STATUS_BADGE: Record<JobStatus, { tone: BadgeTone; label: string }> = {
@@ -83,7 +83,7 @@ function JobRow({ job, busy, now, onContinue, onRemove, onReply }: JobRowProps) 
           {job.prompt ? "Esperando você" : badge.label}
         </Badge>
         <div className="flex items-center gap-2">
-          {job.status === "error" && (
+          {job.status === "error" && job.error !== ALERTA_TELEFONE && (
             <Button size="sm" icon={<RotateCw size={14} />} loading={busy} onClick={() => onContinue(job)}>
               Continuar
             </Button>

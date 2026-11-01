@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AppWindow, Loader2, Pencil, Play, Plus, Power, PowerOff, Smartphone, Unplug } from "lucide-react";
+import { AlertTriangle, AppWindow, Loader2, Pencil, Play, Plus, Power, PowerOff, Smartphone, Unplug } from "lucide-react";
 import { Badge, Banner, Button, Card, Dialog, EmptyState, IconButton, Input, type BadgeTone } from "@/components/ui";
 import { PC_INDEX } from "@/lib/emulador/payload";
 import type { CommandAction, EmulatorAgent, EmulatorCommand, EmulatorInstance, InstanceState } from "@/lib/emulador/types";
@@ -36,12 +36,14 @@ interface AgentCardProps {
   now: number;
   onCommand: SendCommand;
   onDisconnect: (agent: EmulatorAgent) => void;
+  /** Aviso em vermelho por índice de instância (conta travada pedindo telefone). */
+  alerts?: ReadonlyMap<number, string>;
   /** Abre o formulário Criar instância; ausente = SQL da fila ainda não aplicado. */
   onCreateInstance?: (agent: EmulatorAgent) => void;
 }
 
 /** Um PC conectado: estado do agente e as instâncias do MuMu dele. */
-export function AgentCard({ agent, latest, sending, now, onCommand, onDisconnect, onCreateInstance }: AgentCardProps) {
+export function AgentCard({ agent, latest, sending, now, onCommand, onDisconnect, alerts, onCreateInstance }: AgentCardProps) {
   const [taskFor, setTaskFor] = React.useState<EmulatorInstance | null>(null);
   const [renaming, setRenaming] = React.useState<EmulatorInstance | null>(null);
   const neverSeen = !agent.lastSeenAt;
@@ -120,6 +122,7 @@ export function AgentCard({ agent, latest, sending, now, onCommand, onDisconnect
                     onCommand={onCommand}
                     onPickTask={() => setTaskFor(inst)}
                     onRename={() => setRenaming(inst)}
+                    alert={alerts?.get(inst.index)}
                   />
                 );
               })}
@@ -220,9 +223,10 @@ interface InstanceRowProps {
   onCommand: SendCommand;
   onPickTask: () => void;
   onRename: () => void;
+  alert?: string;
 }
 
-function InstanceRow({ agent, instance, command, sending, now, onCommand, onPickTask, onRename }: InstanceRowProps) {
+function InstanceRow({ agent, instance, command, sending, now, onCommand, onPickTask, onRename, alert }: InstanceRowProps) {
   const busy = sending || isActive(command);
   const disabled = busy || !agent.online;
   const badge = STATE_BADGE[instance.state];
@@ -244,6 +248,12 @@ function InstanceRow({ agent, instance, command, sending, now, onCommand, onPick
             className="h-6 w-6"
           />
         </div>
+        {alert && (
+          <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold text-danger">
+            <AlertTriangle size={13} className="shrink-0" />
+            {alert}
+          </p>
+        )}
         <CommandLine command={command} agent={agent} now={now} />
       </div>
       <Badge tone={badge.tone} dot>
