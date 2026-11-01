@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { agentTokenFromRequest, hashAgentToken } from "@/lib/emulador/token";
 import { parseJobUpdates } from "@/lib/emulador/jobs";
-import { syncJobs, type ClaimedJob } from "@/lib/emulador/sync-jobs";
+import { syncJobs, type SyncJobsResult } from "@/lib/emulador/sync-jobs";
 import {
   QUEUED_COMMAND_TTL_MS,
   parseInstances,
@@ -37,7 +37,7 @@ interface ActiveRow {
  *   3. recebe os comandos novos, já marcados como running.
  * Comando em running que o agente não cita mais (fechou ou reiniciou no meio)
  * vira erro; comando que ficou na fila com o PC fora expira. A fila Nova
- * conta (jobUpdates/runningJobs → jobs) segue a mesma ideia em syncJobs.
+ * conta (jobUpdates/runningJobs → jobs, replies) segue a mesma ideia em syncJobs.
  */
 export async function POST(req: NextRequest) {
   const token = agentTokenFromRequest(req);
@@ -152,14 +152,14 @@ export async function POST(req: NextRequest) {
       params: c.params ?? {},
     }));
 
-  let jobs: ClaimedJob[];
+  let jobSync: SyncJobsResult;
   try {
     // runningJobs ausente = agente anterior à fila Nova conta: não recebe conta.
     const runningJobs = Array.isArray(body.runningJobs) ? new Set(parseRunning(body.runningJobs)) : null;
-    jobs = await syncJobs(admin, agent.id, parseJobUpdates(body.jobUpdates), runningJobs, now);
+    jobSync = await syncJobs(admin, agent.id, parseJobUpdates(body.jobUpdates), runningJobs, now);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 
-  return NextResponse.json({ commands, jobs });
+  return NextResponse.json({ commands, jobs: jobSync.jobs, replies: jobSync.replies });
 }

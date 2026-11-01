@@ -1,12 +1,18 @@
-import { gerarImei } from "../lib/imei.mjs";
+import { gerarAndroidId, gerarImei, gerarMac } from "../lib/ids.mjs";
+import { instalarInstagram } from "./aurora.mjs";
+import { cadastrarInstagram } from "./cadastro.mjs";
+import { configurarProxy } from "./nekobox.mjs";
 
 /**
- * Nova conta (aba Emulador → Contas). Cada etapa recebe
- * ctx = { mumu, job, input, estado, log } e devolve uma mensagem curta para a
- * tela. estado.instanceIndex é a cópia criada; numa retomada (botão
- * Continuar) ele já vem preenchido e as etapas concluídas são puladas.
- * As chaves batem com NOVA_CONTA_FLUXO em lib/emulador/jobs.ts. Ainda faltam:
- * proxy no NekoBox, instalar o Instagram e o cadastro.
+ * Criar instância (aba Emulador). Cada etapa recebe
+ * ctx = { mumu, job, input, estado, log, dispositivo(), perguntar(tipo, texto) }
+ * e devolve uma mensagem curta para a tela. estado.instanceIndex é a cópia
+ * criada; numa retomada (botão Continuar) ele já vem preenchido e as etapas
+ * concluídas são puladas. As chaves batem com NOVA_CONTA_FLUXO em
+ * lib/emulador/jobs.ts.
+ *
+ * Ordem pedida pelo dono: o Instagram baixa ANTES da proxy (os 275 MB não
+ * passam por ela); depois a proxy no NekoBox; aí o cadastro com o Gmail.
  */
 
 function copia(estado) {
@@ -16,10 +22,12 @@ function copia(estado) {
   return estado.instanceIndex;
 }
 
-/** Nome da instância no MuMu: o @ da conta, ou conta-<id> sem @. */
-function nomeDaInstancia(job, input) {
-  const usuario = String(input?.conta?.usuario ?? "").replace(/[^\p{L}\p{N}._-]/gu, "").slice(0, 40);
-  return usuario || `conta-${job.id.slice(0, 8)}`;
+/** Nome no MuMu: o @ pedido, senão a parte do Gmail antes do @. */
+export function nomeDaInstancia(job, input) {
+  const conta = input?.conta ?? {};
+  const base = conta.usuario || String(conta.email ?? "").split("@")[0];
+  const nome = String(base).replace(/[^\p{L}\p{N}._-]/gu, "").slice(0, 40);
+  return nome || `conta-${job.id.slice(0, 8)}`;
 }
 
 export const NOVA_CONTA = [
@@ -32,11 +40,14 @@ export const NOVA_CONTA = [
     },
   },
   {
-    chave: "imei",
-    rotulo: "Trocar o IMEI",
+    chave: "ids",
+    rotulo: "Trocar IMEI, Android ID e MAC",
     async rodar({ mumu, estado }) {
+      const index = copia(estado);
       const imei = gerarImei();
-      await mumu.definirImei(copia(estado), imei);
+      await mumu.simular(index, "imei", imei);
+      await mumu.simular(index, "android_id", gerarAndroidId());
+      await mumu.simular(index, "mac_address", gerarMac());
       return `IMEI ${imei}`;
     },
   },
@@ -55,6 +66,30 @@ export const NOVA_CONTA = [
     async rodar({ mumu, estado, log }) {
       await mumu.prepararInstancia(copia(estado), { log });
       return "Android pronto";
+    },
+  },
+  {
+    chave: "instagram",
+    rotulo: "Instalar o Instagram pelo Aurora",
+    async rodar({ dispositivo, log }) {
+      return instalarInstagram(await dispositivo(), log);
+    },
+  },
+  {
+    chave: "proxy",
+    rotulo: "Proxy no NekoBox",
+    async rodar({ dispositivo, job, input, log }) {
+      if (!input?.proxy) throw new Error("Essa conta veio sem proxy.");
+      return configurarProxy(await dispositivo(), input.proxy, `proxy-${nomeDaInstancia(job, input)}`.slice(0, 40), log);
+    },
+  },
+  {
+    chave: "cadastro",
+    rotulo: "Criar a conta no Instagram",
+    async rodar({ dispositivo, input, perguntar, log }) {
+      const conta = input?.conta;
+      if (!conta?.email || !conta?.senha) throw new Error("Essa conta veio sem Gmail ou senha.");
+      return cadastrarInstagram({ d: await dispositivo(), conta, perguntar, log });
     },
   },
 ];

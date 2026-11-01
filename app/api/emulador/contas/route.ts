@@ -4,14 +4,14 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseInstances } from "@/lib/emulador/payload";
-import { parseNovaContaInput } from "@/lib/emulador/jobs";
+import { parseNovaContaInput } from "@/lib/emulador/nova-conta-input";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// POST — Nova conta: põe na fila do agente do PC uma conta a criar numa cópia
-// da instância padrão. Proxy e dados da conta vão criptografados; a tela só
-// volta a ver o @ (label).
+// POST — Criar instância: põe na fila do agente do PC uma conta a criar numa
+// cópia da instância padrão. Proxy e dados da conta vão criptografados; a
+// tela só volta a ver o rótulo (o @ ou, sem ele, o Gmail).
 export async function POST(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     .insert({
       user_id: user.id,
       agent_id: agent.id,
-      label: parsed.value.conta.usuario || null,
+      label: parsed.value.conta.usuario || parsed.value.conta.email,
       template_index: templateIndex,
       input_enc: encrypt(JSON.stringify(parsed.value)),
     })

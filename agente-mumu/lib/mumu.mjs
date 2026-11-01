@@ -144,10 +144,14 @@ export class MuMu {
     return Number(novo);
   }
 
-  /** Mesmo campo de Configurações do dispositivo → Modelo → IMEI. Vale a partir do próximo boot. */
-  async definirImei(index, imei) {
-    const dados = await this.json(["simulation", "-v", String(index), "-sk", "imei", "-sv", imei], 60_000);
-    if (dados.imei !== imei) throw new Error(`O MuMu não confirmou o IMEI novo: ${trecho(JSON.stringify(dados))}`);
+  /**
+   * Mesmos campos de Configurações do dispositivo → Modelo. chave: imei,
+   * android_id ou mac_address. Vale a partir do próximo boot. O MuMu aceita
+   * qualquer texto sem validar: quem chama manda valor no formato certo.
+   */
+  async simular(index, chave, valor) {
+    const dados = await this.json(["simulation", "-v", String(index), "-sk", chave, "-sv", valor], 60_000);
+    if (dados[chave] !== valor) throw new Error(`O MuMu não confirmou ${chave}: ${trecho(JSON.stringify(dados))}`);
   }
 
   async renomear(index, nome) {

@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
-import { PC_INDEX, isOnline, parseInstances, parseTasks } from "@/lib/emulador/payload";
+import { PC_INDEX, instanceName, isOnline, parseInstances, parseTasks } from "@/lib/emulador/payload";
 import type { CommandAction } from "@/lib/emulador/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const ACTIONS: ReadonlySet<string> = new Set<CommandAction>(["launch", "shutdown", "task"]);
+const ACTIONS: ReadonlySet<string> = new Set<CommandAction>(["launch", "shutdown", "task", "rename"]);
 const MAX_PARAMS_JSON = 10_000;
 
 function plainParams(value: unknown): Record<string, unknown> | null {
@@ -19,7 +19,7 @@ function plainParams(value: unknown): Record<string, unknown> | null {
 }
 
 // POST — põe um comando na fila do agente: abrir o MuMu (instância PC_INDEX),
-// abrir/fechar uma instância ou rodar uma automação nela. O agente pega no
+// abrir/fechar/renomear uma instância ou rodar uma automação nela. O agente pega no
 // próximo sync (~3 s). Uma coisa por instância de cada vez.
 export async function POST(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -49,6 +49,11 @@ export async function POST(req: NextRequest) {
   }
   const params = plainParams(body.params);
   if (!params) return NextResponse.json({ error: "Parâmetros inválidos." }, { status: 400 });
+  if (action === "rename") {
+    const nome = instanceName(params.nome);
+    if (!nome) return NextResponse.json({ error: "Nome inválido: use letras, números, espaço, ponto, _ ou -." }, { status: 400 });
+    params.nome = nome;
+  }
 
   const admin = getSupabaseAdmin();
   const { data: agent, error: agentErr } = await admin
@@ -102,6 +107,10 @@ export async function POST(req: NextRequest) {
     .select("id")
     .single();
 
+  // 23514 = check da ação: 'rename' chegou com supabase/emulador_contas.sql.
+  if (error?.code === "23514") {
+    return NextResponse.json({ error: "Para renomear falta aplicar o SQL supabase/emulador_contas.sql no Supabase." }, { status: 503 });
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ id: command.id });
 }

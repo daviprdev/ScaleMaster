@@ -45,3 +45,4 @@ python_server/__pycache__/
 agente-mumu/config.json
 agente-mumu/agente.log*
 agente-mumu/agente.pid
+agente-mumu/telas/

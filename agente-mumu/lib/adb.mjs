@@ -37,6 +37,8 @@ export function lerNos(xml) {
       texto: attrs.text ?? "",
       descricao: attrs["content-desc"] ?? "",
       id: attrs["resource-id"] ?? "",
+      classe: attrs.class ?? "",
+      pacote: attrs.package ?? "",
       clicavel: attrs.clickable === "true",
       x: Math.round((x1 + x2) / 2),
       y: Math.round((y1 + y2) / 2),
@@ -45,7 +47,8 @@ export function lerNos(xml) {
   return nos;
 }
 
-function casa(no, alvo, exato) {
+/** O nó mostra esse texto (ou descrição)? Sem diferenciar maiúsculas. */
+export function casa(no, alvo, exato = false) {
   const a = alvo.toLowerCase();
   return [no.texto, no.descricao].some((v) => {
     const t = v.toLowerCase();
@@ -72,6 +75,17 @@ export class Dispositivo {
     const r = await rodar(this.adb, ["-s", this.serial, "shell", ...args], { timeoutMs: 60_000 });
     if (r.codigo !== 0) throw new Error(`adb shell ${args[0]} falhou: ${trecho(r.stderr || r.stdout)}`);
     return String(r.stdout);
+  }
+
+  /** O app está instalado? (pm path sai com erro quando não está) */
+  async temApp(pacote) {
+    const r = await rodar(this.adb, ["-s", this.serial, "shell", "pm", "path", pacote], { timeoutMs: 30_000 });
+    return String(r.stdout).includes("package:");
+  }
+
+  /** Apaga o campo focado: vai ao fim e dá backspace. */
+  limparCampo(caracteres = 60) {
+    return this.shell("input", "keyevent", "KEYCODE_MOVE_END", ...Array(caracteres).fill("KEYCODE_DEL"));
   }
 
   async prop(nome) {
@@ -112,10 +126,16 @@ export class Dispositivo {
 
   /** Elementos da tela agora (uiautomator dump). */
   async tela() {
-    const r = await rodar(this.adb, ["-s", this.serial, "shell", "uiautomator", "dump", "/sdcard/sm_ui.xml"], { timeoutMs: 60_000 });
-    // O uiautomator do MuMu sai com código de erro mesmo quando grava o arquivo.
-    if (!/dumped/i.test(String(r.stdout))) throw new Error(`leitura da tela falhou: ${trecho(r.stderr || r.stdout)}`);
-    return lerNos(await this.shell("cat", "/sdcard/sm_ui.xml"));
+    // O uiautomator do MuMu sai com código de erro mesmo quando grava o arquivo,
+    // e devolve "null root node" enquanto a tela ainda está desenhando: tenta de novo.
+    let ultima = "";
+    for (let tentativa = 0; tentativa < 4; tentativa++) {
+      if (tentativa > 0) await esperar(1500);
+      const r = await rodar(this.adb, ["-s", this.serial, "shell", "uiautomator", "dump", "/sdcard/sm_ui.xml"], { timeoutMs: 60_000 });
+      if (/dumped/i.test(String(r.stdout))) return lerNos(await this.shell("cat", "/sdcard/sm_ui.xml"));
+      ultima = trecho(r.stderr || r.stdout);
+    }
+    throw new Error(`leitura da tela falhou: ${ultima}`);
   }
 
   /** Primeiro elemento com esse texto (ou descrição) na tela, ou null. */

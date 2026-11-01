@@ -1,7 +1,7 @@
 import { shortText } from "./payload";
 
 /**
- * "Nova conta" na aba Emulador: o agente cria uma conta numa cópia da
+ * "Criar instância" na aba Emulador: o agente cria uma conta numa cópia da
  * instância padrão, etapa por etapa. SQL em supabase/emulador_contas.sql; o
  * fluxo do lado do PC fica em agente-mumu/fluxos/nova-conta.mjs (mesmas chaves).
  */
@@ -15,6 +15,16 @@ export interface JobStep {
   message: string | null;
 }
 
+/**
+ * O agente parou e precisa do dono: "codigo" = o código que chegou no Gmail;
+ * "manual" = uma tela que ele não conhece (o dono resolve na instância e manda
+ * continuar).
+ */
+export interface JobPrompt {
+  tipo: "codigo" | "manual";
+  texto: string;
+}
+
 export interface EmulatorJob {
   id: string;
   agentId: string;
@@ -24,66 +34,32 @@ export interface EmulatorJob {
   steps: JobStep[];
   status: JobStatus;
   error: string | null;
+  prompt: JobPrompt | null;
   createdAt: string;
   updatedAt: string;
 }
 
-/** Etapas na ordem. ready=false: ainda não automatizada (aparece como "em breve"). */
-export const NOVA_CONTA_FLUXO: ReadonlyArray<{ key: string; label: string; ready: boolean }> = [
-  { key: "copiar", label: "Copiar a instância padrão", ready: true },
-  { key: "imei", label: "Trocar o IMEI", ready: true },
-  { key: "nome", label: "Dar o nome da conta à instância", ready: true },
-  { key: "abrir", label: "Ligar a instância", ready: true },
-  { key: "proxy", label: "Proxy no NekoBox", ready: false },
-  { key: "instagram", label: "Instalar o Instagram", ready: false },
-  { key: "cadastro", label: "Criar a conta no Instagram", ready: false },
+/** Etapas na ordem. O Instagram baixa antes da proxy para os 275 MB não passarem por ela. */
+export const NOVA_CONTA_FLUXO: ReadonlyArray<{ key: string; label: string }> = [
+  { key: "copiar", label: "Copiar a instância padrão" },
+  { key: "ids", label: "Trocar IMEI, Android ID e MAC" },
+  { key: "nome", label: "Dar o nome da conta à instância" },
+  { key: "abrir", label: "Ligar a instância" },
+  { key: "instagram", label: "Instalar o Instagram pelo Aurora" },
+  { key: "proxy", label: "Proxy no NekoBox" },
+  { key: "cadastro", label: "Criar a conta no Instagram" },
 ];
 
 export interface NovaContaInput {
+  /** URL normalizada, ex.: http://usuario:senha@host:porta */
   proxy: string;
   conta: {
+    email: string;
+    senha: string;
     nome: string;
     usuario: string;
-    senha: string;
-    contato: string;
     nascimento: string;
   };
-}
-
-const USERNAME_RE = /^[A-Za-z0-9._]{1,30}$/;
-const BIRTH_RE = /^(\d{2})\/(\d{2})\/(\d{4})$/;
-
-function field(value: unknown, max: number): string {
-  return typeof value === "string" ? value.trim().slice(0, max) : "";
-}
-
-/** Valida o formulário Nova conta. Campos vazios são aceitos (as etapas que usam cada um ainda vão chegar). */
-export function parseNovaContaInput(raw: unknown): { value: NovaContaInput } | { error: string } {
-  const body = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const conta = body.conta && typeof body.conta === "object" ? (body.conta as Record<string, unknown>) : {};
-
-  const value: NovaContaInput = {
-    proxy: field(body.proxy, 300),
-    conta: {
-      nome: field(conta.nome, 60),
-      usuario: field(conta.usuario, 30).replace(/^@/, ""),
-      senha: field(conta.senha, 100),
-      contato: field(conta.contato, 100),
-      nascimento: field(conta.nascimento, 10),
-    },
-  };
-
-  if (value.conta.usuario && !USERNAME_RE.test(value.conta.usuario)) {
-    return { error: "Usuário do Instagram só pode ter letras, números, ponto e _ (até 30)." };
-  }
-  if (value.conta.nascimento) {
-    const m = BIRTH_RE.exec(value.conta.nascimento);
-    const date = m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : null;
-    if (!m || !date || date.getDate() !== Number(m[1]) || date.getMonth() !== Number(m[2]) - 1) {
-      return { error: "Data de nascimento no formato dd/mm/aaaa." };
-    }
-  }
-  return { value };
 }
 
 const STEP_KEY_RE = /^[a-z0-9-]{1,30}$/;
@@ -105,6 +81,13 @@ export function parseJobSteps(raw: unknown): JobStep[] {
   return out;
 }
 
+export function parseJobPrompt(raw: unknown): JobPrompt | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (r.tipo !== "codigo" && r.tipo !== "manual") return null;
+  return { tipo: r.tipo, texto: shortText(r.texto, 500) ?? "" };
+}
+
 export interface JobUpdate {
   id: string;
   /** undefined = o agente não mexeu; número = a cópia criada. */
@@ -112,6 +95,8 @@ export interface JobUpdate {
   steps: JobStep[];
   status: "running" | "done" | "error";
   error: string | null;
+  /** undefined = não mexe; null = o agente não está esperando nada. */
+  prompt: JobPrompt | null | undefined;
 }
 
 /** Andamento que o agente manda no sync, uma entrada por conta que mudou. */
@@ -130,6 +115,7 @@ export function parseJobUpdates(raw: unknown): JobUpdate[] {
       steps: parseJobSteps(r.steps),
       status: r.status,
       error: r.status === "error" ? (shortText(r.error, 500) ?? "Erro sem mensagem.") : null,
+      prompt: r.prompt === undefined ? undefined : r.status === "running" ? parseJobPrompt(r.prompt) : null,
     });
   }
   return out;

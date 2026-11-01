@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { AppWindow, Loader2, Play, Power, PowerOff, Smartphone, Unplug } from "lucide-react";
-import { Badge, Banner, Button, Card, Dialog, EmptyState, type BadgeTone } from "@/components/ui";
+import { AppWindow, Loader2, Pencil, Play, Plus, Power, PowerOff, Smartphone, Unplug } from "lucide-react";
+import { Badge, Banner, Button, Card, Dialog, EmptyState, IconButton, Input, type BadgeTone } from "@/components/ui";
 import { PC_INDEX } from "@/lib/emulador/payload";
 import type { CommandAction, EmulatorAgent, EmulatorCommand, EmulatorInstance, InstanceState } from "@/lib/emulador/types";
 import {
@@ -21,7 +21,12 @@ const STATE_BADGE: Record<InstanceState, { tone: BadgeTone; label: string }> = {
   on: { tone: "success", label: "Ligada" },
 };
 
-export type SendCommand = (agent: EmulatorAgent, index: number, action: CommandAction, task?: string) => void;
+export type SendCommand = (
+  agent: EmulatorAgent,
+  index: number,
+  action: CommandAction,
+  extra?: { task?: string; params?: Record<string, unknown> }
+) => void;
 
 interface AgentCardProps {
   agent: EmulatorAgent;
@@ -31,11 +36,14 @@ interface AgentCardProps {
   now: number;
   onCommand: SendCommand;
   onDisconnect: (agent: EmulatorAgent) => void;
+  /** Abre o formulário Criar instância; ausente = SQL da fila ainda não aplicado. */
+  onCreateInstance?: (agent: EmulatorAgent) => void;
 }
 
 /** Um PC conectado: estado do agente e as instâncias do MuMu dele. */
-export function AgentCard({ agent, latest, sending, now, onCommand, onDisconnect }: AgentCardProps) {
+export function AgentCard({ agent, latest, sending, now, onCommand, onDisconnect, onCreateInstance }: AgentCardProps) {
   const [taskFor, setTaskFor] = React.useState<EmulatorInstance | null>(null);
+  const [renaming, setRenaming] = React.useState<EmulatorInstance | null>(null);
   const neverSeen = !agent.lastSeenAt;
   const pcKey = instanceKey(agent.id, PC_INDEX);
   const pcCommand = latest.get(pcKey);
@@ -56,6 +64,16 @@ export function AgentCard({ agent, latest, sending, now, onCommand, onDisconnect
           <Badge tone={agent.online ? "success" : "neutral"} dot>
             {agent.online ? "Online" : "Offline"}
           </Badge>
+          {onCreateInstance && (
+            <Button
+              size="sm"
+              icon={<Plus size={14} />}
+              disabled={neverSeen || agent.instances.length === 0}
+              onClick={() => onCreateInstance(agent)}
+            >
+              Criar instância
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"
@@ -101,6 +119,7 @@ export function AgentCard({ agent, latest, sending, now, onCommand, onDisconnect
                     now={now}
                     onCommand={onCommand}
                     onPickTask={() => setTaskFor(inst)}
+                    onRename={() => setRenaming(inst)}
                   />
                 );
               })}
@@ -126,7 +145,7 @@ export function AgentCard({ agent, latest, sending, now, onCommand, onDisconnect
                 size="sm"
                 icon={<Play size={14} />}
                 onClick={() => {
-                  if (taskFor) onCommand(agent, taskFor.index, "task", t.name);
+                  if (taskFor) onCommand(agent, taskFor.index, "task", { task: t.name });
                   setTaskFor(null);
                 }}
               >
@@ -136,7 +155,59 @@ export function AgentCard({ agent, latest, sending, now, onCommand, onDisconnect
           ))}
         </ul>
       </Dialog>
+
+      <RenameDialog
+        instance={renaming}
+        onClose={() => setRenaming(null)}
+        onSave={(inst, nome) => onCommand(agent, inst.index, "rename", { params: { nome } })}
+      />
     </Card>
+  );
+}
+
+/** Troca o nome da instância no MuMu (o agente roda MuMuManager rename). */
+function RenameDialog({
+  instance,
+  onClose,
+  onSave,
+}: {
+  instance: EmulatorInstance | null;
+  onClose: () => void;
+  onSave: (instance: EmulatorInstance, nome: string) => void;
+}) {
+  const [nome, setNome] = React.useState("");
+  React.useEffect(() => {
+    if (instance) setNome(instance.name);
+  }, [instance]);
+
+  return (
+    <Dialog open={!!instance} onClose={onClose} title="Editar nome" description="O nome muda aqui e no MuMu.">
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (instance && nome.trim()) onSave(instance, nome.trim());
+          onClose();
+        }}
+      >
+        <Input
+          label="Nome da instância"
+          value={nome}
+          maxLength={40}
+          onChange={(e) => setNome(e.target.value)}
+          hint="Letras, números, espaço, ponto, _ ou -."
+          autoFocus
+        />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={!nome.trim() || nome.trim() === instance?.name}>
+            Salvar
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
@@ -148,9 +219,10 @@ interface InstanceRowProps {
   now: number;
   onCommand: SendCommand;
   onPickTask: () => void;
+  onRename: () => void;
 }
 
-function InstanceRow({ agent, instance, command, sending, now, onCommand, onPickTask }: InstanceRowProps) {
+function InstanceRow({ agent, instance, command, sending, now, onCommand, onPickTask, onRename }: InstanceRowProps) {
   const busy = sending || isActive(command);
   const disabled = busy || !agent.online;
   const badge = STATE_BADGE[instance.state];
@@ -162,6 +234,15 @@ function InstanceRow({ agent, instance, command, sending, now, onCommand, onPick
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium text-ink">{instance.name}</span>
           <span className="font-mono text-xs text-ink-3">#{instance.index}</span>
+          <IconButton
+            size="sm"
+            icon={<Pencil size={13} />}
+            aria-label={`Editar o nome de ${instance.name}`}
+            title="Editar nome"
+            disabled={disabled}
+            onClick={onRename}
+            className="h-6 w-6"
+          />
         </div>
         <CommandLine command={command} agent={agent} now={now} />
       </div>

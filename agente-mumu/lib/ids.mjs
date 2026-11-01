@@ -1,6 +1,8 @@
-import { randomInt } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 
 /**
+ * Identidade de cada cópia no MuMu (Configurações do dispositivo → Modelo).
+ *
  * IMEI = 14 dígitos + 1 dígito verificador (Luhn). Quinze números sorteados
  * sem a conta erram o último dígito 9 em cada 10 vezes, e qualquer checagem de
  * IMEI acusa. Aqui sorteia 12 depois do "35" (prefixo comum de aparelho real) e
@@ -27,4 +29,16 @@ export function gerarImei() {
 
 export function imeiValido(imei) {
   return /^\d{15}$/.test(imei) && digitoLuhn(imei.slice(0, 14)) === Number(imei[14]);
+}
+
+/** Android ID: 16 caracteres hexadecimais, como o do Android. */
+export function gerarAndroidId() {
+  return randomBytes(8).toString("hex");
+}
+
+/** MAC de placa comum: unicast e "de fábrica" (os dois bits baixos do 1º byte zerados). */
+export function gerarMac() {
+  const bytes = randomBytes(6);
+  bytes[0] &= 0xfc;
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join(":");
 }

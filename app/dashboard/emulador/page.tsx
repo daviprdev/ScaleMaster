@@ -60,7 +60,7 @@ export default function EmuladorPage() {
     return () => window.clearInterval(timer);
   }, [load]);
 
-  const sendCommand: SendCommand = async (agent, index, action, task) => {
+  const sendCommand: SendCommand = async (agent, index, action, extra) => {
     const key = instanceKey(agent.id, index);
     if (sending.has(key)) return;
     setCommandError(null);
@@ -69,7 +69,7 @@ export default function EmuladorPage() {
       const res = await fetch("/api/emulador/comandos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId: agent.id, instanceIndex: index, action, task }),
+        body: JSON.stringify({ agentId: agent.id, instanceIndex: index, action, task: extra?.task, params: extra?.params }),
       });
       if (!res.ok) throw new Error(await readError(res, "Não foi possível enviar o comando. Tente de novo."));
       await load();
@@ -100,14 +100,21 @@ export default function EmuladorPage() {
     }
   };
 
-  /** Continuar (POST …/continuar) ou remover (DELETE) uma conta da fila. */
-  const jobRequest = async (job: EmulatorJob, kind: "continuar" | "remover") => {
+  /** Continuar, responder (código do Gmail / "continuar") ou remover uma conta da fila. */
+  const jobRequest = async (job: EmulatorJob, kind: "continuar" | "remover" | "responder", resposta?: string) => {
     if (jobBusy.has(job.id)) return;
     setCommandError(null);
     setJobBusy((s) => new Set(s).add(job.id));
     try {
-      const url = `/api/emulador/contas/${encodeURIComponent(job.id)}${kind === "continuar" ? "/continuar" : ""}`;
-      const res = await fetch(url, { method: kind === "continuar" ? "POST" : "DELETE" });
+      const base = `/api/emulador/contas/${encodeURIComponent(job.id)}`;
+      const res =
+        kind === "remover"
+          ? await fetch(base, { method: "DELETE" })
+          : await fetch(`${base}/${kind}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(kind === "responder" ? { resposta } : {}),
+            });
       if (!res.ok) throw new Error(await readError(res, "Não foi possível salvar. Tente de novo."));
       await load();
     } catch (e) {
@@ -182,7 +189,7 @@ export default function EmuladorPage() {
           )}
           {!data.jobsAvailable && (
             <Banner tone="warning">
-              Para a Nova conta falta aplicar o SQL <span className="font-mono">supabase/emulador_contas.sql</span> no
+              Para Criar instância e Editar nome falta aplicar o SQL <span className="font-mono">supabase/emulador_contas.sql</span> no
               Supabase.
             </Banner>
           )}
@@ -195,16 +202,16 @@ export default function EmuladorPage() {
                 now={now}
                 onCommand={sendCommand}
                 onDisconnect={setDisconnecting}
+                onCreateInstance={data.jobsAvailable ? setNovaContaFor : undefined}
               />
               {data.jobsAvailable && agent.lastSeenAt && (
                 <ContasCard
-                  agent={agent}
                   jobs={data.jobs.filter((j) => j.agentId === agent.id)}
                   busy={jobBusy}
                   now={now}
-                  onNew={() => setNovaContaFor(agent)}
                   onContinue={(job) => void jobRequest(job, "continuar")}
                   onRemove={setRemovingJob}
+                  onReply={(job, resposta) => void jobRequest(job, "responder", resposta)}
                 />
               )}
             </React.Fragment>

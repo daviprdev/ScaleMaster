@@ -27,6 +27,13 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const TASK_NAME_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const STATES: ReadonlySet<string> = new Set<InstanceState>(["off", "starting", "on"]);
 
+/** Nome de instância no MuMu: letras, números, espaço, ponto, _ e -, até 40. Vazio = inválido. */
+export function instanceName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const name = value.replace(/[^\p{L}\p{N} ._-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 40);
+  return name || null;
+}
+
 export function shortText(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
   const text = value.trim();

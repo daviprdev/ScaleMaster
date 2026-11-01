@@ -31,9 +31,17 @@ node agente.mjs fechar 0
 node agente.mjs tarefa teste-adb 0
 ```
 
-## Nova conta
+## Criar instância
 
-A aba Emulador → Contas → **Nova conta** põe uma conta na fila. O agente roda uma por vez, em `fluxos/nova-conta.mjs`: copia a instância padrão, troca o IMEI (válido, com dígito verificador), dá à cópia o nome do @ e liga. Se uma etapa falha, a conta para e o botão **Continuar** retoma da etapa que falhou. Teste local sem o SaaS: `node agente.mjs nova-conta 0 teste`.
+A aba Emulador → **Criar instância** põe uma conta na fila. O agente roda uma por vez (`fluxos/nova-conta.mjs`):
+
+1. copia a instância padrão e troca IMEI (válido), Android ID e MAC;
+2. dá à cópia o @ (ou o Gmail) como nome e liga;
+3. instala o Instagram pelo Aurora (`fluxos/aurora.mjs`), antes da proxy;
+4. põe a proxy HTTP no NekoBox e testa (`fluxos/nekobox.mjs`);
+5. cria a conta com o Gmail (`fluxos/cadastro.mjs`): reconhece cada tela pelo título; o código do Gmail e qualquer tela desconhecida são pedidos ao dono na aba. Telas desconhecidas ficam salvas em `telas/`.
+
+Se uma etapa falha, a conta para e o botão **Continuar** retoma da etapa que falhou. Teste local: `node agente.mjs nova-conta 0 dados.json` (com `{ "proxy": "http://u:s@host:porta", "conta": { ... } }`).
 
 ## Automações
 

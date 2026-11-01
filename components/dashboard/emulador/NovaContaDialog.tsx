@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { Banner, Button, Dialog, Input, Select } from "@/components/ui";
-import { NOVA_CONTA_FLUXO } from "@/lib/emulador/jobs";
 import type { EmulatorAgent } from "@/lib/emulador/types";
 
 interface NovaContaDialogProps {
@@ -12,11 +11,9 @@ interface NovaContaDialogProps {
   onCreated: () => void;
 }
 
-const EMPTY = { proxy: "", nome: "", usuario: "", senha: "", contato: "", nascimento: "" };
+const EMPTY = { proxy: "", email: "", senha: "", nome: "", usuario: "", nascimento: "" };
 
-const PENDING = NOVA_CONTA_FLUXO.filter((s) => !s.ready).map((s) => s.label.toLowerCase());
-
-/** Formulário Nova conta: instância padrão, proxy e dados da conta no Instagram. */
+/** Formulário Criar instância: instância padrão, proxy do NekoBox e dados da conta no Instagram. */
 export function NovaContaDialog({ agent, onClose, onCreated }: NovaContaDialogProps) {
   const [form, setForm] = React.useState(EMPTY);
   const [template, setTemplate] = React.useState<string>("");
@@ -47,10 +44,10 @@ export function NovaContaDialog({ agent, onClose, onCreated }: NovaContaDialogPr
           templateIndex: Number(template),
           proxy: form.proxy,
           conta: {
+            email: form.email,
+            senha: form.senha,
             nome: form.nome,
             usuario: form.usuario,
-            senha: form.senha,
-            contato: form.contato,
             nascimento: form.nascimento,
           },
         }),
@@ -70,8 +67,8 @@ export function NovaContaDialog({ agent, onClose, onCreated }: NovaContaDialogPr
     <Dialog
       open={!!agent}
       onClose={onClose}
-      title="Nova conta"
-      description="O agente copia a instância padrão e cria a conta nessa cópia."
+      title="Criar instância"
+      description="O agente copia a instância padrão, instala o Instagram, põe a proxy no NekoBox e cria a conta com o Gmail."
       className="max-w-lg"
     >
       <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)}>
@@ -83,44 +80,57 @@ export function NovaContaDialog({ agent, onClose, onCreated }: NovaContaDialogPr
           options={(agent?.instances ?? []).map((i) => ({ value: String(i.index), label: `#${i.index} · ${i.name}` }))}
         />
         <Input
-          label="Proxy"
+          label="Proxy (HTTP)"
           placeholder="host:porta:usuário:senha"
           value={form.proxy}
           onChange={set("proxy")}
           autoComplete="off"
+          required
         />
         <div className="grid gap-4 sm:grid-cols-2">
-          <Input label="Nome completo" value={form.nome} onChange={set("nome")} autoComplete="off" />
           <Input
-            label="Usuário"
+            label="Gmail"
+            type="email"
+            placeholder="nome@gmail.com"
+            hint="O código de confirmação chega aqui; a aba pede para você digitar."
+            value={form.email}
+            onChange={set("email")}
+            autoComplete="off"
+            required
+          />
+          <Input
+            label="Senha do Instagram"
+            type="password"
+            hint="Sem acento."
+            value={form.senha}
+            onChange={set("senha")}
+            autoComplete="new-password"
+            required
+          />
+          <Input label="Nome completo" hint="Sem acento." value={form.nome} onChange={set("nome")} autoComplete="off" required />
+          <Input
+            label="Usuário (opcional)"
             placeholder="sem @"
-            hint="Vira o nome da instância no MuMu."
+            hint="Vazio = aceita a sugestão do Instagram."
             value={form.usuario}
             onChange={set("usuario")}
             autoComplete="off"
           />
-          <Input label="Senha" type="password" value={form.senha} onChange={set("senha")} autoComplete="new-password" />
-          <Input label="E-mail ou telefone" value={form.contato} onChange={set("contato")} autoComplete="off" />
           <Input
             label="Data de nascimento"
             placeholder="dd/mm/aaaa"
             value={form.nascimento}
             onChange={set("nascimento")}
             autoComplete="off"
+            required
           />
         </div>
-        {PENDING.length > 0 && (
-          <Banner tone="info">
-            Por enquanto o agente copia a instância, troca o IMEI, dá o nome e liga. Ainda falta automatizar:{" "}
-            {PENDING.join(", ")}. Os dados ficam guardados para essas etapas.
-          </Banner>
-        )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
           <Button type="submit" loading={saving} disabled={template === ""}>
-            Criar conta
+            Criar instância
           </Button>
         </div>
       </form>

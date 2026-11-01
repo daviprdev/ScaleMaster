@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
-import { parseJobSteps, type EmulatorJob, type JobStatus } from "./jobs";
+import { parseJobPrompt, parseJobSteps, type EmulatorJob, type JobStatus } from "./jobs";
 import { isOnline, parseInstances, parseTasks } from "./payload";
 import type { CommandAction, CommandStatus, EmuladorResponse, EmulatorAgent, EmulatorCommand } from "./types";
 
@@ -72,8 +72,18 @@ interface JobRow {
   steps: unknown;
   status: JobStatus;
   error: string | null;
+  prompt: string | null;
   created_at: string;
   updated_at: string;
+}
+
+function readPrompt(text: string | null): EmulatorJob["prompt"] {
+  if (!text) return null;
+  try {
+    return parseJobPrompt(JSON.parse(text));
+  } catch {
+    return null;
+  }
 }
 
 function toJob(row: JobRow): EmulatorJob {
@@ -86,6 +96,7 @@ function toJob(row: JobRow): EmulatorJob {
     steps: parseJobSteps(row.steps),
     status: row.status,
     error: row.error,
+    prompt: readPrompt(row.prompt),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -109,7 +120,7 @@ export async function loadEmulador(admin: SupabaseClient, userId: string): Promi
       .limit(200),
     admin
       .from("emulator_jobs")
-      .select("id, agent_id, label, template_index, instance_index, steps, status, error, created_at, updated_at")
+      .select("id, agent_id, label, template_index, instance_index, steps, status, error, prompt, created_at, updated_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(100),

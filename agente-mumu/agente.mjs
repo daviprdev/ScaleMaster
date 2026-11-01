@@ -15,7 +15,7 @@
  *   node agente.mjs abrir <n>           abre a instância n (teste local)
  *   node agente.mjs fechar <n>          fecha a instância n (teste local)
  *   node agente.mjs tarefa <nome> <n>   roda uma automação na instância n (teste local)
- *   node agente.mjs nova-conta <n> [@]  roda o fluxo Nova conta copiando a n (teste local)
+ *   node agente.mjs nova-conta <n> [json] roda Criar instância copiando a n (teste local)
  *
  * Além dos comandos, o sync entrega as contas da fila Nova conta (fluxos/):
  * uma por vez, com o andamento etapa a etapa (jobUpdates/runningJobs).
@@ -26,6 +26,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { createInterface } from "node:readline";
 import { appendFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -36,7 +37,7 @@ import { esperar } from "./lib/processo.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.2.0";
+const VERSAO = "1.3.0";
 /** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
 const PASTA = path.dirname(fileURLToPath(import.meta.url));
@@ -156,6 +157,12 @@ async function executar(mumu, comando) {
     await mumu.fechar(index);
     return null;
   }
+  if (comando.action === "rename") {
+    const nome = String(comando.params?.nome ?? "").replace(/[^\p{L}\p{N} ._-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (!nome) throw new Error("Nome inválido.");
+    await mumu.renomear(index, nome);
+    return null;
+  }
   if (comando.action === "task") {
     const tarefa = TAREFAS.find((t) => t.nome === comando.task);
     if (!tarefa) throw new Error(`Este agente não tem a automação "${comando.task}". Atualize a pasta agente-mumu.`);
@@ -177,24 +184,57 @@ async function executar(mumu, comando) {
   throw new Error(`Ação desconhecida: ${comando.action}`);
 }
 
+/** Quanto o agente espera o dono responder (código do Gmail, "já resolvi"). */
+const ESPERA_RESPOSTA_MS = 30 * 60_000;
+
 /**
  * Roda uma conta da fila (fluxos/), etapa por etapa, pulando as que já estão
  * concluídas em job.steps (retomada pelo botão Continuar). `reportar` recebe o
- * andamento inteiro a cada mudança; o último vale.
+ * andamento inteiro a cada mudança; o último vale. `aguardarResposta(id, ms)`
+ * devolve o que o dono respondeu na aba quando uma etapa pergunta algo.
  */
-async function rodarJob(mumu, job, reportar) {
+async function rodarJob(mumu, job, reportar, aguardarResposta) {
   const fluxo = FLUXOS[job.kind];
   const feitas = (Array.isArray(job.steps) ? job.steps : []).filter((s) => s?.status === "done");
   const steps = feitas.map((s) => ({ key: s.key, status: "done", message: s.message ?? null }));
   const estado = { instanceIndex: Number.isInteger(job.instanceIndex) ? job.instanceIndex : null };
+  let prompt = null;
   const enviar = (status, error = null) =>
-    reportar({ id: job.id, instanceIndex: estado.instanceIndex ?? undefined, steps: steps.map((s) => ({ ...s })), status, error });
+    reportar({
+      id: job.id,
+      instanceIndex: estado.instanceIndex ?? undefined,
+      steps: steps.map((s) => ({ ...s })),
+      status,
+      error,
+      prompt: status === "running" ? prompt : null,
+    });
 
   if (!fluxo) return enviar("error", `Este agente não conhece o fluxo "${job.kind}". Atualize a pasta agente-mumu.`);
   if (!mumu) return enviar("error", "MuMu não encontrado neste PC.");
 
-  const prefixo = `[conta ${job.input?.conta?.usuario || job.id.slice(0, 8)}]`;
-  const logJob = (m) => log(`${prefixo} ${m}`);
+  const conta = job.input?.conta ?? {};
+  const logJob = (m) => log(`[conta ${conta.usuario || conta.email || job.id.slice(0, 8)}] ${m}`);
+
+  /** Aparelho da cópia, ligado e com adb (liga de novo se alguém desligou no meio). */
+  let aparelho = null;
+  const dispositivo = async () => {
+    if (estado.instanceIndex === null) throw new Error("A cópia da instância ainda não foi criada.");
+    const instancia = await mumu.prepararInstancia(estado.instanceIndex, { log: logJob });
+    if (!aparelho || aparelho.serial !== instancia.adb) aparelho = new Dispositivo(mumu.adb, instancia.adb);
+    await aparelho.conectar();
+    return aparelho;
+  };
+  const perguntar = async (tipo, texto) => {
+    prompt = { tipo, texto };
+    enviar("running");
+    try {
+      return await aguardarResposta(job.id, ESPERA_RESPOSTA_MS);
+    } finally {
+      prompt = null;
+      enviar("running");
+    }
+  };
+
   for (const etapa of fluxo) {
     if (steps.some((s) => s.key === etapa.chave)) continue;
     const step = { key: etapa.chave, status: "running", message: null };
@@ -202,7 +242,7 @@ async function rodarJob(mumu, job, reportar) {
     enviar("running");
     logJob(`${etapa.rotulo}…`);
     try {
-      const mensagem = await etapa.rodar({ mumu, job, input: job.input ?? {}, estado, log: logJob });
+      const mensagem = await etapa.rodar({ mumu, job, input: job.input ?? {}, estado, log: logJob, dispositivo, perguntar });
       step.status = "done";
       step.message = mensagem ? String(mensagem).slice(0, 300) : null;
       logJob(`${etapa.rotulo}: ok${step.message ? ` (${step.message})` : ""}`);
@@ -239,6 +279,20 @@ async function rodarAgente() {
   const devolverAndamentos = (lista) => {
     for (const u of lista) if (!andamentos.has(u.id)) andamentos.set(u.id, u);
   };
+  /** Contas paradas esperando o dono responder na aba: id → entrega da resposta. */
+  const esperandoResposta = new Map();
+  const aguardarResposta = (id, ms) =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        esperandoResposta.delete(id);
+        reject(new Error(`Ninguém respondeu em ${Math.round(ms / 60_000)} min.`));
+      }, ms);
+      esperandoResposta.set(id, (resposta) => {
+        clearTimeout(timer);
+        esperandoResposta.delete(id);
+        resolve(resposta);
+      });
+    });
   let mumu = null;
   let versaoMumu = null;
   let erroLocalizar = null;
@@ -332,11 +386,14 @@ async function rodarAgente() {
             }
           });
         }
+        for (const r of Array.isArray(resposta.replies) ? resposta.replies : []) {
+          esperandoResposta.get(r?.id)?.(String(r.reply ?? ""));
+        }
         for (const job of Array.isArray(resposta.jobs) ? resposta.jobs : []) {
           if (typeof job?.id !== "string" || contasEmAndamento.has(job.id)) continue;
           contasEmAndamento.add(job.id);
-          log(`Conta na fila: ${job.input?.conta?.usuario || job.id.slice(0, 8)} (cópia da #${job.templateIndex})`);
-          rodarJob(mumu, job, (u) => andamentos.set(u.id, u))
+          log(`Conta na fila: ${job.input?.conta?.usuario || job.input?.conta?.email || job.id.slice(0, 8)} (cópia da #${job.templateIndex})`);
+          rodarJob(mumu, job, (u) => andamentos.set(u.id, u), aguardarResposta)
             .catch((e) => andamentos.set(job.id, { id: job.id, steps: [], status: "error", error: e.message }))
             .finally(() => contasEmAndamento.delete(job.id));
         }
@@ -413,18 +470,21 @@ async function main(args) {
     return console.log(`Instância ${index}: ${cmd === "abrir" ? "abrindo" : "fechando"}.`);
   }
   if (cmd === "nova-conta") {
-    const job = {
-      id: randomUUID(),
-      kind: "nova-conta",
-      templateIndex: indice(args[1]),
-      instanceIndex: null,
-      steps: [],
-      input: { proxy: "", conta: { usuario: args[2] ?? "" } },
-    };
+    // Teste local: node agente.mjs nova-conta <padrão> [arquivo.json com { proxy, conta }]
+    const input = args[2] ? JSON.parse(readFileSync(args[2], "utf8")) : { proxy: "", conta: {} };
+    const job = { id: randomUUID(), kind: "nova-conta", templateIndex: indice(args[1]), instanceIndex: null, steps: [], input };
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
     let ultimo = null;
-    await rodarJob(mumu, job, (u) => {
-      ultimo = u;
-    });
+    await rodarJob(
+      mumu,
+      job,
+      (u) => {
+        ultimo = u;
+        if (u.prompt) console.log(`>>> ${u.prompt.texto}`);
+      },
+      () => new Promise((resolve) => rl.question("resposta: ", resolve))
+    );
+    rl.close();
     return console.log(JSON.stringify(ultimo, null, 2));
   }
   if (cmd === "tarefa") {

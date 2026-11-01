@@ -31,6 +31,7 @@ export function activeText(command: EmulatorCommand, tasks: readonly EmulatorTas
   if (command.status === "queued") return "Enviando para o PC…";
   if (command.action === "launch") return command.instanceIndex === PC_INDEX ? "Abrindo o MuMu…" : "Abrindo…";
   if (command.action === "shutdown") return "Fechando…";
+  if (command.action === "rename") return "Renomeando…";
   return `Rodando ${taskLabel(command.task, tasks)}…`;
 }
 
