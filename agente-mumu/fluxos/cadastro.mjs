@@ -31,11 +31,19 @@ const MESES = {
 };
 const TEMPO_MAX_MS = 45 * 60_000;
 
-/** Campo de digitar: o nó clicável cuja descrição começa com o rótulo, senão o 1º EditText. */
+/**
+ * Campo de digitar: o nó clicável cuja descrição começa com o rótulo ("E-mail,");
+ * senão um que contenha o rótulo sem ser botão ("Campo de introdução do código" —
+ * o botão "Não recebi o código" fica de fora); senão o 1º EditText.
+ */
 function campoPor(nos, rotulos) {
+  const desc = (n) => n.descricao.toLowerCase();
   for (const rotulo of rotulos) {
-    const r = rotulo.toLowerCase();
-    const no = nos.find((n) => n.clicavel && n.descricao.toLowerCase().startsWith(r));
+    const no = nos.find((n) => n.clicavel && desc(n).startsWith(rotulo.toLowerCase()));
+    if (no) return no;
+  }
+  for (const rotulo of rotulos) {
+    const no = nos.find((n) => n.clicavel && !/Button/.test(n.classe) && desc(n).includes(rotulo.toLowerCase()));
     if (no) return no;
   }
   return nos.find((n) => /EditText/.test(n.classe)) ?? null;
