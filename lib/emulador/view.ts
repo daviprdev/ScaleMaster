@@ -1,3 +1,4 @@
+import { PC_INDEX } from "./payload";
 import type { EmulatorCommand, EmulatorTask } from "./types";
 
 /** Erro/resultado de comando some da linha depois disso (continua no banco). */
@@ -28,7 +29,7 @@ export function taskLabel(name: string | null, tasks: readonly EmulatorTask[]): 
 /** Texto curto do que o comando está fazendo agora. */
 export function activeText(command: EmulatorCommand, tasks: readonly EmulatorTask[]): string {
   if (command.status === "queued") return "Enviando para o PC…";
-  if (command.action === "launch") return "Abrindo…";
+  if (command.action === "launch") return command.instanceIndex === PC_INDEX ? "Abrindo o MuMu…" : "Abrindo…";
   if (command.action === "shutdown") return "Fechando…";
   return `Rodando ${taskLabel(command.task, tasks)}…`;
 }

@@ -10,6 +10,12 @@ import type { EmulatorInstance, EmulatorTask, InstanceState } from "./types";
 /** Agente sem sync há mais que isso aparece como offline (ele chama a cada ~3 s). */
 export const AGENT_ONLINE_MS = 20_000;
 
+/**
+ * "Instância" -1 = o MuMu em si, não uma instância: launch nela abre só a
+ * janela principal do MuMu (MuMuManager main launch), sem ligar nenhuma.
+ */
+export const PC_INDEX = -1;
+
 /** Comando que ficou na fila mais que isso não roda mais (o PC estava fora). */
 export const QUEUED_COMMAND_TTL_MS = 2 * 60_000;
 

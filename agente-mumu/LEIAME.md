@@ -25,6 +25,7 @@ O código fica em `config.json` (fora do git). O log fica em `agente.log`.
 
 ```
 node agente.mjs instancias
+node agente.mjs abrir-mumu
 node agente.mjs abrir 0
 node agente.mjs fechar 0
 node agente.mjs tarefa teste-adb 0

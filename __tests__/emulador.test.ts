@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   AGENT_ONLINE_MS,
+  PC_INDEX,
   isOnline,
   parseInstances,
   parseResults,
@@ -137,6 +138,7 @@ describe("tela do emulador", () => {
     const tasks = [{ name: "teste-adb", label: "Testar automação", description: null }];
     expect(activeText(cmd({ status: "queued" }), tasks)).toBe("Enviando para o PC…");
     expect(activeText(cmd({ status: "running", action: "launch" }), tasks)).toBe("Abrindo…");
+    expect(activeText(cmd({ status: "running", action: "launch", instanceIndex: PC_INDEX }), tasks)).toBe("Abrindo o MuMu…");
     expect(activeText(cmd({ status: "running", action: "shutdown" }), tasks)).toBe("Fechando…");
     expect(activeText(cmd({ status: "running", action: "task", task: "teste-adb" }), tasks)).toBe("Rodando Testar automação…");
   });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
-import { isOnline, parseInstances, parseTasks } from "@/lib/emulador/payload";
+import { PC_INDEX, isOnline, parseInstances, parseTasks } from "@/lib/emulador/payload";
 import type { CommandAction } from "@/lib/emulador/types";
 
 export const dynamic = "force-dynamic";
@@ -18,9 +18,9 @@ function plainParams(value: unknown): Record<string, unknown> | null {
   return text.length <= MAX_PARAMS_JSON ? (JSON.parse(text) as Record<string, unknown>) : null;
 }
 
-// POST — põe um comando na fila do agente: abrir/fechar uma instância ou rodar
-// uma automação nela. O agente pega no próximo sync (~3 s). Uma coisa por
-// instância de cada vez.
+// POST — põe um comando na fila do agente: abrir o MuMu (instância PC_INDEX),
+// abrir/fechar uma instância ou rodar uma automação nela. O agente pega no
+// próximo sync (~3 s). Uma coisa por instância de cada vez.
 export async function POST(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
@@ -67,7 +67,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "O PC está offline. Abra o agente no PC e tente de novo." }, { status: 409 });
   }
 
-  if (!parseInstances(agent.instances).some((i) => i.index === instanceIndex)) {
+  if (instanceIndex === PC_INDEX) {
+    if (action !== "launch") return NextResponse.json({ error: "No MuMu em si só dá para abrir." }, { status: 400 });
+  } else if (!parseInstances(agent.instances).some((i) => i.index === instanceIndex)) {
     return NextResponse.json({ error: "Essa instância não existe mais no MuMu." }, { status: 404 });
   }
   if (action === "task" && !parseTasks(agent.tasks).some((t) => t.name === task)) {

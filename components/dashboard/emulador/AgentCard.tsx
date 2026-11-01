@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Play, Power, PowerOff, Smartphone, Unplug } from "lucide-react";
+import { AppWindow, Loader2, Play, Power, PowerOff, Smartphone, Unplug } from "lucide-react";
 import { Badge, Banner, Button, Card, Dialog, EmptyState, type BadgeTone } from "@/components/ui";
+import { PC_INDEX } from "@/lib/emulador/payload";
 import type { CommandAction, EmulatorAgent, EmulatorCommand, EmulatorInstance, InstanceState } from "@/lib/emulador/types";
 import {
   RECENT_OUTCOME_MS,
@@ -36,6 +37,9 @@ interface AgentCardProps {
 export function AgentCard({ agent, latest, sending, now, onCommand, onDisconnect }: AgentCardProps) {
   const [taskFor, setTaskFor] = React.useState<EmulatorInstance | null>(null);
   const neverSeen = !agent.lastSeenAt;
+  const pcKey = instanceKey(agent.id, PC_INDEX);
+  const pcCommand = latest.get(pcKey);
+  const pcSending = sending.has(pcKey);
 
   const details = [
     agent.mumuVersion ? `MuMu ${agent.mumuVersion}` : null,
@@ -52,6 +56,16 @@ export function AgentCard({ agent, latest, sending, now, onCommand, onDisconnect
           <Badge tone={agent.online ? "success" : "neutral"} dot>
             {agent.online ? "Online" : "Offline"}
           </Badge>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<AppWindow size={14} />}
+            loading={pcSending}
+            disabled={!agent.online || pcSending || isActive(pcCommand)}
+            onClick={() => onCommand(agent, PC_INDEX, "launch")}
+          >
+            Abrir MuMu
+          </Button>
           <Button variant="ghost" size="sm" icon={<Unplug size={14} />} onClick={() => onDisconnect(agent)}>
             Desconectar
           </Button>
@@ -66,6 +80,7 @@ export function AgentCard({ agent, latest, sending, now, onCommand, onDisconnect
       ) : (
         <div className="flex flex-col gap-4">
           {agent.mumuError && <Banner tone="warning">{agent.mumuError}</Banner>}
+          <CommandLine command={pcCommand} agent={agent} now={now} />
           {agent.instances.length === 0 ? (
             <EmptyState
               icon={<Smartphone size={18} />}

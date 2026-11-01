@@ -5,6 +5,7 @@ import { esperar, rodar, trecho } from "./processo.mjs";
 /**
  * MuMu Player pelo MuMuManager.exe (linha de comando oficial, vem com o MuMu):
  *   info -v all             → instâncias (índice, nome, ligada, porta do adb)
+ *   main launch             → abre só a janela principal do MuMu
  *   control -v N launch     → liga a instância N (abre o MuMu se preciso)
  *   control -v N shutdown   → desliga
  * O adb.exe usado nas automações é o que vem na mesma pasta.
@@ -116,6 +117,11 @@ export class MuMu {
 
   async instancia(index) {
     return normalizar(await this.json(["info", "-v", String(index)], 30_000));
+  }
+
+  /** Só a janela principal do MuMu (lista de instâncias), sem ligar nenhuma. */
+  async abrirMuMu() {
+    await this.json(["main", "launch"], 60_000);
   }
 
   async abrir(index) {

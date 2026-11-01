@@ -11,6 +11,7 @@
  *   node agente.mjs                     roda com o código salvo
  *   node agente.mjs parar               para o agente que estiver rodando
  *   node agente.mjs instancias          lista as instâncias (teste local, sem SaaS)
+ *   node agente.mjs abrir-mumu          abre só a janela do MuMu (teste local)
  *   node agente.mjs abrir <n>           abre a instância n (teste local)
  *   node agente.mjs fechar <n>          fecha a instância n (teste local)
  *   node agente.mjs tarefa <nome> <n>   roda uma automação na instância n (teste local)
@@ -29,7 +30,9 @@ import { MuMu } from "./lib/mumu.mjs";
 import { esperar } from "./lib/processo.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
 
-const VERSAO = "1.0.0";
+const VERSAO = "1.1.0";
+/** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
+const PC_INDEX = -1;
 const PASTA = path.dirname(fileURLToPath(import.meta.url));
 const ARQ_CONFIG = path.join(PASTA, "config.json");
 const ARQ_LOG = path.join(PASTA, "agente.log");
@@ -132,6 +135,11 @@ function naFilaDaInstancia(index, trabalho) {
 
 async function executar(mumu, comando) {
   const index = comando.instanceIndex;
+  if (index === PC_INDEX) {
+    if (comando.action !== "launch") throw new Error("No MuMu em si só dá para abrir.");
+    await mumu.abrirMuMu();
+    return null;
+  }
   if (!Number.isInteger(index) || index < 0) throw new Error("Instância inválida.");
 
   if (comando.action === "launch") {
@@ -327,6 +335,10 @@ async function main(args) {
     console.log(`MuMuManager: ${mumu.manager}`);
     console.table(await mumu.instancias());
     return;
+  }
+  if (cmd === "abrir-mumu") {
+    await executar(mumu, { action: "launch", instanceIndex: PC_INDEX });
+    return console.log("MuMu aberto.");
   }
   if (cmd === "abrir" || cmd === "fechar") {
     const index = indice(args[1]);
