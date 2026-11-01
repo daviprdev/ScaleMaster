@@ -213,7 +213,7 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
     },
     {
       nome: "nome",
-      teste: (nos) => temTexto(nos, ["Qual é o teu nome", "What's your name", "Qual é o seu nome"]),
+      teste: (nos) => temTexto(nos, ["Como te chamas", "Qual é o teu nome", "What's your name", "Qual é o seu nome", "Como você se chama"]),
       agir: async (nos) => {
         const campo = campoPor(nos, ["Nome completo", "Full name", "Nome"]);
         if (!campo) throw new Error("Não achei o campo do nome.");
