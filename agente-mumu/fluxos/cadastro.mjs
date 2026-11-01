@@ -185,7 +185,7 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
     },
     {
       nome: "senha",
-      teste: (nos) => temTexto(nos, ["Cria uma palavra-passe", "Create a password", "Crie uma senha"]),
+      teste: (nos) => temTexto(nos, ["Criar uma palavra-passe", "Cria uma palavra-passe", "Create a password", "Crie uma senha", "Criar uma senha"]),
       agir: async (nos) => {
         const campo = campoPor(nos, ["Palavra-passe", "Password", "Senha"]);
         if (!campo) throw new Error("Não achei o campo da senha.");
@@ -223,7 +223,7 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
     },
     {
       nome: "usuario",
-      teste: (nos) => temTexto(nos, ["Cria um nome de utilizador", "Create a username", "Crie um nome de usuário"]),
+      teste: (nos) => temTexto(nos, ["Criar um nome de utilizador", "Cria um nome de utilizador", "Create a username", "Crie um nome de usuário", "Criar um nome de usuário"]),
       agir: async (nos) => {
         const campo = campoPor(nos, ["Nome de utilizador", "Username", "Nome de usuário"]);
         if (conta.usuario && campo) {
