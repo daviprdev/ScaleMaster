@@ -148,6 +148,15 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
       agir: (nos) => manual(`O Instagram pediu uma verificação (${resumoTela(nos)}).`, nos),
     },
     {
+      // Depois dos termos o Instagram pode travar a conta nova até confirmar um telefone (sem "Ignorar").
+      nome: "verificacao-telefone",
+      teste: (nos) =>
+        temTexto(nos, ["Insere o teu número de telemóvel", "Enter your mobile number", "Insira seu número de celular", "Insira o seu número de celular"]) &&
+        temTexto(nos, ["SMS", "WhatsApp"]),
+      agir: (nos) =>
+        manual("A conta foi criada, mas o Instagram pediu um número de telefone para confirmar (código por SMS ou WhatsApp).", nos),
+    },
+    {
       nome: "codigo",
       teste: (nos) => temTexto(nos, ["código de confirmação", "confirmation code", "Introduz o código", "Insira o código", "Enter the code"]),
       agir: async (nos) => {
