@@ -35,18 +35,18 @@ function cmd(partial: Partial<EmulatorCommand>): EmulatorCommand {
 describe("payload do agente", () => {
   it("lê instâncias: índice em texto, sem repetidas, estado desconhecido vira off, em ordem", () => {
     const out = parseInstances([
-      { index: "2", name: "Conta B", state: "on" },
-      { index: 0, name: "  Conta A ", state: "starting" },
+      { index: "2", name: "Conta B", state: "on", alert: "  Conta ERRO CRIAÇÃO, verificar com numero telefone " },
+      { index: 0, name: "  Conta A ", state: "starting", alert: null },
       { index: 2, name: "duplicada", state: "off" },
       { index: -1, name: "negativa" },
       { index: 1.5, name: "quebrada" },
-      { index: 3, name: "", state: "voando" },
+      { index: 3, name: "", state: "voando", alert: 42 },
       "lixo",
     ]);
     expect(out).toEqual([
-      { index: 0, name: "Conta A", state: "starting" },
-      { index: 2, name: "Conta B", state: "on" },
-      { index: 3, name: "Instância 3", state: "off" },
+      { index: 0, name: "Conta A", state: "starting", alert: null },
+      { index: 2, name: "Conta B", state: "on", alert: "Conta ERRO CRIAÇÃO, verificar com numero telefone" },
+      { index: 3, name: "Instância 3", state: "off", alert: null },
     ]);
   });
 

@@ -9,6 +9,8 @@ export interface EmulatorInstance {
   index: number;
   name: string;
   state: InstanceState;
+  /** Aviso que o agente guarda para a instância (ex.: conta travada pedindo telefone). */
+  alert: string | null;
 }
 
 /** Automação que o agente sabe rodar (pasta agente-mumu/tarefas/). */

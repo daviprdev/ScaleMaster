@@ -32,12 +32,13 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Dispositivo } from "./lib/adb.mjs";
+import { alertaDe } from "./lib/alertas.mjs";
 import { MuMu } from "./lib/mumu.mjs";
 import { esperar } from "./lib/processo.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.4.0";
+const VERSAO = "1.5.0";
 /** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
 const PASTA = path.dirname(fileURLToPath(import.meta.url));
@@ -336,7 +337,7 @@ async function rodarAgente() {
       hostname: os.hostname(),
       mumuVersion: versaoMumu,
       mumuError: erroMumu,
-      instances: instancias.map(({ index, name, state }) => ({ index, name, state })),
+      instances: instancias.map(({ index, name, state, criada }) => ({ index, name, state, alert: alertaDe(criada) })),
       tasks: tarefas,
       results: enviando,
       running: [...emAndamento],

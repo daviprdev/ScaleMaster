@@ -61,7 +61,9 @@ export function linkedJobs(
     if (job.agentId !== agentId || job.instanceIndex === null) continue;
     const nome = job.steps.find((s) => s.key === "nome")?.message;
     const inst = instances.find((i) => i.index === job.instanceIndex);
-    if (inst && nome && inst.name === nome && !out.has(inst.index)) out.set(inst.index, job);
+    // Sem a etapa nome ainda (Criar conta aqui na fila): vale pelo índice enquanto não terminou.
+    const ligada = nome ? inst?.name === nome : job.status === "queued" || job.status === "running";
+    if (inst && ligada && !out.has(inst.index)) out.set(inst.index, job);
   }
   return out;
 }
@@ -78,6 +80,15 @@ export function instanceAlerts(
   }
   return out;
 }
+
+/**
+ * "Criar conta aqui": a conta nasce numa instância que já existe, então copiar
+ * e trocar IDs ficam marcados como feitos (o agente pula). O resto roda.
+ */
+export const STEPS_CONTA_AQUI: JobStep[] = [
+  { key: "copiar", status: "done", message: "instância já existente" },
+  { key: "ids", status: "done", message: "mantidos" },
+];
 
 /** Dá para editar os dados (conta na fila ou que parou). */
 export function canEditJob(job: EmulatorJob): boolean {

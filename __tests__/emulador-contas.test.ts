@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   ALERTA_TELEFONE,
   NOVA_CONTA_FLUXO,
+  STEPS_CONTA_AQUI,
   instanceAlerts,
+  linkedJobs,
   parseJobPrompt,
   parseJobSteps,
   parseJobUpdates,
@@ -214,5 +216,35 @@ describe("Editar dados", () => {
     if (!("value" in r)) throw new Error("devia aceitar");
     expect(r.value.proxy).toBe("http://u2:s2@novo.host:8080");
     expect(stepsAfterEdit(passos, atual, r.value).map((s) => s.key)).toEqual(["copiar", "ids", "abrir", "instagram"]);
+  });
+});
+
+describe("Criar conta aqui", () => {
+  const base = {
+    id: UUID,
+    agentId: "pc",
+    label: "nova",
+    templateIndex: 1,
+    instanceIndex: 1,
+    steps: STEPS_CONTA_AQUI,
+    status: "queued" as const,
+    error: null,
+    prompt: null,
+    createdAt: "2026-11-01T21:00:00Z",
+    updatedAt: "2026-11-01T21:00:00Z",
+  };
+  const inst = [{ index: 1, name: "julia_santana4738" }];
+
+  it("pula copiar e trocar IDs", () => {
+    expect(STEPS_CONTA_AQUI.map((s) => s.key)).toEqual(["copiar", "ids"]);
+    expect(STEPS_CONTA_AQUI.every((s) => s.status === "done")).toBe(true);
+  });
+
+  it("na fila, sem a etapa nome, já fica ligada à instância pelo índice", () => {
+    expect(linkedJobs([base], "pc", inst).get(1)?.id).toBe(UUID);
+  });
+
+  it("parada antes da etapa nome não prende a instância", () => {
+    expect(linkedJobs([{ ...base, status: "error" as const }], "pc", inst).size).toBe(0);
   });
 });

@@ -3,10 +3,14 @@
 import * as React from "react";
 import { Banner, Button, Dialog, Input, Select, Skeleton } from "@/components/ui";
 import type { EmulatorJob } from "@/lib/emulador/jobs";
-import type { EmulatorAgent } from "@/lib/emulador/types";
+import type { EmulatorAgent, EmulatorInstance } from "@/lib/emulador/types";
 
-/** Criar: agent sem job. Editar: o job da conta (os dados vêm do servidor, sem senha nem credenciais da proxy). */
-export type ContaDialogTarget = { agent: EmulatorAgent; job?: EmulatorJob } | null;
+/**
+ * Criar instância: só agent. Editar dados: job (os dados vêm do servidor, sem
+ * senha nem credenciais da proxy). Criar conta aqui: instance (a conta nasce
+ * nela, sem copiar outra).
+ */
+export type ContaDialogTarget = { agent: EmulatorAgent; job?: EmulatorJob; instance?: EmulatorInstance } | null;
 
 interface ContaDialogProps {
   target: ContaDialogTarget;
@@ -32,6 +36,7 @@ interface Editable {
  */
 export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
   const editing = target?.job ?? null;
+  const here = editing ? null : (target?.instance ?? null);
   const [form, setForm] = React.useState(EMPTY);
   const [proxyHost, setProxyHost] = React.useState("");
   const [template, setTemplate] = React.useState<string>("");
@@ -83,7 +88,12 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
         : await fetch("/api/emulador/contas", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ agentId: target.agent.id, templateIndex: Number(template), proxy: form.proxy, conta }),
+            body: JSON.stringify({
+              agentId: target.agent.id,
+              ...(here ? { instanceIndex: here.index } : { templateIndex: Number(template) }),
+              proxy: form.proxy,
+              conta,
+            }),
           });
       const body = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) throw new Error(body?.error ?? "Não foi possível salvar. Tente de novo.");
@@ -102,11 +112,13 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
     <Dialog
       open={!!target}
       onClose={onClose}
-      title={editing ? "Editar dados" : "Criar instância"}
+      title={editing ? "Editar dados" : here ? "Criar conta aqui" : "Criar instância"}
       description={
         editing
           ? "Ao salvar a conta volta para a fila. O que mudou roda de novo: com Gmail ou dados novos o Instagram é zerado e o cadastro recomeça."
-          : "O agente copia a instância padrão, instala o Instagram, põe a proxy no NekoBox e cria a conta com o Gmail."
+          : here
+            ? `A conta é criada na instância #${here.index} (${here.name}), sem copiar outra: ela ganha o nome novo, a proxy no NekoBox e o Instagram zerado. IMEI, Android ID e MAC continuam os mesmos.`
+            : "O agente copia a instância padrão, instala o Instagram, põe a proxy no NekoBox e cria a conta com o Gmail."
       }
       className="max-w-lg"
     >
@@ -118,7 +130,7 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
       ) : (
         <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)}>
           {error && <Banner tone="danger">{error}</Banner>}
-          {!editing && (
+          {!editing && !here && (
             <Select
               label="Instância padrão"
               value={template}
@@ -177,8 +189,8 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" loading={saving} disabled={!editing && template === ""}>
-              {editing ? (editing.status === "error" ? "Salvar e continuar" : "Salvar") : "Criar instância"}
+            <Button type="submit" loading={saving} disabled={!editing && !here && template === ""}>
+              {editing ? (editing.status === "error" ? "Salvar e continuar" : "Salvar") : here ? "Criar conta aqui" : "Criar instância"}
             </Button>
           </div>
         </form>

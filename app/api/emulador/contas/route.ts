@@ -5,13 +5,19 @@ import { encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseInstances } from "@/lib/emulador/payload";
 import { parseNovaContaInput } from "@/lib/emulador/nova-conta-input";
+import { STEPS_CONTA_AQUI } from "@/lib/emulador/jobs";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// POST — Criar instância: põe na fila do agente do PC uma conta a criar numa
-// cópia da instância padrão. Proxy e dados da conta vão criptografados; a
-// tela só volta a ver o rótulo (o @ ou, sem ele, o Gmail).
+const isIndex = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
+
+// POST — põe na fila do agente do PC uma conta a criar. Dois jeitos:
+//   templateIndex → "Criar instância": numa cópia nova da instância padrão;
+//   instanceIndex → "Criar conta aqui": na própria instância (pula copiar e
+//                   trocar IDs; o resto do fluxo roda, com o Instagram zerado).
+// Proxy e dados da conta vão criptografados; a tela só volta a ver o rótulo
+// (o @ ou, sem ele, o Gmail).
 export async function POST(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
@@ -28,12 +34,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
   }
 
-  const { agentId, templateIndex } = body;
+  const { agentId, templateIndex, instanceIndex } = body;
   if (typeof agentId !== "string" || !agentId) {
     return NextResponse.json({ error: "PC não informado." }, { status: 400 });
   }
-  if (typeof templateIndex !== "number" || !Number.isInteger(templateIndex) || templateIndex < 0) {
-    return NextResponse.json({ error: "Escolha a instância padrão." }, { status: 400 });
+  const aqui = instanceIndex !== undefined;
+  const alvo = aqui ? instanceIndex : templateIndex;
+  if (!isIndex(alvo)) {
+    return NextResponse.json({ error: aqui ? "Instância inválida." : "Escolha a instância padrão." }, { status: 400 });
   }
   const parsed = parseNovaContaInput(body);
   if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
@@ -48,8 +56,20 @@ export async function POST(req: NextRequest) {
 
   if (agentErr) return NextResponse.json({ error: agentErr.message }, { status: 500 });
   if (!agent) return NextResponse.json({ error: "PC não encontrado." }, { status: 404 });
-  if (!parseInstances(agent.instances).some((i) => i.index === templateIndex)) {
-    return NextResponse.json({ error: "Essa instância padrão não existe mais no MuMu." }, { status: 404 });
+  if (!parseInstances(agent.instances).some((i) => i.index === alvo)) {
+    return NextResponse.json({ error: "Essa instância não existe mais no MuMu." }, { status: 404 });
+  }
+
+  if (aqui) {
+    const { data: ativa, error: ativaErr } = await admin
+      .from("emulator_jobs")
+      .select("id")
+      .eq("agent_id", agent.id)
+      .eq("instance_index", alvo)
+      .in("status", ["queued", "running"])
+      .limit(1);
+    if (ativaErr && !isMissingSchemaError(ativaErr)) return NextResponse.json({ error: ativaErr.message }, { status: 500 });
+    if (ativa?.length) return NextResponse.json({ error: "Essa instância já tem uma conta na fila." }, { status: 409 });
   }
 
   const { data: job, error } = await admin
@@ -58,7 +78,8 @@ export async function POST(req: NextRequest) {
       user_id: user.id,
       agent_id: agent.id,
       label: parsed.value.conta.usuario || parsed.value.conta.email,
-      template_index: templateIndex,
+      template_index: alvo,
+      ...(aqui ? { instance_index: alvo, steps: STEPS_CONTA_AQUI } : {}),
       input_enc: encrypt(JSON.stringify(parsed.value)),
     })
     .select("id")

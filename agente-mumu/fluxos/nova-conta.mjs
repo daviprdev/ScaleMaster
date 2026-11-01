@@ -1,3 +1,4 @@
+import { limparAlerta, marcarAlerta } from "../lib/alertas.mjs";
 import { gerarAndroidId, gerarImei, gerarMac } from "../lib/ids.mjs";
 import { INSTAGRAM, instalarInstagram } from "./aurora.mjs";
 import { ContaTravadaTelefone, cadastrarInstagram } from "./cadastro.mjs";
@@ -105,12 +106,16 @@ export const NOVA_CONTA = [
     async rodar({ mumu, estado, dispositivo, input, perguntar, log }) {
       const conta = input?.conta;
       if (!conta?.email || !conta?.senha) throw new Error("Essa conta veio sem Gmail ou senha.");
+      // Cadastro novo nesta instância: o aviso de uma conta anterior sai da linha.
+      const { criada } = await mumu.instancia(copia(estado));
+      limparAlerta(criada);
       try {
         return await cadastrarInstagram({ d: await dispositivo(), conta, perguntar, log });
       } catch (e) {
         if (!(e instanceof ContaTravadaTelefone)) throw e;
-        // Pedido do dono: fecha tudo e marca a instância com o aviso.
+        // Pedido do dono: fecha tudo e marca a instância com o aviso (fica até ela ser usada de novo).
         log("Instagram pediu telefone: desligando a instância");
+        marcarAlerta(criada, ALERTA_TELEFONE);
         await mumu.fechar(copia(estado)).catch(() => {});
         const aviso = new Error(ALERTA_TELEFONE);
         aviso.semPrefixo = true;

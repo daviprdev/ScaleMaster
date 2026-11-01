@@ -58,6 +58,8 @@ function normalizar(info) {
     name: String(info.name ?? `Instância ${info.index}`),
     state: estadoDe(info),
     adb: host && porta ? `${host}:${porta}` : null,
+    // Identidade da instância: não muda ao renomear e não se repete quando o índice é reaproveitado.
+    criada: info.created_timestamp ? String(info.created_timestamp) : null,
   };
 }
 

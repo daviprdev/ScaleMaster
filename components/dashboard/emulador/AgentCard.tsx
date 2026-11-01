@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, AppWindow, FilePen, Loader2, Pencil, Play, Plus, Power, PowerOff, Smartphone, Unplug } from "lucide-react";
+import { AlertTriangle, AppWindow, FilePen, Loader2, Pencil, Play, Plus, Power, PowerOff, Smartphone, Unplug, UserPlus } from "lucide-react";
 import { Badge, Banner, Button, Card, Dialog, EmptyState, IconButton, Input, type BadgeTone } from "@/components/ui";
 import { PC_INDEX } from "@/lib/emulador/payload";
 import { canEditJob, type EmulatorJob } from "@/lib/emulador/jobs";
@@ -42,6 +42,8 @@ interface AgentCardProps {
   /** Conta de cada instância (para o Editar dados na linha). */
   linked?: ReadonlyMap<number, EmulatorJob>;
   onEditJob?: (agent: EmulatorAgent, job: EmulatorJob) => void;
+  /** Criar conta numa instância que já existe e não tem conta ligada. */
+  onCreateHere?: (agent: EmulatorAgent, instance: EmulatorInstance) => void;
   /** Abre o formulário Criar instância; ausente = SQL da fila ainda não aplicado. */
   onCreateInstance?: (agent: EmulatorAgent) => void;
 }
@@ -57,6 +59,7 @@ export function AgentCard({
   alerts,
   linked,
   onEditJob,
+  onCreateHere,
   onCreateInstance,
 }: AgentCardProps) {
   const [taskFor, setTaskFor] = React.useState<EmulatorInstance | null>(null);
@@ -141,8 +144,14 @@ export function AgentCard({
                     onCommand={onCommand}
                     onPickTask={() => setTaskFor(inst)}
                     onRename={() => setRenaming(inst)}
-                    alert={alerts?.get(inst.index)}
+                    alert={inst.alert ?? alerts?.get(inst.index)}
                     onEditData={editDataFor(inst.index)}
+                    onCreateHere={
+                      // Sem conta ligada e fora da #0 (a padrão de onde as cópias saem).
+                      onCreateHere && inst.index !== 0 && !linked?.get(inst.index)
+                        ? () => onCreateHere(agent, inst)
+                        : undefined
+                    }
                   />
                 );
               })}
@@ -246,6 +255,8 @@ interface InstanceRowProps {
   alert?: string;
   /** Abre Editar dados da conta desta instância (só quando ela está na fila ou parou). */
   onEditData?: () => void;
+  /** Abre Criar conta aqui (instância sem conta ligada). */
+  onCreateHere?: () => void;
 }
 
 function InstanceRow({
@@ -259,6 +270,7 @@ function InstanceRow({
   onRename,
   alert,
   onEditData,
+  onCreateHere,
 }: InstanceRowProps) {
   const busy = sending || isActive(command);
   const disabled = busy || !agent.online;
@@ -296,6 +308,11 @@ function InstanceRow({
         {onEditData && (
           <Button variant="secondary" size="sm" icon={<FilePen size={14} />} onClick={onEditData}>
             Editar dados
+          </Button>
+        )}
+        {onCreateHere && (
+          <Button variant="secondary" size="sm" icon={<UserPlus size={14} />} disabled={disabled} onClick={onCreateHere}>
+            Criar conta aqui
           </Button>
         )}
         {agent.tasks.length > 0 && (

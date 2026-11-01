@@ -65,6 +65,7 @@ export function parseInstances(raw: unknown): EmulatorInstance[] {
       index,
       name: shortText(r.name, 80) ?? `Instância ${index}`,
       state: typeof r.state === "string" && STATES.has(r.state) ? (r.state as InstanceState) : "off",
+      alert: shortText(r.alert, 120),
     });
   }
   return out.sort((a, b) => a.index - b.index);

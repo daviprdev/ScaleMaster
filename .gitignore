@@ -46,3 +46,4 @@ agente-mumu/config.json
 agente-mumu/agente.log*
 agente-mumu/agente.pid
 agente-mumu/telas/
+agente-mumu/alertas.json

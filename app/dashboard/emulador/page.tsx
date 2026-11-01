@@ -206,6 +206,7 @@ export default function EmuladorPage() {
                 alerts={instanceAlerts(data.jobs, agent.id, agent.instances)}
                 linked={linkedJobs(data.jobs, agent.id, agent.instances)}
                 onEditJob={(a, job) => setContaDialog({ agent: a, job })}
+                onCreateHere={data.jobsAvailable ? (a, instance) => setContaDialog({ agent: a, instance }) : undefined}
               />
               {data.jobsAvailable && agent.lastSeenAt && (
                 <ContasCard
