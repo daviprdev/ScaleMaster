@@ -268,7 +268,7 @@ function InstanceRow({
   return (
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="truncate text-sm font-medium text-ink">{instance.name}</span>
           <span className="font-mono text-xs text-ink-3">#{instance.index}</span>
           <IconButton
@@ -280,13 +280,13 @@ function InstanceRow({
             onClick={onRename}
             className="h-6 w-6"
           />
+          {alert && (
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-danger">
+              <AlertTriangle size={13} className="shrink-0" />
+              {alert}
+            </span>
+          )}
         </div>
-        {alert && (
-          <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold text-danger">
-            <AlertTriangle size={13} className="shrink-0" />
-            {alert}
-          </p>
-        )}
         <CommandLine command={command} agent={agent} now={now} />
       </div>
       <Badge tone={badge.tone} dot>
