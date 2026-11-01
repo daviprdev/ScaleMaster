@@ -33,6 +33,7 @@ import {
   Bot,
   CheckCircle2,
   ListVideo,
+  MonitorSmartphone,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -76,6 +77,12 @@ const navGroups: NavGroup[] = [
       { label: "Contas Leitoras", href: "/dashboard/contas-leitoras", icon: BookUser },
       { label: "Biblioteca",      href: "/dashboard/library",         icon: FolderOpen },
       { label: "Proxies",         href: "/dashboard/proxy-test",      icon: Globe },
+    ],
+  },
+  {
+    label: "AUTOMAÇÃO",
+    items: [
+      { label: "Emulador", href: "/dashboard/emulador", icon: MonitorSmartphone },
     ],
   },
   {

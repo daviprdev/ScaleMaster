@@ -1,0 +1,347 @@
+#!/usr/bin/env node
+/**
+ * Agente do Scale Master para o MuMu Player.
+ *
+ * Roda no PC onde está o MuMu e liga esse PC à aba Emulador do SaaS. A cada
+ * ~3 s chama /api/emulador/agente/sync: manda as instâncias do MuMu e o
+ * resultado dos comandos, e recebe os comandos novos (abrir, fechar, rodar
+ * automação). A conexão sai do PC, então não precisa abrir porta no roteador.
+ *
+ *   node agente.mjs conectar <código>   salva o código (gerado na aba Emulador) e começa
+ *   node agente.mjs                     roda com o código salvo
+ *   node agente.mjs parar               para o agente que estiver rodando
+ *   node agente.mjs instancias          lista as instâncias (teste local, sem SaaS)
+ *   node agente.mjs abrir <n>           abre a instância n (teste local)
+ *   node agente.mjs fechar <n>          fecha a instância n (teste local)
+ *   node agente.mjs tarefa <nome> <n>   roda uma automação na instância n (teste local)
+ *
+ * Sem dependências: só Node 18+. Segurança: o servidor só escolhe entre
+ * abrir/fechar/automação conhecida, pelo número da instância; nada vindo dele
+ * vira comando de terminal.
+ */
+import { execFileSync } from "node:child_process";
+import { appendFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { Dispositivo } from "./lib/adb.mjs";
+import { MuMu } from "./lib/mumu.mjs";
+import { esperar } from "./lib/processo.mjs";
+import { TAREFAS } from "./tarefas/index.mjs";
+
+const VERSAO = "1.0.0";
+const PASTA = path.dirname(fileURLToPath(import.meta.url));
+const ARQ_CONFIG = path.join(PASTA, "config.json");
+const ARQ_LOG = path.join(PASTA, "agente.log");
+const ARQ_PID = path.join(PASTA, "agente.pid");
+const URL_PADRAO = "https://scalemaster.tech";
+const TOKEN_RE = /^smag_[A-Za-z0-9_-]{43}$/;
+
+const INTERVALO_MS = 3_000;
+const ESPERA_SEM_REDE_MS = 10_000;
+const ESPERA_SQL_MS = 30_000;
+const ESPERA_CODIGO_INVALIDO_MS = 60_000;
+const LOG_MAX_BYTES = 5 * 1024 * 1024;
+
+// ── log ─────────────────────────────────────────────────────────────────────
+
+let ultimaLinha = "";
+
+function log(mensagem) {
+  const linha = `[${new Date().toLocaleString("pt-BR")}] ${mensagem}`;
+  console.log(linha);
+  try {
+    if (existsSync(ARQ_LOG) && statSync(ARQ_LOG).size > LOG_MAX_BYTES) renameSync(ARQ_LOG, `${ARQ_LOG}.1`);
+    appendFileSync(ARQ_LOG, `${linha}\n`);
+  } catch {
+    /* sem log em arquivo: segue só no console */
+  }
+}
+
+/** Erro que se repete a cada sync aparece uma vez só, até mudar. */
+function logSemRepetir(mensagem) {
+  if (mensagem === ultimaLinha) return;
+  ultimaLinha = mensagem;
+  log(mensagem);
+}
+
+// ── config e instância única ───────────────────────────────────────────────
+
+function lerConfig() {
+  try {
+    return JSON.parse(readFileSync(ARQ_CONFIG, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/** Processo vivo E node (o PID do arquivo pode ter sido reaproveitado pelo Windows depois de um desligamento). */
+function pidVivo(pid) {
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+  if (process.platform !== "win32") return true;
+  try {
+    const saida = execFileSync("tasklist", ["/FI", `PID eq ${pid}`, "/NH", "/FO", "CSV"], { encoding: "utf8", windowsHide: true });
+    return /node/i.test(saida);
+  } catch {
+    return true;
+  }
+}
+
+function pidRodando() {
+  try {
+    const pid = Number(readFileSync(ARQ_PID, "utf8").trim());
+    return Number.isInteger(pid) && pid > 0 && pid !== process.pid && pidVivo(pid) ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+function travarInstanciaUnica() {
+  const outro = pidRodando();
+  if (outro) {
+    console.log(`O agente já está rodando (PID ${outro}). Para parar: node agente.mjs parar`);
+    process.exit(0);
+  }
+  writeFileSync(ARQ_PID, String(process.pid));
+  const soltar = () => {
+    try {
+      if (readFileSync(ARQ_PID, "utf8").trim() === String(process.pid)) unlinkSync(ARQ_PID);
+    } catch {
+      /* já foi */
+    }
+  };
+  process.on("exit", soltar);
+  for (const sinal of ["SIGINT", "SIGTERM", "SIGBREAK"]) process.on(sinal, () => process.exit(0));
+}
+
+// ── execução dos comandos ──────────────────────────────────────────────────
+
+/** Uma coisa por instância de cada vez; instâncias diferentes rodam em paralelo. */
+const filas = new Map();
+
+function naFilaDaInstancia(index, trabalho) {
+  const anterior = filas.get(index) ?? Promise.resolve();
+  const atual = anterior.then(trabalho, trabalho);
+  filas.set(index, atual.catch(() => {}));
+  return atual;
+}
+
+async function executar(mumu, comando) {
+  const index = comando.instanceIndex;
+  if (!Number.isInteger(index) || index < 0) throw new Error("Instância inválida.");
+
+  if (comando.action === "launch") {
+    await mumu.abrir(index);
+    return null;
+  }
+  if (comando.action === "shutdown") {
+    await mumu.fechar(index);
+    return null;
+  }
+  if (comando.action === "task") {
+    const tarefa = TAREFAS.find((t) => t.nome === comando.task);
+    if (!tarefa) throw new Error(`Este agente não tem a automação "${comando.task}". Atualize a pasta agente-mumu.`);
+    const logTarefa = (m) => log(`[${tarefa.nome} #${index}] ${m}`);
+    const instancia = await mumu.prepararInstancia(index, { log: logTarefa });
+    const dispositivo = new Dispositivo(mumu.adb, instancia.adb);
+    await dispositivo.conectar();
+    logTarefa("começou");
+    const resultado = await tarefa.rodar({
+      instancia,
+      dispositivo,
+      mumu,
+      params: comando.params && typeof comando.params === "object" ? comando.params : {},
+      log: logTarefa,
+    });
+    logTarefa("terminou");
+    return resultado ?? null;
+  }
+  throw new Error(`Ação desconhecida: ${comando.action}`);
+}
+
+// ── conexão com o SaaS ─────────────────────────────────────────────────────
+
+async function rodarAgente() {
+  const config = lerConfig();
+  if (!config?.token) {
+    console.log("Este PC ainda não está conectado. Gere o código na aba Emulador e rode:");
+    console.log("  node agente.mjs conectar <código>");
+    process.exit(1);
+  }
+  travarInstanciaUnica();
+
+  const url = String(config.url || URL_PADRAO).replace(/\/+$/, "");
+  const tarefas = TAREFAS.map((t) => ({ name: t.nome, label: t.rotulo, description: t.descricao }));
+  const emAndamento = new Set();
+  let resultados = [];
+  let mumu = null;
+  let versaoMumu = null;
+  let erroLocalizar = null;
+  let proximaBusca = 0;
+  let online = false;
+
+  log(`Agente ${VERSAO} iniciado (${os.hostname()}) → ${url}`);
+
+  for (;;) {
+    // Sem MuMu achado, procura de novo a cada 30 s (a busca lê o registro do Windows).
+    if (!mumu && Date.now() >= proximaBusca) {
+      try {
+        mumu = await MuMu.localizar(config.mumuManager);
+        versaoMumu = await mumu.versao().catch(() => null);
+        erroLocalizar = null;
+        log(`MuMu ${versaoMumu ?? "?"} em ${mumu.manager}`);
+      } catch (e) {
+        erroLocalizar = e.message;
+        proximaBusca = Date.now() + 30_000;
+        logSemRepetir(`MuMu: ${erroLocalizar}`);
+      }
+    }
+
+    let erroMumu = mumu ? null : erroLocalizar;
+    let instancias = [];
+    if (mumu) {
+      try {
+        instancias = await mumu.instancias();
+      } catch (e) {
+        erroMumu = e.message;
+        logSemRepetir(`MuMu: ${erroMumu}`);
+      }
+    }
+
+    const enviando = resultados;
+    resultados = [];
+    const corpo = {
+      agentVersion: VERSAO,
+      hostname: os.hostname(),
+      mumuVersion: versaoMumu,
+      mumuError: erroMumu,
+      instances: instancias.map(({ index, name, state }) => ({ index, name, state })),
+      tasks: tarefas,
+      results: enviando,
+      running: [...emAndamento],
+    };
+
+    let espera = INTERVALO_MS;
+    try {
+      const res = await fetch(`${url}/api/emulador/agente/sync`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(corpo),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const resposta = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        online = false;
+        espera = ESPERA_CODIGO_INVALIDO_MS;
+        logSemRepetir(`Código recusado pelo SaaS: ${resposta.error ?? "401"}. Gere outro na aba Emulador e rode "node agente.mjs conectar <código>".`);
+      } else if (!res.ok) {
+        resultados = [...enviando, ...resultados];
+        espera = res.status === 503 ? ESPERA_SQL_MS : ESPERA_SEM_REDE_MS;
+        logSemRepetir(`SaaS respondeu ${res.status}: ${resposta.error ?? "sem mensagem"}`);
+      } else {
+        if (!online) {
+          online = true;
+          ultimaLinha = "";
+          log(`Conectado ao SaaS. ${instancias.length} instância(s) no MuMu.`);
+        }
+        for (const comando of Array.isArray(resposta.commands) ? resposta.commands : []) {
+          if (typeof comando?.id !== "string" || emAndamento.has(comando.id)) continue;
+          emAndamento.add(comando.id);
+          log(`Comando: ${comando.action}${comando.task ? ` ${comando.task}` : ""} na instância #${comando.instanceIndex}`);
+          naFilaDaInstancia(comando.instanceIndex, async () => {
+            try {
+              if (!mumu) throw new Error(erroMumu ?? "MuMu não encontrado.");
+              const resultado = await executar(mumu, comando);
+              resultados.push({ id: comando.id, status: "done", result: resultado });
+            } catch (e) {
+              log(`Comando ${comando.action} #${comando.instanceIndex} falhou: ${e.message}`);
+              resultados.push({ id: comando.id, status: "error", error: e.message });
+            } finally {
+              emAndamento.delete(comando.id);
+            }
+          });
+        }
+      }
+    } catch (e) {
+      online = false;
+      resultados = [...enviando, ...resultados];
+      espera = ESPERA_SEM_REDE_MS;
+      logSemRepetir(`Sem conexão com o SaaS (${e.cause?.code ?? e.name}): ${e.message}`);
+    }
+
+    await esperar(espera);
+  }
+}
+
+// ── linha de comando ───────────────────────────────────────────────────────
+
+function conectar(token, args) {
+  if (!TOKEN_RE.test(token ?? "")) {
+    console.log("Código inválido. Ele começa com smag_ e aparece ao clicar em Conectar um PC na aba Emulador.");
+    process.exit(1);
+  }
+  const iUrl = args.indexOf("--url");
+  const url = iUrl >= 0 ? args[iUrl + 1] : lerConfig()?.url;
+  const anterior = lerConfig() ?? {};
+  writeFileSync(ARQ_CONFIG, `${JSON.stringify({ ...anterior, url: url || URL_PADRAO, token }, null, 2)}\n`);
+  console.log("Código salvo em config.json.");
+}
+
+function indice(valor) {
+  const n = Number(valor);
+  if (!Number.isInteger(n) || n < 0) {
+    console.log("Informe o número da instância (veja com: node agente.mjs instancias).");
+    process.exit(1);
+  }
+  return n;
+}
+
+async function main(args) {
+  const [cmd] = args;
+  if (cmd === "conectar") {
+    conectar(args[1], args);
+    return rodarAgente();
+  }
+  if (!cmd || cmd === "rodar") return rodarAgente();
+
+  if (cmd === "parar") {
+    const pid = pidRodando();
+    if (!pid) return console.log("O agente não está rodando.");
+    process.kill(pid);
+    // No Windows o kill encerra na hora, sem rodar o handler de saída do outro processo.
+    try {
+      unlinkSync(ARQ_PID);
+    } catch {
+      /* já foi */
+    }
+    return console.log(`Agente parado (PID ${pid}).`);
+  }
+
+  const mumu = await MuMu.localizar(lerConfig()?.mumuManager);
+  if (cmd === "instancias") {
+    console.log(`MuMuManager: ${mumu.manager}`);
+    console.table(await mumu.instancias());
+    return;
+  }
+  if (cmd === "abrir" || cmd === "fechar") {
+    const index = indice(args[1]);
+    await executar(mumu, { action: cmd === "abrir" ? "launch" : "shutdown", instanceIndex: index });
+    return console.log(`Instância ${index}: ${cmd === "abrir" ? "abrindo" : "fechando"}.`);
+  }
+  if (cmd === "tarefa") {
+    const resultado = await executar(mumu, { action: "task", task: args[1], instanceIndex: indice(args[2]) });
+    return console.log(JSON.stringify(resultado, null, 2));
+  }
+
+  console.log(readFileSync(fileURLToPath(import.meta.url), "utf8").split("*/")[0]);
+}
+
+main(process.argv.slice(2)).catch((e) => {
+  log(`Erro: ${e.message}`);
+  process.exit(1);
+});

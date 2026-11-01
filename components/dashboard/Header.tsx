@@ -57,6 +57,10 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     title: "Contas Leitoras",
     subtitle: "Contas dedicadas à raspagem de conteúdo (isoladas das de postagem)",
   },
+  "/dashboard/emulador": {
+    title: "Emulador",
+    subtitle: "As instâncias do MuMu do seu PC",
+  },
 };
 
 export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void }) {

@@ -40,3 +40,8 @@ next-env.d.ts
 .env.cron
 .env.production
 python_server/__pycache__/
+
+# Agente MuMu (agente-mumu/): código do PC, log e trava de instância única
+agente-mumu/config.json
+agente-mumu/agente.log*
+agente-mumu/agente.pid

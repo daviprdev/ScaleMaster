@@ -38,3 +38,6 @@ docs/prompts
 .env.cron
 .env.production
 .env.*.local
+
+# Agente MuMu: roda no PC do dono, não no container
+agente-mumu
