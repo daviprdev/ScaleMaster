@@ -275,6 +275,14 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
       agir: async (nos, alvo) => tocarNo(d, alvo, 4000),
     },
     {
+      // Outra abertura do Instagram novo (vista em 01/11): "Aderir ao Instagram" → Começar.
+      nome: "abertura",
+      teste: (nos) =>
+        temTexto(nos, ["Aderir ao Instagram", "Join Instagram", "Entrar no Instagram", "Junte-se ao Instagram"]) &&
+        botao(nos, ["Começar", "Get started", "Comece agora"]),
+      agir: async (nos, alvo) => tocarNo(d, alvo, 4000),
+    },
+    {
       nome: "pular",
       teste: (nos) => botao(nos, PULAR),
       agir: async (nos, alvo) => tocarNo(d, alvo, 3000),
