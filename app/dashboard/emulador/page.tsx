@@ -6,9 +6,9 @@ import { Banner, Button, ConfirmDialog, EmptyState, PageHeader, Skeleton } from 
 import { AgentCard, type SendCommand } from "@/components/dashboard/emulador/AgentCard";
 import { ConnectDialog } from "@/components/dashboard/emulador/ConnectDialog";
 import { ContasCard } from "@/components/dashboard/emulador/ContasCard";
-import { NovaContaDialog } from "@/components/dashboard/emulador/NovaContaDialog";
+import { ContaDialog, type ContaDialogTarget } from "@/components/dashboard/emulador/NovaContaDialog";
 import { instanceKey, latestCommandByInstance } from "@/lib/emulador/view";
-import { instanceAlerts, type EmulatorJob } from "@/lib/emulador/jobs";
+import { instanceAlerts, linkedJobs, type EmulatorJob } from "@/lib/emulador/jobs";
 import type { EmuladorResponse, EmulatorAgent } from "@/lib/emulador/types";
 
 // O agente faz sync a cada ~3 s; a tela acompanha no mesmo ritmo enquanto está visível.
@@ -32,7 +32,7 @@ export default function EmuladorPage() {
   const [connectOpen, setConnectOpen] = React.useState(false);
   const [disconnecting, setDisconnecting] = React.useState<EmulatorAgent | null>(null);
   const [disconnectBusy, setDisconnectBusy] = React.useState(false);
-  const [novaContaFor, setNovaContaFor] = React.useState<EmulatorAgent | null>(null);
+  const [contaDialog, setContaDialog] = React.useState<ContaDialogTarget>(null);
   const [jobBusy, setJobBusy] = React.useState<ReadonlySet<string>>(new Set());
   const [removingJob, setRemovingJob] = React.useState<EmulatorJob | null>(null);
   const inFlight = React.useRef(false);
@@ -202,8 +202,10 @@ export default function EmuladorPage() {
                 now={now}
                 onCommand={sendCommand}
                 onDisconnect={setDisconnecting}
-                onCreateInstance={data.jobsAvailable ? setNovaContaFor : undefined}
+                onCreateInstance={data.jobsAvailable ? (a) => setContaDialog({ agent: a }) : undefined}
                 alerts={instanceAlerts(data.jobs, agent.id, agent.instances)}
+                linked={linkedJobs(data.jobs, agent.id, agent.instances)}
+                onEditJob={(a, job) => setContaDialog({ agent: a, job })}
               />
               {data.jobsAvailable && agent.lastSeenAt && (
                 <ContasCard
@@ -213,6 +215,7 @@ export default function EmuladorPage() {
                   onContinue={(job) => void jobRequest(job, "continuar")}
                   onRemove={setRemovingJob}
                   onReply={(job, resposta) => void jobRequest(job, "responder", resposta)}
+                  onEdit={(job) => setContaDialog({ agent, job })}
                 />
               )}
             </React.Fragment>
@@ -220,7 +223,7 @@ export default function EmuladorPage() {
         </div>
       )}
 
-      <NovaContaDialog agent={novaContaFor} onClose={() => setNovaContaFor(null)} onCreated={() => void load()} />
+      <ContaDialog target={contaDialog} onClose={() => setContaDialog(null)} onSaved={() => void load()} />
 
       <ConfirmDialog
         open={!!removingJob}

@@ -1,5 +1,5 @@
 import { gerarAndroidId, gerarImei, gerarMac } from "../lib/ids.mjs";
-import { instalarInstagram } from "./aurora.mjs";
+import { INSTAGRAM, instalarInstagram } from "./aurora.mjs";
 import { ContaTravadaTelefone, cadastrarInstagram } from "./cadastro.mjs";
 import { configurarProxy } from "./nekobox.mjs";
 
@@ -84,6 +84,19 @@ export const NOVA_CONTA = [
     async rodar({ dispositivo, job, input, log }) {
       if (!input?.proxy) throw new Error("Essa conta veio sem proxy.");
       return configurarProxy(await dispositivo(), input.proxy, `proxy-${nomeDaInstancia(job, input)}`.slice(0, 40), log);
+    },
+  },
+  {
+    // Instagram zerado antes do cadastro. Só roda de novo quando o dono edita os
+    // dados (o servidor tira esta etapa e o cadastro das concluídas); no Continuar
+    // comum fica pulada e o que já foi feito na tela não se perde.
+    chave: "limpar",
+    rotulo: "Preparar o Instagram para o cadastro",
+    async rodar({ dispositivo }) {
+      const d = await dispositivo();
+      await d.fecharApp(INSTAGRAM);
+      await d.shell("pm", "clear", INSTAGRAM);
+      return "dados do Instagram zerados";
     },
   },
   {

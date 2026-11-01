@@ -13,6 +13,7 @@ import { instanceName } from "../lib/emulador/payload";
 import { digitoLuhn, gerarAndroidId, gerarImei, gerarMac, imeiValido } from "../agente-mumu/lib/ids.mjs";
 import { ALERTA_TELEFONE as ALERTA_AGENTE, NOVA_CONTA, nomeDaInstancia } from "../agente-mumu/fluxos/nova-conta.mjs";
 import { lerProxy } from "../agente-mumu/fluxos/nekobox.mjs";
+import { editableFrom, mergeEdit, stepsAfterEdit } from "../lib/emulador/editar-conta";
 
 const UUID = "33333333-3333-4333-8333-333333333333";
 const OK = {
@@ -168,5 +169,50 @@ describe("aviso de conta travada no telefone", () => {
     expect(instanceAlerts([job({})], "pc", [{ index: 1, name: "outra_conta" }]).size).toBe(0);
     expect(instanceAlerts([job({ agentId: "outro" })], "pc", [{ index: 1, name: "julia_santana4738" }]).size).toBe(0);
     expect(instanceAlerts([job({ error: "Proxy no NekoBox: falhou" })], "pc", [{ index: 1, name: "julia_santana4738" }]).size).toBe(0);
+  });
+});
+
+describe("Editar dados", () => {
+  const atual = {
+    proxy: "http://u1:s1@sv2.exemplo.com:10114",
+    conta: { email: "velho@gmail.com", senha: "segredo123", nome: "Julia Santana", usuario: "julia_santana4738", nascimento: "15/03/2001" },
+  };
+  const feitas = ["copiar", "ids", "nome", "abrir", "instagram", "proxy", "limpar"].map((key) => ({ key, status: "done" as const, message: null }));
+  const passos = [...feitas, { key: "cadastro", status: "error" as const, message: "travou" }];
+  const formulario = (over: Record<string, string> = {}) => ({
+    proxy: "",
+    conta: { email: "velho@gmail.com", senha: "", nome: "Julia Santana", usuario: "julia_santana4738", nascimento: "15/03/2001", ...over },
+  });
+
+  it("senha e proxy em branco mantêm as atuais", () => {
+    const r = mergeEdit(atual, formulario());
+    expect(r).toEqual({ value: atual });
+  });
+
+  it("mostra só host:porta da proxy, sem credenciais", () => {
+    expect(editableFrom(atual)).toEqual({
+      email: "velho@gmail.com",
+      nome: "Julia Santana",
+      usuario: "julia_santana4738",
+      nascimento: "15/03/2001",
+      proxyHost: "sv2.exemplo.com:10114",
+    });
+  });
+
+  it("sem mudança = Continuar (só tira a etapa que falhou)", () => {
+    expect(stepsAfterEdit(passos, atual, atual).map((s) => s.key)).toEqual(feitas.map((s) => s.key));
+  });
+
+  it("Gmail novo: zera o Instagram e refaz o cadastro, mantém o resto", () => {
+    const r = mergeEdit(atual, formulario({ email: "novo@gmail.com" }));
+    if (!("value" in r)) throw new Error("devia aceitar");
+    expect(stepsAfterEdit(passos, atual, r.value).map((s) => s.key)).toEqual(["copiar", "ids", "nome", "abrir", "instagram", "proxy"]);
+  });
+
+  it("proxy nova refaz a proxy; @ novo renomeia a instância", () => {
+    const r = mergeEdit(atual, { ...formulario({ usuario: "outra.conta" }), proxy: "novo.host:8080:u2:s2" });
+    if (!("value" in r)) throw new Error("devia aceitar");
+    expect(r.value.proxy).toBe("http://u2:s2@novo.host:8080");
+    expect(stepsAfterEdit(passos, atual, r.value).map((s) => s.key)).toEqual(["copiar", "ids", "abrir", "instagram"]);
   });
 });

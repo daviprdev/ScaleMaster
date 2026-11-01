@@ -47,23 +47,41 @@ export interface EmulatorJob {
 export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telefone";
 
 /**
- * Avisos por índice de instância de um PC. O MuMu reaproveita índices de
- * instância apagada, então o aviso só vale se a instância ainda tem o nome que
- * a conta deu a ela (mensagem da etapa "nome").
+ * A conta mais nova de cada instância de um PC (`jobs` vem da mais nova para a
+ * mais velha). O MuMu reaproveita índices de instância apagada, então a ligação
+ * só vale se a instância ainda tem o nome que a conta deu a ela (etapa "nome").
  */
+export function linkedJobs(
+  jobs: readonly EmulatorJob[],
+  agentId: string,
+  instances: ReadonlyArray<{ index: number; name: string }>
+): Map<number, EmulatorJob> {
+  const out = new Map<number, EmulatorJob>();
+  for (const job of jobs) {
+    if (job.agentId !== agentId || job.instanceIndex === null) continue;
+    const nome = job.steps.find((s) => s.key === "nome")?.message;
+    const inst = instances.find((i) => i.index === job.instanceIndex);
+    if (inst && nome && inst.name === nome && !out.has(inst.index)) out.set(inst.index, job);
+  }
+  return out;
+}
+
+/** Aviso em vermelho por instância: a conta dela travou pedindo telefone. */
 export function instanceAlerts(
   jobs: readonly EmulatorJob[],
   agentId: string,
   instances: ReadonlyArray<{ index: number; name: string }>
 ): Map<number, string> {
   const out = new Map<number, string>();
-  for (const job of jobs) {
-    if (job.agentId !== agentId || job.error !== ALERTA_TELEFONE || job.instanceIndex === null) continue;
-    const nome = job.steps.find((s) => s.key === "nome")?.message;
-    const inst = instances.find((i) => i.index === job.instanceIndex);
-    if (inst && nome && inst.name === nome && !out.has(inst.index)) out.set(inst.index, ALERTA_TELEFONE);
+  for (const [index, job] of linkedJobs(jobs, agentId, instances)) {
+    if (job.error === ALERTA_TELEFONE) out.set(index, ALERTA_TELEFONE);
   }
   return out;
+}
+
+/** Dá para editar os dados (conta na fila ou que parou). */
+export function canEditJob(job: EmulatorJob): boolean {
+  return job.status === "queued" || job.status === "error";
 }
 
 /** Etapas na ordem. O Instagram baixa antes da proxy para os 275 MB não passarem por ela. */
@@ -74,6 +92,7 @@ export const NOVA_CONTA_FLUXO: ReadonlyArray<{ key: string; label: string }> = [
   { key: "abrir", label: "Ligar a instância" },
   { key: "instagram", label: "Instalar o Instagram pelo Aurora" },
   { key: "proxy", label: "Proxy no NekoBox" },
+  { key: "limpar", label: "Preparar o Instagram para o cadastro" },
   { key: "cadastro", label: "Criar a conta no Instagram" },
 ];
 

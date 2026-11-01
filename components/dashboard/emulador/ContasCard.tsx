@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { CheckCircle2, Circle, Loader2, RotateCw, Send, Trash2, UserPlus, XCircle } from "lucide-react";
+import { CheckCircle2, Circle, FilePen, Loader2, RotateCw, Send, Trash2, UserPlus, XCircle } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Input, type BadgeTone } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { ALERTA_TELEFONE, NOVA_CONTA_FLUXO, type EmulatorJob, type JobStatus } from "@/lib/emulador/jobs";
+import { ALERTA_TELEFONE, NOVA_CONTA_FLUXO, canEditJob, type EmulatorJob, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
 
 const STATUS_BADGE: Record<JobStatus, { tone: BadgeTone; label: string }> = {
@@ -22,10 +22,11 @@ interface ContasCardProps {
   onContinue: (job: EmulatorJob) => void;
   onRemove: (job: EmulatorJob) => void;
   onReply: (job: EmulatorJob, resposta: string) => void;
+  onEdit: (job: EmulatorJob) => void;
 }
 
 /** Instâncias que a automação está criando: uma linha por conta, com o andamento etapa a etapa. */
-export function ContasCard({ jobs, busy, now, onContinue, onRemove, onReply }: ContasCardProps) {
+export function ContasCard({ jobs, busy, now, onContinue, onRemove, onReply, onEdit }: ContasCardProps) {
   return (
     <Card title="Criação de contas" description="Uma conta por vez, na ordem da fila. Cada uma nasce numa cópia da instância padrão.">
       {jobs.length === 0 ? (
@@ -45,6 +46,7 @@ export function ContasCard({ jobs, busy, now, onContinue, onRemove, onReply }: C
               onContinue={onContinue}
               onRemove={onRemove}
               onReply={onReply}
+              onEdit={onEdit}
             />
           ))}
         </ul>
@@ -60,9 +62,10 @@ interface JobRowProps {
   onContinue: (job: EmulatorJob) => void;
   onRemove: (job: EmulatorJob) => void;
   onReply: (job: EmulatorJob, resposta: string) => void;
+  onEdit: (job: EmulatorJob) => void;
 }
 
-function JobRow({ job, busy, now, onContinue, onRemove, onReply }: JobRowProps) {
+function JobRow({ job, busy, now, onContinue, onRemove, onReply, onEdit }: JobRowProps) {
   const badge = STATUS_BADGE[job.status];
   const steps = new Map(job.steps.map((s) => [s.key, s]));
   const where =
@@ -86,6 +89,11 @@ function JobRow({ job, busy, now, onContinue, onRemove, onReply }: JobRowProps) 
           {job.status === "error" && job.error !== ALERTA_TELEFONE && (
             <Button size="sm" icon={<RotateCw size={14} />} loading={busy} onClick={() => onContinue(job)}>
               Continuar
+            </Button>
+          )}
+          {canEditJob(job) && (
+            <Button variant="secondary" size="sm" icon={<FilePen size={14} />} disabled={busy} onClick={() => onEdit(job)}>
+              Editar dados
             </Button>
           )}
           {job.status !== "running" && (
