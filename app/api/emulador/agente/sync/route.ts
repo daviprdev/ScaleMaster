@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { agentTokenFromRequest, hashAgentToken } from "@/lib/emulador/token";
+import { parseJobUpdates } from "@/lib/emulador/jobs";
+import { syncJobs, type ClaimedJob } from "@/lib/emulador/sync-jobs";
 import {
   QUEUED_COMMAND_TTL_MS,
   parseInstances,
@@ -34,7 +36,8 @@ interface ActiveRow {
  *      estão rodando;
  *   3. recebe os comandos novos, já marcados como running.
  * Comando em running que o agente não cita mais (fechou ou reiniciou no meio)
- * vira erro; comando que ficou na fila com o PC fora expira.
+ * vira erro; comando que ficou na fila com o PC fora expira. A fila Nova
+ * conta (jobUpdates/runningJobs → jobs) segue a mesma ideia em syncJobs.
  */
 export async function POST(req: NextRequest) {
   const token = agentTokenFromRequest(req);
@@ -127,17 +130,19 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  if (toClaim.length === 0) return NextResponse.json({ commands: [] });
+  let claimed: ActiveRow[] = [];
+  if (toClaim.length > 0) {
+    const { data, error: claimErr } = await admin
+      .from("emulator_commands")
+      .update({ status: "running", started_at: now })
+      .in("id", toClaim)
+      .eq("status", "queued")
+      .select("id, created_at, instance_index, action, task, params");
+    if (claimErr) return NextResponse.json({ error: claimErr.message }, { status: 500 });
+    claimed = (data ?? []) as ActiveRow[];
+  }
 
-  const { data: claimed, error: claimErr } = await admin
-    .from("emulator_commands")
-    .update({ status: "running", started_at: now })
-    .in("id", toClaim)
-    .eq("status", "queued")
-    .select("id, created_at, instance_index, action, task, params");
-  if (claimErr) return NextResponse.json({ error: claimErr.message }, { status: 500 });
-
-  const commands = ((claimed ?? []) as ActiveRow[])
+  const commands = claimed
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
     .map((c) => ({
       id: c.id,
@@ -146,5 +151,15 @@ export async function POST(req: NextRequest) {
       task: c.task,
       params: c.params ?? {},
     }));
-  return NextResponse.json({ commands });
+
+  let jobs: ClaimedJob[];
+  try {
+    // runningJobs ausente = agente anterior à fila Nova conta: não recebe conta.
+    const runningJobs = Array.isArray(body.runningJobs) ? new Set(parseRunning(body.runningJobs)) : null;
+    jobs = await syncJobs(admin, agent.id, parseJobUpdates(body.jobUpdates), runningJobs, now);
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
+
+  return NextResponse.json({ commands, jobs });
 }

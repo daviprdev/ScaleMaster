@@ -1,5 +1,7 @@
 /** Aba Emulador: agente do MuMu no PC (agente-mumu/) ↔ SaaS. SQL em supabase/emulador_agente.sql. */
 
+import type { EmulatorJob } from "./jobs";
+
 /** off = desligada, starting = processo de pé e Android subindo, on = Android pronto. */
 export type InstanceState = "off" | "starting" | "on";
 
@@ -51,4 +53,8 @@ export interface EmuladorResponse {
   agents: EmulatorAgent[];
   /** Comandos das últimas 24 h, do mais novo para o mais velho. */
   commands: EmulatorCommand[];
+  /** false = supabase/emulador_contas.sql ainda não aplicado (sem Nova conta). */
+  jobsAvailable: boolean;
+  /** Contas da fila Nova conta, da mais nova para a mais velha. */
+  jobs: EmulatorJob[];
 }

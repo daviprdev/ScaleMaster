@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
+import { parseJobSteps, type EmulatorJob, type JobStatus } from "./jobs";
 import { isOnline, parseInstances, parseTasks } from "./payload";
 import type { CommandAction, CommandStatus, EmuladorResponse, EmulatorAgent, EmulatorCommand } from "./types";
 
@@ -62,10 +63,38 @@ function toCommand(row: CommandRow): EmulatorCommand {
   };
 }
 
-/** PCs conectados do usuário + comandos do último dia. Lê com service role, sempre filtrando por user_id. */
+interface JobRow {
+  id: string;
+  agent_id: string;
+  label: string | null;
+  template_index: number;
+  instance_index: number | null;
+  steps: unknown;
+  status: JobStatus;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function toJob(row: JobRow): EmulatorJob {
+  return {
+    id: row.id,
+    agentId: row.agent_id,
+    label: row.label,
+    templateIndex: row.template_index,
+    instanceIndex: row.instance_index,
+    steps: parseJobSteps(row.steps),
+    status: row.status,
+    error: row.error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/** PCs conectados do usuário + comandos do último dia + fila Nova conta. Lê com service role, sempre filtrando por user_id. */
 export async function loadEmulador(admin: SupabaseClient, userId: string): Promise<EmuladorResponse> {
   const since = new Date(Date.now() - DAY_MS).toISOString();
-  const [agentsRes, commandsRes] = await Promise.all([
+  const [agentsRes, commandsRes, jobsRes] = await Promise.all([
     admin
       .from("emulator_agents")
       .select("id, hostname, agent_version, mumu_version, mumu_error, instances, tasks, last_seen_at, created_at")
@@ -78,18 +107,28 @@ export async function loadEmulador(admin: SupabaseClient, userId: string): Promi
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(200),
+    admin
+      .from("emulator_jobs")
+      .select("id, agent_id, label, template_index, instance_index, steps, status, error, created_at, updated_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(100),
   ]);
 
   if (isMissingSchemaError(agentsRes.error) || isMissingSchemaError(commandsRes.error)) {
-    return { available: false, agents: [], commands: [] };
+    return { available: false, agents: [], commands: [], jobsAvailable: false, jobs: [] };
   }
   if (agentsRes.error) throw new EmuladorLoadError(agentsRes.error.message);
   if (commandsRes.error) throw new EmuladorLoadError(commandsRes.error.message);
+  const jobsAvailable = !isMissingSchemaError(jobsRes.error);
+  if (jobsAvailable && jobsRes.error) throw new EmuladorLoadError(jobsRes.error.message);
 
   const now = Date.now();
   return {
     available: true,
     agents: ((agentsRes.data ?? []) as AgentRow[]).map((row) => toAgent(row, now)),
     commands: ((commandsRes.data ?? []) as CommandRow[]).map(toCommand),
+    jobsAvailable,
+    jobs: jobsAvailable ? ((jobsRes.data ?? []) as JobRow[]).map(toJob) : [],
   };
 }

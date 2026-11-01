@@ -132,6 +132,28 @@ export class MuMu {
     await this.json(["control", "-v", String(index), "shutdown"], 120_000);
   }
 
+  /** Copia a instância e devolve o índice da cópia (o MuMu responde { "<novo>": { errcode } }). */
+  async clonar(index) {
+    const dados = await this.json(["clone", "-v", String(index)], 300_000);
+    const entrada = Object.entries(dados).find(([chave]) => /^\d+$/.test(chave));
+    if (!entrada) throw new Error(`O MuMu não disse qual instância criou: ${trecho(JSON.stringify(dados))}`);
+    const [novo, info] = entrada;
+    if (Number(info?.errcode ?? 0) !== 0) {
+      throw new Error(`O MuMu não copiou a instância: ${trecho(info?.errmsg) || `erro ${info?.errcode}`}`);
+    }
+    return Number(novo);
+  }
+
+  /** Mesmo campo de Configurações do dispositivo → Modelo → IMEI. Vale a partir do próximo boot. */
+  async definirImei(index, imei) {
+    const dados = await this.json(["simulation", "-v", String(index), "-sk", "imei", "-sv", imei], 60_000);
+    if (dados.imei !== imei) throw new Error(`O MuMu não confirmou o IMEI novo: ${trecho(JSON.stringify(dados))}`);
+  }
+
+  async renomear(index, nome) {
+    await this.json(["rename", "-v", String(index), "-n", nome], 60_000);
+  }
+
   /** Liga a instância (se preciso) e espera o Android ficar pronto com adb. */
   async prepararInstancia(index, { timeoutMs = 180_000, log = () => {} } = {}) {
     let atual = await this.instancia(index);

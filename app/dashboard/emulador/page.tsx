@@ -5,7 +5,10 @@ import { MonitorSmartphone, Plus } from "lucide-react";
 import { Banner, Button, ConfirmDialog, EmptyState, PageHeader, Skeleton } from "@/components/ui";
 import { AgentCard, type SendCommand } from "@/components/dashboard/emulador/AgentCard";
 import { ConnectDialog } from "@/components/dashboard/emulador/ConnectDialog";
+import { ContasCard } from "@/components/dashboard/emulador/ContasCard";
+import { NovaContaDialog } from "@/components/dashboard/emulador/NovaContaDialog";
 import { instanceKey, latestCommandByInstance } from "@/lib/emulador/view";
+import type { EmulatorJob } from "@/lib/emulador/jobs";
 import type { EmuladorResponse, EmulatorAgent } from "@/lib/emulador/types";
 
 // O agente faz sync a cada ~3 s; a tela acompanha no mesmo ritmo enquanto está visível.
@@ -29,6 +32,9 @@ export default function EmuladorPage() {
   const [connectOpen, setConnectOpen] = React.useState(false);
   const [disconnecting, setDisconnecting] = React.useState<EmulatorAgent | null>(null);
   const [disconnectBusy, setDisconnectBusy] = React.useState(false);
+  const [novaContaFor, setNovaContaFor] = React.useState<EmulatorAgent | null>(null);
+  const [jobBusy, setJobBusy] = React.useState<ReadonlySet<string>>(new Set());
+  const [removingJob, setRemovingJob] = React.useState<EmulatorJob | null>(null);
   const inFlight = React.useRef(false);
 
   const load = React.useCallback(async () => {
@@ -94,6 +100,27 @@ export default function EmuladorPage() {
     }
   };
 
+  /** Continuar (POST …/continuar) ou remover (DELETE) uma conta da fila. */
+  const jobRequest = async (job: EmulatorJob, kind: "continuar" | "remover") => {
+    if (jobBusy.has(job.id)) return;
+    setCommandError(null);
+    setJobBusy((s) => new Set(s).add(job.id));
+    try {
+      const url = `/api/emulador/contas/${encodeURIComponent(job.id)}${kind === "continuar" ? "/continuar" : ""}`;
+      const res = await fetch(url, { method: kind === "continuar" ? "POST" : "DELETE" });
+      if (!res.ok) throw new Error(await readError(res, "Não foi possível salvar. Tente de novo."));
+      await load();
+    } catch (e) {
+      setCommandError((e as Error).message);
+    } finally {
+      setJobBusy((s) => {
+        const next = new Set(s);
+        next.delete(job.id);
+        return next;
+      });
+    }
+  };
+
   const latest = React.useMemo(() => latestCommandByInstance(data?.commands ?? []), [data]);
   const now = Date.now();
   const canConnect = !!data?.available;
@@ -153,19 +180,51 @@ export default function EmuladorPage() {
               {commandError}
             </Banner>
           )}
+          {!data.jobsAvailable && (
+            <Banner tone="warning">
+              Para a Nova conta falta aplicar o SQL <span className="font-mono">supabase/emulador_contas.sql</span> no
+              Supabase.
+            </Banner>
+          )}
           {data.agents.map((agent) => (
-            <AgentCard
-              key={agent.id}
-              agent={agent}
-              latest={latest}
-              sending={sending}
-              now={now}
-              onCommand={sendCommand}
-              onDisconnect={setDisconnecting}
-            />
+            <React.Fragment key={agent.id}>
+              <AgentCard
+                agent={agent}
+                latest={latest}
+                sending={sending}
+                now={now}
+                onCommand={sendCommand}
+                onDisconnect={setDisconnecting}
+              />
+              {data.jobsAvailable && agent.lastSeenAt && (
+                <ContasCard
+                  agent={agent}
+                  jobs={data.jobs.filter((j) => j.agentId === agent.id)}
+                  busy={jobBusy}
+                  now={now}
+                  onNew={() => setNovaContaFor(agent)}
+                  onContinue={(job) => void jobRequest(job, "continuar")}
+                  onRemove={setRemovingJob}
+                />
+              )}
+            </React.Fragment>
           ))}
         </div>
       )}
+
+      <NovaContaDialog agent={novaContaFor} onClose={() => setNovaContaFor(null)} onCreated={() => void load()} />
+
+      <ConfirmDialog
+        open={!!removingJob}
+        onClose={() => setRemovingJob(null)}
+        onConfirm={() => {
+          if (removingJob) void jobRequest(removingJob, "remover");
+          setRemovingJob(null);
+        }}
+        title="Remover esta conta da lista?"
+        description="Sai da lista e da fila. A instância que já foi criada continua no MuMu."
+        confirmLabel="Remover"
+      />
 
       <ConnectDialog open={connectOpen} onClose={() => setConnectOpen(false)} onCreated={() => void load()} />
 

@@ -31,6 +31,10 @@ node agente.mjs fechar 0
 node agente.mjs tarefa teste-adb 0
 ```
 
+## Nova conta
+
+A aba Emulador → Contas → **Nova conta** põe uma conta na fila. O agente roda uma por vez, em `fluxos/nova-conta.mjs`: copia a instância padrão, troca o IMEI (válido, com dígito verificador), dá à cópia o nome do @ e liga. Se uma etapa falha, a conta para e o botão **Continuar** retoma da etapa que falhou. Teste local sem o SaaS: `node agente.mjs nova-conta 0 teste`.
+
 ## Automações
 
 Cada automação é um arquivo em `tarefas/`, registrado em `tarefas/index.mjs`. Antes de rodar uma automação, o agente abre a instância, espera o Android e conecta o adb. A função `rodar(ctx)` recebe o aparelho pronto em `ctx.dispositivo` (ver `lib/adb.mjs`):

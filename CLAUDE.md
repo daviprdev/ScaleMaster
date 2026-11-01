@@ -105,7 +105,7 @@ journalctl -u scalemaster-publish-scheduled.service --since "-10 min" --no-pager
 | ApexVips | Webhook vendas | ✅ Seguro | Fail-closed, secret obrigatório |
 | Push (VAPID) | Notificações | ✅ Configurado | Requer inscrição no navegador |
 | Apify | Scraper externo | ⚠️ Opcional | Token configurado, billing externo |
-| MuMu Player | Agente no PC do dono | Aba Emulador | `agente-mumu/` (Node sem deps) chama `/api/emulador/agente/sync` a cada 3 s com código `smag_` (só o hash no banco); abre/fecha instâncias pelo MuMuManager e roda automações de `agente-mumu/tarefas/` via adb. Tabelas em `supabase/emulador_agente.sql` (manual) |
+| MuMu Player | Agente no PC do dono | Aba Emulador | `agente-mumu/` (Node sem deps) chama `/api/emulador/agente/sync` a cada 3 s com código `smag_` (só o hash no banco); abre/fecha instâncias pelo MuMuManager e roda automações de `agente-mumu/tarefas/` via adb. Fila "Nova conta" (`emulator_jobs`, `agente-mumu/fluxos/`): copia a instância padrão, troca IMEI, renomeia, liga; uma conta por vez, retoma da etapa que falhou. Tabelas em `supabase/emulador_agente.sql` e `supabase/emulador_contas.sql` (manuais) |
 
 ## Worker Legado RPA (Desativado)
 O worker RPA Python (`/opt/worker-rpa`) foi desativado durante a migração.

@@ -15,12 +15,17 @@
  *   node agente.mjs abrir <n>           abre a instância n (teste local)
  *   node agente.mjs fechar <n>          fecha a instância n (teste local)
  *   node agente.mjs tarefa <nome> <n>   roda uma automação na instância n (teste local)
+ *   node agente.mjs nova-conta <n> [@]  roda o fluxo Nova conta copiando a n (teste local)
+ *
+ * Além dos comandos, o sync entrega as contas da fila Nova conta (fluxos/):
+ * uma por vez, com o andamento etapa a etapa (jobUpdates/runningJobs).
  *
  * Sem dependências: só Node 18+. Segurança: o servidor só escolhe entre
  * abrir/fechar/automação conhecida, pelo número da instância; nada vindo dele
  * vira comando de terminal.
  */
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -29,8 +34,9 @@ import { Dispositivo } from "./lib/adb.mjs";
 import { MuMu } from "./lib/mumu.mjs";
 import { esperar } from "./lib/processo.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
+import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.1.0";
+const VERSAO = "1.2.0";
 /** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
 const PASTA = path.dirname(fileURLToPath(import.meta.url));
@@ -171,6 +177,47 @@ async function executar(mumu, comando) {
   throw new Error(`Ação desconhecida: ${comando.action}`);
 }
 
+/**
+ * Roda uma conta da fila (fluxos/), etapa por etapa, pulando as que já estão
+ * concluídas em job.steps (retomada pelo botão Continuar). `reportar` recebe o
+ * andamento inteiro a cada mudança; o último vale.
+ */
+async function rodarJob(mumu, job, reportar) {
+  const fluxo = FLUXOS[job.kind];
+  const feitas = (Array.isArray(job.steps) ? job.steps : []).filter((s) => s?.status === "done");
+  const steps = feitas.map((s) => ({ key: s.key, status: "done", message: s.message ?? null }));
+  const estado = { instanceIndex: Number.isInteger(job.instanceIndex) ? job.instanceIndex : null };
+  const enviar = (status, error = null) =>
+    reportar({ id: job.id, instanceIndex: estado.instanceIndex ?? undefined, steps: steps.map((s) => ({ ...s })), status, error });
+
+  if (!fluxo) return enviar("error", `Este agente não conhece o fluxo "${job.kind}". Atualize a pasta agente-mumu.`);
+  if (!mumu) return enviar("error", "MuMu não encontrado neste PC.");
+
+  const prefixo = `[conta ${job.input?.conta?.usuario || job.id.slice(0, 8)}]`;
+  const logJob = (m) => log(`${prefixo} ${m}`);
+  for (const etapa of fluxo) {
+    if (steps.some((s) => s.key === etapa.chave)) continue;
+    const step = { key: etapa.chave, status: "running", message: null };
+    steps.push(step);
+    enviar("running");
+    logJob(`${etapa.rotulo}…`);
+    try {
+      const mensagem = await etapa.rodar({ mumu, job, input: job.input ?? {}, estado, log: logJob });
+      step.status = "done";
+      step.message = mensagem ? String(mensagem).slice(0, 300) : null;
+      logJob(`${etapa.rotulo}: ok${step.message ? ` (${step.message})` : ""}`);
+      enviar("running");
+    } catch (e) {
+      step.status = "error";
+      step.message = String(e.message).slice(0, 300);
+      logJob(`${etapa.rotulo} falhou: ${e.message}`);
+      return enviar("error", `${etapa.rotulo}: ${e.message}`);
+    }
+  }
+  logJob("terminou");
+  return enviar("done");
+}
+
 // ── conexão com o SaaS ─────────────────────────────────────────────────────
 
 async function rodarAgente() {
@@ -186,6 +233,12 @@ async function rodarAgente() {
   const tarefas = TAREFAS.map((t) => ({ name: t.nome, label: t.rotulo, description: t.descricao }));
   const emAndamento = new Set();
   let resultados = [];
+  const contasEmAndamento = new Set();
+  /** Último andamento de cada conta ainda não entregue ao SaaS. */
+  const andamentos = new Map();
+  const devolverAndamentos = (lista) => {
+    for (const u of lista) if (!andamentos.has(u.id)) andamentos.set(u.id, u);
+  };
   let mumu = null;
   let versaoMumu = null;
   let erroLocalizar = null;
@@ -222,6 +275,8 @@ async function rodarAgente() {
 
     const enviando = resultados;
     resultados = [];
+    const enviandoAndamentos = [...andamentos.values()];
+    andamentos.clear();
     const corpo = {
       agentVersion: VERSAO,
       hostname: os.hostname(),
@@ -231,6 +286,8 @@ async function rodarAgente() {
       tasks: tarefas,
       results: enviando,
       running: [...emAndamento],
+      jobUpdates: enviandoAndamentos,
+      runningJobs: [...contasEmAndamento],
     };
 
     let espera = INTERVALO_MS;
@@ -249,6 +306,7 @@ async function rodarAgente() {
         logSemRepetir(`Código recusado pelo SaaS: ${resposta.error ?? "401"}. Gere outro na aba Emulador e rode "node agente.mjs conectar <código>".`);
       } else if (!res.ok) {
         resultados = [...enviando, ...resultados];
+        devolverAndamentos(enviandoAndamentos);
         espera = res.status === 503 ? ESPERA_SQL_MS : ESPERA_SEM_REDE_MS;
         logSemRepetir(`SaaS respondeu ${res.status}: ${resposta.error ?? "sem mensagem"}`);
       } else {
@@ -274,10 +332,19 @@ async function rodarAgente() {
             }
           });
         }
+        for (const job of Array.isArray(resposta.jobs) ? resposta.jobs : []) {
+          if (typeof job?.id !== "string" || contasEmAndamento.has(job.id)) continue;
+          contasEmAndamento.add(job.id);
+          log(`Conta na fila: ${job.input?.conta?.usuario || job.id.slice(0, 8)} (cópia da #${job.templateIndex})`);
+          rodarJob(mumu, job, (u) => andamentos.set(u.id, u))
+            .catch((e) => andamentos.set(job.id, { id: job.id, steps: [], status: "error", error: e.message }))
+            .finally(() => contasEmAndamento.delete(job.id));
+        }
       }
     } catch (e) {
       online = false;
       resultados = [...enviando, ...resultados];
+      devolverAndamentos(enviandoAndamentos);
       espera = ESPERA_SEM_REDE_MS;
       logSemRepetir(`Sem conexão com o SaaS (${e.cause?.code ?? e.name}): ${e.message}`);
     }
@@ -344,6 +411,21 @@ async function main(args) {
     const index = indice(args[1]);
     await executar(mumu, { action: cmd === "abrir" ? "launch" : "shutdown", instanceIndex: index });
     return console.log(`Instância ${index}: ${cmd === "abrir" ? "abrindo" : "fechando"}.`);
+  }
+  if (cmd === "nova-conta") {
+    const job = {
+      id: randomUUID(),
+      kind: "nova-conta",
+      templateIndex: indice(args[1]),
+      instanceIndex: null,
+      steps: [],
+      input: { proxy: "", conta: { usuario: args[2] ?? "" } },
+    };
+    let ultimo = null;
+    await rodarJob(mumu, job, (u) => {
+      ultimo = u;
+    });
+    return console.log(JSON.stringify(ultimo, null, 2));
   }
   if (cmd === "tarefa") {
     const resultado = await executar(mumu, { action: "task", task: args[1], instanceIndex: indice(args[2]) });
