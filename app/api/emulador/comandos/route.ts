@@ -74,8 +74,11 @@ export async function POST(req: NextRequest) {
 
   if (instanceIndex === PC_INDEX) {
     if (action !== "launch") return NextResponse.json({ error: "No MuMu em si só dá para abrir." }, { status: 400 });
-  } else if (!parseInstances(agent.instances).some((i) => i.index === instanceIndex)) {
-    return NextResponse.json({ error: "Essa instância não existe mais no MuMu." }, { status: 404 });
+  } else {
+    const instancia = parseInstances(agent.instances).find((i) => i.index === instanceIndex);
+    if (!instancia) return NextResponse.json({ error: "Essa instância não existe mais no MuMu." }, { status: 404 });
+    // Quando o agente confirmar, os dados da instância passam deste nome para o novo (syncRenames).
+    if (action === "rename") params.anterior = instancia.name;
   }
   if (action === "task" && !parseTasks(agent.tasks).some((t) => t.name === task)) {
     return NextResponse.json({ error: "O agente desse PC não conhece essa automação." }, { status: 400 });

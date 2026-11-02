@@ -136,6 +136,15 @@ export function isRegistro(job: EmulatorJob): boolean {
 }
 
 /**
+ * Editar nome: a etapa "nome" passa do nome antigo para o novo, para os dados
+ * continuarem ligados à instância. null = a conta não tinha esse nome.
+ */
+export function renameNomeStep(steps: readonly JobStep[], anterior: string, nome: string): JobStep[] | null {
+  if (!steps.some((s) => s.key === "nome" && s.message === anterior)) return null;
+  return steps.map((s) => (s.key === "nome" ? { ...s, message: nome } : s));
+}
+
+/**
  * Dá para salvar dados novos (atividade não tem Editar). Rodando: a tela só
  * mostra. Na fila ou parada, salvar devolve à fila; criada, salvar só guarda.
  */

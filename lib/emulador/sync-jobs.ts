@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { decrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import type { AtividadeInput } from "./atividade";
-import type { JobStep, JobUpdate, NovaContaInput } from "./jobs";
+import { parseJobSteps, renameNomeStep, type JobStep, type JobUpdate, type NovaContaInput } from "./jobs";
 
 /** O que o agente recebe para rodar uma conta (input já aberto: só vai pelo sync autenticado). */
 export interface ClaimedJob {
@@ -151,4 +151,40 @@ export async function syncJobs(
     ],
     replies,
   };
+}
+
+/**
+ * Editar nome confirmado pelo agente (comandos `done` deste sync): os dados da
+ * instância se ligam a ela pelo nome (linkedJobs), então a etapa "nome" passa
+ * do nome antigo (params.anterior, gravado ao pedir) para o novo. Repetir não
+ * muda nada: depois da troca nenhuma conta tem mais o nome antigo.
+ */
+export async function syncRenames(admin: SupabaseClient, agentId: string, doneIds: readonly string[]): Promise<void> {
+  if (doneIds.length === 0) return;
+  const { data: renames, error } = await admin
+    .from("emulator_commands")
+    .select("instance_index, params")
+    .in("id", doneIds)
+    .eq("agent_id", agentId)
+    .eq("action", "rename");
+  if (error) throw new Error(error.message);
+
+  for (const cmd of (renames ?? []) as Array<{ instance_index: number; params: Record<string, unknown> | null }>) {
+    const { anterior, nome } = cmd.params ?? {};
+    if (typeof anterior !== "string" || typeof nome !== "string" || anterior === nome) continue;
+    const { data: jobs, error: jobsErr } = await admin
+      .from("emulator_jobs")
+      .select("id, steps")
+      .eq("agent_id", agentId)
+      .eq("instance_index", cmd.instance_index)
+      .eq("kind", "nova-conta");
+    if (isMissingSchemaError(jobsErr)) return;
+    if (jobsErr) throw new Error(jobsErr.message);
+    for (const job of (jobs ?? []) as Array<{ id: string; steps: unknown }>) {
+      const steps = renameNomeStep(parseJobSteps(job.steps), anterior, nome);
+      if (!steps) continue;
+      const { error: updErr } = await admin.from("emulator_jobs").update({ steps }).eq("id", job.id);
+      if (updErr) throw new Error(updErr.message);
+    }
+  }
 }
