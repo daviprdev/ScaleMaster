@@ -4,7 +4,7 @@ import * as React from "react";
 import { Activity, AlertTriangle, AppWindow, FilePen, Loader2, Pencil, Play, Plus, Power, PowerOff, Smartphone, Unplug, UserPlus } from "lucide-react";
 import { Badge, Banner, Button, Card, Dialog, EmptyState, IconButton, Input, type BadgeTone } from "@/components/ui";
 import { PC_INDEX } from "@/lib/emulador/payload";
-import { canEditJob, type EmulatorJob } from "@/lib/emulador/jobs";
+import { isRegistro, type EmulatorJob } from "@/lib/emulador/jobs";
 import type { CommandAction, EmulatorAgent, EmulatorCommand, EmulatorInstance, InstanceState } from "@/lib/emulador/types";
 import {
   RECENT_OUTCOME_MS,
@@ -47,6 +47,8 @@ interface AgentCardProps {
   /** Conta de cada instância (para o Editar dados na linha). */
   linked?: ReadonlyMap<number, EmulatorJob>;
   onEditJob?: (agent: EmulatorAgent, job: EmulatorJob) => void;
+  /** Editar dados numa instância sem conta do sistema (anota os dados da que já está nela). */
+  onRegister?: (agent: EmulatorAgent, instance: EmulatorInstance) => void;
   /** Criar conta numa instância que já existe e não tem conta ligada. */
   onCreateHere?: (agent: EmulatorAgent, instance: EmulatorInstance) => void;
   /** Instâncias com algo na fila ou rodando (sem Criar conta aqui nem Atividade). */
@@ -68,6 +70,7 @@ export function AgentCard({
   alerts,
   linked,
   onEditJob,
+  onRegister,
   onCreateHere,
   queued,
   onAtividade,
@@ -85,9 +88,11 @@ export function AgentCard({
   const pcKey = instanceKey(agent.id, PC_INDEX);
   const pcCommand = latest.get(pcKey);
   const pcSending = sending.has(pcKey);
-  const editDataFor = (index: number) => {
-    const job = linked?.get(index);
-    return job && onEditJob && canEditJob(job) ? () => onEditJob(agent, job) : undefined;
+  // Toda instância tem Editar dados: com conta, abre a dela (rodando, só para ver); sem, anota os dados.
+  const editDataFor = (inst: EmulatorInstance) => {
+    const job = linked?.get(inst.index);
+    if (job) return onEditJob ? () => onEditJob(agent, job) : undefined;
+    return onRegister ? () => onRegister(agent, inst) : undefined;
   };
 
   const details = [
@@ -173,6 +178,7 @@ export function AgentCard({
                 const key = instanceKey(agent.id, inst.index);
                 // Fora da #0 (a padrão de onde as cópias saem) e sem nada na fila nela.
                 const livre = inst.index !== 0 && !queued?.has(inst.index);
+                const conta = linked?.get(inst.index);
                 return (
                   <InstanceRow
                     key={key}
@@ -185,9 +191,10 @@ export function AgentCard({
                     onPickTask={() => setTaskFor(inst)}
                     onRename={() => setRenaming(inst)}
                     alert={inst.alert ?? alerts?.get(inst.index)}
-                    onEditData={editDataFor(inst.index)}
+                    onEditData={editDataFor(inst)}
                     onCreateHere={
-                      onCreateHere && livre && !linked?.get(inst.index) ? () => onCreateHere(agent, inst) : undefined
+                      // Dados só anotados não contam como conta criada pelo sistema.
+                      onCreateHere && livre && (!conta || isRegistro(conta)) ? () => onCreateHere(agent, inst) : undefined
                     }
                     onAtividade={onAtividade && livre ? () => onAtividade(agent, inst) : undefined}
                   />
@@ -291,7 +298,7 @@ interface InstanceRowProps {
   onPickTask: () => void;
   onRename: () => void;
   alert?: string;
-  /** Abre Editar dados da conta desta instância (só quando ela está na fila ou parou). */
+  /** Abre Editar dados da conta desta instância (ou anota os dados, se ela não tem conta do sistema). */
   onEditData?: () => void;
   /** Abre Criar conta aqui (instância sem conta ligada). */
   onCreateHere?: () => void;

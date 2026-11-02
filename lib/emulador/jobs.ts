@@ -116,9 +116,31 @@ export const STEPS_CONTA_AQUI: JobStep[] = [
   { key: "ids", status: "done", message: "mantidos" },
 ];
 
-/** Dá para editar os dados (conta na fila ou que parou; atividade não tem Editar). */
+/**
+ * Editar dados numa instância que não tem conta do sistema: o dono anota os
+ * dados da conta que já está nela. A linha nasce como "done" com a etapa
+ * "registro" (nada roda no PC) e a "nome" com o nome atual, que liga a linha à
+ * instância (linkedJobs).
+ */
+export const STEP_REGISTRO = "registro";
+
+export function registroSteps(instanceName: string): JobStep[] {
+  return [
+    { key: STEP_REGISTRO, status: "done", message: "dados anotados à mão" },
+    { key: "nome", status: "done", message: instanceName },
+  ];
+}
+
+export function isRegistro(job: EmulatorJob): boolean {
+  return job.steps.some((s) => s.key === STEP_REGISTRO);
+}
+
+/**
+ * Dá para salvar dados novos (atividade não tem Editar). Rodando: a tela só
+ * mostra. Na fila ou parada, salvar devolve à fila; criada, salvar só guarda.
+ */
 export function canEditJob(job: EmulatorJob): boolean {
-  return job.kind === "nova-conta" && (job.status === "queued" || job.status === "error");
+  return job.kind === "nova-conta" && job.status !== "running";
 }
 
 /** Etapas na ordem. O Instagram baixa antes da proxy para os 275 MB não passarem por ela. */

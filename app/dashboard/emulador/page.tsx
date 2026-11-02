@@ -9,7 +9,7 @@ import { ConnectDialog } from "@/components/dashboard/emulador/ConnectDialog";
 import { ContasCard } from "@/components/dashboard/emulador/ContasCard";
 import { ContaDialog, type ContaDialogTarget } from "@/components/dashboard/emulador/NovaContaDialog";
 import { instanceKey, latestCommandByInstance } from "@/lib/emulador/view";
-import { busyInstances, instanceAlerts, linkedJobs, type EmulatorJob } from "@/lib/emulador/jobs";
+import { busyInstances, instanceAlerts, isRegistro, linkedJobs, type EmulatorJob } from "@/lib/emulador/jobs";
 import type { EmuladorResponse, EmulatorAgent } from "@/lib/emulador/types";
 
 // O agente faz sync a cada ~3 s; a tela acompanha no mesmo ritmo enquanto está visível.
@@ -224,12 +224,13 @@ export default function EmuladorPage() {
                   alerts={instanceAlerts(data.jobs, agent.id, agent.instances)}
                   linked={linkedJobs(data.jobs, agent.id, agent.instances)}
                   onEditJob={(a, job) => setContaDialog({ agent: a, job })}
+                  onRegister={data.jobsAvailable ? (a, instance) => setContaDialog({ agent: a, instance, registrar: true }) : undefined}
                   onCreateHere={data.jobsAvailable ? (a, instance) => setContaDialog({ agent: a, instance }) : undefined}
                   queued={busyInstances(data.jobs, agent.id)}
                   onAtividade={data.atividadeAvailable ? (a, instance) => setAtividade({ agent: a, instance }) : undefined}
                 />
                 {data.jobsAvailable && agent.lastSeenAt && (
-                  <ContasCard kind="nova-conta" jobs={jobs.filter((j) => j.kind === "nova-conta")} {...cardProps} />
+                  <ContasCard kind="nova-conta" jobs={jobs.filter((j) => j.kind === "nova-conta" && !isRegistro(j))} {...cardProps} />
                 )}
                 {atividades.length > 0 && <ContasCard kind="atividade" jobs={atividades} {...cardProps} />}
               </React.Fragment>

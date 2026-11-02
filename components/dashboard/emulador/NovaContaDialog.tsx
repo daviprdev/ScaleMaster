@@ -7,10 +7,16 @@ import type { EmulatorAgent, EmulatorInstance } from "@/lib/emulador/types";
 
 /**
  * Criar instância: só agent. Editar dados: job (os dados vêm do servidor, sem
- * senha nem credenciais da proxy). Criar conta aqui: instance (a conta nasce
- * nela, sem copiar outra).
+ * senha nem credenciais da proxy) ou, numa instância sem conta do sistema,
+ * instance + registrar (anota os dados da conta que já está nela). Criar conta
+ * aqui: instance (a conta nasce nela, sem copiar outra).
  */
-export type ContaDialogTarget = { agent: EmulatorAgent; job?: EmulatorJob; instance?: EmulatorInstance } | null;
+export type ContaDialogTarget = {
+  agent: EmulatorAgent;
+  job?: EmulatorJob;
+  instance?: EmulatorInstance;
+  registrar?: boolean;
+} | null;
 
 interface ContaDialogProps {
   target: ContaDialogTarget;
@@ -31,12 +37,16 @@ interface Editable {
 
 /**
  * Formulário da conta: "Criar instância" (instância padrão, proxy do NekoBox e
- * dados do Instagram) ou "Editar dados" de uma conta que parou ou está na fila
- * (senha e proxy em branco = manter; salvar devolve a conta para a fila).
+ * dados do Instagram) ou "Editar dados" de qualquer instância (senha e proxy
+ * em branco = manter). Conta na fila ou que parou volta para a fila ao salvar;
+ * conta criada ou instância sem conta do sistema só guarda os dados; conta
+ * rodando só mostra.
  */
 export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
   const editing = target?.job ?? null;
-  const here = editing ? null : (target?.instance ?? null);
+  const registering = editing || !target?.registrar ? null : (target.instance ?? null);
+  const here = editing || registering ? null : (target?.instance ?? null);
+  const viewOnly = editing?.status === "running";
   const [form, setForm] = React.useState(EMPTY);
   const [proxyHost, setProxyHost] = React.useState("");
   const [template, setTemplate] = React.useState<string>("");
@@ -90,7 +100,11 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               agentId: target.agent.id,
-              ...(here ? { instanceIndex: here.index } : { templateIndex: Number(template) }),
+              ...(registering
+                ? { instanceIndex: registering.index, registrar: true }
+                : here
+                  ? { instanceIndex: here.index }
+                  : { templateIndex: Number(template) }),
               proxy: form.proxy,
               conta,
             }),
@@ -106,19 +120,26 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
     }
   };
 
-  const keepHint = editing ? "Em branco = mantém o atual." : undefined;
+  const keepHint = editing && !viewOnly ? "Em branco = mantém o atual." : undefined;
+  const creating = !editing && !registering;
 
   return (
     <Dialog
       open={!!target}
       onClose={onClose}
-      title={editing ? "Editar dados" : here ? "Criar conta aqui" : "Criar instância"}
+      title={editing || registering ? "Editar dados" : here ? "Criar conta aqui" : "Criar instância"}
       description={
-        editing
-          ? "Ao salvar a conta volta para a fila. O que mudou roda de novo: com Gmail ou dados novos o Instagram é zerado e o cadastro recomeça."
-          : here
-            ? `A conta é criada na instância #${here.index} (${here.name}), sem copiar outra: ela ganha o nome novo, a proxy no NekoBox e o Instagram zerado. IMEI, Android ID e MAC continuam os mesmos.`
-            : "O agente copia a instância padrão, instala o Instagram, põe a proxy no NekoBox, cria a conta com o Gmail, aquece (segue 2 ou 3 verificados e rola até 2 min de Reels) e desliga a instância."
+        viewOnly
+          ? "A conta está rodando agora: dá para ver os dados. Para editar, espere ela terminar ou parar."
+          : editing?.status === "done"
+            ? "Conta já criada: salvar só guarda os dados. Nada roda no PC: o Instagram e a proxy do NekoBox continuam como estão."
+            : editing
+              ? "Ao salvar a conta volta para a fila. O que mudou roda de novo: com Gmail ou dados novos o Instagram é zerado e o cadastro recomeça."
+              : registering
+                ? `A instância #${registering.index} (${registering.name}) ainda não tem dados no Scale Master. Preencha os da conta que está nela: salvar só guarda, nada roda no PC.`
+                : here
+                  ? `A conta é criada na instância #${here.index} (${here.name}), sem copiar outra: ela ganha o nome novo, a proxy no NekoBox e o Instagram zerado. IMEI, Android ID e MAC continuam os mesmos.`
+                  : "O agente copia a instância padrão, instala o Instagram, põe a proxy no NekoBox, cria a conta com o Gmail, aquece (segue 2 ou 3 verificados e rola até 2 min de Reels) e desliga a instância."
       }
       className="max-w-lg"
     >
@@ -130,7 +151,7 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
       ) : (
         <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)}>
           {error && <Banner tone="danger">{error}</Banner>}
-          {!editing && !here && (
+          {creating && !here && (
             <Select
               label="Instância padrão"
               value={template}
@@ -138,60 +159,71 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
               options={(target?.agent.instances ?? []).map((i) => ({ value: String(i.index), label: `#${i.index} · ${i.name}` }))}
             />
           )}
-          <Input
-            label="Proxy (HTTP)"
-            placeholder={editing && proxyHost ? `atual: ${proxyHost}` : "host:porta:usuário:senha"}
-            hint={keepHint}
-            value={form.proxy}
-            onChange={set("proxy")}
-            autoComplete="off"
-            required={!editing}
-          />
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/* Conta rodando: os campos só mostram. */}
+          <fieldset disabled={viewOnly} className="flex min-w-0 flex-col gap-4">
             <Input
-              label="Gmail"
-              type="email"
-              placeholder="nome@gmail.com"
-              hint={editing ? undefined : "O código de confirmação chega aqui; a aba pede para você digitar."}
-              value={form.email}
-              onChange={set("email")}
+              label="Proxy (HTTP)"
+              placeholder={editing && proxyHost ? `atual: ${proxyHost}` : "host:porta:usuário:senha"}
+              hint={keepHint}
+              value={form.proxy}
+              onChange={set("proxy")}
               autoComplete="off"
-              required
-            />
-            <Input
-              label="Senha do Instagram"
-              type="password"
-              hint={keepHint ?? "Sem acento."}
-              value={form.senha}
-              onChange={set("senha")}
-              autoComplete="new-password"
               required={!editing}
             />
-            <Input label="Nome completo" hint="Sem acento." value={form.nome} onChange={set("nome")} autoComplete="off" required />
-            <Input
-              label="Usuário (opcional)"
-              placeholder="sem @"
-              hint="Vazio = aceita a sugestão do Instagram."
-              value={form.usuario}
-              onChange={set("usuario")}
-              autoComplete="off"
-            />
-            <Input
-              label="Data de nascimento"
-              placeholder="dd/mm/aaaa"
-              value={form.nascimento}
-              onChange={set("nascimento")}
-              autoComplete="off"
-              required
-            />
-          </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                label="Gmail"
+                type="email"
+                placeholder="nome@gmail.com"
+                hint={creating ? "O código de confirmação chega aqui; a aba pede para você digitar." : undefined}
+                value={form.email}
+                onChange={set("email")}
+                autoComplete="off"
+                required
+              />
+              <Input
+                label="Senha do Instagram"
+                type="password"
+                hint={keepHint ?? "Sem acento."}
+                value={form.senha}
+                onChange={set("senha")}
+                autoComplete="new-password"
+                required={!editing}
+              />
+              <Input label="Nome completo" hint="Sem acento." value={form.nome} onChange={set("nome")} autoComplete="off" required />
+              <Input
+                label="Usuário (opcional)"
+                placeholder="sem @"
+                hint={creating ? "Vazio = aceita a sugestão do Instagram." : undefined}
+                value={form.usuario}
+                onChange={set("usuario")}
+                autoComplete="off"
+              />
+              <Input
+                label="Data de nascimento"
+                placeholder="dd/mm/aaaa"
+                value={form.nascimento}
+                onChange={set("nascimento")}
+                autoComplete="off"
+                required
+              />
+            </div>
+          </fieldset>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={onClose}>
-              Cancelar
+              {viewOnly ? "Fechar" : "Cancelar"}
             </Button>
-            <Button type="submit" loading={saving} disabled={!editing && !here && template === ""}>
-              {editing ? (editing.status === "error" ? "Salvar e continuar" : "Salvar") : here ? "Criar conta aqui" : "Criar instância"}
-            </Button>
+            {!viewOnly && (
+              <Button type="submit" loading={saving} disabled={creating && !here && template === ""}>
+                {editing?.status === "error"
+                  ? "Salvar e continuar"
+                  : editing || registering
+                    ? "Salvar"
+                    : here
+                      ? "Criar conta aqui"
+                      : "Criar instância"}
+              </Button>
+            )}
           </div>
         </form>
       )}

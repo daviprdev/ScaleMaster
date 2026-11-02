@@ -48,8 +48,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
   return NextResponse.json(editableFrom(loaded.input));
 }
 
-// PATCH — salva os dados novos e devolve a conta para a fila. As etapas que
-// dependem do que mudou rodam de novo (stepsAfterEdit); as outras são puladas.
+// PATCH — salva os dados novos. Conta na fila ou que parou volta para a fila e
+// as etapas que dependem do que mudou rodam de novo (stepsAfterEdit); conta já
+// criada só guarda os dados (nada roda no PC, o Instagram fica como está).
 export async function PATCH(req: NextRequest, { params }: Params) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
@@ -65,13 +66,29 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const loaded = await loadJob(id);
   if ("response" in loaded) return loaded.response;
   const { admin, job, input } = loaded;
-  if (job.status !== "error" && job.status !== "queued") {
-    return NextResponse.json({ error: "Só dá para editar conta na fila ou que parou." }, { status: 409 });
+  if (job.status === "running") {
+    return NextResponse.json({ error: "A conta está rodando agora. Edite quando ela terminar ou parar." }, { status: 409 });
   }
 
   const merged = mergeEdit(input, body);
   if ("error" in merged) return NextResponse.json({ error: merged.error }, { status: 400 });
   const next = merged.value;
+
+  if (job.status === "done") {
+    const { data, error } = await admin
+      .from("emulator_jobs")
+      .update({
+        input_enc: encrypt(JSON.stringify(next)),
+        label: next.conta.usuario || next.conta.email,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("status", "done")
+      .select("id");
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!data?.length) return NextResponse.json({ error: "A conta mudou enquanto você editava. Abra de novo." }, { status: 409 });
+    return NextResponse.json({ ok: true });
+  }
 
   const { data, error } = await admin
     .from("emulator_jobs")
