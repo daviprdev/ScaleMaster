@@ -187,7 +187,12 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
         const campo = campoPor(atual, ["Código", "Code", "Confirmation code", "Código de confirmação"]);
         if (!campo) throw new Error("Não achei o campo do código.");
         await preencher(d, campo, codigo.replace(/\D/g, ""));
-        await seguinte(d, await d.tela());
+        // Com o código completo o Instagram às vezes confirma sozinho e já sai da tela (giuliaboschin_934,
+        // 02/11: "Não achei o botão Seguinte"). Só toca em Seguinte se ainda estiver no código.
+        await esperar(2500);
+        const depois = await d.tela();
+        const proximo = ehTelaCodigo(depois) ? botao(depois, SEGUINTE) : null;
+        if (proximo) await tocarNo(d, proximo, 3000);
       },
     },
     {
