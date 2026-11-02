@@ -125,6 +125,7 @@ export const NOVA_CONTA_FLUXO: ReadonlyArray<{ key: string; label: string }> = [
   { key: "cadastro", label: "Criar a conta no Instagram" },
   { key: "seguir", label: "Aquecer: seguir perfis verificados" },
   { key: "reels", label: "Aquecer: rolar os Reels" },
+  { key: "fechar", label: "Desligar a instância" },
 ];
 
 export interface NovaContaInput {

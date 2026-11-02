@@ -35,7 +35,7 @@ describe("atividade: o que marcar e as etapas", () => {
 
   it("aquecer saiu do Estruturar e foi para o fim da criação de conta", () => {
     expect(parseAcoes(["aquecer"])).toEqual([]);
-    expect(NOVA_CONTA_FLUXO.slice(-3).map((s) => s.key)).toEqual(["cadastro", "seguir", "reels"]);
+    expect(NOVA_CONTA_FLUXO.slice(-4).map((s) => s.key)).toEqual(["cadastro", "seguir", "reels", "fechar"]);
   });
 });
 

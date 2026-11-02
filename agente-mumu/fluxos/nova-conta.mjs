@@ -128,6 +128,18 @@ export const NOVA_CONTA = [
   },
   // Pedido do dono: a conta nova já sai aquecida (seguir 2–3 verificados + até 2 min de Reels).
   ...AQUECIMENTO,
+  {
+    // Pedido do dono: terminou, desliga. Instagram parado antes (não acorda sozinho sem a proxy no boot).
+    // `sempre`: num Continuar, roda de novo mesmo que já tenha rodado.
+    chave: "fechar",
+    rotulo: "Desligar a instância",
+    sempre: true,
+    async rodar({ mumu, estado, dispositivo }) {
+      await pararInstagram(await dispositivo());
+      await mumu.fechar(copia(estado));
+      return "Instagram parado e instância desligada";
+    },
+  },
 ];
 
 /** Fluxos da fila por kind: lista de etapas, ou função do input que monta a lista. */
