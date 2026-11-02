@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  ALERTA_CAPTCHA,
   ALERTA_TELEFONE,
   NOVA_CONTA_FLUXO,
   STEPS_CONTA_AQUI,
@@ -13,7 +14,12 @@ import {
 import { parseNovaContaInput } from "../lib/emulador/nova-conta-input";
 import { instanceName } from "../lib/emulador/payload";
 import { digitoLuhn, gerarAndroidId, gerarImei, gerarMac, imeiValido } from "../agente-mumu/lib/ids.mjs";
-import { ALERTA_TELEFONE as ALERTA_AGENTE, NOVA_CONTA, nomeDaInstancia } from "../agente-mumu/fluxos/nova-conta.mjs";
+import {
+  ALERTA_CAPTCHA as CAPTCHA_AGENTE,
+  ALERTA_TELEFONE as ALERTA_AGENTE,
+  NOVA_CONTA,
+  nomeDaInstancia,
+} from "../agente-mumu/fluxos/nova-conta.mjs";
 import { lerProxy } from "../agente-mumu/fluxos/nekobox.mjs";
 import { editableFrom, mergeEdit, stepsAfterEdit } from "../lib/emulador/editar-conta";
 
@@ -161,12 +167,16 @@ describe("aviso de conta travada no telefone", () => {
 
   it("o texto é o mesmo no agente e no SaaS", () => {
     expect(ALERTA_AGENTE).toBe(ALERTA_TELEFONE);
+    expect(CAPTCHA_AGENTE).toBe(ALERTA_CAPTCHA);
+    expect(ALERTA_CAPTCHA).toBe("Conta ERRO CRIAÇÃO, verificar captcha");
     expect(ALERTA_TELEFONE).toBe("Conta ERRO CRIAÇÃO, verificar com numero telefone");
   });
 
   it("marca a instância que ainda tem o nome que a conta deu", () => {
     const inst = [{ index: 0, name: "Android Device" }, { index: 1, name: "julia_santana4738" }];
     expect(instanceAlerts([job({})], "pc", inst)).toEqual(new Map([[1, ALERTA_TELEFONE]]));
+    expect(instanceAlerts([job({ error: ALERTA_CAPTCHA })], "pc", inst)).toEqual(new Map([[1, ALERTA_CAPTCHA]]));
+    expect(instanceAlerts([job({ error: "Outro erro" })], "pc", inst).size).toBe(0);
   });
 
   it("não marca índice reaproveitado por outra instância, outro PC nem outro erro", () => {

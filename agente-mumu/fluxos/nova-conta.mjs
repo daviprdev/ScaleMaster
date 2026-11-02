@@ -3,7 +3,7 @@ import { gerarAndroidId, gerarImei, gerarMac } from "../lib/ids.mjs";
 import { AQUECIMENTO, ATIVIDADE } from "./atividade.mjs";
 import { pararInstagram } from "./instagram.mjs";
 import { INSTAGRAM, instalarInstagram } from "./aurora.mjs";
-import { ContaTravadaTelefone, cadastrarInstagram } from "./cadastro.mjs";
+import { ContaTravada, cadastrarInstagram } from "./cadastro.mjs";
 import { configurarProxy } from "./nekobox.mjs";
 
 /**
@@ -18,8 +18,8 @@ import { configurarProxy } from "./nekobox.mjs";
  * passam por ela); depois a proxy no NekoBox; aí o cadastro com o Gmail.
  */
 
-/** Aviso que a aba mostra em vermelho na linha da instância (igual a ALERTA_TELEFONE em lib/emulador/jobs.ts). */
-export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telefone";
+/** Avisos que a aba mostra em vermelho na linha da instância (iguais aos de lib/emulador/jobs.ts). */
+export { ALERTA_CAPTCHA, ALERTA_TELEFONE } from "./cadastro.mjs";
 
 function copia(estado) {
   if (estado.instanceIndex === null || estado.instanceIndex === undefined) {
@@ -114,13 +114,13 @@ export const NOVA_CONTA = [
       try {
         return await cadastrarInstagram({ d: await dispositivo(), conta, perguntar, log });
       } catch (e) {
-        if (!(e instanceof ContaTravadaTelefone)) throw e;
+        if (!(e instanceof ContaTravada)) throw e;
         // Pedido do dono: fecha tudo e marca a instância com o aviso (fica até ela ser usada de novo).
-        log("Instagram pediu telefone: desligando a instância");
-        marcarAlerta(criada, ALERTA_TELEFONE);
+        log(`${e.message} Desligando a instância.`);
+        marcarAlerta(criada, e.alerta);
         await pararInstagram(await dispositivo()).catch(() => {});
         await mumu.fechar(copia(estado)).catch(() => {});
-        const aviso = new Error(ALERTA_TELEFONE);
+        const aviso = new Error(e.alerta);
         aviso.semPrefixo = true;
         throw aviso;
       }

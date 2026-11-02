@@ -47,11 +47,19 @@ export interface EmulatorJob {
 }
 
 /**
- * Fim da conta quando o Instagram trava pedindo telefone: o agente desliga a
- * instância e a conta termina com este erro exato (igual a ALERTA_TELEFONE em
- * agente-mumu/fluxos/nova-conta.mjs). A aba mostra em vermelho na linha da instância.
+ * Fim da conta quando o Instagram trava numa tela que a automação não resolve:
+ * o agente desliga a instância e a conta termina com um destes erros exatos
+ * (iguais aos de agente-mumu/fluxos/cadastro.mjs). A aba mostra em vermelho na
+ * linha da instância e não oferece Continuar.
  */
 export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telefone";
+/** Captcha "Confirma que és uma pessoa" (código da imagem), pedido do dono em 02/11. */
+export const ALERTA_CAPTCHA = "Conta ERRO CRIAÇÃO, verificar captcha";
+const ALERTAS_CRIACAO: ReadonlySet<string> = new Set([ALERTA_TELEFONE, ALERTA_CAPTCHA]);
+
+export function ehAlertaCriacao(error: string | null | undefined): error is string {
+  return !!error && ALERTAS_CRIACAO.has(error);
+}
 
 /**
  * A conta mais nova de cada instância de um PC (`jobs` vem da mais nova para a
@@ -86,7 +94,7 @@ export function busyInstances(jobs: readonly EmulatorJob[], agentId: string): Se
   return out;
 }
 
-/** Aviso em vermelho por instância: a conta dela travou pedindo telefone. */
+/** Aviso em vermelho por instância: a conta dela travou (telefone, captcha). */
 export function instanceAlerts(
   jobs: readonly EmulatorJob[],
   agentId: string,
@@ -94,7 +102,7 @@ export function instanceAlerts(
 ): Map<number, string> {
   const out = new Map<number, string>();
   for (const [index, job] of linkedJobs(jobs, agentId, instances)) {
-    if (job.error === ALERTA_TELEFONE) out.set(index, ALERTA_TELEFONE);
+    if (ehAlertaCriacao(job.error)) out.set(index, job.error);
   }
   return out;
 }

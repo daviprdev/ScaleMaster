@@ -39,7 +39,7 @@ A aba Emulador → **Criar instância** põe uma conta na fila. O agente roda um
 2. dá à cópia o @ (ou o Gmail) como nome e liga;
 3. instala o Instagram pelo Aurora (`fluxos/aurora.mjs`), antes da proxy;
 4. põe a proxy HTTP no NekoBox e testa (`fluxos/nekobox.mjs`);
-5. cria a conta com o Gmail (`fluxos/cadastro.mjs`): reconhece cada tela pelo título; o código do Gmail e qualquer tela desconhecida são pedidos ao dono na aba. Telas desconhecidas ficam salvas em `telas/`;
+5. cria a conta com o Gmail (`fluxos/cadastro.mjs`): reconhece cada tela pelo título; o código do Gmail e qualquer tela desconhecida são pedidos ao dono na aba. Telas desconhecidas ficam salvas em `telas/`; se o Instagram pedir telefone ou o captcha "Confirma que és uma pessoa", a conta encerra, a instância desliga e a linha dela ganha o aviso em vermelho (`alertas.json`);
 6. aquece a conta nova: segue 2 ou 3 perfis sorteados de `fluxos/verificados.mjs` (segue pela própria pesquisa e pula conta com menos de 100 mil seguidores; 20–60 s entre um e outro) e rola de 1,5 a 2 min de Reels, sem curtir (`AQUECIMENTO` em `fluxos/atividade.mjs`);
 7. para o Instagram e desliga a instância (no Continuar, roda de novo).
 

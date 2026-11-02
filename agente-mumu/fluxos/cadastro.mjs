@@ -18,11 +18,20 @@ import { acharId, acharTexto, preencher, temTexto, tocarNo } from "./tela.mjs";
  * agente-mumu/telas/ para virar automação depois.
  */
 
-/** O Instagram travou a conta nova pedindo telefone: não há o que automatizar, a etapa encerra. */
-export class ContaTravadaTelefone extends Error {
-  constructor() {
-    super("O Instagram pediu um número de telefone para confirmar a conta.");
-    this.name = "ContaTravadaTelefone";
+/** Avisos em vermelho na linha da instância (iguais aos ALERTA_* de lib/emulador/jobs.ts). */
+export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telefone";
+export const ALERTA_CAPTCHA = "Conta ERRO CRIAÇÃO, verificar captcha";
+
+/**
+ * O Instagram travou a conta nova numa tela que a automação não resolve
+ * (telefone, código da imagem): a etapa encerra e a instância fica marcada com
+ * `alerta` (pedido do dono).
+ */
+export class ContaTravada extends Error {
+  constructor(alerta, motivo) {
+    super(motivo);
+    this.name = "ContaTravada";
+    this.alerta = alerta;
   }
 }
 
@@ -131,6 +140,17 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
       },
     },
     {
+      // Pedido do dono (02/11): o captcha "Confirma que és uma pessoa" (código da imagem) encerra a
+      // conta com o aviso em vermelho, como o do telefone. Antes do "codigo" ("Enter the code…").
+      nome: "verificacao-pessoa",
+      teste: (nos) =>
+        temTexto(nos, ["Confirma que és uma pessoa", "Confirm you're a person", "Confirm that you're a person", "Confirme que você é uma pessoa"]),
+      agir: (nos) => {
+        salvarTela(nos, "captcha: confirma que és uma pessoa");
+        throw new ContaTravada(ALERTA_CAPTCHA, "O Instagram pediu o código da imagem (captcha).");
+      },
+    },
+    {
       nome: "verificacao",
       teste: (nos) =>
         temTexto(nos, ["Confirma que és tu", "Confirm it's you", "Confirme que é você", "reCAPTCHA", "não és um robô", "not a robot", "Ajuda-nos a confirmar", "Help us confirm", "suspendemos", "suspended"]),
@@ -144,7 +164,7 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
         temTexto(nos, ["SMS", "WhatsApp"]),
       agir: (nos) => {
         salvarTela(nos, "verificação por telefone");
-        throw new ContaTravadaTelefone();
+        throw new ContaTravada(ALERTA_TELEFONE, "O Instagram pediu um número de telefone para confirmar a conta.");
       },
     },
     {

@@ -5,7 +5,7 @@ import { Activity, CheckCircle2, Circle, FilePen, Loader2, RotateCw, Send, Trash
 import { Badge, Button, Card, EmptyState, Input, type BadgeTone } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { atividadeSteps } from "@/lib/emulador/atividade";
-import { ALERTA_TELEFONE, NOVA_CONTA_FLUXO, canEditJob, type EmulatorJob, type JobKind, type JobStatus } from "@/lib/emulador/jobs";
+import { NOVA_CONTA_FLUXO, canEditJob, ehAlertaCriacao, type EmulatorJob, type JobKind, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
 
 const STATUS_BADGE: Record<JobStatus, { tone: BadgeTone; label: string }> = {
@@ -110,7 +110,7 @@ function JobRow({ job, busy, now, onContinue, onRemove, onReply, onEdit }: JobRo
           {job.prompt ? "Esperando você" : badge.label}
         </Badge>
         <div className="flex items-center gap-2">
-          {job.status === "error" && job.error !== ALERTA_TELEFONE && (
+          {job.status === "error" && !ehAlertaCriacao(job.error) && (
             <Button size="sm" icon={<RotateCw size={14} />} loading={busy} onClick={() => onContinue(job)}>
               Continuar
             </Button>
