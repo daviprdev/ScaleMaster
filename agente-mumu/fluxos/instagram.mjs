@@ -439,22 +439,19 @@ export async function seguirVerificados(ctx, lista, quantos) {
   return `seguiu ${seguidos.map((u) => `@${u}`).join(", ")}`;
 }
 
-/** A cada poucos reels: confere se ainda está nos Reels (pop-up, saiu do app, abriu um perfil). */
+/**
+ * A cada poucos reels: proxy de pé e o Instagram na frente. Sem ler a tela: com
+ * vídeo tocando o uiautomator trava até 1 min (visto em 02/11 — o vídeo ficava
+ * parado esse tempo todo). O app da frente sai do dumpsys, que é na hora.
+ */
 async function conferirReels(ctx) {
   const { d, log } = ctx;
   await garantirProxy(d);
-  const nos = await d.tela().catch(() => []);
-  if (nos.length === 0) return;
-  if (!doInstagram(nos) && !doSistema(nos)) {
+  const foco = await d.shell("dumpsys window 2>/dev/null | grep -m1 mCurrentFocus; true").catch(() => "");
+  if (foco.trim() && !foco.includes(INSTAGRAM)) {
     log("fora do Instagram: voltando para os Reels");
     await d.abrirApp(INSTAGRAM);
     await esperar(6000);
-    await irPara(ctx, "reels");
-    return;
-  }
-  if (await tratarGeral(ctx, nos)) return;
-  if (!acharAba(nos, "reels")) {
-    log("saiu dos Reels: voltando");
     await irPara(ctx, "reels");
   }
 }
@@ -464,11 +461,6 @@ export async function rolarReels(ctx, ms) {
   const { d, log } = ctx;
   await irPara(ctx, "reels");
   await esperar(5000);
-  // Na 1ª conta (02/11) o log disse 5 reels mas o dono não viu os Reels rodando: guarda a tela
-  // que abriu (agente-mumu/telas/) e diz no log o que tem nela, para saber onde ele estava.
-  const aberta = await d.tela().catch(() => []);
-  salvarTela(aberta, "tela depois de tocar na aba Reels");
-  log(`depois de tocar em Reels: ${resumoTela(aberta) || "tela sem texto (vídeo?)"}`);
   const { largura, altura } = await d.tamanho();
   const fim = Date.now() + ms;
   let vistos = 0;
@@ -477,9 +469,11 @@ export async function rolarReels(ctx, ms) {
     await esperar(Math.min(assistir, Math.max(0, fim - Date.now())));
     if (Date.now() >= fim) break;
     if (vistos % 5 === 4) await conferirReels(ctx);
+    // Arrasto de baixo para cima, rápido (vira "fling" e passa de vídeo), longe da barra de abas.
     const x = Math.round(largura / 2) + sortear(-80, 80);
-    await d.arrastar(x, Math.round(altura * 0.75) + sortear(-40, 40), x + sortear(-30, 30), Math.round(altura * 0.25) + sortear(-40, 40), sortear(220, 420));
+    await d.arrastar(x, Math.round(altura * 0.72) + sortear(-30, 30), x + sortear(-30, 30), Math.round(altura * 0.2) + sortear(-30, 30), sortear(150, 280));
     vistos += 1;
+    log(`reel ${vistos}`);
   }
   await irPara(ctx, "inicio").catch(() => {});
   return `${vistos} reels em ${Math.round(ms / 60_000)} min`;
