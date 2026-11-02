@@ -3,7 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import { esperar } from "../lib/processo.mjs";
 import { criarAjuda } from "./dono.mjs";
-import { abrirInstagram, destacarStory, postarStory, rolarReels, seguirVerificados, sortear, trocarFoto } from "./instagram.mjs";
+import {
+  abrirInstagram,
+  destacarStory,
+  garantirProxy,
+  pararInstagram,
+  postarStory,
+  rolarReels,
+  seguirVerificados,
+  sortear,
+  trocarFoto,
+} from "./instagram.mjs";
 import { ligarProxy } from "./nekobox.mjs";
 import { VERIFICADOS } from "./verificados.mjs";
 
@@ -25,8 +35,10 @@ function instancia(estado) {
   return estado.instanceIndex;
 }
 
+/** Aparelho + ajuda do dono; antes de cada etapa no Instagram confere se a proxy continua de pé. */
 async function contexto({ dispositivo, perguntar, log }) {
   const d = await dispositivo();
+  await garantirProxy(d);
   return { d, log, ajuda: criarAjuda({ d, perguntar, log }) };
 }
 
@@ -82,6 +94,7 @@ const ETAPAS = {
     rotulo: "Abrir o Instagram",
     sempre: true,
     async rodar(ctx) {
+      // Só abre com a proxy testada na etapa anterior e a VPN ainda de pé (contexto confere).
       return abrirInstagram(await contexto(ctx));
     },
   },
@@ -128,9 +141,10 @@ const ETAPAS = {
     chave: "fechar",
     rotulo: "Desligar a instância",
     sempre: true,
-    async rodar({ mumu, estado }) {
+    async rodar({ mumu, estado, dispositivo }) {
+      await pararInstagram(await dispositivo());
       await mumu.fechar(instancia(estado));
-      return "desligada";
+      return "Instagram parado e instância desligada";
     },
   },
 };

@@ -64,11 +64,16 @@ export class Dispositivo {
     this.serial = serial;
   }
 
+  /** Conecta o adb; logo depois de ligar a instância ele às vezes recusa por um tempo: tenta por até 1 min. */
   async conectar() {
-    const r = await rodar(this.adb, ["connect", this.serial], { timeoutMs: 20_000 });
-    if (!/connected/i.test(String(r.stdout))) {
-      throw new Error(`adb não conectou em ${this.serial}: ${trecho(r.stdout || r.stderr)}`);
+    let ultima = "";
+    for (let tentativa = 0; tentativa < 20; tentativa++) {
+      if (tentativa > 0) await esperar(3000);
+      const r = await rodar(this.adb, ["connect", this.serial], { timeoutMs: 20_000 });
+      if (/connected/i.test(String(r.stdout)) && !/cannot|failed/i.test(String(r.stdout))) return;
+      ultima = trecho(r.stdout || r.stderr);
     }
+    throw new Error(`adb não conectou em ${this.serial}: ${ultima}`);
   }
 
   async shell(...args) {

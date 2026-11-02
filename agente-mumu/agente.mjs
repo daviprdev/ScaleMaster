@@ -36,9 +36,10 @@ import { alertaDe } from "./lib/alertas.mjs";
 import { MuMu } from "./lib/mumu.mjs";
 import { esperar } from "./lib/processo.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
+import { pararInstagram } from "./fluxos/instagram.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.6.0";
+const VERSAO = "1.6.1";
 /** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
 const PASTA = path.dirname(fileURLToPath(import.meta.url));
@@ -155,6 +156,12 @@ async function executar(mumu, comando) {
     return null;
   }
   if (comando.action === "shutdown") {
+    // Instagram parado antes de desligar: no próximo boot ele não acorda sozinho sem a proxy.
+    const atual = await mumu.instancia(index).catch(() => null);
+    if (atual?.state === "on" && atual.adb) {
+      const d = new Dispositivo(mumu.adb, atual.adb);
+      await d.conectar().then(() => pararInstagram(d), () => {});
+    }
     await mumu.fechar(index);
     return null;
   }

@@ -1,6 +1,7 @@
 import { limparAlerta, marcarAlerta } from "../lib/alertas.mjs";
 import { gerarAndroidId, gerarImei, gerarMac } from "../lib/ids.mjs";
 import { ATIVIDADE } from "./atividade.mjs";
+import { pararInstagram } from "./instagram.mjs";
 import { INSTAGRAM, instalarInstagram } from "./aurora.mjs";
 import { ContaTravadaTelefone, cadastrarInstagram } from "./cadastro.mjs";
 import { configurarProxy } from "./nekobox.mjs";
@@ -117,6 +118,7 @@ export const NOVA_CONTA = [
         // Pedido do dono: fecha tudo e marca a instância com o aviso (fica até ela ser usada de novo).
         log("Instagram pediu telefone: desligando a instância");
         marcarAlerta(criada, ALERTA_TELEFONE);
+        await pararInstagram(await dispositivo()).catch(() => {});
         await mumu.fechar(copia(estado)).catch(() => {});
         const aviso = new Error(ALERTA_TELEFONE);
         aviso.semPrefixo = true;

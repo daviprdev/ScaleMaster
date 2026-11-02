@@ -2,6 +2,7 @@ import { casa } from "../lib/adb.mjs";
 import { esperar } from "../lib/processo.mjs";
 import { INSTAGRAM } from "./aurora.mjs";
 import { resumoTela, salvarTela } from "./dono.mjs";
+import { vpnLigada } from "./nekobox.mjs";
 import { acharId, acharTexto, esperarTela, preencher, temTexto, tocarNo } from "./tela.mjs";
 
 /**
@@ -255,6 +256,25 @@ async function tratarGeral(ctx, nos) {
   return false;
 }
 
+/**
+ * Trava pedida pelo dono (01/11): o Instagram não pode acessar a internet sem a
+ * proxy. O "VPN sempre ativa + bloquear sem VPN" do Android não faz efeito no
+ * MuMu (testado), então: antes de desligar, o Instagram é forçado a parar — app
+ * parado não acorda sozinho no boot (só quando alguém abre) — e o Android leva
+ * uns segundos para gravar isso (com 5 s não gravou, com mais de 15 s gravou).
+ */
+export async function pararInstagram(d) {
+  await d.fecharApp(INSTAGRAM).catch(() => {});
+  await esperar(20_000);
+}
+
+/** No meio da atividade: a proxy caiu? Para o Instagram na hora (não usa a internet do PC) e encerra a etapa. */
+export async function garantirProxy(d) {
+  if (await vpnLigada(d)) return;
+  await d.fecharApp(INSTAGRAM).catch(() => {});
+  throw new Error("A proxy do NekoBox caiu: parei o Instagram. Clique em Continuar.");
+}
+
 /** Abre o Instagram do zero (já com a proxy ligada) e espera a barra de abas: a conta está logada. */
 export async function abrirInstagram(ctx) {
   const { d } = ctx;
@@ -397,6 +417,7 @@ export async function seguirVerificados(ctx, lista, quantos) {
 /** A cada poucos reels: confere se ainda está nos Reels (pop-up, saiu do app, abriu um perfil). */
 async function conferirReels(ctx) {
   const { d, log } = ctx;
+  await garantirProxy(d);
   const nos = await d.tela().catch(() => []);
   if (nos.length === 0) return;
   if (!doInstagram(nos) && !doSistema(nos)) {

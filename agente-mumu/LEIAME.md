@@ -52,6 +52,8 @@ O botão **Atividade** na linha de uma instância (fora a #0) põe na mesma fila
 
 As telas do Instagram logado ficam em `fluxos/instagram.mjs`. Tela desconhecida vai para `telas/` e vira pergunta na aba; se travar na foto, no story ou no destaque, o agente pede para terminar à mão (não arrisca postar o story duas vezes). No Continuar, ligar, proxy e Instagram rodam de novo.
 
+**Instagram só pela proxy:** o Instagram só abre depois do teste da proxy; se a VPN do NekoBox cair no meio, o agente para o Instagram e encerra a etapa. Antes de desligar a instância (fim da Atividade, botão Fechar da aba, conta travada no telefone) o Instagram é forçado a parar e o agente espera 20 s para o Android gravar: app parado não acorda sozinho no boot. O "VPN sempre ativa + bloquear sem VPN" do Android foi testado e não faz efeito no MuMu.
+
 ## Automações
 
 Cada automação é um arquivo em `tarefas/`, registrado em `tarefas/index.mjs`. Antes de rodar uma automação, o agente abre a instância, espera o Android e conecta o adb. A função `rodar(ctx)` recebe o aparelho pronto em `ctx.dispositivo` (ver `lib/adb.mjs`):
