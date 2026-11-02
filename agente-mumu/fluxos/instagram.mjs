@@ -331,8 +331,27 @@ function botaoDoPerfil(nos) {
 
 const ehUm = (rotulo, lista) => lista.some((t) => t.toLowerCase() === rotulo.toLowerCase());
 
-/** Pesquisa o @, abre o perfil e segue. Devolve "seguiu" ou o motivo de ter pulado. */
-async function seguirUm(ctx, usuario, { exigirSelo }) {
+/**
+ * "290 M seguidores", "1,2 M", "850 mil": conta grande (100 mil ou mais).
+ * null = a linha não mostra seguidores (aí vale a lista, que já é de famosos).
+ */
+export function contaGrande(texto) {
+  const t = String(texto ?? "").toLowerCase();
+  if (!/seguidores|followers/.test(t)) return null;
+  const m = /([\d.,]+)\s*(m|mi|mil|k)\b/.exec(t);
+  if (!m) return false;
+  const n = parseFloat(m[1].replace(/\./g, "").replace(",", "."));
+  return m[2] === "mil" || m[2] === "k" ? n >= 100 : true;
+}
+
+/**
+ * Pesquisa o @ e segue. Vista na 1ª conta real (02/11): a linha do resultado já
+ * traz o Seguir (row_search_user_follow_button) e o nome com os seguidores
+ * ("Nike • 290 M seguidores"), e tocar no @ nem sempre abria o perfil a tempo.
+ * Então segue da própria pesquisa; sem Seguir na linha, abre o perfil.
+ * Devolve "seguiu" ou o motivo de ter pulado.
+ */
+async function seguirUm(ctx, usuario) {
   const { d } = ctx;
   const acharCampo = (nos) =>
     campoDeTexto(nos) ?? acharId(nos, ig("action_bar_search_edit_text")) ?? acharTexto(nos, ["Pesquisar", "Search", "Pesquisa"], { exato: true });
@@ -355,22 +374,25 @@ async function seguirUm(ctx, usuario, { exigirSelo }) {
   nos = await d.tela();
   const linha = nos.find((n) => n.texto.toLowerCase() === usuario.toLowerCase() && n.y > campo.y + 20);
   if (!linha) return "não apareceu na pesquisa";
-  await tocarNo(d, linha, 4000);
+  const mesmaLinha = (n) => Math.abs(n.y - linha.y) < 60;
+  const resumo = nos.find((n) => n.id === ig("row_search_user_fullname") && mesmaLinha(n))?.texto ?? "";
+  if (contaGrande(resumo) === false) return `conta pequena (${resumo})`;
 
-  const perfil = await esperarTela(d, (n) => (botaoDoPerfil(n) ? n : null), { timeoutMs: 20_000, descricao: `o perfil @${usuario}` }).catch(
-    () => null
-  );
-  if (!perfil) return "o perfil não abriu";
-  const alvo = botaoDoPerfil(perfil);
-  const rotulo = rotuloEm(perfil, alvo);
+  let tela = nos;
+  let alvo = nos.find((n) => n.id === ig("row_search_user_follow_button") && mesmaLinha(n));
+  if (alvo) {
+    await esperar(sortear(2000, 5000)); // olha o resultado antes de seguir
+  } else {
+    await tocarNo(d, linha, 4000);
+    tela = await esperarTela(d, (n) => (botaoDoPerfil(n) ? n : null), { timeoutMs: 20_000, descricao: `o perfil @${usuario}` }).catch(() => null);
+    if (!tela) return "o perfil não abriu";
+    alvo = botaoDoPerfil(tela);
+    await esperar(sortear(3000, 8000)); // olha o perfil antes de seguir
+  }
+  const rotulo = rotuloEm(tela, alvo);
   if (ehUm(rotulo, SEGUINDO)) return "já seguia";
   if (!ehUm(rotulo, SEGUIR)) return `botão desconhecido (${rotulo || "sem texto"})`;
-  if (exigirSelo && !temTexto(perfil, ["Verificado", "Verificada", "Verified"])) {
-    salvarTela(perfil, `perfil @${usuario} sem selo de verificado à vista`);
-    return "sem selo de verificado";
-  }
 
-  await esperar(sortear(3000, 8000)); // olha o perfil antes de seguir
   await tocarNo(d, alvo, 3000);
   const depois = await d.tela().catch(() => []);
   if (ehBloqueio(depois)) {
@@ -382,35 +404,32 @@ async function seguirUm(ctx, usuario, { exigirSelo }) {
 }
 
 /**
- * Segue `quantos` perfis sorteados da lista, com 20–60 s entre um e outro.
- * Confere o selo azul; se 3 perfis seguidos não mostram selo nenhum (o
- * Instagram pode não expor o selo na leitura da tela), confia na lista.
+ * Segue `quantos` perfis sorteados da lista, com 20–60 s entre um e outro. A
+ * lista é de famosos; a pesquisa ainda confere que a conta é grande.
  */
 export async function seguirVerificados(ctx, lista, quantos) {
   const { log } = ctx;
   const fila = embaralhar(lista);
   const seguidos = [];
-  let semSelo = 0;
   let tentativas = 0;
   while (seguidos.length < quantos && fila.length > 0 && tentativas < quantos + 8) {
     tentativas += 1;
     const usuario = fila.shift();
     let resultado;
     try {
-      resultado = await seguirUm(ctx, usuario, { exigirSelo: !(semSelo >= 3 && seguidos.length === 0) });
+      resultado = await seguirUm(ctx, usuario);
     } catch (e) {
       if (/bloqueou|suspendeu|telefone/.test(e.message)) throw e;
       resultado = `falhou: ${e.message}`;
     }
     log(`@${usuario}: ${resultado}`);
-    if (resultado === "sem selo de verificado") semSelo += 1;
     if (resultado === "seguiu") {
       seguidos.push(usuario);
       if (seguidos.length < quantos) await esperar(sortear(20_000, 60_000));
     }
   }
   await irPara(ctx, "inicio").catch(() => {});
-  if (seguidos.length === 0) throw new Error("Não consegui seguir nenhum perfil verificado.");
+  if (seguidos.length === 0) throw new Error("Não consegui seguir nenhum perfil da lista.");
   return `seguiu ${seguidos.map((u) => `@${u}`).join(", ")}`;
 }
 

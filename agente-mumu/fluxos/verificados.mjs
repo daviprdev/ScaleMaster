@@ -1,7 +1,7 @@
 /**
  * Perfis grandes e verificados que o aquecimento sorteia para seguir (2 ou 3
- * por vez). Antes de seguir o agente confere o selo azul no perfil; @ que não
- * existir ou não for verificado é pulado. Trocar a lista = editar aqui.
+ * por vez). Segue pela pesquisa; @ que não aparecer ou que tiver menos de 100
+ * mil seguidores na linha do resultado é pulado. Trocar a lista = editar aqui.
  */
 export const VERIFICADOS = [
   // futebol
