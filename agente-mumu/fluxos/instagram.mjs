@@ -372,6 +372,12 @@ async function seguirUm(ctx, usuario) {
   await esperar(sortear(3000, 5000));
 
   nos = await d.tela();
+  // Pedido do dono (02/11): no resultado, a aba "Contas" (em "Para ti" a lista de contas pode vir vazia).
+  const abaContas = nos.find((n) => n.clicavel && /^(Contas|Accounts)\b/i.test(n.descricao) && /TabWidget/.test(n.classe));
+  if (abaContas) {
+    await tocarNo(d, abaContas, sortear(2500, 4000));
+    nos = await d.tela();
+  }
   const linha = nos.find((n) => n.texto.toLowerCase() === usuario.toLowerCase() && n.y > campo.y + 20);
   if (!linha) return "não apareceu na pesquisa";
   const mesmaLinha = (n) => Math.abs(n.y - linha.y) < 60;
