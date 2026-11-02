@@ -279,6 +279,18 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
       agir: async (nos, alvo) => tocarNo(d, alvo, 3000),
     },
     {
+      // "Segue 5 ou mais pessoas" (lista de sugestões para seguir): o dono pediu Ignorar, no canto de cima
+      // (o Seguir de baixo seguiria a lista toda). A lista demora a carregar; o Ignorar já vale antes.
+      nome: "seguir-pessoas",
+      teste: (nos) =>
+        temTexto(nos, ["Segue 5 ou mais pessoas", "Follow 5 or more people", "Siga 5 ou mais pessoas"]) &&
+        (acharId(nos, ig("action_bar_action_text")) ?? botao(nos, ["Ignorar", "Skip"])),
+      agir: async (nos, alvo) => {
+        await d.arrastar(alvo.x, alvo.y, alvo.x, alvo.y, 150);
+        await esperar(3000);
+      },
+    },
+    {
       // "Obtém sugestões de amizade" (ligar ao Facebook): o dono pediu Ignorar, no canto de cima.
       // Toque segurado de 150 ms, mudando um pouco o ponto a cada volta.
       nome: "sugestoes-amizade",
