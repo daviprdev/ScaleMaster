@@ -1,21 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
-import { MIDIA_BUCKET, midiaPaths, type AtividadeInput } from "./atividade";
+import type { AtividadeInput } from "./atividade";
 import type { JobStep, JobUpdate, NovaContaInput } from "./jobs";
-
-/** Mídia de uma atividade para o agente baixar: link assinado e a extensão do arquivo. */
-export interface MidiaParaAgente {
-  url: string;
-  ext: string;
-}
-
-/** Atividade como o agente recebe: as mídias viram links assinados (valem 2 h). */
-export interface AtividadeParaAgente {
-  acoes: AtividadeInput["acoes"];
-  midias: { foto?: MidiaParaAgente; story?: MidiaParaAgente };
-  story: AtividadeInput["story"];
-}
 
 /** O que o agente recebe para rodar uma conta (input já aberto: só vai pelo sync autenticado). */
 export interface ClaimedJob {
@@ -25,7 +12,7 @@ export interface ClaimedJob {
   templateIndex: number;
   instanceIndex: number | null;
   steps: JobStep[];
-  input: NovaContaInput | AtividadeParaAgente;
+  input: NovaContaInput | AtividadeInput;
 }
 
 /** Resposta do dono a um pedido do agente (código do Gmail, "já resolvi"). */
@@ -51,35 +38,6 @@ interface QueuedRow {
 
 const ORPHAN_ERROR = "O agente parou no meio (fechou ou reiniciou). Clique em Continuar.";
 const EMPTY: SyncJobsResult = { jobs: [], replies: [] };
-const MIDIA_LINK_S = 2 * 60 * 60;
-
-async function paraAgente(admin: SupabaseClient, input: AtividadeInput): Promise<AtividadeParaAgente> {
-  const midias: AtividadeParaAgente["midias"] = {};
-  for (const uso of ["foto", "story"] as const) {
-    const path = input.midias?.[uso];
-    if (!path) continue;
-    const { data, error } = await admin.storage.from(MIDIA_BUCKET).createSignedUrl(path, MIDIA_LINK_S);
-    if (error || !data?.signedUrl) throw new Error(`A mídia ${uso === "foto" ? "da foto" : "do story"} sumiu do armazenamento. Remova e inicie de novo.`);
-    midias[uso] = { url: data.signedUrl, ext: path.slice(path.lastIndexOf(".")) };
-  }
-  return { acoes: input.acoes, midias, story: input.story ?? null };
-}
-
-/** Apaga do bucket as mídias de atividades que terminaram ou saíram da lista. Nunca falha quem chamou. */
-export async function removerMidias(admin: SupabaseClient, rows: ReadonlyArray<{ kind: string; input_enc: string }>): Promise<void> {
-  const paths = rows.flatMap((r) => {
-    if (r.kind !== "atividade") return [];
-    try {
-      return midiaPaths(JSON.parse(decrypt(r.input_enc)) as AtividadeInput);
-    } catch {
-      return [];
-    }
-  });
-  if (paths.length === 0) return;
-  const { error } = await admin.storage.from(MIDIA_BUCKET).remove(paths);
-  if (error) console.warn(`[emulador] mídias da atividade ficaram no bucket: ${error.message}`);
-}
-
 /**
  * Parte "Criar instância" do sync do agente, nesta ordem:
  *   1. grava o andamento que ele mandou (etapas, cópia criada, pedido ao dono);
@@ -110,12 +68,6 @@ export async function syncJobs(
       .eq("status", "running");
     if (isMissingSchemaError(error)) return EMPTY;
     if (error) throw new Error(error.message);
-  }
-
-  const done = updates.filter((u) => u.status === "done").map((u) => u.id);
-  if (done.length > 0) {
-    const { data } = await admin.from("emulator_jobs").select("kind, input_enc").in("id", done).eq("kind", "atividade");
-    await removerMidias(admin, (data ?? []) as Array<{ kind: string; input_enc: string }>);
   }
 
   const { data: runningData, error: runningErr } = await admin
@@ -174,12 +126,7 @@ export async function syncJobs(
   } catch {
     return falhar("Não deu para abrir os dados da conta. Remova e cadastre de novo.");
   }
-  let input: ClaimedJob["input"];
-  try {
-    input = row.kind === "atividade" ? await paraAgente(admin, aberto as AtividadeInput) : (aberto as NovaContaInput);
-  } catch (e) {
-    return falhar((e as Error).message);
-  }
+  const input = aberto as ClaimedJob["input"];
 
   const { data: claimed, error: claimErr } = await admin
     .from("emulator_jobs")

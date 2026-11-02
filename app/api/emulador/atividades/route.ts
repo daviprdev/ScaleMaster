@@ -3,16 +3,17 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
-import { parseInstances } from "@/lib/emulador/payload";
+import { parseInstances, parseMedia } from "@/lib/emulador/payload";
 import { parseAtividadeInput } from "@/lib/emulador/atividade";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// POST — põe na fila do PC uma Atividade numa instância que já tem conta:
+// POST — põe na fila do PC um Estruturar numa instância que já tem conta:
 // aquecer, trocar a foto de perfil e/ou postar story com link e destacar. As
-// mídias já subiram por /api/emulador/atividades/midia; link, textos e os
-// caminhos delas vão criptografados, e a tela só vê o que foi marcado (acoes).
+// mídias são arquivos da pasta do MuMu que o agente listou (só esses passam);
+// link, textos e os arquivos marcados vão criptografados, e a tela só vê o que
+// foi marcado (acoes).
 export async function POST(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
@@ -36,18 +37,20 @@ export async function POST(req: NextRequest) {
   if (typeof instanceIndex !== "number" || !Number.isInteger(instanceIndex) || instanceIndex < 0) {
     return NextResponse.json({ error: "Instância inválida." }, { status: 400 });
   }
-  const parsed = parseAtividadeInput(body, user.id);
-  if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
-
   const admin = getSupabaseAdmin();
   const { data: agent, error: agentErr } = await admin
     .from("emulator_agents")
-    .select("id, instances")
+    .select("id, instances, media")
     .eq("id", agentId)
     .eq("user_id", user.id)
     .maybeSingle();
+  if (isMissingSchemaError(agentErr)) {
+    return NextResponse.json({ error: "Falta aplicar o SQL supabase/emulador_atividade.sql no Supabase." }, { status: 503 });
+  }
   if (agentErr) return NextResponse.json({ error: agentErr.message }, { status: 500 });
   if (!agent) return NextResponse.json({ error: "PC não encontrado." }, { status: 404 });
+  const parsed = parseAtividadeInput(body, parseMedia(agent.media).files);
+  if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
   const instance = parseInstances(agent.instances).find((i) => i.index === instanceIndex);
   if (!instance) return NextResponse.json({ error: "Essa instância não existe mais no MuMu." }, { status: 404 });
 

@@ -1,20 +1,18 @@
 /**
- * Botão "Atividade" na aba Emulador: numa instância que já tem conta, o agente
- * liga, conecta a proxy do NekoBox, abre o Instagram e faz o que o dono marcou.
- * Vai na mesma fila de emulator_jobs (kind 'atividade', SQL em
- * supabase/emulador_atividade.sql); o lado do PC fica em
- * agente-mumu/fluxos/atividade.mjs, com as mesmas chaves de etapa.
+ * Botão "Estruturar" na aba Emulador (por dentro, kind 'atividade'): numa
+ * instância que já tem conta, o agente liga, conecta a proxy do NekoBox, abre o
+ * Instagram e faz o que o dono marcou. As mídias saem da pasta do MuMu no PC
+ * (o agente manda a lista em emulator_agents.media; nada sobe para o Storage).
+ * Vai na mesma fila de emulator_jobs (SQL em supabase/emulador_atividade.sql);
+ * o lado do PC fica em agente-mumu/fluxos/atividade.mjs, com as mesmas chaves de etapa.
  */
 
 export type AtividadeAcao = "aquecer" | "foto" | "story";
-
-/** Bucket das mídias (pasta emulador/<user_id>/, fora da varredura de órfãos de app/api/admin/storage-orphans). */
-export const MIDIA_BUCKET = "videos-library";
 export type MidiaUso = "foto" | "story";
 
 export const ATIVIDADE_ACOES: ReadonlyArray<{ key: AtividadeAcao; label: string; description: string }> = [
   { key: "aquecer", label: "Aquecer", description: "Segue 2 ou 3 perfis verificados e rola até 2 min de Reels." },
-  { key: "foto", label: "Trocar a foto de perfil", description: "Com a foto que você escolher (ou sorteada de uma pasta)." },
+  { key: "foto", label: "Trocar a foto de perfil", description: "Com a foto que você escolher da pasta do MuMu (ou sorteada entre várias)." },
   { key: "story", label: "Story com link e destaque", description: "Posta o story com o sticker de link e destaca no perfil." },
 ];
 
@@ -44,39 +42,20 @@ export function parseAcoes(raw: unknown): AtividadeAcao[] {
   return ATIVIDADE_ACOES.map((a) => a.key).filter((k) => marcadas.has(k));
 }
 
-/** Tipos que cada mídia aceita (o bucket videos-library só aceita image/jpeg, não image/jpg). */
-export const MIDIA_TIPOS: Record<MidiaUso, readonly string[]> = {
-  foto: ["image/jpeg", "image/png"],
-  story: ["image/jpeg", "image/png", "video/mp4", "video/quicktime"],
+/** Arquivo da pasta do MuMu que o agente encontrou (caminho relativo com "/"). */
+export interface MediaFile {
+  path: string;
+  size: number;
+  tipo: "imagem" | "video";
+}
+
+/** O que cada uso aceita: foto de perfil só imagem; story imagem ou vídeo. */
+export const MIDIA_TIPOS: Record<MidiaUso, ReadonlyArray<MediaFile["tipo"]>> = {
+  foto: ["imagem"],
+  story: ["imagem", "video"],
 };
-export const MIDIA_MAX_IMAGEM = 8 * 1024 * 1024;
-export const MIDIA_MAX_VIDEO = 100 * 1024 * 1024;
-
-export function normalizarTipo(type: string): string {
-  return type === "image/jpg" ? "image/jpeg" : type;
-}
-
-export function extensaoDoTipo(type: string): string {
-  return { "image/png": ".png", "video/mp4": ".mp4", "video/quicktime": ".mov" }[normalizarTipo(type)] ?? ".jpg";
-}
-
-/** Erro de tipo/tamanho para a mídia, ou null se ela serve. */
-export function erroDaMidia(uso: MidiaUso, type: string, size: number): string | null {
-  const tipo = normalizarTipo(type);
-  if (!MIDIA_TIPOS[uso].includes(tipo)) {
-    return uso === "foto" ? "A foto de perfil tem que ser JPG ou PNG." : "A mídia do story tem que ser JPG, PNG, MP4 ou MOV.";
-  }
-  const max = tipo.startsWith("image/") ? MIDIA_MAX_IMAGEM : MIDIA_MAX_VIDEO;
-  if (!Number.isFinite(size) || size <= 0) return "Arquivo vazio.";
-  if (size > max) return `Arquivo grande demais (${(size / 1024 / 1024).toFixed(1)} MB). Máximo: ${max / 1024 / 1024} MB.`;
-  return null;
-}
-
-/** Caminho no bucket de uma mídia do usuário (o servidor escolhe o nome). */
-export function midiaPathRe(userId: string): RegExp {
-  const id = userId.replace(/[^0-9a-f-]/gi, "");
-  return new RegExp(`^emulador/${id}/[0-9a-f-]{36}\\.(jpg|png|mp4|mov)$`, "i");
-}
+/** Até quantos arquivos dá para marcar (mais de um = o agente sorteia na hora). */
+export const MIDIA_MAX_MARCADAS = 200;
 
 export interface StoryDados {
   link: string;
@@ -88,7 +67,8 @@ export interface StoryDados {
 
 export interface AtividadeInput {
   acoes: AtividadeAcao[];
-  midias: { foto?: string; story?: string };
+  /** Arquivos marcados de cada uso; o agente sorteia um deles. */
+  midias: { foto?: string[]; story?: string[] };
   story: StoryDados | null;
 }
 
@@ -129,34 +109,35 @@ export function parseStoryDados(raw: unknown): { value: StoryDados } | { error: 
   return { value: { link, texto, destaque } };
 }
 
-/** Corpo do POST /api/emulador/atividades → o que vai criptografado na fila. */
-export function parseAtividadeInput(body: Record<string, unknown>, userId: string): { value: AtividadeInput } | { error: string } {
+/** Marcadas de um uso: só arquivos que o agente listou, do tipo certo, sem repetir. */
+export function parseMarcadas(raw: unknown, uso: MidiaUso, files: readonly MediaFile[]): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  const aceitos = new Set(files.filter((f) => MIDIA_TIPOS[uso].includes(f.tipo)).map((f) => f.path));
+  const out = [...new Set(raw.filter((p): p is string => typeof p === "string" && aceitos.has(p)))];
+  return out.length > 0 && out.length <= MIDIA_MAX_MARCADAS && out.length === raw.length ? out : null;
+}
+
+/** Corpo do POST /api/emulador/atividades → o que vai criptografado na fila. `files` = mídias que o agente do PC listou. */
+export function parseAtividadeInput(body: Record<string, unknown>, files: readonly MediaFile[]): { value: AtividadeInput } | { error: string } {
   const acoes = parseAcoes(body.acoes);
   if (acoes.length === 0) return { error: "Marque pelo menos uma coisa para fazer." };
 
-  const re = midiaPathRe(userId);
   const raw = body.midias && typeof body.midias === "object" ? (body.midias as Record<string, unknown>) : {};
   const midias: AtividadeInput["midias"] = {};
   if (acoes.includes("foto")) {
-    if (typeof raw.foto !== "string" || !re.test(raw.foto) || !/\.(jpg|png)$/i.test(raw.foto)) {
-      return { error: "Escolha a foto de perfil." };
-    }
-    midias.foto = raw.foto;
+    const foto = parseMarcadas(raw.foto, "foto", files);
+    if (!foto) return { error: "Escolha a foto de perfil na pasta do MuMu (JPG ou PNG)." };
+    midias.foto = foto;
   }
 
   let story: StoryDados | null = null;
   if (acoes.includes("story")) {
-    if (typeof raw.story !== "string" || !re.test(raw.story)) return { error: "Escolha a mídia do story." };
-    midias.story = raw.story;
+    const marcadas = parseMarcadas(raw.story, "story", files);
+    if (!marcadas) return { error: "Escolha a mídia do story na pasta do MuMu." };
+    midias.story = marcadas;
     const dados = parseStoryDados(body.story);
     if ("error" in dados) return dados;
     story = dados.value;
   }
   return { value: { acoes, midias, story } };
-}
-
-/** Caminhos das mídias de uma atividade (para apagar do bucket no fim). */
-export function midiaPaths(input: Partial<AtividadeInput> | null | undefined): string[] {
-  const m = input?.midias;
-  return [m?.foto, m?.story].filter((p): p is string => typeof p === "string" && p.startsWith("emulador/"));
 }

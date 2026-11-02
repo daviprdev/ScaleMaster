@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseAcoes } from "./atividade";
 import { parseJobPrompt, parseJobSteps, type EmulatorJob, type JobStatus } from "./jobs";
-import { isOnline, parseInstances, parseTasks } from "./payload";
+import { isOnline, parseInstances, parseMedia, parseTasks } from "./payload";
 import type { CommandAction, CommandStatus, EmuladorResponse, EmulatorAgent, EmulatorCommand } from "./types";
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -17,6 +17,8 @@ interface AgentRow {
   mumu_error: string | null;
   instances: unknown;
   tasks: unknown;
+  /** Só existe depois de supabase/emulador_atividade.sql (versão com a coluna media). */
+  media?: unknown;
   last_seen_at: string | null;
   created_at: string;
 }
@@ -45,6 +47,7 @@ export function toAgent(row: AgentRow, now = Date.now()): EmulatorAgent {
     mumuError: row.mumu_error,
     instances: parseInstances(row.instances),
     tasks: parseTasks(row.tasks),
+    media: parseMedia(row.media),
     createdAt: row.created_at,
   };
 }
@@ -112,12 +115,11 @@ function toJob(row: JobRow): EmulatorJob {
 export async function loadEmulador(admin: SupabaseClient, userId: string): Promise<EmuladorResponse> {
   const since = new Date(Date.now() - DAY_MS).toISOString();
   const jobColumns = "id, agent_id, kind, label, template_index, instance_index, steps, status, error, prompt, created_at, updated_at";
-  const [agentsRes, commandsRes, jobsResFull] = await Promise.all([
-    admin
-      .from("emulator_agents")
-      .select("id, hostname, agent_version, mumu_version, mumu_error, instances, tasks, last_seen_at, created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true }),
+  const agentColumns = "id, hostname, agent_version, mumu_version, mumu_error, instances, tasks, last_seen_at, created_at";
+  const agentsQuery = (columns: string) =>
+    admin.from("emulator_agents").select(columns).eq("user_id", userId).order("created_at", { ascending: true });
+  const [agentsResFull, commandsRes, jobsResFull] = await Promise.all([
+    agentsQuery(`${agentColumns}, media`),
     admin
       .from("emulator_commands")
       .select("id, agent_id, instance_index, action, task, status, error, result, created_at, finished_at")
@@ -132,8 +134,11 @@ export async function loadEmulador(admin: SupabaseClient, userId: string): Promi
       .order("created_at", { ascending: false })
       .limit(100),
   ]);
-  // Sem a coluna acoes (emulador_atividade.sql ainda não aplicado): lê sem ela e a Atividade fica escondida.
-  const atividadeAvailable = !isMissingSchemaError(jobsResFull.error);
+  // Sem a coluna media (versão nova de emulador_atividade.sql ainda não aplicada): lê sem ela.
+  const mediaAvailable = !isMissingSchemaError(agentsResFull.error);
+  const agentsRes = mediaAvailable ? agentsResFull : await agentsQuery(agentColumns);
+  // Sem a coluna acoes (emulador_atividade.sql ainda não aplicado): lê sem ela e o Estruturar fica escondido.
+  const atividadeAvailable = !isMissingSchemaError(jobsResFull.error) && mediaAvailable;
   const jobsRes = atividadeAvailable
     ? jobsResFull
     : await admin
@@ -154,7 +159,7 @@ export async function loadEmulador(admin: SupabaseClient, userId: string): Promi
   const now = Date.now();
   return {
     available: true,
-    agents: ((agentsRes.data ?? []) as AgentRow[]).map((row) => toAgent(row, now)),
+    agents: ((agentsRes.data ?? []) as unknown as AgentRow[]).map((row) => toAgent(row, now)),
     commands: ((commandsRes.data ?? []) as CommandRow[]).map(toCommand),
     jobsAvailable,
     atividadeAvailable: jobsAvailable && atividadeAvailable,

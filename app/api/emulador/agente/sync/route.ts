@@ -7,6 +7,7 @@ import { syncJobs, type SyncJobsResult } from "@/lib/emulador/sync-jobs";
 import {
   QUEUED_COMMAND_TTL_MS,
   parseInstances,
+  parseMedia,
   parseResults,
   parseRunning,
   parseTasks,
@@ -70,18 +71,23 @@ export async function POST(req: NextRequest) {
   const nowMs = Date.now();
   const now = new Date(nowMs).toISOString();
 
-  const { error: updateErr } = await admin
-    .from("emulator_agents")
-    .update({
-      hostname: shortText(body.hostname, 100),
-      agent_version: shortText(body.agentVersion, 20),
-      mumu_version: shortText(body.mumuVersion, 40),
-      mumu_error: shortText(body.mumuError, 300),
-      instances: parseInstances(body.instances),
-      tasks: parseTasks(body.tasks),
-      last_seen_at: now,
-    })
-    .eq("id", agent.id);
+  const retrato = {
+    hostname: shortText(body.hostname, 100),
+    agent_version: shortText(body.agentVersion, 20),
+    mumu_version: shortText(body.mumuVersion, 40),
+    mumu_error: shortText(body.mumuError, 300),
+    instances: parseInstances(body.instances),
+    tasks: parseTasks(body.tasks),
+    last_seen_at: now,
+  };
+  // media (pasta do MuMu) só vem quando mudou; sem a coluna (SQL não aplicado), grava o resto.
+  let { error: updateErr } =
+    body.media !== undefined
+      ? await admin.from("emulator_agents").update({ ...retrato, media: parseMedia(body.media) }).eq("id", agent.id)
+      : await admin.from("emulator_agents").update(retrato).eq("id", agent.id);
+  if (isMissingSchemaError(updateErr)) {
+    ({ error: updateErr } = await admin.from("emulator_agents").update(retrato).eq("id", agent.id));
+  }
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
 
   const results = parseResults(body.results);

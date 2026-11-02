@@ -4,7 +4,6 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt, encrypt } from "@/lib/encrypt";
 import { editableFrom, mergeEdit, stepsAfterEdit } from "@/lib/emulador/editar-conta";
 import { parseJobSteps, type NovaContaInput } from "@/lib/emulador/jobs";
-import { removerMidias } from "@/lib/emulador/sync-jobs";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -98,7 +97,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // DELETE — tira a conta da lista (e da fila, se ainda não começou). A
 // instância criada no MuMu fica lá; apagar instância é com o dono no MuMu.
-// Atividade removida leva junto as mídias dela no bucket.
 export async function DELETE(_req: NextRequest, { params }: Params) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
@@ -116,12 +114,11 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     .eq("id", id)
     .eq("user_id", user.id)
     .neq("status", "running")
-    .select("kind, input_enc");
+    .select("id");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data?.length) {
     return NextResponse.json({ error: "Conta não encontrada ou rodando agora (espere terminar ou falhar)." }, { status: 409 });
   }
-  await removerMidias(admin, data as Array<{ kind: string; input_enc: string }>);
   return NextResponse.json({ ok: true });
 }

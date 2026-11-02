@@ -1,19 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { FileImage, FolderOpen, ImageIcon } from "lucide-react";
 import { Banner, Button, Checkbox, Dialog, Input } from "@/components/ui";
-import { createClient } from "@/lib/supabase/client";
 import {
   ATIVIDADE_ACOES,
   DESTAQUE_MAX,
-  MIDIA_BUCKET,
   MIDIA_TIPOS,
   STICKER_MAX,
-  erroDaMidia,
-  normalizarTipo,
   parseStoryDados,
   type AtividadeAcao,
+  type MediaFile,
   type MidiaUso,
 } from "@/lib/emulador/atividade";
 import type { EmulatorAgent, EmulatorInstance } from "@/lib/emulador/types";
@@ -22,19 +18,7 @@ export type AtividadeTarget = { agent: EmulatorAgent; instance: EmulatorInstance
 
 type Passo = "acoes" | "midias" | "story";
 
-/** Mídia escolhida: o arquivo e, se veio de uma pasta, de quantos foi sorteado. */
-interface Escolha {
-  file: File;
-  daPasta: number | null;
-}
-
 const ROTULO: Record<MidiaUso, string> = { foto: "Foto de perfil", story: "Mídia do story" };
-
-function tipoDe(file: File): string {
-  if (file.type) return normalizarTipo(file.type);
-  const ext = file.name.toLowerCase().split(".").pop();
-  return { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", mp4: "video/mp4", mov: "video/quicktime" }[ext ?? ""] ?? "";
-}
 
 function tamanho(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -43,37 +27,38 @@ function tamanho(bytes: number): string {
 interface AtividadeDialogProps {
   target: AtividadeTarget;
   onClose: () => void;
-  /** Atividade na fila (a lista recarrega). */
+  /** Estruturar na fila (a lista recarrega). */
   onSaved: () => void;
 }
 
 /**
- * Atividade numa instância que já tem conta, em até três passos: o que fazer;
- * as mídias (arquivo ou pasta — da pasta sai uma sorteada); link, texto do
- * sticker e nome do destaque. Ao iniciar, as mídias sobem direto ao Storage e
- * a atividade entra na fila do PC.
+ * Estruturar numa instância que já tem conta, em até três passos: o que fazer;
+ * as mídias, marcadas da pasta do MuMu no PC (que o agente lista — mais de uma
+ * marcada, ou a pasta inteira, e ele sorteia na hora); link, texto do sticker e
+ * nome do destaque. Nada sobe para a internet: o agente copia direto do PC.
  */
 export function AtividadeDialog({ target, onClose, onSaved }: AtividadeDialogProps) {
   const [passo, setPasso] = React.useState<Passo>("acoes");
   const [acoes, setAcoes] = React.useState<ReadonlySet<AtividadeAcao>>(new Set(["aquecer"]));
-  const [midias, setMidias] = React.useState<Partial<Record<MidiaUso, Escolha>>>({});
+  const [midias, setMidias] = React.useState<Record<MidiaUso, ReadonlySet<string>>>({ foto: new Set(), story: new Set() });
   const [story, setStory] = React.useState({ link: "", texto: "", destaque: "" });
-  const [saving, setSaving] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!target) return;
     setPasso("acoes");
     setAcoes(new Set(["aquecer"]));
-    setMidias({});
+    setMidias({ foto: new Set(), story: new Set() });
     setStory({ link: "", texto: "", destaque: "" });
-    setSaving(null);
+    setSaving(false);
     setError(null);
   }, [target]);
 
   const usos: MidiaUso[] = (["foto", "story"] as const).filter((u) => acoes.has(u));
   const passos: Passo[] = ["acoes", ...(usos.length ? (["midias"] as const) : []), ...(acoes.has("story") ? (["story"] as const) : [])];
   const ultimo = passos[passos.length - 1] === passo;
+  const media = target?.agent.media ?? { root: null, files: [] };
 
   const alternar = (acao: AtividadeAcao) =>
     setAcoes((atual) => {
@@ -83,28 +68,12 @@ export function AtividadeDialog({ target, onClose, onSaved }: AtividadeDialogPro
       return next;
     });
 
-  const escolher = (uso: MidiaUso, files: FileList | null, pasta: boolean) => {
-    setError(null);
-    const lista = Array.from(files ?? []).filter((f) => MIDIA_TIPOS[uso].includes(tipoDe(f)));
-    if (lista.length === 0) {
-      setError(pasta ? `Essa pasta não tem ${uso === "foto" ? "JPG ou PNG" : "JPG, PNG, MP4 ou MOV"}.` : erroDaMidia(uso, "", 0));
-      return;
-    }
-    const file = lista[Math.floor(Math.random() * lista.length)];
-    const erro = erroDaMidia(uso, tipoDe(file), file.size);
-    if (erro) {
-      setError(pasta ? `${file.name}: ${erro}` : erro);
-      return;
-    }
-    setMidias((m) => ({ ...m, [uso]: { file, daPasta: pasta ? lista.length : null } }));
-  };
-
   const avancar = () => {
     setError(null);
     if (passo === "acoes" && acoes.size === 0) return setError("Marque pelo menos uma coisa para fazer.");
     if (passo === "midias") {
-      const falta = usos.find((u) => !midias[u]);
-      if (falta) return setError(`Escolha a ${ROTULO[falta].toLowerCase()}.`);
+      const falta = usos.find((u) => midias[u].size === 0);
+      if (falta) return setError(`Marque a ${ROTULO[falta].toLowerCase()}.`);
     }
     if (passo === "story") {
       const dados = parseStoryDados(story);
@@ -114,34 +83,11 @@ export function AtividadeDialog({ target, onClose, onSaved }: AtividadeDialogPro
     void iniciar();
   };
 
-  const subir = async (uso: MidiaUso, escolha: Escolha): Promise<string> => {
-    const type = tipoDe(escolha.file);
-    const res = await fetch("/api/emulador/atividades/midia", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uso, type, size: escolha.file.size }),
-    });
-    const sign = (await res.json().catch(() => null)) as { path?: string; token?: string; error?: string } | null;
-    if (!res.ok || !sign?.path || !sign.token) throw new Error(sign?.error ?? "Não foi possível preparar o envio da mídia.");
-    const { error: upErr } = await createClient()
-      .storage.from(MIDIA_BUCKET)
-      .uploadToSignedUrl(sign.path, sign.token, escolha.file, { contentType: type });
-    if (upErr) throw new Error(`Falha no envio de ${escolha.file.name}: ${upErr.message}`);
-    return sign.path;
-  };
-
   const iniciar = async () => {
     if (!target) return;
     setError(null);
+    setSaving(true);
     try {
-      const caminhos: Partial<Record<MidiaUso, string>> = {};
-      for (const uso of usos) {
-        const escolha = midias[uso];
-        if (!escolha) continue;
-        setSaving(`Enviando ${ROTULO[uso].toLowerCase()}…`);
-        caminhos[uso] = await subir(uso, escolha);
-      }
-      setSaving("Pondo na fila…");
       const res = await fetch("/api/emulador/atividades", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -149,7 +95,7 @@ export function AtividadeDialog({ target, onClose, onSaved }: AtividadeDialogPro
           agentId: target.agent.id,
           instanceIndex: target.instance.index,
           acoes: [...acoes],
-          midias: caminhos,
+          midias: Object.fromEntries(usos.map((u) => [u, [...midias[u]]])),
           story: acoes.has("story") ? story : undefined,
         }),
       });
@@ -160,19 +106,19 @@ export function AtividadeDialog({ target, onClose, onSaved }: AtividadeDialogPro
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setSaving(null);
+      setSaving(false);
     }
   };
 
   const titulo = { acoes: "Estruturar", midias: "Mídias", story: "Link e legenda" }[passo];
   const descricao = {
     acoes: target ? `Na instância #${target.instance.index} (${target.instance.name}). Ela liga, conecta a proxy do NekoBox, faz o que você marcar e desliga.` : undefined,
-    midias: "Escolha um arquivo, ou uma pasta para sortear um deles.",
+    midias: `Da pasta do MuMu no PC${media.root ? ` (${media.root})` : ""}. Marque uma, ou várias (ou a pasta inteira) para sortear uma na hora.`,
     story: "Sem acento nem emoji: o agente digita pelo teclado do Android.",
   }[passo];
 
   return (
-    <Dialog open={!!target} onClose={onClose} preventClose={!!saving} title={titulo} description={descricao} className="max-w-lg">
+    <Dialog open={!!target} onClose={onClose} preventClose={saving} title={titulo} description={descricao} className="max-w-lg">
       <form
         className="flex flex-col gap-4"
         onSubmit={(e) => {
@@ -195,7 +141,14 @@ export function AtividadeDialog({ target, onClose, onSaved }: AtividadeDialogPro
 
         {passo === "midias" &&
           usos.map((uso) => (
-            <MidiaPicker key={uso} uso={uso} escolha={midias[uso]} onPick={(files, pasta) => escolher(uso, files, pasta)} />
+            <MidiaLista
+              key={uso}
+              uso={uso}
+              root={media.root}
+              files={media.files.filter((f) => MIDIA_TIPOS[uso].includes(f.tipo))}
+              marcadas={midias[uso]}
+              onChange={(next) => setMidias((m) => ({ ...m, [uso]: next }))}
+            />
           ))}
 
         {passo === "story" && (
@@ -230,16 +183,15 @@ export function AtividadeDialog({ target, onClose, onSaved }: AtividadeDialogPro
         )}
 
         <div className="flex items-center justify-end gap-2">
-          {saving && <span className="mr-auto text-xs text-ink-2">{saving}</span>}
           <Button
             type="button"
             variant="secondary"
-            disabled={!!saving}
+            disabled={saving}
             onClick={() => (passo === "acoes" ? onClose() : setPasso(passos[passos.indexOf(passo) - 1]))}
           >
             {passo === "acoes" ? "Cancelar" : "Voltar"}
           </Button>
-          <Button type="submit" loading={!!saving} disabled={passo === "acoes" && acoes.size === 0}>
+          <Button type="submit" loading={saving} disabled={passo === "acoes" && acoes.size === 0}>
             {ultimo ? "Iniciar" : "Seguinte"}
           </Button>
         </div>
@@ -248,67 +200,80 @@ export function AtividadeDialog({ target, onClose, onSaved }: AtividadeDialogPro
   );
 }
 
-/** Uma mídia: escolher arquivo ou pasta, e o que ficou escolhido. */
-function MidiaPicker({
+/** Mídias de um uso, por pasta: marcar a pasta marca todos os arquivos dela. */
+function MidiaLista({
   uso,
-  escolha,
-  onPick,
+  root,
+  files,
+  marcadas,
+  onChange,
 }: {
   uso: MidiaUso;
-  escolha: Escolha | undefined;
-  onPick: (files: FileList | null, pasta: boolean) => void;
+  root: string | null;
+  files: readonly MediaFile[];
+  marcadas: ReadonlySet<string>;
+  onChange: (next: ReadonlySet<string>) => void;
 }) {
-  const arquivo = React.useRef<HTMLInputElement>(null);
-  const pasta = React.useRef<HTMLInputElement>(null);
-  const aceita = MIDIA_TIPOS[uso].join(",");
+  const pastas = React.useMemo(() => {
+    const porPasta = new Map<string, MediaFile[]>();
+    for (const f of files) {
+      const pasta = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
+      porPasta.set(pasta, [...(porPasta.get(pasta) ?? []), f]);
+    }
+    return [...porPasta.entries()];
+  }, [files]);
 
-  React.useEffect(() => {
-    // webkitdirectory não está nos tipos do React: liga direto no elemento.
-    pasta.current?.setAttribute("webkitdirectory", "");
-  }, []);
+  const trocar = (paths: string[], marcar: boolean) => {
+    const next = new Set(marcadas);
+    for (const p of paths) {
+      if (marcar) next.add(p);
+      else next.delete(p);
+    }
+    onChange(next);
+  };
 
   return (
     <div className="rounded-lg border border-line p-3">
       <p className="text-[13px] font-medium text-ink">{ROTULO[uso]}</p>
-      <p className="text-xs text-ink-2">{uso === "foto" ? "JPG ou PNG." : "JPG, PNG, MP4 ou MOV."}</p>
-      <div className="mt-2.5 flex flex-wrap gap-2">
-        <Button type="button" variant="secondary" size="sm" icon={<FileImage size={14} />} onClick={() => arquivo.current?.click()}>
-          Escolher arquivo
-        </Button>
-        <Button type="button" variant="secondary" size="sm" icon={<FolderOpen size={14} />} onClick={() => pasta.current?.click()}>
-          Escolher pasta
-        </Button>
-      </div>
-      {escolha && (
-        <p className="mt-2.5 flex items-center gap-1.5 text-xs text-ink">
-          <ImageIcon size={13} className="shrink-0 text-ink-3" />
-          <span className="truncate">{escolha.file.name}</span>
-          <span className="shrink-0 text-ink-3">
-            · {tamanho(escolha.file.size)}
-            {escolha.daPasta !== null && ` · sorteada entre ${escolha.daPasta}`}
-          </span>
+      <p className="text-xs text-ink-2">
+        {uso === "foto" ? "JPG ou PNG." : "JPG, PNG, MP4 ou MOV."}
+        {marcadas.size > 1 ? ` ${marcadas.size} marcadas: o agente sorteia uma.` : marcadas.size === 1 ? " 1 marcada." : ""}
+      </p>
+      {files.length === 0 ? (
+        <p className="mt-2.5 text-xs text-ink-2">
+          {root
+            ? `Nenhum arquivo assim em ${root}. Coloque lá e espere uns 30 s para o agente ver.`
+            : "O agente não achou a pasta do MuMu (Documentos\\MuMuSharedFolder) no PC."}
         </p>
+      ) : (
+        <div className="mt-2.5 flex max-h-56 flex-col gap-2 overflow-y-auto">
+          {pastas.map(([pasta, itens]) => {
+            const paths = itens.map((f) => f.path);
+            const todas = paths.every((p) => marcadas.has(p));
+            return (
+              <div key={pasta}>
+                <Checkbox
+                  label={`${pasta || "Pasta principal"} (pasta inteira, ${itens.length})`}
+                  checked={todas}
+                  onChange={() => trocar(paths, !todas)}
+                />
+                <ul className="mt-1 flex flex-col gap-1 pl-6">
+                  {itens.map((f) => (
+                    <li key={f.path} className="flex items-center gap-2">
+                      <Checkbox
+                        label={f.path.slice(f.path.lastIndexOf("/") + 1)}
+                        checked={marcadas.has(f.path)}
+                        onChange={() => trocar([f.path], !marcadas.has(f.path))}
+                      />
+                      <span className="text-xs text-ink-3">{tamanho(f.size)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
       )}
-      <input
-        ref={arquivo}
-        type="file"
-        accept={aceita}
-        className="hidden"
-        onChange={(e) => {
-          onPick(e.target.files, false);
-          e.target.value = "";
-        }}
-      />
-      <input
-        ref={pasta}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          onPick(e.target.files, true);
-          e.target.value = "";
-        }}
-      />
     </div>
   );
 }

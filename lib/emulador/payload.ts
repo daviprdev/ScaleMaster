@@ -1,4 +1,4 @@
-import type { EmulatorInstance, EmulatorTask, InstanceState } from "./types";
+import type { AgentMedia, EmulatorInstance, EmulatorTask, InstanceState } from "./types";
 
 /**
  * Leitura defensiva do que o agente manda em /api/emulador/agente/sync. O
@@ -130,4 +130,24 @@ export function parseResults(raw: unknown): CommandResult[] {
 export function parseRunning(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((id): id is string => typeof id === "string" && UUID_RE.test(id)).slice(0, 100);
+}
+
+const MAX_MEDIA = 500;
+/** Caminho relativo seguro: sem subir de pasta, sem disco nem barra no começo. */
+const MEDIA_PATH_RE = /^(?!.*(^|\/)\.\.(\/|$))[^\:*?"<>|]{1,300}$/;
+
+/** Mídias da pasta do MuMu que o agente listou (root = a pasta no PC, só para mostrar). */
+export function parseMedia(raw: unknown): AgentMedia {
+  const r = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const files: AgentMedia["files"] = [];
+  const seen = new Set<string>();
+  for (const item of Array.isArray(r.files) ? r.files.slice(0, MAX_MEDIA) : []) {
+    if (!item || typeof item !== "object") continue;
+    const f = item as Record<string, unknown>;
+    if (typeof f.path !== "string" || !MEDIA_PATH_RE.test(f.path) || f.path.startsWith("/") || seen.has(f.path)) continue;
+    if (f.tipo !== "imagem" && f.tipo !== "video") continue;
+    seen.add(f.path);
+    files.push({ path: f.path, size: typeof f.size === "number" && f.size >= 0 ? Math.round(f.size) : 0, tipo: f.tipo });
+  }
+  return { root: shortText(r.root, 300), files };
 }

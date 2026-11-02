@@ -2,18 +2,23 @@ import { describe, it, expect } from "vitest";
 import {
   ATIVIDADE_FLUXO,
   atividadeSteps,
-  erroDaMidia,
-  extensaoDoTipo,
-  midiaPaths,
   parseAcoes,
   parseAtividadeInput,
+  parseMarcadas,
   parseStoryDados,
+  type MediaFile,
 } from "../lib/emulador/atividade";
 import { busyInstances, canEditJob, linkedJobs, type EmulatorJob } from "../lib/emulador/jobs";
+import { parseMedia } from "../lib/emulador/payload";
 
-const USER = "11111111-2222-4333-8444-555555555555";
-const FOTO = `emulador/${USER}/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jpg`;
-const VIDEO = `emulador/${USER}/aaaaaaaa-bbbb-4ccc-8ddd-ffffffffffff.mp4`;
+const FOTO = "Camera/PERFIL 01.jpg";
+const FOTO2 = "Camera/PERFIL 03.jpg";
+const VIDEO = "Camera/CTA 01.mp4";
+const FILES: MediaFile[] = [
+  { path: VIDEO, size: 2_697_912, tipo: "video" },
+  { path: FOTO, size: 85_617, tipo: "imagem" },
+  { path: FOTO2, size: 102_589, tipo: "imagem" },
+];
 const STORY = { link: "meusite.com/oferta?x=1", texto: "Clique aqui", destaque: "Links" };
 
 describe("atividade: o que marcar e as etapas", () => {
@@ -29,19 +34,35 @@ describe("atividade: o que marcar e as etapas", () => {
   });
 });
 
-describe("atividade: mídias", () => {
-  it("foto só JPG/PNG; story aceita vídeo; limites de tamanho", () => {
-    expect(erroDaMidia("foto", "image/jpg", 1000)).toBeNull();
-    expect(erroDaMidia("foto", "video/mp4", 1000)).toMatch(/JPG ou PNG/);
-    expect(erroDaMidia("story", "video/quicktime", 50 * 1024 * 1024)).toBeNull();
-    expect(erroDaMidia("story", "image/png", 9 * 1024 * 1024)).toMatch(/Máximo: 8 MB/);
-    expect(erroDaMidia("story", "video/mp4", 0)).toBe("Arquivo vazio.");
+describe("atividade: mídias da pasta do MuMu", () => {
+  it("lista do agente: só caminho relativo seguro, foto ou vídeo, sem repetir", () => {
+    const m = parseMedia({
+      root: " C:/Users/x/MuMuSharedFolder ",
+      files: [
+        { path: FOTO, size: 10, tipo: "imagem" },
+        { path: FOTO, size: 10, tipo: "imagem" },
+        { path: "../config.json", size: 1, tipo: "imagem" },
+        { path: "C:/Windows/x.jpg", size: 1, tipo: "imagem" },
+        { path: "/etc/x.jpg", size: 1, tipo: "imagem" },
+        { path: "Download/app.apk", size: 1, tipo: "apk" },
+        { path: VIDEO, size: -5, tipo: "video" },
+      ],
+    });
+    expect(m.root).toBe("C:/Users/x/MuMuSharedFolder");
+    expect(m.files).toEqual([
+      { path: FOTO, size: 10, tipo: "imagem" },
+      { path: VIDEO, size: 0, tipo: "video" },
+    ]);
+    expect(parseMedia(null)).toEqual({ root: null, files: [] });
   });
 
-  it("extensão sai do tipo", () => {
-    expect(extensaoDoTipo("image/jpg")).toBe(".jpg");
-    expect(extensaoDoTipo("image/png")).toBe(".png");
-    expect(extensaoDoTipo("video/quicktime")).toBe(".mov");
+  it("marcadas: foto só imagem; story aceita vídeo; arquivo fora da lista derruba tudo", () => {
+    expect(parseMarcadas([FOTO, FOTO2], "foto", FILES)).toEqual([FOTO, FOTO2]);
+    expect(parseMarcadas([VIDEO], "foto", FILES)).toBeNull();
+    expect(parseMarcadas([VIDEO, FOTO], "story", FILES)).toEqual([VIDEO, FOTO]);
+    expect(parseMarcadas([FOTO, "Camera/outra.jpg"], "foto", FILES)).toBeNull();
+    expect(parseMarcadas([], "foto", FILES)).toBeNull();
+    expect(parseMarcadas(FOTO, "foto", FILES)).toBeNull();
   });
 });
 
@@ -63,31 +84,32 @@ describe("atividade: link e textos do story", () => {
 
 describe("atividade: corpo do POST", () => {
   it("aquecer sozinho não pede mídia nem link", () => {
-    expect(parseAtividadeInput({ acoes: ["aquecer"] }, USER)).toEqual({ value: { acoes: ["aquecer"], midias: {}, story: null } });
+    expect(parseAtividadeInput({ acoes: ["aquecer"] }, FILES)).toEqual({ value: { acoes: ["aquecer"], midias: {}, story: null } });
   });
 
-  it("foto e story exigem mídia do próprio usuário, com a extensão certa", () => {
-    const outro = FOTO.replace(USER, "99999999-2222-4333-8444-555555555555");
-    expect(parseAtividadeInput({ acoes: ["foto"], midias: { foto: outro } }, USER)).toEqual({ error: "Escolha a foto de perfil." });
-    expect(parseAtividadeInput({ acoes: ["foto"], midias: { foto: VIDEO } }, USER)).toEqual({ error: "Escolha a foto de perfil." });
-    expect(parseAtividadeInput({ acoes: ["story"], midias: {}, story: STORY }, USER)).toEqual({ error: "Escolha a mídia do story." });
-    expect(parseAtividadeInput({ acoes: ["story"], midias: { story: "../x.mp4" }, story: STORY }, USER)).toEqual({ error: "Escolha a mídia do story." });
+  it("foto e story exigem arquivo da pasta do MuMu, do tipo certo", () => {
+    expect(parseAtividadeInput({ acoes: ["foto"], midias: { foto: [VIDEO] } }, FILES)).toHaveProperty("error");
+    expect(parseAtividadeInput({ acoes: ["foto"], midias: {} }, FILES)).toHaveProperty("error");
+    expect(parseAtividadeInput({ acoes: ["story"], midias: {}, story: STORY }, FILES)).toHaveProperty("error");
+    expect(parseAtividadeInput({ acoes: ["story"], midias: { story: ["../x.mp4"] }, story: STORY }, FILES)).toHaveProperty("error");
   });
 
   it("tudo marcado: guarda só o que foi pedido", () => {
-    const r = parseAtividadeInput({ acoes: ["aquecer", "foto", "story"], midias: { foto: FOTO, story: VIDEO, extra: "x" }, story: STORY }, USER);
+    const r = parseAtividadeInput(
+      { acoes: ["aquecer", "foto", "story"], midias: { foto: [FOTO, FOTO2], story: [VIDEO], extra: ["x"] }, story: STORY },
+      FILES
+    );
     expect(r).toEqual({
       value: {
         acoes: ["aquecer", "foto", "story"],
-        midias: { foto: FOTO, story: VIDEO },
+        midias: { foto: [FOTO, FOTO2], story: [VIDEO] },
         story: { link: "https://meusite.com/oferta?x=1", texto: "Clique aqui", destaque: "Links" },
       },
     });
-    if ("value" in r) expect(midiaPaths(r.value)).toEqual([FOTO, VIDEO]);
   });
 
   it("nada marcado é erro", () => {
-    expect(parseAtividadeInput({ acoes: [] }, USER)).toHaveProperty("error");
+    expect(parseAtividadeInput({ acoes: [] }, FILES)).toHaveProperty("error");
   });
 });
 

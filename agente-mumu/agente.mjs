@@ -33,13 +33,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Dispositivo } from "./lib/adb.mjs";
 import { alertaDe } from "./lib/alertas.mjs";
+import { listarMidias, pastaDeMidias } from "./lib/midias.mjs";
 import { MuMu } from "./lib/mumu.mjs";
 import { esperar } from "./lib/processo.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.6.3";
+const VERSAO = "1.7.0";
 /** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
 const PASTA = path.dirname(fileURLToPath(import.meta.url));
@@ -319,6 +320,10 @@ async function rodarAgente() {
   let erroLocalizar = null;
   let proximaBusca = 0;
   let online = false;
+  let midias = { root: null, files: [] };
+  let proximaLeituraMidias = 0;
+  let midiasEnviadas = "";
+  let reenviarMidias = 0;
 
   log(`Agente ${VERSAO} iniciado (${os.hostname()}) → ${url}`);
 
@@ -348,6 +353,15 @@ async function rodarAgente() {
       }
     }
 
+    // Mídias da pasta do MuMu: relê a cada 30 s e só manda quando mudou (ou a cada 5 min).
+    if (Date.now() >= proximaLeituraMidias) {
+      proximaLeituraMidias = Date.now() + 30_000;
+      const raiz = await pastaDeMidias().catch(() => null);
+      midias = { root: raiz, files: raiz ? listarMidias(raiz) : [] };
+    }
+    const textoMidias = JSON.stringify(midias);
+    const mandarMidias = textoMidias !== midiasEnviadas || Date.now() >= reenviarMidias;
+
     const enviando = resultados;
     resultados = [];
     const enviandoAndamentos = [...andamentos.values()];
@@ -363,6 +377,7 @@ async function rodarAgente() {
       running: [...emAndamento],
       jobUpdates: enviandoAndamentos,
       runningJobs: [...contasEmAndamento],
+      ...(mandarMidias ? { media: midias } : {}),
     };
 
     let espera = INTERVALO_MS;
@@ -385,6 +400,10 @@ async function rodarAgente() {
         espera = res.status === 503 ? ESPERA_SQL_MS : ESPERA_SEM_REDE_MS;
         logSemRepetir(`SaaS respondeu ${res.status}: ${resposta.error ?? "sem mensagem"}`);
       } else {
+        if (mandarMidias) {
+          midiasEnviadas = textoMidias;
+          reenviarMidias = Date.now() + 5 * 60_000;
+        }
         if (!online) {
           online = true;
           ultimaLinha = "";

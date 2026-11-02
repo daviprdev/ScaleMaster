@@ -1,6 +1,5 @@
-import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { pastaDeMidias, resolverMidia } from "../lib/midias.mjs";
 import { esperar } from "../lib/processo.mjs";
 import { criarAjuda } from "./dono.mjs";
 import {
@@ -21,8 +20,9 @@ import { VERIFICADOS } from "./verificados.mjs";
  * Atividade (aba Emulador) numa instância que já tem conta: liga, conecta a
  * proxy do NekoBox ANTES de abrir o Instagram, faz o que o dono marcou e
  * desliga. input = { acoes: ["aquecer","foto","story"], midias: { foto?, story? }
- * (links assinados do SaaS), story: { link, texto, destaque } }. As chaves batem
- * com ATIVIDADE_FLUXO em lib/emulador/atividade.ts.
+ * (arquivos marcados na pasta do MuMu, caminho relativo; mais de um = sorteia),
+ * story: { link, texto, destaque } }. As chaves batem com ATIVIDADE_FLUXO em
+ * lib/emulador/atividade.ts.
  *
  * `sempre`: no Continuar a etapa roda de novo mesmo já feita (a instância pode
  * ter desligado e a proxy caído desde a última vez).
@@ -43,32 +43,24 @@ async function contexto({ dispositivo, perguntar, log }) {
 }
 
 /**
- * Baixa a mídia do SaaS e põe na galeria da instância. A pasta ScaleMaster fica
- * só com ela, então é a mais nova da galeria (a 1ª que o Instagram mostra). Na
- * /sdcard o Android já registra o arquivo na galeria sozinho (testado em 01/11).
+ * Sorteia uma das mídias marcadas na aba, da pasta do MuMu no PC, e copia para
+ * a galeria da instância. A pasta ScaleMaster fica só com ela, então é a mais
+ * nova da galeria (a 1ª que o Instagram mostra). Na /sdcard o Android já
+ * registra o arquivo na galeria sozinho (testado em 01/11).
  */
-async function midiaNaGaleria(d, midia, job, log) {
-  if (!midia?.url) throw new Error("A mídia não veio do SaaS. Remova a estruturação e inicie de novo.");
-  const ext = /^\.(jpg|png|mp4|mov)$/i.test(midia.ext ?? "") ? midia.ext.toLowerCase() : ".jpg";
-  const res = await fetch(midia.url, { signal: AbortSignal.timeout(300_000) });
-  if (!res.ok) throw new Error(`Não deu para baixar a mídia (HTTP ${res.status}). O link vale 2 h: clique em Continuar.`);
-  const dados = Buffer.from(await res.arrayBuffer());
-  const pasta = path.join(os.tmpdir(), "scalemaster-midias");
-  mkdirSync(pasta, { recursive: true });
-  const local = path.join(pasta, `${job.id}${ext}`);
-  writeFileSync(local, dados);
-  try {
-    await d.shell(`rm -rf ${PASTA_MIDIA}; mkdir -p ${PASTA_MIDIA}`);
-    await d.enviar(local, `${PASTA_MIDIA}/sm-${Date.now()}${ext}`);
-    await esperar(3000);
-    log(`mídia na galeria (${Math.round(dados.length / 1024)} KB)`);
-  } finally {
-    try {
-      unlinkSync(local);
-    } catch {
-      /* já foi */
-    }
+async function midiaNaGaleria(d, marcadas, log) {
+  if (!Array.isArray(marcadas) || marcadas.length === 0) {
+    throw new Error("A estruturação veio sem mídia. Remova e inicie de novo escolhendo da pasta do MuMu.");
   }
+  const raiz = await pastaDeMidias();
+  if (!raiz) throw new Error("Não achei a pasta do MuMu (Documentos\\MuMuSharedFolder) neste PC.");
+  const escolhida = marcadas[Math.floor(Math.random() * marcadas.length)];
+  const local = resolverMidia(raiz, escolhida);
+  await d.shell(`rm -rf ${PASTA_MIDIA}; mkdir -p ${PASTA_MIDIA}`);
+  await d.enviar(local, `${PASTA_MIDIA}/sm-${Date.now()}${path.extname(local).toLowerCase()}`);
+  await esperar(3000);
+  log(`mídia na galeria: ${escolhida}${marcadas.length > 1 ? ` (sorteada entre ${marcadas.length})` : ""}`);
+  return escolhida;
 }
 
 const ETAPAS = {
@@ -118,8 +110,8 @@ const ETAPAS = {
     rotulo: "Trocar a foto de perfil",
     async rodar(ctx) {
       const c = await contexto(ctx);
-      await midiaNaGaleria(c.d, ctx.input.midias?.foto, ctx.job, ctx.log);
-      return trocarFoto(c);
+      const escolhida = await midiaNaGaleria(c.d, ctx.input.midias?.foto, ctx.log);
+      return `${await trocarFoto(c)} (${path.basename(escolhida)})`;
     },
   },
   story: {
@@ -127,8 +119,8 @@ const ETAPAS = {
     rotulo: "Postar o story com link",
     async rodar(ctx) {
       const c = await contexto(ctx);
-      await midiaNaGaleria(c.d, ctx.input.midias?.story, ctx.job, ctx.log);
-      return postarStory(c, ctx.input.story ?? {});
+      const escolhida = await midiaNaGaleria(c.d, ctx.input.midias?.story, ctx.log);
+      return `${await postarStory(c, ctx.input.story ?? {})} (${path.basename(escolhida)})`;
     },
   },
   destaque: {

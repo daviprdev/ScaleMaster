@@ -1,5 +1,6 @@
 /** Aba Emulador: agente do MuMu no PC (agente-mumu/) ↔ SaaS. SQL em supabase/emulador_agente.sql. */
 
+import type { MediaFile } from "./atividade";
 import type { EmulatorJob } from "./jobs";
 
 /** off = desligada, starting = processo de pé e Android subindo, on = Android pronto. */
@@ -46,7 +47,15 @@ export interface EmulatorAgent {
   mumuError: string | null;
   instances: EmulatorInstance[];
   tasks: EmulatorTask[];
+  /** Fotos e vídeos da pasta do MuMu no PC (para o Estruturar). */
+  media: AgentMedia;
   createdAt: string;
+}
+
+/** Pasta de mídias do MuMu no PC: o caminho (só para mostrar) e os arquivos achados. */
+export interface AgentMedia {
+  root: string | null;
+  files: MediaFile[];
 }
 
 export interface EmuladorResponse {
