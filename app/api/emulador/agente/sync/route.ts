@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { agentTokenFromRequest, hashAgentToken } from "@/lib/emulador/token";
 import { parseJobUpdates } from "@/lib/emulador/jobs";
-import { syncJobs, syncRenames, type SyncJobsResult } from "@/lib/emulador/sync-jobs";
+import { syncDeletes, syncJobs, syncRenames, type SyncJobsResult } from "@/lib/emulador/sync-jobs";
 import {
   QUEUED_COMMAND_TTL_MS,
   parseInstances,
@@ -105,10 +105,10 @@ export async function POST(req: NextRequest) {
   );
   const resultErr = resultUpdates.find((r) => r.error)?.error;
   if (resultErr) return NextResponse.json({ error: resultErr.message }, { status: 500 });
-  // Só mantém os dados ligados à instância renomeada: falha aqui não trava o sync do PC.
-  await syncRenames(admin, agent.id, results.filter((r) => r.status === "done").map((r) => r.id)).catch((e: Error) =>
-    console.error(`[emulador/sync] renomear dados: ${e.message}`)
-  );
+  // Só mantém os dados ligados à instância renomeada (ou tira os da excluída): falha aqui não trava o sync do PC.
+  const doneIds = results.filter((r) => r.status === "done").map((r) => r.id);
+  await syncRenames(admin, agent.id, doneIds).catch((e: Error) => console.error(`[emulador/sync] renomear dados: ${e.message}`));
+  await syncDeletes(admin, agent.id, doneIds).catch((e: Error) => console.error(`[emulador/sync] excluir dados: ${e.message}`));
 
   const { data: activeData, error: activeErr } = await admin
     .from("emulator_commands")

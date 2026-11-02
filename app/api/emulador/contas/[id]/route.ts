@@ -113,7 +113,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 // DELETE — tira a conta da lista (e da fila, se ainda não começou). A
-// instância criada no MuMu fica lá; apagar instância é com o dono no MuMu.
+// instância criada no MuMu fica lá; apagar é o Excluir na linha da instância.
 export async function DELETE(_req: NextRequest, { params }: Params) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });

@@ -14,6 +14,7 @@
  *   node agente.mjs abrir-mumu          abre só a janela do MuMu (teste local)
  *   node agente.mjs abrir <n>           abre a instância n (teste local)
  *   node agente.mjs fechar <n>          fecha a instância n (teste local)
+ *   node agente.mjs excluir <n>         apaga a instância n do MuMu (teste local)
  *   node agente.mjs tarefa <nome> <n>   roda uma automação na instância n (teste local)
  *   node agente.mjs nova-conta <n> [json] roda Criar instância copiando a n (teste local)
  *
@@ -21,8 +22,8 @@
  * Atividade, até duas ao mesmo tempo, com o andamento etapa a etapa (jobUpdates/runningJobs).
  *
  * Sem dependências: só Node 18+. Segurança: o servidor só escolhe entre
- * abrir/fechar/automação conhecida, pelo número da instância; nada vindo dele
- * vira comando de terminal.
+ * abrir/fechar/renomear/excluir/automação conhecida, pelo número da instância
+ * (excluir confere o nome antes); nada vindo dele vira comando de terminal.
  */
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -32,7 +33,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Dispositivo } from "./lib/adb.mjs";
-import { alertaDe } from "./lib/alertas.mjs";
+import { alertaDe, limparAlerta } from "./lib/alertas.mjs";
 import { listarMidias, pastaDeMidias } from "./lib/midias.mjs";
 import { MuMu } from "./lib/mumu.mjs";
 import { esperar } from "./lib/processo.mjs";
@@ -40,7 +41,7 @@ import { TAREFAS } from "./tarefas/index.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.7.13";
+const VERSAO = "1.8.0";
 /** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
 const PASTA = path.dirname(fileURLToPath(import.meta.url));
@@ -170,6 +171,18 @@ async function executar(mumu, comando) {
     const nome = String(comando.params?.nome ?? "").replace(/[^\p{L}\p{N} ._-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 40);
     if (!nome) throw new Error("Nome inválido.");
     await mumu.renomear(index, nome);
+    return null;
+  }
+  if (comando.action === "delete") {
+    // Só apaga se o índice ainda é a instância que a aba mostrou: o MuMu reaproveita o índice na próxima cópia.
+    const atual = await mumu.instancia(index);
+    const esperado = String(comando.params?.nome ?? "");
+    if (!esperado || atual.name.trim().slice(0, 80) !== esperado) {
+      throw new Error(`A instância #${index} agora se chama "${atual.name}". Nada foi apagado.`);
+    }
+    await mumu.excluir(index, { log: (m) => log(`[excluir #${index}] ${m}`) });
+    limparAlerta(atual.criada);
+    log(`Instância #${index} (${atual.name}) apagada do MuMu.`);
     return null;
   }
   if (comando.action === "task") {
@@ -512,6 +525,12 @@ async function main(args) {
     const index = indice(args[1]);
     await executar(mumu, { action: cmd === "abrir" ? "launch" : "shutdown", instanceIndex: index });
     return console.log(`Instância ${index}: ${cmd === "abrir" ? "abrindo" : "fechando"}.`);
+  }
+  if (cmd === "excluir") {
+    const index = indice(args[1]);
+    const { name } = await mumu.instancia(index);
+    await executar(mumu, { action: "delete", instanceIndex: index, params: { nome: name } });
+    return console.log(`Instância ${index} (${name}) apagada.`);
   }
   if (cmd === "nova-conta") {
     // Teste local: node agente.mjs nova-conta <padrão> [arquivo.json com { proxy, conta }]

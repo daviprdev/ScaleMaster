@@ -37,6 +37,7 @@ node agente.mjs abrir-mumu
 node agente.mjs abrir 0
 node agente.mjs fechar 0
 node agente.mjs tarefa teste-adb 0
+node agente.mjs excluir 5        (apaga a instância 5 do MuMu, sem volta)
 ```
 
 ## Criar instância
@@ -63,6 +64,10 @@ As telas do Instagram logado ficam em `fluxos/instagram.mjs`. Tela desconhecida 
 
 **Instagram só pela proxy:** o Instagram só abre depois do teste da proxy; se a VPN do NekoBox cair no meio, o agente para o Instagram e encerra a etapa. Antes de desligar a instância (fim da estruturação, botão Fechar da aba, conta travada no telefone) o Instagram é forçado a parar e o agente espera 20 s para o Android gravar: app parado não acorda sozinho no boot. O "VPN sempre ativa + bloquear sem VPN" do Android foi testado e não faz efeito no MuMu.
 
+## Excluir instância
+
+A lixeira na linha de uma instância (fora a #0, e sem nada dela na fila ou rodando) pede confirmação e manda o agente apagar a instância do MuMu (`MuMuManager delete`), com tudo o que tem dentro. Ligada, ele desliga e espera o processo sair antes (desligando ainda, o MuMu recusa). Como o MuMu dá o índice apagado à próxima cópia, o agente só apaga se a instância ainda tiver o nome que a aba mostrou. Confirmado, a conta e as estruturações dela saem da aba (o Continuar delas rodaria na cópia nova) e o aviso de conta travada sai do `alertas.json`.
+
 ## Automações
 
 Cada automação é um arquivo em `tarefas/`, registrado em `tarefas/index.mjs`. Antes de rodar uma automação, o agente abre a instância, espera o Android e conecta o adb. A função `rodar(ctx)` recebe o aparelho pronto em `ctx.dispositivo` (ver `lib/adb.mjs`):
@@ -74,4 +79,4 @@ Cada automação é um arquivo em `tarefas/`, registrado em `tarefas/index.mjs`.
 
 Uma automação nova aparece na aba Emulador no próximo sync depois que o agente reinicia (`node agente.mjs parar` e abrir de novo).
 
-O servidor só escolhe entre abrir, fechar e uma automação desta pasta, sempre pelo número da instância. Nada que vem dele roda como comando de terminal.
+O servidor só escolhe entre abrir, fechar, renomear, excluir e uma automação desta pasta, sempre pelo número da instância. Nada que vem dele roda como comando de terminal.

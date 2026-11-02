@@ -21,7 +21,7 @@ export interface EmulatorTask {
   description: string | null;
 }
 
-export type CommandAction = "launch" | "shutdown" | "task" | "rename";
+export type CommandAction = "launch" | "shutdown" | "task" | "rename" | "delete";
 export type CommandStatus = "queued" | "running" | "done" | "error";
 
 export interface EmulatorCommand {

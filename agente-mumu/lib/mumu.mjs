@@ -8,6 +8,7 @@ import { esperar, rodar, trecho } from "./processo.mjs";
  *   main launch             → abre só a janela principal do MuMu
  *   control -v N launch     → liga a instância N (abre o MuMu se preciso)
  *   control -v N shutdown   → desliga
+ *   delete -v N             → apaga a instância com tudo dentro
  * O adb.exe usado nas automações é o que vem na mesma pasta.
  */
 
@@ -158,6 +159,33 @@ export class MuMu {
 
   async renomear(index, nome) {
     await this.json(["rename", "-v", String(index), "-n", nome], 60_000);
+  }
+
+  /**
+   * Apaga a instância (disco, apps e contas dentro dela). Ligada, desliga e
+   * espera o processo sair: ainda desligando, o MuMu recusa com errcode -103.
+   */
+  async excluir(index, { timeoutMs = 120_000, log = () => {} } = {}) {
+    let atual = await this.instancia(index);
+    if (atual.state !== "off") {
+      log(`desligando a instância ${index} antes de apagar`);
+      await this.fechar(index);
+    }
+    const limite = Date.now() + timeoutMs;
+    for (;;) {
+      if (atual.state === "off") {
+        try {
+          await this.json(["delete", "-v", String(index)], 300_000);
+          return;
+        } catch (e) {
+          if (Date.now() > limite) throw e;
+        }
+      } else if (Date.now() > limite) {
+        throw new Error(`A instância ${index} não terminou de desligar em ${Math.round(timeoutMs / 1000)} s.`);
+      }
+      await esperar(3000);
+      atual = await this.instancia(index);
+    }
   }
 
   /** Liga a instância (se preciso) e espera o Android ficar pronto com adb. */

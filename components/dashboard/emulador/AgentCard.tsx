@@ -1,8 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { Activity, AlertTriangle, AppWindow, FilePen, Loader2, Pencil, Play, Plus, Power, PowerOff, Smartphone, Unplug, UserPlus } from "lucide-react";
-import { Badge, Banner, Button, Card, Dialog, EmptyState, IconButton, Input, type BadgeTone } from "@/components/ui";
+import {
+  Activity,
+  AlertTriangle,
+  AppWindow,
+  FilePen,
+  Loader2,
+  Pencil,
+  Play,
+  Plus,
+  Power,
+  PowerOff,
+  Smartphone,
+  Trash2,
+  Unplug,
+  UserPlus,
+} from "lucide-react";
+import { Badge, Banner, Button, Card, ConfirmDialog, Dialog, EmptyState, IconButton, Input, type BadgeTone } from "@/components/ui";
 import { PC_INDEX } from "@/lib/emulador/payload";
 import { isRegistro, type EmulatorJob } from "@/lib/emulador/jobs";
 import type { CommandAction, EmulatorAgent, EmulatorCommand, EmulatorInstance, InstanceState } from "@/lib/emulador/types";
@@ -51,7 +66,7 @@ interface AgentCardProps {
   onRegister?: (agent: EmulatorAgent, instance: EmulatorInstance) => void;
   /** Criar conta numa instância que já existe e não tem conta ligada. */
   onCreateHere?: (agent: EmulatorAgent, instance: EmulatorInstance) => void;
-  /** Instâncias com algo na fila ou rodando (sem Criar conta aqui nem Atividade). */
+  /** Instâncias com algo na fila ou rodando (sem Criar conta aqui, Atividade nem Excluir). */
   queued?: ReadonlySet<number>;
   /** Abre a janela Atividade (aquecer, foto, story); ausente = SQL da atividade ainda não aplicado. */
   onAtividade?: (agent: EmulatorAgent, instance: EmulatorInstance) => void;
@@ -78,6 +93,7 @@ export function AgentCard({
 }: AgentCardProps) {
   const [taskFor, setTaskFor] = React.useState<EmulatorInstance | null>(null);
   const [renaming, setRenaming] = React.useState<EmulatorInstance | null>(null);
+  const [deleting, setDeleting] = React.useState<EmulatorInstance | null>(null);
   const [startedAt, setStartedAt] = React.useState<number | null>(null);
   const neverSeen = !agent.lastSeenAt;
   const starting = !agent.online && startedAt !== null && now - startedAt < START_WAIT_MS;
@@ -197,6 +213,7 @@ export function AgentCard({
                       onCreateHere && livre && (!conta || isRegistro(conta)) ? () => onCreateHere(agent, inst) : undefined
                     }
                     onAtividade={onAtividade && livre ? () => onAtividade(agent, inst) : undefined}
+                    onDelete={livre ? () => setDeleting(inst) : undefined}
                   />
                 );
               })}
@@ -237,6 +254,18 @@ export function AgentCard({
         instance={renaming}
         onClose={() => setRenaming(null)}
         onSave={(inst, nome) => onCommand(agent, inst.index, "rename", { params: { nome } })}
+      />
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => {
+          if (deleting) onCommand(agent, deleting.index, "delete");
+          setDeleting(null);
+        }}
+        title={deleting ? `Excluir ${deleting.name} (#${deleting.index})?` : "Excluir instância?"}
+        description="Apaga a instância do MuMu com tudo o que tem dentro (Instagram, apps e arquivos); ligada, o agente desliga antes. A conta e as estruturações dela saem da aba. A conta do Instagram em si não é apagada. Não dá para desfazer."
+        confirmLabel="Excluir"
       />
     </Card>
   );
@@ -304,6 +333,8 @@ interface InstanceRowProps {
   onCreateHere?: () => void;
   /** Abre a janela Estruturar desta instância. */
   onAtividade?: () => void;
+  /** Pede confirmação para apagar a instância do MuMu. */
+  onDelete?: () => void;
 }
 
 function InstanceRow({
@@ -319,6 +350,7 @@ function InstanceRow({
   onEditData,
   onCreateHere,
   onAtividade,
+  onDelete,
 }: InstanceRowProps) {
   const busy = sending || isActive(command);
   const disabled = busy || !agent.online;
@@ -383,6 +415,17 @@ function InstanceRow({
         >
           {off ? "Abrir" : "Fechar"}
         </Button>
+        {onDelete && (
+          <IconButton
+            size="sm"
+            icon={<Trash2 size={14} />}
+            aria-label={`Excluir ${instance.name}`}
+            title="Excluir instância"
+            disabled={disabled}
+            onClick={onDelete}
+            className="hover:text-danger"
+          />
+        )}
       </div>
     </li>
   );

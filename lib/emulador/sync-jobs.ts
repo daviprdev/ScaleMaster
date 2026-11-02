@@ -195,3 +195,43 @@ export async function syncRenames(admin: SupabaseClient, agentId: string, doneId
     }
   }
 }
+
+/**
+ * Excluir instância confirmado pelo agente (comandos `done` deste sync): a
+ * conta e as estruturações da instância apagada saem da aba. Se ficassem, o
+ * Continuar delas rodaria na próxima cópia, que o MuMu cria com o mesmo índice.
+ * Conta com outro nome na etapa "nome" é de uma instância mais antiga que teve
+ * esse índice e fica como está. Fila e rodando não chegam aqui (o pedido recusa).
+ */
+export async function syncDeletes(admin: SupabaseClient, agentId: string, doneIds: readonly string[]): Promise<void> {
+  if (doneIds.length === 0) return;
+  const { data: deletes, error } = await admin
+    .from("emulator_commands")
+    .select("instance_index, params")
+    .in("id", doneIds)
+    .eq("agent_id", agentId)
+    .eq("action", "delete");
+  if (error) throw new Error(error.message);
+
+  for (const cmd of (deletes ?? []) as Array<{ instance_index: number; params: Record<string, unknown> | null }>) {
+    const nome = cmd.params?.nome;
+    if (typeof nome !== "string") continue;
+    const { data: jobs, error: jobsErr } = await admin
+      .from("emulator_jobs")
+      .select("id, steps")
+      .eq("agent_id", agentId)
+      .eq("instance_index", cmd.instance_index)
+      .in("status", ["done", "error"]);
+    if (isMissingSchemaError(jobsErr)) return;
+    if (jobsErr) throw new Error(jobsErr.message);
+    const ids = ((jobs ?? []) as Array<{ id: string; steps: unknown }>)
+      .filter((job) => {
+        const dela = parseJobSteps(job.steps).find((s) => s.key === "nome")?.message;
+        return !dela || dela === nome;
+      })
+      .map((job) => job.id);
+    if (ids.length === 0) continue;
+    const { error: delErr } = await admin.from("emulator_jobs").delete().in("id", ids).in("status", ["done", "error"]);
+    if (delErr) throw new Error(delErr.message);
+  }
+}

@@ -8,7 +8,7 @@ import type { CommandAction } from "@/lib/emulador/types";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const ACTIONS: ReadonlySet<string> = new Set<CommandAction>(["launch", "shutdown", "task", "rename"]);
+const ACTIONS: ReadonlySet<string> = new Set<CommandAction>(["launch", "shutdown", "task", "rename", "delete"]);
 const MAX_PARAMS_JSON = 10_000;
 
 function plainParams(value: unknown): Record<string, unknown> | null {
@@ -19,8 +19,8 @@ function plainParams(value: unknown): Record<string, unknown> | null {
 }
 
 // POST — põe um comando na fila do agente: abrir o MuMu (instância PC_INDEX),
-// abrir/fechar/renomear uma instância ou rodar uma automação nela. O agente pega no
-// próximo sync (~3 s). Uma coisa por instância de cada vez.
+// abrir/fechar/renomear/excluir uma instância ou rodar uma automação nela. O agente
+// pega no próximo sync (~3 s). Uma coisa por instância de cada vez.
 export async function POST(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
@@ -79,6 +79,27 @@ export async function POST(req: NextRequest) {
     if (!instancia) return NextResponse.json({ error: "Essa instância não existe mais no MuMu." }, { status: 404 });
     // Quando o agente confirmar, os dados da instância passam deste nome para o novo (syncRenames).
     if (action === "rename") params.anterior = instancia.name;
+    if (action === "delete") {
+      if (instanceIndex === 0) {
+        return NextResponse.json({ error: "A #0 é a instância padrão das cópias: não dá para excluir por aqui." }, { status: 400 });
+      }
+      // O agente só apaga se o índice ainda tiver este nome (o MuMu reaproveita índices).
+      params.nome = instancia.name;
+      const { data: inUse, error: inUseErr } = await admin
+        .from("emulator_jobs")
+        .select("id")
+        .eq("agent_id", agent.id)
+        .in("status", ["queued", "running"])
+        .or(`instance_index.eq.${instanceIndex},template_index.eq.${instanceIndex}`)
+        .limit(1);
+      if (inUseErr && !isMissingSchemaError(inUseErr)) return NextResponse.json({ error: inUseErr.message }, { status: 500 });
+      if (inUse?.length) {
+        return NextResponse.json(
+          { error: "Essa instância está na fila ou rodando uma automação. Espere terminar (ou remova da fila) para excluir." },
+          { status: 409 }
+        );
+      }
+    }
   }
   if (action === "task" && !parseTasks(agent.tasks).some((t) => t.name === task)) {
     return NextResponse.json({ error: "O agente desse PC não conhece essa automação." }, { status: 400 });
@@ -110,9 +131,10 @@ export async function POST(req: NextRequest) {
     .select("id")
     .single();
 
-  // 23514 = check da ação: 'rename' chegou com supabase/emulador_contas.sql.
+  // 23514 = check da ação: 'rename' e 'delete' chegaram com supabase/emulador_contas.sql.
   if (error?.code === "23514") {
-    return NextResponse.json({ error: "Para renomear falta aplicar o SQL supabase/emulador_contas.sql no Supabase." }, { status: 503 });
+    const oQue = action === "delete" ? "excluir" : "renomear";
+    return NextResponse.json({ error: `Para ${oQue} falta aplicar o SQL supabase/emulador_contas.sql no Supabase.` }, { status: 503 });
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ id: command.id });

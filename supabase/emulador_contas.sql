@@ -15,7 +15,8 @@
 -- que chegou no Gmail), grava o pedido em prompt; a tela mostra a caixa, a
 -- resposta vai para reply e o agente recebe no próximo sync.
 --
--- emulator_commands ganha a ação 'rename' (editar o nome da instância no MuMu).
+-- emulator_commands ganha as ações 'rename' (editar o nome da instância no
+-- MuMu) e 'delete' (excluir a instância do MuMu, 2026-11-02).
 --
 -- Tudo passa pelas rotas do servidor (service role): RLS ligada e nenhuma
 -- policy. Aplicar à mão no Supabase SQL Editor. Idempotente: pode rodar de
@@ -54,7 +55,7 @@ revoke all on public.emulator_jobs from anon, authenticated;
 alter table public.emulator_commands drop constraint if exists emulator_commands_action_check;
 alter table public.emulator_commands
   add constraint emulator_commands_action_check
-  check (action in ('launch', 'shutdown', 'task', 'rename'));
+  check (action in ('launch', 'shutdown', 'task', 'rename', 'delete'));
 
 notify pgrst, 'reload schema';
 
@@ -67,4 +68,5 @@ and exists (
   select 1 from pg_constraint
    where conname = 'emulator_commands_action_check'
      and pg_get_constraintdef(oid) like '%rename%'
+     and pg_get_constraintdef(oid) like '%delete%'
 ) as aplicado;
