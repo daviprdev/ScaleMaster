@@ -1,11 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Activity, CheckCircle2, Circle, FilePen, Loader2, RotateCw, Send, Trash2, UserPlus, XCircle } from "lucide-react";
+import { Activity, CheckCircle2, Circle, Loader2, RotateCw, Send, Trash2, UserPlus, XCircle } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Input, type BadgeTone } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { atividadeSteps } from "@/lib/emulador/atividade";
-import { NOVA_CONTA_FLUXO, canEditJob, ehAlertaCriacao, type EmulatorJob, type JobKind, type JobStatus } from "@/lib/emulador/jobs";
+import { NOVA_CONTA_FLUXO, type EmulatorJob, type JobKind, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
 
 const STATUS_BADGE: Record<JobStatus, { tone: BadgeTone; label: string }> = {
@@ -42,11 +42,10 @@ interface ContasCardProps {
   onContinue: (job: EmulatorJob) => void;
   onRemove: (job: EmulatorJob) => void;
   onReply: (job: EmulatorJob, resposta: string) => void;
-  onEdit: (job: EmulatorJob) => void;
 }
 
-/** Uma linha por conta (ou atividade) da fila, com o andamento etapa a etapa. */
-export function ContasCard({ kind, jobs, busy, now, onContinue, onRemove, onReply, onEdit }: ContasCardProps) {
+/** Uma linha por conta (ou atividade) da fila, com o andamento etapa a etapa. Editar dados fica na linha da instância. */
+export function ContasCard({ kind, jobs, busy, now, onContinue, onRemove, onReply }: ContasCardProps) {
   const t = TEXTOS[kind];
   return (
     <Card title={t.title} description={t.description}>
@@ -67,7 +66,6 @@ export function ContasCard({ kind, jobs, busy, now, onContinue, onRemove, onRepl
               onContinue={onContinue}
               onRemove={onRemove}
               onReply={onReply}
-              onEdit={onEdit}
             />
           ))}
         </ul>
@@ -83,10 +81,9 @@ interface JobRowProps {
   onContinue: (job: EmulatorJob) => void;
   onRemove: (job: EmulatorJob) => void;
   onReply: (job: EmulatorJob, resposta: string) => void;
-  onEdit: (job: EmulatorJob) => void;
 }
 
-function JobRow({ job, busy, now, onContinue, onRemove, onReply, onEdit }: JobRowProps) {
+function JobRow({ job, busy, now, onContinue, onRemove, onReply }: JobRowProps) {
   const atividade = job.kind === "atividade";
   const badge = job.status === "done" ? { ...STATUS_BADGE.done, label: TEXTOS[job.kind].done } : STATUS_BADGE[job.status];
   const steps = new Map(job.steps.map((s) => [s.key, s]));
@@ -110,14 +107,9 @@ function JobRow({ job, busy, now, onContinue, onRemove, onReply, onEdit }: JobRo
           {job.prompt ? "Esperando você" : badge.label}
         </Badge>
         <div className="flex items-center gap-2">
-          {job.status === "error" && !ehAlertaCriacao(job.error) && (
+          {job.status === "error" && (
             <Button size="sm" icon={<RotateCw size={14} />} loading={busy} onClick={() => onContinue(job)}>
               Continuar
-            </Button>
-          )}
-          {canEditJob(job) && (
-            <Button variant="secondary" size="sm" icon={<FilePen size={14} />} disabled={busy} onClick={() => onEdit(job)}>
-              Editar dados
             </Button>
           )}
           {job.status !== "running" && (

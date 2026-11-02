@@ -50,7 +50,8 @@ export interface EmulatorJob {
  * Fim da conta quando o Instagram trava numa tela que a automação não resolve:
  * o agente desliga a instância e a conta termina com um destes erros exatos
  * (iguais aos de agente-mumu/fluxos/cadastro.mjs). A aba mostra em vermelho na
- * linha da instância e não oferece Continuar.
+ * linha da instância. Continuar religa a instância, reconecta a proxy e volta
+ * ao cadastro: se a tela ainda estiver lá, encerra de novo com o aviso.
  */
 export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telefone";
 /** Captcha "Confirma que és uma pessoa" (código da imagem), pedido do dono em 02/11. */

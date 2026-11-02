@@ -209,7 +209,6 @@ export default function EmuladorPage() {
               onContinue: (job: EmulatorJob) => void jobRequest(job, "continuar"),
               onRemove: setRemovingJob,
               onReply: (job: EmulatorJob, resposta: string) => void jobRequest(job, "responder", resposta),
-              onEdit: (job: EmulatorJob) => setContaDialog({ agent, job }),
             };
             return (
               <React.Fragment key={agent.id}>

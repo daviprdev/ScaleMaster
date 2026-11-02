@@ -4,7 +4,7 @@ import { AQUECIMENTO, ATIVIDADE } from "./atividade.mjs";
 import { pararInstagram } from "./instagram.mjs";
 import { INSTAGRAM, instalarInstagram } from "./aurora.mjs";
 import { ContaTravada, cadastrarInstagram } from "./cadastro.mjs";
-import { configurarProxy } from "./nekobox.mjs";
+import { configurarProxy, ligarProxy, vpnLigada } from "./nekobox.mjs";
 
 /**
  * Criar instância (aba Emulador). Cada etapa recebe
@@ -111,8 +111,12 @@ export const NOVA_CONTA = [
       // Cadastro novo nesta instância: o aviso de uma conta anterior sai da linha.
       const { criada } = await mumu.instancia(copia(estado));
       limparAlerta(criada);
+      const d = await dispositivo();
+      // Continuar com a instância religada (ela desliga quando a conta trava): a VPN do NekoBox
+      // cai no boot, e o Instagram só abre com a proxy de pé e testada.
+      if (!(await vpnLigada(d))) log(`proxy: ${await ligarProxy(d, log)}`);
       try {
-        return await cadastrarInstagram({ d: await dispositivo(), conta, perguntar, log });
+        return await cadastrarInstagram({ d, conta, perguntar, log });
       } catch (e) {
         if (!(e instanceof ContaTravada)) throw e;
         // Pedido do dono: fecha tudo e marca a instância com o aviso (fica até ela ser usada de novo).
