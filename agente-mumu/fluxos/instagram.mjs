@@ -461,9 +461,14 @@ async function conferirReels(ctx) {
 
 /** Rola os Reels por `ms`: cada um de 4 a 20 s (às vezes até o fim), sem curtir nada. */
 export async function rolarReels(ctx, ms) {
-  const { d } = ctx;
+  const { d, log } = ctx;
   await irPara(ctx, "reels");
   await esperar(5000);
+  // Na 1ª conta (02/11) o log disse 5 reels mas o dono não viu os Reels rodando: guarda a tela
+  // que abriu (agente-mumu/telas/) e diz no log o que tem nela, para saber onde ele estava.
+  const aberta = await d.tela().catch(() => []);
+  salvarTela(aberta, "tela depois de tocar na aba Reels");
+  log(`depois de tocar em Reels: ${resumoTela(aberta) || "tela sem texto (vídeo?)"}`);
   const { largura, altura } = await d.tamanho();
   const fim = Date.now() + ms;
   let vistos = 0;
