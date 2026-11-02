@@ -269,9 +269,18 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
       agir: async (nos, alvo) => tocarNo(d, alvo, 4000),
     },
     {
+      // O Ignorar abaixo abre esta confirmação ("Queres encontrar amigos mais depressa?"): "Não, ignorar".
+      // Antes ela não era reconhecida e o pular tocava de novo no Ignorar do fundo, fechando a caixa.
+      // Vem antes: o texto dela também fala em "sugestões de amizade".
+      nome: "confirmar-ignorar-amigos",
+      teste: (nos) =>
+        temTexto(nos, ["encontrar amigos mais depressa", "find friends faster", "find your friends faster"]) &&
+        botao(nos, ["Não, ignorar", "No, skip", "Não, pular", "Não, ignore"]),
+      agir: async (nos, alvo) => tocarNo(d, alvo, 3000),
+    },
+    {
       // "Obtém sugestões de amizade" (ligar ao Facebook): o dono pediu Ignorar, no canto de cima.
-      // Em 01/11 o toque comum (input tap) nesse botão não pegou 4 vezes seguidas: aqui vai um toque
-      // segurado de 150 ms, mudando um pouco o ponto a cada volta.
+      // Toque segurado de 150 ms, mudando um pouco o ponto a cada volta.
       nome: "sugestoes-amizade",
       teste: (nos) =>
         temTexto(nos, ["sugestões de amizade", "friend suggestions"]) &&
