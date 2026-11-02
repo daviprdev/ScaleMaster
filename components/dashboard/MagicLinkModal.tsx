@@ -18,17 +18,70 @@ interface Props {
 
 const APP_BASE = getAppUrlClient();
 
+function LinkField({
+  label,
+  url,
+  copied,
+  onCopy,
+}: {
+  label: string;
+  url: string;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-white/40 text-xs font-medium uppercase tracking-wider">
+        {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          readOnly
+          value={url}
+          className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/[0.08] text-[13px] text-[#85B9E9]/80 font-mono focus:outline-none cursor-text select-all"
+          onFocus={(e) => e.target.select()}
+        />
+      </div>
+
+      <div className="flex gap-2 pt-0.5">
+        <button
+          onClick={onCopy}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[13px] font-medium transition-all border ${
+            copied
+              ? "bg-[#00498D]/10 border-[#00498D]/30 text-[#00498D]"
+              : "bg-white/[0.04] border-white/[0.08] text-white/60 hover:bg-white/[0.07] hover:text-white/90"
+          }`}
+        >
+          {copied ? <CheckCircle2 size={13} /> : <Copy size={13} />}
+          {copied ? "Copiado!" : "Copiar"}
+        </button>
+        <button
+          onClick={() => window.open(url, "_blank")}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[13px] font-medium bg-white/[0.04] border border-white/[0.08] text-white/60 hover:bg-white/[0.07] hover:text-white/90 transition-all"
+        >
+          <ExternalLink size={13} />
+          Abrir
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function MagicLinkModal({ open, onClose }: Props) {
   const [apps, setApps] = useState<UserMetaApp[]>([]);
   const [selectedAppId, setSelectedAppId] = useState<string>("__global__");
+  // App gravado no link direto; selectedAppId diferente dele = falta salvar.
+  const [savedAppId, setSavedAppId] = useState<string>("__global__");
   const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState<"generate" | "save" | null>(null);
+  const [copied, setCopied] = useState<"geral" | "direto" | null>(null);
   const [appsLoading, setAppsLoading] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const magicUrl = token ? `${APP_BASE}/add/${token}` : "";
+  // Link geral: abre a tela de escolha do app; não muda quando o app do link direto muda.
+  const generalUrl = token ? `${APP_BASE}/add/${token}/apps` : "";
+  const directUrl = token ? `${APP_BASE}/add/${token}` : "";
 
   // Carrega lista de apps e token existente
   const loadData = useCallback(async () => {
@@ -52,6 +105,7 @@ export default function MagicLinkModal({ open, onClose }: Props) {
       if (tokenData.token) {
         setToken(tokenData.token);
         setSelectedAppId(tokenData.app_id ?? "__global__");
+        setSavedAppId(tokenData.app_id ?? "__global__");
       }
     } catch {
       setError("Erro de conexão ao carregar os dados. Tente novamente.");
@@ -64,8 +118,9 @@ export default function MagicLinkModal({ open, onClose }: Props) {
     if (open) loadData();
   }, [open, loadData]);
 
-  async function handleGenerate() {
-    setLoading(true);
+  // rotate: true gera token novo (invalida os dois links); false só troca o app do link direto.
+  async function handleSubmit(rotate: boolean) {
+    setLoading(rotate ? "generate" : "save");
     setError(null);
     try {
       const res = await fetch("/api/magic-link", {
@@ -73,6 +128,7 @@ export default function MagicLinkModal({ open, onClose }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           app_id: selectedAppId === "__global__" ? null : selectedAppId,
+          rotate,
         }),
       });
 
@@ -85,13 +141,16 @@ export default function MagicLinkModal({ open, onClose }: Props) {
       const data = await res.json();
       if (data.token) {
         setToken(data.token);
-        // Copy automatically — fallback to manual if clipboard fails
-        try {
-          await navigator.clipboard.writeText(`${APP_BASE}/add/${data.token}`);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2500);
-        } catch {
-          // Clipboard blocked — link is visible in the input for manual copy
+        setSavedAppId(data.app_id ?? "__global__");
+        if (rotate) {
+          // Copy automatically — fallback to manual if clipboard fails
+          try {
+            await navigator.clipboard.writeText(`${APP_BASE}/add/${data.token}/apps`);
+            setCopied("geral");
+            setTimeout(() => setCopied(null), 2500);
+          } catch {
+            // Clipboard blocked — link is visible in the input for manual copy
+          }
         }
       } else {
         setError("Resposta inválida do servidor. Tente novamente.");
@@ -99,15 +158,15 @@ export default function MagicLinkModal({ open, onClose }: Props) {
     } catch {
       setError("Erro de conexão ao gerar o link. Verifique sua rede e tente novamente.");
     } finally {
-      setLoading(false);
+      setLoading(null);
     }
   }
 
-  async function handleCopy() {
-    if (!magicUrl) return;
-    await navigator.clipboard.writeText(magicUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+  async function handleCopy(kind: "geral" | "direto", url: string) {
+    if (!url) return;
+    await navigator.clipboard.writeText(url);
+    setCopied(kind);
+    setTimeout(() => setCopied(null), 2500);
   }
 
   const selectedApp = apps.find((a) => a.id === selectedAppId);
@@ -173,13 +232,22 @@ export default function MagicLinkModal({ open, onClose }: Props) {
 
                 {/* Description */}
                 <p className="text-white/50 text-[13px] leading-relaxed">
-                  Salve este link nos favoritos ou compartilhe com quem vai conectar a conta. Ao acessar, o navegador é redirecionado automaticamente para o login do Instagram — <span className="text-white/70">sem precisar estar logado no SaaS</span>.
+                  Salve o link geral nos favoritos: ao abrir, você escolhe o app em que a conta é testadora e segue para o login do Instagram — <span className="text-white/70">sem precisar estar logado no SaaS</span>.
                 </p>
+
+                {token && (
+                  <LinkField
+                    label="Link geral · escolhe o app ao abrir"
+                    url={generalUrl}
+                    copied={copied === "geral"}
+                    onCopy={() => handleCopy("geral", generalUrl)}
+                  />
+                )}
 
                 {/* App Selector */}
                 <div className="space-y-1.5">
                   <label className="text-white/40 text-xs font-medium uppercase tracking-wider">
-                    Meta App
+                    Meta App do link direto
                   </label>
                   <div className="relative">
                     <button
@@ -236,60 +304,45 @@ export default function MagicLinkModal({ open, onClose }: Props) {
 
                 {/* URL Display */}
                 {token && (
-                  <div className="space-y-1.5">
-                    <label className="text-white/40 text-xs font-medium uppercase tracking-wider">
-                      Seu link
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        readOnly
-                        value={magicUrl}
-                        className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/[0.08] text-[13px] text-[#85B9E9]/80 font-mono focus:outline-none cursor-text select-all"
-                        onFocus={(e) => e.target.select()}
-                      />
-                    </div>
-
-                    <div className="flex gap-2 pt-0.5">
-                      <button
-                        onClick={handleCopy}
-                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[13px] font-medium transition-all border ${
-                          copied
-                            ? "bg-[#00498D]/10 border-[#00498D]/30 text-[#00498D]"
-                            : "bg-white/[0.04] border-white/[0.08] text-white/60 hover:bg-white/[0.07] hover:text-white/90"
-                        }`}
-                      >
-                        {copied ? <CheckCircle2 size={13} /> : <Copy size={13} />}
-                        {copied ? "Copiado!" : "Copiar"}
-                      </button>
-                      <button
-                        onClick={() => window.open(magicUrl, "_blank")}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[13px] font-medium bg-white/[0.04] border border-white/[0.08] text-white/60 hover:bg-white/[0.07] hover:text-white/90 transition-all"
-                      >
-                        <ExternalLink size={13} />
-                        Abrir
-                      </button>
-                    </div>
-                  </div>
+                  <LinkField
+                    label="Link direto · vai só para o app acima"
+                    url={directUrl}
+                    copied={copied === "direto"}
+                    onCopy={() => handleCopy("direto", directUrl)}
+                  />
                 )}
 
-                {/* Generate Button */}
-                <button
-                  onClick={handleGenerate}
-                  disabled={loading}
-                  className="w-full btn-primary flex items-center justify-center gap-2 py-2.5 text-sm font-semibold"
-                >
-                  {loading ? (
-                    <Loader2 size={15} className="animate-spin" />
-                  ) : (
-                    <RefreshCw size={15} />
-                  )}
-                  {token ? "Atualizar link e copiar" : "Gerar link e copiar"}
-                </button>
+                {/* Primeiro link, ou salvar o app do link direto sem trocar os links */}
+                {(!token || selectedAppId !== savedAppId) && (
+                  <button
+                    onClick={() => handleSubmit(!token)}
+                    disabled={loading !== null}
+                    className="w-full btn-primary flex items-center justify-center gap-2 py-2.5 text-sm font-semibold"
+                  >
+                    {loading ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : token ? (
+                      <CheckCircle2 size={15} />
+                    ) : (
+                      <RefreshCw size={15} />
+                    )}
+                    {token ? "Salvar app do link direto" : "Gerar link e copiar"}
+                  </button>
+                )}
 
                 {token && (
-                  <p className="text-white/25 text-[11px] text-center">
-                    Ao gerar um novo link, o anterior é invalidado automaticamente.
-                  </p>
+                  <button
+                    onClick={() => handleSubmit(true)}
+                    disabled={loading !== null}
+                    className="w-full flex items-center justify-center gap-1.5 text-white/30 hover:text-white/60 text-[11px] transition-colors disabled:opacity-50"
+                  >
+                    {loading === "generate" ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                      <RefreshCw size={11} />
+                    )}
+                    Gerar novo link (os dois links atuais param de funcionar)
+                  </button>
                 )}
               </div>
             </div>

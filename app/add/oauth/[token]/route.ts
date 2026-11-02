@@ -34,7 +34,13 @@ export async function GET(
     return NextResponse.redirect(`${APP_URL}/add/error?reason=invalid_token`);
   }
 
-  const { user_id: userId, app_id: appId } = record;
+  const { user_id: userId } = record;
+
+  // Link geral: o app vem da tela de escolha (?app=<id> ou ?app=global);
+  // sem o parâmetro vale o app salvo no link.
+  const appParam = req.nextUrl.searchParams.get("app");
+  const appId: string | null =
+    appParam === null ? record.app_id : appParam === "global" ? null : appParam;
 
   // Resolve clientId do app
   let clientId: string;

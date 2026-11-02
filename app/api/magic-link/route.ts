@@ -20,7 +20,7 @@ export async function GET() {
   return NextResponse.json({ token: data?.token ?? null, app_id: data?.app_id ?? null });
 }
 
-// POST — gera ou rotaciona o token vinculando ao app selecionado
+// POST — gera ou rotaciona o token vinculando ao app selecionado ({ rotate: false } só troca o app)
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -42,10 +42,23 @@ export async function POST(req: NextRequest) {
     if (!app) return NextResponse.json({ error: "App não encontrado" }, { status: 404 });
   }
 
+  const now = new Date().toISOString();
+
+  // rotate: false só troca o app do link direto e mantém o token, para o link
+  // geral (/add/{token}/apps) não mudar. Sem token ainda, gera um abaixo.
+  if (body.rotate === false) {
+    const { data } = await admin
+      .from("magic_add_tokens")
+      .update({ app_id: appId, updated_at: now })
+      .eq("user_id", user.id)
+      .select("token, app_id")
+      .maybeSingle();
+    if (data) return NextResponse.json({ token: data.token, app_id: data.app_id });
+  }
+
   // Gera novo UUID de token
   const crypto = await import("crypto");
   const newToken = crypto.randomUUID();
-  const now = new Date().toISOString();
 
   const { data, error } = await admin
     .from("magic_add_tokens")
