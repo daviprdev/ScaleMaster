@@ -104,7 +104,7 @@ async function preencherNascimento(d, nos, nascimento) {
  * Devolve a mensagem final ("conta criada (@usuario)").
  */
 export async function cadastrarInstagram({ d, conta, perguntar, log }) {
-  const estado = { errosIdioma: 0, termosAceitos: false, usuarioFinal: conta.usuario || null, ultima: null, repeticoes: 0, desconhecidas: 0 };
+  const estado = { errosIdioma: 0, termosAceitos: false, usuarioFinal: conta.usuario || null, ultima: null, repeticoes: 0, desconhecidas: 0, toquesSugestoes: 0 };
   // Pergunta vigiando a tela: o dono pode resolver direto na instância (ver dono.mjs).
   const ajuda = criarAjuda({ d, perguntar, log });
   const { perguntarVigiando } = ajuda;
@@ -267,6 +267,20 @@ export async function cadastrarInstagram({ d, conta, perguntar, log }) {
         temTexto(nos, ["Aderir ao Instagram", "Join Instagram", "Entrar no Instagram", "Junte-se ao Instagram"]) &&
         botao(nos, ["Começar", "Get started", "Comece agora"]),
       agir: async (nos, alvo) => tocarNo(d, alvo, 4000),
+    },
+    {
+      // "Obtém sugestões de amizade" (ligar ao Facebook): o dono pediu Ignorar, no canto de cima.
+      // Em 01/11 o toque comum (input tap) nesse botão não pegou 4 vezes seguidas: aqui vai um toque
+      // segurado de 150 ms, mudando um pouco o ponto a cada volta.
+      nome: "sugestoes-amizade",
+      teste: (nos) =>
+        temTexto(nos, ["sugestões de amizade", "friend suggestions"]) &&
+        (acharId(nos, ig("action_bar_action_text")) ?? botao(nos, ["Ignorar", "Skip"])),
+      agir: async (nos, alvo) => {
+        const dx = [0, -25, 25][estado.toquesSugestoes++ % 3];
+        await d.arrastar(alvo.x + dx, alvo.y, alvo.x + dx, alvo.y, 150);
+        await esperar(3000);
+      },
     },
     {
       nome: "pular",
