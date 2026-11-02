@@ -71,18 +71,18 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: "AUTOMAÇÃO",
+    items: [
+      { label: "Emulador", href: "/dashboard/emulador", icon: MonitorSmartphone },
+    ],
+  },
+  {
     label: "CONTEÚDO",
     items: [
       { label: "Inspirações",     href: "/dashboard/inspirations",    icon: Sparkles },
       { label: "Contas Leitoras", href: "/dashboard/contas-leitoras", icon: BookUser },
       { label: "Biblioteca",      href: "/dashboard/library",         icon: FolderOpen },
       { label: "Proxies",         href: "/dashboard/proxy-test",      icon: Globe },
-    ],
-  },
-  {
-    label: "AUTOMAÇÃO",
-    items: [
-      { label: "Emulador", href: "/dashboard/emulador", icon: MonitorSmartphone },
     ],
   },
   {

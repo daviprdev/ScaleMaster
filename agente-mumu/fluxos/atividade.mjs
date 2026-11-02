@@ -109,7 +109,8 @@ const ETAPAS = {
     chave: "reels",
     rotulo: "Rolar os Reels",
     async rodar(ctx) {
-      return rolarReels(await contexto(ctx), sortear(3 * 60_000, 5 * 60_000));
+      // Pedido do dono: no máximo 2 min de Reels.
+      return rolarReels(await contexto(ctx), sortear(90_000, 120_000));
     },
   },
   foto: {

@@ -13,7 +13,7 @@ export const MIDIA_BUCKET = "videos-library";
 export type MidiaUso = "foto" | "story";
 
 export const ATIVIDADE_ACOES: ReadonlyArray<{ key: AtividadeAcao; label: string; description: string }> = [
-  { key: "aquecer", label: "Aquecer", description: "Segue 2 ou 3 perfis verificados e rola de 3 a 5 min de Reels." },
+  { key: "aquecer", label: "Aquecer", description: "Segue 2 ou 3 perfis verificados e rola até 2 min de Reels." },
   { key: "foto", label: "Trocar a foto de perfil", description: "Com a foto que você escolher (ou sorteada de uma pasta)." },
   { key: "story", label: "Story com link e destaque", description: "Posta o story com o sticker de link e destaca no perfil." },
 ];
