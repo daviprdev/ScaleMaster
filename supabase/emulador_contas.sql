@@ -4,7 +4,7 @@
 -- emulator_jobs: cada linha é uma conta a criar no MuMu do PC. O agente copia
 -- a instância padrão, troca IMEI/Android ID/MAC, dá o @ à cópia, liga,
 -- instala o Instagram pelo Aurora, põe a proxy no NekoBox e cria a conta com
--- o Gmail. Roda uma conta por vez e conta o andamento etapa a etapa em
+-- o Gmail. Roda até duas tarefas por PC em paralelo e conta o andamento em
 -- `steps`; se uma etapa falha, a conta fica em 'error' e o botão Continuar
 -- devolve para a fila, retomando da etapa que falhou.
 --

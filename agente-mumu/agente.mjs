@@ -18,7 +18,7 @@
  *   node agente.mjs nova-conta <n> [json] roda Criar instância copiando a n (teste local)
  *
  * Além dos comandos, o sync entrega a fila do PC (fluxos/): Criar instância e
- * Atividade, uma por vez, com o andamento etapa a etapa (jobUpdates/runningJobs).
+ * Atividade, até duas ao mesmo tempo, com o andamento etapa a etapa (jobUpdates/runningJobs).
  *
  * Sem dependências: só Node 18+. Segurança: o servidor só escolhe entre
  * abrir/fechar/automação conhecida, pelo número da instância; nada vindo dele

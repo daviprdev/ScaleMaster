@@ -5,7 +5,7 @@
 -- conta, o agente liga, conecta a proxy do NekoBox, abre o Instagram e faz o
 -- que o dono marcou — aquecer (seguir 2–3 verificados e rolar Reels), trocar a
 -- foto de perfil e postar story com sticker de link e destacar — e desliga.
--- Divide a fila com Criar instância: uma coisa por vez por PC.
+-- Divide com Criar instância o limite de duas tarefas simultâneas por PC.
 --
 -- acoes: o que foi marcado (["aquecer","foto","story"]), aberto para a tela
 -- montar as etapas. Link, textos e as mídias marcadas vão em input_enc.

@@ -41,7 +41,7 @@ node agente.mjs tarefa teste-adb 0
 
 ## Criar instância
 
-A aba Emulador → **Criar instância** põe uma conta na fila. O agente roda uma por vez (`fluxos/nova-conta.mjs`):
+A aba Emulador → **Criar instância** põe uma conta na fila. O agente roda até duas tarefas ao mesmo tempo por PC, contando também as de **Estruturar**, para limitar o uso de RAM (`fluxos/nova-conta.mjs`):
 
 1. copia a instância padrão e troca IMEI (válido), Android ID e MAC;
 2. dá à cópia o @ (ou o Gmail) como nome e liga;
@@ -55,7 +55,7 @@ Se uma etapa falha, a conta para e o botão **Continuar** retoma da etapa que fa
 
 ## Estruturar
 
-O botão **Estruturar** na linha de uma instância (fora a #0) põe na mesma fila, uma coisa por vez (`fluxos/atividade.mjs`): liga a instância, conecta a proxy que já está no NekoBox **antes** de abrir o Instagram, faz o que foi marcado e desliga.
+O botão **Estruturar** na linha de uma instância (fora a #0) põe uma tarefa na fila compartilhada com a criação de contas (`fluxos/atividade.mjs`). Até duas tarefas rodam ao mesmo tempo por PC: liga a instância, conecta a proxy que já está no NekoBox **antes** de abrir o Instagram, faz o que foi marcado e desliga.
 
 - **Trocar a foto de perfil** e **story com link e destaque:** as mídias vêm da pasta do MuMu no PC (`Documentos\MuMuSharedFolder`, ou `pastaMidias` no config.json; `lib/midias.mjs`). O agente manda só a lista de nomes para a aba; na hora, sorteia uma das marcadas e copia direto do PC para `/sdcard/DCIM/ScaleMaster` (só ela, para ser a 1ª da galeria). Arquivo fora dessa pasta é recusado. O story leva o sticker de link com o texto pedido e vira destaque no perfil.
 

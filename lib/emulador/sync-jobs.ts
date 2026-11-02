@@ -38,12 +38,14 @@ interface QueuedRow {
 
 const ORPHAN_ERROR = "O agente parou no meio (fechou ou reiniciou). Clique em Continuar.";
 const EMPTY: SyncJobsResult = { jobs: [], replies: [] };
+/** Limite de tarefas abertas no MuMu por PC, para controlar o uso de RAM. */
+export const MAX_CONCURRENT_JOBS_PER_AGENT = 2;
 /**
  * Parte "Criar instância" do sync do agente, nesta ordem:
  *   1. grava o andamento que ele mandou (etapas, cópia criada, pedido ao dono);
  *   2. entrega as respostas do dono às contas que estão esperando e limpa o pedido;
  *   3. marca como erro a conta que ele largou no meio;
- *   4. se ele estiver livre, entrega a próxima da fila (uma conta por vez por PC).
+ *   4. entrega trabalhos da fila até preencher duas vagas simultâneas por PC.
  *
  * `stillRunning` null = agente antigo, que não conhece a fila: não recebe conta.
  * Sem a tabela ou sem as colunas novas (SQL ainda não aplicado) não faz nada.
@@ -101,54 +103,59 @@ export async function syncJobs(
     if (error) throw new Error(error.message);
   }
 
-  const busy = running.some((r) => stillRunning?.has(r.id));
-  if (!stillRunning || busy) return { jobs: [], replies };
+  if (!stillRunning) return { jobs: [], replies };
+  const runningCount = running.filter((r) => stillRunning.has(r.id)).length;
+  const slots = MAX_CONCURRENT_JOBS_PER_AGENT - runningCount;
+  if (slots <= 0) return { jobs: [], replies };
 
-  const { data: next, error: nextErr } = await admin
+  const { data: nextRows, error: nextErr } = await admin
     .from("emulator_jobs")
     .select("id, kind, label, template_index, instance_index, input_enc, steps")
     .eq("agent_id", agentId)
     .eq("status", "queued")
     .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .limit(slots);
   if (nextErr) throw new Error(nextErr.message);
-  if (!next) return { jobs: [], replies };
-  const row = next as QueuedRow;
+  const jobs: ClaimedJob[] = [];
+  for (const row of (nextRows ?? []) as QueuedRow[]) {
+    let input: ClaimedJob["input"];
+    try {
+      input = JSON.parse(decrypt(row.input_enc)) as ClaimedJob["input"];
+    } catch {
+      const { error } = await admin
+        .from("emulator_jobs")
+        .update({ status: "error", error: "Não deu para abrir os dados da conta. Remova e cadastre de novo.", finished_at: now, updated_at: now })
+        .eq("id", row.id)
+        .eq("agent_id", agentId)
+        .eq("status", "queued");
+      if (error) throw new Error(error.message);
+      continue;
+    }
 
-  const falhar = async (error: string) => {
-    await admin.from("emulator_jobs").update({ status: "error", error, finished_at: now, updated_at: now }).eq("id", row.id);
-    return { jobs: [], replies };
-  };
-  let aberto: unknown;
-  try {
-    aberto = JSON.parse(decrypt(row.input_enc));
-  } catch {
-    return falhar("Não deu para abrir os dados da conta. Remova e cadastre de novo.");
+    const { data: claimed, error: claimErr } = await admin
+      .from("emulator_jobs")
+      .update({ status: "running", started_at: now, updated_at: now, prompt: null, reply: null })
+      .eq("id", row.id)
+      .eq("agent_id", agentId)
+      .eq("status", "queued")
+      .select("id");
+    if (claimErr) throw new Error(claimErr.message);
+    if (!claimed?.length) continue;
+
+    jobs.push({
+      id: row.id,
+      kind: row.kind,
+      label: row.label,
+      templateIndex: row.template_index,
+      instanceIndex: row.instance_index,
+      steps: Array.isArray(row.steps) ? row.steps : [],
+      input,
+    });
   }
-  const input = aberto as ClaimedJob["input"];
 
-  const { data: claimed, error: claimErr } = await admin
-    .from("emulator_jobs")
-    .update({ status: "running", started_at: now, updated_at: now, prompt: null, reply: null })
-    .eq("id", row.id)
-    .eq("status", "queued")
-    .select("id");
-  if (claimErr) throw new Error(claimErr.message);
-  if (!claimed?.length) return { jobs: [], replies };
-
+  if (jobs.length === 0) return { jobs: [], replies };
   return {
-    jobs: [
-      {
-        id: row.id,
-        kind: row.kind,
-        label: row.label,
-        templateIndex: row.template_index,
-        instanceIndex: row.instance_index,
-        steps: Array.isArray(row.steps) ? row.steps : [],
-        input,
-      },
-    ],
+    jobs,
     replies,
   };
 }

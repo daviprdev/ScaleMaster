@@ -18,14 +18,14 @@ const STATUS_BADGE: Record<JobStatus, { tone: BadgeTone; label: string }> = {
 const TEXTOS: Record<JobKind, { title: string; description: string; emptyTitle: string; emptyDescription: string; done: string }> = {
   "nova-conta": {
     title: "Criação de contas",
-    description: "Uma conta por vez, na ordem da fila. Cada uma nasce numa cópia da instância padrão.",
+    description: "Até duas automações rodam ao mesmo tempo no PC, compartilhando a memória com Estruturar. Cada conta nasce numa cópia da instância padrão.",
     emptyTitle: "Nenhuma conta ainda",
     emptyDescription: "Clique em Criar instância, informe a proxy e os dados da conta, e o agente faz o resto no MuMu.",
     done: "Conta criada",
   },
   atividade: {
     title: "Estruturação das contas",
-    description: "Divide a fila com a criação: uma coisa por vez. A instância liga, faz o que foi marcado e desliga.",
+    description: "Compartilha com a criação o limite de duas automações simultâneas no PC. A instância liga, faz o que foi marcado e desliga.",
     emptyTitle: "Nenhuma estruturação ainda",
     emptyDescription: "Clique em Estruturar na linha de uma instância.",
     done: "Concluída",
