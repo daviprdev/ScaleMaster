@@ -90,8 +90,11 @@ export async function configurarProxy(d, proxyUrl, nomePerfil, log) {
     timeoutMs: 30_000,
     descricao: "o NekoBox conectado",
   });
+  return testarProxy(d);
+}
 
-  // Teste de conexão: toca no status e espera Success (ou erro).
+/** Teste de conexão com o NekoBox na tela: toca no status e espera Success (ou erro). */
+export async function testarProxy(d) {
   let ultimo = "";
   for (let tentativa = 0; tentativa < 3; tentativa++) {
     const status = acharId(await d.tela(), id("status"));
@@ -109,4 +112,42 @@ export async function configurarProxy(d, proxyUrl, nomePerfil, log) {
     await esperar(3000);
   }
   throw new Error(`A proxy não respondeu no teste do NekoBox: ${ultimo}`);
+}
+
+/** A VPN do NekoBox está de pé? (interface tun do Android; a tunl0 de sempre não conta) */
+export async function vpnLigada(d) {
+  const saida = await d.shell("ip link show 2>/dev/null; true").catch(() => "");
+  return /^\d+:\s+tun\d+[:@]/m.test(saida);
+}
+
+/**
+ * Atividade: liga a proxy que já está no NekoBox da instância (o perfil
+ * escolhido na criação) e testa. Sem nenhum perfil, para: o Instagram não abre
+ * sem proxy.
+ */
+export async function ligarProxy(d, log) {
+  await d.abrirApp(NEKO);
+  await esperarTela(d, (nos) => acharId(nos, id("action_add")), { timeoutMs: 45_000, descricao: "o NekoBox" });
+
+  if (!(await vpnLigada(d))) {
+    let nos = await d.tela();
+    if (!nos.some((n) => n.id === id("profile_name"))) throw new Error("O NekoBox dessa instância não tem nenhuma proxy.");
+    const fab = acharId(nos, id("fab"));
+    if (!fab) throw new Error("Não achei o botão de conectar do NekoBox.");
+    await tocarNo(d, fab, 2500);
+
+    nos = await d.tela();
+    if (nos.some((n) => n.pacote === "com.android.vpndialogs")) {
+      const ok = acharId(nos, "android:id/button1");
+      if (ok) await tocarNo(d, ok, 2500);
+    }
+    const limite = Date.now() + 30_000;
+    while (!(await vpnLigada(d))) {
+      if (Date.now() > limite) throw new Error("O NekoBox não conectou em 30 s.");
+      await esperar(1500);
+    }
+    log("NekoBox conectado");
+    await esperar(1500);
+  }
+  return testarProxy(d);
 }

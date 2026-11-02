@@ -17,8 +17,8 @@
  *   node agente.mjs tarefa <nome> <n>   roda uma automação na instância n (teste local)
  *   node agente.mjs nova-conta <n> [json] roda Criar instância copiando a n (teste local)
  *
- * Além dos comandos, o sync entrega as contas da fila Nova conta (fluxos/):
- * uma por vez, com o andamento etapa a etapa (jobUpdates/runningJobs).
+ * Além dos comandos, o sync entrega a fila do PC (fluxos/): Criar instância e
+ * Atividade, uma por vez, com o andamento etapa a etapa (jobUpdates/runningJobs).
  *
  * Sem dependências: só Node 18+. Segurança: o servidor só escolhe entre
  * abrir/fechar/automação conhecida, pelo número da instância; nada vindo dele
@@ -38,7 +38,7 @@ import { esperar } from "./lib/processo.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.5.1";
+const VERSAO = "1.6.0";
 /** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
 const PASTA = path.dirname(fileURLToPath(import.meta.url));
@@ -185,6 +185,12 @@ async function executar(mumu, comando) {
   throw new Error(`Ação desconhecida: ${comando.action}`);
 }
 
+/** Nome da conta nos logs: o rótulo da fila (@ ou nome da instância), senão o Gmail. */
+function nomeDoJob(job) {
+  const conta = job.input?.conta ?? {};
+  return job.label || conta.usuario || conta.email || job.id.slice(0, 8);
+}
+
 /** Quanto o agente espera o dono responder (código do Gmail, "já resolvi"). */
 const ESPERA_RESPOSTA_MS = 30 * 60_000;
 
@@ -195,7 +201,8 @@ const ESPERA_RESPOSTA_MS = 30 * 60_000;
  * devolve o que o dono respondeu na aba quando uma etapa pergunta algo.
  */
 async function rodarJob(mumu, job, reportar, aguardarResposta) {
-  const fluxo = FLUXOS[job.kind];
+  const definicao = FLUXOS[job.kind];
+  const fluxo = typeof definicao === "function" ? definicao(job.input ?? {}) : definicao;
   const feitas = (Array.isArray(job.steps) ? job.steps : []).filter((s) => s?.status === "done");
   const steps = feitas.map((s) => ({ key: s.key, status: "done", message: s.message ?? null }));
   const estado = { instanceIndex: Number.isInteger(job.instanceIndex) ? job.instanceIndex : null };
@@ -213,8 +220,7 @@ async function rodarJob(mumu, job, reportar, aguardarResposta) {
   if (!fluxo) return enviar("error", `Este agente não conhece o fluxo "${job.kind}". Atualize a pasta agente-mumu.`);
   if (!mumu) return enviar("error", "MuMu não encontrado neste PC.");
 
-  const conta = job.input?.conta ?? {};
-  const logJob = (m) => log(`[conta ${conta.usuario || conta.email || job.id.slice(0, 8)}] ${m}`);
+  const logJob = (m) => log(`[${job.kind === "atividade" ? "atividade" : "conta"} ${nomeDoJob(job)}] ${m}`);
 
   /** Aparelho da cópia, ligado e com adb (liga de novo se alguém desligou no meio). */
   let aparelho = null;
@@ -237,7 +243,11 @@ async function rodarJob(mumu, job, reportar, aguardarResposta) {
   };
 
   for (const etapa of fluxo) {
-    if (steps.some((s) => s.key === etapa.chave)) continue;
+    const feita = steps.findIndex((s) => s.key === etapa.chave);
+    if (feita >= 0) {
+      if (!etapa.sempre) continue;
+      steps.splice(feita, 1);
+    }
     const step = { key: etapa.chave, status: "running", message: null };
     steps.push(step);
     enviar("running");
@@ -396,7 +406,11 @@ async function rodarAgente() {
         for (const job of Array.isArray(resposta.jobs) ? resposta.jobs : []) {
           if (typeof job?.id !== "string" || contasEmAndamento.has(job.id)) continue;
           contasEmAndamento.add(job.id);
-          log(`Conta na fila: ${job.input?.conta?.usuario || job.input?.conta?.email || job.id.slice(0, 8)} (cópia da #${job.templateIndex})`);
+          log(
+            job.kind === "atividade"
+              ? `Atividade na fila: ${nomeDoJob(job)} (#${job.instanceIndex})`
+              : `Conta na fila: ${nomeDoJob(job)} (cópia da #${job.templateIndex})`
+          );
           rodarJob(mumu, job, (u) => andamentos.set(u.id, u), aguardarResposta)
             .catch((e) => andamentos.set(job.id, { id: job.id, steps: [], status: "error", error: e.message }))
             .finally(() => contasEmAndamento.delete(job.id));

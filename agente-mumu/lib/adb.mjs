@@ -117,6 +117,20 @@ export class Dispositivo {
     return this.shell("am", "force-stop", pacote);
   }
 
+  /** Copia um arquivo do PC para a instância (na /sdcard o Android já põe na galeria sozinho). */
+  async enviar(local, remoto) {
+    const r = await rodar(this.adb, ["-s", this.serial, "push", local, remoto], { timeoutMs: 300_000 });
+    if (r.codigo !== 0) throw new Error(`adb push falhou: ${trecho(r.stderr || r.stdout)}`);
+  }
+
+  /** Largura e altura da tela em pixels (wm size; vale o tamanho trocado, se houver). */
+  async tamanho() {
+    const saida = await this.shell("wm", "size");
+    const m = /Override size:\s*(\d+)x(\d+)/.exec(saida) ?? /Physical size:\s*(\d+)x(\d+)/.exec(saida);
+    if (!m) throw new Error(`Não li o tamanho da tela: ${trecho(saida)}`);
+    return { largura: Number(m[1]), altura: Number(m[2]) };
+  }
+
   /** PNG da tela. */
   async print() {
     const r = await rodar(this.adb, ["-s", this.serial, "exec-out", "screencap", "-p"], { timeoutMs: 30_000, binario: true });

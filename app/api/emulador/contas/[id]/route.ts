@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt, encrypt } from "@/lib/encrypt";
 import { editableFrom, mergeEdit, stepsAfterEdit } from "@/lib/emulador/editar-conta";
 import { parseJobSteps, type NovaContaInput } from "@/lib/emulador/jobs";
+import { removerMidias } from "@/lib/emulador/sync-jobs";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,12 +20,15 @@ async function loadJob(id: string) {
   const admin = getSupabaseAdmin();
   const { data: job, error } = await admin
     .from("emulator_jobs")
-    .select("id, status, steps, input_enc")
+    .select("id, kind, status, steps, input_enc")
     .eq("id", id)
     .eq("user_id", user.id)
     .maybeSingle();
   if (error) return { response: NextResponse.json({ error: error.message }, { status: 500 }) };
   if (!job) return { response: NextResponse.json({ error: "Conta não encontrada." }, { status: 404 }) };
+  if (job.kind !== "nova-conta") {
+    return { response: NextResponse.json({ error: "Atividade não tem dados para editar." }, { status: 409 }) };
+  }
 
   let input: NovaContaInput;
   try {
@@ -94,6 +98,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // DELETE — tira a conta da lista (e da fila, se ainda não começou). A
 // instância criada no MuMu fica lá; apagar instância é com o dono no MuMu.
+// Atividade removida leva junto as mídias dela no bucket.
 export async function DELETE(_req: NextRequest, { params }: Params) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
@@ -104,17 +109,19 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const { data, error } = await getSupabaseAdmin()
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin
     .from("emulator_jobs")
     .delete()
     .eq("id", id)
     .eq("user_id", user.id)
     .neq("status", "running")
-    .select("id");
+    .select("kind, input_enc");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data?.length) {
     return NextResponse.json({ error: "Conta não encontrada ou rodando agora (espere terminar ou falhar)." }, { status: 409 });
   }
+  await removerMidias(admin, data as Array<{ kind: string; input_enc: string }>);
   return NextResponse.json({ ok: true });
 }

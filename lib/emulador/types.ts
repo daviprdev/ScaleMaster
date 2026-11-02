@@ -57,6 +57,8 @@ export interface EmuladorResponse {
   commands: EmulatorCommand[];
   /** false = supabase/emulador_contas.sql ainda não aplicado (sem Nova conta). */
   jobsAvailable: boolean;
+  /** false = supabase/emulador_atividade.sql ainda não aplicado (sem o botão Atividade). */
+  atividadeAvailable: boolean;
   /** Contas da fila Nova conta, da mais nova para a mais velha. */
   jobs: EmulatorJob[];
 }

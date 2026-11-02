@@ -1,3 +1,4 @@
+import type { AtividadeAcao } from "./atividade";
 import { shortText } from "./payload";
 
 /**
@@ -25,9 +26,15 @@ export interface JobPrompt {
   texto: string;
 }
 
+/** nova-conta = Criar instância / Criar conta aqui; atividade = botão Atividade (lib/emulador/atividade.ts). */
+export type JobKind = "nova-conta" | "atividade";
+
 export interface EmulatorJob {
   id: string;
   agentId: string;
+  kind: JobKind;
+  /** Só atividade: o que foi marcado (as etapas da tela saem daqui). */
+  acoes: AtividadeAcao[];
   label: string | null;
   templateIndex: number;
   instanceIndex: number | null;
@@ -58,12 +65,23 @@ export function linkedJobs(
 ): Map<number, EmulatorJob> {
   const out = new Map<number, EmulatorJob>();
   for (const job of jobs) {
-    if (job.agentId !== agentId || job.instanceIndex === null) continue;
+    if (job.kind !== "nova-conta" || job.agentId !== agentId || job.instanceIndex === null) continue;
     const nome = job.steps.find((s) => s.key === "nome")?.message;
     const inst = instances.find((i) => i.index === job.instanceIndex);
     // Sem a etapa nome ainda (Criar conta aqui na fila): vale pelo índice enquanto não terminou.
     const ligada = nome ? inst?.name === nome : job.status === "queued" || job.status === "running";
     if (inst && ligada && !out.has(inst.index)) out.set(inst.index, job);
+  }
+  return out;
+}
+
+/** Instâncias de um PC com alguma coisa na fila ou rodando (conta ou atividade). */
+export function busyInstances(jobs: readonly EmulatorJob[], agentId: string): Set<number> {
+  const out = new Set<number>();
+  for (const job of jobs) {
+    if (job.agentId === agentId && job.instanceIndex !== null && (job.status === "queued" || job.status === "running")) {
+      out.add(job.instanceIndex);
+    }
   }
   return out;
 }
@@ -90,9 +108,9 @@ export const STEPS_CONTA_AQUI: JobStep[] = [
   { key: "ids", status: "done", message: "mantidos" },
 ];
 
-/** Dá para editar os dados (conta na fila ou que parou). */
+/** Dá para editar os dados (conta na fila ou que parou; atividade não tem Editar). */
 export function canEditJob(job: EmulatorJob): boolean {
-  return job.status === "queued" || job.status === "error";
+  return job.kind === "nova-conta" && (job.status === "queued" || job.status === "error");
 }
 
 /** Etapas na ordem. O Instagram baixa antes da proxy para os 275 MB não passarem por ela. */

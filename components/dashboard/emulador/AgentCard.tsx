@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, AppWindow, FilePen, Loader2, Pencil, Play, Plus, Power, PowerOff, Smartphone, Unplug, UserPlus } from "lucide-react";
+import { Activity, AlertTriangle, AppWindow, FilePen, Loader2, Pencil, Play, Plus, Power, PowerOff, Smartphone, Unplug, UserPlus } from "lucide-react";
 import { Badge, Banner, Button, Card, Dialog, EmptyState, IconButton, Input, type BadgeTone } from "@/components/ui";
 import { PC_INDEX } from "@/lib/emulador/payload";
 import { canEditJob, type EmulatorJob } from "@/lib/emulador/jobs";
@@ -44,6 +44,10 @@ interface AgentCardProps {
   onEditJob?: (agent: EmulatorAgent, job: EmulatorJob) => void;
   /** Criar conta numa instância que já existe e não tem conta ligada. */
   onCreateHere?: (agent: EmulatorAgent, instance: EmulatorInstance) => void;
+  /** Instâncias com algo na fila ou rodando (sem Criar conta aqui nem Atividade). */
+  queued?: ReadonlySet<number>;
+  /** Abre a janela Atividade (aquecer, foto, story); ausente = SQL da atividade ainda não aplicado. */
+  onAtividade?: (agent: EmulatorAgent, instance: EmulatorInstance) => void;
   /** Abre o formulário Criar instância; ausente = SQL da fila ainda não aplicado. */
   onCreateInstance?: (agent: EmulatorAgent) => void;
 }
@@ -60,6 +64,8 @@ export function AgentCard({
   linked,
   onEditJob,
   onCreateHere,
+  queued,
+  onAtividade,
   onCreateInstance,
 }: AgentCardProps) {
   const [taskFor, setTaskFor] = React.useState<EmulatorInstance | null>(null);
@@ -133,6 +139,8 @@ export function AgentCard({
             <ul className="flex flex-col divide-y divide-line">
               {agent.instances.map((inst) => {
                 const key = instanceKey(agent.id, inst.index);
+                // Fora da #0 (a padrão de onde as cópias saem) e sem nada na fila nela.
+                const livre = inst.index !== 0 && !queued?.has(inst.index);
                 return (
                   <InstanceRow
                     key={key}
@@ -147,11 +155,9 @@ export function AgentCard({
                     alert={inst.alert ?? alerts?.get(inst.index)}
                     onEditData={editDataFor(inst.index)}
                     onCreateHere={
-                      // Sem conta ligada e fora da #0 (a padrão de onde as cópias saem).
-                      onCreateHere && inst.index !== 0 && !linked?.get(inst.index)
-                        ? () => onCreateHere(agent, inst)
-                        : undefined
+                      onCreateHere && livre && !linked?.get(inst.index) ? () => onCreateHere(agent, inst) : undefined
                     }
+                    onAtividade={onAtividade && livre ? () => onAtividade(agent, inst) : undefined}
                   />
                 );
               })}
@@ -257,6 +263,8 @@ interface InstanceRowProps {
   onEditData?: () => void;
   /** Abre Criar conta aqui (instância sem conta ligada). */
   onCreateHere?: () => void;
+  /** Abre a janela Atividade desta instância. */
+  onAtividade?: () => void;
 }
 
 function InstanceRow({
@@ -271,6 +279,7 @@ function InstanceRow({
   alert,
   onEditData,
   onCreateHere,
+  onAtividade,
 }: InstanceRowProps) {
   const busy = sending || isActive(command);
   const disabled = busy || !agent.online;
@@ -313,6 +322,11 @@ function InstanceRow({
         {onCreateHere && (
           <Button variant="secondary" size="sm" icon={<UserPlus size={14} />} disabled={disabled} onClick={onCreateHere}>
             Criar conta aqui
+          </Button>
+        )}
+        {onAtividade && (
+          <Button variant="secondary" size="sm" icon={<Activity size={14} />} disabled={disabled} onClick={onAtividade}>
+            Atividade
           </Button>
         )}
         {agent.tasks.length > 0 && (

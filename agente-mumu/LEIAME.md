@@ -43,6 +43,15 @@ A aba Emulador → **Criar instância** põe uma conta na fila. O agente roda um
 
 Se uma etapa falha, a conta para e o botão **Continuar** retoma da etapa que falhou. Teste local: `node agente.mjs nova-conta 0 dados.json` (com `{ "proxy": "http://u:s@host:porta", "conta": { ... } }`).
 
+## Atividade
+
+O botão **Atividade** na linha de uma instância (fora a #0) põe na mesma fila, uma coisa por vez (`fluxos/atividade.mjs`): liga a instância, conecta a proxy que já está no NekoBox **antes** de abrir o Instagram, faz o que foi marcado e desliga.
+
+- **Aquecer:** segue 2 ou 3 perfis sorteados de `fluxos/verificados.mjs` (confere o selo azul; 20–60 s entre um e outro) e rola de 3 a 5 min de Reels, sem curtir.
+- **Trocar a foto de perfil** e **story com link e destaque:** a mídia escolhida na aba é baixada e posta em `/sdcard/DCIM/ScaleMaster` (só ela, para ser a 1ª da galeria); o story leva o sticker de link com o texto pedido e vira destaque no perfil.
+
+As telas do Instagram logado ficam em `fluxos/instagram.mjs`. Tela desconhecida vai para `telas/` e vira pergunta na aba; se travar na foto, no story ou no destaque, o agente pede para terminar à mão (não arrisca postar o story duas vezes). No Continuar, ligar, proxy e Instagram rodam de novo.
+
 ## Automações
 
 Cada automação é um arquivo em `tarefas/`, registrado em `tarefas/index.mjs`. Antes de rodar uma automação, o agente abre a instância, espera o Android e conecta o adb. A função `rodar(ctx)` recebe o aparelho pronto em `ctx.dispositivo` (ver `lib/adb.mjs`):

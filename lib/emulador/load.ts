@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
+import { parseAcoes } from "./atividade";
 import { parseJobPrompt, parseJobSteps, type EmulatorJob, type JobStatus } from "./jobs";
 import { isOnline, parseInstances, parseTasks } from "./payload";
 import type { CommandAction, CommandStatus, EmuladorResponse, EmulatorAgent, EmulatorCommand } from "./types";
@@ -66,6 +67,9 @@ function toCommand(row: CommandRow): EmulatorCommand {
 interface JobRow {
   id: string;
   agent_id: string;
+  kind: string;
+  /** Só existe depois de supabase/emulador_atividade.sql. */
+  acoes?: unknown;
   label: string | null;
   template_index: number;
   instance_index: number | null;
@@ -90,6 +94,8 @@ function toJob(row: JobRow): EmulatorJob {
   return {
     id: row.id,
     agentId: row.agent_id,
+    kind: row.kind === "atividade" ? "atividade" : "nova-conta",
+    acoes: parseAcoes(row.acoes),
     label: row.label,
     templateIndex: row.template_index,
     instanceIndex: row.instance_index,
@@ -105,7 +111,8 @@ function toJob(row: JobRow): EmulatorJob {
 /** PCs conectados do usuário + comandos do último dia + fila Nova conta. Lê com service role, sempre filtrando por user_id. */
 export async function loadEmulador(admin: SupabaseClient, userId: string): Promise<EmuladorResponse> {
   const since = new Date(Date.now() - DAY_MS).toISOString();
-  const [agentsRes, commandsRes, jobsRes] = await Promise.all([
+  const jobColumns = "id, agent_id, kind, label, template_index, instance_index, steps, status, error, prompt, created_at, updated_at";
+  const [agentsRes, commandsRes, jobsResFull] = await Promise.all([
     admin
       .from("emulator_agents")
       .select("id, hostname, agent_version, mumu_version, mumu_error, instances, tasks, last_seen_at, created_at")
@@ -120,14 +127,24 @@ export async function loadEmulador(admin: SupabaseClient, userId: string): Promi
       .limit(200),
     admin
       .from("emulator_jobs")
-      .select("id, agent_id, label, template_index, instance_index, steps, status, error, prompt, created_at, updated_at")
+      .select(`${jobColumns}, acoes`)
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(100),
   ]);
+  // Sem a coluna acoes (emulador_atividade.sql ainda não aplicado): lê sem ela e a Atividade fica escondida.
+  const atividadeAvailable = !isMissingSchemaError(jobsResFull.error);
+  const jobsRes = atividadeAvailable
+    ? jobsResFull
+    : await admin
+        .from("emulator_jobs")
+        .select(jobColumns)
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(100);
 
   if (isMissingSchemaError(agentsRes.error) || isMissingSchemaError(commandsRes.error)) {
-    return { available: false, agents: [], commands: [], jobsAvailable: false, jobs: [] };
+    return { available: false, agents: [], commands: [], jobsAvailable: false, atividadeAvailable: false, jobs: [] };
   }
   if (agentsRes.error) throw new EmuladorLoadError(agentsRes.error.message);
   if (commandsRes.error) throw new EmuladorLoadError(commandsRes.error.message);
@@ -140,6 +157,7 @@ export async function loadEmulador(admin: SupabaseClient, userId: string): Promi
     agents: ((agentsRes.data ?? []) as AgentRow[]).map((row) => toAgent(row, now)),
     commands: ((commandsRes.data ?? []) as CommandRow[]).map(toCommand),
     jobsAvailable,
+    atividadeAvailable: jobsAvailable && atividadeAvailable,
     jobs: jobsAvailable ? ((jobsRes.data ?? []) as JobRow[]).map(toJob) : [],
   };
 }

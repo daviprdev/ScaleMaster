@@ -145,6 +145,8 @@ describe("aviso de conta travada no telefone", () => {
   const job = (over: Partial<EmulatorJob>): EmulatorJob => ({
     id: UUID,
     agentId: "pc",
+    kind: "nova-conta",
+    acoes: [],
     label: "julia",
     templateIndex: 0,
     instanceIndex: 1,
@@ -223,6 +225,8 @@ describe("Criar conta aqui", () => {
   const base = {
     id: UUID,
     agentId: "pc",
+    kind: "nova-conta" as const,
+    acoes: [],
     label: "nova",
     templateIndex: 1,
     instanceIndex: 1,

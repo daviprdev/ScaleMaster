@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { CheckCircle2, Circle, FilePen, Loader2, RotateCw, Send, Trash2, UserPlus, XCircle } from "lucide-react";
+import { Activity, CheckCircle2, Circle, FilePen, Loader2, RotateCw, Send, Trash2, UserPlus, XCircle } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Input, type BadgeTone } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { ALERTA_TELEFONE, NOVA_CONTA_FLUXO, canEditJob, type EmulatorJob, type JobStatus } from "@/lib/emulador/jobs";
+import { atividadeSteps } from "@/lib/emulador/atividade";
+import { ALERTA_TELEFONE, NOVA_CONTA_FLUXO, canEditJob, type EmulatorJob, type JobKind, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
 
 const STATUS_BADGE: Record<JobStatus, { tone: BadgeTone; label: string }> = {
@@ -14,7 +15,26 @@ const STATUS_BADGE: Record<JobStatus, { tone: BadgeTone; label: string }> = {
   error: { tone: "danger", label: "Parou" },
 };
 
+const TEXTOS: Record<JobKind, { title: string; description: string; emptyTitle: string; emptyDescription: string; done: string }> = {
+  "nova-conta": {
+    title: "Criação de contas",
+    description: "Uma conta por vez, na ordem da fila. Cada uma nasce numa cópia da instância padrão.",
+    emptyTitle: "Nenhuma conta ainda",
+    emptyDescription: "Clique em Criar instância, informe a proxy e os dados da conta, e o agente faz o resto no MuMu.",
+    done: "Conta criada",
+  },
+  atividade: {
+    title: "Atividade das contas",
+    description: "Divide a fila com a criação: uma coisa por vez. A instância liga, faz o que foi marcado e desliga.",
+    emptyTitle: "Nenhuma atividade ainda",
+    emptyDescription: "Clique em Atividade na linha de uma instância.",
+    done: "Concluída",
+  },
+};
+
 interface ContasCardProps {
+  /** Qual fila o cartão mostra: as contas sendo criadas ou as atividades. */
+  kind: JobKind;
   jobs: readonly EmulatorJob[];
   /** Contas com pedido saindo agora (Continuar/Remover/Responder em loading). */
   busy: ReadonlySet<string>;
@@ -25,15 +45,16 @@ interface ContasCardProps {
   onEdit: (job: EmulatorJob) => void;
 }
 
-/** Instâncias que a automação está criando: uma linha por conta, com o andamento etapa a etapa. */
-export function ContasCard({ jobs, busy, now, onContinue, onRemove, onReply, onEdit }: ContasCardProps) {
+/** Uma linha por conta (ou atividade) da fila, com o andamento etapa a etapa. */
+export function ContasCard({ kind, jobs, busy, now, onContinue, onRemove, onReply, onEdit }: ContasCardProps) {
+  const t = TEXTOS[kind];
   return (
-    <Card title="Criação de contas" description="Uma conta por vez, na ordem da fila. Cada uma nasce numa cópia da instância padrão.">
+    <Card title={t.title} description={t.description}>
       {jobs.length === 0 ? (
         <EmptyState
-          icon={<UserPlus size={18} />}
-          title="Nenhuma conta ainda"
-          description="Clique em Criar instância, informe a proxy e os dados da conta, e o agente faz o resto no MuMu."
+          icon={kind === "atividade" ? <Activity size={18} /> : <UserPlus size={18} />}
+          title={t.emptyTitle}
+          description={t.emptyDescription}
         />
       ) : (
         <ul className="flex flex-col gap-3">
@@ -66,10 +87,13 @@ interface JobRowProps {
 }
 
 function JobRow({ job, busy, now, onContinue, onRemove, onReply, onEdit }: JobRowProps) {
-  const badge = STATUS_BADGE[job.status];
+  const atividade = job.kind === "atividade";
+  const badge = job.status === "done" ? { ...STATUS_BADGE.done, label: TEXTOS[job.kind].done } : STATUS_BADGE[job.status];
   const steps = new Map(job.steps.map((s) => [s.key, s]));
-  const where =
-    job.instanceIndex === null
+  const plan = atividade ? atividadeSteps(job.acoes) : NOVA_CONTA_FLUXO;
+  const where = atividade
+    ? `instância #${job.instanceIndex ?? job.templateIndex}`
+    : job.instanceIndex === null
       ? `cópia da #${job.templateIndex}`
       : `instância #${job.instanceIndex} (cópia da #${job.templateIndex})`;
 
@@ -107,7 +131,7 @@ function JobRow({ job, busy, now, onContinue, onRemove, onReply, onEdit }: JobRo
       {job.status === "running" && job.prompt && <PromptBox job={job} busy={busy} onReply={onReply} />}
 
       <ol className="mt-3 flex flex-col gap-1.5">
-        {NOVA_CONTA_FLUXO.map((def) => {
+        {plan.map((def) => {
           const step = steps.get(def.key);
           return (
             <li key={def.key} className="flex items-start gap-2 text-sm">

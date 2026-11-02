@@ -1,8 +1,6 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { esperar } from "../lib/processo.mjs";
 import { INSTAGRAM } from "./aurora.mjs";
+import { criarAjuda, resumoTela, salvarTela } from "./dono.mjs";
 import { acharId, acharTexto, preencher, temTexto, tocarNo } from "./tela.mjs";
 
 /**
@@ -28,7 +26,6 @@ export class ContaTravadaTelefone extends Error {
   }
 }
 
-const PASTA_TELAS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "telas");
 const ig = (nome) => `${INSTAGRAM}:id/${nome}`;
 
 const SEGUINTE = ["Seguinte", "Next", "Avançar", "Continuar", "Continue"];
@@ -71,27 +68,6 @@ async function seguinte(d, nos) {
   await tocarNo(d, b, 3000);
 }
 
-function salvarTela(nos, motivo) {
-  try {
-    mkdirSync(PASTA_TELAS, { recursive: true });
-    const linhas = nos
-      .filter((n) => n.texto || n.descricao || n.id)
-      .map((n) => `${n.texto || "(desc) " + n.descricao} @${n.x},${n.y} ${n.clicavel ? "[clic] " : ""}${n.classe} ${n.id}`);
-    const arquivo = path.join(PASTA_TELAS, `${new Date().toISOString().replace(/[:.]/g, "-")}.txt`);
-    writeFileSync(arquivo, `${motivo}\n\n${linhas.join("\n")}\n`);
-  } catch {
-    /* sem pasta: só não guarda */
-  }
-}
-
-function resumoTela(nos) {
-  return nos
-    .map((n) => n.texto || n.descricao)
-    .filter((t) => t && t.length < 80)
-    .slice(0, 5)
-    .join(" | ");
-}
-
 /** Data de nascimento: campo de texto, ou o seletor de rolar do Android (dia/mês/ano). */
 async function preencherNascimento(d, nos, nascimento) {
   const [dia, mes, ano] = nascimento.split("/").map(Number);
@@ -129,38 +105,11 @@ async function preencherNascimento(d, nos, nascimento) {
  */
 export async function cadastrarInstagram({ d, conta, perguntar, log }) {
   const estado = { errosIdioma: 0, termosAceitos: false, usuarioFinal: conta.usuario || null, ultima: null, repeticoes: 0, desconhecidas: 0 };
-  /**
-   * Pergunta na aba e, enquanto espera, olha a tela a cada 3 s: se `aindaIgual`
-   * deixar de valer, o dono resolveu direto na instância e a automação segue
-   * sozinha (devolve null, sem precisar da resposta na aba).
-   */
-  const perguntarVigiando = async (tipo, texto, aindaIgual) => {
-    const controle = new AbortController();
-    const vigia = (async () => {
-      while (!controle.signal.aborted) {
-        await esperar(3000);
-        const agora = await d.tela().catch(() => null);
-        if (agora && agora.length > 0 && !aindaIgual(agora)) controle.abort();
-      }
-    })();
-    try {
-      return await perguntar(tipo, texto, { sinal: controle.signal });
-    } finally {
-      controle.abort();
-      await vigia;
-    }
-  };
-
+  // Pergunta vigiando a tela: o dono pode resolver direto na instância (ver dono.mjs).
+  const ajuda = criarAjuda({ d, perguntar, log });
+  const { perguntarVigiando } = ajuda;
   const manual = async (texto, nos) => {
-    if (nos) salvarTela(nos, texto);
-    log(`esperando você: ${texto}`);
-    const antes = nos ? resumoTela(nos) : null;
-    const resposta = await perguntarVigiando(
-      "manual",
-      `${texto} Resolva na instância e clique em "Já resolvi, continuar".`,
-      (agora) => antes === null || resumoTela(agora) === antes
-    );
-    if (resposta === null) log("a tela mudou na instância: seguindo");
+    await ajuda.manual(texto, nos);
     estado.repeticoes = 0;
     estado.desconhecidas = 0;
   };

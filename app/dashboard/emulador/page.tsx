@@ -4,11 +4,12 @@ import * as React from "react";
 import { MonitorSmartphone, Plus } from "lucide-react";
 import { Banner, Button, ConfirmDialog, EmptyState, PageHeader, Skeleton } from "@/components/ui";
 import { AgentCard, type SendCommand } from "@/components/dashboard/emulador/AgentCard";
+import { AtividadeDialog, type AtividadeTarget } from "@/components/dashboard/emulador/AtividadeDialog";
 import { ConnectDialog } from "@/components/dashboard/emulador/ConnectDialog";
 import { ContasCard } from "@/components/dashboard/emulador/ContasCard";
 import { ContaDialog, type ContaDialogTarget } from "@/components/dashboard/emulador/NovaContaDialog";
 import { instanceKey, latestCommandByInstance } from "@/lib/emulador/view";
-import { instanceAlerts, linkedJobs, type EmulatorJob } from "@/lib/emulador/jobs";
+import { busyInstances, instanceAlerts, linkedJobs, type EmulatorJob } from "@/lib/emulador/jobs";
 import type { EmuladorResponse, EmulatorAgent } from "@/lib/emulador/types";
 
 // O agente faz sync a cada ~3 s; a tela acompanha no mesmo ritmo enquanto está visível.
@@ -33,6 +34,7 @@ export default function EmuladorPage() {
   const [disconnecting, setDisconnecting] = React.useState<EmulatorAgent | null>(null);
   const [disconnectBusy, setDisconnectBusy] = React.useState(false);
   const [contaDialog, setContaDialog] = React.useState<ContaDialogTarget>(null);
+  const [atividade, setAtividade] = React.useState<AtividadeTarget>(null);
   const [jobBusy, setJobBusy] = React.useState<ReadonlySet<string>>(new Set());
   const [removingJob, setRemovingJob] = React.useState<EmulatorJob | null>(null);
   const inFlight = React.useRef(false);
@@ -193,38 +195,51 @@ export default function EmuladorPage() {
               Supabase.
             </Banner>
           )}
-          {data.agents.map((agent) => (
-            <React.Fragment key={agent.id}>
-              <AgentCard
-                agent={agent}
-                latest={latest}
-                sending={sending}
-                now={now}
-                onCommand={sendCommand}
-                onDisconnect={setDisconnecting}
-                onCreateInstance={data.jobsAvailable ? (a) => setContaDialog({ agent: a }) : undefined}
-                alerts={instanceAlerts(data.jobs, agent.id, agent.instances)}
-                linked={linkedJobs(data.jobs, agent.id, agent.instances)}
-                onEditJob={(a, job) => setContaDialog({ agent: a, job })}
-                onCreateHere={data.jobsAvailable ? (a, instance) => setContaDialog({ agent: a, instance }) : undefined}
-              />
-              {data.jobsAvailable && agent.lastSeenAt && (
-                <ContasCard
-                  jobs={data.jobs.filter((j) => j.agentId === agent.id)}
-                  busy={jobBusy}
+          {data.jobsAvailable && !data.atividadeAvailable && (
+            <Banner tone="warning">
+              Para o botão Atividade falta aplicar o SQL <span className="font-mono">supabase/emulador_atividade.sql</span> no Supabase.
+            </Banner>
+          )}
+          {data.agents.map((agent) => {
+            const jobs = data.jobs.filter((j) => j.agentId === agent.id);
+            const atividades = jobs.filter((j) => j.kind === "atividade");
+            const cardProps = {
+              busy: jobBusy,
+              now,
+              onContinue: (job: EmulatorJob) => void jobRequest(job, "continuar"),
+              onRemove: setRemovingJob,
+              onReply: (job: EmulatorJob, resposta: string) => void jobRequest(job, "responder", resposta),
+              onEdit: (job: EmulatorJob) => setContaDialog({ agent, job }),
+            };
+            return (
+              <React.Fragment key={agent.id}>
+                <AgentCard
+                  agent={agent}
+                  latest={latest}
+                  sending={sending}
                   now={now}
-                  onContinue={(job) => void jobRequest(job, "continuar")}
-                  onRemove={setRemovingJob}
-                  onReply={(job, resposta) => void jobRequest(job, "responder", resposta)}
-                  onEdit={(job) => setContaDialog({ agent, job })}
+                  onCommand={sendCommand}
+                  onDisconnect={setDisconnecting}
+                  onCreateInstance={data.jobsAvailable ? (a) => setContaDialog({ agent: a }) : undefined}
+                  alerts={instanceAlerts(data.jobs, agent.id, agent.instances)}
+                  linked={linkedJobs(data.jobs, agent.id, agent.instances)}
+                  onEditJob={(a, job) => setContaDialog({ agent: a, job })}
+                  onCreateHere={data.jobsAvailable ? (a, instance) => setContaDialog({ agent: a, instance }) : undefined}
+                  queued={busyInstances(data.jobs, agent.id)}
+                  onAtividade={data.atividadeAvailable ? (a, instance) => setAtividade({ agent: a, instance }) : undefined}
                 />
-              )}
-            </React.Fragment>
-          ))}
+                {data.jobsAvailable && agent.lastSeenAt && (
+                  <ContasCard kind="nova-conta" jobs={jobs.filter((j) => j.kind === "nova-conta")} {...cardProps} />
+                )}
+                {atividades.length > 0 && <ContasCard kind="atividade" jobs={atividades} {...cardProps} />}
+              </React.Fragment>
+            );
+          })}
         </div>
       )}
 
       <ContaDialog target={contaDialog} onClose={() => setContaDialog(null)} onSaved={() => void load()} />
+      <AtividadeDialog target={atividade} onClose={() => setAtividade(null)} onSaved={() => void load()} />
 
       <ConfirmDialog
         open={!!removingJob}
@@ -233,8 +248,12 @@ export default function EmuladorPage() {
           if (removingJob) void jobRequest(removingJob, "remover");
           setRemovingJob(null);
         }}
-        title="Remover esta conta da lista?"
-        description="Sai da lista e da fila. A instância que já foi criada continua no MuMu."
+        title={removingJob?.kind === "atividade" ? "Remover esta atividade da lista?" : "Remover esta conta da lista?"}
+        description={
+          removingJob?.kind === "atividade"
+            ? "Sai da lista e da fila, e as mídias dela são apagadas. O que já foi feito no Instagram fica."
+            : "Sai da lista e da fila. A instância que já foi criada continua no MuMu."
+        }
         confirmLabel="Remover"
       />
 
