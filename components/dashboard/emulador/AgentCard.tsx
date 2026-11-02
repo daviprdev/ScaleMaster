@@ -22,6 +22,11 @@ const STATE_BADGE: Record<InstanceState, { tone: BadgeTone; label: string }> = {
   on: { tone: "success", label: "Ligada" },
 };
 
+/** Link que agente-mumu/instalar-botao.ps1 registra no PC: sobe o agente sem janela. */
+const START_AGENT_URL = "scalemaster-agente:iniciar";
+/** Passou disso sem ficar Online, o botão Iniciar agente explica como instalar o link. */
+const START_WAIT_MS = 30_000;
+
 export type SendCommand = (
   agent: EmulatorAgent,
   index: number,
@@ -70,7 +75,13 @@ export function AgentCard({
 }: AgentCardProps) {
   const [taskFor, setTaskFor] = React.useState<EmulatorInstance | null>(null);
   const [renaming, setRenaming] = React.useState<EmulatorInstance | null>(null);
+  const [startedAt, setStartedAt] = React.useState<number | null>(null);
   const neverSeen = !agent.lastSeenAt;
+  const starting = !agent.online && startedAt !== null && now - startedAt < START_WAIT_MS;
+  const startFailed = !agent.online && startedAt !== null && !starting;
+  React.useEffect(() => {
+    if (agent.online) setStartedAt(null);
+  }, [agent.online]);
   const pcKey = instanceKey(agent.id, PC_INDEX);
   const pcCommand = latest.get(pcKey);
   const pcSending = sending.has(pcKey);
@@ -94,6 +105,20 @@ export function AgentCard({
           <Badge tone={agent.online ? "success" : "neutral"} dot>
             {agent.online ? "Online" : "Offline"}
           </Badge>
+          {!agent.online && !neverSeen && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Power size={14} />}
+              loading={starting}
+              onClick={() => {
+                setStartedAt(Date.now());
+                window.location.href = START_AGENT_URL;
+              }}
+            >
+              {starting ? "Iniciando…" : "Iniciar agente"}
+            </Button>
+          )}
           {onCreateInstance && (
             <Button
               size="sm"
@@ -127,6 +152,13 @@ export function AgentCard({
         </p>
       ) : (
         <div className="flex flex-col gap-4">
+          {startFailed && (
+            <Banner tone="warning">
+              O agente não subiu. O botão só funciona no PC do MuMu e precisa ser instalado uma vez: na pasta{" "}
+              <span className="font-mono">agente-mumu</span>, rode{" "}
+              <span className="font-mono">powershell -ExecutionPolicy Bypass -File instalar-botao.ps1</span>.
+            </Banner>
+          )}
           {agent.mumuError && <Banner tone="warning">{agent.mumuError}</Banner>}
           <CommandLine command={pcCommand} agent={agent} now={now} />
           {agent.instances.length === 0 ? (

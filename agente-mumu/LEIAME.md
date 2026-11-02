@@ -19,6 +19,14 @@ Liga o PC onde está o MuMu Player à aba **Emulador** do Scale Master. Precisa 
 
    Desfazer: `powershell -ExecutionPolicy Bypass -File remover-inicializacao.ps1`.
 
+4. Para o botão **Iniciar agente** da aba Emulador (aparece com o PC Offline) ligar o agente:
+
+   ```
+   powershell -ExecutionPolicy Bypass -File instalar-botao.ps1
+   ```
+
+   Registra o link `scalemaster-agente:` só para o seu usuário do Windows; o navegador pergunta se pode abrir e o link só roda o `iniciar-oculto.vbs` desta pasta (nada do site chega ao agente). Funciona só no navegador deste PC. Desfazer: `powershell -ExecutionPolicy Bypass -File remover-botao.ps1`.
+
 O código fica em `config.json` (fora do git). O log fica em `agente.log`.
 
 ## Testar sem o SaaS
