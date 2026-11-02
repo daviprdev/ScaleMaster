@@ -43,16 +43,16 @@ A aba Emulador → **Criar instância** põe uma conta na fila. O agente roda um
 
 Se uma etapa falha, a conta para e o botão **Continuar** retoma da etapa que falhou. Teste local: `node agente.mjs nova-conta 0 dados.json` (com `{ "proxy": "http://u:s@host:porta", "conta": { ... } }`).
 
-## Atividade
+## Estruturar
 
-O botão **Atividade** na linha de uma instância (fora a #0) põe na mesma fila, uma coisa por vez (`fluxos/atividade.mjs`): liga a instância, conecta a proxy que já está no NekoBox **antes** de abrir o Instagram, faz o que foi marcado e desliga.
+O botão **Estruturar** na linha de uma instância (fora a #0) põe na mesma fila, uma coisa por vez (`fluxos/atividade.mjs`): liga a instância, conecta a proxy que já está no NekoBox **antes** de abrir o Instagram, faz o que foi marcado e desliga.
 
 - **Aquecer:** segue 2 ou 3 perfis sorteados de `fluxos/verificados.mjs` (confere o selo azul; 20–60 s entre um e outro) e rola de 3 a 5 min de Reels, sem curtir.
 - **Trocar a foto de perfil** e **story com link e destaque:** a mídia escolhida na aba é baixada e posta em `/sdcard/DCIM/ScaleMaster` (só ela, para ser a 1ª da galeria); o story leva o sticker de link com o texto pedido e vira destaque no perfil.
 
 As telas do Instagram logado ficam em `fluxos/instagram.mjs`. Tela desconhecida vai para `telas/` e vira pergunta na aba; se travar na foto, no story ou no destaque, o agente pede para terminar à mão (não arrisca postar o story duas vezes). No Continuar, ligar, proxy e Instagram rodam de novo.
 
-**Instagram só pela proxy:** o Instagram só abre depois do teste da proxy; se a VPN do NekoBox cair no meio, o agente para o Instagram e encerra a etapa. Antes de desligar a instância (fim da Atividade, botão Fechar da aba, conta travada no telefone) o Instagram é forçado a parar e o agente espera 20 s para o Android gravar: app parado não acorda sozinho no boot. O "VPN sempre ativa + bloquear sem VPN" do Android foi testado e não faz efeito no MuMu.
+**Instagram só pela proxy:** o Instagram só abre depois do teste da proxy; se a VPN do NekoBox cair no meio, o agente para o Instagram e encerra a etapa. Antes de desligar a instância (fim da estruturação, botão Fechar da aba, conta travada no telefone) o Instagram é forçado a parar e o agente espera 20 s para o Android gravar: app parado não acorda sozinho no boot. O "VPN sempre ativa + bloquear sem VPN" do Android foi testado e não faz efeito no MuMu.
 
 ## Automações
 

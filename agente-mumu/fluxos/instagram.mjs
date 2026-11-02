@@ -524,7 +524,7 @@ export async function trocarFoto(ctx) {
  */
 export async function postarStory(ctx, { link, texto }) {
   const { d, log, ajuda } = ctx;
-  if (!link) throw new Error("A atividade veio sem o link do story.");
+  if (!link) throw new Error("A estruturação veio sem o link do story.");
   const estado = { abriu: false, escolheu: false, stickers: false, pesquisou: false, sticker: false, partilhou: false };
   const aMao = (motivo, nos) => ajuda.terminarAMao(motivo, nos, "o story (sticker de link e postar)");
   await irPara(ctx, "inicio");
@@ -643,7 +643,7 @@ export async function postarStory(ctx, { link, texto }) {
 /** Perfil → Novo (destaques) → o story → Seguinte → nome → Concluído. */
 export async function destacarStory(ctx, nome) {
   const { d, ajuda } = ctx;
-  if (!nome) throw new Error("A atividade veio sem o nome do destaque.");
+  if (!nome) throw new Error("A estruturação veio sem o nome do destaque.");
   const estado = { novo: false, escolheu: false, nomeou: false };
   await irPara(ctx, "perfil");
   return percorrer(ctx, {

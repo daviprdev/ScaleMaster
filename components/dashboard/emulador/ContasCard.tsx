@@ -24,10 +24,10 @@ const TEXTOS: Record<JobKind, { title: string; description: string; emptyTitle: 
     done: "Conta criada",
   },
   atividade: {
-    title: "Atividade das contas",
+    title: "Estruturação das contas",
     description: "Divide a fila com a criação: uma coisa por vez. A instância liga, faz o que foi marcado e desliga.",
-    emptyTitle: "Nenhuma atividade ainda",
-    emptyDescription: "Clique em Atividade na linha de uma instância.",
+    emptyTitle: "Nenhuma estruturação ainda",
+    emptyDescription: "Clique em Estruturar na linha de uma instância.",
     done: "Concluída",
   },
 };

@@ -197,7 +197,7 @@ export default function EmuladorPage() {
           )}
           {data.jobsAvailable && !data.atividadeAvailable && (
             <Banner tone="warning">
-              Para o botão Atividade falta aplicar o SQL <span className="font-mono">supabase/emulador_atividade.sql</span> no Supabase.
+              Para o botão Estruturar falta aplicar o SQL <span className="font-mono">supabase/emulador_atividade.sql</span> no Supabase.
             </Banner>
           )}
           {data.agents.map((agent) => {
@@ -248,7 +248,7 @@ export default function EmuladorPage() {
           if (removingJob) void jobRequest(removingJob, "remover");
           setRemovingJob(null);
         }}
-        title={removingJob?.kind === "atividade" ? "Remover esta atividade da lista?" : "Remover esta conta da lista?"}
+        title={removingJob?.kind === "atividade" ? "Remover esta estruturação da lista?" : "Remover esta conta da lista?"}
         description={
           removingJob?.kind === "atividade"
             ? "Sai da lista e da fila, e as mídias dela são apagadas. O que já foi feito no Instagram fica."

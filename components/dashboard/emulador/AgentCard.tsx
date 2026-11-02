@@ -263,7 +263,7 @@ interface InstanceRowProps {
   onEditData?: () => void;
   /** Abre Criar conta aqui (instância sem conta ligada). */
   onCreateHere?: () => void;
-  /** Abre a janela Atividade desta instância. */
+  /** Abre a janela Estruturar desta instância. */
   onAtividade?: () => void;
 }
 
@@ -326,7 +326,7 @@ function InstanceRow({
         )}
         {onAtividade && (
           <Button variant="secondary" size="sm" icon={<Activity size={14} />} disabled={disabled} onClick={onAtividade}>
-            Atividade
+            Estruturar
           </Button>
         )}
         {agent.tasks.length > 0 && (

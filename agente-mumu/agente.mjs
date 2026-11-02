@@ -39,7 +39,7 @@ import { TAREFAS } from "./tarefas/index.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.6.1";
+const VERSAO = "1.6.2";
 /** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
 const PASTA = path.dirname(fileURLToPath(import.meta.url));
@@ -227,7 +227,7 @@ async function rodarJob(mumu, job, reportar, aguardarResposta) {
   if (!fluxo) return enviar("error", `Este agente não conhece o fluxo "${job.kind}". Atualize a pasta agente-mumu.`);
   if (!mumu) return enviar("error", "MuMu não encontrado neste PC.");
 
-  const logJob = (m) => log(`[${job.kind === "atividade" ? "atividade" : "conta"} ${nomeDoJob(job)}] ${m}`);
+  const logJob = (m) => log(`[${job.kind === "atividade" ? "estruturar" : "conta"} ${nomeDoJob(job)}] ${m}`);
 
   /** Aparelho da cópia, ligado e com adb (liga de novo se alguém desligou no meio). */
   let aparelho = null;
@@ -415,7 +415,7 @@ async function rodarAgente() {
           contasEmAndamento.add(job.id);
           log(
             job.kind === "atividade"
-              ? `Atividade na fila: ${nomeDoJob(job)} (#${job.instanceIndex})`
+              ? `Estruturação na fila: ${nomeDoJob(job)} (#${job.instanceIndex})`
               : `Conta na fila: ${nomeDoJob(job)} (cópia da #${job.templateIndex})`
           );
           rodarJob(mumu, job, (u) => andamentos.set(u.id, u), aguardarResposta)

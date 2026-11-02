@@ -164,7 +164,7 @@ export function AtividadeDialog({ target, onClose, onSaved }: AtividadeDialogPro
     }
   };
 
-  const titulo = { acoes: "Atividade", midias: "Mídias", story: "Link e legenda" }[passo];
+  const titulo = { acoes: "Estruturar", midias: "Mídias", story: "Link e legenda" }[passo];
   const descricao = {
     acoes: target ? `Na instância #${target.instance.index} (${target.instance.name}). Ela liga, conecta a proxy do NekoBox, faz o que você marcar e desliga.` : undefined,
     midias: "Escolha um arquivo, ou uma pasta para sortear um deles.",

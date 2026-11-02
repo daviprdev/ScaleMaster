@@ -27,7 +27,7 @@ async function loadJob(id: string) {
   if (error) return { response: NextResponse.json({ error: error.message }, { status: 500 }) };
   if (!job) return { response: NextResponse.json({ error: "Conta não encontrada." }, { status: 404 }) };
   if (job.kind !== "nova-conta") {
-    return { response: NextResponse.json({ error: "Atividade não tem dados para editar." }, { status: 409 }) };
+    return { response: NextResponse.json({ error: "Estruturação não tem dados para editar." }, { status: 409 }) };
   }
 
   let input: NovaContaInput;

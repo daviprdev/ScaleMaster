@@ -31,7 +31,7 @@ import { VERIFICADOS } from "./verificados.mjs";
 const PASTA_MIDIA = "/sdcard/DCIM/ScaleMaster";
 
 function instancia(estado) {
-  if (estado.instanceIndex === null || estado.instanceIndex === undefined) throw new Error("A atividade veio sem a instância.");
+  if (estado.instanceIndex === null || estado.instanceIndex === undefined) throw new Error("A estruturação veio sem a instância.");
   return estado.instanceIndex;
 }
 
@@ -48,7 +48,7 @@ async function contexto({ dispositivo, perguntar, log }) {
  * /sdcard o Android já registra o arquivo na galeria sozinho (testado em 01/11).
  */
 async function midiaNaGaleria(d, midia, job, log) {
-  if (!midia?.url) throw new Error("A mídia não veio do SaaS. Remova a atividade e inicie de novo.");
+  if (!midia?.url) throw new Error("A mídia não veio do SaaS. Remova a estruturação e inicie de novo.");
   const ext = /^\.(jpg|png|mp4|mov)$/i.test(midia.ext ?? "") ? midia.ext.toLowerCase() : ".jpg";
   const res = await fetch(midia.url, { signal: AbortSignal.timeout(300_000) });
   if (!res.ok) throw new Error(`Não deu para baixar a mídia (HTTP ${res.status}). O link vale 2 h: clique em Continuar.`);
