@@ -118,7 +118,7 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
           ? "Ao salvar a conta volta para a fila. O que mudou roda de novo: com Gmail ou dados novos o Instagram é zerado e o cadastro recomeça."
           : here
             ? `A conta é criada na instância #${here.index} (${here.name}), sem copiar outra: ela ganha o nome novo, a proxy no NekoBox e o Instagram zerado. IMEI, Android ID e MAC continuam os mesmos.`
-            : "O agente copia a instância padrão, instala o Instagram, põe a proxy no NekoBox e cria a conta com o Gmail."
+            : "O agente copia a instância padrão, instala o Instagram, põe a proxy no NekoBox, cria a conta com o Gmail e aquece (segue 2 ou 3 verificados e rola até 2 min de Reels)."
       }
       className="max-w-lg"
     >

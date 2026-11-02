@@ -1,6 +1,6 @@
 import { limparAlerta, marcarAlerta } from "../lib/alertas.mjs";
 import { gerarAndroidId, gerarImei, gerarMac } from "../lib/ids.mjs";
-import { ATIVIDADE } from "./atividade.mjs";
+import { AQUECIMENTO, ATIVIDADE } from "./atividade.mjs";
 import { pararInstagram } from "./instagram.mjs";
 import { INSTAGRAM, instalarInstagram } from "./aurora.mjs";
 import { ContaTravadaTelefone, cadastrarInstagram } from "./cadastro.mjs";
@@ -126,6 +126,8 @@ export const NOVA_CONTA = [
       }
     },
   },
+  // Pedido do dono: a conta nova já sai aquecida (seguir 2–3 verificados + até 2 min de Reels).
+  ...AQUECIMENTO,
 ];
 
 /** Fluxos da fila por kind: lista de etapas, ou função do input que monta a lista. */

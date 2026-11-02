@@ -39,7 +39,7 @@ interface AtividadeDialogProps {
  */
 export function AtividadeDialog({ target, onClose, onSaved }: AtividadeDialogProps) {
   const [passo, setPasso] = React.useState<Passo>("acoes");
-  const [acoes, setAcoes] = React.useState<ReadonlySet<AtividadeAcao>>(new Set(["aquecer"]));
+  const [acoes, setAcoes] = React.useState<ReadonlySet<AtividadeAcao>>(new Set());
   const [midias, setMidias] = React.useState<Record<MidiaUso, ReadonlySet<string>>>({ foto: new Set(), story: new Set() });
   const [story, setStory] = React.useState({ link: "", texto: "", destaque: "" });
   const [saving, setSaving] = React.useState(false);
@@ -48,7 +48,7 @@ export function AtividadeDialog({ target, onClose, onSaved }: AtividadeDialogPro
   React.useEffect(() => {
     if (!target) return;
     setPasso("acoes");
-    setAcoes(new Set(["aquecer"]));
+    setAcoes(new Set());
     setMidias({ foto: new Set(), story: new Set() });
     setStory({ link: "", texto: "", destaque: "" });
     setSaving(false);

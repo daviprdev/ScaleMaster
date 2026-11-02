@@ -8,7 +8,7 @@ import {
   parseStoryDados,
   type MediaFile,
 } from "../lib/emulador/atividade";
-import { busyInstances, canEditJob, linkedJobs, type EmulatorJob } from "../lib/emulador/jobs";
+import { NOVA_CONTA_FLUXO, busyInstances, canEditJob, linkedJobs, type EmulatorJob } from "../lib/emulador/jobs";
 import { parseMedia } from "../lib/emulador/payload";
 
 const FOTO = "Camera/PERFIL 01.jpg";
@@ -23,14 +23,19 @@ const STORY = { link: "meusite.com/oferta?x=1", texto: "Clique aqui", destaque: 
 
 describe("atividade: o que marcar e as etapas", () => {
   it("ações válidas, sem repetir, na ordem da lista", () => {
-    expect(parseAcoes(["story", "aquecer", "story", "voar", 3])).toEqual(["aquecer", "story"]);
-    expect(parseAcoes("aquecer")).toEqual([]);
+    expect(parseAcoes(["story", "foto", "story", "voar", 3])).toEqual(["foto", "story"]);
+    expect(parseAcoes("story")).toEqual([]);
   });
 
   it("etapas: ligar, proxy e Instagram sempre; o resto só com a ação marcada", () => {
-    expect(atividadeSteps(["aquecer"]).map((s) => s.key)).toEqual(["abrir", "proxy", "instagram", "seguir", "reels", "fechar"]);
+    expect(atividadeSteps(["story"]).map((s) => s.key)).toEqual(["abrir", "proxy", "instagram", "story", "destaque", "fechar"]);
     expect(atividadeSteps(["foto", "story"]).map((s) => s.key)).toEqual(["abrir", "proxy", "instagram", "foto", "story", "destaque", "fechar"]);
-    expect(atividadeSteps(["aquecer", "foto", "story"])).toHaveLength(ATIVIDADE_FLUXO.length);
+    expect(atividadeSteps(["foto", "story"])).toHaveLength(ATIVIDADE_FLUXO.length);
+  });
+
+  it("aquecer saiu do Estruturar e foi para o fim da criação de conta", () => {
+    expect(parseAcoes(["aquecer"])).toEqual([]);
+    expect(NOVA_CONTA_FLUXO.slice(-3).map((s) => s.key)).toEqual(["cadastro", "seguir", "reels"]);
   });
 });
 
@@ -83,8 +88,8 @@ describe("atividade: link e textos do story", () => {
 });
 
 describe("atividade: corpo do POST", () => {
-  it("aquecer sozinho não pede mídia nem link", () => {
-    expect(parseAtividadeInput({ acoes: ["aquecer"] }, FILES)).toEqual({ value: { acoes: ["aquecer"], midias: {}, story: null } });
+  it("aquecer não é mais ação do Estruturar", () => {
+    expect(parseAtividadeInput({ acoes: ["aquecer"] }, FILES)).toHaveProperty("error");
   });
 
   it("foto e story exigem arquivo da pasta do MuMu, do tipo certo", () => {
@@ -96,12 +101,12 @@ describe("atividade: corpo do POST", () => {
 
   it("tudo marcado: guarda só o que foi pedido", () => {
     const r = parseAtividadeInput(
-      { acoes: ["aquecer", "foto", "story"], midias: { foto: [FOTO, FOTO2], story: [VIDEO], extra: ["x"] }, story: STORY },
+      { acoes: ["foto", "story"], midias: { foto: [FOTO, FOTO2], story: [VIDEO], extra: ["x"] }, story: STORY },
       FILES
     );
     expect(r).toEqual({
       value: {
-        acoes: ["aquecer", "foto", "story"],
+        acoes: ["foto", "story"],
         midias: { foto: [FOTO, FOTO2], story: [VIDEO] },
         story: { link: "https://meusite.com/oferta?x=1", texto: "Clique aqui", destaque: "Links" },
       },
@@ -133,7 +138,7 @@ describe("atividade na fila", () => {
   const inst = [{ index: 2, name: "samantapoli_ana485" }];
 
   it("atividade mais nova não tira a conta da instância (Editar dados, aviso)", () => {
-    const atividade = job({ id: "22222222-2222-4222-8222-222222222222", kind: "atividade", acoes: ["aquecer"], steps: [], status: "running" });
+    const atividade = job({ id: "22222222-2222-4222-8222-222222222222", kind: "atividade", acoes: ["story"], steps: [], status: "running" });
     expect(linkedJobs([atividade, job({})], "pc", inst).get(2)?.kind).toBe("nova-conta");
   });
 

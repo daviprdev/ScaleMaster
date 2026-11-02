@@ -13,13 +13,13 @@ import {
   sortear,
   trocarFoto,
 } from "./instagram.mjs";
-import { ligarProxy } from "./nekobox.mjs";
+import { ligarProxy, vpnLigada } from "./nekobox.mjs";
 import { VERIFICADOS } from "./verificados.mjs";
 
 /**
  * Atividade (aba Emulador) numa instância que já tem conta: liga, conecta a
  * proxy do NekoBox ANTES de abrir o Instagram, faz o que o dono marcou e
- * desliga. input = { acoes: ["aquecer","foto","story"], midias: { foto?, story? }
+ * desliga. input = { acoes: ["foto","story"], midias: { foto?, story? }
  * (arquivos marcados na pasta do MuMu, caminho relativo; mais de um = sorteia),
  * story: { link, texto, destaque } }. As chaves batem com ATIVIDADE_FLUXO em
  * lib/emulador/atividade.ts.
@@ -90,21 +90,6 @@ const ETAPAS = {
       return abrirInstagram(await contexto(ctx));
     },
   },
-  seguir: {
-    chave: "seguir",
-    rotulo: "Seguir perfis verificados",
-    async rodar(ctx) {
-      return seguirVerificados(await contexto(ctx), VERIFICADOS, sortear(2, 3));
-    },
-  },
-  reels: {
-    chave: "reels",
-    rotulo: "Rolar os Reels",
-    async rodar(ctx) {
-      // Pedido do dono: no máximo 2 min de Reels.
-      return rolarReels(await contexto(ctx), sortear(90_000, 120_000));
-    },
-  },
   foto: {
     chave: "foto",
     rotulo: "Trocar a foto de perfil",
@@ -142,14 +127,45 @@ const ETAPAS = {
   },
 };
 
-/** Etapas da atividade, só com o que o dono marcou. */
+/**
+ * No Continuar a instância pode ter religado sem a VPN: liga a proxy e reabre o
+ * Instagram por ela antes de mexer na conta.
+ */
+async function proxyAntesDoInstagram(ctx) {
+  const d = await ctx.dispositivo();
+  if (await vpnLigada(d)) return;
+  await ligarProxy(d, ctx.log);
+  await abrirInstagram({ d, log: ctx.log, ajuda: criarAjuda({ d, perguntar: ctx.perguntar, log: ctx.log }) });
+}
+
+/** Aquecimento da conta nova (pedido do dono): roda no fim da criação, em fluxos/nova-conta.mjs. */
+export const AQUECIMENTO = [
+  {
+    chave: "seguir",
+    rotulo: "Aquecer: seguir perfis verificados",
+    async rodar(ctx) {
+      await proxyAntesDoInstagram(ctx);
+      return seguirVerificados(await contexto(ctx), VERIFICADOS, sortear(2, 3));
+    },
+  },
+  {
+    chave: "reels",
+    rotulo: "Aquecer: rolar os Reels",
+    async rodar(ctx) {
+      await proxyAntesDoInstagram(ctx);
+      // Pedido do dono: no máximo 2 min de Reels.
+      return rolarReels(await contexto(ctx), sortear(90_000, 120_000));
+    },
+  },
+];
+
+/** Etapas do Estruturar, só com o que o dono marcou (foto e/ou story com destaque). */
 export function ATIVIDADE(input) {
   const acoes = new Set(Array.isArray(input?.acoes) ? input.acoes : []);
   return [
     ETAPAS.abrir,
     ETAPAS.proxy,
     ETAPAS.instagram,
-    ...(acoes.has("aquecer") ? [ETAPAS.seguir, ETAPAS.reels] : []),
     ...(acoes.has("foto") ? [ETAPAS.foto] : []),
     ...(acoes.has("story") ? [ETAPAS.story, ETAPAS.destaque] : []),
     ETAPAS.fechar,

@@ -7,11 +7,11 @@
  * o lado do PC fica em agente-mumu/fluxos/atividade.mjs, com as mesmas chaves de etapa.
  */
 
-export type AtividadeAcao = "aquecer" | "foto" | "story";
+/** O aquecimento (seguir + Reels) foi para o fim da criação de conta (NOVA_CONTA_FLUXO). */
+export type AtividadeAcao = "foto" | "story";
 export type MidiaUso = "foto" | "story";
 
 export const ATIVIDADE_ACOES: ReadonlyArray<{ key: AtividadeAcao; label: string; description: string }> = [
-  { key: "aquecer", label: "Aquecer", description: "Segue 2 ou 3 perfis verificados e rola até 2 min de Reels." },
   { key: "foto", label: "Trocar a foto de perfil", description: "Com a foto que você escolher da pasta do MuMu (ou sorteada entre várias)." },
   { key: "story", label: "Story com link e destaque", description: "Posta o story com o sticker de link e destaca no perfil." },
 ];
@@ -21,8 +21,6 @@ export const ATIVIDADE_FLUXO: ReadonlyArray<{ key: string; label: string; acao?:
   { key: "abrir", label: "Ligar a instância" },
   { key: "proxy", label: "Conectar a proxy no NekoBox" },
   { key: "instagram", label: "Abrir o Instagram" },
-  { key: "seguir", label: "Seguir perfis verificados", acao: "aquecer" },
-  { key: "reels", label: "Rolar os Reels", acao: "aquecer" },
   { key: "foto", label: "Trocar a foto de perfil", acao: "foto" },
   { key: "story", label: "Postar o story com link", acao: "story" },
   { key: "destaque", label: "Destacar o story", acao: "story" },

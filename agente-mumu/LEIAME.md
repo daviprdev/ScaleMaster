@@ -39,7 +39,8 @@ A aba Emulador → **Criar instância** põe uma conta na fila. O agente roda um
 2. dá à cópia o @ (ou o Gmail) como nome e liga;
 3. instala o Instagram pelo Aurora (`fluxos/aurora.mjs`), antes da proxy;
 4. põe a proxy HTTP no NekoBox e testa (`fluxos/nekobox.mjs`);
-5. cria a conta com o Gmail (`fluxos/cadastro.mjs`): reconhece cada tela pelo título; o código do Gmail e qualquer tela desconhecida são pedidos ao dono na aba. Telas desconhecidas ficam salvas em `telas/`.
+5. cria a conta com o Gmail (`fluxos/cadastro.mjs`): reconhece cada tela pelo título; o código do Gmail e qualquer tela desconhecida são pedidos ao dono na aba. Telas desconhecidas ficam salvas em `telas/`;
+6. aquece a conta nova: segue 2 ou 3 perfis sorteados de `fluxos/verificados.mjs` (confere o selo azul; 20–60 s entre um e outro) e rola de 1,5 a 2 min de Reels, sem curtir (`AQUECIMENTO` em `fluxos/atividade.mjs`).
 
 Se uma etapa falha, a conta para e o botão **Continuar** retoma da etapa que falhou. Teste local: `node agente.mjs nova-conta 0 dados.json` (com `{ "proxy": "http://u:s@host:porta", "conta": { ... } }`).
 
@@ -47,8 +48,7 @@ Se uma etapa falha, a conta para e o botão **Continuar** retoma da etapa que fa
 
 O botão **Estruturar** na linha de uma instância (fora a #0) põe na mesma fila, uma coisa por vez (`fluxos/atividade.mjs`): liga a instância, conecta a proxy que já está no NekoBox **antes** de abrir o Instagram, faz o que foi marcado e desliga.
 
-- **Aquecer:** segue 2 ou 3 perfis sorteados de `fluxos/verificados.mjs` (confere o selo azul; 20–60 s entre um e outro) e rola de 1,5 a 2 min de Reels, sem curtir.
-- **Trocar a foto de perfil** e **story com link e destaque:** as mídias vêm da pasta do MuMu no PC (`DocumentosMuMuSharedFolder`, ou `pastaMidias` no config.json; `lib/midias.mjs`). O agente manda só a lista de nomes para a aba; na hora, sorteia uma das marcadas e copia direto do PC para `/sdcard/DCIM/ScaleMaster` (só ela, para ser a 1ª da galeria). Arquivo fora dessa pasta é recusado. O story leva o sticker de link com o texto pedido e vira destaque no perfil.
+- **Trocar a foto de perfil** e **story com link e destaque:** as mídias vêm da pasta do MuMu no PC (`Documentos\MuMuSharedFolder`, ou `pastaMidias` no config.json; `lib/midias.mjs`). O agente manda só a lista de nomes para a aba; na hora, sorteia uma das marcadas e copia direto do PC para `/sdcard/DCIM/ScaleMaster` (só ela, para ser a 1ª da galeria). Arquivo fora dessa pasta é recusado. O story leva o sticker de link com o texto pedido e vira destaque no perfil.
 
 As telas do Instagram logado ficam em `fluxos/instagram.mjs`. Tela desconhecida vai para `telas/` e vira pergunta na aba; se travar na foto, no story ou no destaque, o agente pede para terminar à mão (não arrisca postar o story duas vezes). No Continuar, ligar, proxy e Instagram rodam de novo.
 

@@ -123,6 +123,8 @@ export const NOVA_CONTA_FLUXO: ReadonlyArray<{ key: string; label: string }> = [
   { key: "proxy", label: "Proxy no NekoBox" },
   { key: "limpar", label: "Preparar o Instagram para o cadastro" },
   { key: "cadastro", label: "Criar a conta no Instagram" },
+  { key: "seguir", label: "Aquecer: seguir perfis verificados" },
+  { key: "reels", label: "Aquecer: rolar os Reels" },
 ];
 
 export interface NovaContaInput {

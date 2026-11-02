@@ -58,7 +58,8 @@ function nomeBase(c: NovaContaInput["conta"]): string {
 /**
  * Etapas que continuam valendo depois da edição (as outras rodam de novo):
  * proxy nova → refaz a proxy; qualquer mudança na conta ou na proxy → limpa o
- * Instagram e refaz o cadastro do zero; @ ou Gmail novo → renomeia a instância.
+ * Instagram e refaz o cadastro do zero (e o aquecimento, que é da conta nova);
+ * @ ou Gmail novo → renomeia a instância.
  * Sem mudança nenhuma é igual ao Continuar.
  */
 export function stepsAfterEdit(steps: readonly JobStep[], before: NovaContaInput, after: NovaContaInput): JobStep[] {
@@ -69,6 +70,8 @@ export function stepsAfterEdit(steps: readonly JobStep[], before: NovaContaInput
   if (contaMudou) {
     refazer.add("limpar");
     refazer.add("cadastro");
+    refazer.add("seguir");
+    refazer.add("reels");
   }
   if (nomeBase(before.conta) !== nomeBase(after.conta)) refazer.add("nome");
   return steps.filter((s) => s.status === "done" && !refazer.has(s.key));
