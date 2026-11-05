@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import crypto from "crypto";
 import { decrypt } from "@/lib/encrypt";
 import { getAppUrl, getInstagramRedirectUri } from "@/lib/app-url";
-import { signMagicUserCookie } from "@/lib/oauth-cookie";
+import { signMagicUserCookie, signOAuthState } from "@/lib/oauth-cookie";
 
 export const dynamic = "force-dynamic";
 
@@ -64,8 +63,8 @@ export async function GET(
     }
   }
 
-  // Gera state CSRF e monta URL OAuth
-  const state = crypto.randomUUID();
+  // Gera state CSRF assinado e com prazo (lib/oauth-cookie.ts) e monta URL OAuth
+  const state = signOAuthState();
   const oauthUrl =
     "https://www.instagram.com/oauth/authorize" +
     "?client_id=" + clientId +

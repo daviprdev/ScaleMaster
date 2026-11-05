@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAppUrl, getInstagramRedirectUri } from "@/lib/app-url";
+import { signOAuthState } from "@/lib/oauth-cookie";
 
 export const dynamic = "force-dynamic";
 
@@ -45,7 +45,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const state = crypto.randomUUID();
+  // Assinado e com prazo (lib/oauth-cookie.ts); o callback confere com o cookie.
+  const state = signOAuthState();
 
   const oauthUrl =
     "https://www.instagram.com/oauth/authorize" +

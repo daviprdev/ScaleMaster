@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt } from "@/lib/encrypt";
 import { fetch as undiciFetch } from "undici";
 import { getAppUrl, getInstagramRedirectUri } from "@/lib/app-url";
-import { verifyMagicUserCookie } from "@/lib/oauth-cookie";
+import { verifyMagicUserCookie, verifyOAuthState } from "@/lib/oauth-cookie";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -363,6 +363,12 @@ export async function GET(req: NextRequest) {
   const cookieState = req.cookies.get("ig_oauth_state")?.value ?? "";
   if (!state || !cookieState || state !== cookieState) {
     console.error("[ig/callback] State inválido (state presente:", !!state, "| cookie presente:", !!cookieState, ")");
+    return redirectWithError("state_mismatch", undefined, isMagicLink);
+  }
+  // Além de bater com o cookie, o state tem que ter a assinatura do servidor e
+  // estar no prazo de 1h.
+  if (!verifyOAuthState(state)) {
+    console.error("[ig/callback] State com assinatura inválida ou vencido.");
     return redirectWithError("state_mismatch", undefined, isMagicLink);
   }
 
