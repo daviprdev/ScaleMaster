@@ -90,7 +90,8 @@ echo "== imagem do sidecar (alpine + redsocks + iptables + curl)"
 TMP="$(mktemp -d)"
 cat > "$TMP/Dockerfile" <<'EOF'
 FROM alpine:3.20
-RUN apk add --no-cache redsocks iptables curl && adduser -D -H -s /sbin/nologin -u 1200 redsocks
+# uid 60000 fixo (agente-vps/lib/rede.mjs UID_REDSOCKS): 1000/2000 são system/shell do Android, 10000+ os apps.
+RUN apk add --no-cache redsocks iptables curl && adduser -D -H -s /sbin/nologin -u 60000 redsocks
 EOF
 docker build -q -t scalemaster-redsocks:1 "$TMP" >/dev/null
 rm -rf "$TMP"

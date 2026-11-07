@@ -63,7 +63,7 @@ Mesmas chaves de `VPS_FLUXO` em `lib/vps/jobs.ts`; o Continuar retoma da etapa q
 3. **geo** — `curl -x proxy` no endpoint de geo: exige HTTP 200 e o país da conta, em 15 s. Falha → `PROXY_MORTA`, a conta fica pausada na aba até trocar a proxy (sem fallback ao IP da VPS).
 4. **nome**, **abrir** — liga o container com o sidecar em modo **bloqueado** (nada sai) e prova o kill switch.
 5. **instagram** — `adb install` do APK pinado (sem Aurora, sem internet).
-6. **rede** — sidecar `ig-N-proxy` no netns do container: redsocks (http-connect, uid dedicado `redsocks`) + `iptables -t nat OUTPUT REDIRECT` + DNS sobre TCP (`dnsu2t`) + `udp/443 REJECT` (derruba o QUIC) + `OUTPUT DROP` no fim; confere de dentro do netns que a saída é a proxy. O redroid exige `--privileged`: `cap-drop` não se aplica ao container da conta, por isso o kill switch fica no netns, não nas capabilities.
+6. **rede** — sidecar `ig-N-proxy` no netns do container: redsocks (http-connect, uid fixo 60000 — 1000/2000 são system/shell do Android, 10000+ os apps) + `iptables -t nat OUTPUT REDIRECT` (udp/53 → dnsu2t, tcp/53 e todo TCP → redsocks: o DNS nunca sai pelo resolver da VPS) + `udp/443 REJECT` (derruba o QUIC) + `OUTPUT DROP` no fim; confere de dentro do netns que a saída é a proxy. As regras são aplicadas pelo próprio sidecar (`--cap-add NET_ADMIN`, `sidecar.sh`) a cada boot dele — o script zera e recria as chains, então um restart do sidecar (`--restart unless-stopped`) reaplica tudo — e o agente só trata o container como ligado depois de o sidecar estar de pé: se ele não sobe, `abrir()` desliga o container na hora (nunca fica ligado sem regra). O redroid exige `--privileged`: `cap-drop` não se aplica ao container da conta, por isso o kill switch fica no netns, não nas capabilities.
 7. **limpar**, **email** (login IMAP), **cadastro** — telas pelo texto (`fluxos/cadastro.mjs`); o código de confirmação é lido na caixa por IMAP (`lib/imap.mjs`, até 3 min) antes de perguntar na aba; captcha de imagem vai para o Capsolver (`lib/captcha.mjs`) até 3 vezes; telefone ou captcha sem solução encerram com o aviso em vermelho, igual ao MuMu.
 8. **perfil** — foto sorteada de `/opt/scalemaster/midias/perfil` (ou da pasta toda), nome de exibição e bio.
 9. **seguir**, **reels** — aquecimento (2–3 verificados, até 2 min de Reels).
@@ -83,9 +83,10 @@ docker exec ig-3-proxy iptables -t nat -S OUTPUT          # regras
 
 Com o sidecar em modo bloqueado o `curl` de dentro **tem** que falhar (kill switch). Sem sidecar nenhum, as regras somem com o netns ao desligar; ao ligar de novo o agente sobe o sidecar antes de qualquer app.
 
-Prova do kill switch (E2E, com o container ligado):
+Prova do kill switch (E2E, com o container ligado), automatizada em `scripts/vps/provar-rede.sh <índice>`: (a) sidecar bloqueado → DNS não resolve e TCP não abre; (b) sidecar com a proxy do retrato → os dois abrem; (c) o geo de dentro do netns devolve o país da proxy; (d) com o redsocks parado nada sai. Sai 0 só com os quatro passando e devolve o sidecar ao modo que estava. À mão:
 
 ```
+bash scripts/vps/provar-rede.sh 3
 docker exec ig-3-proxy nslookup instagram.com 1.1.1.1      # bloqueado: falha; proxy: resolve
 docker exec ig-3-proxy curl -sS -m 8 https://instagram.com  # bloqueado: falha; proxy: abre
 docker exec ig-3-proxy curl -sS -m 8 http://ip-api.com/json/ # proxy: o IP é o da proxy, nunca o da VPS

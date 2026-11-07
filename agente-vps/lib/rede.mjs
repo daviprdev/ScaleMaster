@@ -60,17 +60,29 @@ export async function garantirBridge() {
  * por scripts/vps/instalar.sh). Em modo bloqueado só aplica o DROP; em modo
  * proxy escreve o redsocks.conf e abre as exceções da proxy.
  */
-export const UID_REDSOCKS = 1200;
+/**
+ * Uid fixo do redsocks (criado na imagem do sidecar, scripts/vps/instalar.sh).
+ * O match por owner vale para o netns inteiro, e o netns é o do Android: os
+ * uids 1000 (system) e 2000 (shell) são do Android, 10000–19999 são os apps e
+ * 50000–59999 os gids compartilhados. 60000 não colide com nenhum deles; com
+ * 1000/2000 o tráfego do próprio Android passaria como se fosse do redsocks.
+ */
+export const UID_REDSOCKS = 60000;
 
 /**
  * Regras, nesta ordem (tudo em OUTPUT: os apps rodam no netns, o tráfego é local):
- *   nat OUTPUT: lo RETURN → owner redsocks RETURN → udp/53 REDIRECT dnsu2t → tcp REDIRECT redsocks
+ *   nat OUTPUT: lo RETURN → owner redsocks RETURN → udp/53 REDIRECT dnsu2t → tcp/53 REDIRECT
+ *               redsocks → tcp REDIRECT redsocks
  *   filter OUTPUT: lo ACCEPT → ESTABLISHED/RELATED ACCEPT (respostas do adb que entrou)
  *                  → owner redsocks ACCEPT → udp/53 ACCEPT → udp/443 REJECT (derruba o QUIC
  *                  para o app cair em TCP sem esperar timeout) → tcp ACCEPT → DROP final.
- * Em modo bloqueado só ficam lo, ESTABLISHED, o REJECT do QUIC e o DROP: nem DNS sai.
- * O redsocks roda com o uid dedicado (base.user): é o owner que o libera.
+ * O DNS nunca sai pelo resolver da VPS: udp/53 vai para o dnsu2t (DNS sobre TCP
+ * pela proxy) e tcp/53 para o redsocks (CONNECT 1.1.1.1:53 pela proxy), os dois
+ * antes de qualquer ACCEPT. Em modo bloqueado só ficam lo, ESTABLISHED, o
+ * REJECT do QUIC e o DROP: nem DNS sai. O redsocks roda com o uid dedicado
+ * (base.user): é o owner, pelo número, que o libera.
  */
+// decisão: tcp/53 vai para a porta do redsocks, não para a do dnsu2t, porque o dnsu2t só escuta UDP; pelo redsocks o DNS sobre TCP sai por CONNECT pela proxy.
 export function scriptSidecar() {
   return `set -e
 id redsocks >/dev/null 2>&1 || adduser -D -H -s /sbin/nologin -u ${UID_REDSOCKS} redsocks
@@ -84,14 +96,15 @@ dnsu2t { local_ip = 0.0.0.0; local_port = ${PORTA_DNS}; remote_ip = ${DNS_REMOTO
 CONF
   chown redsocks /etc/redsocks.conf && chmod 600 /etc/redsocks.conf
   iptables -t nat -A OUTPUT -o lo -j RETURN
-  iptables -t nat -A OUTPUT -m owner --uid-owner redsocks -j RETURN
+  iptables -t nat -A OUTPUT -m owner --uid-owner ${UID_REDSOCKS} -j RETURN
   iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports ${PORTA_DNS}
+  iptables -t nat -A OUTPUT -p tcp --dport 53 -j REDIRECT --to-ports ${PORTA_REDSOCKS}
   iptables -t nat -A OUTPUT -p tcp -j REDIRECT --to-ports ${PORTA_REDSOCKS}
 fi
 iptables -A OUTPUT -o lo -j ACCEPT
 iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 if [ "$MODO" = "proxy" ]; then
-  iptables -A OUTPUT -m owner --uid-owner redsocks -j ACCEPT
+  iptables -A OUTPUT -m owner --uid-owner ${UID_REDSOCKS} -j ACCEPT
   iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
 fi
 iptables -A OUTPUT -p udp --dport 443 -j REJECT --reject-with icmp-port-unreachable

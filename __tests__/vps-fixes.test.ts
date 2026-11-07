@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { parseAgentKind, parseCriada, parseInstances } from "../lib/emulador/payload";
 import { loadEmulador } from "../lib/emulador/load";
 import { syncJobs } from "../lib/emulador/sync-jobs";
-import { scriptSidecar } from "../agente-vps/lib/rede.mjs";
+import { UID_REDSOCKS, scriptSidecar } from "../agente-vps/lib/rede.mjs";
 import { resolver } from "../agente-vps/lib/captcha.mjs";
 
 // Pasta temporária para os retratos (SCALEMASTER_VPS_DIR) antes de carregar o driver.
@@ -223,13 +223,15 @@ describe("Sessão exportada (nova-conta.mjs)", () => {
 });
 
 describe("Kill switch (rede.mjs)", () => {
-  it("regras na ordem: owner RETURN → REDIRECT tcp → lo → owner ACCEPT → udp/53 → udp/443 REJECT → tcp ACCEPT → DROP", () => {
+  it("regras na ordem: owner RETURN → REDIRECT 53 (udp e tcp) → REDIRECT tcp → lo → owner ACCEPT → udp/53 → udp/443 REJECT → tcp ACCEPT → DROP", () => {
     const s = scriptSidecar();
     const ordem = [
-      "iptables -t nat -A OUTPUT -m owner --uid-owner redsocks -j RETURN",
+      "iptables -t nat -A OUTPUT -m owner --uid-owner 60000 -j RETURN",
+      "iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300",
+      "iptables -t nat -A OUTPUT -p tcp --dport 53 -j REDIRECT --to-ports 12345",
       "iptables -t nat -A OUTPUT -p tcp -j REDIRECT --to-ports 12345",
       "iptables -A OUTPUT -o lo -j ACCEPT",
-      "iptables -A OUTPUT -m owner --uid-owner redsocks -j ACCEPT",
+      "iptables -A OUTPUT -m owner --uid-owner 60000 -j ACCEPT",
       "iptables -A OUTPUT -p udp --dport 53 -j ACCEPT",
       "iptables -A OUTPUT -p udp --dport 443 -j REJECT --reject-with icmp-port-unreachable",
       "iptables -A OUTPUT -p tcp -j ACCEPT",
@@ -243,7 +245,11 @@ describe("Kill switch (rede.mjs)", () => {
     }
     expect(s).not.toContain("PREROUTING");
     expect(s).toContain('user = "redsocks"; group = "redsocks";');
-    expect(s).toContain("adduser -D -H -s /sbin/nologin -u 1200 redsocks");
+    expect(s).toContain("adduser -D -H -s /sbin/nologin -u 60000 redsocks");
+    expect(UID_REDSOCKS).toBe(60000);
+    expect(s).not.toMatch(/--uid-owner (1000|2000|redsocks)\b/);
+    // O REDIRECT do 53 vem antes do ACCEPT do 53: nada de DNS pelo resolver da VPS.
+    expect(s.indexOf("--dport 53 -j REDIRECT")).toBeLessThan(s.indexOf("--dport 53 -j ACCEPT"));
     // Em modo bloqueado o udp/53 ACCEPT e o tcp ACCEPT ficam dentro do if do proxy: nem DNS sai.
     expect(s.split('if [ "$MODO" = "proxy" ]').length).toBe(5);
   });
