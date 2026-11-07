@@ -351,11 +351,6 @@ export default function DashboardPage() {
           values={stats?.story_views}
           total={stats?.story_views.total ?? 0}
           loading={loading}
-          note={() =>
-            stats && !stats.story_views.has_data
-              ? "Sincronizando stories com o Instagram…"
-              : null
-          }
         />
 
         {/* Reels publicados — lista de mídias de cada conta na Meta */}
@@ -365,11 +360,6 @@ export default function DashboardPage() {
           values={stats?.videos_published}
           total={stats?.videos_published.total ?? 0}
           loading={loading}
-          note={() =>
-            stats && stats.videos_published.accounts_synced === 0
-              ? "Sincronizando reels com o Instagram…"
-              : null
-          }
         />
 
         {/* Posts na fila — agendados + o que os loops ainda vão postar */}
