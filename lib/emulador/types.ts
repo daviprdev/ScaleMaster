@@ -12,8 +12,8 @@ export interface EmulatorInstance {
   state: InstanceState;
   /** Aviso que o agente guarda para a instância (ex.: conta travada pedindo telefone). */
   alert: string | null;
-  /** Agente da VPS: Created do container no Docker (o delete confere antes de apagar). */
-  criada?: string | null;
+  /** Agente da VPS: Created do container no Docker, string crua do inspect (o delete confere antes de apagar). */
+  criada: string | null;
 }
 
 /** Automação que o agente sabe rodar (pasta agente-mumu/tarefas/). */

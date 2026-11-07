@@ -56,6 +56,14 @@ function asIndex(value: unknown): number | null {
   return typeof n === "number" && Number.isInteger(n) && n >= 0 && n < 10_000 ? n : null;
 }
 
+/** Created do container (RFC3339 do docker inspect, com nanossegundos) como veio: só confere o formato e corta em 40, sem passar por Date. */
+const CRIADA_RE = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
+export function parseCriada(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const texto = raw.trim();
+  return CRIADA_RE.test(texto) ? texto.slice(0, 40) : null;
+}
+
 export function parseInstances(raw: unknown): EmulatorInstance[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<number>();
@@ -71,7 +79,7 @@ export function parseInstances(raw: unknown): EmulatorInstance[] {
       name: shortText(r.name, 80) ?? `Instância ${index}`,
       state: typeof r.state === "string" && STATES.has(r.state) ? (r.state as InstanceState) : "off",
       alert: shortText(r.alert, 120),
-      ...(typeof r.criada === "string" ? { criada: shortText(r.criada, 60) } : {}),
+      criada: parseCriada(r.criada),
     });
   }
   return out.sort((a, b) => a.index - b.index);

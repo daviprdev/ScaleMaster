@@ -62,6 +62,10 @@ create table if not exists public.vps_devices (
   created_at   timestamptz not null default now()
 );
 
+-- Created do container no Docker (string crua do inspect), gravado pelo agente
+-- na etapa copiar: o Remover confere contra ele antes de apagar o container.
+alter table public.vps_devices add column if not exists docker_created text;
+
 create index if not exists emulator_agents_kind_idx        on public.emulator_agents (user_id, kind);
 create index if not exists emulator_jobs_agent_status_idx  on public.emulator_jobs (agent_id, status);
 create index if not exists emulator_jobs_user_created_idx  on public.emulator_jobs (user_id, created_at desc);
@@ -84,8 +88,8 @@ and (
      and column_name in ('lote_id', 'pausa', 'versao_ig')
 ) = 3
 and exists (
-  select 1 from information_schema.tables
-   where table_schema = 'public' and table_name = 'vps_devices'
+  select 1 from information_schema.columns
+   where table_schema = 'public' and table_name = 'vps_devices' and column_name = 'docker_created'
 )
 and exists (
   select 1 from pg_constraint

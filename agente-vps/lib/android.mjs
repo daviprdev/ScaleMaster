@@ -267,9 +267,12 @@ export class Android {
       "-p", `127.0.0.1:${PORTA_BASE + spec.index}:5555`,
       "-v", `${spec.volume}:/data`,
       "--memory", MEMORIA, "--memory-swap", MEMORIA, "--restart", "no",
+      // SELinux permissivo: o tar da sessão em /data/data é bloqueado mesmo como root com enforcing.
+      "-e", "androidboot.selinux=permissive",
     ];
     for (const p of PARTICOES) args.push("-v", `${path.join(props, `${p.nome}.prop`)}:${p.destino}:ro`);
-    args.push(IMAGEM, ...ARGS_REDROID, `androidboot.serialno=${spec.device.serial}`);
+    // decisão: além do -e, o mesmo androidboot.selinux vai na cmdline, que é de onde o redroid lê os androidboot.*.
+    args.push(IMAGEM, ...ARGS_REDROID, "androidboot.selinux=permissive", `androidboot.serialno=${spec.device.serial}`);
     await docker(args, 120_000);
     spec.recriar = false;
     gravarSpec(spec);
@@ -279,7 +282,8 @@ export class Android {
    * Cria um container novo a partir da base (templateIndex 0 = volume
    * scalemaster-base; outro índice = o volume daquele container). Opções:
    * index desejado (o servidor reserva), jobId, device (identidade do servidor)
-   * e nome. Devolve o índice.
+   * e nome. Devolve { index, criada } (Created do container, string crua do
+   * inspect, que o servidor guarda em vps_devices.docker_created).
    */
   async clonar(templateIndex, { index, jobId = null, device, nome } = {}) {
     const alvo = Number.isInteger(index) && index > 0 ? index : await this.indiceLivre();
@@ -287,7 +291,7 @@ export class Android {
     // Continuar depois de uma queda no meio do copiar: o retrato é desta mesma conta, reaproveita.
     if (existente && jobId && existente.jobId === jobId) {
       if (!(await estadoDocker(nomeDe(alvo)))) await this.criarContainer(existente);
-      return alvo;
+      return { index: alvo, criada: (await inspecionar(nomeDe(alvo)))?.criada ?? existente.criada ?? null };
     }
     if (existente || (await estadoDocker(nomeDe(alvo)))) throw new Error(`O índice ${alvo} já está ocupado na VPS (container ${nomeDe(alvo)}).`);
     const origem = templateIndex === 0 || templateIndex === undefined ? BASE_VOLUME : lerSpec(templateIndex)?.volume;
@@ -315,7 +319,7 @@ export class Android {
       await apagarVolume(spec.volume).catch(() => {});
       throw e;
     }
-    return alvo;
+    return { index: alvo, criada: (await inspecionar(nomeDe(alvo)))?.criada ?? spec.criada ?? null };
   }
 
   /**
@@ -438,9 +442,11 @@ export class Android {
   }
 
   /**
-   * Apaga container, sidecar, volume, props e retrato, e faz o prune. `nome` e
-   * `criada` (Created do Docker) são o que a aba mostrou: divergência = o índice
-   * foi reaproveitado ou o retrato é de outro container, e nada é apagado.
+   * Apaga container, sidecar, volume, props e retrato, e faz o prune. `criada`
+   * é o vps_devices.docker_created que a aba mandou e `nome` o que ela mostrou:
+   * o Created ao vivo (inspect) tem que bater com o do banco e com o do
+   * retrato; sem valor no banco vale só o inspect (logado). Nome "Instância N"
+   * é só rótulo de container sem retrato: com o Created batendo, aceita.
    * @param {number} index
    * @param {{ log?: (m: string) => void, nome?: string | null, criada?: string | null }} [opcoes]
    */
@@ -449,12 +455,18 @@ export class Android {
     const nome = nomeDe(index);
     const inspecao = await inspecionar(nome);
     const status = inspecao?.status ?? null;
-    const criadaAtual = inspecao?.criada ?? spec?.criada ?? null;
-    if (criadaEsperada !== undefined && criadaEsperada !== null && criadaEsperada !== criadaAtual) {
-      throw new Error(`O container ${nome} não é o mesmo: criado em ${criadaAtual ?? "(desconhecido)"}, a aba esperava ${criadaEsperada}. Nada foi apagado.`);
+    const criadaViva = inspecao?.criada ?? null;
+    const criadaBanco = typeof criadaEsperada === "string" && criadaEsperada ? criadaEsperada : null;
+    if (criadaBanco && criadaViva && criadaBanco !== criadaViva) {
+      throw new Error(`O container ${nome} não é o mesmo: criado em ${criadaViva}, o banco tem ${criadaBanco}. Nada foi apagado.`);
+    }
+    if (!criadaBanco) log(`docker_created ausente para ${nome}: conferindo só pelo inspect`);
+    if (spec?.criada && criadaViva && spec.criada !== criadaViva) {
+      throw new Error(`O container ${nome} não é o mesmo: criado em ${criadaViva}, o retrato tem ${spec.criada}. Nada foi apagado.`);
     }
     const nomeAtual = resolverNome(index, spec, inspecao);
-    if (nomeEsperado !== undefined && nomeEsperado !== null && nomeAtual !== String(nomeEsperado)) {
+    const rotuloGenerico = typeof nomeEsperado === "string" && nomeEsperado === `Instância ${index}`;
+    if (nomeEsperado !== undefined && nomeEsperado !== null && nomeAtual !== String(nomeEsperado) && !(rotuloGenerico && criadaViva)) {
       throw new Error(`O container ${nome} agora se chama "${nomeAtual}", a aba esperava "${nomeEsperado}". Nada foi apagado.`);
     }
     if (status === "running") {

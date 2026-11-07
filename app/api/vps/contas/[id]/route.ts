@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt, encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseJobSteps } from "@/lib/emulador/jobs";
-import { isOnline, parseInstances } from "@/lib/emulador/payload";
+import { isOnline, parseCriada } from "@/lib/emulador/payload";
 import { parseConta, parseProxy } from "@/lib/vps/input";
 import { stepsAfterProxyChange } from "@/lib/vps/jobs";
 import type { VpsContaInput } from "@/lib/vps/types";
@@ -173,26 +173,23 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const criado = steps.some((s) => s.key === "copiar" && s.status === "done");
   if (criado) {
     // Com a VPS offline o comando expiraria em 2 min e o container ficaria órfão sem botão para apagar.
-    const { data: agent } = await admin.from("emulator_agents").select("last_seen_at, instances").eq("id", job.agent_id).maybeSingle();
+    const { data: agent } = await admin.from("emulator_agents").select("last_seen_at").eq("id", job.agent_id).maybeSingle();
     if (!isOnline(agent?.last_seen_at as string | null)) {
       return NextResponse.json({ error: "A VPS está offline. Com o agente rodando, tente de novo para apagar o container junto." }, { status: 409 });
     }
-    // decisão: nome e índice saem de vps_devices; o Created vem do retrato do agente (vps_devices não guarda o Created do Docker).
-    const { data: device } = await admin.from("vps_devices").select("container").eq("job_id", id).eq("user_id", user.id).maybeSingle();
+    // Nome e índice saem de vps_devices; criada = docker_created (string crua do inspect, gravada na etapa copiar).
+    // Sem a coluna (SQL não aplicado), lê só o container e o agente confere pelo inspect.
+    let { data: device } = await admin.from("vps_devices").select("container, docker_created").eq("job_id", id).eq("user_id", user.id).maybeSingle();
+    if (!device) ({ data: device } = await admin.from("vps_devices").select("container").eq("job_id", id).eq("user_id", user.id).maybeSingle());
     const container = (device?.container as string | undefined) ?? input.device.container;
     const index = Number(/^ig-(\d+)$/.exec(container)?.[1] ?? input.device.index);
-    const retrato = parseInstances(agent?.instances).find((i) => i.index === index);
+    const criada = parseCriada((device as { docker_created?: unknown } | null)?.docker_created);
     const { error: cmdErr } = await admin.from("emulator_commands").insert({
       user_id: user.id,
       agent_id: job.agent_id,
       instance_index: index,
       action: "delete",
-      params: {
-        nome: nome ?? retrato?.name ?? container,
-        ...(retrato?.criada ? { criada: retrato.criada } : {}),
-        container,
-        volume: input.device.volume,
-      },
+      params: { nome: nome ?? container, ...(criada ? { criada } : {}), container, volume: input.device.volume },
     });
     if (cmdErr) return NextResponse.json({ error: cmdErr.message }, { status: 500 });
   }

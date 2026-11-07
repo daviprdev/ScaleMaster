@@ -25,7 +25,8 @@ import { abrirInstagram, editarPerfil, pararInstagram, proxyLigada, trocarFoto }
  */
 
 export { ALERTA_CAPTCHA, ALERTA_TELEFONE } from "./cadastro.mjs";
-export const PASTA_SESSOES = "/opt/scalemaster/sessoes";
+// decisão: SCALEMASTER_SESSOES_DIR só existe para os testes não escreverem em /opt.
+export const PASTA_SESSOES = process.env.SCALEMASTER_SESSOES_DIR || "/opt/scalemaster/sessoes";
 
 /** Bios curtas (ASCII: o Android digita por input text) quando o lote não traz uma. */
 const BIOS = ["living the moment", "good vibes only", "coffee, music and sun", "exploring new places", "simple life, big dreams", "always learning"];
@@ -59,21 +60,62 @@ export function arquivoSessao(jobId) {
   return path.join(PASTA_SESSOES, `${jobId}.tgz`);
 }
 
+/** O serial voltou (adb wait-for-device, 20 s)? O adb root derruba a conexão TCP: reconecta antes de esperar. */
+async function esperarSerial(d) {
+  await rodar(d.adb, ["connect", d.serial], { timeoutMs: 10_000 });
+  const r = await rodar(d.adb, ["-s", d.serial, "wait-for-device"], { timeoutMs: 20_000 });
+  return !r.estourou && r.codigo === 0;
+}
+
 /**
  * adb root + wait-for-device (20 s). O APK release do Instagram não é
  * debuggable (run-as recusa) e o adb backup não exporta app não-debuggable
- * desde o Android 12; o redroid aceita adb root. Devolve o prefixo do shell:
- * [] com root, ["su", "0"] quando o adb root falhou.
+ * desde o Android 12; o redroid aceita adb root ("adbd is already running as
+ * root" também é sucesso). Devolve o prefixo do shell: [] com root, ["su", "0"]
+ * quando o adb root falhou ou o serial não voltou em 20 s.
  */
-async function shellComoRoot(d) {
+export async function shellComoRoot(d) {
   const root = await rodar(d.adb, ["-s", d.serial, "root"], { timeoutMs: 30_000 });
-  const okRoot = root.codigo === 0 && !/cannot|failed/i.test(String(root.stdout) + String(root.stderr));
-  if (okRoot) {
-    await rodar(d.adb, ["-s", d.serial, "wait-for-device"], { timeoutMs: 20_000 });
-    await d.conectar();
-    return [];
-  }
+  const saida = String(root.stdout ?? "") + String(root.stderr ?? "");
+  const okRoot = /already running as root/i.test(saida) || (root.codigo === 0 && !/cannot|failed/i.test(saida));
+  if (okRoot && (await esperarSerial(d))) return [];
+  await esperarSerial(d);
   return ["su", "0"];
+}
+
+/**
+ * Sessão da conta: tar de /data/data/com.instagram.android (como root,
+ * SELinux permissivo) puxado para a VPS. tar com erro ou arquivo de 0 byte é
+ * falha da etapa; só a cópia (adb pull) que falha vira "sessão não exportada".
+ * `d` = Dispositivo (adb, serial, shell, puxar).
+ * @param {{ adb: string, serial: string, shell: Function, puxar: Function, conectar: Function }} d
+ * @param {string} jobId
+ * @param {(m: string) => void} [log]
+ */
+export async function exportarSessao(d, jobId, log = () => {}) {
+  const remoto = "/data/local/tmp/sessao.tgz";
+  const local = arquivoSessao(jobId);
+  try {
+    const su = await shellComoRoot(d);
+    await d.shell(...su, "setenforce", "0").catch(() => {});
+    try {
+      await d.shell(...su, "tar", "-czf", remoto, "-C", "/data/data", INSTAGRAM);
+    } catch (e) {
+      throw new Error(`tar da sessão falhou: ${e.message}`);
+    }
+    const tamanho = Number((await d.shell(...su, "stat", "-c", "%s", remoto)).trim());
+    if (!Number.isFinite(tamanho) || tamanho <= 0) throw new Error(`tar da sessão saiu com ${Number.isFinite(tamanho) ? tamanho : "?"} byte(s)`);
+    try {
+      await d.puxar(remoto, local);
+      chmodSync(local, 0o600);
+    } catch (e) {
+      log(`sessão não exportada: ${e.message}`);
+      return "sessão não exportada";
+    }
+    return `${path.basename(local)} exportado (${Math.round(tamanho / 1024)} KB)`;
+  } finally {
+    await d.shell("rm", "-f", remoto).catch(() => {});
+  }
 }
 
 export const NOVA_CONTA = [
@@ -82,13 +124,15 @@ export const NOVA_CONTA = [
     rotulo: "Criar o container a partir da imagem base",
     async rodar({ mumu, job, input, estado }) {
       const device = deviceDe(input, estado);
-      estado.instanceIndex = await mumu.clonar(job.templateIndex ?? 0, {
+      const { index, criada } = await mumu.clonar(job.templateIndex ?? 0, {
         index: device.index,
         jobId: job.id,
         device,
         nome: nomeDaInstancia(job, input),
       });
-      return `container ig-${estado.instanceIndex} (volume ${device.volume ?? `scalemaster-ig-${estado.instanceIndex}`})`;
+      estado.instanceIndex = index;
+      // docker_created=<Created> na mensagem: o servidor grava em vps_devices no mesmo sync (lib/emulador/sync-jobs.ts).
+      return `container ig-${index} (volume ${device.volume ?? `scalemaster-ig-${index}`})${criada ? ` docker_created=${criada}` : ""}`;
     },
   },
   {
@@ -146,6 +190,8 @@ export const NOVA_CONTA = [
       const d = await dispositivo();
       const device = deviceDe(input, estado);
       await aplicarNoAparelho(d, device);
+      // Reforço do androidboot.selinux=permissive do container (o tar da sessão precisa).
+      await d.shell("setenforce", "0").catch(() => {});
       const erradas = await conferir(d, device);
       if (erradas.length > 0) {
         throw new Error(`fingerprint divergente: ${erradas.map(([n, e, l]) => `${n} esperado ${e}, lido ${l || "(vazio)"}`).join("; ")}`);
@@ -257,22 +303,7 @@ export const NOVA_CONTA = [
     chave: "sessao",
     rotulo: "Exportar a sessão",
     async rodar({ job, dispositivo, log }) {
-      const d = await dispositivo();
-      const remoto = "/data/local/tmp/sessao.tgz";
-      const local = arquivoSessao(job.id);
-      // A conta já está criada: falha aqui não derruba o job, só fica registrada.
-      try {
-        const su = await shellComoRoot(d);
-        await d.shell(...su, "tar", "-czf", remoto, "-C", "/data/data", INSTAGRAM);
-        await d.puxar(remoto, local);
-        chmodSync(local, 0o600);
-        return `${path.basename(local)} exportado`;
-      } catch (e) {
-        log(`sessão não exportada: ${e.message}`);
-        return "sessão não exportada";
-      } finally {
-        await d.shell("rm", "-f", remoto).catch(() => {});
-      }
+      return exportarSessao(await dispositivo(), job.id, log);
     },
   },
   {

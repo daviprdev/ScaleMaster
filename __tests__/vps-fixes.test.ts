@@ -2,16 +2,19 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "nod
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { parseAgentKind, parseInstances } from "../lib/emulador/payload";
+import { parseAgentKind, parseCriada, parseInstances } from "../lib/emulador/payload";
 import { loadEmulador } from "../lib/emulador/load";
 import { resolver } from "../agente-vps/lib/captcha.mjs";
 
 // Pasta temporária para os retratos (SCALEMASTER_VPS_DIR) antes de carregar o driver.
 const PASTA = mkdtempSync(path.join(os.tmpdir(), "sm-vps-"));
 process.env.SCALEMASTER_VPS_DIR = PASTA;
+process.env.SCALEMASTER_SESSOES_DIR = path.join(PASTA, "sessoes");
 
 /** Containers que o "docker" de mentira conhece: nome → campos do inspect do driver. */
 const containers = new Map<string, { status: string; criada: string; nome: string; job: string; volume: string; mac: string }>();
+/** Respostas do "adb" de mentira, trocadas por cada teste. */
+let adbMock: (args: string[]) => { codigo: number; estourou?: boolean; stdout: string; stderr?: string } = () => ({ codigo: 0, stdout: "" });
 
 vi.mock("../agente-vps/lib/processo.mjs", async (importOriginal) => {
   const real = (await importOriginal()) as Record<string, unknown>;
@@ -28,12 +31,17 @@ vi.mock("../agente-vps/lib/processo.mjs", async (importOriginal) => {
       if (arquivo === "docker" && args[0] === "ps") {
         return { codigo: 0, estourou: false, stdout: `${[...containers.keys()].join("\n")}\n`, stderr: "" };
       }
+      if (arquivo === "adb") {
+        const r = adbMock(args);
+        return { estourou: false, stderr: "", ...r };
+      }
       return { codigo: 0, estourou: false, stdout: "", stderr: "" };
     },
   };
 });
 
 const android = await import("../agente-vps/lib/android.mjs");
+const { exportarSessao, shellComoRoot } = await import("../agente-vps/fluxos/nova-conta.mjs");
 
 beforeAll(() => mkdirSync(path.join(PASTA, "instancias"), { recursive: true }));
 afterAll(() => rmSync(PASTA, { recursive: true, force: true }));
@@ -66,11 +74,40 @@ describe("Identidade do container (android.mjs)", () => {
     expect(i4.name).toBe("Instância 4");
   });
 
-  it("excluir recusa quando o Created ou o nome não batem, dizendo qual divergiu", async () => {
+  it("reconstruir grava 'Instância N' no container sem JSON nem label", () => {
+    const spec4 = JSON.parse(readFileSync(path.join(PASTA, "instancias", "ig-4.json"), "utf8"));
+    expect(spec4.nome).toBe("Instância 4");
+    expect(spec4.criada).toBe("2026-11-07T02:00:00.000000000Z");
+  });
+
+  it("excluir recusa quando o Created (docker_created) ou o nome não batem, dizendo qual divergiu", async () => {
     const driver = new android.Android();
-    await expect(driver.excluir(3, { nome: "maria", criada: "2020-01-01T00:00:00Z" })).rejects.toThrow(/criado em 2026-11-07T01:00:00.000000000Z, a aba esperava 2020-01-01T00:00:00Z/);
+    await expect(driver.excluir(3, { nome: "maria", criada: "2020-01-01T00:00:00Z" })).rejects.toThrow(/criado em 2026-11-07T01:00:00.000000000Z, o banco tem 2020-01-01T00:00:00Z/);
     await expect(driver.excluir(3, { nome: "joao", criada: "2026-11-07T01:00:00.000000000Z" })).rejects.toThrow(/agora se chama "maria", a aba esperava "joao"/);
     expect(JSON.parse(readFileSync(path.join(PASTA, "instancias", "ig-3.json"), "utf8")).nome).toBe("maria");
+  });
+
+  it("excluir sem docker_created aceita pelo inspect (logando), e 'Instância N' com o Created batendo", async () => {
+    containers.set("ig-5", { status: "exited", criada: "2026-11-07T05:00:00.000000000Z", nome: "", job: "job-5", volume: "scalemaster-ig-5", mac: "3c:00:00:00:00:05" });
+    containers.set("ig-6", { status: "exited", criada: "2026-11-07T06:00:00.000000000Z", nome: "", job: "job-6", volume: "scalemaster-ig-6", mac: "3c:00:00:00:00:06" });
+    const driver = new android.Android();
+    await driver.reconstruir();
+    const logs: string[] = [];
+    await driver.excluir(5, { log: (m: string) => logs.push(m), nome: "Instância 5" });
+    expect(logs.some((l) => /docker_created ausente/.test(l))).toBe(true);
+    expect(() => readFileSync(path.join(PASTA, "instancias", "ig-5.json"))).toThrow();
+    // Created ao vivo bate com o banco: o nome genérico é só rótulo.
+    await driver.excluir(6, { nome: "Instância 6", criada: "2026-11-07T06:00:00.000000000Z" });
+    expect(() => readFileSync(path.join(PASTA, "instancias", "ig-6.json"))).toThrow();
+  });
+
+  it("excluir com Created divergente recusa mesmo com o nome igual", async () => {
+    containers.set("ig-7", { status: "exited", criada: "2026-11-07T07:00:00.000000000Z", nome: "ana", job: "job-7", volume: "scalemaster-ig-7", mac: "3c:00:00:00:00:07" });
+    const driver = new android.Android();
+    await driver.reconstruir();
+    await expect(driver.excluir(7, { nome: "ana", criada: "2026-11-07T07:00:01.000000000Z" })).rejects.toThrow(/não é o mesmo/);
+    await expect(driver.excluir(7, { nome: "Instância 7", criada: "2026-11-07T07:00:01.000000000Z" })).rejects.toThrow(/não é o mesmo/);
+    expect(JSON.parse(readFileSync(path.join(PASTA, "instancias", "ig-7.json"), "utf8")).nome).toBe("ana");
   });
 
   it("retrato é gravado por rename atômico (sem .tmp sobrando)", async () => {
@@ -113,6 +150,46 @@ describe("Captcha (captcha.mjs) nunca lança", () => {
   });
 });
 
+describe("Sessão exportada (nova-conta.mjs)", () => {
+  const fakeD = (shell: (args: string[]) => Promise<string>, puxar = async () => {}) => ({
+    adb: "adb",
+    serial: "127.0.0.1:6003",
+    shell: (...args: string[]) => shell(args),
+    puxar,
+    conectar: async () => {},
+  });
+
+  it("'adbd is already running as root' é sucesso", async () => {
+    adbMock = (args) => (args.includes("root") ? { codigo: 1, stdout: "adbd is already running as root" } : { codigo: 0, stdout: "" });
+    expect(await shellComoRoot(fakeD(async () => "") as never)).toEqual([]);
+  });
+
+  it("serial que não volta em 20 s cai para su 0", async () => {
+    adbMock = (args) => (args.includes("wait-for-device") ? { codigo: -1, estourou: true, stdout: "" } : { codigo: 0, stdout: "restarting adbd as root" });
+    expect(await shellComoRoot(fakeD(async () => "") as never)).toEqual(["su", "0"]);
+  });
+
+  it("tar de 0 byte (ou com erro) é falha da etapa; só o pull que falha vira 'sessão não exportada'", async () => {
+    adbMock = () => ({ codigo: 0, stdout: "" });
+    const vazio = fakeD(async (args) => (args.includes("stat") ? "0\n" : ""));
+    await expect(exportarSessao(vazio as never, "job-x")).rejects.toThrow(/0 byte/);
+    const tarQuebrado = fakeD(async (args) => {
+      if (args.includes("tar")) throw new Error("tar: permission denied");
+      return "";
+    });
+    await expect(exportarSessao(tarQuebrado as never, "job-x")).rejects.toThrow(/tar da sessão falhou/);
+    const logs: string[] = [];
+    const semPull = fakeD(
+      async (args) => (args.includes("stat") ? "2048\n" : ""),
+      async () => {
+        throw new Error("adb pull falhou: device offline");
+      }
+    );
+    expect(await exportarSessao(semPull as never, "job-x", (m: string) => logs.push(m))).toBe("sessão não exportada");
+    expect(logs[0]).toMatch(/sessão não exportada: adb pull falhou/);
+  });
+});
+
 describe("Produção antes do SQL da VPS", () => {
   it("parseAgentKind: inválido vira mumu", () => {
     expect(parseAgentKind("vps")).toBe("vps");
@@ -122,10 +199,14 @@ describe("Produção antes do SQL da VPS", () => {
     expect(parseAgentKind(42)).toBe("mumu");
   });
 
-  it("parseInstances guarda o criada do agente da VPS", () => {
-    const [i] = parseInstances([{ index: 2, name: "x", state: "off", criada: "2026-11-07T01:00:00Z" }]);
-    expect(i.criada).toBe("2026-11-07T01:00:00Z");
-    expect("criada" in parseInstances([{ index: 2, name: "x", state: "off" }])[0]).toBe(false);
+  it("parseInstances guarda o criada cru do agente da VPS e descarta o malformado", () => {
+    const [i] = parseInstances([{ index: 2, name: "x", state: "off", criada: "2026-11-07T01:00:00.123456789Z" }]);
+    expect(i.criada).toBe("2026-11-07T01:00:00.123456789Z");
+    expect(parseInstances([{ index: 2, name: "x", state: "off" }])[0].criada).toBeNull();
+    expect(parseCriada("07/11/2026 01:00")).toBeNull();
+    expect(parseCriada("2026-11-07T01:00:00Z; drop")).toBeNull();
+    expect(parseCriada(new Date("2026-11-07T01:00:00Z"))).toBeNull();
+    expect(parseCriada(`2026-11-07T01:00:00.${"1".repeat(40)}Z`)).toBe(`2026-11-07T01:00:00.${"1".repeat(40)}Z`.slice(0, 40));
   });
 
   it("loadEmulador sem a coluna kind: lê todos os agentes e marca vpsAvailable=false", async () => {

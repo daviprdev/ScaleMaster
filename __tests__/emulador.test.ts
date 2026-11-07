@@ -44,9 +44,9 @@ describe("payload do agente", () => {
       "lixo",
     ]);
     expect(out).toEqual([
-      { index: 0, name: "Conta A", state: "starting", alert: null },
-      { index: 2, name: "Conta B", state: "on", alert: "Conta ERRO CRIAÇÃO, verificar com numero telefone" },
-      { index: 3, name: "Instância 3", state: "off", alert: null },
+      { index: 0, name: "Conta A", state: "starting", alert: null, criada: null },
+      { index: 2, name: "Conta B", state: "on", alert: "Conta ERRO CRIAÇÃO, verificar com numero telefone", criada: null },
+      { index: 3, name: "Instância 3", state: "off", alert: null, criada: null },
     ]);
   });
 

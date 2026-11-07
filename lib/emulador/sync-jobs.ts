@@ -79,6 +79,10 @@ export async function syncJobs(
     } else if (u.status === "done") {
       await admin.from("vps_devices").update({ status: "ativo" }).eq("job_id", u.id);
     }
+    // Etapa copiar da VPS: o Created do container vem na mensagem e vai para vps_devices.docker_created (string crua).
+    const copiar = u.steps.find((s) => s.key === "copiar" && s.status === "done");
+    const dockerCreated = /docker_created=(\S+)/.exec(copiar?.message ?? "")?.[1];
+    if (dockerCreated) await admin.from("vps_devices").update({ docker_created: dockerCreated }).eq("job_id", u.id);
   }
 
   const { data: runningData, error: runningErr } = await admin
