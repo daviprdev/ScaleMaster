@@ -12,13 +12,15 @@ interface SegmentedProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onC
  value: string;
  onChange: (value: string) => void;
  name?: string;
- /** "sm": botões compactos para caber em cards estreitos (ex.: ao lado de um ícone). */
- size?: "md" | "sm";
+ /** "sm": botões compactos para caber em cards estreitos (ex.: ao lado de um ícone);
+  *  "xs": ainda menor, para 5 cards por linha (barra de ~120px). */
+ size?: "md" | "sm" | "xs";
 }
 
 const sizeStyles = {
  md: "px-3 py-1.5 text-[13px] leading-[18px]",
  sm: "px-1.5 py-1 text-[11px] leading-[14px] whitespace-nowrap",
+ xs: "px-1 py-0.5 text-[10px] leading-[14px] whitespace-nowrap",
 };
 
 export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(

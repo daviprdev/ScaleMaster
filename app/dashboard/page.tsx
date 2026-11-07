@@ -139,11 +139,12 @@ function formatScheduled(dateStr: string): { label: string; time: string } {
 // ── Period stat card (Visualizações / Views em stories / Reels publicados) ──
 type StatPeriod = "today" | "yesterday" | "last_7d" | "month";
 
-// Rótulos curtos: os botões ficam ao lado do ícone, num card de ~250px.
+// Rótulos curtos: os botões ficam ao lado do ícone, num card de ~205px
+// (5 por linha dentro dos 1088px do conteúdo) — "7d" para a barra caber.
 const PERIODS: { value: StatPeriod; label: string }[] = [
   { value: "today", label: "Hoje" },
   { value: "yesterday", label: "Ontem" },
-  { value: "last_7d", label: "7 dias" },
+  { value: "last_7d", label: "7d" },
   { value: "month", label: "Mês" },
 ];
 
@@ -175,15 +176,15 @@ function PeriodStatCard({
   const noteText = loading ? null : note?.(period) ?? null;
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5">
-      {/* Botões ao lado do ícone; em cards estreitos (tela 1280 com sidebar aberta) descem para a linha de baixo */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success-soft text-success">
+    <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4">
+      {/* Botões ao lado do ícone (card quase quadrado); só em telas estreitas descem para a linha de baixo */}
+      <div className="flex flex-wrap items-center justify-between gap-1.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-success-soft text-success">
           {icon}
         </span>
         {!loading && (
           <Segmented
-            size="sm"
+            size="xs"
             options={PERIODS}
             value={period}
             onChange={(v) => setPeriod(v as StatPeriod)}
@@ -331,7 +332,7 @@ export default function DashboardPage() {
 
         {/* Views — insight de conta da Meta */}
         <PeriodStatCard
-          icon={<Eye size={18} />}
+          icon={<Eye size={16} />}
           title="Visualizações"
           values={stats?.views}
           total={stats?.views.total ?? 0}
@@ -345,7 +346,7 @@ export default function DashboardPage() {
 
         {/* Views em stories — fatia STORY do mesmo insight de conta */}
         <PeriodStatCard
-          icon={<ImagePlay size={18} />}
+          icon={<ImagePlay size={16} />}
           title="Views em stories"
           values={stats?.story_views}
           total={stats?.story_views.total ?? 0}
@@ -359,7 +360,7 @@ export default function DashboardPage() {
 
         {/* Reels publicados — lista de mídias de cada conta na Meta */}
         <PeriodStatCard
-          icon={<Play size={18} />}
+          icon={<Play size={16} />}
           title="Reels publicados"
           values={stats?.videos_published}
           total={stats?.videos_published.total ?? 0}
