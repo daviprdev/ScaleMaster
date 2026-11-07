@@ -71,3 +71,6 @@ $$;
 
 revoke execute on function public.get_account_views_summary(uuid) from public, anon, authenticated;
 grant execute on function public.get_account_views_summary(uuid) to service_role;
+
+-- PostgREST guarda o esquema em cache: sem isto o app continua sem enxergar a coluna nova.
+notify pgrst, 'reload schema';
