@@ -61,6 +61,14 @@ interface DashboardStats {
     accounts_synced: number;
     last_synced_at: string | null;
   };
+  story_views: {
+    total: number;
+    today: number;
+    yesterday: number;
+    last_7d: number;
+    month: number;
+    has_data: boolean;
+  };
   videos_published: {
     total: number;
     today: number;
@@ -128,7 +136,7 @@ function formatScheduled(dateStr: string): { label: string; time: string } {
   return { label: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }), time };
 }
 
-// ── Period stat card (Visualizações / Reels publicados) ──────────
+// ── Period stat card (Visualizações / Views em stories / Reels publicados) ──
 type StatPeriod = "today" | "yesterday" | "last_7d" | "month";
 
 // Rótulos curtos: os botões ficam ao lado do ícone, num card de ~250px.
@@ -305,7 +313,8 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Stat tiles row ─────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* 5 cards: 3 por linha no lg, os 5 lado a lado a partir do xl */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {/* Sales */}
         <StatTile
           label="Vendas Hoje"
@@ -330,6 +339,20 @@ export default function DashboardPage() {
           note={(p) =>
             p === "today" && stats && !stats.views.today_has_data
               ? "A Meta ainda não liberou os dados de hoje."
+              : null
+          }
+        />
+
+        {/* Views em stories — fatia STORY do mesmo insight de conta */}
+        <PeriodStatCard
+          icon={<ImagePlay size={18} />}
+          title="Views em stories"
+          values={stats?.story_views}
+          total={stats?.story_views.total ?? 0}
+          loading={loading}
+          note={() =>
+            stats && !stats.story_views.has_data
+              ? "Sincronizando stories com o Instagram…"
               : null
           }
         />

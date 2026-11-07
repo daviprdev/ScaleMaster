@@ -194,6 +194,8 @@ export async function GET() {
         data: {
           total: number; today: number; yesterday: number; last_7d: number; last_30d: number;
           month: number; prev_month: number; today_has_data: boolean;
+          stories_total?: number; stories_today?: number; stories_yesterday?: number;
+          stories_last_7d?: number; stories_month?: number; stories_has_data?: boolean;
           accounts_total: number; accounts_synced: number; last_synced_at: string | null;
         } | null;
         error: { message: string } | null;
@@ -324,6 +326,17 @@ export async function GET() {
       accounts_total: Number(viewsSummary?.accounts_total ?? 0),
       accounts_synced: Number(viewsSummary?.accounts_synced ?? 0),
       last_synced_at: viewsSummary?.last_synced_at ?? null,
+    },
+    // Views só de stories — fatia STORY do mesmo insight de conta
+    // (breakdown=media_product_type), mesmos recortes. Campos opcionais
+    // enquanto supabase/account_views_stories.sql não foi aplicado.
+    story_views: {
+      total: Number(viewsSummary?.stories_total ?? 0),
+      today: Number(viewsSummary?.stories_today ?? 0),
+      yesterday: Number(viewsSummary?.stories_yesterday ?? 0),
+      last_7d: Number(viewsSummary?.stories_last_7d ?? 0),
+      month: Number(viewsSummary?.stories_month ?? 0),
+      has_data: Boolean(viewsSummary?.stories_has_data),
     },
     videos_published: {
       total: Number(reelsSummary?.total ?? 0),

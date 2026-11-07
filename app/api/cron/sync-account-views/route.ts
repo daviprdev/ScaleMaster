@@ -6,6 +6,10 @@
  * Totais" da Dashboard. Somar só os posts registrados pelo SaaS subestimava o
  * total em ordens de grandeza (a conta tem posts que o SaaS não conhece).
  *
+ * Cada dia traz também `story_views` (fatia STORY do breakdown por tipo de
+ * mídia, card "Views em stories"); dia lido sem breakdown não mexe no valor
+ * já gravado (ver supabase/account_views_stories.sql).
+ *
  * Por conta, a cada run:
  *   - 1ª vez: backfill de 90 dias (blocos de 30; só detalha dia a dia os blocos
  *     com views) → marca views_backfilled_at.
@@ -92,10 +96,11 @@ export async function GET(request: NextRequest) {
 
   const startedAt = Date.now();
   const summary = {
-    synced: 0, backfilled: 0, partial: 0, rate_limited: 0, failed: 0, days_upserted: 0,
+    synced: 0, backfilled: 0, partial: 0, rate_limited: 0, failed: 0, days_upserted: 0, story_days: 0,
     reels_backfilled: 0, reels_days_upserted: 0, reels_failed: 0,
   };
   let cursor = 0;
+  let warnedMissingColumn = false;
 
   async function worker() {
     while (cursor < accounts.length) {
@@ -127,24 +132,43 @@ export async function GET(request: NextRequest) {
 
         if (rows.length) {
           const nowIso = new Date().toISOString();
-          const { error: upErr } = await admin.from("account_views_daily").upsert(
-            rows.map((r) => ({
-              account_id: acc.id,
-              user_id: acc.user_id,
-              ig_user_id: igId,
-              username: acc.username,
-              day: r.day,
-              views: r.views,
-              reach: r.reach,
-              updated_at: nowIso,
-            })),
-            // Chave pelo ID do Instagram: o histórico sobrevive à exclusão da
-            // conta e excluir+reconectar a mesma conta não conta em dobro
-            // (ver supabase/account_stats_keep_deleted.sql).
-            { onConflict: "ig_user_id,day" }
-          );
-          if (upErr) throw new Error(upErr.message);
+          const toRow = (r: DailyViewsRow) => ({
+            account_id: acc.id,
+            user_id: acc.user_id,
+            ig_user_id: igId,
+            username: acc.username,
+            day: r.day,
+            views: r.views,
+            reach: r.reach,
+            updated_at: nowIso,
+          });
+          // Chave pelo ID do Instagram: o histórico sobrevive à exclusão da
+          // conta e excluir+reconectar a mesma conta não conta em dobro
+          // (ver supabase/account_stats_keep_deleted.sql).
+          const upsert = (batch: Record<string, unknown>[]) =>
+            admin.from("account_views_daily").upsert(batch, { onConflict: "ig_user_id,day" });
+          // Dia sem breakdown vai sem a coluna story_views: não apaga a fatia
+          // já gravada. Dia com breakdown grava a fatia (0 inclusive).
+          const withStories = rows.filter((r) => r.story_views !== null);
+          const withoutStories = rows.filter((r) => r.story_views === null);
+          if (withStories.length) {
+            let { error: upErr } = await upsert(withStories.map((r) => ({ ...toRow(r), story_views: r.story_views })));
+            if (upErr && /story_views/.test(upErr.message)) {
+              // Coluna ainda não criada (supabase/account_views_stories.sql pendente).
+              if (!warnedMissingColumn) {
+                warnedMissingColumn = true;
+                console.warn("[cron/sync-account-views] coluna story_views ausente — rode supabase/account_views_stories.sql");
+              }
+              ({ error: upErr } = await upsert(withStories.map(toRow)));
+            }
+            if (upErr) throw new Error(upErr.message);
+          }
+          if (withoutStories.length) {
+            const { error: upErr } = await upsert(withoutStories.map(toRow));
+            if (upErr) throw new Error(upErr.message);
+          }
           summary.days_upserted += rows.length;
+          summary.story_days += withStories.length;
         }
 
         // Reels por dia BRT (card "Vídeos Publicados"). Falha aqui não derruba

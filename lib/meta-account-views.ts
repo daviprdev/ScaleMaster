@@ -3,7 +3,12 @@
  * dia UTC.
  *
  * GET /{ig-user-id}/insights?metric=views,reach&period=day&metric_type=total_value
- *     &since=<meia-noite UTC>&until=<meia-noite UTC + N dias>
+ *     &breakdown=media_product_type&since=<meia-noite UTC>&until=<meia-noite UTC + N dias>
+ *
+ * O breakdown separa as views por tipo de mídia (STORY, REEL, POST,
+ * CAROUSEL_CONTAINER, AD) na mesma chamada; a fatia STORY vira `story_views`
+ * (card "Views em stories"). Se a Meta recusar o breakdown, a chamada cai na
+ * forma antiga e `story_views` fica null — nunca 0.
  *
  * Por que por dia e alinhado em UTC: a soma de janelas diárias alinhadas à
  * meia-noite UTC bate exatamente com o total do período (medido em produção);
@@ -25,6 +30,19 @@ export class MetaRateLimitError extends Error {}
 export interface WindowViews {
   views: number | null;
   reach: number | null;
+  /** Views só de stories (fatia STORY do breakdown). null = breakdown não obtido. */
+  story_views: number | null;
+}
+
+interface MetricRow {
+  name: string;
+  total_value?: {
+    value?: number;
+    breakdowns?: Array<{
+      dimension_keys?: string[];
+      results?: Array<{ dimension_values?: string[]; value?: number }>;
+    }>;
+  };
 }
 
 /** Meia-noite UTC (em segundos) do dia `daysAgo` atrás. */
@@ -42,13 +60,15 @@ export async function fetchAccountWindow(
   token: string,
   sinceS: number,
   untilS: number,
-  metrics: "views" | "views,reach" = "views,reach"
+  metrics: "views" | "views,reach" = "views,reach",
+  breakdown = false
 ): Promise<WindowViews> {
   const url =
     `${GRAPH_API}/${igUserId}/insights?metric=${metrics}&period=day&metric_type=total_value` +
+    (breakdown ? "&breakdown=media_product_type" : "") +
     `&since=${sinceS}&until=${untilS}&access_token=${encodeURIComponent(token)}`;
   const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) });
-  let data: { data?: Array<{ name: string; total_value?: { value?: number } }>; error?: { code?: number; message?: string } } = {};
+  let data: { data?: MetricRow[]; error?: { code?: number; message?: string } } = {};
   try { data = (await res.json()) as typeof data; } catch { /* corpo não-JSON */ }
 
   if (!res.ok || data.error) {
@@ -58,17 +78,40 @@ export async function fetchAccountWindow(
     throw new Error(`code=${code ?? "-"} ${msg}`);
   }
 
-  const get = (name: string): number | null => {
-    const v = data.data?.find((m) => m.name === name)?.total_value?.value;
-    return typeof v === "number" ? v : null;
+  const row = (name: string) => data.data?.find((m) => m.name === name);
+  // Com breakdown a Meta pode mandar o total em `value` ou só as fatias:
+  // aceita os dois (total = soma das fatias quando `value` não vem).
+  const slices = (name: string) => {
+    const bd = row(name)?.total_value?.breakdowns?.find(
+      (b) => !b.dimension_keys || b.dimension_keys.includes("media_product_type")
+    );
+    return bd?.results ?? null;
   };
-  return { views: get("views"), reach: get("reach") };
+  const get = (name: string): number | null => {
+    const v = row(name)?.total_value?.value;
+    if (typeof v === "number") return v;
+    const parts = slices(name);
+    return parts ? parts.reduce((sum, p) => sum + (typeof p.value === "number" ? p.value : 0), 0) : null;
+  };
+  // Fatia STORY: 0 quando o breakdown veio sem STORY (dia sem view de story);
+  // null quando não houve breakdown.
+  const storyOf = (name: string): number | null => {
+    const parts = slices(name);
+    if (!parts) return null;
+    return parts
+      .filter((p) => (p.dimension_values ?? []).some((d) => d.toUpperCase() === "STORY"))
+      .reduce((sum, p) => sum + (typeof p.value === "number" ? p.value : 0), 0);
+  };
+
+  return { views: get("views"), reach: get("reach"), story_views: breakdown ? storyOf("views") : null };
 }
 
 export interface DailyViewsRow {
   day: string; // YYYY-MM-DD (UTC)
   views: number;
   reach: number | null;
+  /** Views só de stories; null quando a Meta não devolveu o breakdown nesse dia. */
+  story_views: number | null;
 }
 
 export interface DailyViewsResult {
@@ -86,11 +129,17 @@ export interface DailyViewsResult {
  * conta inteira: o dia é pulado e contado em `failures` para retry.
  */
 async function windowWithFallback(igUserId: string, token: string, sinceS: number, untilS: number): Promise<WindowViews> {
+  // 1ª tentativa com breakdown (stories); recusado → como antes, sem breakdown.
+  try {
+    return await fetchAccountWindow(igUserId, token, sinceS, untilS, "views,reach", true);
+  } catch (err) {
+    if (err instanceof MetaRateLimitError) throw err;
+  }
   try {
     return await fetchAccountWindow(igUserId, token, sinceS, untilS);
   } catch (err) {
     if (err instanceof MetaRateLimitError) throw err;
-    return { ...(await fetchAccountWindow(igUserId, token, sinceS, untilS, "views")), reach: null };
+    return { ...(await fetchAccountWindow(igUserId, token, sinceS, untilS, "views")), reach: null, story_views: null };
   }
 }
 
@@ -107,7 +156,7 @@ export async function fetchDailyViews(
     try {
       const w = await windowWithFallback(igUserId, token, since, since + DAY_S);
       if (w.views === null) continue; // Meta ainda não consolidou esse dia
-      result.rows.push({ day: utcDayIso(since), views: w.views, reach: w.reach });
+      result.rows.push({ day: utcDayIso(since), views: w.views, reach: w.reach, story_views: w.story_views });
     } catch (err) {
       if (err instanceof MetaRateLimitError) throw err;
       result.failures++;
