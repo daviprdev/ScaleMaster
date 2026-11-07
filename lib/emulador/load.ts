@@ -19,6 +19,8 @@ interface AgentRow {
   tasks: unknown;
   /** Só existe depois de supabase/emulador_atividade.sql (versão com a coluna media). */
   media?: unknown;
+  /** Só existe depois de supabase/vps_contas.sql: 'mumu' ou 'vps' (a aba Emulador mostra só os 'mumu'). */
+  kind?: string;
   last_seen_at: string | null;
   created_at: string;
 }
@@ -118,8 +120,8 @@ export async function loadEmulador(admin: SupabaseClient, userId: string): Promi
   const agentColumns = "id, hostname, agent_version, mumu_version, mumu_error, instances, tasks, last_seen_at, created_at";
   const agentsQuery = (columns: string) =>
     admin.from("emulator_agents").select(columns).eq("user_id", userId).order("created_at", { ascending: true });
-  const [agentsResFull, commandsRes, jobsResFull] = await Promise.all([
-    agentsQuery(`${agentColumns}, media`),
+  const [agentsResKind, commandsRes] = await Promise.all([
+    agentsQuery(`${agentColumns}, media, kind`),
     admin
       .from("emulator_commands")
       .select("id, agent_id, instance_index, action, task, status, error, result, created_at, finished_at")
@@ -127,42 +129,39 @@ export async function loadEmulador(admin: SupabaseClient, userId: string): Promi
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(200),
-    admin
-      .from("emulator_jobs")
-      .select(`${jobColumns}, acoes`)
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(100),
   ]);
-  // Sem a coluna media (versão nova de emulador_atividade.sql ainda não aplicada): lê sem ela.
+  // Sem a coluna kind (vps_contas.sql ainda não aplicado): lê sem ela; sem a
+  // coluna media (versão nova de emulador_atividade.sql ainda não aplicada): lê sem as duas.
+  const agentsResFull = isMissingSchemaError(agentsResKind.error) ? await agentsQuery(`${agentColumns}, media`) : agentsResKind;
   const mediaAvailable = !isMissingSchemaError(agentsResFull.error);
   const agentsRes = mediaAvailable ? agentsResFull : await agentsQuery(agentColumns);
-  // Sem a coluna acoes (emulador_atividade.sql ainda não aplicado): lê sem ela e o Estruturar fica escondido.
-  const atividadeAvailable = !isMissingSchemaError(jobsResFull.error) && mediaAvailable;
-  const jobsRes = atividadeAvailable
-    ? jobsResFull
-    : await admin
-        .from("emulator_jobs")
-        .select(jobColumns)
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(100);
 
   if (isMissingSchemaError(agentsRes.error) || isMissingSchemaError(commandsRes.error)) {
     return { available: false, agents: [], commands: [], jobsAvailable: false, atividadeAvailable: false, jobs: [] };
   }
   if (agentsRes.error) throw new EmuladorLoadError(agentsRes.error.message);
   if (commandsRes.error) throw new EmuladorLoadError(commandsRes.error.message);
+
+  // Agentes da VPS (aba Contas VPS) ficam fora desta aba, e as contas deles também: a fila é a mesma
+  // tabela, e os lotes da VPS empurrariam as contas do MuMu para fora do limite.
+  const agentRows = ((agentsRes.data ?? []) as unknown as AgentRow[]).filter((row) => row.kind !== "vps");
+  const mumuIds = agentRows.map((row) => row.id);
+  const jobsQuery = (columns: string) =>
+    admin.from("emulator_jobs").select(columns).eq("user_id", userId).in("agent_id", mumuIds).order("created_at", { ascending: false }).limit(100);
+  const jobsResFull = mumuIds.length > 0 ? await jobsQuery(`${jobColumns}, acoes`) : { data: [], error: null };
+  // Sem a coluna acoes (emulador_atividade.sql ainda não aplicado): lê sem ela e o Estruturar fica escondido.
+  const atividadeAvailable = !isMissingSchemaError(jobsResFull.error) && mediaAvailable;
+  const jobsRes = atividadeAvailable || mumuIds.length === 0 ? jobsResFull : await jobsQuery(jobColumns);
   const jobsAvailable = !isMissingSchemaError(jobsRes.error);
   if (jobsAvailable && jobsRes.error) throw new EmuladorLoadError(jobsRes.error.message);
 
   const now = Date.now();
   return {
     available: true,
-    agents: ((agentsRes.data ?? []) as unknown as AgentRow[]).map((row) => toAgent(row, now)),
+    agents: agentRows.map((row) => toAgent(row, now)),
     commands: ((commandsRes.data ?? []) as CommandRow[]).map(toCommand),
     jobsAvailable,
     atividadeAvailable: jobsAvailable && atividadeAvailable,
-    jobs: jobsAvailable ? ((jobsRes.data ?? []) as JobRow[]).map(toJob) : [],
+    jobs: jobsAvailable ? ((jobsRes.data ?? []) as unknown as JobRow[]).map(toJob) : [],
   };
 }

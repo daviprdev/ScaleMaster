@@ -34,6 +34,7 @@ import {
   CheckCircle2,
   ListVideo,
   MonitorSmartphone,
+  Server,
 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -74,6 +75,7 @@ const navGroups: NavGroup[] = [
     label: "AUTOMAÇÃO",
     items: [
       { label: "Emulador", href: "/dashboard/emulador", icon: MonitorSmartphone },
+      { label: "Contas VPS", href: "/dashboard/contas-vps", icon: Server },
     ],
   },
   {

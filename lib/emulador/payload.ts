@@ -40,6 +40,11 @@ export function shortText(value: unknown, max: number): string | null {
   return text ? text.slice(0, max) : null;
 }
 
+/** Tipo do agente que fez o sync: 'mumu' (PC do dono) ou 'vps' (agente-vps/). Ausente = agente antigo do MuMu. */
+export function parseAgentKind(raw: unknown): "mumu" | "vps" | null {
+  return raw === "mumu" || raw === "vps" ? raw : null;
+}
+
 export function isOnline(lastSeenAt: string | null | undefined, now = Date.now()): boolean {
   if (!lastSeenAt) return false;
   const t = Date.parse(lastSeenAt);

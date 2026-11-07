@@ -1,0 +1,433 @@
+import { CaptchaNaoSuportado, resolver as resolverCaptcha, tocarPontos } from "../lib/captcha.mjs";
+import { esperarCodigo } from "../lib/imap.mjs";
+import { esperar } from "../lib/processo.mjs";
+import { INSTAGRAM } from "./apk.mjs";
+import { criarAjuda, resumoTela, salvarTela } from "./dono.mjs";
+import { acharId, acharTexto, preencher, temTexto, tocarNo } from "./tela.mjs";
+
+/**
+ * Cria a conta no Instagram com o e-mail, já com a proxy ligada. Cópia
+ * adaptada de agente-mumu/fluxos/cadastro.mjs para a VPS: o código de
+ * confirmação é lido na caixa de e-mail por IMAP (lib/imap.mjs) antes de
+ * perguntar ao dono, e o captcha de imagem vai para o Capsolver
+ * (lib/captcha.mjs) antes de encerrar com o aviso.
+ *
+ * Em vez de uma sequência fixa, olha a tela a cada volta e reage pelo título
+ * (o Instagram muda a ordem das telas e a língua: a instância está em pt-PT e
+ * às vezes ele cai para inglês). Telas conhecidas até o e-mail foram vistas em
+ * 01/11/2026; as seguintes seguem o cadastro padrão do Instagram e ainda serão
+ * confirmadas na primeira conta real.
+ *
+ * Quando precisa do dono: o código que chega no Gmail (pergunta "codigo") e
+ * qualquer tela desconhecida, captcha ou checkpoint (pergunta "manual": ele
+ * resolve na instância e manda continuar). Cada tela desconhecida é salva em
+ * agente-mumu/telas/ para virar automação depois.
+ */
+
+/** Avisos em vermelho na linha da instância (iguais aos ALERTA_* de lib/emulador/jobs.ts). */
+export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telefone";
+export const ALERTA_CAPTCHA = "Conta ERRO CRIAÇÃO, verificar captcha";
+
+/**
+ * O Instagram travou a conta nova numa tela que a automação não resolve
+ * (telefone, código da imagem): a etapa encerra e a instância fica marcada com
+ * `alerta` (pedido do dono).
+ */
+export class ContaTravada extends Error {
+  constructor(alerta, motivo) {
+    super(motivo);
+    this.name = "ContaTravada";
+    this.alerta = alerta;
+  }
+}
+
+const ig = (nome) => `${INSTAGRAM}:id/${nome}`;
+
+const SEGUINTE = ["Seguinte", "Next", "Avançar", "Continuar", "Continue"];
+const PULAR = ["Ignorar", "Skip", "Pular", "Agora não", "Not now", "Não permitir", "Don't allow", "Don’t allow"];
+const MESES = {
+  pt: ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"],
+  en: ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"],
+};
+const TEMPO_MAX_MS = 45 * 60_000;
+
+/**
+ * Campo de digitar: o nó clicável cuja descrição começa com o rótulo ("E-mail,");
+ * senão um que contenha o rótulo sem ser botão ("Campo de introdução do código" —
+ * o botão "Não recebi o código" fica de fora); senão o 1º EditText.
+ */
+function campoPor(nos, rotulos) {
+  const desc = (n) => n.descricao.toLowerCase();
+  for (const rotulo of rotulos) {
+    const no = nos.find((n) => n.clicavel && desc(n).startsWith(rotulo.toLowerCase()));
+    if (no) return no;
+  }
+  for (const rotulo of rotulos) {
+    const no = nos.find((n) => n.clicavel && !/Button/.test(n.classe) && desc(n).includes(rotulo.toLowerCase()));
+    if (no) return no;
+  }
+  return nos.find((n) => /EditText/.test(n.classe)) ?? null;
+}
+
+function ehTelaCodigo(nos) {
+  return temTexto(nos, ["código de confirmação", "confirmation code", "Introduz o código", "Insira o código", "Enter the code"]);
+}
+
+function botao(nos, textos) {
+  return acharTexto(nos, textos, { exato: true });
+}
+
+async function seguinte(d, nos) {
+  const b = botao(nos, SEGUINTE);
+  if (!b) throw new Error("Não achei o botão Seguinte.");
+  await tocarNo(d, b, 3000);
+}
+
+/** Data de nascimento: campo de texto, ou o seletor de rolar do Android (dia/mês/ano). */
+async function preencherNascimento(d, nos, nascimento) {
+  const [dia, mes, ano] = nascimento.split("/").map(Number);
+  const texto = nos.find((n) => /EditText/.test(n.classe));
+  if (texto) {
+    await preencher(d, texto, nascimento);
+    return true;
+  }
+  const campo = campoPor(nos, ["Data de nascimento", "Birthday", "Aniversário", "Data de aniversário"]);
+  if (!campo) return false;
+  await tocarNo(d, campo, 1500);
+
+  const rodas = (await d.tela()).filter((n) => n.id === "android:id/numberpicker_input").sort((a, b) => a.x - b.x);
+  if (rodas.length !== 3) return false;
+  for (const roda of rodas) {
+    const atual = roda.texto.toLowerCase().replace(/\./g, "");
+    let valor;
+    if (/^\d{4}$/.test(atual)) valor = String(ano);
+    else if (/^\d{1,2}$/.test(atual)) valor = String(dia);
+    else {
+      const lingua = MESES.pt.includes(atual.slice(0, 3)) ? "pt" : "en";
+      valor = MESES[lingua][mes - 1];
+    }
+    await preencher(d, roda, valor);
+  }
+  const ok = acharId(await d.tela(), "android:id/button1");
+  if (!ok) return false;
+  await tocarNo(d, ok, 1500);
+  return true;
+}
+
+/**
+ * ctx = { d, conta, perguntar(tipo, texto) → Promise<resposta>, log, imap?, desde? }.
+ * imap = { host, porta, usuario, senha } da caixa da conta; desde = quando o
+ * cadastro começou (só e-mails depois disso valem). Devolve a mensagem final
+ * ("conta criada (@usuario)").
+ */
+export async function cadastrarInstagram({ d, conta, perguntar, log, imap = null, desde = Date.now() }) {
+  const estado = { errosIdioma: 0, termosAceitos: false, usuarioFinal: conta.usuario || null, ultima: null, repeticoes: 0, desconhecidas: 0, toquesSugestoes: 0, codigosImap: 0, captchas: 0 };
+  // Pergunta vigiando a tela: o dono pode resolver direto na instância (ver dono.mjs).
+  const ajuda = criarAjuda({ d, perguntar, log });
+  const { perguntarVigiando } = ajuda;
+  const manual = async (texto, nos) => {
+    await ajuda.manual(texto, nos);
+    estado.repeticoes = 0;
+    estado.desconhecidas = 0;
+  };
+
+  const telas = [
+    {
+      nome: "carregando-idioma",
+      teste: (nos) => acharId(nos, ig("language_pack_loading_message")),
+      agir: () => esperar(3000),
+    },
+    {
+      // Pacote de idioma pela proxy às vezes falha: tenta de novo uma vez, depois segue em inglês.
+      nome: "erro-idioma",
+      teste: (nos) => acharId(nos, ig("language_pack_loading_failed_message")),
+      agir: async (nos) => {
+        estado.errosIdioma += 1;
+        const alvo = estado.errosIdioma <= 1 ? acharId(nos, ig("retry_button")) : acharId(nos, ig("use_english_button"));
+        await tocarNo(d, alvo, 10_000);
+      },
+    },
+    {
+      // O captcha "Confirma que és uma pessoa" (imagens) vai para o Capsolver até 3 vezes; tipo
+      // que ele não resolve vira pedido manual; esgotou, encerra com o aviso em vermelho
+      // (ALERTA_CAPTCHA), como no MuMu. Antes do "codigo" ("Enter the code…").
+      nome: "verificacao-pessoa",
+      teste: (nos) =>
+        temTexto(nos, ["Confirma que és uma pessoa", "Confirm you're a person", "Confirm that you're a person", "Confirme que você é uma pessoa"]),
+      agir: async (nos) => {
+        estado.captchas += 1;
+        if (estado.captchas > 3) {
+          salvarTela(nos, "captcha: confirma que és uma pessoa (3 tentativas)");
+          throw new ContaTravada(ALERTA_CAPTCHA, "O Instagram pediu o código da imagem (captcha) e o Capsolver não passou.");
+        }
+        const instrucao = resumoTela(nos);
+        try {
+          const pontos = await resolverCaptcha(await d.print(), { instrucao, log });
+          log(`captcha: ${pontos.length} toque(s) do Capsolver`);
+          await tocarPontos(d, pontos);
+          const depois = await d.tela();
+          const confirmar = botao(depois, ["Verificar", "Verify", "Confirmar", "Confirm", "Enviar", "Submit", ...SEGUINTE]);
+          if (confirmar) await tocarNo(d, confirmar, 4000);
+        } catch (e) {
+          if (!(e instanceof CaptchaNaoSuportado)) throw e;
+          log(`captcha: ${e.message}`);
+          await manual(`O Instagram pediu um captcha que o Capsolver não resolve (${instrucao}).`, nos);
+        }
+      },
+    },
+    {
+      nome: "verificacao",
+      teste: (nos) =>
+        temTexto(nos, ["Confirma que és tu", "Confirm it's you", "Confirme que é você", "reCAPTCHA", "não és um robô", "not a robot", "Ajuda-nos a confirmar", "Help us confirm", "suspendemos", "suspended"]),
+      agir: (nos) => manual(`O Instagram pediu uma verificação (${resumoTela(nos)}).`, nos),
+    },
+    {
+      // Depois dos termos o Instagram pode travar a conta nova até confirmar um telefone (sem "Ignorar").
+      nome: "verificacao-telefone",
+      teste: (nos) =>
+        temTexto(nos, ["Insere o teu número de telemóvel", "Enter your mobile number", "Insira seu número de celular", "Insira o seu número de celular"]) &&
+        temTexto(nos, ["SMS", "WhatsApp"]),
+      agir: (nos) => {
+        salvarTela(nos, "verificação por telefone");
+        throw new ContaTravada(ALERTA_TELEFONE, "O Instagram pediu um número de telefone para confirmar a conta.");
+      },
+    },
+    {
+      nome: "codigo",
+      teste: (nos) => ehTelaCodigo(nos),
+      agir: async (nos) => {
+        const recusado = temTexto(nos, ["não é válido", "isn't valid", "inválido", "incorreto", "incorrect", "expirou", "expired"]);
+        // Primeiro a caixa de e-mail (IMAP, até 3 min); só sem código lá a aba pergunta ao dono.
+        let codigo = null;
+        if (imap && estado.codigosImap < 2 && !recusado) {
+          estado.codigosImap += 1;
+          log(`esperando o código em ${conta.email} (IMAP)`);
+          codigo = await esperarCodigo({ host: imap.host, porta: imap.porta, email: imap.usuario || conta.email, senha: imap.senha, desde, log }).catch((e) => {
+            log(`IMAP falhou: ${e.message}`);
+            return null;
+          });
+          if (!codigo) log("código não chegou por IMAP: perguntando na aba");
+        }
+        if (!codigo) {
+          codigo = await perguntarVigiando(
+            "codigo",
+            recusado
+              ? `O Instagram não aceitou o código. Confira o último e-mail em ${conta.email} e digite de novo.`
+              : `Digite o código que o Instagram mandou para ${conta.email}.`,
+            (agora) => ehTelaCodigo(agora)
+          );
+        }
+        if (codigo === null) {
+          log("código digitado direto na instância: seguindo");
+          return;
+        }
+        const atual = await d.tela();
+        const campo = campoPor(atual, ["Código", "Code", "Confirmation code", "Código de confirmação"]);
+        if (!campo) throw new Error("Não achei o campo do código.");
+        await preencher(d, campo, codigo.replace(/\D/g, ""));
+        // Com o código completo o Instagram às vezes confirma sozinho e já sai da tela (giuliaboschin_934,
+        // 02/11: "Não achei o botão Seguinte"). Só toca em Seguinte se ainda estiver no código.
+        await esperar(2500);
+        const depois = await d.tela();
+        const proximo = ehTelaCodigo(depois) ? botao(depois, SEGUINTE) : null;
+        if (proximo) await tocarNo(d, proximo, 3000);
+      },
+    },
+    {
+      nome: "email",
+      teste: (nos) => temTexto(nos, ["Qual é o teu e-mail", "What's your email", "Qual é o seu email", "Qual é o seu e-mail"]),
+      agir: async (nos) => {
+        if (temTexto(nos, ["já está a ser utilizado", "já está sendo usado", "already", "já tem uma conta", "já existe"])) {
+          throw new Error(`O Instagram diz que ${conta.email} já tem conta.`);
+        }
+        const campo = campoPor(nos, ["E-mail", "Email"]);
+        if (!campo) throw new Error("Não achei o campo do e-mail.");
+        await preencher(d, campo, conta.email);
+        await seguinte(d, await d.tela());
+      },
+    },
+    {
+      nome: "telefone",
+      teste: (nos) => botao(nos, ["Registar com e-mail", "Sign up with email", "Cadastrar-se com o email", "Cadastre-se com o email", "Cadastrar com email"]),
+      agir: async (nos, alvo) => tocarNo(d, alvo, 3000),
+    },
+    {
+      nome: "senha",
+      teste: (nos) => temTexto(nos, ["Criar uma palavra-passe", "Cria uma palavra-passe", "Create a password", "Crie uma senha", "Criar uma senha"]),
+      agir: async (nos) => {
+        const campo = campoPor(nos, ["Palavra-passe", "Password", "Senha"]);
+        if (!campo) throw new Error("Não achei o campo da senha.");
+        await preencher(d, campo, conta.senha);
+        await seguinte(d, await d.tela());
+      },
+    },
+    {
+      nome: "salvar-login",
+      teste: (nos) =>
+        temTexto(nos, ["Guardar as tuas informações", "Save your login info", "Salvar suas informações", "Guardar informações de início"]) &&
+        botao(nos, ["Guardar", "Save", "Salvar"]),
+      agir: async (nos, alvo) => tocarNo(d, alvo, 3000),
+    },
+    {
+      nome: "nascimento",
+      teste: (nos) => temTexto(nos, ["data de nascimento", "birthday", "aniversário"]),
+      agir: async (nos) => {
+        if (!(await preencherNascimento(d, nos, conta.nascimento))) {
+          await manual(`Não consegui preencher a data de nascimento (${conta.nascimento}).`, nos);
+          return;
+        }
+        await seguinte(d, await d.tela());
+      },
+    },
+    {
+      nome: "nome",
+      teste: (nos) => temTexto(nos, ["Como te chamas", "Qual é o teu nome", "What's your name", "Qual é o seu nome", "Como você se chama"]),
+      agir: async (nos) => {
+        const campo = campoPor(nos, ["Nome completo", "Full name", "Nome"]);
+        if (!campo) throw new Error("Não achei o campo do nome.");
+        await preencher(d, campo, conta.nome);
+        await seguinte(d, await d.tela());
+      },
+    },
+    {
+      nome: "usuario",
+      teste: (nos) => temTexto(nos, ["Criar um nome de utilizador", "Cria um nome de utilizador", "Create a username", "Crie um nome de usuário", "Criar um nome de usuário"]),
+      agir: async (nos) => {
+        const campo = campoPor(nos, ["Nome de utilizador", "Username", "Nome de usuário"]);
+        if (conta.usuario && campo) {
+          await preencher(d, campo, conta.usuario);
+          await esperar(2500);
+          const depois = await d.tela();
+          if (temTexto(depois, ["não está disponível", "isn't available", "is not available", "indisponível"])) {
+            await manual(`O usuário @${conta.usuario} não está livre: escolha outro.`, depois);
+          }
+        }
+        const atual = await d.tela();
+        const final = campoPor(atual, ["Nome de utilizador", "Username", "Nome de usuário"]);
+        if (final?.texto && !final.texto.includes(" ")) estado.usuarioFinal = final.texto.replace(/^@/, "");
+        await seguinte(d, atual);
+      },
+    },
+    {
+      nome: "termos",
+      teste: (nos) =>
+        temTexto(nos, ["termos e políticas", "terms and policies", "Termos e Políticas", "termos e as políticas"]) &&
+        botao(nos, ["Concordo", "I agree", "Aceito", "Concordar", "Aceitar"]),
+      agir: async (nos, alvo) => {
+        await tocarNo(d, alvo, 5000);
+        estado.termosAceitos = true;
+      },
+    },
+    {
+      nome: "login",
+      teste: (nos) => botao(nos, ["Criar conta nova", "Create new account", "Criar nova conta"]),
+      agir: async (nos, alvo) => tocarNo(d, alvo, 4000),
+    },
+    {
+      // Outra abertura do Instagram novo (vista em 01/11): "Aderir ao Instagram" → Começar.
+      nome: "abertura",
+      teste: (nos) =>
+        temTexto(nos, ["Aderir ao Instagram", "Join Instagram", "Entrar no Instagram", "Junte-se ao Instagram"]) &&
+        botao(nos, ["Começar", "Get started", "Comece agora"]),
+      agir: async (nos, alvo) => tocarNo(d, alvo, 4000),
+    },
+    {
+      // O Ignorar abaixo abre esta confirmação ("Queres encontrar amigos mais depressa?"): "Não, ignorar".
+      // Antes ela não era reconhecida e o pular tocava de novo no Ignorar do fundo, fechando a caixa.
+      // Vem antes: o texto dela também fala em "sugestões de amizade".
+      nome: "confirmar-ignorar-amigos",
+      teste: (nos) =>
+        temTexto(nos, ["encontrar amigos mais depressa", "find friends faster", "find your friends faster"]) &&
+        botao(nos, ["Não, ignorar", "No, skip", "Não, pular", "Não, ignore"]),
+      agir: async (nos, alvo) => tocarNo(d, alvo, 3000),
+    },
+    {
+      // "Segue 5 ou mais pessoas" (lista de sugestões para seguir): o dono pediu Ignorar, no canto de cima
+      // (o Seguir de baixo seguiria a lista toda). A lista demora a carregar; o Ignorar já vale antes.
+      nome: "seguir-pessoas",
+      teste: (nos) =>
+        temTexto(nos, ["Segue 5 ou mais pessoas", "Follow 5 or more people", "Siga 5 ou mais pessoas"]) &&
+        (acharId(nos, ig("action_bar_action_text")) ?? botao(nos, ["Ignorar", "Skip"])),
+      agir: async (nos, alvo) => {
+        await d.arrastar(alvo.x, alvo.y, alvo.x, alvo.y, 150);
+        await esperar(3000);
+      },
+    },
+    {
+      // "Obtém sugestões de amizade" (ligar ao Facebook): o dono pediu Ignorar, no canto de cima.
+      // Toque segurado de 150 ms, mudando um pouco o ponto a cada volta.
+      nome: "sugestoes-amizade",
+      teste: (nos) =>
+        temTexto(nos, ["sugestões de amizade", "friend suggestions"]) &&
+        (acharId(nos, ig("action_bar_action_text")) ?? botao(nos, ["Ignorar", "Skip"])),
+      agir: async (nos, alvo) => {
+        const dx = [0, -25, 25][estado.toquesSugestoes++ % 3];
+        await d.arrastar(alvo.x + dx, alvo.y, alvo.x + dx, alvo.y, 150);
+        await esperar(3000);
+      },
+    },
+    {
+      nome: "pular",
+      teste: (nos) => botao(nos, PULAR),
+      agir: async (nos, alvo) => tocarNo(d, alvo, 3000),
+    },
+  ];
+
+  const ehInicio = (nos) =>
+    temTexto(nos, ["Página inicial", "Home", "Início"], { exato: true }) &&
+    temTexto(nos, ["Pesquisar e explorar", "Search and explore", "Explorar", "Reels"]);
+
+  await d.abrirApp(INSTAGRAM);
+  await esperar(6000);
+  const limite = Date.now() + TEMPO_MAX_MS;
+
+  while (Date.now() < limite) {
+    const nos = await d.tela().catch(() => []);
+    if (ehInicio(nos)) {
+      log("chegou no início do Instagram");
+      return `conta criada${estado.usuarioFinal ? ` (@${estado.usuarioFinal})` : ""}`;
+    }
+
+    let tratou = false;
+    for (const tela of telas) {
+      const alvo = tela.teste(nos);
+      if (!alvo) continue;
+      tratou = true;
+      estado.repeticoes = estado.ultima === tela.nome ? estado.repeticoes + 1 : 0;
+      estado.ultima = tela.nome;
+      estado.desconhecidas = 0;
+      if (estado.repeticoes >= 4 && tela.nome !== "carregando-idioma") {
+        await manual(`A tela "${tela.nome}" não avançou (${resumoTela(nos)}).`, nos);
+        break;
+      }
+      log(`tela: ${tela.nome}`);
+      await tela.agir(nos, alvo);
+      break;
+    }
+    if (tratou) continue;
+
+    // Fora do Instagram (ele fecha ao trocar de língua) e sem diálogo do sistema: abre de novo.
+    const doInstagram = nos.some((n) => n.pacote === INSTAGRAM);
+    const doSistema = nos.some((n) => /permissioncontroller|packageinstaller|vpndialogs/.test(n.pacote));
+    if (!doInstagram && !doSistema) {
+      await d.abrirApp(INSTAGRAM);
+      await esperar(6000);
+      continue;
+    }
+
+    estado.desconhecidas += 1;
+    if (estado.desconhecidas < 3) {
+      await esperar(2500);
+      continue;
+    }
+    // Depois dos termos, as telas de boas-vindas costumam só pedir "Seguinte".
+    const proximo = estado.termosAceitos ? botao(nos, SEGUINTE) : null;
+    if (proximo) {
+      await tocarNo(d, proximo, 3000);
+      estado.desconhecidas = 0;
+      continue;
+    }
+    await manual(`Tela que eu ainda não conheço: ${resumoTela(nos) || "sem texto"}.`, nos);
+  }
+  throw new Error("O cadastro passou de 45 min sem terminar.");
+}

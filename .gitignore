@@ -47,3 +47,11 @@ agente-mumu/agente.log*
 agente-mumu/agente.pid
 agente-mumu/telas/
 agente-mumu/alertas.json
+
+# Agente VPS (agente-vps/): código da VPS, log, trava, telas desconhecidas e avisos
+agente-vps/config.json
+agente-vps/agente.log*
+agente-vps/agente.pid
+agente-vps/telas/*
+!agente-vps/telas/.gitkeep
+agente-vps/alertas.json

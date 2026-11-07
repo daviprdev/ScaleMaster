@@ -55,7 +55,9 @@ export async function syncJobs(
   agentId: string,
   updates: JobUpdate[],
   stillRunning: ReadonlySet<string> | null,
-  now: string
+  now: string,
+  // Vagas simultâneas: 2 no MuMu; na VPS, o maxCadastro que o agente informou.
+  maxConcurrent: number = MAX_CONCURRENT_JOBS_PER_AGENT
 ): Promise<SyncJobsResult> {
   for (const u of updates) {
     const patch: Record<string, unknown> = { steps: u.steps, status: u.status, error: u.error, updated_at: now };
@@ -70,6 +72,13 @@ export async function syncJobs(
       .eq("status", "running");
     if (isMissingSchemaError(error)) return EMPTY;
     if (error) throw new Error(error.message);
+    // Aba Contas VPS: proxy morta pausa a conta (só volta com proxy nova) e marca o device. Sem o SQL da VPS, ignora.
+    if (u.status === "error" && u.error?.startsWith("PROXY_MORTA")) {
+      await admin.from("emulator_jobs").update({ pausa: "proxy" }).eq("id", u.id).eq("agent_id", agentId);
+      await admin.from("vps_devices").update({ status: "proxy-morta" }).eq("job_id", u.id);
+    } else if (u.status === "done") {
+      await admin.from("vps_devices").update({ status: "ativo" }).eq("job_id", u.id);
+    }
   }
 
   const { data: runningData, error: runningErr } = await admin
@@ -105,7 +114,7 @@ export async function syncJobs(
 
   if (!stillRunning) return { jobs: [], replies };
   const runningCount = running.filter((r) => stillRunning.has(r.id)).length;
-  const slots = MAX_CONCURRENT_JOBS_PER_AGENT - runningCount;
+  const slots = maxConcurrent - runningCount;
   if (slots <= 0) return { jobs: [], replies };
 
   const { data: nextRows, error: nextErr } = await admin

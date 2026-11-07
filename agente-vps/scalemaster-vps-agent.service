@@ -1,0 +1,24 @@
+[Unit]
+Description=Scale Master - agente da VPS (containers redroid, aba Contas VPS)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/scalemaster/agente-vps
+# CAPSOLVER_KEY e outros segredos ficam aqui (chmod 600), fora do git.
+EnvironmentFile=-/opt/scalemaster/agente-vps/.env
+ExecStart=/usr/bin/node /opt/scalemaster/agente-vps/agente.mjs rodar
+Restart=always
+RestartSec=5
+# A VPS inteira é dos containers: o agente nunca passa de 90% da RAM.
+MemoryMax=90%
+KillMode=mixed
+TimeoutStopSec=60
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

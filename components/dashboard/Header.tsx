@@ -61,6 +61,10 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     title: "Emulador",
     subtitle: "As instâncias do MuMu do seu PC",
   },
+  "/dashboard/contas-vps": {
+    title: "Contas VPS",
+    subtitle: "Contas criadas em containers redroid na VPS",
+  },
 };
 
 export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void }) {

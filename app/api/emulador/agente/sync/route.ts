@@ -3,9 +3,12 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { agentTokenFromRequest, hashAgentToken } from "@/lib/emulador/token";
 import { parseJobUpdates } from "@/lib/emulador/jobs";
+import { parseCapacidade } from "@/lib/vps/jobs";
+import { MAX_CONCURRENT_JOBS_PER_AGENT } from "@/lib/emulador/sync-jobs";
 import { syncDeletes, syncJobs, syncRenames, type SyncJobsResult } from "@/lib/emulador/sync-jobs";
 import {
   QUEUED_COMMAND_TTL_MS,
+  parseAgentKind,
   parseInstances,
   parseMedia,
   parseResults,
@@ -80,15 +83,24 @@ export async function POST(req: NextRequest) {
     tasks: parseTasks(body.tasks),
     last_seen_at: now,
   };
-  // media (pasta do MuMu) só vem quando mudou; sem a coluna (SQL não aplicado), grava o resto.
-  let { error: updateErr } =
-    body.media !== undefined
-      ? await admin.from("emulator_agents").update({ ...retrato, media: parseMedia(body.media) }).eq("id", agent.id)
-      : await admin.from("emulator_agents").update(retrato).eq("id", agent.id);
+  // Colunas que só existem depois de outros SQLs: media (pasta do MuMu, só vem
+  // quando mudou), kind e capacidade (agente da VPS). Sem elas (SQL não
+  // aplicado), grava o resto.
+  const agentKind = parseAgentKind(body.agentKind);
+  const extras: Record<string, unknown> = {};
+  if (body.media !== undefined) extras.media = parseMedia(body.media);
+  if (agentKind) extras.kind = agentKind;
+  if (agentKind === "vps" && body.capacity !== undefined) extras.capacidade = parseCapacidade(body.capacity);
+  let { error: updateErr } = await admin.from("emulator_agents").update({ ...retrato, ...extras }).eq("id", agent.id);
+  if (isMissingSchemaError(updateErr) && body.media !== undefined) {
+    ({ error: updateErr } = await admin.from("emulator_agents").update({ ...retrato, media: extras.media }).eq("id", agent.id));
+  }
   if (isMissingSchemaError(updateErr)) {
     ({ error: updateErr } = await admin.from("emulator_agents").update(retrato).eq("id", agent.id));
   }
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  // VPS: cadastros simultâneos = o que a máquina aguenta (max(2, vCPU/2)); MuMu: 2.
+  const maxConcurrent = agentKind === "vps" ? parseCapacidade(body.capacity).maxCadastro : MAX_CONCURRENT_JOBS_PER_AGENT;
 
   const results = parseResults(body.results);
   const stillRunning = new Set(parseRunning(body.running));
@@ -166,7 +178,7 @@ export async function POST(req: NextRequest) {
   try {
     // runningJobs ausente = agente anterior à fila Nova conta: não recebe conta.
     const runningJobs = Array.isArray(body.runningJobs) ? new Set(parseRunning(body.runningJobs)) : null;
-    jobSync = await syncJobs(admin, agent.id, parseJobUpdates(body.jobUpdates), runningJobs, now);
+    jobSync = await syncJobs(admin, agent.id, parseJobUpdates(body.jobUpdates), runningJobs, now, maxConcurrent);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

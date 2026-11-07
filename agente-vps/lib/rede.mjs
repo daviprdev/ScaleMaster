@@ -1,0 +1,219 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { lookup } from "node:dns/promises";
+import path from "node:path";
+import { esperar, rodar, trecho } from "./processo.mjs";
+
+/**
+ * Rede de cada container: bridge vpsnet (10.77.0.0/24), IP e MAC fixos, e um
+ * sidecar redsocks no MESMO netns (--network container:ig-N) que redireciona
+ * todo TCP para a proxy HTTP da conta e descarta o resto (kill switch).
+ *
+ * Dois modos do sidecar:
+ *   bloqueado — só DROP: o container liga sem internet nenhuma (instalar o
+ *               APK é pelo adb, não precisa de rede);
+ *   proxy     — redsocks + REDIRECT; DNS pelo proxy (dnsu2t: UDP 53 vira DNS
+ *               sobre TCP, que também passa pelo redsocks).
+ * Sem o sidecar as regras de nat ficam no netns apontando para uma porta sem
+ * ninguém: continua sem internet. Nunca cai para o IP da VPS. As respostas às
+ * conexões que entram (o adb pela porta publicada) passam pelo conntrack
+ * ESTABLISHED; conexão nova para fora é o que o DROP segura.
+ *
+ * Como todo processo do Android roda no próprio netns, o tráfego é "local":
+ * as regras vão na chain OUTPUT (PREROUTING só vê o que entra pela interface).
+ */
+
+export const REDE = "vpsnet";
+export const SUBREDE = "10.77.0.0/24";
+export const IMAGEM_SIDECAR = "scalemaster-redsocks:1";
+const PORTA_REDSOCKS = 12345;
+const PORTA_DNS = 5300;
+const DNS_REMOTO = "1.1.1.1";
+export const PASTA_REDE = "/opt/scalemaster/vps/rede";
+
+export const nomeSidecar = (container) => `${container}-proxy`;
+
+/** IP fixo do container de índice n na bridge (1 é o gateway; 2..254 para contas). */
+export function ipDe(index) {
+  if (!Number.isInteger(index) || index < 1 || index > 252) throw new Error(`Índice ${index} fora da faixa da bridge (1–252).`);
+  return `10.77.0.${index + 2}`;
+}
+
+/** http://usuario:senha@host:porta → partes. */
+export function lerProxy(url) {
+  const u = new URL(url);
+  if (!/^https?:$/.test(u.protocol) || !u.hostname || !u.port) throw new Error("Proxy sem host ou porta.");
+  return { host: u.hostname, porta: Number(u.port), usuario: decodeURIComponent(u.username), senha: decodeURIComponent(u.password) };
+}
+
+/** Cria a bridge uma vez (instalar.sh também faz; aqui garante no boot do agente). */
+export async function garantirBridge() {
+  const ins = await rodar("docker", ["network", "inspect", REDE], { timeoutMs: 20_000 });
+  if (ins.codigo === 0) return;
+  const r = await rodar("docker", ["network", "create", "--driver", "bridge", "--subnet", SUBREDE, "--gateway", "10.77.0.1", "-o", "com.docker.network.bridge.name=vpsnet", REDE], {
+    timeoutMs: 60_000,
+  });
+  if (r.codigo !== 0) throw new Error(`docker network create ${REDE}: ${trecho(r.stderr)}`);
+}
+
+/**
+ * Script que roda dentro do sidecar (sh + iptables + redsocks, imagem montada
+ * por scripts/vps/instalar.sh). Em modo bloqueado só aplica o DROP; em modo
+ * proxy escreve o redsocks.conf e abre as exceções da proxy.
+ */
+function scriptSidecar() {
+  return `set -e
+iptables -t nat -F OUTPUT 2>/dev/null || true
+iptables -F OUTPUT 2>/dev/null || true
+iptables -A OUTPUT -o lo -j ACCEPT
+# Respostas do que ENTROU (adb pela porta publicada) passam; conexão nova para fora, não.
+iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+if [ "$MODO" = "proxy" ]; then
+  cat > /etc/redsocks.conf <<CONF
+base { log_debug = off; log_info = on; log = "stderr"; daemon = off; redirector = iptables; }
+redsocks { local_ip = 0.0.0.0; local_port = ${PORTA_REDSOCKS}; ip = $PROXY_IP; port = $PROXY_PORT; type = http-connect; login = "$PROXY_USER"; password = "$PROXY_PASS"; }
+dnsu2t { local_ip = 0.0.0.0; local_port = ${PORTA_DNS}; remote_ip = ${DNS_REMOTO}; remote_port = 53; }
+CONF
+  # Só o redsocks fala com a proxy; todo TCP das apps é redirecionado para ele; DNS UDP vira TCP pelo dnsu2t.
+  iptables -A OUTPUT -p tcp -d $PROXY_IP --dport $PROXY_PORT -j ACCEPT
+  iptables -t nat -A OUTPUT -p tcp -d $PROXY_IP --dport $PROXY_PORT -j RETURN
+  iptables -t nat -A OUTPUT -p tcp -d 127.0.0.0/8 -j RETURN
+  iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports ${PORTA_DNS}
+  iptables -t nat -A OUTPUT -p tcp -j REDIRECT --to-ports ${PORTA_REDSOCKS}
+  iptables -A OUTPUT -p tcp -d 127.0.0.0/8 -j ACCEPT
+  iptables -A OUTPUT -p udp -d 127.0.0.0/8 -j ACCEPT
+fi
+iptables -A OUTPUT -j DROP
+echo "sidecar pronto: modo $MODO"
+if [ "$MODO" = "proxy" ]; then exec redsocks -c /etc/redsocks.conf; fi
+exec sleep infinity
+`;
+}
+
+export function escreverScript() {
+  mkdirSync(PASTA_REDE, { recursive: true });
+  const arquivo = path.join(PASTA_REDE, "sidecar.sh");
+  // Reescreve quando o script desta versão do agente mudou (regra nova de iptables chega à VPS no git pull).
+  const conteudo = scriptSidecar();
+  if (!existsSync(arquivo) || readFileSync(arquivo, "utf8") !== conteudo) writeFileSync(arquivo, conteudo, { mode: 0o755 });
+  return arquivo;
+}
+
+export async function pararSidecar(container) {
+  await rodar("docker", ["rm", "-f", nomeSidecar(container)], { timeoutMs: 60_000 });
+}
+
+/**
+ * Sobe o sidecar no netns do container. `proxy` = URL da conta ou null (modo
+ * bloqueado). O host da proxy é resolvido aqui (fora do netns bloqueado) e o
+ * IP vai para as regras.
+ */
+export async function subirSidecar(container, proxy) {
+  await pararSidecar(container);
+  const script = escreverScript();
+  const env = ["-e", `MODO=${proxy ? "proxy" : "bloqueado"}`];
+  if (proxy) {
+    const p = lerProxy(proxy);
+    const ip = /^\d+\.\d+\.\d+\.\d+$/.test(p.host) ? p.host : (await lookup(p.host, { family: 4 })).address;
+    env.push("-e", `PROXY_IP=${ip}`, "-e", `PROXY_PORT=${p.porta}`, "-e", `PROXY_USER=${p.usuario}`, "-e", `PROXY_PASS=${p.senha}`);
+  }
+  const r = await rodar(
+    "docker",
+    [
+      "run", "-d", "--name", nomeSidecar(container),
+      "--label", "scalemaster.vps=1", "--label", `scalemaster.sidecar=${container}`, "--label", `scalemaster.modo=${proxy ? "proxy" : "bloqueado"}`,
+      "--network", `container:${container}`, "--cap-add", "NET_ADMIN", "--restart", "unless-stopped",
+      "-v", `${script}:/sidecar.sh:ro`, ...env,
+      IMAGEM_SIDECAR, "sh", "/sidecar.sh",
+    ],
+    { timeoutMs: 120_000 }
+  );
+  if (r.codigo !== 0) throw new Error(`sidecar de ${container} não subiu: ${trecho(r.stderr)}`);
+  await esperar(1500);
+  const vivo = await rodar("docker", ["inspect", "--format", "{{.State.Running}}", nomeSidecar(container)], { timeoutMs: 20_000 });
+  if (trecho(vivo.stdout) !== "true") {
+    const logs = await rodar("docker", ["logs", "--tail", "20", nomeSidecar(container)], { timeoutMs: 20_000 });
+    throw new Error(`sidecar de ${container} morreu: ${trecho(logs.stderr || logs.stdout)}`);
+  }
+}
+
+/** O sidecar está de pé em modo proxy (redsocks vivo)? */
+export async function proxyAtiva(container) {
+  const r = await rodar("docker", ["inspect", "--format", '{{.State.Running}} {{index .Config.Labels "scalemaster.modo"}}', nomeSidecar(container)], { timeoutMs: 20_000 });
+  return trecho(r.stdout) === "true proxy";
+}
+
+/** País e IP de saída de uma proxy, vista da VPS (curl -x), em até 15 s. */
+export async function geoDaProxy(proxy, { timeoutMs = 15_000 } = {}) {
+  const r = await rodar(
+    "curl",
+    ["-sS", "-m", String(Math.ceil(timeoutMs / 1000)), "-x", proxy, "-w", "\n%{http_code}", "http://ip-api.com/json/?fields=status,countryCode,timezone,query"],
+    { timeoutMs: timeoutMs + 5000 }
+  );
+  const saida = String(r.stdout ?? "").trim();
+  const linhas = saida.split("\n");
+  const http = Number(linhas.pop());
+  const corpo = linhas.join("\n");
+  if (r.codigo !== 0 || http !== 200) throw new Error(`a proxy não respondeu (${trecho(r.stderr) || `HTTP ${http || 0}`})`);
+  let dados;
+  try {
+    dados = JSON.parse(corpo);
+  } catch {
+    throw new Error(`resposta de geo ilegível: ${trecho(corpo)}`);
+  }
+  if (dados.status !== "success" || !dados.countryCode) throw new Error(`geo sem país: ${trecho(corpo)}`);
+  return { pais: String(dados.countryCode).toUpperCase(), ip: String(dados.query ?? ""), timezone: String(dados.timezone ?? "") };
+}
+
+/**
+ * Valida a proxy ANTES de qualquer cadastro: HTTP 200 no endpoint de geo e o
+ * país igual ao esperado (quando informado). Falha = ProxyMorta (sem fallback).
+ */
+export class ProxyMorta extends Error {
+  constructor(motivo) {
+    super(`PROXY_MORTA: ${motivo}`);
+    this.name = "ProxyMorta";
+    this.semPrefixo = true;
+  }
+}
+
+export async function validar(proxy, paisEsperado) {
+  let geo;
+  try {
+    geo = await geoDaProxy(proxy);
+  } catch (e) {
+    throw new ProxyMorta(e.message);
+  }
+  if (paisEsperado && geo.pais !== String(paisEsperado).toUpperCase()) {
+    throw new ProxyMorta(`a proxy sai por ${geo.pais}, a conta é ${String(paisEsperado).toUpperCase()}`);
+  }
+  return geo;
+}
+
+/** Do lado de dentro do netns: a proxy funciona pelo redsocks (e só por ele). */
+export async function validarNoNetns(container, paisEsperado) {
+  const r = await rodar(
+    "docker",
+    ["exec", nomeSidecar(container), "curl", "-sS", "-m", "15", "-w", "\n%{http_code}", "http://ip-api.com/json/?fields=status,countryCode,query"],
+    { timeoutMs: 25_000 }
+  );
+  const linhas = String(r.stdout ?? "").trim().split("\n");
+  const http = Number(linhas.pop());
+  if (r.codigo !== 0 || http !== 200) throw new ProxyMorta(`dentro do container a proxy não respondeu (${trecho(r.stderr) || `HTTP ${http || 0}`})`);
+  let dados;
+  try {
+    dados = JSON.parse(linhas.join("\n"));
+  } catch {
+    throw new ProxyMorta("resposta de geo ilegível dentro do container");
+  }
+  const pais = String(dados.countryCode ?? "").toUpperCase();
+  if (paisEsperado && pais !== String(paisEsperado).toUpperCase()) throw new ProxyMorta(`dentro do container a saída é ${pais}`);
+  return { pais, ip: String(dados.query ?? "") };
+}
+
+/** Prova do kill switch: com o sidecar de pé em modo bloqueado, nada sai (o curl precisa falhar). */
+export async function provarBloqueio(container) {
+  const vivo = await rodar("docker", ["inspect", "--format", "{{.State.Running}}", nomeSidecar(container)], { timeoutMs: 20_000 });
+  if (trecho(vivo.stdout) !== "true") return false;
+  const r = await rodar("docker", ["exec", nomeSidecar(container), "curl", "-sS", "-m", "8", "-o", "/dev/null", "http://ip-api.com/"], { timeoutMs: 15_000 });
+  return r.codigo !== 0;
+}

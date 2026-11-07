@@ -217,11 +217,14 @@ export interface JobUpdate {
   prompt: JobPrompt | null | undefined;
 }
 
+/** Teto de contas simultâneas que um agente pode reportar num sync (= maxCadastro máximo da VPS em lib/vps/jobs.ts). */
+export const MAX_JOB_UPDATES = 50;
+
 /** Andamento que o agente manda no sync, uma entrada por conta que mudou. */
 export function parseJobUpdates(raw: unknown): JobUpdate[] {
   if (!Array.isArray(raw)) return [];
   const out: JobUpdate[] = [];
-  for (const item of raw.slice(0, 10)) {
+  for (const item of raw.slice(0, MAX_JOB_UPDATES)) {
     if (!item || typeof item !== "object") continue;
     const r = item as Record<string, unknown>;
     if (typeof r.id !== "string" || !UUID_RE.test(r.id)) continue;
