@@ -83,8 +83,10 @@ export async function POST(req: NextRequest) {
       if (instanceIndex === 0) {
         return NextResponse.json({ error: "A #0 é a instância padrão das cópias: não dá para excluir por aqui." }, { status: 400 });
       }
-      // O agente só apaga se o índice ainda tiver este nome (o MuMu reaproveita índices).
+      // O agente só apaga se o índice ainda tiver este nome (o MuMu reaproveita índices); na VPS, também o mesmo Created.
       params.nome = instancia.name;
+      if (instancia.criada) params.criada = instancia.criada;
+      else delete params.criada;
       const { data: inUse, error: inUseErr } = await admin
         .from("emulator_jobs")
         .select("id")

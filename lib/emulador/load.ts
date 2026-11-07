@@ -132,7 +132,9 @@ export async function loadEmulador(admin: SupabaseClient, userId: string): Promi
   ]);
   // Sem a coluna kind (vps_contas.sql ainda não aplicado): lê sem ela; sem a
   // coluna media (versão nova de emulador_atividade.sql ainda não aplicada): lê sem as duas.
-  const agentsResFull = isMissingSchemaError(agentsResKind.error) ? await agentsQuery(`${agentColumns}, media`) : agentsResKind;
+  // decisão: sem a coluna kind todos os agentes continuam nesta aba (nada some) e vpsAvailable=false avisa que o SQL da VPS falta.
+  const vpsAvailable = !isMissingSchemaError(agentsResKind.error);
+  const agentsResFull = vpsAvailable ? agentsResKind : await agentsQuery(`${agentColumns}, media`);
   const mediaAvailable = !isMissingSchemaError(agentsResFull.error);
   const agentsRes = mediaAvailable ? agentsResFull : await agentsQuery(agentColumns);
 
@@ -144,7 +146,7 @@ export async function loadEmulador(admin: SupabaseClient, userId: string): Promi
 
   // Agentes da VPS (aba Contas VPS) ficam fora desta aba, e as contas deles também: a fila é a mesma
   // tabela, e os lotes da VPS empurrariam as contas do MuMu para fora do limite.
-  const agentRows = ((agentsRes.data ?? []) as unknown as AgentRow[]).filter((row) => row.kind !== "vps");
+  const agentRows = ((agentsRes.data ?? []) as unknown as AgentRow[]).filter((row) => !vpsAvailable || row.kind !== "vps");
   const mumuIds = agentRows.map((row) => row.id);
   const jobsQuery = (columns: string) =>
     admin.from("emulator_jobs").select(columns).eq("user_id", userId).in("agent_id", mumuIds).order("created_at", { ascending: false }).limit(100);
@@ -163,5 +165,6 @@ export async function loadEmulador(admin: SupabaseClient, userId: string): Promi
     jobsAvailable,
     atividadeAvailable: jobsAvailable && atividadeAvailable,
     jobs: jobsAvailable ? ((jobsRes.data ?? []) as unknown as JobRow[]).map(toJob) : [],
+    vpsAvailable,
   };
 }

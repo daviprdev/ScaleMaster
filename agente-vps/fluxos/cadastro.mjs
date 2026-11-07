@@ -1,4 +1,4 @@
-import { CaptchaNaoSuportado, resolver as resolverCaptcha, tocarPontos } from "../lib/captcha.mjs";
+import { resolver as resolverCaptcha, tocarPontos } from "../lib/captcha.mjs";
 import { esperarCodigo } from "../lib/imap.mjs";
 import { esperar } from "../lib/processo.mjs";
 import { INSTAGRAM } from "./apk.mjs";
@@ -161,18 +161,17 @@ export async function cadastrarInstagram({ d, conta, perguntar, log, imap = null
           throw new ContaTravada(ALERTA_CAPTCHA, "O Instagram pediu o código da imagem (captcha) e o Capsolver não passou.");
         }
         const instrucao = resumoTela(nos);
-        try {
-          const pontos = await resolverCaptcha(await d.print(), { instrucao, log });
-          log(`captcha: ${pontos.length} toque(s) do Capsolver`);
-          await tocarPontos(d, pontos);
-          const depois = await d.tela();
-          const confirmar = botao(depois, ["Verificar", "Verify", "Confirmar", "Confirm", "Enviar", "Submit", ...SEGUINTE]);
-          if (confirmar) await tocarNo(d, confirmar, 4000);
-        } catch (e) {
-          if (!(e instanceof CaptchaNaoSuportado)) throw e;
-          log(`captcha: ${e.message}`);
-          await manual(`O Instagram pediu um captcha que o Capsolver não resolve (${instrucao}).`, nos);
+        // resolver nunca lança: null = sem chave, tipo que ele não resolve, erro ou timeout → o dono resolve na instância.
+        const pontos = await resolverCaptcha(await d.print(), { instrucao, log });
+        if (!pontos) {
+          await manual(`O Instagram pediu um captcha que o Capsolver não resolveu (${instrucao}). Resolva o captcha na instância e mande continuar.`, nos);
+          return;
         }
+        log(`captcha: ${pontos.length} toque(s) do Capsolver`);
+        await tocarPontos(d, pontos);
+        const depois = await d.tela();
+        const confirmar = botao(depois, ["Verificar", "Verify", "Confirmar", "Confirm", "Enviar", "Submit", ...SEGUINTE]);
+        if (confirmar) await tocarNo(d, confirmar, 4000);
       },
     },
     {

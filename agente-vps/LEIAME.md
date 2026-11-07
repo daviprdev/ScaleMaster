@@ -15,7 +15,7 @@ sudo bash scripts/vps/golden.sh
 
 `instalar.sh` instala Docker, Node, adb, o módulo `binder_linux` (pelo dkms de [redroid-modules](https://github.com/remote-android/redroid-modules) se o kernel não trouxer), cria a bridge `vpsnet` (10.77.0.0/24), os sysctl, a imagem do sidecar (`scalemaster-redsocks:1`, alpine + redsocks + iptables + curl), as pastas em `/opt/scalemaster/{apks,midias,sessoes,vps}` e a unit `scalemaster-vps-agent.service`. Sem `--apk`, copie você mesmo `instagram-<versão>.apk` para `/opt/scalemaster/apks` (o lote escolhe a versão).
 
-`golden.sh` sobe um redroid com fingerprint neutro e **sem internet**, instala o APK mais novo de `/opt/scalemaster/apks`, extrai os `build.prop` da imagem para `/opt/scalemaster/vps/base` e guarda o volume `scalemaster-base`. O botão **Rebuild imagem** da aba roda este mesmo script pelo agente.
+`golden.sh` confere o `instagram-<versão>.apk.sha256` ao lado do APK (`sha256sum -c`; `--force` pula), sobe um redroid com fingerprint neutro e **sem internet**, instala o APK mais novo de `/opt/scalemaster/apks`, grava a versão em `/opt/scalemaster/apks/ATUAL`, extrai os `build.prop` da imagem para `/opt/scalemaster/vps/base` e guarda o volume `scalemaster-base`. O botão **Rebuild imagem** da aba roda este mesmo script pelo agente.
 
 ## Conectar a VPS
 
@@ -30,7 +30,8 @@ sudo bash scripts/vps/golden.sh
 3. Para o serviço (sobe sozinho com a máquina e reinicia se cair):
 
    ```
-   echo 'CAPSOLVER_KEY=...' >> /opt/scalemaster/agente-vps/.env
+   # opcional: captcha de imagem pelo Capsolver (sem chave, o captcha vira pedido manual na aba)
+   echo 'CAPSOLVER_KEY=...' >> /opt/scalemaster/agente-vps/.env   # ou "capsolverKey" no config.json
    systemctl enable --now scalemaster-vps-agent
    journalctl -u scalemaster-vps-agent -f
    ```
@@ -66,7 +67,7 @@ Mesmas chaves de `VPS_FLUXO` em `lib/vps/jobs.ts`; o Continuar retoma da etapa q
 7. **limpar**, **email** (login IMAP), **cadastro** — telas pelo texto (`fluxos/cadastro.mjs`); o código de confirmação é lido na caixa por IMAP (`lib/imap.mjs`, até 3 min) antes de perguntar na aba; captcha de imagem vai para o Capsolver (`lib/captcha.mjs`) até 3 vezes; telefone ou captcha sem solução encerram com o aviso em vermelho, igual ao MuMu.
 8. **perfil** — foto sorteada de `/opt/scalemaster/midias/perfil` (ou da pasta toda), nome de exibição e bio.
 9. **seguir**, **reels** — aquecimento (2–3 verificados, até 2 min de Reels).
-10. **sessao** — `shared_prefs` + `databases` do Instagram em `/opt/scalemaster/sessoes/<jobId>.json` (base64, chmod 600).
+10. **sessao** — `adb root` (ou `su 0`) + `tar` de `/data/data/com.instagram.android` puxado para `/opt/scalemaster/sessoes/<jobId>.tgz` (chmod 600, pasta 0700); falha aqui não derruba a conta.
 11. **fechar** — Instagram parado e `docker stop`; roda de novo em todo Continuar.
 
 Supervisor (`lib/supervisor.mjs`): semáforos de ligadas e de cadastro, watchdog de 1 h sem progresso (desliga o container e a conta para), e no boot do agente todo container de conta ligado sem conta em andamento é desligado.

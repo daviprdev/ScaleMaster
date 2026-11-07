@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -11,13 +11,20 @@ import path from "node:path";
 export const INSTAGRAM = "com.instagram.android";
 export const PASTA_APKS = "/opt/scalemaster/apks";
 
-/** Versões disponíveis na VPS (nomes instagram-<versão>.apk), da mais nova para a mais velha. */
+/** Versões disponíveis na VPS (nomes instagram-<versão>.apk): a da base (arquivo ATUAL, gravado pelo golden.sh) primeiro, depois da mais nova para a mais velha. */
 export function versoesDisponiveis(pasta = PASTA_APKS) {
   if (!existsSync(pasta)) return [];
-  return readdirSync(pasta)
+  const lista = readdirSync(pasta)
     .map((f) => /^instagram-([0-9][0-9A-Za-z.\-_]{0,30})\.apk$/.exec(f)?.[1])
     .filter(Boolean)
     .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  let atual = null;
+  try {
+    atual = readFileSync(path.join(pasta, "ATUAL"), "utf8").trim();
+  } catch {
+    /* sem ATUAL: a ordem por versão */
+  }
+  return atual && lista.includes(atual) ? [atual, ...lista.filter((v) => v !== atual)] : lista;
 }
 
 export function caminhoApk(versao, pasta = PASTA_APKS) {

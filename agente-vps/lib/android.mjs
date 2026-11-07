@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { Dispositivo, PORTA_BASE, serialDe } from "./adb.mjs";
 import { apagarVolume, conferirQuota, copiarVolume, prune } from "./disco.mjs";
@@ -25,7 +25,8 @@ import { IMAGEM_SIDECAR, REDE, garantirBridge, ipDe, nomeSidecar, pararSidecar, 
 
 export const IMAGEM = "redroid/redroid:13.0.0_64only-latest";
 export const BASE_VOLUME = "scalemaster-base";
-export const PASTA_VPS = "/opt/scalemaster/vps";
+// decisão: SCALEMASTER_VPS_DIR só existe para os testes apontarem a pasta dos retratos para um diretório temporário.
+export const PASTA_VPS = process.env.SCALEMASTER_VPS_DIR || "/opt/scalemaster/vps";
 export const PASTA_INSTANCIAS = path.join(PASTA_VPS, "instancias");
 export const PASTA_PROPS = path.join(PASTA_VPS, "props");
 export const PASTA_BASE_PROPS = path.join(PASTA_VPS, "base");
@@ -69,9 +70,28 @@ function lerSpec(index) {
   }
 }
 
+/** Escrita atômica: o retrato nunca fica pela metade se o processo morrer no meio. */
 function gravarSpec(spec) {
   mkdirSync(PASTA_INSTANCIAS, { recursive: true, mode: 0o700 });
-  writeFileSync(arquivoSpec(spec.index), `${JSON.stringify(spec, null, 2)}\n`, { mode: 0o600 });
+  const alvo = arquivoSpec(spec.index);
+  writeFileSync(`${alvo}.tmp`, `${JSON.stringify(spec, null, 2)}\n`, { mode: 0o600 });
+  renameSync(`${alvo}.tmp`, alvo);
+}
+
+const FORMATO_INSPECT =
+  '{{.State.Status}}|{{.Created}}|{{index .Config.Labels "scalemaster.nome"}}|{{index .Config.Labels "scalemaster.conta"}}|{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}|{{.NetworkSettings.MacAddress}}';
+
+/** Um docker inspect só: estado, Created, labels de nome e conta, volume de /data e MAC. null = não existe. */
+async function inspecionar(nome) {
+  const r = await rodar("docker", ["inspect", "--format", FORMATO_INSPECT, nome], { timeoutMs: 20_000 });
+  if (r.codigo !== 0) return null;
+  const [status, criada, nomeLabel, jobId, volume, mac] = trecho(r.stdout, 1000).split("|");
+  return { status: status || null, criada: criada || null, nomeLabel: nomeLabel || null, jobId: jobId || null, volume: volume || null, mac: mac || null };
+}
+
+/** Nome mostrado na aba: retrato → label scalemaster.nome → "Instância N". Nunca vazio. */
+export function resolverNome(index, spec, inspecao) {
+  return String(spec?.nome || inspecao?.nomeLabel || `Instância ${index}`);
 }
 
 async function docker(args, timeoutMs = 60_000) {
@@ -83,8 +103,7 @@ async function docker(args, timeoutMs = 60_000) {
 
 /** Estado do container pelo Docker: "running", "exited", "created" ou null (não existe). */
 async function estadoDocker(nome) {
-  const r = await rodar("docker", ["inspect", "--format", "{{.State.Status}}", nome], { timeoutMs: 20_000 });
-  return r.codigo === 0 ? trecho(r.stdout) : null;
+  return (await inspecionar(nome))?.status ?? null;
 }
 
 export class Android {
@@ -111,7 +130,39 @@ export class Android {
     driver.versao_ = trecho(v.stdout);
     driver.faltam = faltam;
     if (faltam.length > 0) throw new Error(`Falta preparar a VPS (rode scripts/vps/instalar.sh e golden.sh): ${faltam.join(", ")}.`);
+    await driver.reconstruir();
     return driver;
+  }
+
+  /**
+   * Boot: todo container de conta no Docker precisa de retrato. Sem ele (ou
+   * corrompido: o processo morreu antes da escrita), regrava com o que a label
+   * guarda — nome, conta, volume, MAC — para a aba não perder a ligação nem o
+   * delete apagar o container errado. Devolve os índices reconstruídos.
+   */
+  async reconstruir() {
+    const r = await rodar("docker", ["ps", "-a", "--filter", `label=${LABEL}`, "--filter", "label=scalemaster.conta", "--format", "{{.Names}}"], { timeoutMs: 20_000 });
+    const refeitos = [];
+    for (const nome of String(r.stdout ?? "").split(/\r?\n/).map((l) => l.trim())) {
+      const m = /^ig-(\d+)$/.exec(nome);
+      if (!m || lerSpec(Number(m[1]))) continue;
+      const index = Number(m[1]);
+      const i = await inspecionar(nome);
+      if (!i) continue;
+      gravarSpec({
+        index,
+        nome: resolverNome(index, null, i),
+        jobId: i.jobId,
+        volume: i.volume ?? `scalemaster-${nome}`,
+        device: { mac: i.mac, index, container: nome },
+        proxy: null,
+        criada: i.criada,
+        recriar: false,
+        reconstruido: true,
+      });
+      refeitos.push(index);
+    }
+    return refeitos;
   }
 
   async versao() {
@@ -120,7 +171,8 @@ export class Android {
 
   async normalizar(spec) {
     const nome = nomeDe(spec.index);
-    const status = await estadoDocker(nome);
+    const inspecao = await inspecionar(nome);
+    const status = inspecao?.status ?? null;
     let state = "off";
     if (status === "running") {
       if (this.prontos.has(spec.index)) state = "on";
@@ -134,10 +186,11 @@ export class Android {
     } else this.prontos.delete(spec.index);
     return {
       index: spec.index,
-      name: String(spec.nome ?? nome),
+      name: resolverNome(spec.index, spec, inspecao),
       state,
       adb: state === "off" ? null : serialDe(spec.index),
-      criada: spec.criada ? String(spec.criada) : null,
+      // Created do Docker é o que o delete confere; sem container (ainda não criado), vale o do retrato.
+      criada: inspecao?.criada ?? (spec.criada ? String(spec.criada) : null),
       container: nome,
       jobId: spec.jobId ?? null,
     };
@@ -203,6 +256,9 @@ export class Android {
   /** docker create com tudo o que a identidade pede. O container nasce parado. */
   async criarContainer(spec) {
     const nome = nomeDe(spec.index);
+    if (!spec.device?.fingerprint || !spec.device?.mac || !spec.device?.serial) {
+      throw new Error(`O retrato de ${nome} foi reconstruído sem a identidade do aparelho: não dá para recriar o container.`);
+    }
     const props = this.gerarProps(spec);
     const args = [
       "create", "--name", nome, "--privileged",
@@ -381,11 +437,26 @@ export class Android {
     this.prontos.delete(index);
   }
 
-  /** Apaga container, sidecar, volume, props e retrato, e faz o prune. */
-  async excluir(index, { log = () => {} } = {}) {
+  /**
+   * Apaga container, sidecar, volume, props e retrato, e faz o prune. `nome` e
+   * `criada` (Created do Docker) são o que a aba mostrou: divergência = o índice
+   * foi reaproveitado ou o retrato é de outro container, e nada é apagado.
+   * @param {number} index
+   * @param {{ log?: (m: string) => void, nome?: string | null, criada?: string | null }} [opcoes]
+   */
+  async excluir(index, { log = () => {}, nome: nomeEsperado, criada: criadaEsperada } = {}) {
     const spec = lerSpec(index);
     const nome = nomeDe(index);
-    const status = await estadoDocker(nome);
+    const inspecao = await inspecionar(nome);
+    const status = inspecao?.status ?? null;
+    const criadaAtual = inspecao?.criada ?? spec?.criada ?? null;
+    if (criadaEsperada !== undefined && criadaEsperada !== null && criadaEsperada !== criadaAtual) {
+      throw new Error(`O container ${nome} não é o mesmo: criado em ${criadaAtual ?? "(desconhecido)"}, a aba esperava ${criadaEsperada}. Nada foi apagado.`);
+    }
+    const nomeAtual = resolverNome(index, spec, inspecao);
+    if (nomeEsperado !== undefined && nomeEsperado !== null && nomeAtual !== String(nomeEsperado)) {
+      throw new Error(`O container ${nome} agora se chama "${nomeAtual}", a aba esperava "${nomeEsperado}". Nada foi apagado.`);
+    }
     if (status === "running") {
       log(`desligando ${nome} antes de apagar`);
       await this.fechar(index).catch(() => {});

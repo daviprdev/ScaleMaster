@@ -89,13 +89,17 @@ export async function POST(req: NextRequest) {
   const agentKind = parseAgentKind(body.agentKind);
   const extras: Record<string, unknown> = {};
   if (body.media !== undefined) extras.media = parseMedia(body.media);
-  if (agentKind) extras.kind = agentKind;
+  // kind só vai quando o agente se declara (agente antigo do MuMu não manda nada e fica como está).
+  if (body.agentKind !== undefined) extras.kind = agentKind;
   if (agentKind === "vps" && body.capacity !== undefined) extras.capacidade = parseCapacidade(body.capacity);
+  // Falha ao gravar kind/capacidade (ou media) nunca derruba o sync: loga, tenta sem elas e segue.
   let { error: updateErr } = await admin.from("emulator_agents").update({ ...retrato, ...extras }).eq("id", agent.id);
-  if (isMissingSchemaError(updateErr) && body.media !== undefined) {
+  if (updateErr && body.media !== undefined) {
+    if (!isMissingSchemaError(updateErr)) console.warn(`[emulador/sync] kind/capacidade não gravados: ${updateErr.message}`);
     ({ error: updateErr } = await admin.from("emulator_agents").update({ ...retrato, media: extras.media }).eq("id", agent.id));
   }
-  if (isMissingSchemaError(updateErr)) {
+  if (updateErr) {
+    if (!isMissingSchemaError(updateErr)) console.warn(`[emulador/sync] extras não gravados: ${updateErr.message}`);
     ({ error: updateErr } = await admin.from("emulator_agents").update(retrato).eq("id", agent.id));
   }
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });

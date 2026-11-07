@@ -182,7 +182,9 @@ async function executar(driver, comando) {
     if (!esperado || (atual.name.trim().slice(0, 80) !== esperado && `ig-${index}` !== esperado)) {
       throw new Error(`O container #${index} agora se chama "${atual.name}". Nada foi apagado.`);
     }
-    await driver.excluir(index, { log: (m) => log(`[excluir ig-${index}] ${m}`) });
+    // O driver confere de novo nome e Created (params.criada vem do retrato que a aba viu).
+    const criada = typeof comando.params?.criada === "string" ? comando.params.criada : undefined;
+    await driver.excluir(index, { log: (m) => log(`[excluir ig-${index}] ${m}`), nome: atual.name, criada });
     limparAlerta(atual.criada);
     log(`Container ig-${index} (${atual.name}) apagado, com o volume.`);
     return null;
@@ -408,7 +410,7 @@ async function rodarAgente() {
       hostname: os.hostname(),
       mumuVersion: versaoDocker,
       mumuError: erroDriver,
-      instances: instancias.map(({ index, name, state, criada }) => ({ index, name, state, alert: alertaDe(criada) })),
+      instances: instancias.map(({ index, name, state, criada }) => ({ index, name, state, criada, alert: alertaDe(criada) })),
       tasks: tarefas,
       capacity: { ...agora, ligadas, versoesIg: versoesDisponiveis() },
       results: enviando,
@@ -549,8 +551,8 @@ async function main(args) {
   }
   if (cmd === "excluir") {
     const index = indice(args[1]);
-    const { name } = await driver.instancia(index);
-    await executar(driver, { action: "delete", instanceIndex: index, params: { nome: name } });
+    const { name, criada } = await driver.instancia(index);
+    await executar(driver, { action: "delete", instanceIndex: index, params: { nome: name, criada } });
     return console.log(`Container ig-${index} (${name}) apagado.`);
   }
   if (cmd === "nova-conta") {

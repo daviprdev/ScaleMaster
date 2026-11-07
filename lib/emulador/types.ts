@@ -12,6 +12,8 @@ export interface EmulatorInstance {
   state: InstanceState;
   /** Aviso que o agente guarda para a instância (ex.: conta travada pedindo telefone). */
   alert: string | null;
+  /** Agente da VPS: Created do container no Docker (o delete confere antes de apagar). */
+  criada?: string | null;
 }
 
 /** Automação que o agente sabe rodar (pasta agente-mumu/tarefas/). */
@@ -70,4 +72,6 @@ export interface EmuladorResponse {
   atividadeAvailable: boolean;
   /** Contas da fila Nova conta, da mais nova para a mais velha. */
   jobs: EmulatorJob[];
+  /** false = supabase/vps_contas.sql ainda não aplicado (sem a coluna kind: todos os agentes aparecem aqui). */
+  vpsAvailable?: boolean;
 }

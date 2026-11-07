@@ -40,9 +40,9 @@ export function shortText(value: unknown, max: number): string | null {
   return text ? text.slice(0, max) : null;
 }
 
-/** Tipo do agente que fez o sync: 'mumu' (PC do dono) ou 'vps' (agente-vps/). Ausente = agente antigo do MuMu. */
-export function parseAgentKind(raw: unknown): "mumu" | "vps" | null {
-  return raw === "mumu" || raw === "vps" ? raw : null;
+/** Tipo do agente que fez o sync: 'mumu' (PC do dono) ou 'vps' (agente-vps/). Ausente ou inesperado = MuMu. */
+export function parseAgentKind(raw: unknown): "mumu" | "vps" {
+  return raw === "vps" ? "vps" : "mumu";
 }
 
 export function isOnline(lastSeenAt: string | null | undefined, now = Date.now()): boolean {
@@ -71,6 +71,7 @@ export function parseInstances(raw: unknown): EmulatorInstance[] {
       name: shortText(r.name, 80) ?? `Instância ${index}`,
       state: typeof r.state === "string" && STATES.has(r.state) ? (r.state as InstanceState) : "off",
       alert: shortText(r.alert, 120),
+      ...(typeof r.criada === "string" ? { criada: shortText(r.criada, 60) } : {}),
     });
   }
   return out.sort((a, b) => a.index - b.index);

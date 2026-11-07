@@ -170,6 +170,12 @@ export class Dispositivo {
     if (r.codigo !== 0) throw new Error(`adb push falhou: ${trecho(r.stderr || r.stdout)}`);
   }
 
+  /** Copia um arquivo do container para a VPS. */
+  async puxar(remoto, local) {
+    const r = await rodar(this.adb, ["-s", this.serial, "pull", remoto, local], { timeoutMs: 300_000 });
+    if (r.codigo !== 0) throw new Error(`adb pull falhou: ${trecho(r.stderr || r.stdout)}`);
+  }
+
   /** Saída binária de um comando do Android (exec-out). */
   async binario(...args) {
     const r = await rodar(this.adb, ["-s", this.serial, "exec-out", ...args], { timeoutMs: 120_000, binario: true });

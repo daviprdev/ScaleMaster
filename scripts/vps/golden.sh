@@ -5,7 +5,10 @@
 # Também extrai os build.prop da imagem (system, vendor, product) para
 # /opt/scalemaster/vps/base, que o driver reescreve por conta.
 #
-#   bash scripts/vps/golden.sh [versão-do-apk]
+#   bash scripts/vps/golden.sh [versão-do-apk] [--force]
+#
+# O APK precisa do instagram-<versão>.apk.sha256 ao lado (formato do
+# sha256sum: "<hash>  instagram-<versão>.apk"); --force pula a conferência.
 #
 # Chamado pelo botão "Rebuild imagem" da aba (agente-vps/tarefas/rebuild-imagem.mjs).
 set -euo pipefail
@@ -16,7 +19,14 @@ BASE_CONTAINER="scalemaster-golden"
 PORTA=5999
 APKS=/opt/scalemaster/apks
 PROPS=/opt/scalemaster/vps/base
-VERSAO="${1:-}"
+VERSAO=""
+FORCE=0
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=1 ;;
+    *) VERSAO="$arg" ;;
+  esac
+done
 
 log() { echo "[golden $(date +%H:%M:%S)] $*"; }
 
@@ -24,7 +34,19 @@ if [ -z "$VERSAO" ]; then
   VERSAO="$(ls "$APKS"/instagram-*.apk 2>/dev/null | sed -E 's#.*/instagram-(.+)\.apk#\1#' | sort -V | tail -1 || true)"
 fi
 APK="$APKS/instagram-${VERSAO}.apk"
-[ -f "$APK" ] || { log "APK não encontrado: $APK (copie instagram-<versão>.apk para $APKS)"; exit 1; }
+[ -f "$APK" ] || { log "APK não encontrado: $APK (copie instagram-<versão>.apk e instagram-<versão>.apk.sha256 para $APKS/)"; exit 1; }
+
+if [ "$FORCE" = 1 ]; then
+  log "AVISO: --force, pulando a conferência do sha256 de $(basename "$APK")"
+else
+  SHA="$APK.sha256"
+  [ -f "$SHA" ] || { log "Falta o checksum $SHA. Gere com: (cd $APKS && sha256sum $(basename "$APK") > $(basename "$SHA")) ou rode com --force"; exit 1; }
+  (cd "$APKS" && sha256sum -c --quiet "$(basename "$SHA")") || {
+    log "sha256 de $(basename "$APK") não bate com $SHA. Baixe o APK de novo para $APKS/ (ou --force para instalar mesmo assim)"
+    exit 1
+  }
+  log "sha256 de $(basename "$APK") conferido"
+fi
 
 log "imagem $IMAGEM"
 docker pull -q "$IMAGEM" >/dev/null
@@ -85,5 +107,7 @@ adb disconnect "$IP" >/dev/null 2>&1 || true
 docker stop -t 30 "$BASE_CONTAINER" >/dev/null
 docker rm -f "${BASE_CONTAINER}-proxy" "$BASE_CONTAINER" >/dev/null
 docker volume inspect "$BASE_VOLUME" >/dev/null
+# Versão usada na base: o agente põe esta em primeiro na lista que a aba mostra.
+echo "$VERSAO" > "$APKS/ATUAL"
 
 echo "RESUMO: base pronta com Instagram ${INSTALADA:-$VERSAO} (volume $BASE_VOLUME, props em $PROPS)"

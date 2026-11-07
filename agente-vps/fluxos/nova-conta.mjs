@@ -1,10 +1,10 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { limparAlerta, marcarAlerta } from "../lib/alertas.mjs";
 import { aplicarNoAparelho, conferir, gerar as gerarDevice } from "../lib/fingerprint.mjs";
 import { testarLogin } from "../lib/imap.mjs";
 import { pastaDeMidias, sortearFoto } from "../lib/midias.mjs";
-import { esperar } from "../lib/processo.mjs";
+import { esperar, rodar } from "../lib/processo.mjs";
 import { ProxyMorta, provarBloqueio, subirSidecar, validar, validarNoNetns } from "../lib/rede.mjs";
 import { INSTAGRAM, instalarInstagram } from "./apk.mjs";
 import { AQUECIMENTO, ATIVIDADE, ligarProxy } from "./atividade.mjs";
@@ -52,12 +52,28 @@ function deviceDe(input, estado) {
   return estado.deviceLocal;
 }
 
-/** Guarda a sessão exportada do container em /opt/scalemaster/sessoes/<jobId>.json. */
-export function gravarSessao(jobId, dados) {
+/** Pasta das sessões exportadas (0700); devolve o caminho do .tgz da conta. */
+export function arquivoSessao(jobId) {
   mkdirSync(PASTA_SESSOES, { recursive: true, mode: 0o700 });
-  const arquivo = path.join(PASTA_SESSOES, `${jobId}.json`);
-  writeFileSync(arquivo, `${JSON.stringify(dados, null, 2)}\n`, { mode: 0o600 });
-  return arquivo;
+  chmodSync(PASTA_SESSOES, 0o700);
+  return path.join(PASTA_SESSOES, `${jobId}.tgz`);
+}
+
+/**
+ * adb root + wait-for-device (20 s). O APK release do Instagram não é
+ * debuggable (run-as recusa) e o adb backup não exporta app não-debuggable
+ * desde o Android 12; o redroid aceita adb root. Devolve o prefixo do shell:
+ * [] com root, ["su", "0"] quando o adb root falhou.
+ */
+async function shellComoRoot(d) {
+  const root = await rodar(d.adb, ["-s", d.serial, "root"], { timeoutMs: 30_000 });
+  const okRoot = root.codigo === 0 && !/cannot|failed/i.test(String(root.stdout) + String(root.stderr));
+  if (okRoot) {
+    await rodar(d.adb, ["-s", d.serial, "wait-for-device"], { timeoutMs: 20_000 });
+    await d.conectar();
+    return [];
+  }
+  return ["su", "0"];
 }
 
 export const NOVA_CONTA = [
@@ -240,22 +256,23 @@ export const NOVA_CONTA = [
   {
     chave: "sessao",
     rotulo: "Exportar a sessão",
-    async rodar({ job, input, estado, dispositivo }) {
+    async rodar({ job, dispositivo, log }) {
       const d = await dispositivo();
-      await d.root();
-      // Sessão = o que o app guarda (shared_prefs com os cookies e tokens, e os bancos): tar via adb, gravado só na VPS.
-      const tgz = await d.binario("tar", "-czf", "-", "-C", `/data/data/${INSTAGRAM}`, "shared_prefs", "databases");
-      const arquivo = gravarSessao(job.id, {
-        jobId: job.id,
-        container: nomeContainer(estado),
-        usuario: input?.conta?.usuario || null,
-        email: input?.conta?.email || null,
-        device: deviceDe(input, estado),
-        proxy: input?.proxy ? new URL(input.proxy).host : null,
-        exportadoEm: new Date().toISOString(),
-        arquivos: { "sessao.tgz": tgz.toString("base64") },
-      });
-      return `${path.basename(arquivo)} (${Math.round(tgz.length / 1024)} KB)`;
+      const remoto = "/data/local/tmp/sessao.tgz";
+      const local = arquivoSessao(job.id);
+      // A conta já está criada: falha aqui não derruba o job, só fica registrada.
+      try {
+        const su = await shellComoRoot(d);
+        await d.shell(...su, "tar", "-czf", remoto, "-C", "/data/data", INSTAGRAM);
+        await d.puxar(remoto, local);
+        chmodSync(local, 0o600);
+        return `${path.basename(local)} exportado`;
+      } catch (e) {
+        log(`sessão não exportada: ${e.message}`);
+        return "sessão não exportada";
+      } finally {
+        await d.shell("rm", "-f", remoto).catch(() => {});
+      }
     },
   },
   {
