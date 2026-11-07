@@ -60,27 +60,43 @@ export async function garantirBridge() {
  * por scripts/vps/instalar.sh). Em modo bloqueado só aplica o DROP; em modo
  * proxy escreve o redsocks.conf e abre as exceções da proxy.
  */
-function scriptSidecar() {
+export const UID_REDSOCKS = 1200;
+
+/**
+ * Regras, nesta ordem (tudo em OUTPUT: os apps rodam no netns, o tráfego é local):
+ *   nat OUTPUT: lo RETURN → owner redsocks RETURN → udp/53 REDIRECT dnsu2t → tcp REDIRECT redsocks
+ *   filter OUTPUT: lo ACCEPT → ESTABLISHED/RELATED ACCEPT (respostas do adb que entrou)
+ *                  → owner redsocks ACCEPT → udp/53 ACCEPT → udp/443 REJECT (derruba o QUIC
+ *                  para o app cair em TCP sem esperar timeout) → tcp ACCEPT → DROP final.
+ * Em modo bloqueado só ficam lo, ESTABLISHED, o REJECT do QUIC e o DROP: nem DNS sai.
+ * O redsocks roda com o uid dedicado (base.user): é o owner que o libera.
+ */
+export function scriptSidecar() {
   return `set -e
+id redsocks >/dev/null 2>&1 || adduser -D -H -s /sbin/nologin -u ${UID_REDSOCKS} redsocks
 iptables -t nat -F OUTPUT 2>/dev/null || true
 iptables -F OUTPUT 2>/dev/null || true
-iptables -A OUTPUT -o lo -j ACCEPT
-# Respostas do que ENTROU (adb pela porta publicada) passam; conexão nova para fora, não.
-iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 if [ "$MODO" = "proxy" ]; then
   cat > /etc/redsocks.conf <<CONF
-base { log_debug = off; log_info = on; log = "stderr"; daemon = off; redirector = iptables; }
+base { log_debug = off; log_info = on; log = "stderr"; daemon = off; redirector = iptables; user = "redsocks"; group = "redsocks"; }
 redsocks { local_ip = 0.0.0.0; local_port = ${PORTA_REDSOCKS}; ip = $PROXY_IP; port = $PROXY_PORT; type = http-connect; login = "$PROXY_USER"; password = "$PROXY_PASS"; }
 dnsu2t { local_ip = 0.0.0.0; local_port = ${PORTA_DNS}; remote_ip = ${DNS_REMOTO}; remote_port = 53; }
 CONF
-  # Só o redsocks fala com a proxy; todo TCP das apps é redirecionado para ele; DNS UDP vira TCP pelo dnsu2t.
-  iptables -A OUTPUT -p tcp -d $PROXY_IP --dport $PROXY_PORT -j ACCEPT
-  iptables -t nat -A OUTPUT -p tcp -d $PROXY_IP --dport $PROXY_PORT -j RETURN
-  iptables -t nat -A OUTPUT -p tcp -d 127.0.0.0/8 -j RETURN
+  chown redsocks /etc/redsocks.conf && chmod 600 /etc/redsocks.conf
+  iptables -t nat -A OUTPUT -o lo -j RETURN
+  iptables -t nat -A OUTPUT -m owner --uid-owner redsocks -j RETURN
   iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports ${PORTA_DNS}
   iptables -t nat -A OUTPUT -p tcp -j REDIRECT --to-ports ${PORTA_REDSOCKS}
-  iptables -A OUTPUT -p tcp -d 127.0.0.0/8 -j ACCEPT
-  iptables -A OUTPUT -p udp -d 127.0.0.0/8 -j ACCEPT
+fi
+iptables -A OUTPUT -o lo -j ACCEPT
+iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+if [ "$MODO" = "proxy" ]; then
+  iptables -A OUTPUT -m owner --uid-owner redsocks -j ACCEPT
+  iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+fi
+iptables -A OUTPUT -p udp --dport 443 -j REJECT --reject-with icmp-port-unreachable
+if [ "$MODO" = "proxy" ]; then
+  iptables -A OUTPUT -p tcp -j ACCEPT
 fi
 iptables -A OUTPUT -j DROP
 echo "sidecar pronto: modo $MODO"

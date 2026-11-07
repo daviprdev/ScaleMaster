@@ -3,6 +3,7 @@ import { decrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import type { AtividadeInput } from "./atividade";
 import { parseJobSteps, renameNomeStep, type JobStep, type JobUpdate, type NovaContaInput } from "./jobs";
+import { parseCriada } from "./payload";
 
 /** O que o agente recebe para rodar uma conta (input já aberto: só vai pelo sync autenticado). */
 export interface ClaimedJob {
@@ -72,17 +73,11 @@ export async function syncJobs(
       .eq("status", "running");
     if (isMissingSchemaError(error)) return EMPTY;
     if (error) throw new Error(error.message);
-    // Aba Contas VPS: proxy morta pausa a conta (só volta com proxy nova) e marca o device. Sem o SQL da VPS, ignora.
-    if (u.status === "error" && u.error?.startsWith("PROXY_MORTA")) {
-      await admin.from("emulator_jobs").update({ pausa: "proxy" }).eq("id", u.id).eq("agent_id", agentId);
-      await admin.from("vps_devices").update({ status: "proxy-morta" }).eq("job_id", u.id);
-    } else if (u.status === "done") {
-      await admin.from("vps_devices").update({ status: "ativo" }).eq("job_id", u.id);
-    }
-    // Etapa copiar da VPS: o Created do container vem na mensagem e vai para vps_devices.docker_created (string crua).
-    const copiar = u.steps.find((s) => s.key === "copiar" && s.status === "done");
-    const dockerCreated = /docker_created=(\S+)/.exec(copiar?.message ?? "")?.[1];
-    if (dockerCreated) await admin.from("vps_devices").update({ docker_created: dockerCreated }).eq("job_id", u.id);
+    // Aba Contas VPS: proxy morta pausa a conta (só volta com proxy nova) e marca o device; a etapa copiar
+    // manda o Created do container na mensagem e ele vai para vps_devices.docker_created (mesmo corte de
+    // parseCriada). Tudo UPDATE puro: job do MuMu não tem linha em vps_devices (nada acontece) e qualquer
+    // erro — tabela/coluna ausente inclusive — é só logado, o sync nunca falha por isso.
+    await atualizarDeviceVps(admin, u);
   }
 
   const { data: runningData, error: runningErr } = await admin
@@ -171,6 +166,28 @@ export async function syncJobs(
     jobs,
     replies,
   };
+}
+
+/** UPDATEs em vps_devices e na pausa do job ligados ao andamento; erro engolido com log. */
+async function atualizarDeviceVps(admin: SupabaseClient, u: JobUpdate): Promise<void> {
+  const avisar = (o: string, error: { message?: string } | null) => {
+    if (error) console.warn(`[emulador/sync] ${o} não gravado (${u.id}): ${error.message ?? "erro"}`);
+  };
+  try {
+    if (u.status === "error" && u.error?.startsWith("PROXY_MORTA")) {
+      avisar("pausa", (await admin.from("emulator_jobs").update({ pausa: "proxy" }).eq("id", u.id)).error);
+      avisar("vps_devices.status", (await admin.from("vps_devices").update({ status: "proxy-morta" }).eq("job_id", u.id)).error);
+    } else if (u.status === "done") {
+      avisar("vps_devices.status", (await admin.from("vps_devices").update({ status: "ativo" }).eq("job_id", u.id)).error);
+    }
+    const copiar = u.steps.find((s) => s.key === "copiar" && s.status === "done");
+    const dockerCreated = parseCriada(/docker_created=(\S+)/.exec(copiar?.message ?? "")?.[1]);
+    if (dockerCreated) {
+      avisar("vps_devices.docker_created", (await admin.from("vps_devices").update({ docker_created: dockerCreated }).eq("job_id", u.id)).error);
+    }
+  } catch (e) {
+    console.warn(`[emulador/sync] vps_devices (${u.id}): ${(e as Error).message}`);
+  }
 }
 
 /**

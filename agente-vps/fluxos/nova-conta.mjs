@@ -54,11 +54,15 @@ function deviceDe(input, estado) {
 }
 
 /** Pasta das sessões exportadas (0700); devolve o caminho do .tgz da conta. */
-export function arquivoSessao(jobId) {
-  mkdirSync(PASTA_SESSOES, { recursive: true, mode: 0o700 });
-  chmodSync(PASTA_SESSOES, 0o700);
-  return path.join(PASTA_SESSOES, `${jobId}.tgz`);
+export function arquivoSessao(jobId, pasta = PASTA_SESSOES) {
+  mkdirSync(pasta, { recursive: true, mode: 0o700 });
+  chmodSync(pasta, 0o700);
+  return path.join(pasta, `${jobId}.tgz`);
 }
+
+/** O que entra no tar: só o que guarda a sessão; cache (centenas de MB) fica de fora. */
+export const SESSAO_PASTAS = ["shared_prefs", "databases", "files"];
+export const SESSAO_EXCLUIR = ["cache", "files/cache", "code_cache", "no_backup"];
 
 /** O serial voltou (adb wait-for-device, 20 s)? O adb root derruba a conexão TCP: reconecta antes de esperar. */
 async function esperarSerial(d) {
@@ -87,24 +91,28 @@ export async function shellComoRoot(d) {
  * Sessão da conta: tar de /data/data/com.instagram.android (como root,
  * SELinux permissivo) puxado para a VPS. tar com erro ou arquivo de 0 byte é
  * falha da etapa; só a cópia (adb pull) que falha vira "sessão não exportada".
- * `d` = Dispositivo (adb, serial, shell, puxar).
+ * `d` = Dispositivo (adb, serial, shell, puxar). `pasta` = onde gravar (os
+ * testes passam um diretório temporário).
  * @param {{ adb: string, serial: string, shell: Function, puxar: Function, conectar: Function }} d
  * @param {string} jobId
  * @param {(m: string) => void} [log]
+ * @param {string} [pasta]
  */
-export async function exportarSessao(d, jobId, log = () => {}) {
+export async function exportarSessao(d, jobId, log = () => {}, pasta = PASTA_SESSOES) {
   const remoto = "/data/local/tmp/sessao.tgz";
-  const local = arquivoSessao(jobId);
+  const local = arquivoSessao(jobId, pasta);
   try {
     const su = await shellComoRoot(d);
     await d.shell(...su, "setenforce", "0").catch(() => {});
     try {
-      await d.shell(...su, "tar", "-czf", remoto, "-C", "/data/data", INSTAGRAM);
+      // Só shared_prefs, databases e files (sem cache): o diretório inteiro passa de 300 MB.
+      await d.shell(...su, "tar", "-czf", remoto, "-C", `/data/data/${INSTAGRAM}`, ...SESSAO_EXCLUIR.map((e) => `--exclude=${e}`), ...SESSAO_PASTAS);
     } catch (e) {
       throw new Error(`tar da sessão falhou: ${e.message}`);
     }
     const tamanho = Number((await d.shell(...su, "stat", "-c", "%s", remoto)).trim());
     if (!Number.isFinite(tamanho) || tamanho <= 0) throw new Error(`tar da sessão saiu com ${Number.isFinite(tamanho) ? tamanho : "?"} byte(s)`);
+    log(`sessão: ${Math.round(tamanho / 1024)} KB (${SESSAO_PASTAS.join(", ")}, sem cache)`);
     try {
       await d.puxar(remoto, local);
       chmodSync(local, 0o600);

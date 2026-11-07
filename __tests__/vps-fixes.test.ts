@@ -4,12 +4,15 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { parseAgentKind, parseCriada, parseInstances } from "../lib/emulador/payload";
 import { loadEmulador } from "../lib/emulador/load";
+import { syncJobs } from "../lib/emulador/sync-jobs";
+import { scriptSidecar } from "../agente-vps/lib/rede.mjs";
 import { resolver } from "../agente-vps/lib/captcha.mjs";
 
 // Pasta temporária para os retratos (SCALEMASTER_VPS_DIR) antes de carregar o driver.
 const PASTA = mkdtempSync(path.join(os.tmpdir(), "sm-vps-"));
 process.env.SCALEMASTER_VPS_DIR = PASTA;
-process.env.SCALEMASTER_SESSOES_DIR = path.join(PASTA, "sessoes");
+// Sessões: os testes passam a pasta temporária direto para exportarSessao (a env var é só override do padrão /opt).
+const SESSOES = path.join(PASTA, "sessoes");
 
 /** Containers que o "docker" de mentira conhece: nome → campos do inspect do driver. */
 const containers = new Map<string, { status: string; criada: string; nome: string; job: string; volume: string; mac: string }>();
@@ -151,7 +154,7 @@ describe("Captcha (captcha.mjs) nunca lança", () => {
 });
 
 describe("Sessão exportada (nova-conta.mjs)", () => {
-  const fakeD = (shell: (args: string[]) => Promise<string>, puxar = async () => {}) => ({
+  const fakeD = (shell: (args: string[]) => Promise<string>, puxar: (remoto: string, local: string) => Promise<void> = async () => {}) => ({
     adb: "adb",
     serial: "127.0.0.1:6003",
     shell: (...args: string[]) => shell(args),
@@ -172,12 +175,12 @@ describe("Sessão exportada (nova-conta.mjs)", () => {
   it("tar de 0 byte (ou com erro) é falha da etapa; só o pull que falha vira 'sessão não exportada'", async () => {
     adbMock = () => ({ codigo: 0, stdout: "" });
     const vazio = fakeD(async (args) => (args.includes("stat") ? "0\n" : ""));
-    await expect(exportarSessao(vazio as never, "job-x")).rejects.toThrow(/0 byte/);
+    await expect(exportarSessao(vazio as never, "job-x", undefined, SESSOES)).rejects.toThrow(/0 byte/);
     const tarQuebrado = fakeD(async (args) => {
       if (args.includes("tar")) throw new Error("tar: permission denied");
       return "";
     });
-    await expect(exportarSessao(tarQuebrado as never, "job-x")).rejects.toThrow(/tar da sessão falhou/);
+    await expect(exportarSessao(tarQuebrado as never, "job-x", undefined, SESSOES)).rejects.toThrow(/tar da sessão falhou/);
     const logs: string[] = [];
     const semPull = fakeD(
       async (args) => (args.includes("stat") ? "2048\n" : ""),
@@ -185,8 +188,104 @@ describe("Sessão exportada (nova-conta.mjs)", () => {
         throw new Error("adb pull falhou: device offline");
       }
     );
-    expect(await exportarSessao(semPull as never, "job-x", (m: string) => logs.push(m))).toBe("sessão não exportada");
-    expect(logs[0]).toMatch(/sessão não exportada: adb pull falhou/);
+    expect(await exportarSessao(semPull as never, "job-x", (m: string) => logs.push(m), SESSOES)).toBe("sessão não exportada");
+    expect(logs.some((l) => /sessão não exportada: adb pull falhou/.test(l))).toBe(true);
+  });
+
+  it("tar só de shared_prefs, databases e files, sem cache; grava na pasta temporária passada e loga o tamanho", async () => {
+    adbMock = () => ({ codigo: 0, stdout: "" });
+    const comandos: string[][] = [];
+    const logs: string[] = [];
+    const d = fakeD(
+      async (args) => {
+        comandos.push(args);
+        return args.includes("stat") ? "4096\n" : "";
+      },
+      async (_remoto: string, local: string) => writeFileSync(local, "tgz")
+    );
+    const saida = await exportarSessao(d as never, "job-ok", (m: string) => logs.push(m), SESSOES);
+    expect(saida).toMatch(/job-ok\.tgz exportado/);
+    expect(readFileSync(path.join(SESSOES, "job-ok.tgz"), "utf8")).toBe("tgz");
+    const tar = comandos.find((c) => c.includes("tar"))!;
+    expect(tar.slice(tar.indexOf("-C") + 1)).toEqual([
+      "/data/data/com.instagram.android",
+      "--exclude=cache",
+      "--exclude=files/cache",
+      "--exclude=code_cache",
+      "--exclude=no_backup",
+      "shared_prefs",
+      "databases",
+      "files",
+    ]);
+    expect(tar).not.toContain("/data/data");
+    expect(logs.some((l) => /sessão: 4 KB/.test(l))).toBe(true);
+  });
+});
+
+describe("Kill switch (rede.mjs)", () => {
+  it("regras na ordem: owner RETURN → REDIRECT tcp → lo → owner ACCEPT → udp/53 → udp/443 REJECT → tcp ACCEPT → DROP", () => {
+    const s = scriptSidecar();
+    const ordem = [
+      "iptables -t nat -A OUTPUT -m owner --uid-owner redsocks -j RETURN",
+      "iptables -t nat -A OUTPUT -p tcp -j REDIRECT --to-ports 12345",
+      "iptables -A OUTPUT -o lo -j ACCEPT",
+      "iptables -A OUTPUT -m owner --uid-owner redsocks -j ACCEPT",
+      "iptables -A OUTPUT -p udp --dport 53 -j ACCEPT",
+      "iptables -A OUTPUT -p udp --dport 443 -j REJECT --reject-with icmp-port-unreachable",
+      "iptables -A OUTPUT -p tcp -j ACCEPT",
+      "iptables -A OUTPUT -j DROP",
+    ];
+    let pos = -1;
+    for (const regra of ordem) {
+      const i = s.indexOf(regra, pos + 1);
+      expect(i, regra).toBeGreaterThan(pos);
+      pos = i;
+    }
+    expect(s).not.toContain("PREROUTING");
+    expect(s).toContain('user = "redsocks"; group = "redsocks";');
+    expect(s).toContain("adduser -D -H -s /sbin/nologin -u 1200 redsocks");
+    // Em modo bloqueado o udp/53 ACCEPT e o tcp ACCEPT ficam dentro do if do proxy: nem DNS sai.
+    expect(s.split('if [ "$MODO" = "proxy" ]').length).toBe(5);
+  });
+});
+
+describe("Sync do MuMu com vps_devices", () => {
+  it("UPDATE em vps_devices com erro (tabela ausente) ou sem linha não derruba o sync", async () => {
+    const chamadas: string[] = [];
+    const avisos: string[] = [];
+    const warn = vi.spyOn(console, "warn").mockImplementation((m: string) => void avisos.push(String(m)));
+    const admin = {
+      from(table: string) {
+        let op = "select";
+        const builder: Record<string, unknown> = {};
+        for (const m of ["eq", "in", "gte", "order", "limit", "not", "neq", "select"]) builder[m] = () => builder;
+        builder.update = () => {
+          op = "update";
+          return builder;
+        };
+        builder.then = (resolve: (v: unknown) => void) => {
+          chamadas.push(`${op} ${table}`);
+          if (table === "vps_devices") return resolve({ data: null, error: { code: "42P01", message: 'relation "vps_devices" does not exist' } });
+          if (table === "emulator_jobs" && op === "update") return resolve({ data: [], error: null });
+          return resolve({ data: [], error: null });
+        };
+        return builder;
+      },
+    };
+    const update = {
+      id: "11111111-1111-4111-8111-111111111111",
+      instanceIndex: 3,
+      steps: [{ key: "copiar", status: "done" as const, message: "instância #3 docker_created=2026-11-07T01:00:00.123456789Z" }],
+      status: "done" as const,
+      error: null,
+      prompt: null,
+    };
+    const r = await syncJobs(admin as never, "agente-mumu", [update], new Set(), "2026-11-07T00:00:00Z");
+    expect(r).toEqual({ jobs: [], replies: [] });
+    expect(chamadas.filter((c) => c.startsWith("update vps_devices")).length).toBe(2);
+    expect(chamadas.some((c) => c.includes("insert") || c.includes("upsert"))).toBe(false);
+    expect(avisos.some((a) => /vps_devices/.test(a))).toBe(true);
+    warn.mockRestore();
   });
 });
 

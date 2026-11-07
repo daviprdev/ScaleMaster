@@ -63,7 +63,7 @@ Mesmas chaves de `VPS_FLUXO` em `lib/vps/jobs.ts`; o Continuar retoma da etapa q
 3. **geo** — `curl -x proxy` no endpoint de geo: exige HTTP 200 e o país da conta, em 15 s. Falha → `PROXY_MORTA`, a conta fica pausada na aba até trocar a proxy (sem fallback ao IP da VPS).
 4. **nome**, **abrir** — liga o container com o sidecar em modo **bloqueado** (nada sai) e prova o kill switch.
 5. **instagram** — `adb install` do APK pinado (sem Aurora, sem internet).
-6. **rede** — sidecar `ig-N-proxy` no netns do container: redsocks (http-connect) + `iptables -t nat OUTPUT REDIRECT` + DNS sobre TCP (`dnsu2t`) + `OUTPUT DROP` no fim; confere de dentro do netns que a saída é a proxy.
+6. **rede** — sidecar `ig-N-proxy` no netns do container: redsocks (http-connect, uid dedicado `redsocks`) + `iptables -t nat OUTPUT REDIRECT` + DNS sobre TCP (`dnsu2t`) + `udp/443 REJECT` (derruba o QUIC) + `OUTPUT DROP` no fim; confere de dentro do netns que a saída é a proxy. O redroid exige `--privileged`: `cap-drop` não se aplica ao container da conta, por isso o kill switch fica no netns, não nas capabilities.
 7. **limpar**, **email** (login IMAP), **cadastro** — telas pelo texto (`fluxos/cadastro.mjs`); o código de confirmação é lido na caixa por IMAP (`lib/imap.mjs`, até 3 min) antes de perguntar na aba; captcha de imagem vai para o Capsolver (`lib/captcha.mjs`) até 3 vezes; telefone ou captcha sem solução encerram com o aviso em vermelho, igual ao MuMu.
 8. **perfil** — foto sorteada de `/opt/scalemaster/midias/perfil` (ou da pasta toda), nome de exibição e bio.
 9. **seguir**, **reels** — aquecimento (2–3 verificados, até 2 min de Reels).
@@ -82,6 +82,16 @@ docker exec ig-3-proxy iptables -t nat -S OUTPUT          # regras
 ```
 
 Com o sidecar em modo bloqueado o `curl` de dentro **tem** que falhar (kill switch). Sem sidecar nenhum, as regras somem com o netns ao desligar; ao ligar de novo o agente sobe o sidecar antes de qualquer app.
+
+Prova do kill switch (E2E, com o container ligado):
+
+```
+docker exec ig-3-proxy nslookup instagram.com 1.1.1.1      # bloqueado: falha; proxy: resolve
+docker exec ig-3-proxy curl -sS -m 8 https://instagram.com  # bloqueado: falha; proxy: abre
+docker exec ig-3-proxy curl -sS -m 8 http://ip-api.com/json/ # proxy: o IP é o da proxy, nunca o da VPS
+```
+
+Com a proxy morta a etapa `geo`/`rede` para com `PROXY_MORTA` e nada sai pelo IP da VPS (não existe fallback).
 
 ## Excluir
 
