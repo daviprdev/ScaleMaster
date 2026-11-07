@@ -9,7 +9,7 @@ interface StatTileProps extends React.HTMLAttributes<HTMLDivElement> {
  value: string;
  delta?: string;
  tone?: StatTone;
- hint?: string;
+ hint?: React.ReactNode;
  icon?: React.ReactNode;
  spark?: number[];
  children?: React.ReactNode;

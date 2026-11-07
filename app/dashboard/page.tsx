@@ -322,9 +322,13 @@ export default function DashboardPage() {
           value={loading ? "—" : formatBRL(stats?.sales.today ?? 0)}
           icon={<DollarSign size={18} />}
           hint={
-            loading
-              ? undefined
-              : `Ontem: ${formatBRL(stats?.sales.yesterday ?? 0)} · Mês: ${formatBRL(stats?.sales.month ?? 0)}`
+            loading ? undefined : (
+              <>
+                Ontem: {formatBRL(stats?.sales.yesterday ?? 0)}
+                <br />
+                Mês: {formatBRL(stats?.sales.month ?? 0)}
+              </>
+            )
           }
         >
           {loading && <Skeleton height="4px" width="60%" />}
