@@ -556,7 +556,17 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
         break;
       }
       log(`tela: ${tela.nome}`);
+      const antes = resumoTela(nos);
       await tela.agir(nos, alvo);
+      // O Instagram troca de tela em 2–15 s pela proxy. Sem esperar, a volta seguinte relia a tela antiga e
+      // digitava em cima da nova (e-mail no campo do código, senha na data: 08/11). Telas de espera não contam.
+      if (tela.nome !== "carregando-idioma") {
+        for (let i = 0; i < 8; i++) {
+          const agora = await d.tela().catch(() => []);
+          if (agora.length > 0 && resumoTela(agora) !== antes) break;
+          await esperar(1000);
+        }
+      }
       break;
     }
     if (tratou) continue;
