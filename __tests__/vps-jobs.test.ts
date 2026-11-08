@@ -39,6 +39,7 @@ const job = (extra: Partial<VpsJob>): VpsJob => ({
   loteId: null,
   pausa: null,
   versaoIg: "309.0.0.40.113",
+  proxyHost: null,
   ...extra,
 });
 

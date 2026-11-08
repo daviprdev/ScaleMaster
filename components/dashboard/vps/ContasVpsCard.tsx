@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import type { JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
 import { VPS_FLUXO, ehAlertaVps, ehProxyMorta, progresso } from "@/lib/vps/jobs";
+import { rotuloAlerta } from "@/lib/vps/painel";
 import type { VpsDevice, VpsJob } from "@/lib/vps/types";
 
 const STATUS_BADGE: Record<JobStatus, { tone: BadgeTone; label: string }> = {
@@ -68,7 +69,8 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit }: JobRowPro
   const badge = STATUS_BADGE[job.status];
   const steps = new Map(job.steps.map((s) => [s.key, s]));
   const prog = progresso(job);
-  const alerta = ehAlertaVps(job.error) || ehProxyMorta(job.error) ? job.error : null;
+  // Avisos de fim de conta (telefone, captcha, proxy morta) em vermelho; o captcha ganha o rótulo próprio.
+  const alerta = ehAlertaVps(job.error) || ehProxyMorta(job.error) ? rotuloAlerta(job.error) : null;
   const pausada = job.pausa === "proxy";
   const indice = job.instanceIndex ?? Number(/^ig-(\d+)$/.exec(device?.container ?? "")?.[1] ?? NaN);
   const onde = Number.isFinite(indice) ? `ig-${indice}` : "container a criar";
@@ -153,7 +155,7 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit }: JobRowPro
         </ol>
       )}
 
-      {job.status === "error" && job.error && !alerta && <p className="mt-3 text-xs text-danger">{job.error}</p>}
+      {job.status === "error" && job.error && !alerta && <p className="mt-3 text-xs text-danger">{rotuloAlerta(job.error)}</p>}
     </li>
   );
 }

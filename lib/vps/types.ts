@@ -73,6 +73,8 @@ export interface VpsJob extends EmulatorJob {
   loteId: string | null;
   pausa: "proxy" | null;
   versaoIg: string | null;
+  /** host:porta da proxy da conta (sem credenciais); null se ilegível. */
+  proxyHost: string | null;
 }
 
 export interface VpsResponse {

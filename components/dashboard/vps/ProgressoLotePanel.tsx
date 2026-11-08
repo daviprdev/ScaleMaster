@@ -1,0 +1,90 @@
+"use client";
+
+import * as React from "react";
+import { Card, StatTile } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import { VPS_FLUXO } from "@/lib/vps/jobs";
+import { LOG_MAX, acrescentarLog, contadoresDoLote, diferencasDeLog, loteAtual, proxiesDoLote, retratar, type LinhaLog, type Retrato } from "@/lib/vps/painel";
+import type { VpsJob } from "@/lib/vps/types";
+
+/**
+ * "Progresso" + "Log" da rodada atual (lote mais recente com conta na fila ou
+ * rodando). Contadores e proxies saem dos jobs; o log é montado no cliente a
+ * partir do que muda entre um polling e outro (até LOG_MAX linhas). Sem lote
+ * ativo o bloco não aparece.
+ */
+export function ProgressoLotePanel({ jobs }: { jobs: readonly VpsJob[] }) {
+  const lote = React.useMemo(() => loteAtual(jobs), [jobs]);
+  const rotulos = React.useMemo(() => new Map(VPS_FLUXO.map((s) => [s.key, s.label])), []);
+  const [linhas, setLinhas] = React.useState<LinhaLog[]>([]);
+  const retrato = React.useRef<Retrato | null>(null);
+  const loteVisto = React.useRef<string | null>(null);
+  const caixa = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!lote) {
+      retrato.current = null;
+      loteVisto.current = null;
+      return;
+    }
+    if (loteVisto.current !== lote.loteId) {
+      retrato.current = null;
+      loteVisto.current = lote.loteId;
+      setLinhas([]);
+    }
+    const novas = diferencasDeLog(retrato.current, lote.jobs, new Date(), rotulos);
+    retrato.current = retratar(lote.jobs);
+    if (novas.length > 0) setLinhas((atual) => acrescentarLog(atual, novas));
+  }, [lote, rotulos]);
+
+  // Auto-scroll para o fim só dentro da caixa do log (nunca rola a página).
+  React.useEffect(() => {
+    const el = caixa.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [linhas]);
+
+  if (!lote) return null;
+  const c = contadoresDoLote(lote.jobs);
+  const proxies = proxiesDoLote(lote.jobs);
+
+  return (
+    <div className="flex flex-col gap-4" data-testid="painel-progresso">
+      <Card title="Progresso" description={`Rodada atual · ${lote.jobs.length} conta${lote.jobs.length === 1 ? "" : "s"} · lote ${lote.loteId.slice(0, 8)}`}>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatTile label="Na fila" value={String(c.queued)} hint="Esperando vaga de cadastro" />
+          <StatTile label="Rodando" value={String(c.running)} hint="Container ligado, etapa em andamento" />
+          <StatTile label="Criadas" value={String(c.done)} hint="Cadastro, aquecimento e sessão prontos" />
+          <StatTile label="Falhas" value={String(c.error)} tone="negative" hint="Pararam: Continuar retoma da etapa" />
+        </div>
+        <div className="mt-4">
+          <p className="text-[13px] font-medium text-ink-2">Proxies da rodada</p>
+          {proxies.length === 0 ? (
+            <p className="mt-1 text-xs text-ink-3">Sem proxy legível nas contas deste lote.</p>
+          ) : (
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {proxies.map((p) => (
+                <li key={p} className="rounded-md border border-line bg-surface-raised px-2 py-1 font-mono text-xs text-ink">
+                  {p}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Card>
+
+      <Card title="Log" description={`Etapas das contas da rodada, na ordem em que chegam (últimas ${LOG_MAX} linhas).`}>
+        <div ref={caixa} className="h-56 overflow-y-auto rounded-lg border border-line bg-surface-raised p-3 font-mono text-xs leading-5" aria-live="polite">
+          {linhas.length === 0 ? (
+            <p className="text-ink-3">Esperando o agente…</p>
+          ) : (
+            linhas.map((l) => (
+              <div key={l.id} className={cn("whitespace-pre-wrap break-words", l.erro ? "text-danger" : "text-ink-2")}>
+                <span className="text-ink-3">{l.hora}</span> <span className={l.erro ? "text-danger" : "text-ink"}>@{l.conta}</span> · {l.etapa} · {l.mensagem}
+              </div>
+            ))
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}

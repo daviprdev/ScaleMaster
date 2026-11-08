@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { decrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseJobPrompt, parseJobSteps, type JobStatus } from "@/lib/emulador/jobs";
 import { isOnline, parseInstances } from "@/lib/emulador/payload";
@@ -37,6 +38,8 @@ interface JobRow {
   versao_ig: string | null;
   created_at: string;
   updated_at: string;
+  /** Só na leitura da aba: para mostrar host:porta da proxy no painel (nunca a credencial). */
+  input_enc?: string | null;
 }
 
 interface DeviceRow {
@@ -82,6 +85,18 @@ function readPrompt(text: string | null): VpsJob["prompt"] {
   }
 }
 
+/** host:porta da proxy guardada no input criptografado da conta; null se não der para ler. */
+export function proxyHostDe(inputEnc: string | null | undefined): string | null {
+  if (!inputEnc) return null;
+  try {
+    const input = JSON.parse(decrypt(inputEnc)) as { proxy?: unknown };
+    const u = new URL(String(input.proxy ?? ""));
+    return u.hostname ? `${u.hostname}${u.port ? `:${u.port}` : ""}` : null;
+  } catch {
+    return null;
+  }
+}
+
 export function toVpsJob(row: JobRow): VpsJob {
   return {
     id: row.id,
@@ -100,6 +115,7 @@ export function toVpsJob(row: JobRow): VpsJob {
     loteId: row.lote_id,
     pausa: row.pausa === "proxy" ? "proxy" : null,
     versaoIg: row.versao_ig,
+    proxyHost: proxyHostDe(row.input_enc),
   };
 }
 
@@ -148,7 +164,7 @@ export async function loadVps(admin: SupabaseClient, userId: string): Promise<Vp
   const [jobsRes, devicesRes] = await Promise.all([
     admin
       .from("emulator_jobs")
-      .select(JOB_COLUMNS)
+      .select(`${JOB_COLUMNS}, input_enc`)
       .eq("user_id", userId)
       .in("agent_id", agentIds)
       .order("created_at", { ascending: false })

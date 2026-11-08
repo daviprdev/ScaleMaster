@@ -6,6 +6,7 @@ import { Banner, Button, ConfirmDialog, Dialog, EmptyState, Input, PageHeader, S
 import { AgenteVpsCard, ConectarVpsDialog } from "@/components/dashboard/vps/AgenteVpsCard";
 import { ContasVpsCard, type JobAction } from "@/components/dashboard/vps/ContasVpsCard";
 import { LoteDialog } from "@/components/dashboard/vps/LoteDialog";
+import { ProgressoLotePanel } from "@/components/dashboard/vps/ProgressoLotePanel";
 import { parseLinhaPortal } from "@/lib/vps/input";
 import { ROTULOS_EMAIL } from "@/lib/vps/provedores";
 import { busyInstances, instanceAlerts, linkedJobs } from "@/lib/vps/jobs";
@@ -204,6 +205,7 @@ export default function ContasVpsPage() {
               Para a fila de contas falta aplicar o SQL <span className="font-mono">supabase/emulador_contas.sql</span> no Supabase.
             </Banner>
           )}
+          {data.jobsAvailable && <ProgressoLotePanel jobs={data.jobs} />}
           {data.agents.map((agent) => {
             const jobs = data.jobs.filter((j) => j.agentId === agent.id);
             return (

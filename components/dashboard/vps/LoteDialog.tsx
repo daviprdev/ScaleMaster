@@ -133,10 +133,12 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
       onClose={onClose}
       title="Enviar lote"
       description={`De ${LOTE_MIN} a ${LOTE_MAX} contas por envio, uma proxy HTTP fixa por conta. A VPS cria um container redroid por conta, valida a proxy, instala o Instagram, lê o código no e-mail (portal, mail.tm ou IMAP), cadastra, aquece e desliga.`}
-      className="max-w-3xl"
+      className="flex max-h-[90vh] max-w-3xl flex-col overflow-hidden"
     >
-      <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)}>
+      {/* Só o corpo rola: cabeçalho (do Dialog) e rodapé ficam sempre visíveis, mesmo com 20 contas. */}
+      <form className="flex min-h-0 flex-1 flex-col gap-4" onSubmit={(e) => void submit(e)}>
         {error && <Banner tone="danger">{error}</Banner>}
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
         <div className="grid gap-4 sm:grid-cols-4">
           <Input
             label="Quantidade"
@@ -200,7 +202,7 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
           className="font-mono text-xs"
           required
         />
-        <div className="flex max-h-[45vh] flex-col gap-3 overflow-y-auto pr-1">
+        <div className="flex flex-col gap-3">
           {contas.map((c, i) => (
             <fieldset key={i} className="rounded-lg border border-line p-3">
               <legend className="px-1 text-xs font-medium text-ink-2">
@@ -249,7 +251,8 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
             </fieldset>
           ))}
         </div>
-        <div className="flex justify-end gap-2">
+        </div>
+        <div className="flex shrink-0 justify-end gap-2 border-t border-line pt-3">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
