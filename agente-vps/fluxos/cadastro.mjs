@@ -513,6 +513,15 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
       },
     },
     {
+      // Depois do e-mail o Instagram pergunta "Você está tentando entrar?" (Ajude-me a entrar / Continuar a criar
+      // a conta) com um "Ignorar" que não fecha nada (ig-3, 08/11). Antes do "pular", que só tocaria o Ignorar.
+      nome: "tentando-entrar",
+      teste: (nos) =>
+        temTexto(nos, ["Você está tentando entrar", "Estás a tentar iniciar sessão", "Are you trying to log in", "Trying to log in"]) &&
+        botao(nos, ["Continuar a criar a conta", "Continuar criando a conta", "Continuar a criar conta", "Continue creating account", "Continue creating your account"]),
+      agir: async (nos, alvo) => tocarNo(d, alvo, 4000),
+    },
+    {
       nome: "pular",
       teste: (nos) => botao(nos, PULAR),
       agir: async (nos, alvo) => tocarNo(d, alvo, 3000),
