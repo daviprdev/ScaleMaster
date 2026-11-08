@@ -160,6 +160,8 @@ echo "== portal (caminho browser, opcional: PORTAL_MODO=browser no .env)"
 mkdir -p /opt/scalemaster/portal
 [ -f /opt/scalemaster/portal/package.json ] || echo '{"name":"scalemaster-portal","private":true}' > /opt/scalemaster/portal/package.json
 if [ ! -d /opt/scalemaster/portal/node_modules/playwright-core ]; then
+  # O nodejs do apt vem sem npm: instala só para este passo.
+  command -v npm >/dev/null 2>&1 || apt-get install -y -qq npm >/dev/null 2>&1 || true
   if command -v npm >/dev/null 2>&1; then
     if npm install --prefix /opt/scalemaster/portal --no-audit --no-fund --save-exact playwright-core@1.49.1 >/dev/null 2>&1; then
       echo "playwright-core instalado em /opt/scalemaster/portal"
