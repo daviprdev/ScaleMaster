@@ -1,5 +1,5 @@
-import { resolver as resolverCaptcha, tocarPontos } from "../lib/captcha.mjs";
 import { esperar } from "../lib/processo.mjs";
+import { variarUsuario } from "../lib/usuario.mjs";
 import { INSTAGRAM } from "./apk.mjs";
 import { criarCaixa } from "./caixa.mjs";
 import { criarAjuda, resumoTela, salvarTela } from "./dono.mjs";
@@ -27,8 +27,17 @@ import { acharId, acharTexto, preencher, temTexto, tocarNo } from "./tela.mjs";
 /** Avisos em vermelho na linha da instância (iguais aos ALERTA_* de lib/emulador/jobs.ts). */
 export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telefone";
 export const ALERTA_CAPTCHA = "Conta ERRO CRIAÇÃO, verificar captcha";
-/** Captcha/verificação de humano que a automação não resolve: encerra a conta e a aba mostra isto em vermelho (pedido do dono, 08/11). */
+/** Captcha/verificação de humano: a conta é descartada (container e volume apagados) e a aba mostra isto em vermelho (pedido do dono, 08/11). */
 export const ALERTA_ROBO = "Confirme que você não é um robô";
+/** O Instagram recusou 5 @ seguidos: conta descartada. */
+export const ALERTA_USUARIO = "Usuário recusado pelo Instagram 5 vezes";
+/** Avisos que descartam a conta (apagar container e volume, sem Continuar). Iguais a lib/emulador/jobs.ts. */
+export const ALERTAS_DESCARTE = new Set([ALERTA_ROBO, ALERTA_USUARIO]);
+export const TENTATIVAS_USUARIO = 5;
+
+export function deveDescartar(alerta) {
+  return ALERTAS_DESCARTE.has(alerta);
+}
 
 /**
  * O Instagram travou a conta nova numa tela que a automação não resolve
@@ -166,20 +175,20 @@ export async function preencherNascimento(d, nos, nascimento) {
  * caixa IMAP (compatível). desde = quando o cadastro começou (só e-mails depois
  * disso valem). Devolve a mensagem final ("conta criada (@usuario)").
  */
-export async function cadastrarInstagram({ d, conta, perguntar, log, caixa = null, imap = null, desde = Date.now() }) {
-  const estado = { errosIdioma: 0, termosAceitos: false, usuarioFinal: conta.usuario || null, ultima: null, repeticoes: 0, desconhecidas: 0, toquesSugestoes: 0, codigosImap: 0, captchas: 0 };
+export async function cadastrarInstagram({ d, conta, perguntar, log, caixa = null, imap = null, desde = Date.now(), aoAceitarUsuario = () => {} }) {
+  const estado = { errosIdioma: 0, termosAceitos: false, usuarioFinal: conta.usuario || null, ultima: null, repeticoes: 0, desconhecidas: 0, toquesSugestoes: 0, codigosImap: 0, captchas: 0, tentativasUsuario: 0 };
   const mail = caixa ?? criarCaixa({ provedorEmail: "imap", conta, imap: imap ?? {} }, { log });
   // O endereço de verdade (no portal só existe depois de abrir a sessão); até lá, o que veio no input.
   const enderecoAtual = () => mail.email || conta.email;
   try {
-    return await rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, estado, desde });
+    return await rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, estado, desde, aoAceitarUsuario });
   } finally {
     // Sessão do portal/browser fechada sempre, inclusive em erro.
     await mail.fechar().catch(() => {});
   }
 }
 
-async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, estado, desde }) {
+async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, estado, desde, aoAceitarUsuario }) {
   // Pergunta vigiando a tela: o dono pode resolver direto na instância (ver dono.mjs).
   const ajuda = criarAjuda({ d, perguntar, log });
   const { perguntarVigiando } = ajuda;
@@ -213,24 +222,10 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
       teste: (nos) =>
         temTexto(nos, ["Confirma que és uma pessoa", "Confirm you're a person", "Confirm that you're a person", "Confirme que você é uma pessoa"]),
       agir: async (nos) => {
-        estado.captchas += 1;
-        if (estado.captchas > 3) {
-          salvarTela(nos, "captcha: confirma que és uma pessoa (3 tentativas)");
-          throw new ContaTravada(ALERTA_ROBO, "O Instagram pediu o código da imagem (captcha) e o Capsolver não passou em 3 tentativas.");
-        }
-        const instrucao = resumoTela(nos);
-        // resolver nunca lança: null = sem chave, tipo que ele não resolve, erro ou timeout.
-        const pontos = await resolverCaptcha(await d.print(), { instrucao, log });
-        if (!pontos) {
-          // decisão: sem Capsolver a conta encerra na hora (container desligado) e a aba mostra o aviso em vermelho; nada fica esperando o dono.
-          salvarTela(nos, "captcha sem solução automática");
-          throw new ContaTravada(ALERTA_ROBO, `O Instagram pediu um captcha que a automação não resolve (${instrucao}).`);
-        }
-        log(`captcha: ${pontos.length} toque(s) do Capsolver`);
-        await tocarPontos(d, pontos);
-        const depois = await d.tela();
-        const confirmar = botao(depois, ["Verificar", "Verify", "Confirmar", "Confirm", "Enviar", "Submit", ...SEGUINTE]);
-        if (confirmar) await tocarNo(d, confirmar, 4000);
+        // decisão (08/11): captcha é terminal — nada de Capsolver (lib/captcha.mjs fica dormente); a conta é
+        // descartada em nova-conta.mjs (container e volume apagados) e a aba mostra o aviso em vermelho.
+        salvarTela(nos, "captcha: conta descartada");
+        throw new ContaTravada(ALERTA_ROBO, `O Instagram pediu um captcha (${resumoTela(nos)}).`);
       },
     },
     {
@@ -424,12 +419,30 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
       teste: (nos) => temTexto(nos, ["Criar um nome de utilizador", "Cria um nome de utilizador", "Create a username", "Crie um nome de usuário", "Criar um nome de usuário"]),
       agir: async (nos) => {
         const campo = campoPor(nos, ["Nome de utilizador", "Username", "Nome de usuário"]);
+        const recusado = (tela) => temTexto(tela, ["não está disponível", "isn't available", "is not available", "indisponível", "já está em uso", "already taken"]);
         if (conta.usuario && campo) {
-          await preencher(d, campo, conta.usuario);
-          await esperar(2500);
-          const depois = await d.tela();
-          if (temTexto(depois, ["não está disponível", "isn't available", "is not available", "indisponível"])) {
-            await manual(`O usuário @${conta.usuario} não está livre: escolha outro.`, depois);
+          // @ recusado: gera outro com mais dígitos e tenta de novo, até 5 vezes; depois a conta é descartada.
+          let aceito = false;
+          while (!aceito) {
+            await preencher(d, campo, conta.usuario);
+            await esperar(2500);
+            const depois = await d.tela();
+            if (!recusado(depois)) {
+              aceito = true;
+              break;
+            }
+            estado.tentativasUsuario += 1;
+            if (estado.tentativasUsuario >= TENTATIVAS_USUARIO) {
+              salvarTela(depois, "usuário recusado 5 vezes");
+              throw new ContaTravada(ALERTA_USUARIO, `O Instagram recusou @${conta.usuario} e mais ${TENTATIVAS_USUARIO - 1} variações.`);
+            }
+            const novo = variarUsuario(conta.usuario, estado.tentativasUsuario);
+            log(`@${conta.usuario} indisponível: tentando @${novo} (${estado.tentativasUsuario}/${TENTATIVAS_USUARIO})`);
+            conta.usuario = novo;
+          }
+          if (estado.tentativasUsuario > 0) {
+            estado.usuarioFinal = conta.usuario;
+            await aoAceitarUsuario(conta.usuario);
           }
         }
         const atual = await d.tela();

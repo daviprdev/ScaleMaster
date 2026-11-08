@@ -116,6 +116,12 @@ docker exec ig-3-proxy curl -sS -m 8 http://ip-api.com/json/ # proxy: o IP é o 
 
 Com a proxy morta a etapa `geo`/`rede` para com `PROXY_MORTA` e nada sai pelo IP da VPS (não existe fallback).
 
+## Captcha e @ recusado = conta descartada
+
+Tela "Confirme que você é uma pessoa" (ou verificação/reCAPTCHA) na etapa `cadastro`: sem tentativa de resolução (`lib/captcha.mjs` fica dormente, `CAPSOLVER_KEY` é opcional). O fluxo lança `ContaTravada(ALERTA_ROBO)`, apaga container, sidecar e volume na hora e manda `descartada: true` no andamento; o servidor marca `vps_devices.status = 'descartada'` e a proxy fica livre para outro lote. O card mostra o badge vermelho "Captcha — conta descartada", sem Continuar; "Tentar de novo" cria uma conta nova do zero (device, proxy, código do portal e pessoa novos). O mesmo vale para `ALERTA_USUARIO`: @ recusado 5 vezes seguidas (cada tentativa põe mais dígitos, `lib/usuario.mjs`); o @ que o Instagram aceita vai no andamento (`usuario`) e o servidor grava em `input_enc`, no label e em `vps_devices.usuario`.
+
+SQL manual depois desta versão (`supabase/vps_contas.sql`): status `descartada` no check de `vps_devices` e a coluna `usuario`.
+
 ## Excluir
 
 A lixeira na aba (ou `node agente.mjs excluir N`) confere o nome, desliga, apaga container, sidecar, volume, props e retrato, apaga os volumes com o label do Scale Master que não pertencem a nenhum retrato (nem à base) e tira a linha de `vps_devices`. Com a VPS offline o Remover é recusado (o comando expiraria e o container ficaria órfão).

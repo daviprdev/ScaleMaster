@@ -66,6 +66,14 @@ create table if not exists public.vps_devices (
 -- na etapa copiar: o Remover confere contra ele antes de apagar o container.
 alter table public.vps_devices add column if not exists docker_created text;
 
+-- 2026-11-08: conta descartada (captcha ou @ recusado 5 vezes: container e
+-- volume já apagados pelo agente) e o @ que o Instagram aceitou.
+alter table public.vps_devices drop constraint if exists vps_devices_status_check;
+alter table public.vps_devices
+  add constraint vps_devices_status_check
+  check (status in ('criado', 'proxy-ok', 'proxy-morta', 'ativo', 'descartada'));
+alter table public.vps_devices add column if not exists usuario text;
+
 create index if not exists emulator_agents_kind_idx        on public.emulator_agents (user_id, kind);
 create index if not exists emulator_jobs_agent_status_idx  on public.emulator_jobs (agent_id, status);
 create index if not exists emulator_jobs_user_created_idx  on public.emulator_jobs (user_id, created_at desc);

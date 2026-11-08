@@ -47,7 +47,7 @@ export interface VpsAgent {
   createdAt: string;
 }
 
-export type VpsDeviceStatus = "criado" | "proxy-ok" | "proxy-morta" | "ativo";
+export type VpsDeviceStatus = "criado" | "proxy-ok" | "proxy-morta" | "ativo" | "descartada";
 
 /** Identidade imutável de uma conta/container (vps_devices). */
 export interface VpsDevice {

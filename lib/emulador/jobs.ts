@@ -56,9 +56,17 @@ export interface EmulatorJob {
 export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telefone";
 /** Captcha "Confirma que és uma pessoa" (código da imagem), pedido do dono em 02/11. */
 export const ALERTA_CAPTCHA = "Conta ERRO CRIAÇÃO, verificar captcha";
-/** Contas VPS: captcha/verificação de humano sem solução automática — a conta encerra e a aba mostra isto em vermelho. */
+/** Contas VPS: captcha/verificação de humano — a conta é descartada (container e volume apagados) e a aba mostra isto em vermelho. */
 export const ALERTA_ROBO = "Confirme que você não é um robô";
+/** Contas VPS: o Instagram recusou 5 @ seguidos — a conta é descartada. */
+export const ALERTA_USUARIO = "Usuário recusado pelo Instagram 5 vezes";
 const ALERTAS_CRIACAO: ReadonlySet<string> = new Set([ALERTA_TELEFONE, ALERTA_CAPTCHA]);
+/** Erros que descartam a conta da VPS: sem Continuar, só "Tentar de novo" (device e proxy novos). */
+const ALERTAS_DESCARTE: ReadonlySet<string> = new Set([ALERTA_ROBO, ALERTA_USUARIO]);
+
+export function ehDescarte(error: string | null | undefined): error is string {
+  return !!error && ALERTAS_DESCARTE.has(error);
+}
 
 export function ehAlertaCriacao(error: string | null | undefined): error is string {
   return !!error && ALERTAS_CRIACAO.has(error);
@@ -217,7 +225,13 @@ export interface JobUpdate {
   error: string | null;
   /** undefined = não mexe; null = o agente não está esperando nada. */
   prompt: JobPrompt | null | undefined;
+  /** Contas VPS: @ que o Instagram aceitou quando o original foi recusado (vai para input_enc, label e vps_devices). */
+  usuario?: string;
+  /** Contas VPS: o agente já apagou container e volume (captcha / @ recusado 5 vezes). */
+  descartada?: boolean;
 }
+
+const USUARIO_IG_RE = /^[a-z][a-z0-9._]{0,29}$/;
 
 /** Teto de contas simultâneas que um agente pode reportar num sync (= maxCadastro máximo da VPS em lib/vps/jobs.ts). */
 export const MAX_JOB_UPDATES = 50;
@@ -239,6 +253,8 @@ export function parseJobUpdates(raw: unknown): JobUpdate[] {
       status: r.status,
       error: r.status === "error" ? (shortText(r.error, 500) ?? "Erro sem mensagem.") : null,
       prompt: r.prompt === undefined ? undefined : r.status === "running" ? parseJobPrompt(r.prompt) : null,
+      ...(typeof r.usuario === "string" && USUARIO_IG_RE.test(r.usuario) ? { usuario: r.usuario } : {}),
+      ...(r.descartada === true ? { descartada: true } : {}),
     });
   }
   return out;

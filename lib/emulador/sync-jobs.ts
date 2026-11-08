@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { decrypt } from "@/lib/encrypt";
+import { decrypt, encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import type { AtividadeInput } from "./atividade";
-import { parseJobSteps, renameNomeStep, type JobStep, type JobUpdate, type NovaContaInput } from "./jobs";
+import { ehDescarte, parseJobSteps, renameNomeStep, type JobStep, type JobUpdate, type NovaContaInput } from "./jobs";
 import { parseCriada } from "./payload";
 
 /** O que o agente recebe para rodar uma conta (input já aberto: só vai pelo sync autenticado). */
@@ -177,8 +177,28 @@ async function atualizarDeviceVps(admin: SupabaseClient, u: JobUpdate): Promise<
     if (u.status === "error" && u.error?.startsWith("PROXY_MORTA")) {
       avisar("pausa", (await admin.from("emulator_jobs").update({ pausa: "proxy" }).eq("id", u.id)).error);
       avisar("vps_devices.status", (await admin.from("vps_devices").update({ status: "proxy-morta" }).eq("job_id", u.id)).error);
+    } else if (u.status === "error" && (u.descartada || ehDescarte(u.error))) {
+      // Captcha ou @ recusado 5 vezes: o agente já apagou container e volume; a proxy fica livre (proxiesEmUso ignora descartadas).
+      avisar("vps_devices.status", (await admin.from("vps_devices").update({ status: "descartada" }).eq("job_id", u.id)).error);
     } else if (u.status === "done") {
       avisar("vps_devices.status", (await admin.from("vps_devices").update({ status: "ativo" }).eq("job_id", u.id)).error);
+    }
+    // @ aceito depois de o original ser recusado: entra no input (para Continuar/sessão), no label e em vps_devices.usuario.
+    if (u.usuario) {
+      const { data: row, error } = await admin.from("emulator_jobs").select("input_enc").eq("id", u.id).maybeSingle();
+      avisar("input_enc (ler)", error);
+      if (row?.input_enc) {
+        try {
+          const input = JSON.parse(decrypt(row.input_enc as string)) as { conta?: { usuario?: string } };
+          if (input.conta && input.conta.usuario !== u.usuario) {
+            input.conta.usuario = u.usuario;
+            avisar("input_enc (usuario)", (await admin.from("emulator_jobs").update({ input_enc: encrypt(JSON.stringify(input)), label: u.usuario }).eq("id", u.id)).error);
+          }
+        } catch (e) {
+          console.warn(`[emulador/sync] usuario não gravado (${u.id}): ${(e as Error).message}`);
+        }
+      }
+      avisar("vps_devices.usuario", (await admin.from("vps_devices").update({ usuario: u.usuario }).eq("job_id", u.id)).error);
     }
     const copiar = u.steps.find((s) => s.key === "copiar" && s.status === "done");
     const dockerCreated = parseCriada(/docker_created=(\S+)/.exec(copiar?.message ?? "")?.[1]);

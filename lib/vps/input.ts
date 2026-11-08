@@ -255,28 +255,29 @@ export interface LoteInput {
   versaoIg: string;
   /** País padrão das proxies (ISO-2), para as linhas sem o 5º campo. */
   pais: string;
+  /**
+   * Uma por conta. Com `codigos` (formulário novo) só vêm provedor portal, link e
+   * código; nome, @, senha e nascimento ficam vazios e o servidor gera
+   * (lib/vps/pessoa.ts). Com `conta` (API antiga) vêm completas.
+   */
   contas: VpsContaDados[];
+  /** true = o servidor gera nome, @, senha e nascimento. */
+  gerarPessoa: boolean;
 }
 
 /**
  * Corpo do POST /api/vps/contas. `versoes` = APKs que a VPS listou (vazio =
  * aceita qualquer versão bem formada, a VPS avisa se não tiver).
+ *
+ * Formulário novo: `codigos` = linhas do hstock ("link | código", uma por
+ * conta); a quantidade é o número de linhas e as proxies têm de ser pelo menos
+ * tantas (as excedentes são ignoradas, na ordem). API antiga: `quantidade` +
+ * `conta[]` completas, proxies em número igual.
  */
 export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): { value: LoteInput } | { error: string } {
   const body = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const agentId = field(body.agentId, 60);
   if (!agentId) return { error: "VPS não informada." };
-
-  const quantidade = typeof body.quantidade === "number" ? body.quantidade : Number(field(body.quantidade, 3));
-  if (!Number.isInteger(quantidade) || quantidade < LOTE_MIN || quantidade > LOTE_MAX) {
-    return { error: `Quantidade de ${LOTE_MIN} a ${LOTE_MAX} contas por envio.` };
-  }
-
-  const proxies = parseProxies(body.proxies);
-  if ("error" in proxies) return proxies;
-  if (proxies.value.length !== quantidade) {
-    return { error: `São ${quantidade} conta(s) e ${proxies.value.length} proxy(s): uma proxy por conta.` };
-  }
 
   const perfil = field(body.perfil, 20) || "aleatorio";
   if (!PERFIS.has(perfil)) return { error: "Perfil de aparelho desconhecido." };
@@ -287,6 +288,39 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
 
   const pais = (field(body.pais, 10) || "BR").toUpperCase();
   if (!PAIS_RE.test(pais)) return { error: "País da proxy em duas letras (ex.: BR)." };
+
+  const proxies = parseProxies(body.proxies);
+  if ("error" in proxies) return proxies;
+
+  const codigosBrutos = typeof body.codigos === "string" ? body.codigos : Array.isArray(body.codigos) ? body.codigos.map((l) => (typeof l === "string" ? l : "")).join(String.fromCharCode(10)) : null;
+  if (codigosBrutos !== null) {
+    const linhas = codigosBrutos.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const quantidade = linhas.length;
+    if (quantidade < LOTE_MIN) return { error: "Cole ao menos uma linha do hstock (link | código)." };
+    if (quantidade > LOTE_MAX) return { error: `No máximo ${LOTE_MAX} contas por envio (${quantidade} linhas).` };
+    if (proxies.value.length < quantidade) {
+      return { error: `São ${quantidade} código(s) e ${proxies.value.length} proxy(s): uma proxy por conta, cole mais ${quantidade - proxies.value.length}.` };
+    }
+    const contas: VpsContaDados[] = [];
+    const vistos = new Set<string>();
+    for (const [i, linha] of linhas.entries()) {
+      const lida = parseLinhaPortal(linha);
+      if (!lida) return { error: `Linha ${i + 1} dos códigos fora do formato "link | código".` };
+      const chave = `${lida.link}|${lida.codigo}`;
+      if (vistos.has(chave)) return { error: `O código da linha ${i + 1} aparece mais de uma vez.` };
+      vistos.add(chave);
+      contas.push({ provedorEmail: "portal", email: lida.link, senhaEmail: lida.codigo, imapHost: "", imapPorta: 0, senhaIg: "", nome: "", usuario: "", nascimento: "" });
+    }
+    return { value: { agentId, quantidade, proxies: proxies.value.slice(0, quantidade), perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: true } };
+  }
+
+  const quantidade = typeof body.quantidade === "number" ? body.quantidade : Number(field(body.quantidade, 3));
+  if (!Number.isInteger(quantidade) || quantidade < LOTE_MIN || quantidade > LOTE_MAX) {
+    return { error: `Quantidade de ${LOTE_MIN} a ${LOTE_MAX} contas por envio.` };
+  }
+  if (proxies.value.length !== quantidade) {
+    return { error: `São ${quantidade} conta(s) e ${proxies.value.length} proxy(s): uma proxy por conta.` };
+  }
 
   const linhas = Array.isArray(body.conta) ? body.conta : [];
   if (linhas.length !== quantidade) return { error: `Preencha as ${quantidade} conta(s) do lote.` };
@@ -304,5 +338,5 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
     contas.push(c.value);
   }
 
-  return { value: { agentId, quantidade, proxies: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas } };
+  return { value: { agentId, quantidade, proxies: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: false } };
 }

@@ -6,8 +6,10 @@ import { encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseInstances } from "@/lib/emulador/payload";
 import { parseLoteInput } from "@/lib/vps/input";
-import { parseCapacidade } from "@/lib/vps/jobs";
+import { parseCapacidade, proxiesEmUso } from "@/lib/vps/jobs";
+import { proxyHostDe } from "@/lib/vps/load";
 import { novoDevice, proximosIndices } from "@/lib/vps/device";
+import { gerarPessoa } from "@/lib/vps/pessoa";
 import type { VpsContaInput } from "@/lib/vps/types";
 
 export const dynamic = "force-dynamic";
@@ -78,11 +80,32 @@ export async function POST(req: NextRequest) {
   for (const j of (todosJobs ?? []) as Array<{ instance_index: number }>) ocupados.push(j.instance_index);
   const indices = proximosIndices(ocupados, lote.quantidade);
 
+  // Proxy em uso por conta viva desta VPS não entra de novo; conta descartada libera a dela.
+  const { data: existentes } = await admin.from("emulator_jobs").select("id, status, error, label, input_enc").eq("agent_id", agent.id);
+  const emUso = proxiesEmUso(
+    ((existentes ?? []) as Array<{ status: "queued" | "running" | "done" | "error"; error: string | null; label: string | null; input_enc: string }>).map((j) => ({
+      status: j.status,
+      error: j.error,
+      label: j.label,
+      proxyHost: proxyHostDe(j.input_enc),
+    }))
+  );
+  for (const p of lote.proxies) {
+    const chave = `${p.host}:${p.porta}`;
+    if (emUso.has(chave)) return NextResponse.json({ error: `A proxy ${chave} já está em uso pela conta @${emUso.get(chave)}.` }, { status: 409 });
+  }
+
+  // Nome, @, senha e nascimento gerados aqui (lib/vps/pessoa.ts); o @ não repete nenhum já gravado nem outro do lote.
+  const { data: labels } = await admin.from("emulator_jobs").select("label").eq("user_id", user.id);
+  const usados = new Set(((labels ?? []) as Array<{ label: string | null }>).map((l) => l.label ?? "").filter(Boolean));
+
   const loteId = randomUUID();
   const now = new Date().toISOString();
   const criados: string[] = [];
   for (let i = 0; i < lote.quantidade; i++) {
-    const conta = lote.contas[i];
+    const bruta = lote.contas[i];
+    const pessoa = lote.gerarPessoa ? gerarPessoa({ usados }) : null;
+    const conta = pessoa ? { ...bruta, senhaIg: pessoa.senha, nome: pessoa.nome, usuario: pessoa.usuario, nascimento: pessoa.nascimento } : bruta;
     const proxy = lote.proxies[i];
     const device = novoDevice(lote.perfil, proxy.pais ?? lote.pais, indices[i]);
     const input: VpsContaInput = {

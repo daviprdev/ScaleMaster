@@ -241,6 +241,9 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
       status,
       error,
       prompt: status === "running" ? prompt : null,
+      // Contas VPS: @ aceito depois de recusa e conta descartada (container já apagado pelo próprio fluxo).
+      ...(estado.usuario ? { usuario: estado.usuario } : {}),
+      ...(estado.descartada ? { descartada: true } : {}),
     });
 
   if (!fluxo) return enviar("error", `Este agente não conhece o fluxo "${job.kind}". Atualize a pasta agente-vps.`);
@@ -298,8 +301,8 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
         step.status = "error";
         step.message = String(e.message).slice(0, 300);
         logJob(`${etapa.rotulo} falhou: ${e.message}`);
-        // Conta parada = container desligado (sem Instagram aberto por aí); proxy morta também.
-        if (estado.instanceIndex !== null) await driver.fechar(estado.instanceIndex).catch(() => {});
+        // Conta parada = container desligado (sem Instagram aberto por aí); proxy morta também. Descartada já foi apagada.
+        if (estado.instanceIndex !== null && !estado.descartada) await driver.fechar(estado.instanceIndex).catch(() => {});
         return enviar("error", e.semPrefixo ? e.message : `${etapa.rotulo}: ${e.message}`);
       }
     }

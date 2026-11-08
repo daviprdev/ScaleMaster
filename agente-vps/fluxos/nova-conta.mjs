@@ -8,7 +8,7 @@ import { esperar, rodar } from "../lib/processo.mjs";
 import { ProxyMorta, provarBloqueio, subirSidecar, validar, validarNoNetns } from "../lib/rede.mjs";
 import { INSTAGRAM, instalarInstagram } from "./apk.mjs";
 import { AQUECIMENTO, ATIVIDADE, ligarProxy } from "./atividade.mjs";
-import { ContaTravada, cadastrarInstagram } from "./cadastro.mjs";
+import { ContaTravada, cadastrarInstagram, deveDescartar } from "./cadastro.mjs";
 import { conferirCaixa, criarCaixa, provedorDe } from "./caixa.mjs";
 import { criarAjuda } from "./dono.mjs";
 import { abrirInstagram, editarPerfil, pararInstagram, proxyLigada, trocarFoto } from "./instagram.mjs";
@@ -27,7 +27,7 @@ import { abrirInstagram, editarPerfil, pararInstagram, proxyLigada, trocarFoto }
  * local) a identidade é gerada aqui.
  */
 
-export { ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_TELEFONE } from "./cadastro.mjs";
+export { ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_TELEFONE, ALERTA_USUARIO, deveDescartar } from "./cadastro.mjs";
 // decisão: SCALEMASTER_SESSOES_DIR só existe para os testes não escreverem em /opt.
 export const PASTA_SESSOES = process.env.SCALEMASTER_SESSOES_DIR || "/opt/scalemaster/sessoes";
 
@@ -277,13 +277,33 @@ export const NOVA_CONTA = [
       const caixa = criarCaixa(input, { log });
       log(`caixa de e-mail: ${provedorDe(input)}`);
       try {
-        return await cadastrarInstagram({ d, conta, perguntar, log, caixa, desde: estado.desde ?? Date.now() - 60_000 });
+        return await cadastrarInstagram({
+          d,
+          conta,
+          perguntar,
+          log,
+          caixa,
+          desde: estado.desde ?? Date.now() - 60_000,
+          // @ aceito depois de recusa: vai no andamento para o servidor gravar em input_enc, label e vps_devices.
+          aoAceitarUsuario: (usuario) => {
+            estado.usuario = usuario;
+          },
+        });
       } catch (e) {
         if (!(e instanceof ContaTravada)) throw e;
-        log(`${e.message} Desligando o container.`);
-        marcarAlerta(criada, e.alerta);
-        await pararInstagram(await dispositivo()).catch(() => {});
-        await mumu.fechar(container(estado)).catch(() => {});
+        if (deveDescartar(e.alerta)) {
+          // decisão (08/11): captcha ou @ recusado 5 vezes = conta descartada: container, sidecar e volume
+          // apagados aqui mesmo (libera RAM, disco e a proxy); o servidor marca vps_devices como descartada.
+          log(`${e.message} Descartando a conta: apagando container e volume.`);
+          await pararInstagram(await dispositivo()).catch(() => {});
+          await mumu.excluir(container(estado), { log, criada }).catch((erro) => log(`não apagou ${nomeContainer(estado)}: ${erro.message}`));
+          estado.descartada = true;
+        } else {
+          log(`${e.message} Desligando o container.`);
+          marcarAlerta(criada, e.alerta);
+          await pararInstagram(await dispositivo()).catch(() => {});
+          await mumu.fechar(container(estado)).catch(() => {});
+        }
         const aviso = new Error(e.alerta);
         aviso.semPrefixo = true;
         throw aviso;

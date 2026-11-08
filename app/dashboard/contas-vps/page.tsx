@@ -7,7 +7,7 @@ import { AgenteVpsCard, ConectarVpsDialog } from "@/components/dashboard/vps/Age
 import { ContasVpsCard, type JobAction } from "@/components/dashboard/vps/ContasVpsCard";
 import { LoteDialog } from "@/components/dashboard/vps/LoteDialog";
 import { ProgressoLotePanel } from "@/components/dashboard/vps/ProgressoLotePanel";
-import { parseLinhaPortal } from "@/lib/vps/input";
+import { parseLinhaPortal, parseProxy } from "@/lib/vps/input";
 import { ROTULOS_EMAIL } from "@/lib/vps/provedores";
 import { busyInstances, instanceAlerts, linkedJobs } from "@/lib/vps/jobs";
 import { PROVEDORES_EMAIL, type ProvedorEmail, type VpsAgent, type VpsJob, type VpsResponse } from "@/lib/vps/types";
@@ -35,6 +35,7 @@ export default function ContasVpsPage() {
   const [disconnectBusy, setDisconnectBusy] = React.useState(false);
   const [removing, setRemoving] = React.useState<VpsJob | null>(null);
   const [editing, setEditing] = React.useState<VpsJob | null>(null);
+  const [refazendo, setRefazendo] = React.useState<VpsJob | null>(null);
   const [jobBusy, setJobBusy] = React.useState<ReadonlySet<string>>(new Set());
   const [sending, setSending] = React.useState<ReadonlySet<string>>(new Set());
   const [rebuilding, setRebuilding] = React.useState<ReadonlySet<string>>(new Set());
@@ -229,7 +230,7 @@ export default function ContasVpsPage() {
                     devices={devices}
                     busy={jobBusy}
                     now={now}
-                    onAction={(job, action) => (action === "remover" ? setRemoving(job) : void jobRequest(job, action))}
+                    onAction={(job, action) => (action === "remover" ? setRemoving(job) : action === "refazer" ? setRefazendo(job) : void jobRequest(job, action))}
                     onReply={(job, resposta) => void jobRequest(job, "responder", resposta)}
                     onEdit={setEditing}
                   />
@@ -242,6 +243,7 @@ export default function ContasVpsPage() {
 
       <LoteDialog agent={loteFor} onClose={() => setLoteFor(null)} onSaved={() => void load()} />
       <EditarContaDialog job={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />
+      <RefazerContaDialog job={refazendo} onClose={() => setRefazendo(null)} onSaved={() => void load()} />
       <ConectarVpsDialog open={connectOpen} onClose={() => setConnectOpen(false)} onCreated={() => void load()} />
 
       <ConfirmDialog
@@ -266,6 +268,78 @@ export default function ContasVpsPage() {
         confirmLabel="Desconectar"
       />
     </div>
+  );
+}
+
+/** Tentar de novo de uma conta descartada: proxy e código do hstock novos; device e pessoa novos saem do servidor. */
+function RefazerContaDialog({ job, onClose, onSaved }: { job: VpsJob | null; onClose: () => void; onSaved: () => void }) {
+  const [proxy, setProxy] = React.useState("");
+  const [codigo, setCodigo] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!job) return;
+    setProxy("");
+    setCodigo("");
+    setError(null);
+  }, [job]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!job) return;
+    if (!parseProxy(proxy)) return setError("Proxy no formato host:porta:usuário:senha.");
+    if (!parseLinhaPortal(codigo)) return setError('Código do hstock no formato "link | código".');
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/vps/contas/${encodeURIComponent(job.id)}/refazer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxy, codigo }),
+      });
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(body?.error ?? "Não foi possível refazer.");
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={!!job}
+      onClose={onClose}
+      title="Tentar de novo"
+      description="A conta descartada sai da lista (container e volume já foram apagados). Uma conta nova entra na fila do mesmo lote, do zero: device, proxy, código do portal e pessoa (nome, @, senha, nascimento) novos."
+      className="max-w-lg"
+    >
+      <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)}>
+        {error && <Banner tone="danger">{error}</Banner>}
+        <Input label="Proxy nova (HTTP)" placeholder="host:porta:usuário:senha" hint="Opcional: o país no fim (:US)." value={proxy} onChange={(e) => setProxy(e.target.value)} autoComplete="off" required />
+        <Input
+          label="Código do hstock"
+          placeholder="https://hridoyhub.shop/OTP/ | SUDXHRAY"
+          hint="Linha inteira, no formato link | código."
+          value={codigo}
+          onChange={(e) => setCodigo(e.target.value)}
+          autoComplete="off"
+          className="font-mono"
+          required
+        />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" loading={saving}>
+            Criar conta nova
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
