@@ -138,6 +138,8 @@ iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 if [ "$MODO" = "proxy" ]; then
   iptables -A OUTPUT -m owner --uid-owner ${UID_REDSOCKS} -j ACCEPT
   iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+  # Depois do REDIRECT o filter já vê udp/${PORTA_DNS} (o -o lo não casa no nf_tables): libera o salto ao unbound.
+  iptables -A OUTPUT -p udp --dport ${PORTA_DNS} -j ACCEPT
 fi
 iptables -A OUTPUT -p udp --dport 443 -j REJECT --reject-with icmp-port-unreachable
 if [ "$MODO" = "proxy" ]; then

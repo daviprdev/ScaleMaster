@@ -550,6 +550,13 @@ export class Android {
     if (atual.state === "off") {
       log(`ligando ${nomeDe(index)}`);
       await this.abrir(index);
+    } else {
+      // Ligado sem sidecar (ele caiu ou foi removido): abrir() repõe o kill switch/proxy sem reiniciar o Android.
+      const vivo = await rodar("docker", ["inspect", "--format", "{{.State.Running}}", nomeSidecar(nomeDe(index))], { timeoutMs: 20_000 });
+      if (trecho(vivo.stdout) !== "true") {
+        log(`${nomeDe(index)} ligado sem sidecar: repondo`);
+        await this.abrir(index);
+      }
     }
     const limite = Date.now() + timeoutMs;
     while (!(atual.state === "on" && atual.adb)) {
