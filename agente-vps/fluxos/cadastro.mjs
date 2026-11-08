@@ -246,7 +246,7 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
     },
     {
       nome: "email",
-      teste: (nos) => temTexto(nos, ["Qual é o teu e-mail", "What's your email", "Qual é o seu email", "Qual é o seu e-mail", "Qual é seu email", "Qual é seu e-mail"]),
+      teste: (nos) => !ehTelaCodigo(nos) && temTexto(nos, ["Qual é o teu e-mail", "What's your email", "Qual é o seu email", "Qual é o seu e-mail", "Qual é seu email", "Qual é seu e-mail"]),
       agir: async (nos) => {
         if (temTexto(nos, ["já está a ser utilizado", "já está sendo usado", "already", "já tem uma conta", "já existe"])) {
           throw new Error(`O Instagram diz que ${enderecoAtual()} já tem conta.`);
@@ -269,6 +269,9 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
         }
         await preencher(d, campo, endereco);
         await seguinte(d, await d.tela());
+        // O Instagram manda o código e troca de tela em ~3 s; sem esta pausa a volta seguinte ainda via
+        // "Qual é seu email" e digitava o endereço no campo do código (ig-2, 08/11).
+        await esperar(4000);
       },
     },
     {
