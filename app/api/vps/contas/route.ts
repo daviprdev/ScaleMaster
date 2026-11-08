@@ -90,6 +90,8 @@ export async function POST(req: NextRequest) {
       pais: device.pais,
       versaoIg: lote.versaoIg,
       perfil: lote.perfil,
+      provedorEmail: conta.provedorEmail,
+      // portal: conta.email = link do painel, imap.senha = código de resgate (mesmos campos, ver lib/vps/types.ts).
       conta: { email: conta.email, senha: conta.senhaIg, nome: conta.nome, usuario: conta.usuario, nascimento: conta.nascimento },
       imap: { host: conta.imapHost, porta: conta.imapPorta, usuario: conta.email, senha: conta.senhaEmail },
       device,
@@ -100,7 +102,7 @@ export async function POST(req: NextRequest) {
         user_id: user.id,
         agent_id: agent.id,
         kind: "nova-conta",
-        label: conta.usuario || conta.email,
+        label: conta.usuario || (conta.provedorEmail === "portal" ? conta.nome : conta.email),
         template_index: 0,
         lote_id: loteId,
         versao_ig: lote.versaoIg,

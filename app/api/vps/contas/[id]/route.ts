@@ -58,6 +58,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     /* proxy ilegível */
   }
   return NextResponse.json({
+    provedorEmail: input.provedorEmail ?? "imap",
     email: input.conta.email,
     nome: input.conta.nome,
     usuario: input.conta.usuario,
@@ -104,12 +105,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
   if (body.conta && typeof body.conta === "object") {
     const c = body.conta as Record<string, unknown>;
+    const provedorAtual = input.provedorEmail ?? "imap";
+    const provedorNovo = typeof c.provedorEmail === "string" && c.provedorEmail.trim() ? c.provedorEmail.trim() : provedorAtual;
+    // Trocar de provedor não herda o que estava guardado: link/código do portal e senha de app não se misturam.
+    const mesmoProvedor = provedorNovo === provedorAtual;
     const parsed = parseConta(
       {
-        email: typeof c.email === "string" && c.email.trim() ? c.email : input.conta.email,
-        senhaEmail: typeof c.senhaEmail === "string" && c.senhaEmail.trim() ? c.senhaEmail : input.imap.senha,
-        imapHost: typeof c.imapHost === "string" && c.imapHost.trim() ? c.imapHost : input.imap.host,
-        imapPorta: typeof c.imapPorta === "string" && c.imapPorta.trim() ? c.imapPorta : String(input.imap.porta),
+        provedorEmail: provedorNovo,
+        email: typeof c.email === "string" && c.email.trim() ? c.email : mesmoProvedor ? input.conta.email : "",
+        senhaEmail: typeof c.senhaEmail === "string" && c.senhaEmail.trim() ? c.senhaEmail : mesmoProvedor ? input.imap.senha : "",
+        imapHost: typeof c.imapHost === "string" && c.imapHost.trim() ? c.imapHost : mesmoProvedor ? input.imap.host : "",
+        imapPorta: typeof c.imapPorta === "string" && c.imapPorta.trim() ? c.imapPorta : String(input.imap.porta || 993),
         senhaIg: typeof c.senhaIg === "string" && c.senhaIg.trim() ? c.senhaIg : input.conta.senha,
         nome: typeof c.nome === "string" ? c.nome : input.conta.nome,
         usuario: typeof c.usuario === "string" ? c.usuario : input.conta.usuario,
@@ -119,14 +125,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     );
     if ("error" in parsed) return NextResponse.json({ error: parsed.error.replace(/^Conta 1: /, "") }, { status: 400 });
     const v = parsed.value;
+    next.provedorEmail = v.provedorEmail;
     next.conta = { email: v.email, senha: v.senhaIg, nome: v.nome, usuario: v.usuario, nascimento: v.nascimento };
     next.imap = { host: v.imapHost, porta: v.imapPorta, usuario: v.email, senha: v.senhaEmail };
   }
-  const contaMudou = JSON.stringify(next.conta) !== JSON.stringify(input.conta) || JSON.stringify(next.imap) !== JSON.stringify(input.imap);
+  const contaMudou =
+    JSON.stringify(next.conta) !== JSON.stringify(input.conta) ||
+    JSON.stringify(next.imap) !== JSON.stringify(input.imap) ||
+    (next.provedorEmail ?? "imap") !== (input.provedorEmail ?? "imap");
 
   const patch: Record<string, unknown> = {
     input_enc: encrypt(JSON.stringify(next)),
-    label: next.conta.usuario || next.conta.email,
+    label: next.conta.usuario || (next.provedorEmail === "portal" ? next.conta.nome : next.conta.email),
     updated_at: new Date().toISOString(),
   };
   if (job.status === "done") {

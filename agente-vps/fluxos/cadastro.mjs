@@ -1,7 +1,7 @@
 import { resolver as resolverCaptcha, tocarPontos } from "../lib/captcha.mjs";
-import { esperarCodigo } from "../lib/imap.mjs";
 import { esperar } from "../lib/processo.mjs";
 import { INSTAGRAM } from "./apk.mjs";
+import { criarCaixa } from "./caixa.mjs";
 import { criarAjuda, resumoTela, salvarTela } from "./dono.mjs";
 import { acharId, acharTexto, preencher, temTexto, tocarNo } from "./tela.mjs";
 
@@ -115,13 +115,26 @@ async function preencherNascimento(d, nos, nascimento) {
 }
 
 /**
- * ctx = { d, conta, perguntar(tipo, texto) → Promise<resposta>, log, imap?, desde? }.
- * imap = { host, porta, usuario, senha } da caixa da conta; desde = quando o
- * cadastro começou (só e-mails depois disso valem). Devolve a mensagem final
- * ("conta criada (@usuario)").
+ * ctx = { d, conta, perguntar(tipo, texto) → Promise<resposta>, log, caixa?, imap?, desde? }.
+ * caixa = a caixa de e-mail da conta (fluxos/caixa.mjs: IMAP, portal, mail.tm
+ * ou manual); sem `caixa`, imap = { host, porta, usuario, senha } monta uma
+ * caixa IMAP (compatível). desde = quando o cadastro começou (só e-mails depois
+ * disso valem). Devolve a mensagem final ("conta criada (@usuario)").
  */
-export async function cadastrarInstagram({ d, conta, perguntar, log, imap = null, desde = Date.now() }) {
+export async function cadastrarInstagram({ d, conta, perguntar, log, caixa = null, imap = null, desde = Date.now() }) {
   const estado = { errosIdioma: 0, termosAceitos: false, usuarioFinal: conta.usuario || null, ultima: null, repeticoes: 0, desconhecidas: 0, toquesSugestoes: 0, codigosImap: 0, captchas: 0 };
+  const mail = caixa ?? criarCaixa({ provedorEmail: "imap", conta, imap: imap ?? {} }, { log });
+  // O endereço de verdade (no portal só existe depois de abrir a sessão); até lá, o que veio no input.
+  const enderecoAtual = () => mail.email || conta.email;
+  try {
+    return await rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, estado, desde });
+  } finally {
+    // Sessão do portal/browser fechada sempre, inclusive em erro.
+    await mail.fechar().catch(() => {});
+  }
+}
+
+async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, estado, desde }) {
   // Pergunta vigiando a tela: o dono pode resolver direto na instância (ver dono.mjs).
   const ajuda = criarAjuda({ d, perguntar, log });
   const { perguntarVigiando } = ajuda;
@@ -196,23 +209,22 @@ export async function cadastrarInstagram({ d, conta, perguntar, log, imap = null
       teste: (nos) => ehTelaCodigo(nos),
       agir: async (nos) => {
         const recusado = temTexto(nos, ["não é válido", "isn't valid", "inválido", "incorreto", "incorrect", "expirou", "expired"]);
-        // Primeiro a caixa de e-mail (IMAP, até 3 min); só sem código lá a aba pergunta ao dono.
+        // Primeiro a caixa de e-mail (IMAP/portal/mail.tm, até 2 tentativas); só sem código lá a aba pergunta ao dono.
         let codigo = null;
-        if (imap && estado.codigosImap < 2 && !recusado) {
+        if (estado.codigosImap < 2 && !recusado) {
           estado.codigosImap += 1;
-          log(`esperando o código em ${conta.email} (IMAP)`);
-          codigo = await esperarCodigo({ host: imap.host, porta: imap.porta, email: imap.usuario || conta.email, senha: imap.senha, desde, log }).catch((e) => {
-            log(`IMAP falhou: ${e.message}`);
+          codigo = await mail.esperarCodigo({ desde }).catch((e) => {
+            log(`caixa (${mail.provedor}) falhou: ${e.message}`);
             return null;
           });
-          if (!codigo) log("código não chegou por IMAP: perguntando na aba");
+          if (!codigo && mail.provedor !== "manual") log(`código não veio da caixa (${mail.provedor}): perguntando na aba`);
         }
         if (!codigo) {
           codigo = await perguntarVigiando(
             "codigo",
             recusado
-              ? `O Instagram não aceitou o código. Confira o último e-mail em ${conta.email} e digite de novo.`
-              : `Digite o código que o Instagram mandou para ${conta.email}.`,
+              ? `O Instagram não aceitou o código. Confira o último e-mail em ${enderecoAtual()} e digite de novo.`
+              : `Digite o código que o Instagram mandou para ${enderecoAtual()}.`,
             (agora) => ehTelaCodigo(agora)
           );
         }
@@ -237,11 +249,25 @@ export async function cadastrarInstagram({ d, conta, perguntar, log, imap = null
       teste: (nos) => temTexto(nos, ["Qual é o teu e-mail", "What's your email", "Qual é o seu email", "Qual é o seu e-mail"]),
       agir: async (nos) => {
         if (temTexto(nos, ["já está a ser utilizado", "já está sendo usado", "already", "já tem uma conta", "já existe"])) {
-          throw new Error(`O Instagram diz que ${conta.email} já tem conta.`);
+          throw new Error(`O Instagram diz que ${enderecoAtual()} já tem conta.`);
         }
         const campo = campoPor(nos, ["E-mail", "Email"]);
         if (!campo) throw new Error("Não achei o campo do e-mail.");
-        await preencher(d, campo, conta.email);
+        // No portal a sessão de 20 min abre aqui, na hora de digitar; a caixa devolve null se o portal falhou.
+        let endereco = await mail.endereco();
+        if (!endereco) {
+          endereco = await perguntarVigiando(
+            "codigo",
+            `A caixa de e-mail (${mail.provedor}) não respondeu. Abra o portal, pegue o endereço e digite-o aqui (ou preencha o e-mail direto na instância).`,
+            (agora) => !!campoPor(agora, ["E-mail", "Email"])
+          );
+          if (endereco === null) {
+            log("e-mail digitado direto na instância: seguindo");
+            return;
+          }
+          endereco = String(endereco).trim().toLowerCase();
+        }
+        await preencher(d, campo, endereco);
         await seguinte(d, await d.tela());
       },
     },

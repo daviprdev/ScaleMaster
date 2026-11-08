@@ -3,13 +3,13 @@ import path from "node:path";
 import { limparAlerta, marcarAlerta } from "../lib/alertas.mjs";
 import { conferirAbiNoAparelho } from "../lib/android.mjs";
 import { aplicarNoAparelho, conferir, gerar as gerarDevice } from "../lib/fingerprint.mjs";
-import { testarLogin } from "../lib/imap.mjs";
 import { pastaDeMidias, sortearFoto } from "../lib/midias.mjs";
 import { esperar, rodar } from "../lib/processo.mjs";
 import { ProxyMorta, provarBloqueio, subirSidecar, validar, validarNoNetns } from "../lib/rede.mjs";
 import { INSTAGRAM, instalarInstagram } from "./apk.mjs";
 import { AQUECIMENTO, ATIVIDADE, ligarProxy } from "./atividade.mjs";
 import { ContaTravada, cadastrarInstagram } from "./cadastro.mjs";
+import { conferirCaixa, criarCaixa, provedorDe } from "./caixa.mjs";
 import { criarAjuda } from "./dono.mjs";
 import { abrirInstagram, editarPerfil, pararInstagram, proxyLigada, trocarFoto } from "./instagram.mjs";
 
@@ -21,8 +21,10 @@ import { abrirInstagram, editarPerfil, pararInstagram, proxyLigada, trocarFoto }
  * numa retomada (Continuar) ele já vem preenchido e as etapas concluídas são
  * puladas. As chaves batem com VPS_FLUXO em lib/vps/jobs.ts.
  *
- * input = { proxy, pais, versaoIg, perfil, conta, imap, device } (lib/vps/types.ts).
- * Sem input.device (teste local) a identidade é gerada aqui.
+ * input = { proxy, pais, versaoIg, perfil, provedorEmail?, conta, imap, device } (lib/vps/types.ts).
+ * provedorEmail: imap (padrão), portal (conta.email = link, imap.senha = código de
+ * resgate), mailtm ou manual — ver fluxos/caixa.mjs. Sem input.device (teste
+ * local) a identidade é gerada aqui.
  */
 
 export { ALERTA_CAPTCHA, ALERTA_TELEFONE } from "./cadastro.mjs";
@@ -39,10 +41,11 @@ function container(estado) {
 
 const nomeContainer = (estado) => `ig-${container(estado)}`;
 
-/** Nome que a aba mostra: o @ pedido, senão a parte do e-mail antes do @. */
+/** Nome que a aba mostra: o @ pedido, senão a parte do e-mail antes do @ (no portal o e-mail é um link: vale o nome). */
 export function nomeDaInstancia(job, input) {
   const conta = input?.conta ?? {};
-  const base = conta.usuario || String(conta.email ?? "").split("@")[0];
+  const email = String(conta.email ?? "");
+  const base = conta.usuario || (/^https?:\/\//i.test(email) ? String(conta.nome ?? "").toLowerCase().replace(/\s+/g, ".") : email.split("@")[0]);
   const nome = String(base).replace(/[^\p{L}\p{N}._-]/gu, "").slice(0, 40);
   return nome || `conta-${job.id.slice(0, 8)}`;
 }
@@ -251,14 +254,13 @@ export const NOVA_CONTA = [
   },
   {
     chave: "email",
-    rotulo: "Conferir a caixa de e-mail (IMAP)",
+    rotulo: "Conferir a caixa de e-mail",
     async rodar({ input, estado }) {
-      const imap = input?.imap;
-      if (!imap?.host || !imap?.senha) throw new Error("Essa conta veio sem os dados do IMAP.");
-      await testarLogin({ host: imap.host, porta: imap.porta || 993, usuario: imap.usuario || input.conta?.email, senha: imap.senha });
+      // IMAP/mail.tm: login. Portal: só confere o link (a sessão de 20 min abre no cadastro, na hora de digitar). Manual: nada.
+      const mensagem = await conferirCaixa(input);
       // Só e-mails depois daqui valem como código (o cadastro dispara o envio).
       estado.desde = Date.now();
-      return `${imap.host}:${imap.porta || 993} ok`;
+      return mensagem;
     },
   },
   {
@@ -272,8 +274,10 @@ export const NOVA_CONTA = [
       const d = await dispositivo();
       // Continuar com o container religado: o sidecar sobe com a proxy gravada, mas confere antes de abrir o Instagram.
       if (!(await proxyLigada(d))) log(`proxy: ${await ligarProxy(mumu, container(estado), log)}`);
+      const caixa = criarCaixa(input, { log });
+      log(`caixa de e-mail: ${provedorDe(input)}`);
       try {
-        return await cadastrarInstagram({ d, conta, perguntar, log, imap: input.imap ?? null, desde: estado.desde ?? Date.now() - 60_000 });
+        return await cadastrarInstagram({ d, conta, perguntar, log, caixa, desde: estado.desde ?? Date.now() - 60_000 });
       } catch (e) {
         if (!(e instanceof ContaTravada)) throw e;
         log(`${e.message} Desligando o container.`);

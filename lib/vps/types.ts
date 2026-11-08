@@ -85,8 +85,25 @@ export interface VpsResponse {
   devices: VpsDevice[];
 }
 
+/**
+ * De onde vem o código de confirmação do Instagram. Os campos são os mesmos
+ * em todos: em `portal`, `email` guarda o LINK do painel e `senhaEmail` o
+ * CÓDIGO DE RESGATE (hstock: "https://hridoyhub.shop/OTP/ | SUDXHRAY");
+ * `mailtm` usa endereço + senha da conta no mail.tm; `manual` só o endereço
+ * (o código é pedido na aba); `imap` é o antigo (host/porta/senha de app).
+ */
+export type ProvedorEmail = "portal" | "mailtm" | "imap" | "manual";
+
+export const PROVEDORES_EMAIL: ReadonlyArray<{ key: ProvedorEmail; label: string }> = [
+  { key: "portal", label: "Portal (hstock)" },
+  { key: "mailtm", label: "Mail.tm" },
+  { key: "imap", label: "IMAP" },
+  { key: "manual", label: "Manual" },
+];
+
 /** Dados de uma conta do lote, já validados (lib/vps/input.ts). */
 export interface VpsContaDados {
+  provedorEmail: ProvedorEmail;
   email: string;
   senhaEmail: string;
   imapHost: string;
@@ -128,13 +145,17 @@ export interface VpsContaInput {
   pais: string;
   versaoIg: string;
   perfil: DevicePerfil;
+  /** Ausente nas contas antigas = imap. */
+  provedorEmail?: ProvedorEmail;
   conta: {
+    /** Endereço; em `portal`, o link do painel. */
     email: string;
     senha: string;
     nome: string;
     usuario: string;
     nascimento: string;
   };
+  /** `senha` é a senha do e-mail; em `portal`, o código de resgate. host/porta só em imap. */
   imap: { host: string; porta: number; usuario: string; senha: string };
   device: VpsDeviceSpec;
 }

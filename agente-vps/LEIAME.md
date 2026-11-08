@@ -59,7 +59,22 @@ node agente.mjs nova-conta dados.json   roda o fluxo inteiro a partir da base
 node scripts/vps/calibrar.mjs 3         mapa de toques, dpi, escala do print
 ```
 
-`dados.json`: `{ "proxy": "http://u:s@host:porta", "pais": "BR", "versaoIg": "309.0.0.40.113", "conta": { "email", "senha", "nome", "usuario", "nascimento" }, "imap": { "host", "porta", "usuario", "senha" } }`. Sem `device`, a identidade é gerada na hora.
+`dados.json`: `{ "proxy": "http://u:s@host:porta", "pais": "BR", "versaoIg": "309.0.0.40.113", "provedorEmail": "portal|mailtm|imap|manual", "conta": { "email", "senha", "nome", "usuario", "nascimento" }, "imap": { "host", "porta", "usuario", "senha" } }`. Sem `device`, a identidade é gerada na hora.
+
+## Provedor de e-mail (`fluxos/caixa.mjs`)
+
+Os campos são sempre os mesmos (`conta.email` + `imap.senha`); o provedor muda o significado:
+
+| Provedor | `conta.email` | `imap.senha` | Como lê o código |
+| --- | --- | --- | --- |
+| `portal` (padrão da aba) | link do painel (`https://hridoyhub.shop/OTP/`) | código de resgate do hstock (6–12 letras/números) | `lib/portal.mjs`: `POST <link> code=…` → `/OTP/<CÓDIGO>` (endereço em `#email`), `/OTP/<CÓDIGO>/status` a cada 3 s (`mails[].otp`); sessão vencida sem OTP é renovada (`/reactivate`) |
+| `mailtm` | endereço no mail.tm | senha da conta | `lib/mailtm.mjs` (API pública, token + `/messages`) |
+| `imap` | endereço | senha (de app) | `lib/imap.mjs` (`imap.host`/`imap.porta`) |
+| `manual` | endereço | — | nada: o código é pedido na aba |
+
+A linha do hstock (`link | código`) pode ser colada inteira no campo do link (aba e API separam). A sessão do portal dura 20 min: ela só abre na tela "Qual é o teu e-mail" do Instagram, nunca no início do job; a etapa `email` apenas confere que o link mostra o form de resgate. Qualquer falha do portal (fora do ar, timup, markup, Cloudflare) vira pergunta `codigo` na aba, sem derrubar o job; o código de resgate aparece mascarado no log (`SU****AY`).
+
+`PORTAL_MODO=http` (padrão, `node:https` com cookie jar e User-Agent de Chrome) ou `PORTAL_MODO=browser` no `.env` do agente: `playwright-core` de `/opt/scalemaster/portal` (instalado pelo `instalar.sh`) ligado por CDP ao Chromium isolado no container `scalemaster-portal-chrome` (`zenika/alpine-chrome`, só em `127.0.0.1:9222`). Nos dois caminhos a sessão é fechada sempre, inclusive em erro.
 
 ## Como uma conta é criada (`fluxos/nova-conta.mjs`)
 
@@ -71,7 +86,7 @@ Mesmas chaves de `VPS_FLUXO` em `lib/vps/jobs.ts`; o Continuar retoma da etapa q
 4. **nome**, **abrir** — liga o container com o sidecar em modo **bloqueado** (nada sai) e prova o kill switch.
 5. **instagram** — `adb install` do APK pinado (sem Aurora, sem internet).
 6. **rede** — sidecar `ig-N-proxy` no netns do container: gost em modo `red` (redirecionador transparente para a proxy HTTP; o redsocks 0.5 do Alpine trava no CONNECT, por isso o gost) com o uid fixo 60000 (usuário `redsocks` — 1000/2000 são system/shell do Android, 10000+ os apps) + `iptables -t nat OUTPUT REDIRECT` (todo TCP → gost; o DNS do Android aponta para o IP do próprio container, onde o unbound do sidecar atende na 53 e encaminha por TCP com o uid do redsocks; udp/53 para outro IP cai no REDIRECT, 127.0.0.11 do Docker é DROP: o DNS nunca sai pelo resolver da VPS) + `udp/443 REJECT` (derruba o QUIC) + `OUTPUT DROP` no fim; confere de dentro do netns que a saída é a proxy. As regras são aplicadas pelo próprio sidecar (`--cap-add NET_ADMIN`, `sidecar.sh`) a cada boot dele — o script zera e recria as chains, então um restart do sidecar (`--restart unless-stopped`) reaplica tudo — e o agente só trata o container como ligado depois de o sidecar estar de pé: se ele não sobe, `abrir()` desliga o container na hora (nunca fica ligado sem regra). O redroid exige `--privileged`: `cap-drop` não se aplica ao container da conta, por isso o kill switch fica no netns, não nas capabilities.
-7. **limpar**, **email** (login IMAP), **cadastro** — telas pelo texto (`fluxos/cadastro.mjs`); o código de confirmação é lido na caixa por IMAP (`lib/imap.mjs`, até 3 min) antes de perguntar na aba; captcha de imagem vai para o Capsolver (`lib/captcha.mjs`) até 3 vezes; telefone ou captcha sem solução encerram com o aviso em vermelho, igual ao MuMu.
+7. **limpar**, **email** (prova a caixa: login IMAP/mail.tm, ou só o link do portal), **cadastro** — telas pelo texto (`fluxos/cadastro.mjs`); o endereço e o código de confirmação vêm da caixa do provedor (`fluxos/caixa.mjs`: portal, mail.tm ou IMAP, até 2 tentativas) antes de perguntar na aba; captcha de imagem vai para o Capsolver (`lib/captcha.mjs`) até 3 vezes; telefone ou captcha sem solução encerram com o aviso em vermelho, igual ao MuMu.
 8. **perfil** — foto sorteada de `/opt/scalemaster/midias/perfil` (ou da pasta toda), nome de exibição e bio.
 9. **seguir**, **reels** — aquecimento (2–3 verificados, até 2 min de Reels).
 10. **sessao** — `adb root` (ou `su 0`) + `tar` de `/data/data/com.instagram.android` puxado para `/opt/scalemaster/sessoes/<jobId>.tgz` (chmod 600, pasta 0700); falha aqui não derruba a conta.

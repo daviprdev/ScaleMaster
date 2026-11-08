@@ -18,7 +18,7 @@ export const VPS_FLUXO: ReadonlyArray<{ key: string; label: string }> = [
   { key: "instagram", label: "Instalar o Instagram (APK pinado)" },
   { key: "rede", label: "Subir a proxy no container (redsocks)" },
   { key: "limpar", label: "Preparar o Instagram para o cadastro" },
-  { key: "email", label: "Conferir a caixa de e-mail (IMAP)" },
+  { key: "email", label: "Conferir a caixa de e-mail" },
   { key: "cadastro", label: "Criar a conta no Instagram" },
   { key: "perfil", label: "Foto, nome de exibição e bio" },
   { key: "seguir", label: "Aquecer: seguir perfis verificados" },

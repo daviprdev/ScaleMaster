@@ -154,6 +154,28 @@ case "$ARCH" in
     fi ;;
 esac
 
+echo "== portal (caminho browser, opcional: PORTAL_MODO=browser no .env)"
+# decisão: o caminho HTTP (padrão) não precisa de nada disto; o browser fica pronto em
+# /opt/scalemaster/portal (playwright-core, pinado) + Chromium isolado em container (zenika/alpine-chrome).
+mkdir -p /opt/scalemaster/portal
+[ -f /opt/scalemaster/portal/package.json ] || echo '{"name":"scalemaster-portal","private":true}' > /opt/scalemaster/portal/package.json
+if [ ! -d /opt/scalemaster/portal/node_modules/playwright-core ]; then
+  if command -v npm >/dev/null 2>&1; then
+    if npm install --prefix /opt/scalemaster/portal --no-audit --no-fund --save-exact playwright-core@1.49.1 >/dev/null 2>&1; then
+      echo "playwright-core instalado em /opt/scalemaster/portal"
+    else
+      echo "aviso: npm install playwright-core falhou (o caminho browser do portal fica indisponível; o HTTP segue)"
+    fi
+  else
+    echo "aviso: sem npm — o caminho browser do portal fica indisponível (o HTTP segue)"
+  fi
+fi
+PORTAL_CHROME_IMAGEM="${PORTAL_CHROME_IMAGEM:-zenika/alpine-chrome:124}"
+if ! docker image inspect "$PORTAL_CHROME_IMAGEM" >/dev/null 2>&1; then
+  docker pull "$PORTAL_CHROME_IMAGEM" >/dev/null 2>&1 && echo "imagem $PORTAL_CHROME_IMAGEM pronta" \
+    || echo "aviso: não baixou $PORTAL_CHROME_IMAGEM (o caminho browser do portal fica indisponível; o HTTP segue)"
+fi
+
 echo "== unit systemd"
 [ -f /opt/scalemaster/agente-vps/.env ] || { touch /opt/scalemaster/agente-vps/.env; chmod 600 /opt/scalemaster/agente-vps/.env; }
 install -m 0644 "$CHECKOUT/agente-vps/scalemaster-vps-agent.service" /etc/systemd/system/scalemaster-vps-agent.service
@@ -165,3 +187,4 @@ echo "Pronto. Próximos passos:"
 echo "  1. bash $CHECKOUT/scripts/vps/golden.sh            (base com o APK de /opt/scalemaster/apks)"
 echo "  2. cd $CHECKOUT/agente-vps && node agente.mjs conectar smag_...   (código da aba Contas VPS)"
 echo "  3. echo 'CAPSOLVER_KEY=...' >> /opt/scalemaster/agente-vps/.env && systemctl restart scalemaster-vps-agent"
+echo "  4. (opcional) echo 'PORTAL_MODO=browser' >> /opt/scalemaster/agente-vps/.env   # portal pelo Chromium isolado em vez de HTTP"

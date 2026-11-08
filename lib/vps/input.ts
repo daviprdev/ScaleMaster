@@ -1,4 +1,4 @@
-import type { DevicePerfil, VpsContaDados } from "./types";
+import type { DevicePerfil, ProvedorEmail, VpsContaDados } from "./types";
 
 /**
  * Validação do formulário "Enviar lote" da aba Contas VPS. Puro (sem undici):
@@ -17,6 +17,62 @@ const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 const PAIS_RE = /^[A-Z]{2}$/;
 const VERSAO_IG_RE = /^[0-9][0-9A-Za-z.\-_]{0,30}$/;
 const ASCII_RE = /^[\x20-\x7E]*$/;
+const PROVEDORES: ReadonlySet<string> = new Set<ProvedorEmail>(["portal", "mailtm", "imap", "manual"]);
+/** Código de resgate do portal (hstock): 6 a 12 letras/números. */
+const CODIGO_PORTAL_RE = /^[A-Za-z0-9]{6,12}$/;
+export const PORTAL_PADRAO = "https://hridoyhub.shop/OTP/";
+
+export function provedorEmailValido(valor: unknown): valor is ProvedorEmail {
+  return typeof valor === "string" && PROVEDORES.has(valor);
+}
+
+/** Link do portal: https, host com ponto, sem usuário/senha nem espaço. */
+export function linkPortalValido(link: string): boolean {
+  if (!/^https:\/\/\S+$/.test(link) || link.length > 200) return false;
+  try {
+    const u = new URL(link);
+    return u.protocol === "https:" && u.hostname.includes(".") && !u.username && !u.password;
+  } catch {
+    return false;
+  }
+}
+
+export function codigoPortalValido(codigo: string): boolean {
+  return CODIGO_PORTAL_RE.test(codigo);
+}
+
+/**
+ * Uma linha do hstock: "https://hridoyhub.shop/OTP/ | SUDXHRAY" (também aceita
+ * só o código, com o link padrão, ou "link codigo" separado por espaço). null =
+ * não é uma linha do portal.
+ */
+export function parseLinhaPortal(raw: unknown): { link: string; codigo: string } | null {
+  const linha = typeof raw === "string" ? raw.trim().replace(/[,;]\s*$/, "") : "";
+  if (!linha || !ASCII_RE.test(linha)) return null;
+  const partes = linha
+    .split(/\s*\|\s*|\s+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (partes.length === 1) {
+    const codigo = partes[0].toUpperCase();
+    return codigoPortalValido(codigo) ? { link: PORTAL_PADRAO, codigo } : null;
+  }
+  if (partes.length !== 2) return null;
+  const [a, b] = partes;
+  const link = /^https?:\/\//i.test(a) ? a : /^https?:\/\//i.test(b) ? b : null;
+  const codigo = (link === a ? b : a).toUpperCase();
+  if (!link || !linkPortalValido(link) || !codigoPortalValido(codigo)) return null;
+  return { link, codigo };
+}
+
+/** Várias linhas do hstock coladas (uma por conta), ignorando as vazias. */
+export function parseLinhasPortal(raw: string): Array<{ link: string; codigo: string } | null> {
+  return raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => parseLinhaPortal(l));
+}
 
 export function field(value: unknown, max: number): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -109,11 +165,20 @@ export function parseProxies(raw: unknown): { value: ProxyLida[] } | { error: st
   return { value: out };
 }
 
-/** Uma linha de conta do lote. Senhas e nome sem acento (o Android digita por input text). */
+/**
+ * Uma linha de conta do lote. Senhas e nome sem acento (o Android digita por
+ * input text). A validação do e-mail depende do provedor: `portal` exige link
+ * https + código de resgate (uma linha "link | codigo" colada no campo do
+ * e-mail é separada aqui), `imap` host/porta/senha, `mailtm` endereço + senha,
+ * `manual` só o endereço. Sem provedor = imap (contas antigas).
+ */
 export function parseConta(raw: unknown, linha: number): { value: VpsContaDados } | { error: string } {
   const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const provedorBruto = field(r.provedorEmail, 10).toLowerCase() || "imap";
+  if (!provedorEmailValido(provedorBruto)) return { error: `Conta ${linha}: provedor de e-mail desconhecido.` };
   const value: VpsContaDados = {
-    email: field(r.email, 100).toLowerCase(),
+    provedorEmail: provedorBruto,
+    email: field(r.email, 200),
     senhaEmail: field(r.senhaEmail, 200),
     imapHost: field(r.imapHost, 253).toLowerCase(),
     imapPorta: Number(field(r.imapPorta, 5) || 993),
@@ -123,12 +188,38 @@ export function parseConta(raw: unknown, linha: number): { value: VpsContaDados 
     nascimento: field(r.nascimento, 10),
   };
   const onde = `Conta ${linha}: `;
-  if (!EMAIL_RE.test(value.email)) return { error: `${onde}informe o e-mail.` };
-  if (!value.senhaEmail) return { error: `${onde}informe a senha do e-mail (ou a senha de app do IMAP).` };
-  if (!ASCII_RE.test(value.senhaEmail)) return { error: `${onde}a senha do e-mail não pode ter acento nem emoji.` };
-  if (!value.imapHost) value.imapHost = imapPadrao(value.email);
-  if (!hostValido(value.imapHost)) return { error: `${onde}host IMAP inválido.` };
-  if (!portaValida(value.imapPorta)) return { error: `${onde}porta IMAP inválida.` };
+  if (value.provedorEmail === "portal") {
+    // "link | codigo" colado inteiro no campo do link: separa (o código da linha vale sobre o campo).
+    const lida = value.email.includes("|") || (!value.senhaEmail && !/^https?:\/\//i.test(value.email)) ? parseLinhaPortal(value.email) : null;
+    if (lida) {
+      value.email = lida.link;
+      value.senhaEmail = lida.codigo;
+    }
+    value.senhaEmail = value.senhaEmail.toUpperCase();
+    if (!linkPortalValido(value.email)) return { error: `${onde}informe o link do portal (https://…).` };
+    if (!codigoPortalValido(value.senhaEmail)) return { error: `${onde}código de resgate com 6 a 12 letras/números.` };
+    value.imapHost = "";
+    value.imapPorta = 0;
+  } else {
+    value.email = value.email.slice(0, 100).toLowerCase();
+    if (!EMAIL_RE.test(value.email)) return { error: `${onde}informe o e-mail.` };
+    if (value.provedorEmail === "manual") {
+      if (!ASCII_RE.test(value.senhaEmail)) return { error: `${onde}a senha do e-mail não pode ter acento nem emoji.` };
+      value.imapHost = "";
+      value.imapPorta = 0;
+    } else if (value.provedorEmail === "mailtm") {
+      if (!value.senhaEmail) return { error: `${onde}informe a senha da conta no mail.tm.` };
+      if (!ASCII_RE.test(value.senhaEmail)) return { error: `${onde}a senha do e-mail não pode ter acento nem emoji.` };
+      value.imapHost = "";
+      value.imapPorta = 0;
+    } else {
+      if (!value.senhaEmail) return { error: `${onde}informe a senha do e-mail (ou a senha de app do IMAP).` };
+      if (!ASCII_RE.test(value.senhaEmail)) return { error: `${onde}a senha do e-mail não pode ter acento nem emoji.` };
+      if (!value.imapHost) value.imapHost = imapPadrao(value.email);
+      if (!hostValido(value.imapHost)) return { error: `${onde}host IMAP inválido.` };
+      if (!portaValida(value.imapPorta)) return { error: `${onde}porta IMAP inválida.` };
+    }
+  }
   if (value.senhaIg.length < 6) return { error: `${onde}a senha do Instagram precisa de pelo menos 6 caracteres.` };
   if (!ASCII_RE.test(value.senhaIg)) return { error: `${onde}a senha do Instagram não pode ter acento nem emoji.` };
   if (!value.nome) return { error: `${onde}informe o nome completo.` };
@@ -204,8 +295,12 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
   for (const [i, linha] of linhas.entries()) {
     const c = parseConta(linha, i + 1);
     if ("error" in c) return c;
-    if (emails.has(c.value.email)) return { error: `O e-mail ${c.value.email} aparece em mais de uma conta.` };
-    emails.add(c.value.email);
+    // No portal o link é o mesmo em todas: o que não pode repetir é o código de resgate.
+    const chave = c.value.provedorEmail === "portal" ? `${c.value.email}|${c.value.senhaEmail}` : c.value.email;
+    if (emails.has(chave)) {
+      return { error: c.value.provedorEmail === "portal" ? `O código de resgate da conta ${i + 1} aparece em mais de uma conta.` : `O e-mail ${c.value.email} aparece em mais de uma conta.` };
+    }
+    emails.add(chave);
     contas.push(c.value);
   }
 

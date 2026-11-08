@@ -2,12 +2,14 @@
 
 import * as React from "react";
 import { Plus, Server } from "lucide-react";
-import { Banner, Button, ConfirmDialog, Dialog, EmptyState, Input, PageHeader, Skeleton } from "@/components/ui";
+import { Banner, Button, ConfirmDialog, Dialog, EmptyState, Input, PageHeader, Select, Skeleton } from "@/components/ui";
 import { AgenteVpsCard, ConectarVpsDialog } from "@/components/dashboard/vps/AgenteVpsCard";
 import { ContasVpsCard, type JobAction } from "@/components/dashboard/vps/ContasVpsCard";
 import { LoteDialog } from "@/components/dashboard/vps/LoteDialog";
+import { parseLinhaPortal } from "@/lib/vps/input";
+import { ROTULOS_EMAIL } from "@/lib/vps/provedores";
 import { busyInstances, instanceAlerts, linkedJobs } from "@/lib/vps/jobs";
-import type { VpsAgent, VpsJob, VpsResponse } from "@/lib/vps/types";
+import { PROVEDORES_EMAIL, type ProvedorEmail, type VpsAgent, type VpsJob, type VpsResponse } from "@/lib/vps/types";
 
 // O agente faz sync a cada ~3 s; a tela acompanha no mesmo ritmo enquanto está visível.
 const POLL_MS = 3000;
@@ -266,6 +268,7 @@ export default function ContasVpsPage() {
 }
 
 interface Editavel {
+  provedorEmail: ProvedorEmail;
   email: string;
   nome: string;
   usuario: string;
@@ -276,9 +279,15 @@ interface Editavel {
   pais: string;
 }
 
-/** Editar: troca a proxy (tira a pausa e refaz da validação) e/ou os dados da conta. Senhas em branco = manter. */
+const FORM_VAZIO = { proxy: "", provedorEmail: "imap" as ProvedorEmail, email: "", senhaEmail: "", imapHost: "", imapPorta: "", senhaIg: "", nome: "", usuario: "", nascimento: "" };
+
+/**
+ * Editar: troca a proxy (tira a pausa e refaz da validação) e/ou os dados da
+ * conta. Senhas em branco = manter. Em provedor Portal, o campo E-mail é o
+ * link do painel e a senha é o código de resgate (um código por conta).
+ */
 function EditarContaDialog({ job, onClose, onSaved }: { job: VpsJob | null; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = React.useState({ proxy: "", email: "", senhaEmail: "", imapHost: "", imapPorta: "", senhaIg: "", nome: "", usuario: "", nascimento: "" });
+  const [form, setForm] = React.useState(FORM_VAZIO);
   const [atual, setAtual] = React.useState<Editavel | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -291,14 +300,26 @@ function EditarContaDialog({ job, onClose, onSaved }: { job: VpsJob | null; onCl
     setError(null);
     setAtual(null);
     // Zera antes de buscar: se o GET falhar, nada da conta anterior sobra no formulário.
-    setForm({ proxy: "", email: "", senhaEmail: "", imapHost: "", imapPorta: "", senhaIg: "", nome: "", usuario: "", nascimento: "" });
+    setForm(FORM_VAZIO);
     fetch(`/api/vps/contas/${encodeURIComponent(job.id)}`, { cache: "no-store" })
       .then(async (res) => {
         const body = (await res.json().catch(() => null)) as (Editavel & { error?: string }) | null;
         if (!res.ok || !body) throw new Error(body?.error ?? "Não foi possível ler os dados da conta.");
         if (!alive) return;
-        setAtual(body);
-        setForm({ proxy: "", email: body.email, senhaEmail: "", imapHost: body.imapHost, imapPorta: String(body.imapPorta), senhaIg: "", nome: body.nome, usuario: body.usuario, nascimento: body.nascimento });
+        const provedorEmail = PROVEDORES_EMAIL.some((p) => p.key === body.provedorEmail) ? body.provedorEmail : "imap";
+        setAtual({ ...body, provedorEmail });
+        setForm({
+          proxy: "",
+          provedorEmail,
+          email: body.email,
+          senhaEmail: "",
+          imapHost: body.imapHost,
+          imapPorta: body.imapPorta ? String(body.imapPorta) : "993",
+          senhaIg: "",
+          nome: body.nome,
+          usuario: body.usuario,
+          nascimento: body.nascimento,
+        });
       })
       .catch((e: Error) => alive && setError(e.message))
       .finally(() => alive && setLoading(false));
@@ -307,7 +328,30 @@ function EditarContaDialog({ job, onClose, onSaved }: { job: VpsJob | null; onCl
     };
   }, [job]);
 
-  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => {
+      const valor = e.target.value;
+      // Portal: "link | codigo" colado no campo do link separa em link + código.
+      if (key === "email" && f.provedorEmail === "portal" && valor.includes("|")) {
+        const lida = parseLinhaPortal(valor);
+        if (lida) return { ...f, email: lida.link, senhaEmail: lida.codigo };
+      }
+      return { ...f, [key]: valor };
+    });
+  // Trocar o provedor zera link/e-mail e senha: o que estava guardado era de outro provedor.
+  const trocarProvedor = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const provedorEmail = e.target.value as ProvedorEmail;
+    setForm((f) => ({
+      ...f,
+      provedorEmail,
+      email: atual && provedorEmail === atual.provedorEmail ? atual.email : "",
+      senhaEmail: "",
+      imapHost: atual && provedorEmail === "imap" && atual.provedorEmail === "imap" ? atual.imapHost : "",
+      imapPorta: "993",
+    }));
+  };
+  const rotulos = ROTULOS_EMAIL[form.provedorEmail];
+  const mesmoProvedor = atual?.provedorEmail === form.provedorEmail;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -360,11 +404,39 @@ function EditarContaDialog({ job, onClose, onSaved }: { job: VpsJob | null; onCl
             onChange={set("proxy")}
             autoComplete="off"
           />
+          <Select
+            label="Provedor de e-mail"
+            value={form.provedorEmail}
+            onChange={trocarProvedor}
+            options={PROVEDORES_EMAIL.map((p) => ({ value: p.key, label: p.label }))}
+            hint={rotulos.descricao}
+          />
           <div className="grid gap-4 sm:grid-cols-2">
-            <Input label="E-mail" type="email" value={form.email} onChange={set("email")} autoComplete="off" required />
-            <Input label="Senha do e-mail" type="password" hint="Em branco = mantém." value={form.senhaEmail} onChange={set("senhaEmail")} autoComplete="new-password" />
-            <Input label="Host IMAP" value={form.imapHost} onChange={set("imapHost")} autoComplete="off" />
-            <Input label="Porta IMAP" inputMode="numeric" value={form.imapPorta} onChange={set("imapPorta")} autoComplete="off" />
+            <Input
+              label={rotulos.email}
+              type={form.provedorEmail === "portal" ? "url" : "email"}
+              placeholder={rotulos.placeholderEmail || undefined}
+              value={form.email}
+              onChange={set("email")}
+              autoComplete="off"
+              required
+            />
+            <Input
+              label={rotulos.senha}
+              type={form.provedorEmail === "portal" ? "text" : "password"}
+              hint={mesmoProvedor ? `Em branco = mantém. ${rotulos.dicaSenha}` : rotulos.dicaSenha}
+              value={form.senhaEmail}
+              onChange={set("senhaEmail")}
+              autoComplete={form.provedorEmail === "portal" ? "off" : "new-password"}
+              className={form.provedorEmail === "portal" ? "font-mono uppercase" : undefined}
+              required={!mesmoProvedor && form.provedorEmail !== "manual"}
+            />
+            {form.provedorEmail === "imap" && (
+              <>
+                <Input label="Host IMAP" value={form.imapHost} onChange={set("imapHost")} autoComplete="off" />
+                <Input label="Porta IMAP" inputMode="numeric" value={form.imapPorta} onChange={set("imapPorta")} autoComplete="off" />
+              </>
+            )}
             <Input label="Senha do Instagram" type="password" hint="Em branco = mantém." value={form.senhaIg} onChange={set("senhaIg")} autoComplete="new-password" />
             <Input label="Nome completo" value={form.nome} onChange={set("nome")} autoComplete="off" required />
             <Input label="Usuário (opcional)" placeholder="sem @" value={form.usuario} onChange={set("usuario")} autoComplete="off" />
