@@ -304,7 +304,8 @@ export async function abrirInstagram(ctx) {
  * 5 abas de 216 px; barra de ~131 px acima da navegação do sistema (app=1080x1794).
  * Usado quando o uiautomator não lê o feed (vídeo tocando: dump vazio ou travado — ig-6, 08/11).
  */
-const ABA_XY = { inicio: [108, 1729], pesquisa: [324, 1729], reels: [756, 1729], perfil: [972, 1729] };
+// Ordem desta build (454, medida no ig-6): início, reels, mensagens, pesquisa, perfil.
+const ABA_XY = { inicio: [108, 1731], reels: [324, 1731], pesquisa: [756, 1731], perfil: [972, 1731] };
 
 export async function irPara(ctx, aba) {
   const { d, log = () => {} } = ctx;
@@ -381,21 +382,91 @@ export function contaGrande(texto) {
  */
 async function seguirUm(ctx, usuario) {
   const { d, log = () => {} } = ctx;
-  // decisão (08/11): o perfil abre pelo deep link instagram://user?username=… — a pesquisa (grade do Explorar
-  // com reels tocando) derruba o uiautomator ("null root node") e a etapa não achava nem o campo de digitar.
-  // A página do perfil é lida normalmente (profile_header_follow_button, "N mi seguidores").
-  await d.shell("am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", `instagram://user?username=${usuario}`, INSTAGRAM).catch((e) => log(`deep link: ${e.message}`));
-  await esperar(sortear(4000, 7000));
-  const tela = await esperarTela(d, (n) => (botaoDoPerfil(n) ? n : null), { timeoutMs: 25_000, descricao: `o perfil @${usuario}` }).catch(() => null);
-  if (!tela) return "o perfil não abriu";
-  const seguidores = tela.find((n) => /seguidores|followers/i.test(n.descricao + " " + n.texto) && /\d/.test(n.descricao + " " + n.texto));
-  const resumo = seguidores ? seguidores.descricao || seguidores.texto : "";
+  const acharCampo = (nos) =>
+    campoDeTexto(nos) ?? acharId(nos, ig("action_bar_search_edit_text")) ?? acharTexto(nos, ["Pesquisar", "Search", "Pesquisa"], { exato: true });
+  // Na grade do Explorar (reels tocando) o uiautomator ora devolve "null root node", ora a janela do launcher
+  // por trás (ig-6, 08/11): só vale leitura com nós do Instagram; o foco (dumpsys) diz se ele está na frente.
+  const lerIg = async () => {
+    const nos = await d.tela().catch(() => []);
+    return nos.some((n) => n.pacote === INSTAGRAM) ? nos : [];
+  };
+  const igNaFrente = async () => /com\.instagram\.android\//.test(await d.focoAtual());
+
+  // Caminho do dono: pesquisar o @, abrir a conta (ou a aba Contas) e tocar em Seguir — nada de deep link.
+  await irPara(ctx, "pesquisa");
+  let nos = await lerIg();
+  if (!acharCampo(nos)) {
+    if (!(await igNaFrente())) {
+      await d.abrirApp(INSTAGRAM);
+      await esperar(6000);
+      await irPara(ctx, "pesquisa");
+    }
+    // A barra "Pesquisar" fica fixa no topo do Explorar (1080x1920): toque pela posição, sem depender da leitura.
+    log("pesquisa: barra pela posição");
+    await d.tocar(540, 133);
+    await esperar(3000);
+    nos = await lerIg();
+  }
+  let campo = acharCampo(nos);
+  if (campo && !/EditText/.test(campo.classe)) {
+    await tocarNo(d, campo, 1500);
+    campo = await esperarTela(d, campoDeTexto, { timeoutMs: 10_000, descricao: "o campo da pesquisa" }).catch(() => null);
+  }
+  if (campo) {
+    await preencher(d, campo, usuario);
+  } else {
+    // Tela de digitar sem leitura: o foco já é o campo da pesquisa; digita direto e lê os resultados.
+    if (!(await igNaFrente())) throw new Error("o Instagram saiu da frente ao abrir a pesquisa");
+    log("pesquisa: campo sem leitura, digitando direto");
+    await d.digitar(usuario);
+  }
+  const topoLista = campo?.y ?? 150;
+  await esperar(sortear(3000, 5000));
+
+  // A lista que aparece ao digitar tem a sugestão de pesquisa (o termo, com a lupa) e as contas.
+  // Pedido do dono (02/11): tocar na CONTA (row_search_user_username), não na sugestão — ela abre
+  // a página de resultados e atrasava tudo.
+  const alvoUsuario = usuario.toLowerCase();
+  const acharConta = (lista) => lista.find((n) => n.id === ig("row_search_user_username") && n.texto.toLowerCase() === alvoUsuario) ?? null;
+  nos = await d.tela();
+  let linha = acharConta(nos);
+  if (!linha) {
+    await esperar(2500);
+    nos = await d.tela();
+    linha = acharConta(nos);
+  }
+  if (!linha) {
+    // Só veio a sugestão: abre o resultado e vai na aba "Contas" (em "Para ti" a lista de contas pode vir vazia).
+    const termo = nos.find((n) => n.texto.toLowerCase() === alvoUsuario && n.y > topoLista + 20);
+    if (!termo) return "não apareceu na pesquisa";
+    await tocarNo(d, termo, 3000);
+    nos = await d.tela();
+    const abaContas = nos.find((n) => n.clicavel && /^(Contas|Accounts)\b/i.test(n.descricao) && /TabWidget/.test(n.classe));
+    if (abaContas) {
+      await tocarNo(d, abaContas, sortear(2500, 4000));
+      nos = await d.tela();
+    }
+    linha = acharConta(nos);
+    if (!linha) return "não apareceu na pesquisa";
+  }
+  const mesmaLinha = (n) => Math.abs(n.y - linha.y) < 60;
+  const resumo = nos.find((n) => n.id === ig("row_search_user_fullname") && mesmaLinha(n))?.texto ?? "";
   if (contaGrande(resumo) === false) return `conta pequena (${resumo})`;
-  const alvo = botaoDoPerfil(tela);
-  await esperar(sortear(3000, 8000)); // olha o perfil antes de seguir
+
+  let tela = nos;
+  let alvo = nos.find((n) => n.id === ig("row_search_user_follow_button") && mesmaLinha(n));
+  if (alvo) {
+    await esperar(sortear(2000, 5000)); // olha o resultado antes de seguir
+  } else {
+    await tocarNo(d, linha, 4000);
+    tela = await esperarTela(d, (n) => (botaoDoPerfil(n) ? n : null), { timeoutMs: 20_000, descricao: `o perfil @${usuario}` }).catch(() => null);
+    if (!tela) return "o perfil não abriu";
+    alvo = botaoDoPerfil(tela);
+    await esperar(sortear(3000, 8000)); // olha o perfil antes de seguir
+  }
   const rotulo = rotuloEm(tela, alvo);
   if (ehUm(rotulo, SEGUINDO)) return "já seguia";
-  if (!ehUm(rotulo, SEGUIR) && !/^(Seguir|Follow)\b/i.test(alvo.descricao)) return `botão desconhecido (${rotulo || "sem texto"})`;
+  if (!ehUm(rotulo, SEGUIR)) return `botão desconhecido (${rotulo || "sem texto"})`;
 
   await tocarNo(d, alvo, 3000);
   const depois = await d.tela().catch(() => []);
