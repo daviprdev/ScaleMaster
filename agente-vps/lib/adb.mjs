@@ -188,6 +188,12 @@ export class Dispositivo {
     return this.shell("input", "keyevent", codigo);
   }
 
+  /** Janela com foco ("com.instagram.android/…MainTabActivity"), pelo dumpsys: na hora, sem uiautomator. */
+  async focoAtual() {
+    const saida = await this.shell("dumpsys", "window").catch(() => "");
+    return /mCurrentFocus=Window\{[^}]*\s([^\s}]+)\}/.exec(saida)?.[1] ?? "";
+  }
+
   /**
    * Abre o app pela atividade LAUNCHER resolvida (`cmd package resolve-activity`
    * + `am start -W`). O `monkey` do redroid 13 aborta (rc 251, "VM exiting with

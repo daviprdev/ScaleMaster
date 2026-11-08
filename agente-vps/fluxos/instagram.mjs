@@ -299,14 +299,31 @@ export async function abrirInstagram(ctx) {
 }
 
 /** Vai para uma aba (inicio, pesquisa, reels, perfil), fechando o que estiver por cima. */
+/**
+ * Centro de cada aba na barra de baixo em 1080x1920 (RESOLUCAO/DPI fixos de lib/vps/device.ts):
+ * 5 abas de 216 px; barra de ~131 px acima da navegação do sistema (app=1080x1794).
+ * Usado quando o uiautomator não lê o feed (vídeo tocando: dump vazio ou travado — ig-6, 08/11).
+ */
+const ABA_XY = { inicio: [108, 1729], pesquisa: [324, 1729], reels: [756, 1729], perfil: [972, 1729] };
+
 export async function irPara(ctx, aba) {
-  const { d } = ctx;
+  const { d, log = () => {} } = ctx;
   for (let tentativa = 0; tentativa < 8; tentativa++) {
     const nos = await d.tela().catch(() => []);
     const alvo = acharAba(nos, aba);
     if (alvo) {
       await tocarNo(d, alvo, 2500);
       return;
+    }
+    // Feed sem leitura (dump vazio) mas com o Instagram na frente: toca a aba pela posição fixa da barra.
+    if (nos.length === 0 || !doInstagram(nos)) {
+      const foco = await d.focoAtual();
+      if (/com\.instagram\.android\/.*MainTabActivity/.test(foco) && ABA_XY[aba]) {
+        log(`aba ${aba} pela posição (tela sem leitura)`);
+        await d.tocar(...ABA_XY[aba]);
+        await esperar(2500);
+        return;
+      }
     }
     if (nos.length > 0 && !doInstagram(nos) && !doSistema(nos)) {
       await d.abrirApp(INSTAGRAM);
