@@ -110,9 +110,8 @@ const ARGS_REDROID = [
   "androidboot.redroid_fps=30",
   // decisão: kernel sem ashmem (Ubuntu 26.04 / 7.0): o redroid usa memfd, igual ao teste-ig que já roda nesta VPS.
   "androidboot.use_memfd=true",
-  // DNS do Android direto em 1.1.1.1: o UDP 53 é redirecionado para o dnsu2t do sidecar (DNS sobre TCP pela proxy).
+  // dns1 = IP do próprio container (unbound do sidecar na 53): entra por container em criarContainer.
   "androidboot.redroid_net_ndns=1",
-  "androidboot.redroid_net_dns1=1.1.1.1",
 ];
 
 function nomeDe(index) {
@@ -333,7 +332,7 @@ export class Android {
     ];
     for (const p of PARTICOES) args.push("-v", `${path.join(props, `${p.nome}.prop`)}:${p.destino}:ro`);
     // decisão: além do -e, o mesmo androidboot.selinux vai na cmdline, que é de onde o redroid lê os androidboot.*.
-    args.push(IMAGEM, ...ARGS_REDROID, "androidboot.selinux=permissive", `androidboot.serialno=${spec.device.serial}`);
+    args.push(IMAGEM, ...ARGS_REDROID, `androidboot.redroid_net_dns1=${ipDe(spec.index)}`, "androidboot.selinux=permissive", `androidboot.serialno=${spec.device.serial}`);
     await docker(args, 120_000);
     spec.recriar = false;
     gravarSpec(spec);

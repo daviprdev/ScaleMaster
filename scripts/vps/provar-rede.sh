@@ -33,8 +33,10 @@ PAIS="$(node -e 'const s=JSON.parse(require("fs").readFileSync(process.argv[1],"
 PROXY_HOST="$(node -e 'const u=new URL(process.argv[1]);process.stdout.write(u.hostname)' "$PROXY")"
 
 # Sonda no netns do container; devolve o código do comando.
-sonda() { docker run --rm --network "container:$NOME" "$IMAGEM" sh -c "$1" 2>/dev/null; }
-sonda_saida() { docker run --rm --network "container:$NOME" "$IMAGEM" sh -c "$1" 2>/dev/null || true; }
+# A sonda resolve nomes no unbound do sidecar (IP do container, porta 53), igual ao Android (dns1); nunca no 127.0.0.11 do Docker.
+PRE='IP=$(ip -4 -o addr show eth0 | sed -n "s/.*inet \\([0-9.]*\\).*/\\1/p" | head -1); printf "nameserver %s\\n" "$IP" > /etc/resolv.conf; '
+sonda() { docker run --rm --network "container:$NOME" "$IMAGEM" sh -c "$PRE$1" 2>/dev/null; }
+sonda_saida() { docker run --rm --network "container:$NOME" "$IMAGEM" sh -c "$PRE$1" 2>/dev/null || true; }
 
 # Sobe o sidecar pelo mesmo código do agente (modo proxy ou bloqueado).
 sidecar() {
@@ -50,14 +52,14 @@ nok()  { FALHOU=$((FALHOU+1)); log "FALHA $*"; }
 log "(a) sidecar bloqueado"
 sidecar "" || { log "não subiu o sidecar bloqueado"; exit 1; }
 sleep 2
-if sonda "nslookup -timeout=5 instagram.com 1.1.1.1 >/dev/null"; then nok "(a) DNS resolveu em modo bloqueado"; else ok "(a) DNS não resolve"; fi
+if sonda "nslookup -timeout=5 instagram.com >/dev/null"; then nok "(a) DNS resolveu em modo bloqueado"; else ok "(a) DNS não resolve"; fi
 if sonda "curl -sS -m 8 -o /dev/null http://1.1.1.1/"; then nok "(a) TCP abriu em modo bloqueado"; else ok "(a) TCP não abre"; fi
 
 # (b) proxy: DNS e TCP têm que abrir
 log "(b) sidecar com a proxy ($PROXY_HOST)"
 sidecar "$PROXY" || { log "não subiu o sidecar com a proxy (proxy morta?)"; nok "(b) sidecar"; }
 sleep 3
-if sonda "nslookup -timeout=10 instagram.com 1.1.1.1 >/dev/null"; then ok "(b) DNS resolve pela proxy"; else nok "(b) DNS não resolveu com a proxy"; fi
+if sonda "nslookup -timeout=10 instagram.com >/dev/null"; then ok "(b) DNS resolve pela proxy"; else nok "(b) DNS não resolveu com a proxy"; fi
 if sonda "curl -sS -m 20 -o /dev/null https://www.instagram.com/"; then ok "(b) TCP abre pela proxy"; else nok "(b) TCP não abriu com a proxy"; fi
 
 # (c) geo de dentro do netns = país da proxy
@@ -75,7 +77,7 @@ fi
 log "(d) redsocks parado"
 docker rm -f "$SIDECAR" >/dev/null 2>&1 || true
 sleep 1
-if sonda "nslookup -timeout=5 instagram.com 1.1.1.1 >/dev/null"; then nok "(d) DNS resolveu sem o redsocks"; else ok "(d) DNS não resolve sem o redsocks"; fi
+if sonda "nslookup -timeout=5 instagram.com >/dev/null"; then nok "(d) DNS resolveu sem o redsocks"; else ok "(d) DNS não resolve sem o redsocks"; fi
 if sonda "curl -sS -m 8 -o /dev/null http://1.1.1.1/"; then nok "(d) TCP abriu sem o redsocks"; else ok "(d) TCP não abre sem o redsocks"; fi
 if sonda "curl -sS -m 8 -o /dev/null https://www.instagram.com/"; then nok "(d) HTTPS abriu sem o redsocks"; else ok "(d) nada sai sem o redsocks"; fi
 

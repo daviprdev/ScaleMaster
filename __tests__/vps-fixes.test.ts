@@ -227,9 +227,10 @@ describe("Kill switch (rede.mjs)", () => {
     const s = scriptSidecar();
     const ordem = [
       "iptables -t nat -A OUTPUT -m owner --uid-owner 60000 -j RETURN",
-      "iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5300",
+      "iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 53",
       "iptables -t nat -A OUTPUT -p tcp --dport 53 -j REDIRECT --to-ports 12345",
       "iptables -t nat -A OUTPUT -p tcp -j REDIRECT --to-ports 12345",
+      "iptables -A OUTPUT -d 127.0.0.11 -j DROP",
       "iptables -A OUTPUT -o lo -j ACCEPT",
       "iptables -A OUTPUT -m owner --uid-owner 60000 -j ACCEPT",
       "iptables -A OUTPUT -p udp --dport 53 -j ACCEPT",
@@ -248,6 +249,8 @@ describe("Kill switch (rede.mjs)", () => {
     expect(s).toContain('exec su-exec redsocks gost -L "red://:12345" -F "$PROXY_URL"');
     expect(s).toContain('username: "redsocks"');
     expect(s).toContain("tcp-upstream: yes");
+    expect(s).toContain("interface: $IP_NETNS@53");
+    expect(s).toContain("nameserver %s");
     expect(s).toContain("adduser -D -H -s /sbin/nologin -u 60000 redsocks");
     // Política DROP antes de qualquer flush: falha no meio do script fecha, nunca abre.
     expect(s.indexOf("iptables -P OUTPUT DROP")).toBeLessThan(s.indexOf("iptables -F OUTPUT"));

@@ -26,7 +26,8 @@ export const REDE = "vpsnet";
 export const SUBREDE = "10.77.0.0/24";
 export const IMAGEM_SIDECAR = "scalemaster-redsocks:1";
 const PORTA_REDSOCKS = 12345;
-const PORTA_DNS = 5300;
+// decisão: o unbound escuta na 53 do IP do container e o Android aponta o dns1 para esse IP: o REDIRECT de UDP para loopback não fecha a volta no netns do redroid (testado), então o DNS não passa por NAT.
+const PORTA_DNS = 53;
 const DNS_REMOTO = "1.1.1.1";
 export const PASTA_REDE = "/opt/scalemaster/vps/rede";
 
@@ -76,10 +77,11 @@ export const UID_REDSOCKS = 60000;
  *   filter OUTPUT: lo ACCEPT → ESTABLISHED/RELATED ACCEPT (respostas do adb que entrou)
  *                  → owner redsocks ACCEPT → udp/53 ACCEPT → udp/443 REJECT (derruba o QUIC
  *                  para o app cair em TCP sem esperar timeout) → tcp ACCEPT → DROP final.
- * O DNS nunca sai pelo resolver da VPS: udp/53 vai para o unbound do sidecar
- * (encaminhador, tcp-upstream: DNS sobre TCP direto em 1.1.1.1, com o uid do
- * redsocks) e tcp/53 para o redsocks (CONNECT 1.1.1.1:53 pela proxy), os dois
- * antes de qualquer ACCEPT. Em modo bloqueado só ficam lo, ESTABLISHED, o
+ * O DNS nunca sai pelo resolver da VPS: o Android usa como dns1 o IP do
+ * próprio container, onde o unbound do sidecar atende na 53 (encaminhador,
+ * tcp-upstream: DNS sobre TCP direto em 1.1.1.1, com o uid do redsocks); udp/53
+ * para outro IP cai no REDIRECT e tcp/53 no redsocks, antes de qualquer ACCEPT;
+ * 127.0.0.11 (DNS embutido do Docker, que sai pelo host) é DROP. Em modo bloqueado só ficam lo, ESTABLISHED, o
  * REJECT do QUIC e o DROP: nem DNS sai. O redsocks roda com o uid dedicado
  * (base.user): é o owner, pelo número, que o libera. A política de OUTPUT vira
  * DROP antes de qualquer regra: falha no meio do script fecha, nunca abre.
@@ -96,13 +98,18 @@ id redsocks >/dev/null 2>&1 || adduser -D -H -s /sbin/nologin -u ${UID_REDSOCKS}
 iptables -P OUTPUT DROP
 iptables -t nat -F OUTPUT 2>/dev/null || true
 iptables -F OUTPUT 2>/dev/null || true
+# IP do container na vpsnet: é nele (porta 53) que o unbound atende o Android e o próprio sidecar.
+IP_NETNS="$(ip -4 -o addr show eth0 | sed -n 's/.*inet \\([0-9.]*\\).*/\\1/p' | head -1)"
+[ -n "$IP_NETNS" ] || { echo "sem IP em eth0" >&2; exit 1; }
+printf 'nameserver %s\\n' "$IP_NETNS" > /etc/resolv.conf
 if [ "$MODO" = "proxy" ]; then
   [ -n "$PROXY_URL" ] || { echo "PROXY_URL vazia" >&2; exit 1; }
-  # DNS UDP → TCP: unbound na porta ${PORTA_DNS}, só encaminhador (tcp-upstream), rodando como o uid do redsocks.
+  # DNS UDP → TCP: unbound em $IP_NETNS:${PORTA_DNS}, só encaminhador (tcp-upstream), rodando como o uid do redsocks.
   mkdir -p /etc/unbound
   cat > /etc/unbound/sidecar.conf <<CONF
 server:
-  interface: 0.0.0.0@${PORTA_DNS}
+  interface: $IP_NETNS@${PORTA_DNS}
+  interface: 127.0.0.1@${PORTA_DNS}
   port: ${PORTA_DNS}
   do-udp: yes
   do-tcp: yes
@@ -127,17 +134,18 @@ CONF
   unbound -c /etc/unbound/sidecar.conf
   iptables -t nat -A OUTPUT -o lo -j RETURN
   iptables -t nat -A OUTPUT -m owner --uid-owner ${UID_REDSOCKS} -j RETURN
+  # Resolver fixo em outro IP (8.8.8.8 etc.) cai no unbound; se a volta do NAT não fechar, falha fechado.
   iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports ${PORTA_DNS}
   iptables -t nat -A OUTPUT -p tcp --dport 53 -j REDIRECT --to-ports ${PORTA_REDSOCKS}
   iptables -t nat -A OUTPUT -p tcp -j REDIRECT --to-ports ${PORTA_REDSOCKS}
 fi
+# DNS embutido do Docker (127.0.0.11) encaminha pelo dockerd do host: nunca.
+iptables -A OUTPUT -d 127.0.0.11 -j DROP
 iptables -A OUTPUT -o lo -j ACCEPT
 iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 if [ "$MODO" = "proxy" ]; then
   iptables -A OUTPUT -m owner --uid-owner ${UID_REDSOCKS} -j ACCEPT
   iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
-  # Depois do REDIRECT o filter já vê udp/${PORTA_DNS} (o -o lo não casa no nf_tables): libera o salto ao unbound.
-  iptables -A OUTPUT -p udp --dport ${PORTA_DNS} -j ACCEPT
 fi
 iptables -A OUTPUT -p udp --dport 443 -j REJECT --reject-with icmp-port-unreachable
 if [ "$MODO" = "proxy" ]; then
