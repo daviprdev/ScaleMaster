@@ -140,7 +140,7 @@ function gravarSpec(spec) {
 }
 
 const FORMATO_INSPECT =
-  '{{.State.Status}}|{{.Created}}|{{index .Config.Labels "scalemaster.nome"}}|{{index .Config.Labels "scalemaster.conta"}}|{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}|{{.NetworkSettings.MacAddress}}';
+  '{{.State.Status}}|{{.Created}}|{{index .Config.Labels "scalemaster.nome"}}|{{index .Config.Labels "scalemaster.conta"}}|{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}|{{range .NetworkSettings.Networks}}{{.MacAddress}}{{end}}';
 
 /** Um docker inspect só: estado, Created, labels de nome e conta, volume de /data e MAC. null = não existe. */
 async function inspecionar(nome) {
