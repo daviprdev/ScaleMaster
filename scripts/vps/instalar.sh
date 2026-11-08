@@ -98,6 +98,16 @@ vm.overcommit_memory = 1
 EOF
 sysctl --system >/dev/null
 
+echo "== módulos netfilter do sidecar (owner, conntrack, REDIRECT, REJECT, nat)"
+# O iptables (nf_tables) do sidecar roda no netns do container, mas os módulos são do kernel do host:
+# sem xt_owner o "-m owner --uid-owner" falha com "Extension owner revision 0 not supported".
+# REJECT: ipt_REJECT ou xt_REJECT conforme o kernel (ou embutido); o que não existir é pulado.
+: > /etc/modules-load.d/scalemaster-vps.conf
+for m in xt_owner xt_conntrack xt_REDIRECT xt_tcpudp nf_nat nf_conntrack ipt_REJECT xt_REJECT; do
+  modprobe -q "$m" 2>/dev/null && echo "$m" >> /etc/modules-load.d/scalemaster-vps.conf || true
+done
+lsmod | grep -q '^xt_owner' || { echo "xt_owner não carregou: o kill switch do sidecar depende dele" >&2; exit 1; }
+
 echo "== bridge vpsnet (10.77.0.0/24)"
 docker network inspect vpsnet >/dev/null 2>&1 || \
   docker network create --driver bridge --subnet 10.77.0.0/24 --gateway 10.77.0.1 -o com.docker.network.bridge.name=vpsnet vpsnet >/dev/null

@@ -86,6 +86,9 @@ export const UID_REDSOCKS = 60000;
 export function scriptSidecar() {
   return `set -e
 id redsocks >/dev/null 2>&1 || adduser -D -H -s /sbin/nologin -u ${UID_REDSOCKS} redsocks
+# Política DROP ANTES de mexer nas regras: se qualquer comando daqui para baixo falhar
+# (módulo xt_* ausente, redsocks morto), o netns fica fechado, nunca aberto.
+iptables -P OUTPUT DROP
 iptables -t nat -F OUTPUT 2>/dev/null || true
 iptables -F OUTPUT 2>/dev/null || true
 if [ "$MODO" = "proxy" ]; then
@@ -157,11 +160,23 @@ export async function subirSidecar(container, proxy) {
     { timeoutMs: 120_000 }
   );
   if (r.codigo !== 0) throw new Error(`sidecar de ${container} não subiu: ${trecho(r.stderr)}`);
-  await esperar(1500);
-  const vivo = await rodar("docker", ["inspect", "--format", "{{.State.Running}}", nomeSidecar(container)], { timeoutMs: 20_000 });
-  if (trecho(vivo.stdout) !== "true") {
+  // Pronto = container rodando, sem nenhum restart (o --restart esconderia um crash em loop) e "sidecar pronto" no log.
+  const limite = Date.now() + 15_000;
+  for (;;) {
+    await esperar(1000);
+    const st = await rodar("docker", ["inspect", "--format", "{{.State.Running}} {{.RestartCount}} {{.State.ExitCode}}", nomeSidecar(container)], { timeoutMs: 20_000 });
+    const [running, restarts, exitCode] = trecho(st.stdout).split(" ");
     const logs = await rodar("docker", ["logs", "--tail", "20", nomeSidecar(container)], { timeoutMs: 20_000 });
-    throw new Error(`sidecar de ${container} morreu: ${trecho(logs.stderr || logs.stdout)}`);
+    const saida = `${logs.stdout ?? ""}\n${logs.stderr ?? ""}`;
+    if (running !== "true" || Number(restarts) > 0) {
+      await pararSidecar(container);
+      throw new Error(`sidecar de ${container} morreu (exit ${exitCode}, ${restarts} restart(s)): ${trecho(saida.replace(/password = "[^"]*"/g, 'password = "***"'), 300)}`);
+    }
+    if (/sidecar pronto/.test(saida)) return;
+    if (Date.now() > limite) {
+      await pararSidecar(container);
+      throw new Error(`sidecar de ${container} não ficou pronto em 15 s: ${trecho(saida, 300)}`);
+    }
   }
 }
 
