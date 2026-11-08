@@ -317,8 +317,11 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
       nome: "email",
       teste: (nos) => ehTelaEmail(nos),
       agir: async (nos) => {
-        if (temTexto(nos, ["já está a ser utilizado", "já está sendo usado", "already", "já tem uma conta", "já existe"])) {
-          throw new Error(`O Instagram diz que ${enderecoAtual()} já tem conta.`);
+        // Só frases de e-mail em uso. "already" solto casava com o botão "I already have an account"
+        // quando o Instagram abre em inglês (lote de 08/11: 4 contas paradas em falso).
+        const emUso = ["já está a ser utilizado", "já está sendo usado", "já está em uso", "já existe uma conta", "email já cadastrado", "already in use", "is already registered", "already taken", "belongs to an existing account"];
+        if (temTexto(nos, emUso)) {
+          throw new Error(`O Instagram diz que o e-mail ${mail.email ?? "da conta"} já tem conta.`);
         }
         const campo = campoPor(nos, ["E-mail", "Email"]);
         if (!campo) throw new Error("Não achei o campo do e-mail.");
