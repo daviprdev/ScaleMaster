@@ -5,6 +5,7 @@ import { Check, Copy, HardDriveDownload, Plus, Power, PowerOff, Server, Unplug }
 import { Badge, Banner, Button, Card, Dialog, EmptyState, ProgressBar, type BadgeTone } from "@/components/ui";
 import type { EmulatorInstance, InstanceState } from "@/lib/emulador/types";
 import { timeAgo } from "@/lib/emulador/view";
+import { rotuloAlerta } from "@/lib/vps/painel";
 import type { VpsAgent, VpsJob } from "@/lib/vps/types";
 
 const STATE_BADGE: Record<InstanceState, { tone: BadgeTone; label: string }> = {
@@ -92,7 +93,7 @@ export function AgenteVpsCard({ agent, now, linked, queued, alerts, sending, onC
                   agent={agent}
                   instance={inst}
                   conta={linked.get(inst.index)}
-                  alert={inst.alert ?? alerts.get(inst.index)}
+                  alert={rotuloAlerta(inst.alert ?? alerts.get(inst.index)) ?? undefined}
                   busy={queued.has(inst.index) || sending.has(`${agent.id}:${inst.index}`)}
                   onCommand={onCommand}
                 />
