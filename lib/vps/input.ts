@@ -299,7 +299,7 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
     if (quantidade < LOTE_MIN) return { error: "Cole ao menos uma linha do hstock (link | código)." };
     if (quantidade > LOTE_MAX) return { error: `No máximo ${LOTE_MAX} contas por envio (${quantidade} linhas).` };
     if (proxies.value.length < quantidade) {
-      return { error: `São ${quantidade} código(s) e ${proxies.value.length} proxy(s): uma proxy por conta, cole mais ${quantidade - proxies.value.length}.` };
+      return { error: `${proxies.value.length} proxies para ${quantidade} contas: cole uma proxy por conta.` };
     }
     const contas: VpsContaDados[] = [];
     const vistos = new Set<string>();

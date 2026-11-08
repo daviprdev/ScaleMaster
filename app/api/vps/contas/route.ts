@@ -114,6 +114,7 @@ export async function POST(req: NextRequest) {
       versaoIg: lote.versaoIg,
       perfil: lote.perfil,
       provedorEmail: conta.provedorEmail,
+      ...(conta.provedorEmail === "portal" ? { portalLink: conta.email, portalCodigo: conta.senhaEmail } : {}),
       // portal: conta.email = link do painel, imap.senha = código de resgate (mesmos campos, ver lib/vps/types.ts).
       conta: { email: conta.email, senha: conta.senhaIg, nome: conta.nome, usuario: conta.usuario, nascimento: conta.nascimento },
       imap: { host: conta.imapHost, porta: conta.imapPorta, usuario: conta.email, senha: conta.senhaEmail },

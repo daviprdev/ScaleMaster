@@ -149,6 +149,9 @@ export interface VpsContaInput {
   perfil: DevicePerfil;
   /** Ausente nas contas antigas = imap. */
   provedorEmail?: ProvedorEmail;
+  /** Provedor portal: link do painel e código de resgate, como vieram da linha do hstock (também em conta.email / imap.senha). */
+  portalLink?: string;
+  portalCodigo?: string;
   conta: {
     /** Endereço; em `portal`, o link do painel. */
     email: string;

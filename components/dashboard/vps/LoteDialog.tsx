@@ -112,15 +112,15 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
             />
           </div>
           <Textarea
-            label={`Códigos do hstock (${quantidade} conta${quantidade === 1 ? "" : "s"})`}
+            label="Códigos do hstock"
             rows={Math.min(8, Math.max(3, quantidade))}
-            placeholder={"https://hridoyhub.shop/OTP/ | SUDXHRAY\nhttps://hridoyhub.shop/OTP/ | OUTROCOD"}
+            placeholder={"https://hridoyhub.shop/OTP/ | SUDXHRAY\nhttps://hridoyhub.shop/OTP/ | OUTROCOD\nSOCODIGO (usa o link padrão)"}
             hint={
               codigosInvalidos > 0
-                ? `${codigosInvalidos} linha(s) fora do formato "link | código".`
+                ? `Linha ${linhasCodigo.findIndex((l) => l === null) + 1} fora do formato "link | código" (${codigosInvalidos} inválida${codigosInvalidos === 1 ? "" : "s"}).`
                 : quantidade > LOTE_MAX
-                  ? `No máximo ${LOTE_MAX} contas por envio.`
-                  : "Uma linha por conta, no formato link | código. A quantidade de contas é o número de linhas."
+                  ? `${quantidade} contas: no máximo ${LOTE_MAX} por envio.`
+                  : `${quantidade} conta${quantidade === 1 ? "" : "s"} · uma linha por conta (link | código); só o código usa o link padrão.`
             }
             value={codigos}
             onChange={(e) => setCodigos(e.target.value)}
@@ -135,7 +135,7 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
               "error" in proxiesLidas
                 ? proxiesLidas.error
                 : faltamProxies > 0
-                  ? `Faltam ${faltamProxies} proxy(s): uma por conta, na ordem dos códigos.`
+                  ? `${proxiesCount} proxies para ${quantidade} contas: falta${faltamProxies === 1 ? "" : "m"} ${faltamProxies}.`
                   : "Uma por linha, na ordem dos códigos. Opcional: o país no fim (:US). Sobrando, as últimas são ignoradas."
             }
             value={proxies}

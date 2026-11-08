@@ -26,7 +26,7 @@ export function provedorDe(input) {
 /** Descrição curta da caixa para a etapa `email` e para os logs (sem segredo). */
 export function descricaoCaixa(input) {
   const p = provedorDe(input);
-  if (p === "portal") return `portal ${input?.conta?.email ?? ""} (código ${portalLib.mascarar(input?.imap?.senha)})`;
+  if (p === "portal") return `portal ${input?.portalLink ?? input?.conta?.email ?? ""} (código ${portalLib.mascarar(input?.portalCodigo ?? input?.imap?.senha)})`;
   if (p === "mailtm") return `mail.tm ${input?.conta?.email ?? ""}`;
   if (p === "manual") return `manual (${input?.conta?.email ?? ""})`;
   return `${input?.imap?.host ?? ""}:${input?.imap?.porta || 993} (${input?.conta?.email ?? ""})`;
@@ -47,10 +47,12 @@ export async function conferirCaixa(input, { portal = portalLib, imap = imapLib,
   const cred = input?.imap ?? {};
   if (p === "manual") return `manual: o código será pedido na aba (${conta.email})`;
   if (p === "portal") {
-    if (!conta.email || !cred.senha) throw new Error("Essa conta veio sem o link do portal ou sem o código de resgate.");
-    if (!portal.codigoValido(cred.senha)) throw new Error("Código de resgate fora do formato (6 a 12 letras/números).");
-    await portal.verificarPortal(conta.email);
-    return `portal acessível (código ${portal.mascarar(cred.senha)}); a sessão abre na hora do cadastro`;
+    const link = input?.portalLink ?? conta.email;
+    const codigo = input?.portalCodigo ?? cred.senha;
+    if (!link || !codigo) throw new Error("Essa conta veio sem o link do portal ou sem o código de resgate.");
+    if (!portal.codigoValido(codigo)) throw new Error("Código de resgate fora do formato (6 a 12 letras/números).");
+    await portal.verificarPortal(link);
+    return `portal acessível (código ${portal.mascarar(codigo)}); a sessão abre na hora do cadastro`;
   }
   if (p === "mailtm") {
     if (!conta.email || !cred.senha) throw new Error("Essa conta veio sem o endereço ou a senha do mail.tm.");
@@ -73,8 +75,9 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
   const cred = input?.imap ?? {};
 
   if (p === "portal") {
-    const link = String(conta.email ?? "");
-    const codigo = String(cred.senha ?? "");
+    // portalLink/portalCodigo vêm da linha do hstock; conta.email/imap.senha são os mesmos valores (contas antigas só têm estes).
+    const link = String(input?.portalLink ?? conta.email ?? "");
+    const codigo = String(input?.portalCodigo ?? cred.senha ?? "");
     let sessao = null;
     // Mensagens que já estavam na caixa quando o endereço foi digitado: OTP de tentativa anterior não vale.
     let vistos = null;

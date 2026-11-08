@@ -96,6 +96,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     versaoIg: anterior.versaoIg,
     perfil: anterior.perfil,
     provedorEmail: "portal",
+    portalLink: codigo.link,
+    portalCodigo: codigo.codigo,
     conta: { email: codigo.link, senha: pessoa.senha, nome: pessoa.nome, usuario: pessoa.usuario, nascimento: pessoa.nascimento },
     imap: { host: "", porta: 0, usuario: codigo.link, senha: codigo.codigo },
     device,
