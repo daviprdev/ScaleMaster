@@ -116,18 +116,22 @@ echo "== pastas"
 install -d -m 0755 /opt/scalemaster/apks /opt/scalemaster/midias /opt/scalemaster/midias/perfil
 install -d -m 0700 /opt/scalemaster/sessoes /opt/scalemaster/vps /opt/scalemaster/vps/instancias /opt/scalemaster/vps/props /opt/scalemaster/vps/base /opt/scalemaster/vps/rede
 
-echo "== imagem do sidecar (alpine + redsocks + unbound + iptables + curl)"
-# decisão: o redsocks 0.5 do Alpine não tem dnsu2t; o unbound (pacote do Alpine) faz o DNS UDP→TCP no sidecar (lib/rede.mjs).
+echo "== imagem do sidecar (gost red + unbound + iptables + curl)"
+# decisão: o redsocks 0.5 do Alpine não tem dnsu2t e trava no CONNECT com libevent 2.1; o redirecionador
+# transparente é o gost (gogost/gost 3.3.3, pinado pelo digest) e o unbound faz o DNS UDP→TCP (lib/rede.mjs).
+GOST_IMAGEM="gogost/gost@sha256:f266f957c6e4f8d433ed23202a5745fa4969d08f3f0ef034fb9357345e16ad67"
 TMP="$(mktemp -d)"
-cat > "$TMP/Dockerfile" <<'EOF'
-FROM alpine:3.20
+cat > "$TMP/Dockerfile" <<EOF
+FROM $GOST_IMAGEM
 # uid 60000 fixo (agente-vps/lib/rede.mjs UID_REDSOCKS): 1000/2000 são system/shell do Android, 10000+ os apps.
-RUN apk add --no-cache redsocks unbound iptables curl && adduser -D -H -s /sbin/nologin -u 60000 redsocks
+RUN apk add --no-cache unbound iptables curl su-exec && adduser -D -H -s /sbin/nologin -u 60000 redsocks
+ENTRYPOINT []
+CMD ["sh"]
 EOF
 docker build -q -t scalemaster-redsocks:1 "$TMP" >/dev/null
 rm -rf "$TMP"
-docker run --rm scalemaster-redsocks:1 sh -c 'redsocks -h >/dev/null 2>&1; unbound -V | head -1 && iptables -V' \
-  || { echo "a imagem do sidecar ficou sem redsocks/unbound/iptables" >&2; exit 1; }
+docker run --rm scalemaster-redsocks:1 sh -c 'gost -V && unbound -V | head -1 && iptables -V && su-exec redsocks id' \
+  || { echo "a imagem do sidecar ficou sem gost/unbound/iptables/su-exec" >&2; exit 1; }
 
 echo "== imagem do redroid ($IMAGEM_REDROID)"
 docker image inspect "$IMAGEM_REDROID" >/dev/null 2>&1 || docker pull -q "$IMAGEM_REDROID" >/dev/null

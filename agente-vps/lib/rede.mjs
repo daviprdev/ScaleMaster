@@ -84,7 +84,9 @@ export const UID_REDSOCKS = 60000;
  * (base.user): é o owner, pelo número, que o libera. A política de OUTPUT vira
  * DROP antes de qualquer regra: falha no meio do script fecha, nunca abre.
  */
-// decisão: o redsocks 0.5 do Alpine não tem dnsu2t; o unbound (pacote do Alpine) faz o UDP→TCP no lugar, como o mesmo uid, então o comportamento das regras é idêntico.
+// decisão: o redsocks 0.5 do Alpine não tem dnsu2t e, com libevent 2.1, aceita o cliente e nunca completa o CONNECT (trava sem log);
+// o redirecionador é o gost (modo red, imagem gogost/gost já usada nesta VPS) e o unbound faz o UDP→TCP, os dois com o uid 60000,
+// então as regras de iptables são as mesmas. Os nomes (redsocks, *-proxy, scalemaster-redsocks:1) ficam.
 // decisão: tcp/53 vai para a porta do redsocks, não para a do unbound, porque o unbound só serve o Android em UDP; pelo redsocks o DNS sobre TCP sai por CONNECT pela proxy.
 export function scriptSidecar() {
   return `set -e
@@ -95,11 +97,7 @@ iptables -P OUTPUT DROP
 iptables -t nat -F OUTPUT 2>/dev/null || true
 iptables -F OUTPUT 2>/dev/null || true
 if [ "$MODO" = "proxy" ]; then
-  cat > /etc/redsocks.conf <<CONF
-base { log_debug = off; log_info = on; log = "stderr"; daemon = off; redirector = iptables; user = "redsocks"; group = "redsocks"; }
-redsocks { local_ip = 0.0.0.0; local_port = ${PORTA_REDSOCKS}; ip = $PROXY_IP; port = $PROXY_PORT; type = http-connect; login = "$PROXY_USER"; password = "$PROXY_PASS"; }
-CONF
-  chown redsocks /etc/redsocks.conf && chmod 600 /etc/redsocks.conf
+  [ -n "$PROXY_URL" ] || { echo "PROXY_URL vazia" >&2; exit 1; }
   # DNS UDP → TCP: unbound na porta ${PORTA_DNS}, só encaminhador (tcp-upstream), rodando como o uid do redsocks.
   mkdir -p /etc/unbound
   cat > /etc/unbound/sidecar.conf <<CONF
@@ -147,7 +145,8 @@ if [ "$MODO" = "proxy" ]; then
 fi
 iptables -A OUTPUT -j DROP
 echo "sidecar pronto: modo $MODO"
-if [ "$MODO" = "proxy" ]; then exec redsocks -c /etc/redsocks.conf; fi
+# Redirecionador transparente: gost em modo red (SO_ORIGINAL_DST), com o uid do redsocks (é o owner que o libera das regras).
+if [ "$MODO" = "proxy" ]; then exec su-exec redsocks gost -L "red://:${PORTA_REDSOCKS}" -F "$PROXY_URL"; fi
 exec sleep infinity
 `;
 }
@@ -177,7 +176,9 @@ export async function subirSidecar(container, proxy) {
   if (proxy) {
     const p = lerProxy(proxy);
     const ip = /^\d+\.\d+\.\d+\.\d+$/.test(p.host) ? p.host : (await lookup(p.host, { family: 4 })).address;
-    env.push("-e", `PROXY_IP=${ip}`, "-e", `PROXY_PORT=${p.porta}`, "-e", `PROXY_USER=${p.usuario}`, "-e", `PROXY_PASS=${p.senha}`);
+    // URL da proxy já com o IP (o netns não resolve nada fora do unbound) e credenciais escapadas para o gost.
+    const auth = p.usuario ? `${encodeURIComponent(p.usuario)}:${encodeURIComponent(p.senha)}@` : "";
+    env.push("-e", `PROXY_IP=${ip}`, "-e", `PROXY_PORT=${p.porta}`, "-e", `PROXY_URL=http://${auth}${ip}:${p.porta}`);
   }
   const r = await rodar(
     "docker",
@@ -201,7 +202,7 @@ export async function subirSidecar(container, proxy) {
     const saida = `${logs.stdout ?? ""}\n${logs.stderr ?? ""}`;
     if (running !== "true" || Number(restarts) > 0) {
       await pararSidecar(container);
-      throw new Error(`sidecar de ${container} morreu (exit ${exitCode}, ${restarts} restart(s)): ${trecho(saida.replace(/password = "[^"]*"/g, 'password = "***"'), 300)}`);
+      throw new Error(`sidecar de ${container} morreu (exit ${exitCode}, ${restarts} restart(s)): ${trecho(saida.replace(/\/\/[^/@\s]+@/g, "//***@"), 300)}`);
     }
     if (/sidecar pronto/.test(saida)) return;
     if (Date.now() > limite) {
