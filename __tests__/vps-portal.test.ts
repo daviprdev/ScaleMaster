@@ -140,6 +140,11 @@ describe("Portal: parsers do painel (agente-vps/lib/portal.mjs)", () => {
       })
     ).toBe("333333");
     expect(extrairOtp({ ...STATUS_SEM, mails: [{ id: "1", subject: "Thank You for Your Purchase | Hridoy Bot Hub" }] })).toBeNull();
+    // OTP de uma tentativa anterior (id já visto) não vale; o novo vale.
+    const dois = { ...STATUS_SEM, mails: [{ id: "velho", otp: "804026" }, { id: "novo", otp: "515151" }] };
+    expect(extrairOtp(dois, new Set(["velho", "novo"]))).toBeNull();
+    expect(extrairOtp(dois, new Set(["velho"]))).toBe("515151");
+    expect(extrairOtp({ ...STATUS_SEM, mails: [{ id: "velho", otp: "804026" }] }, new Set(["velho"]))).toBeNull();
   });
 
   it("OTP no HTML: #breeze-code, .otp-mini, assunto", () => {
@@ -181,6 +186,7 @@ describe("Portal: caixa de e-mail no cadastro (fluxos/caixa.mjs)", () => {
       codigoValido,
       abrir: vi.fn(async () => ({ sessao, email: sessao.email })),
       esperarOtp: vi.fn(async () => "123456"),
+      mensagensVistas: vi.fn(async () => new Set(["velho"])),
       fechar: vi.fn(async () => {}),
       verificarPortal: vi.fn(async () => true),
     };
@@ -193,6 +199,7 @@ describe("Portal: caixa de e-mail no cadastro (fluxos/caixa.mjs)", () => {
     expect(caixa.email).toBe("nova@gmail.com");
     expect(await caixa.esperarCodigo({})).toBe("123456");
     expect(portal.abrir).toHaveBeenCalledTimes(1);
+    expect(portal.esperarOtp).toHaveBeenCalledWith(sessao, expect.any(Number), expect.objectContaining({ ignorar: new Set(["velho"]) }));
     await caixa.fechar();
     expect(portal.fechar).toHaveBeenCalled();
     expect(logs.join("\n")).not.toContain("SUDXHRAY");

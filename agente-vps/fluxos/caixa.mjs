@@ -76,6 +76,8 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
     const link = String(conta.email ?? "");
     const codigo = String(cred.senha ?? "");
     let sessao = null;
+    // Mensagens que já estavam na caixa quando o endereço foi digitado: OTP de tentativa anterior não vale.
+    let vistos = null;
     const abrir = async () => {
       if (sessao && sessao.fimEm && sessao.fimEm - Date.now() > 60_000) return sessao;
       await portal.fechar(sessao).catch(() => {});
@@ -91,7 +93,9 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
       },
       async endereco() {
         try {
-          return (await abrir()).email;
+          const s = await abrir();
+          vistos = portal.mensagensVistas ? await portal.mensagensVistas(s).catch(() => null) : null;
+          return s.email;
         } catch (e) {
           log(`portal falhou ao abrir a sessão: ${e.message}`);
           return null;
@@ -102,7 +106,7 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
           const s = await abrir();
           const restante = s.fimEm ? Math.max(30_000, s.fimEm - Date.now()) : 900_000;
           log(`esperando o OTP no portal (${portal.mascarar(codigo)}, até ${Math.round(Math.min(restante, timeoutMs ?? restante) / 60_000)} min)`);
-          return await portal.esperarOtp(s, Math.min(restante, timeoutMs ?? restante), { log });
+          return await portal.esperarOtp(s, Math.min(restante, timeoutMs ?? restante), { log, ignorar: vistos });
         } catch (e) {
           log(`portal não trouxe o OTP: ${e.message}`);
           return null;

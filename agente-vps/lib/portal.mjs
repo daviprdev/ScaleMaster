@@ -70,10 +70,11 @@ export function extrairEmail(html) {
  * anterior; sem `otp`, 6 dígitos no assunto. No HTML: #breeze-code, .otp-mini /
  * .otp-preview, e por fim o assunto de uma mail-card.
  */
-export function extrairOtp(fonte) {
+export function extrairOtp(fonte, ignorar = null) {
   if (fonte && typeof fonte === "object") {
     const mails = Array.isArray(fonte.mails) ? fonte.mails : [];
-    const validas = mails.filter((m) => m && !m.virtual && !m.previous_session);
+    // `ignorar` = ids que já estavam na caixa antes de o Instagram mandar o código desta vez (OTP velho não vale).
+    const validas = mails.filter((m) => m && !m.virtual && !m.previous_session && !(ignorar && m.id && ignorar.has(String(m.id))));
     for (const m of validas.slice().reverse()) {
       const otp = String(m.otp ?? "").trim();
       if (/^\d{4,8}$/.test(otp)) return otp;
@@ -323,8 +324,14 @@ export async function abrir(link, codigo, { modo = modoPortal(), log = () => {} 
   return { sessao, email: sessao.email };
 }
 
-/** Espera o OTP aparecer na sessão (polling no /status a cada 3 s). */
-export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 3000 } = {}) {
+/** Ids das mensagens já na caixa (para ignorar OTPs de uma tentativa anterior). */
+export async function mensagensVistas(sessao) {
+  const j = await caminho(sessao).status(sessao);
+  return new Set((Array.isArray(j?.mails) ? j.mails : []).map((m) => String(m?.id ?? "")).filter(Boolean));
+}
+
+/** Espera o OTP aparecer na sessão (polling no /status a cada 3 s); `ignorar` = ids de mensagens antigas. */
+export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 3000, ignorar = null } = {}) {
   const via = caminho(sessao);
   const limite = Date.now() + timeoutMs;
   let erros = 0;
@@ -332,7 +339,7 @@ export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, 
     try {
       const j = await via.status(sessao);
       erros = 0;
-      const otp = extrairOtp(j);
+      const otp = extrairOtp(j, ignorar);
       if (otp) return otp;
       if (lerStatus(j).acabou) throw new Error("a sessão do portal acabou sem o OTP chegar");
     } catch (e) {
