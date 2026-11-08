@@ -116,15 +116,26 @@ echo "== pastas"
 install -d -m 0755 /opt/scalemaster/apks /opt/scalemaster/midias /opt/scalemaster/midias/perfil
 install -d -m 0700 /opt/scalemaster/sessoes /opt/scalemaster/vps /opt/scalemaster/vps/instancias /opt/scalemaster/vps/props /opt/scalemaster/vps/base /opt/scalemaster/vps/rede
 
-echo "== imagem do sidecar (alpine + redsocks + iptables + curl)"
+echo "== imagem do sidecar (alpine + redsocks do master + iptables + curl)"
+# decisão: o pacote redsocks 0.5 do Alpine não tem a seção dnsu2t (DNS UDP → TCP) que o sidecar usa;
+# o master de darkk/redsocks tem. Compila num estágio e copia só o binário (precisa de libevent).
 TMP="$(mktemp -d)"
 cat > "$TMP/Dockerfile" <<'EOF'
+FROM alpine:3.20 AS build
+RUN apk add --no-cache build-base libevent-dev git \
+ && git clone --depth 1 https://github.com/darkk/redsocks.git /src \
+ && cd /src && make
 FROM alpine:3.20
 # uid 60000 fixo (agente-vps/lib/rede.mjs UID_REDSOCKS): 1000/2000 são system/shell do Android, 10000+ os apps.
-RUN apk add --no-cache redsocks iptables curl && adduser -D -H -s /sbin/nologin -u 60000 redsocks
+RUN apk add --no-cache libevent iptables curl && adduser -D -H -s /sbin/nologin -u 60000 redsocks
+COPY --from=build /src/redsocks /usr/sbin/redsocks
+RUN redsocks -h 2>&1 | head -1 || true
 EOF
 docker build -q -t scalemaster-redsocks:1 "$TMP" >/dev/null
 rm -rf "$TMP"
+# A imagem tem que aceitar a seção dnsu2t (sidecar.sh escreve uma): testa a sintaxe do conf.
+docker run --rm scalemaster-redsocks:1 sh -c 'printf "base { log_debug = off; log_info = off; log = \"stderr\"; daemon = off; redirector = iptables; }\nredsocks { local_ip = 127.0.0.1; local_port = 12345; ip = 127.0.0.1; port = 3128; type = http-connect; }\ndnsu2t { local_ip = 127.0.0.1; local_port = 5300; remote_ip = 1.1.1.1; remote_port = 53; }\n" > /tmp/t.conf && redsocks -t -c /tmp/t.conf' \
+  || { echo "o redsocks da imagem não aceita dnsu2t" >&2; exit 1; }
 
 echo "== imagem do redroid ($IMAGEM_REDROID)"
 docker image inspect "$IMAGEM_REDROID" >/dev/null 2>&1 || docker pull -q "$IMAGEM_REDROID" >/dev/null
