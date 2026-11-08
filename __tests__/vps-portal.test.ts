@@ -199,7 +199,10 @@ describe("Portal: caixa de e-mail no cadastro (fluxos/caixa.mjs)", () => {
     expect(caixa.email).toBe("nova@gmail.com");
     expect(await caixa.esperarCodigo({})).toBe("123456");
     expect(portal.abrir).toHaveBeenCalledTimes(1);
-    expect(portal.esperarOtp).toHaveBeenCalledWith(sessao, expect.any(Number), expect.objectContaining({ ignorar: new Set(["velho"]) }));
+    expect(portal.esperarOtp).toHaveBeenCalledWith(sessao, expect.any(Number), expect.objectContaining({ ignorar: new Set(["velho"]), descartar: new Set() }));
+    // Segunda leitura: o código já digitado entra em descartar.
+    await caixa.esperarCodigo({});
+    expect(portal.esperarOtp).toHaveBeenLastCalledWith(sessao, expect.any(Number), expect.objectContaining({ descartar: new Set(["123456"]) }));
     await caixa.fechar();
     expect(portal.fechar).toHaveBeenCalled();
     expect(logs.join("\n")).not.toContain("SUDXHRAY");

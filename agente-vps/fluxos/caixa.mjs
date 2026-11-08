@@ -78,6 +78,8 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
     let sessao = null;
     // Mensagens que já estavam na caixa quando o endereço foi digitado: OTP de tentativa anterior não vale.
     let vistos = null;
+    // Códigos já digitados nesta caixa: o Instagram não aceita o mesmo duas vezes.
+    const tentados = new Set();
     const abrir = async () => {
       if (sessao && sessao.fimEm && sessao.fimEm - Date.now() > 60_000) return sessao;
       await portal.fechar(sessao).catch(() => {});
@@ -106,7 +108,9 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
           const s = await abrir();
           const restante = s.fimEm ? Math.max(30_000, s.fimEm - Date.now()) : 900_000;
           log(`esperando o OTP no portal (${portal.mascarar(codigo)}, até ${Math.round(Math.min(restante, timeoutMs ?? restante) / 60_000)} min)`);
-          return await portal.esperarOtp(s, Math.min(restante, timeoutMs ?? restante), { log, ignorar: vistos });
+          const otp = await portal.esperarOtp(s, Math.min(restante, timeoutMs ?? restante), { log, ignorar: vistos, descartar: tentados });
+          if (otp) tentados.add(String(otp));
+          return otp;
         } catch (e) {
           log(`portal não trouxe o OTP: ${e.message}`);
           return null;

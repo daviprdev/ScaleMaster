@@ -335,17 +335,34 @@ export async function mensagensVistas(sessao) {
 }
 
 /** Espera o OTP aparecer na sessão (polling no /status a cada 3 s); `ignorar` = ids de mensagens antigas. */
-/** @param {{ log?: (m: string) => void, intervaloMs?: number, ignorar?: Set<string>|null }} [opts] */
-export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 3000, ignorar = null } = {}) {
+/**
+ * Espera o OTP aparecer na sessão (polling no /status a cada 3 s). Primeiro só
+ * vale mensagem nova (id fora de `ignorar`), por `esperaNovoMs`; depois disso
+ * vale a mais nova que ainda não foi digitada (`descartar` = códigos já
+ * tentados). Motivo (ig-2, 08/11): o Instagram nem sempre manda outro e-mail
+ * quando o cadastro recomeça — o código anterior ainda vale — mas um código já
+ * digitado e aceito nunca vale de novo.
+ * @param {{ log?: (m: string) => void, intervaloMs?: number, ignorar?: Set<string>|null, descartar?: Set<string>|null, esperaNovoMs?: number }} [opts]
+ */
+export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 3000, ignorar = null, descartar = null, esperaNovoMs = 60_000 } = {}) {
   const via = caminho(sessao);
-  const limite = Date.now() + timeoutMs;
+  const inicio = Date.now();
+  const limite = inicio + timeoutMs;
   let erros = 0;
+  const valido = (otp) => otp && !(descartar && descartar.has(String(otp)));
   while (Date.now() < limite) {
     try {
       const j = await via.status(sessao);
       erros = 0;
-      const otp = extrairOtp(j, ignorar);
-      if (otp) return otp;
+      const novo = extrairOtp(j, ignorar);
+      if (valido(novo)) return novo;
+      if (Date.now() - inicio >= esperaNovoMs) {
+        const velho = extrairOtp(j, null);
+        if (valido(velho)) {
+          log("portal: nenhum e-mail novo, usando o último código ainda não digitado");
+          return velho;
+        }
+      }
       if (lerStatus(j).acabou) throw new Error("a sessão do portal acabou sem o OTP chegar");
     } catch (e) {
       if (/acabou sem o OTP|inválido|removido/.test(e.message)) throw e;
