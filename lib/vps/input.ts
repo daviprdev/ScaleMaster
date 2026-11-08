@@ -192,7 +192,7 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
 
   const versaoIg = field(body.versaoIg, 30);
   if (!VERSAO_IG_RE.test(versaoIg)) return { error: "Escolha a versão do Instagram." };
-  if (versoes.length > 0 && !versoes.includes(versaoIg)) return { error: `A VPS não tem o APK instagram-${versaoIg}.apk.` };
+  if (versoes.length > 0 && !versoes.includes(versaoIg)) return { error: `A VPS não tem o Instagram ${versaoIg} em /opt/scalemaster/apks.` };
 
   const pais = (field(body.pais, 10) || "BR").toUpperCase();
   if (!PAIS_RE.test(pais)) return { error: "País da proxy em duas letras (ex.: BR)." };

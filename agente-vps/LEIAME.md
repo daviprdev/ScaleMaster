@@ -2,7 +2,14 @@
 
 Liga uma VPS com Docker + redroid à aba **Contas VPS** do Scale Master. Cada conta do Instagram roda no seu container redroid (Android 13, sem tela), com a sua proxy HTTP fixa e kill switch. Precisa só do Node 18+ (sem `npm install`); o resto é Docker, adb e iptables.
 
-Máquina de referência: Hetzner CAX31 (Ubuntu 24.04, ARM64, 8 vCPU / 32 GB) → 23 containers ligados ao mesmo tempo (`32768 / 1400`) e 4 cadastros em paralelo (`max(2, 8/2)`).
+Por arquitetura (`lib/android.mjs` escolhe a imagem e confere a ABI depois do boot, antes de qualquer APK — falha = `ABI_AUSENTE`):
+
+| Host | Imagem do redroid | Instagram em `/opt/scalemaster/apks` | Capacidade |
+| --- | --- | --- | --- |
+| arm64 (Hetzner CAX31, 8 vCPU / 32 GB) | `redroid/redroid:13.0.0_64only-latest` | `instagram-<versão>.apk` (`adb install -r`) | `maxLigadas = RAM/1400` → 23, `maxCadastro = max(2, vCPU/2)` → 4 |
+| x86_64 (Hostinger KVM 2, 2 vCPU / 8 GB) | `redroid/redroid:13.0.0-latest` | `x86-<versão>/base.apk` + `split_config.xxhdpi.apk`, cada um com `.sha256` ao lado, conferido antes do `adb install-multiple -r` | `maxLigadas = max(1, vCPU/2)` → 1, `maxCadastro = 1` (nada vem da RAM) |
+
+Em x86 o build arm64 do Instagram instala e crasha em 7 s (SIGSEGV em `libnb.so`): a etapa `instagram` exige `primaryCpuAbi=x86_64` no `dumpsys package`.
 
 ## Instalar (uma vez)
 
@@ -36,7 +43,7 @@ sudo bash scripts/vps/golden.sh
    journalctl -u scalemaster-vps-agent -f
    ```
 
-O código fica em `config.json` (fora do git, chmod 600). O log fica em `agente.log` (rotação em 5 MB) e no journal.
+O código fica em `config.json` (fora do git, chmod 600) ou em `SCALEMASTER_AGENT_TOKEN=smag_...` dentro de `/opt/scalemaster/agente-vps/.env` (lido pela unit). O log fica em `agente.log` (rotação em 5 MB) e no journal.
 
 ## Testar sem o SaaS
 

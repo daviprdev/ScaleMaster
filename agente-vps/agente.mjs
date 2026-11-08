@@ -33,7 +33,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Dispositivo } from "./lib/adb.mjs";
 import { alertaDe, limparAlerta } from "./lib/alertas.mjs";
-import { Android } from "./lib/android.mjs";
+import { ARCH, Android, IMAGEM } from "./lib/android.mjs";
 import { listarMidias, pastaDeMidias } from "./lib/midias.mjs";
 import { esperar } from "./lib/processo.mjs";
 import { validar } from "./lib/rede.mjs";
@@ -315,10 +315,12 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
 // ── conexão com o SaaS ─────────────────────────────────────────────────────
 
 async function rodarAgente() {
-  const config = lerConfig();
+  // Token: config.json (node agente.mjs conectar) ou SCALEMASTER_AGENT_TOKEN do .env da unit (chmod 600).
+  const doEnv = String(process.env.SCALEMASTER_AGENT_TOKEN ?? "").trim();
+  const config = { ...(lerConfig() ?? {}), ...(TOKEN_RE.test(doEnv) ? { token: doEnv } : {}) };
   if (!config?.token) {
     console.log("Esta VPS ainda não está conectada. Gere o código na aba Contas VPS e rode:");
-    console.log("  node agente.mjs conectar <código>");
+    console.log("  node agente.mjs conectar <código>   (ou SCALEMASTER_AGENT_TOKEN=smag_... em /opt/scalemaster/agente-vps/.env)");
     process.exit(1);
   }
   travarInstanciaUnica();
@@ -358,7 +360,7 @@ async function rodarAgente() {
   let reenviarMidias = 0;
   let orfaosLimpos = false;
 
-  log(`Agente ${VERSAO} (VPS) iniciado (${os.hostname()}) → ${url} · ${cap.maxLigadas} ligadas / ${cap.maxCadastro} cadastros`);
+  log(`Agente ${VERSAO} (VPS) iniciado (${os.hostname()}, ${ARCH} → ${IMAGEM}) → ${url} · ${cap.maxLigadas} ligadas / ${cap.maxCadastro} cadastros`);
 
   for (;;) {
     if (!driver && Date.now() >= proximaBusca) {
@@ -532,7 +534,7 @@ async function main(args) {
     }
     return console.log(`Agente parado (PID ${pid}).`);
   }
-  if (cmd === "capacidade") return console.log(JSON.stringify({ ...capacidade(), versoesIg: versoesDisponiveis() }, null, 2));
+  if (cmd === "capacidade") return console.log(JSON.stringify({ ...capacidade(), imagem: IMAGEM, versoesIg: versoesDisponiveis() }, null, 2));
   if (cmd === "proxy") {
     const geo = await validar(args[1], args[2]);
     return console.log(`proxy ok: ${geo.ip} (${geo.pais}, ${geo.timezone})`);

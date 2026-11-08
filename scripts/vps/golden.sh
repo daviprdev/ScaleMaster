@@ -13,7 +13,15 @@
 # Chamado pelo botão "Rebuild imagem" da aba (agente-vps/tarefas/rebuild-imagem.mjs).
 set -euo pipefail
 
-IMAGEM="redroid/redroid:13.0.0_64only-latest"
+# Imagem e APK por arquitetura (mesma regra de agente-vps/lib/android.mjs e fluxos/apk.mjs):
+#   arm64   redroid 13.0.0_64only + instagram-<versão>.apk (adb install)
+#   x86_64  redroid 13.0.0-latest + x86-<versão>/base.apk + split_config.xxhdpi.apk (adb install-multiple)
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|amd64) IMAGEM="redroid/redroid:13.0.0-latest"; ABI="x86_64" ;;
+  aarch64|arm64) IMAGEM="redroid/redroid:13.0.0_64only-latest"; ABI="arm64-v8a" ;;
+  *) echo "arquitetura sem imagem do redroid: $ARCH" >&2; exit 1 ;;
+esac
 BASE_VOLUME="scalemaster-base"
 BASE_CONTAINER="scalemaster-golden"
 PORTA=5999
@@ -30,22 +38,37 @@ done
 
 log() { echo "[golden $(date +%H:%M:%S)] $*"; }
 
-if [ -z "$VERSAO" ]; then
-  VERSAO="$(ls "$APKS"/instagram-*.apk 2>/dev/null | sed -E 's#.*/instagram-(.+)\.apk#\1#' | sort -V | tail -1 || true)"
-fi
-APK="$APKS/instagram-${VERSAO}.apk"
-[ -f "$APK" ] || { log "APK não encontrado: $APK (copie instagram-<versão>.apk e instagram-<versão>.apk.sha256 para $APKS/)"; exit 1; }
-
-if [ "$FORCE" = 1 ]; then
-  log "AVISO: --force, pulando a conferência do sha256 de $(basename "$APK")"
-else
-  SHA="$APK.sha256"
-  [ -f "$SHA" ] || { log "Falta o checksum $SHA. Gere com: (cd $APKS && sha256sum $(basename "$APK") > $(basename "$SHA")) ou rode com --force"; exit 1; }
-  (cd "$APKS" && sha256sum -c --quiet "$(basename "$SHA")") || {
-    log "sha256 de $(basename "$APK") não bate com $SHA. Baixe o APK de novo para $APKS/ (ou --force para instalar mesmo assim)"
+# Confere "<arquivo>.sha256" (formato do sha256sum) dentro da pasta do arquivo.
+conferir_sha() {
+  local arquivo="$1" sha="$1.sha256"
+  if [ "$FORCE" = 1 ]; then log "AVISO: --force, pulando a conferência do sha256 de $(basename "$arquivo")"; return 0; fi
+  [ -f "$sha" ] || { log "Falta o checksum $sha. Gere com: (cd $(dirname "$arquivo") && sha256sum $(basename "$arquivo") > $(basename "$sha")) ou rode com --force"; exit 1; }
+  (cd "$(dirname "$arquivo")" && sha256sum -c --quiet "$(basename "$sha")") || {
+    log "sha256 de $(basename "$arquivo") não bate com $sha. Baixe de novo (ou --force para instalar mesmo assim)"
     exit 1
   }
-  log "sha256 de $(basename "$APK") conferido"
+  log "sha256 de $(basename "$arquivo") conferido"
+}
+
+if [ "$ABI" = "x86_64" ]; then
+  if [ -z "$VERSAO" ]; then
+    VERSAO="$(ls -d "$APKS"/x86-*/ 2>/dev/null | sed -E 's#.*/x86-([^/]+)/?$#\1#' | sort -V | tail -1 || true)"
+  fi
+  APK_DIR="$APKS/x86-${VERSAO}"
+  APK_ARQUIVOS=("$APK_DIR/base.apk" "$APK_DIR/split_config.xxhdpi.apk")
+  for a in "${APK_ARQUIVOS[@]}"; do
+    [ -f "$a" ] || { log "APK x86_64 não encontrado: $a (fixe base.apk + split_config.xxhdpi.apk + .sha256 em $APK_DIR/)"; exit 1; }
+    conferir_sha "$a"
+  done
+  APK="$APK_DIR"
+else
+  if [ -z "$VERSAO" ]; then
+    VERSAO="$(ls "$APKS"/instagram-*.apk 2>/dev/null | sed -E 's#.*/instagram-(.+)\.apk#\1#' | sort -V | tail -1 || true)"
+  fi
+  APK="$APKS/instagram-${VERSAO}.apk"
+  [ -f "$APK" ] || { log "APK não encontrado: $APK (copie instagram-<versão>.apk e instagram-<versão>.apk.sha256 para $APKS/)"; exit 1; }
+  conferir_sha "$APK"
+  APK_ARQUIVOS=("$APK")
 fi
 
 log "imagem $IMAGEM"
@@ -70,7 +93,8 @@ docker run -d --name "$BASE_CONTAINER" --privileged --network vpsnet --label sca
   -p "127.0.0.1:${PORTA}:5555" -v "$BASE_VOLUME:/data" --memory 2g \
   "$IMAGEM" \
   androidboot.redroid_gpu_mode=guest androidboot.redroid_width=1080 androidboot.redroid_height=1920 \
-  androidboot.redroid_dpi=420 androidboot.redroid_fps=30 androidboot.redroid_net_ndns=1 androidboot.redroid_net_dns1=1.1.1.1 >/dev/null
+  androidboot.redroid_dpi=420 androidboot.redroid_fps=30 androidboot.use_memfd=true \
+  androidboot.redroid_net_ndns=1 androidboot.redroid_net_dns1=1.1.1.1 >/dev/null
 # Mesmo kill switch dos containers de conta (lib/rede.mjs, modo bloqueado): a base nunca sai para a internet.
 docker rm -f "${BASE_CONTAINER}-proxy" >/dev/null 2>&1 || true
 docker run -d --name "${BASE_CONTAINER}-proxy" --network "container:${BASE_CONTAINER}" --cap-add NET_ADMIN scalemaster-redsocks:1 \
@@ -97,10 +121,24 @@ adb -s "$IP" shell settings put secure android_id 0000000000000000 >/dev/null
 adb -s "$IP" shell setprop persist.sys.timezone UTC >/dev/null
 adb -s "$IP" shell setprop persist.sys.locale en-US >/dev/null
 
-log "instalando $APK"
-adb -s "$IP" install -r -g "$APK" | tail -1
+# ABI do container antes de qualquer APK: a abilist tem que trazer a ABI da VPS (senão ABI_AUSENTE).
+ABILIST="$(adb -s "$IP" shell getprop ro.product.cpu.abilist 2>/dev/null | tr -d '\r')"
+case ",$ABILIST," in
+  *",$ABI,"*) log "abilist ok: $ABILIST" ;;
+  *) log "ABI_AUSENTE: ro.product.cpu.abilist=$ABILIST não traz $ABI"; docker rm -f "${BASE_CONTAINER}-proxy" "$BASE_CONTAINER" >/dev/null 2>&1 || true; exit 1 ;;
+esac
+
+log "instalando ${APK_ARQUIVOS[*]}"
+if [ "$ABI" = "x86_64" ]; then
+  adb -s "$IP" install-multiple -r -g "${APK_ARQUIVOS[@]}" | tail -1
+else
+  adb -s "$IP" install -r -g "${APK_ARQUIVOS[@]}" | tail -1
+fi
 adb -s "$IP" shell am force-stop com.instagram.android >/dev/null 2>&1 || true
 INSTALADA="$(adb -s "$IP" shell dumpsys package com.instagram.android 2>/dev/null | grep -m1 versionName | sed 's/.*versionName=//' | tr -d '\r')"
+PRIMARIA="$(adb -s "$IP" shell dumpsys package com.instagram.android 2>/dev/null | grep -m1 primaryCpuAbi | sed 's/.*primaryCpuAbi=//' | tr -d '\r')"
+[ "$PRIMARIA" = "$ABI" ] || { log "ABI_AUSENTE: o Instagram instalou como ${PRIMARIA:-?}, esta VPS exige $ABI"; docker rm -f "${BASE_CONTAINER}-proxy" "$BASE_CONTAINER" >/dev/null 2>&1 || true; exit 1; }
+log "primaryCpuAbi=$PRIMARIA"
 
 log "parando e guardando"
 adb disconnect "$IP" >/dev/null 2>&1 || true
@@ -110,4 +148,4 @@ docker volume inspect "$BASE_VOLUME" >/dev/null
 # Versão usada na base: o agente põe esta em primeiro na lista que a aba mostra.
 echo "$VERSAO" > "$APKS/ATUAL"
 
-echo "RESUMO: base pronta com Instagram ${INSTALADA:-$VERSAO} (volume $BASE_VOLUME, props em $PROPS)"
+echo "RESUMO: base pronta com Instagram ${INSTALADA:-$VERSAO} $ABI (imagem $IMAGEM, volume $BASE_VOLUME, props em $PROPS)"

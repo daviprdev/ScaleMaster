@@ -23,7 +23,66 @@ import { IMAGEM_SIDECAR, REDE, garantirBridge, ipDe, nomeSidecar, pararSidecar, 
  * do MuMu, que não muda quando o container é recriado para aplicar props).
  */
 
-export const IMAGEM = "redroid/redroid:13.0.0_64only-latest";
+/**
+ * Arquitetura da VPS normalizada: "x86_64" ou "arm64" (aceita process.arch e uname -m).
+ * @param {string} [arch]
+ */
+export function archDe(arch = process.arch) {
+  const a = String(arch ?? "").toLowerCase();
+  if (a === "x64" || a === "x86_64" || a === "amd64") return "x86_64";
+  if (a === "arm64" || a === "aarch64") return "arm64";
+  throw new Error(`Arquitetura sem imagem do redroid: ${arch}`);
+}
+
+/**
+ * Imagem do redroid por arquitetura. A tag _64only não tem ABI ARM de 32 bits e
+ * é a que roda nativo em ARM; em x86_64 é a 13.0.0-latest (traz x86_64 na
+ * abilist; o Instagram tem que ser o build x86_64, o arm64 crasha em libnb.so).
+ * @param {string} [arch]
+ */
+export function imagemPorArch(arch = process.arch) {
+  return archDe(arch) === "arm64" ? "redroid/redroid:13.0.0_64only-latest" : "redroid/redroid:13.0.0-latest";
+}
+
+/**
+ * ABI que o Android do container tem que anunciar (e o Instagram instalado usar).
+ * @param {string} [arch]
+ */
+export function abiEsperada(arch = process.arch) {
+  return archDe(arch) === "arm64" ? "arm64-v8a" : "x86_64";
+}
+
+/**
+ * Confere a ABI do container depois do boot, ANTES de instalar qualquer APK:
+ * a abilist precisa trazer a ABI da VPS e, se o Instagram já estiver
+ * instalado, o primaryCpuAbi dele tem que ser essa mesma ABI. Falha =
+ * ABI_AUSENTE. `primaryCpuAbi` null = Instagram ainda não instalado.
+ * @param {{ abilist: string | null | undefined, primaryCpuAbi?: string | null }} lido
+ * @param {string} [arch]
+ */
+export function conferirAbi({ abilist, primaryCpuAbi = null }, arch = process.arch) {
+  const abi = abiEsperada(arch);
+  const lista = String(abilist ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!lista.includes(abi)) throw new Error(`ABI_AUSENTE: ro.product.cpu.abilist=${lista.join(",") || "(vazio)"} não traz ${abi}`);
+  if (primaryCpuAbi !== null && primaryCpuAbi !== undefined && String(primaryCpuAbi).trim() !== abi) {
+    throw new Error(`ABI_AUSENTE: o Instagram instalado é ${String(primaryCpuAbi).trim() || "?"}, esta VPS exige ${abi}`);
+  }
+  return abi;
+}
+
+/**
+ * Lê abilist e primaryCpuAbi do aparelho e confere (lança ABI_AUSENTE).
+ * @param {{ prop: (nome: string) => Promise<string>, abiPrimaria: (pacote: string) => Promise<string | null> }} d
+ * @param {string} [arch]
+ */
+export async function conferirAbiNoAparelho(d, arch = process.arch) {
+  const abilist = await d.prop("ro.product.cpu.abilist");
+  const primaryCpuAbi = await d.abiPrimaria("com.instagram.android");
+  return conferirAbi({ abilist, primaryCpuAbi }, arch);
+}
+
+export const ARCH = archDe(process.arch);
+export const IMAGEM = imagemPorArch(ARCH);
 export const BASE_VOLUME = "scalemaster-base";
 // decisão: SCALEMASTER_VPS_DIR só existe para os testes apontarem a pasta dos retratos para um diretório temporário.
 export const PASTA_VPS = process.env.SCALEMASTER_VPS_DIR || "/opt/scalemaster/vps";
@@ -49,6 +108,8 @@ const ARGS_REDROID = [
   "androidboot.redroid_height=1920",
   "androidboot.redroid_dpi=420",
   "androidboot.redroid_fps=30",
+  // decisão: kernel sem ashmem (Ubuntu 26.04 / 7.0): o redroid usa memfd, igual ao teste-ig que já roda nesta VPS.
+  "androidboot.use_memfd=true",
   // DNS do Android direto em 1.1.1.1: o UDP 53 é redirecionado para o dnsu2t do sidecar (DNS sobre TCP pela proxy).
   "androidboot.redroid_net_ndns=1",
   "androidboot.redroid_net_dns1=1.1.1.1",

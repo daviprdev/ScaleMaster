@@ -71,8 +71,8 @@ export function AgenteVpsCard({ agent, now, linked, queued, alerts, sending, onC
         <div className="flex flex-col gap-4">
           {agent.engineError && <Banner tone="warning">{agent.engineError}</Banner>}
           <div className="grid gap-3 sm:grid-cols-4">
-            <Stat label="Ligados agora" value={`${cap.ligadas} / ${cap.maxLigadas}`} hint="RAM ÷ 1,4 GB por container" />
-            <Stat label="Cadastros ao mesmo tempo" value={String(cap.maxCadastro)} hint="max(2, vCPU ÷ 2)" />
+            <Stat label="Ligados agora" value={`${cap.ligadas} / ${cap.maxLigadas}`} hint="x86: vCPU ÷ 2 · ARM: RAM ÷ 1,4 GB" />
+            <Stat label="Cadastros ao mesmo tempo" value={String(cap.maxCadastro)} hint="x86: 1 · ARM: max(2, vCPU ÷ 2)" />
             <Stat label="APKs do Instagram" value={cap.versoesIg.length ? cap.versoesIg.join(", ") : "nenhum"} hint="/opt/scalemaster/apks" />
             <div className="rounded-lg border border-line p-3">
               <p className="text-xs text-ink-3">RAM usada</p>

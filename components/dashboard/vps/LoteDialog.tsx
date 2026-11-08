@@ -127,7 +127,7 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
             onChange={(e) => setVersaoIg(e.target.value)}
             placeholder={versoes.length === 0 ? "nenhum APK na VPS" : undefined}
             options={versoes.map((v) => ({ value: v, label: v }))}
-            hint={versoes.length === 0 ? "Copie instagram-<versão>.apk para /opt/scalemaster/apks na VPS." : undefined}
+            hint={versoes.length === 0 ? "Na VPS: x86-<versão>/base.apk+split (x86_64) ou instagram-<versão>.apk (ARM) em /opt/scalemaster/apks." : undefined}
           />
           <Input
             label="País das proxies"

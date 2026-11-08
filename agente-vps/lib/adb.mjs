@@ -126,6 +126,19 @@ export class Dispositivo {
     if (r.codigo !== 0 || !/Success/i.test(String(r.stdout))) throw new Error(`adb install falhou: ${trecho(r.stderr || r.stdout)}`);
   }
 
+  /** Instala um APK dividido (base + splits) de uma vez: adb install-multiple -r -g. */
+  async instalarMultiplos(caminhos) {
+    const r = await rodar(this.adb, ["-s", this.serial, "install-multiple", "-r", "-g", ...caminhos], { timeoutMs: 10 * 60_000 });
+    if (r.codigo !== 0 || !/Success/i.test(String(r.stdout))) throw new Error(`adb install-multiple falhou: ${trecho(r.stderr || r.stdout)}`);
+  }
+
+  /** primaryCpuAbi do pacote no dumpsys package (x86_64, arm64-v8a…), ou null se não está instalado. */
+  async abiPrimaria(pacote) {
+    if (!(await this.temApp(pacote))) return null;
+    const saida = await this.shell("dumpsys", "package", pacote).catch(() => "");
+    return /primaryCpuAbi=([^\s]+)/.exec(saida)?.[1] ?? "";
+  }
+
   /** Apaga o campo focado: vai ao fim e dá backspace. */
   limparCampo(caracteres = 60) {
     return this.shell("input", "keyevent", "KEYCODE_MOVE_END", ...Array(caracteres).fill("KEYCODE_DEL"));

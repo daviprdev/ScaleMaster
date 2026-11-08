@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { limparAlerta, marcarAlerta } from "../lib/alertas.mjs";
+import { conferirAbiNoAparelho } from "../lib/android.mjs";
 import { aplicarNoAparelho, conferir, gerar as gerarDevice } from "../lib/fingerprint.mjs";
 import { testarLogin } from "../lib/imap.mjs";
 import { pastaDeMidias, sortearFoto } from "../lib/midias.mjs";
@@ -204,10 +205,12 @@ export const NOVA_CONTA = [
       if (erradas.length > 0) {
         throw new Error(`fingerprint divergente: ${erradas.map(([n, e, l]) => `${n} esperado ${e}, lido ${l || "(vazio)"}`).join("; ")}`);
       }
+      // ABI da VPS na abilist (e no Instagram, se já instalado) antes de qualquer APK: falha = ABI_AUSENTE.
+      const abi = await conferirAbiNoAparelho(d);
       const nome = nomeContainer(estado);
       const bloqueado = mumu.proxyDe(container(estado)) ? "proxy já gravada" : (await provarBloqueio(nome)) ? "kill switch verificado" : null;
       if (bloqueado === null) throw new Error("O container saiu para a internet sem proxy: kill switch não está valendo.");
-      return `Android pronto, props conferidas, ${bloqueado}`;
+      return `Android pronto (${abi}), props conferidas, ${bloqueado}`;
     },
   },
   {

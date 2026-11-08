@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Prepara a VPS (Ubuntu 24.04, ARM64, Hetzner CAX31) para o agente da aba
-# Contas VPS: Docker, módulo binder do kernel (redroid), adb, bridge vpsnet,
-# sysctl, imagem do sidecar redsocks, pastas em /opt/scalemaster e a unit
-# systemd. Idempotente: pode rodar de novo.
+# Prepara a VPS (Ubuntu 24.04+, arm64 Hetzner CAX31 ou x86_64 Hostinger KVM)
+# para o agente da aba Contas VPS: Docker, módulo binder do kernel (redroid),
+# adb, Node, bridge vpsnet, sysctl, imagem do sidecar redsocks, imagem do
+# redroid da arquitetura, pastas em /opt/scalemaster e a unit systemd.
+# Idempotente: pode rodar de novo.
 #
 #   sudo bash scripts/vps/instalar.sh [--apk URL]
 #
@@ -24,9 +25,18 @@ done
 [ "$(id -u)" = "0" ] || { echo "rode como root (sudo)"; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 
+# Imagem do redroid por arquitetura (mesma regra de agente-vps/lib/android.mjs imagemPorArch).
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|amd64) IMAGEM_REDROID="redroid/redroid:13.0.0-latest" ;;
+  aarch64|arm64) IMAGEM_REDROID="redroid/redroid:13.0.0_64only-latest" ;;
+  *) echo "arquitetura sem imagem do redroid: $ARCH" >&2; exit 1 ;;
+esac
+echo "== arquitetura $ARCH → $IMAGEM_REDROID"
+
 echo "== pacotes"
 apt-get update -qq
-apt-get install -y -qq ca-certificates curl gnupg lsb-release android-tools-adb iptables dkms git jq "linux-headers-$(uname -r)" >/dev/null
+apt-get install -y -qq ca-certificates curl gnupg lsb-release android-tools-adb iptables git jq >/dev/null
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "== docker"
@@ -40,16 +50,26 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 systemctl enable --now docker
 
-if ! command -v node >/dev/null 2>&1 || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 18 ]; then
-  echo "== node 20"
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null
-  apt-get install -y -qq nodejs >/dev/null
+node_ok() { command -v node >/dev/null 2>&1 && [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 18 ]; }
+if ! node_ok; then
+  # decisão: primeiro o nodejs do próprio Ubuntu (26.04 já traz ≥ 18); o NodeSource só se faltar ou for velho.
+  echo "== node (apt)"
+  apt-get install -y -qq nodejs >/dev/null 2>&1 || true
+  if ! node_ok; then
+    echo "== node 22 (nodesource)"
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null
+    apt-get install -y -qq nodejs >/dev/null
+  fi
 fi
+node_ok || { echo "node ≥ 18 não ficou disponível" >&2; exit 1; }
+echo "node $(node -v)"
 
 echo "== módulos binder (redroid)"
-# O kernel da Ubuntu 24.04 (6.8) traz binder_linux como módulo; ashmem não existe
-# mais no Android 13 (usa memfd). Sem o módulo no kernel, compila pelo dkms.
-if ! modprobe binder_linux devices="binder,hwbinder,vndbinder" 2>/dev/null; then
+# O kernel da Ubuntu 24.04+ traz binder_linux como módulo (no 7.0 carrega nativo);
+# ashmem não existe mais no Android 13 (usa memfd). Sem o módulo no kernel,
+# compila pelo dkms (headers e dkms só entram aqui).
+if ! lsmod | grep -q '^binder_linux' && ! modprobe binder_linux devices="binder,hwbinder,vndbinder" 2>/dev/null; then
+  apt-get install -y -qq dkms "linux-headers-$(uname -r)" >/dev/null
   if [ ! -d /usr/src/redroid-modules ]; then
     git clone --depth 1 https://github.com/remote-android/redroid-modules.git /usr/src/redroid-modules
   fi
@@ -96,8 +116,8 @@ EOF
 docker build -q -t scalemaster-redsocks:1 "$TMP" >/dev/null
 rm -rf "$TMP"
 
-echo "== imagem do redroid"
-docker pull -q redroid/redroid:13.0.0_64only-latest >/dev/null
+echo "== imagem do redroid ($IMAGEM_REDROID)"
+docker image inspect "$IMAGEM_REDROID" >/dev/null 2>&1 || docker pull -q "$IMAGEM_REDROID" >/dev/null
 docker pull -q alpine:3.20 >/dev/null
 
 if [ -n "$APK_URL" ]; then
@@ -106,9 +126,16 @@ if [ -n "$APK_URL" ]; then
   [ -n "$APK_VERSAO" ] || { echo "informe --versao <versão> junto do --apk" >&2; exit 2; }
   curl -fL -o "/opt/scalemaster/apks/instagram-${APK_VERSAO}.apk" "$APK_URL"
 fi
-if ! ls /opt/scalemaster/apks/instagram-*.apk >/dev/null 2>&1; then
-  echo "aviso: nenhum APK em /opt/scalemaster/apks. Copie instagram-<versão>.apk para lá (o lote escolhe a versão)."
-fi
+case "$ARCH" in
+  x86_64|amd64)
+    if ! ls /opt/scalemaster/apks/x86-*/base.apk >/dev/null 2>&1; then
+      echo "aviso: nenhum build x86_64 em /opt/scalemaster/apks/x86-<versão>/ (base.apk + split_config.xxhdpi.apk + .sha256). Fixe pelo Aurora Store: pm path + adb pull."
+    fi ;;
+  *)
+    if ! ls /opt/scalemaster/apks/instagram-*.apk >/dev/null 2>&1; then
+      echo "aviso: nenhum APK em /opt/scalemaster/apks. Copie instagram-<versão>.apk para lá (o lote escolhe a versão)."
+    fi ;;
+esac
 
 echo "== unit systemd"
 [ -f /opt/scalemaster/agente-vps/.env ] || { touch /opt/scalemaster/agente-vps/.env; chmod 600 /opt/scalemaster/agente-vps/.env; }

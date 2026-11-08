@@ -130,10 +130,17 @@ describe("Contas VPS: capacidade e identidade", () => {
     expect(c.ligadas).toBe(0);
   });
 
-  it("supervisor: maxLigadas = RAM/1400 e maxCadastro = max(2, vCPU/2); semáforo respeita a vaga", async () => {
+  it("supervisor: capacidade por arquitetura; semáforo respeita a vaga", async () => {
+    // x86_64: maxLigadas = max(1, vCPU/2), maxCadastro = 1, nada vem da RAM.
+    expect(capacidade({ arch: "x86_64", vcpu: 2, totalMb: 7935, livreMb: 1145 })).toMatchObject({ arch: "x86_64", maxLigadas: 1, maxCadastro: 1, ramTotalMb: 7935, ramUsadaMb: 6790 });
+    expect(capacidade({ arch: "x64", vcpu: 8, totalMb: 2000, livreMb: 500 })).toMatchObject({ maxLigadas: 4, maxCadastro: 1 });
+    expect(capacidade({ arch: "x86_64", vcpu: 1, totalMb: 65536, livreMb: 60000 })).toMatchObject({ maxLigadas: 1, maxCadastro: 1 });
+    // arm64: maxLigadas = RAM/1400, maxCadastro = max(2, vCPU/2) (Hetzner CAX31 → 23 / 4).
+    expect(capacidade({ arch: "aarch64", vcpu: 8, totalMb: 32768, livreMb: 30000 })).toMatchObject({ arch: "arm64", maxLigadas: 23, maxCadastro: 4 });
+    expect(capacidade({ arch: "arm64", vcpu: 2, totalMb: 4096, livreMb: 1000 })).toMatchObject({ maxLigadas: 2, maxCadastro: 2 });
     const c = capacidade();
     expect(c.maxLigadas).toBeGreaterThanOrEqual(1);
-    expect(c.maxCadastro).toBeGreaterThanOrEqual(2);
+    expect(c.maxCadastro).toBeGreaterThanOrEqual(1);
     const s = new Semaforo(1);
     const solta1 = await s.pegar();
     let entrou = false;
