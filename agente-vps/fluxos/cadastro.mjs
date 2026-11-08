@@ -69,6 +69,10 @@ function campoPor(nos, rotulos) {
   return nos.find((n) => /EditText/.test(n.classe)) ?? null;
 }
 
+function ehTelaEmail(nos) {
+  return !ehTelaCodigo(nos) && temTexto(nos, ["Qual é o teu e-mail", "What's your email", "Qual é o seu email", "Qual é o seu e-mail", "Qual é seu email", "Qual é seu e-mail"]);
+}
+
 function ehTelaCodigo(nos) {
   return temTexto(nos, ["código de confirmação", "confirmation code", "Introduz o código", "Insira o código", "Enter the code", "Digite o código", "Insira o código que enviamos"]);
 }
@@ -252,10 +256,35 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
         let codigo = null;
         if (estado.codigosImap < 2 && !recusado) {
           estado.codigosImap += 1;
-          codigo = await mail.esperarCodigo({ desde }).catch((e) => {
-            log(`caixa (${mail.provedor}) falhou: ${e.message}`);
-            return null;
-          });
+          // Enquanto espera a caixa, vigia a tela: se o código já foi aceito (a tela passou), para de esperar.
+          const controle = new AbortController();
+          let saiu = false;
+          const vigia = (async () => {
+            while (!controle.signal.aborted) {
+              await esperar(3000);
+              const agora = await d.tela().catch(() => null);
+              if (agora && agora.length > 0 && !ehTelaCodigo(agora)) {
+                saiu = true;
+                controle.abort();
+              }
+            }
+          })();
+          try {
+            codigo = await Promise.race([
+              mail.esperarCodigo({ desde, sinal: controle.signal }),
+              new Promise((resolve) => controle.signal.addEventListener("abort", () => resolve(null), { once: true })),
+            ]).catch((e) => {
+              log(`caixa (${mail.provedor}) falhou: ${e.message}`);
+              return null;
+            });
+          } finally {
+            controle.abort();
+            await vigia;
+          }
+          if (saiu) {
+            log("a tela do código já passou: seguindo");
+            return;
+          }
           if (!codigo && mail.provedor !== "manual") log(`código não veio da caixa (${mail.provedor}): perguntando na aba`);
         }
         if (!codigo) {
@@ -285,7 +314,7 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
     },
     {
       nome: "email",
-      teste: (nos) => !ehTelaCodigo(nos) && temTexto(nos, ["Qual é o teu e-mail", "What's your email", "Qual é o seu email", "Qual é o seu e-mail", "Qual é seu email", "Qual é seu e-mail"]),
+      teste: (nos) => ehTelaEmail(nos),
       agir: async (nos) => {
         if (temTexto(nos, ["já está a ser utilizado", "já está sendo usado", "already", "já tem uma conta", "já existe"])) {
           throw new Error(`O Instagram diz que ${enderecoAtual()} já tem conta.`);
@@ -306,11 +335,15 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
           }
           endereco = String(endereco).trim().toLowerCase();
         }
-        await preencher(d, campo, endereco);
+        // A sessão do portal pode ter levado segundos: confere que ainda é a tela do e-mail antes de digitar
+        // (senão o endereço iria para o campo do código — ig-2, 08/11).
+        const agora = await d.tela();
+        if (!ehTelaEmail(agora)) return;
+        const campoAgora = campoPor(agora, ["E-mail", "Email"]) ?? campo;
+        await preencher(d, campoAgora, endereco);
         await seguinte(d, await d.tela());
-        // O Instagram manda o código e troca de tela em ~3 s; sem esta pausa a volta seguinte ainda via
-        // "Qual é seu email" e digitava o endereço no campo do código (ig-2, 08/11).
-        await esperar(4000);
+        // O Instagram manda o código e troca de tela em 3–15 s pela proxy: espera sair da tela do e-mail.
+        for (let i = 0; i < 10 && ehTelaEmail(await d.tela().catch(() => [])); i++) await esperar(2000);
       },
     },
     {

@@ -96,6 +96,12 @@ export function extrairOtp(fonte, ignorar = null) {
   return assunto ? (OTP_RE.exec(assunto)?.[1] ?? null) : null;
 }
 
+/** Página "Start OTP session →" de um código ainda não iniciado (form post sem campo). */
+export function precisaIniciar(html) {
+  const texto = String(html ?? "");
+  return !extrairEmail(texto) && /Start (the )?(OTP )?session|is ready. Start the session/i.test(texto) && /<form[^>]*method=['"]post['"]/i.test(texto);
+}
+
 /** Sessão a partir do /status: e-mail, fim e se já acabou. */
 export function lerStatus(j) {
   const lease = Array.isArray(j?.lease) ? j.lease : [];
@@ -193,9 +199,17 @@ const http = {
       body: new URLSearchParams({ code: String(codigo).toUpperCase() }).toString(),
     });
     if (![200, 302, 303].includes(post.status)) throw new Error(`o portal respondeu HTTP ${post.status} ao resgatar`);
-    const pagina = await requisicao(url, { jar });
+    let pagina = await requisicao(url, { jar });
     if (pagina.status === 404) throw new Error("código de resgate inválido");
     if (pagina.status !== 200) throw new Error(`a inbox do portal devolveu HTTP ${pagina.status}`);
+    // Código nunca usado: a página é "Redeem code X is ready. Start the session to receive OTPs." com um
+    // <form method='post'> vazio (visto em 08/11 com o 2º código). O POST começa os 20 min e abre a inbox.
+    if (precisaIniciar(pagina.body)) {
+      const inicio = await requisicao(url, { method: "POST", jar, headers: { "Content-Type": "application/x-www-form-urlencoded", Referer: url }, body: "" });
+      if (![200, 302, 303].includes(inicio.status)) throw new Error(`o portal respondeu HTTP ${inicio.status} ao iniciar a sessão`);
+      pagina = await requisicao(url, { jar });
+      if (pagina.status !== 200) throw new Error(`a inbox do portal devolveu HTTP ${pagina.status} depois de iniciar a sessão`);
+    }
     const sessao = { modo: "http", url, jar, codigo: String(codigo).toUpperCase(), fimEm: null, email: null };
     const emailHtml = extrairEmail(pagina.body);
     const j = await statusHttp(sessao);
@@ -260,6 +274,9 @@ const browser = {
       await pagina.goto(link, { waitUntil: "domcontentloaded", timeout: 30_000 });
       await pagina.fill("input[name='code']", sessao.codigo, { timeout: 10_000 });
       await Promise.all([pagina.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => {}), pagina.click("button[type='submit']")]);
+      if (!(await pagina.$("#email")) && precisaIniciar(await pagina.content())) {
+        await Promise.all([pagina.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => {}), pagina.click("form button.btn-primary")]);
+      }
       if (!(await pagina.$("#email"))) throw new Error("o portal não abriu a inbox (código inválido?)");
       const j = await browser.status(sessao);
       const lido = lerStatus(j);
@@ -342,15 +359,17 @@ export async function mensagensVistas(sessao) {
  * tentados). Motivo (ig-2, 08/11): o Instagram nem sempre manda outro e-mail
  * quando o cadastro recomeça — o código anterior ainda vale — mas um código já
  * digitado e aceito nunca vale de novo.
- * @param {{ log?: (m: string) => void, intervaloMs?: number, ignorar?: Set<string>|null, descartar?: Set<string>|null, esperaNovoMs?: number }} [opts]
+ * `sinal` (AbortSignal) interrompe a espera: quem chama viu que a tela do código já passou.
+ * @param {{ log?: (m: string) => void, intervaloMs?: number, ignorar?: Set<string>|null, descartar?: Set<string>|null, esperaNovoMs?: number, sinal?: AbortSignal|null }} [opts]
  */
-export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 3000, ignorar = null, descartar = null, esperaNovoMs = 60_000 } = {}) {
+export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 3000, ignorar = null, descartar = null, esperaNovoMs = 60_000, sinal = null } = {}) {
   const via = caminho(sessao);
   const inicio = Date.now();
   const limite = inicio + timeoutMs;
   let erros = 0;
   const valido = (otp) => otp && !(descartar && descartar.has(String(otp)));
   while (Date.now() < limite) {
+    if (sinal?.aborted) throw new Error("espera do OTP interrompida: a tela do código já passou");
     try {
       const j = await via.status(sessao);
       erros = 0;
@@ -365,7 +384,7 @@ export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, 
       }
       if (lerStatus(j).acabou) throw new Error("a sessão do portal acabou sem o OTP chegar");
     } catch (e) {
-      if (/acabou sem o OTP|inválido|removido/.test(e.message)) throw e;
+      if (/acabou sem o OTP|inválido|removido|interrompida/.test(e.message)) throw e;
       erros += 1;
       if (erros >= 5) throw e;
       log(`portal: ${e.message} (tentando de novo)`);

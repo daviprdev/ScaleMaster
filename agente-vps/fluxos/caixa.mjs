@@ -103,12 +103,12 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
           return null;
         }
       },
-      async esperarCodigo({ timeoutMs } = {}) {
+      async esperarCodigo({ timeoutMs, sinal = null } = {}) {
         try {
           const s = await abrir();
           const restante = s.fimEm ? Math.max(30_000, s.fimEm - Date.now()) : 900_000;
           log(`esperando o OTP no portal (${portal.mascarar(codigo)}, até ${Math.round(Math.min(restante, timeoutMs ?? restante) / 60_000)} min)`);
-          const otp = await portal.esperarOtp(s, Math.min(restante, timeoutMs ?? restante), { log, ignorar: vistos, descartar: tentados });
+          const otp = await portal.esperarOtp(s, Math.min(restante, timeoutMs ?? restante), { log, ignorar: vistos, descartar: tentados, sinal });
           if (otp) tentados.add(String(otp));
           return otp;
         } catch (e) {
