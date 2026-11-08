@@ -70,7 +70,7 @@ function campoPor(nos, rotulos) {
 }
 
 function ehTelaCodigo(nos) {
-  return temTexto(nos, ["código de confirmação", "confirmation code", "Introduz o código", "Insira o código", "Enter the code"]);
+  return temTexto(nos, ["código de confirmação", "confirmation code", "Introduz o código", "Insira o código", "Enter the code", "Digite o código", "Insira o código que enviamos"]);
 }
 
 function botao(nos, textos) {
@@ -246,7 +246,7 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
     },
     {
       nome: "email",
-      teste: (nos) => temTexto(nos, ["Qual é o teu e-mail", "What's your email", "Qual é o seu email", "Qual é o seu e-mail"]),
+      teste: (nos) => temTexto(nos, ["Qual é o teu e-mail", "What's your email", "Qual é o seu email", "Qual é o seu e-mail", "Qual é seu email", "Qual é seu e-mail"]),
       agir: async (nos) => {
         if (temTexto(nos, ["já está a ser utilizado", "já está sendo usado", "already", "já tem uma conta", "já existe"])) {
           throw new Error(`O Instagram diz que ${enderecoAtual()} já tem conta.`);
@@ -306,7 +306,7 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
     },
     {
       nome: "nome",
-      teste: (nos) => temTexto(nos, ["Como te chamas", "Qual é o teu nome", "What's your name", "Qual é o seu nome", "Como você se chama"]),
+      teste: (nos) => temTexto(nos, ["Como te chamas", "Qual é o teu nome", "What's your name", "Qual é o seu nome", "Qual é seu nome", "Como você se chama"]),
       agir: async (nos) => {
         const campo = campoPor(nos, ["Nome completo", "Full name", "Nome"]);
         if (!campo) throw new Error("Não achei o campo do nome.");
@@ -316,7 +316,7 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
     },
     {
       nome: "usuario",
-      teste: (nos) => temTexto(nos, ["Criar um nome de utilizador", "Cria um nome de utilizador", "Create a username", "Crie um nome de usuário", "Criar um nome de usuário"]),
+      teste: (nos) => temTexto(nos, ["Criar um nome de utilizador", "Cria um nome de utilizador", "Create a username", "Crie um nome de usuário", "Criar um nome de usuário", "nome de usuário"]),
       agir: async (nos) => {
         const campo = campoPor(nos, ["Nome de utilizador", "Username", "Nome de usuário"]);
         if (conta.usuario && campo) {
