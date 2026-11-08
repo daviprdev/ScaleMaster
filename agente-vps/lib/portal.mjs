@@ -70,6 +70,10 @@ export function extrairEmail(html) {
  * anterior; sem `otp`, 6 dígitos no assunto. No HTML: #breeze-code, .otp-mini /
  * .otp-preview, e por fim o assunto de uma mail-card.
  */
+/**
+ * @param {any} fonte objeto do /status ou HTML da inbox
+ * @param {Set<string>|null} [ignorar] ids de mensagens antigas
+ */
 export function extrairOtp(fonte, ignorar = null) {
   if (fonte && typeof fonte === "object") {
     const mails = Array.isArray(fonte.mails) ? fonte.mails : [];
@@ -331,6 +335,7 @@ export async function mensagensVistas(sessao) {
 }
 
 /** Espera o OTP aparecer na sessão (polling no /status a cada 3 s); `ignorar` = ids de mensagens antigas. */
+/** @param {{ log?: (m: string) => void, intervaloMs?: number, ignorar?: Set<string>|null }} [opts] */
 export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 3000, ignorar = null } = {}) {
   const via = caminho(sessao);
   const limite = Date.now() + timeoutMs;
