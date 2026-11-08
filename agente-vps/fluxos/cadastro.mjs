@@ -315,8 +315,21 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
       },
     },
     {
+      // Login puro ("Nome de usuário, email ou celular" + Entrar + Esqueceu a senha?) sem o botão de criar
+      // conta: o Instagram caiu aqui ao religar o container (ig-2, 08/11). Voltar leva à tela de boas-vindas.
+      nome: "login-sem-criar",
+      teste: (nos) =>
+        temTexto(nos, ["Esqueceu a senha?", "Forgot password?", "Esqueceste-te da palavra-passe?"]) &&
+        botao(nos, ["Entrar", "Log in", "Iniciar sessão"]) &&
+        !botao(nos, ["Criar conta nova", "Create new account", "Criar nova conta"]),
+      agir: async () => {
+        await d.tecla("KEYCODE_BACK");
+        await esperar(2500);
+      },
+    },
+    {
       nome: "usuario",
-      teste: (nos) => temTexto(nos, ["Criar um nome de utilizador", "Cria um nome de utilizador", "Create a username", "Crie um nome de usuário", "Criar um nome de usuário", "nome de usuário"]),
+      teste: (nos) => temTexto(nos, ["Criar um nome de utilizador", "Cria um nome de utilizador", "Create a username", "Crie um nome de usuário", "Criar um nome de usuário"]),
       agir: async (nos) => {
         const campo = campoPor(nos, ["Nome de utilizador", "Username", "Nome de usuário"]);
         if (conta.usuario && campo) {
