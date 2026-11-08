@@ -199,10 +199,13 @@ describe("Portal: caixa de e-mail no cadastro (fluxos/caixa.mjs)", () => {
     expect(caixa.email).toBe("nova@gmail.com");
     expect(await caixa.esperarCodigo({})).toBe("123456");
     expect(portal.abrir).toHaveBeenCalledTimes(1);
-    expect(portal.esperarOtp).toHaveBeenCalledWith(sessao, expect.any(Number), expect.objectContaining({ ignorar: new Set(["velho"]), descartar: new Set() }));
-    // Segunda leitura: o código já digitado entra em descartar.
+    // O mock guarda a referência do Set: o mesmo objeto cresce com os códigos já digitados.
+    const chamadas = (portal.esperarOtp as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const opts = chamadas[0][2] as { ignorar: Set<string>; descartar: Set<string> };
+    expect(opts.ignorar).toEqual(new Set(["velho"]));
+    expect(opts.descartar).toEqual(new Set(["123456"]));
     await caixa.esperarCodigo({});
-    expect(portal.esperarOtp).toHaveBeenLastCalledWith(sessao, expect.any(Number), expect.objectContaining({ descartar: new Set(["123456"]) }));
+    expect((chamadas[1][2] as { descartar: Set<string> }).descartar).toEqual(new Set(["123456"]));
     await caixa.fechar();
     expect(portal.fechar).toHaveBeenCalled();
     expect(logs.join("\n")).not.toContain("SUDXHRAY");
