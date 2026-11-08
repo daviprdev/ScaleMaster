@@ -84,29 +84,68 @@ async function seguinte(d, nos) {
 }
 
 /** Data de nascimento: campo de texto, ou o seletor de rolar do Android (dia/mês/ano). */
+/** As três rodas do DatePicker (dia, mês, ano) pela posição horizontal; null se o diálogo não está aberto. */
+function rodasDoPicker(nos) {
+  const rodas = nos.filter((n) => n.id === "android:id/numberpicker_input").sort((a, b) => a.x - b.x);
+  return rodas.length === 3 ? rodas : null;
+}
+
+function valorDaRoda(roda, { dia, mes, ano }) {
+  const atual = roda.texto.toLowerCase().replace(/./g, "").trim();
+  if (/^d{4}$/.test(atual)) return { atual: Number(atual), alvo: ano, tipo: "ano" };
+  if (/^d{1,2}$/.test(atual)) return { atual: Number(atual), alvo: dia, tipo: "dia" };
+  const lingua = MESES.pt.includes(atual.slice(0, 3)) ? "pt" : "en";
+  const i = MESES[lingua].indexOf(atual.slice(0, 3));
+  return { atual: i < 0 ? null : i + 1, alvo: mes, tipo: "mes" };
+}
+
+/**
+ * Gira uma roda do DatePicker tocando no item de cima (valor anterior) ou de
+ * baixo (próximo) até bater: digitar no numberpicker_input não fixa o valor
+ * (ig-2, 08/11: a data ficou em "hoje" e o Instagram devolveu "informações
+ * incorretas"). Lê a tela de novo a cada volta.
+ */
+async function girarRoda(d, indice, data) {
+  for (let volta = 0; volta < 6; volta++) {
+    const nos = await d.tela();
+    const rodas = rodasDoPicker(nos);
+    if (!rodas) return false;
+    const roda = rodas[indice];
+    const { atual, alvo, tipo } = valorDaRoda(roda, data);
+    if (atual === alvo) return true;
+    if (atual === null) return false;
+    const botoes = nos.filter((n) => /Button/.test(n.classe) && Math.abs(n.x - roda.x) < 12 && n.y !== roda.y);
+    const acima = botoes.filter((n) => n.y < roda.y).sort((a, b) => b.y - a.y)[0];
+    const abaixo = botoes.filter((n) => n.y > roda.y).sort((a, b) => a.y - b.y)[0];
+    let passos = alvo - atual;
+    if (tipo === "mes" && Math.abs(passos) > 6) passos -= Math.sign(passos) * 12;
+    const botao = passos > 0 ? abaixo : acima;
+    if (!botao) return false;
+    for (let i = 0; i < Math.min(Math.abs(passos), 80); i++) {
+      await d.tocar(botao.x, botao.y);
+      await esperar(220);
+    }
+    await esperar(600);
+  }
+  return false;
+}
+
 async function preencherNascimento(d, nos, nascimento) {
   const [dia, mes, ano] = nascimento.split("/").map(Number);
-  const texto = nos.find((n) => /EditText/.test(n.classe));
-  if (texto) {
+  const data = { dia, mes, ano };
+  const texto = nos.find((n) => /EditText/.test(n.classe) && n.id !== "android:id/numberpicker_input");
+  if (texto && !rodasDoPicker(nos)) {
     await preencher(d, texto, nascimento);
     return true;
   }
-  const campo = campoPor(nos, ["Data de nascimento", "Birthday", "Aniversário", "Data de aniversário"]);
-  if (!campo) return false;
-  await tocarNo(d, campo, 1500);
-
-  const rodas = (await d.tela()).filter((n) => n.id === "android:id/numberpicker_input").sort((a, b) => a.x - b.x);
-  if (rodas.length !== 3) return false;
-  for (const roda of rodas) {
-    const atual = roda.texto.toLowerCase().replace(/\./g, "");
-    let valor;
-    if (/^\d{4}$/.test(atual)) valor = String(ano);
-    else if (/^\d{1,2}$/.test(atual)) valor = String(dia);
-    else {
-      const lingua = MESES.pt.includes(atual.slice(0, 3)) ? "pt" : "en";
-      valor = MESES[lingua][mes - 1];
-    }
-    await preencher(d, roda, valor);
+  if (!rodasDoPicker(nos)) {
+    const campo = campoPor(nos, ["Data de nascimento", "Birthday", "Aniversário", "Data de aniversário"]);
+    if (!campo) return false;
+    await tocarNo(d, campo, 1500);
+    if (!rodasDoPicker(await d.tela())) return false;
+  }
+  for (const indice of [2, 1, 0]) {
+    if (!(await girarRoda(d, indice, data))) return false;
   }
   const ok = acharId(await d.tela(), "android:id/button1");
   if (!ok) return false;
@@ -295,6 +334,17 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
         temTexto(nos, ["Guardar as tuas informações", "Save your login info", "Salvar suas informações", "Guardar informações de início"]) &&
         botao(nos, ["Guardar", "Save", "Salvar"]),
       agir: async (nos, alvo) => tocarNo(d, alvo, 3000),
+    },
+    {
+      nome: "picker-data",
+      teste: (nos) => !!rodasDoPicker(nos),
+      agir: async (nos) => {
+        if (!(await preencherNascimento(d, nos, conta.nascimento))) {
+          await manual(`Não consegui girar o seletor de data (${conta.nascimento}).`, nos);
+          return;
+        }
+        await seguinte(d, await d.tela());
+      },
     },
     {
       nome: "nascimento",
