@@ -62,11 +62,10 @@ export async function POST(req: NextRequest) {
     .in("status", ["queued", "running"]);
   if (ativosErr && !isMissingSchemaError(ativosErr)) return NextResponse.json({ error: ativosErr.message }, { status: 500 });
   const ativosLista = (ativos ?? []) as Array<{ id: string; instance_index: number | null }>;
-  if (ativosLista.length + lote.quantidade > capacidade.maxLigadas) {
-    return NextResponse.json(
-      { error: `A VPS cabe ${capacidade.maxLigadas} container(s) ligado(s); já tem ${ativosLista.length} na fila ou rodando.` },
-      { status: 409 }
-    );
+  // decisão (08/11): o lote entra na fila; maxLigadas/maxCadastro valem na VPS (semáforos do supervisor),
+  // que liga um container por vez. Só recusa se a VPS não comporta nenhum container.
+  if (capacidade.maxLigadas < 1) {
+    return NextResponse.json({ error: "A VPS não comporta nenhum container ligado (capacidade zero)." }, { status: 409 });
   }
 
   // Índices reservados acima de tudo o que a VPS já tem (containers, contas, devices).
