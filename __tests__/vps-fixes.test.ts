@@ -244,8 +244,13 @@ describe("Kill switch (rede.mjs)", () => {
       pos = i;
     }
     expect(s).not.toContain("PREROUTING");
-    expect(s).toContain('user = "redsocks"; group = "redsocks";');
+    // gost (red) e unbound rodam com o uid 60000: é o owner que os libera das regras.
+    expect(s).toContain('exec su-exec redsocks gost -L "red://:12345" -F "$PROXY_URL"');
+    expect(s).toContain('username: "redsocks"');
+    expect(s).toContain("tcp-upstream: yes");
     expect(s).toContain("adduser -D -H -s /sbin/nologin -u 60000 redsocks");
+    // Política DROP antes de qualquer flush: falha no meio do script fecha, nunca abre.
+    expect(s.indexOf("iptables -P OUTPUT DROP")).toBeLessThan(s.indexOf("iptables -F OUTPUT"));
     expect(UID_REDSOCKS).toBe(60000);
     expect(s).not.toMatch(/--uid-owner (1000|2000|redsocks)\b/);
     // O REDIRECT do 53 vem antes do ACCEPT do 53: nada de DNS pelo resolver da VPS.
