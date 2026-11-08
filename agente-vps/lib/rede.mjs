@@ -71,18 +71,21 @@ export const UID_REDSOCKS = 60000;
 
 /**
  * Regras, nesta ordem (tudo em OUTPUT: os apps rodam no netns, o tráfego é local):
- *   nat OUTPUT: lo RETURN → owner redsocks RETURN → udp/53 REDIRECT dnsu2t → tcp/53 REDIRECT
+ *   nat OUTPUT: lo RETURN → owner redsocks RETURN → udp/53 REDIRECT unbound → tcp/53 REDIRECT
  *               redsocks → tcp REDIRECT redsocks
  *   filter OUTPUT: lo ACCEPT → ESTABLISHED/RELATED ACCEPT (respostas do adb que entrou)
  *                  → owner redsocks ACCEPT → udp/53 ACCEPT → udp/443 REJECT (derruba o QUIC
  *                  para o app cair em TCP sem esperar timeout) → tcp ACCEPT → DROP final.
- * O DNS nunca sai pelo resolver da VPS: udp/53 vai para o dnsu2t (DNS sobre TCP
- * pela proxy) e tcp/53 para o redsocks (CONNECT 1.1.1.1:53 pela proxy), os dois
+ * O DNS nunca sai pelo resolver da VPS: udp/53 vai para o unbound do sidecar
+ * (encaminhador, tcp-upstream: DNS sobre TCP direto em 1.1.1.1, com o uid do
+ * redsocks) e tcp/53 para o redsocks (CONNECT 1.1.1.1:53 pela proxy), os dois
  * antes de qualquer ACCEPT. Em modo bloqueado só ficam lo, ESTABLISHED, o
  * REJECT do QUIC e o DROP: nem DNS sai. O redsocks roda com o uid dedicado
- * (base.user): é o owner, pelo número, que o libera.
+ * (base.user): é o owner, pelo número, que o libera. A política de OUTPUT vira
+ * DROP antes de qualquer regra: falha no meio do script fecha, nunca abre.
  */
-// decisão: tcp/53 vai para a porta do redsocks, não para a do dnsu2t, porque o dnsu2t só escuta UDP; pelo redsocks o DNS sobre TCP sai por CONNECT pela proxy.
+// decisão: o redsocks 0.5 do Alpine não tem dnsu2t; o unbound (pacote do Alpine) faz o UDP→TCP no lugar, como o mesmo uid, então o comportamento das regras é idêntico.
+// decisão: tcp/53 vai para a porta do redsocks, não para a do unbound, porque o unbound só serve o Android em UDP; pelo redsocks o DNS sobre TCP sai por CONNECT pela proxy.
 export function scriptSidecar() {
   return `set -e
 id redsocks >/dev/null 2>&1 || adduser -D -H -s /sbin/nologin -u ${UID_REDSOCKS} redsocks
@@ -95,9 +98,35 @@ if [ "$MODO" = "proxy" ]; then
   cat > /etc/redsocks.conf <<CONF
 base { log_debug = off; log_info = on; log = "stderr"; daemon = off; redirector = iptables; user = "redsocks"; group = "redsocks"; }
 redsocks { local_ip = 0.0.0.0; local_port = ${PORTA_REDSOCKS}; ip = $PROXY_IP; port = $PROXY_PORT; type = http-connect; login = "$PROXY_USER"; password = "$PROXY_PASS"; }
-dnsu2t { local_ip = 0.0.0.0; local_port = ${PORTA_DNS}; remote_ip = ${DNS_REMOTO}; remote_port = 53; }
 CONF
   chown redsocks /etc/redsocks.conf && chmod 600 /etc/redsocks.conf
+  # DNS UDP → TCP: unbound na porta ${PORTA_DNS}, só encaminhador (tcp-upstream), rodando como o uid do redsocks.
+  mkdir -p /etc/unbound
+  cat > /etc/unbound/sidecar.conf <<CONF
+server:
+  interface: 0.0.0.0@${PORTA_DNS}
+  port: ${PORTA_DNS}
+  do-udp: yes
+  do-tcp: yes
+  tcp-upstream: yes
+  username: "redsocks"
+  directory: "/etc/unbound"
+  chroot: ""
+  pidfile: ""
+  use-syslog: no
+  logfile: ""
+  verbosity: 0
+  access-control: 0.0.0.0/0 allow
+  module-config: "iterator"
+  hide-identity: yes
+  hide-version: yes
+  qname-minimisation: no
+forward-zone:
+  name: "."
+  forward-addr: ${DNS_REMOTO}
+CONF
+  unbound-checkconf /etc/unbound/sidecar.conf >/dev/null
+  unbound -c /etc/unbound/sidecar.conf
   iptables -t nat -A OUTPUT -o lo -j RETURN
   iptables -t nat -A OUTPUT -m owner --uid-owner ${UID_REDSOCKS} -j RETURN
   iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports ${PORTA_DNS}
