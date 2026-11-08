@@ -89,12 +89,12 @@ async function seguinte(d, nos) {
 
 /** Data de nascimento: campo de texto, ou o seletor de rolar do Android (dia/mês/ano). */
 /** As três rodas do DatePicker (dia, mês, ano) pela posição horizontal; null se o diálogo não está aberto. */
-function rodasDoPicker(nos) {
+export function rodasDoPicker(nos) {
   const rodas = nos.filter((n) => n.id === "android:id/numberpicker_input").sort((a, b) => a.x - b.x);
   return rodas.length === 3 ? rodas : null;
 }
 
-function valorDaRoda(roda, { dia, mes, ano }) {
+export function valorDaRoda(roda, { dia, mes, ano }) {
   const atual = roda.texto.toLowerCase().replace(/./g, "").trim();
   if (/^d{4}$/.test(atual)) return { atual: Number(atual), alvo: ano, tipo: "ano" };
   if (/^d{1,2}$/.test(atual)) return { atual: Number(atual), alvo: dia, tipo: "dia" };
@@ -109,7 +109,7 @@ function valorDaRoda(roda, { dia, mes, ano }) {
  * (ig-2, 08/11: a data ficou em "hoje" e o Instagram devolveu "informações
  * incorretas"). Lê a tela de novo a cada volta.
  */
-async function girarRoda(d, indice, data) {
+export async function girarRoda(d, indice, data) {
   for (let volta = 0; volta < 6; volta++) {
     const nos = await d.tela();
     const rodas = rodasDoPicker(nos);
@@ -134,7 +134,7 @@ async function girarRoda(d, indice, data) {
   return false;
 }
 
-async function preencherNascimento(d, nos, nascimento) {
+export async function preencherNascimento(d, nos, nascimento) {
   const [dia, mes, ano] = nascimento.split("/").map(Number);
   const data = { dia, mes, ano };
   const texto = nos.find((n) => /EditText/.test(n.classe) && n.id !== "android:id/numberpicker_input");
