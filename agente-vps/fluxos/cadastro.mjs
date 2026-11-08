@@ -95,9 +95,9 @@ export function rodasDoPicker(nos) {
 }
 
 export function valorDaRoda(roda, { dia, mes, ano }) {
-  const atual = roda.texto.toLowerCase().replace(/./g, "").trim();
-  if (/^d{4}$/.test(atual)) return { atual: Number(atual), alvo: ano, tipo: "ano" };
-  if (/^d{1,2}$/.test(atual)) return { atual: Number(atual), alvo: dia, tipo: "dia" };
+  const atual = roda.texto.toLowerCase().replace(/\./g, "").trim();
+  if (/^\d{4}$/.test(atual)) return { atual: Number(atual), alvo: ano, tipo: "ano" };
+  if (/^\d{1,2}$/.test(atual)) return { atual: Number(atual), alvo: dia, tipo: "dia" };
   const lingua = MESES.pt.includes(atual.slice(0, 3)) ? "pt" : "en";
   const i = MESES[lingua].indexOf(atual.slice(0, 3));
   return { atual: i < 0 ? null : i + 1, alvo: mes, tipo: "mes" };
