@@ -213,7 +213,9 @@ export const NOVA_CONTA = [
       const nome = nomeContainer(estado);
       const bloqueado = mumu.proxyDe(container(estado)) ? "proxy já gravada" : (await provarBloqueio(nome)) ? "kill switch verificado" : null;
       if (bloqueado === null) throw new Error("O container saiu para a internet sem proxy: kill switch não está valendo.");
-      return `Android pronto (${abi}), props conferidas, ${bloqueado}`;
+      // O abrir() pode ter recriado o container: o Created novo vai para vps_devices.docker_created (sync lê qualquer etapa).
+      const { criada } = await mumu.instancia(container(estado));
+      return `Android pronto (${abi}), props conferidas, ${bloqueado}${criada ? ` docker_created=${criada}` : ""}`;
     },
   },
   {
@@ -296,8 +298,13 @@ export const NOVA_CONTA = [
           // apagados aqui mesmo (libera RAM, disco e a proxy); o servidor marca vps_devices como descartada.
           log(`${e.message} Descartando a conta: apagando container e volume.`);
           await pararInstagram(await dispositivo()).catch(() => {});
-          await mumu.excluir(container(estado), { log, criada }).catch((erro) => log(`não apagou ${nomeContainer(estado)}: ${erro.message}`));
-          estado.descartada = true;
+          try {
+            await mumu.excluir(container(estado), { log, forcar: true });
+            estado.descartada = true;
+          } catch (erro) {
+            log(`não apagou ${nomeContainer(estado)}: ${erro.message}. Desligando.`);
+            await mumu.fechar(container(estado)).catch(() => {});
+          }
         } else {
           log(`${e.message} Desligando o container.`);
           marcarAlerta(criada, e.alerta);

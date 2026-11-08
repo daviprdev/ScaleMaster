@@ -335,6 +335,9 @@ export class Android {
     args.push(IMAGEM, ...ARGS_REDROID, `androidboot.redroid_net_dns1=${ipDe(spec.index)}`, "androidboot.selinux=permissive", `androidboot.serialno=${spec.device.serial}`);
     await docker(args, 120_000);
     spec.recriar = false;
+    // O retrato guarda o Created vivo: o abrir() recria o container e o excluir confere por ele (ig-4, 08/11: ficou defasado).
+    const viva = (await inspecionar(nomeDe(spec.index)))?.criada;
+    if (viva) spec.criada = viva;
     gravarSpec(spec);
   }
 
@@ -508,26 +511,29 @@ export class Android {
    * retrato; sem valor no banco vale só o inspect (logado). Nome "Instância N"
    * é só rótulo de container sem retrato: com o Created batendo, aceita.
    * @param {number} index
-   * @param {{ log?: (m: string) => void, nome?: string | null, criada?: string | null }} [opcoes]
+   * `forcar` = o próprio job está descartando o seu container (identidade garantida pelo índice): pula as conferências.
+   * @param {{ log?: (m: string) => void, nome?: string | null, criada?: string | null, forcar?: boolean }} [opcoes]
    */
-  async excluir(index, { log = () => {}, nome: nomeEsperado, criada: criadaEsperada } = {}) {
+  async excluir(index, { log = () => {}, nome: nomeEsperado, criada: criadaEsperada, forcar = false } = {}) {
     const spec = lerSpec(index);
     const nome = nomeDe(index);
     const inspecao = await inspecionar(nome);
     const status = inspecao?.status ?? null;
     const criadaViva = inspecao?.criada ?? null;
     const criadaBanco = typeof criadaEsperada === "string" && criadaEsperada ? criadaEsperada : null;
-    if (criadaBanco && criadaViva && criadaBanco !== criadaViva) {
-      throw new Error(`O container ${nome} não é o mesmo: criado em ${criadaViva}, o banco tem ${criadaBanco}. Nada foi apagado.`);
-    }
-    if (!criadaBanco) log(`docker_created ausente para ${nome}: conferindo só pelo inspect`);
-    if (spec?.criada && criadaViva && spec.criada !== criadaViva) {
-      throw new Error(`O container ${nome} não é o mesmo: criado em ${criadaViva}, o retrato tem ${spec.criada}. Nada foi apagado.`);
-    }
-    const nomeAtual = resolverNome(index, spec, inspecao);
-    const rotuloGenerico = typeof nomeEsperado === "string" && nomeEsperado === `Instância ${index}`;
-    if (nomeEsperado !== undefined && nomeEsperado !== null && nomeAtual !== String(nomeEsperado) && !(rotuloGenerico && criadaViva)) {
-      throw new Error(`O container ${nome} agora se chama "${nomeAtual}", a aba esperava "${nomeEsperado}". Nada foi apagado.`);
+    if (!forcar) {
+      if (criadaBanco && criadaViva && criadaBanco !== criadaViva) {
+        throw new Error(`O container ${nome} não é o mesmo: criado em ${criadaViva}, o banco tem ${criadaBanco}. Nada foi apagado.`);
+      }
+      if (!criadaBanco) log(`docker_created ausente para ${nome}: conferindo só pelo inspect`);
+      if (spec?.criada && criadaViva && spec.criada !== criadaViva) {
+        throw new Error(`O container ${nome} não é o mesmo: criado em ${criadaViva}, o retrato tem ${spec.criada}. Nada foi apagado.`);
+      }
+      const nomeAtual = resolverNome(index, spec, inspecao);
+      const rotuloGenerico = typeof nomeEsperado === "string" && nomeEsperado === `Instância ${index}`;
+      if (nomeEsperado !== undefined && nomeEsperado !== null && nomeAtual !== String(nomeEsperado) && !(rotuloGenerico && criadaViva)) {
+        throw new Error(`O container ${nome} agora se chama "${nomeAtual}", a aba esperava "${nomeEsperado}". Nada foi apagado.`);
+      }
     }
     if (status === "running") {
       log(`desligando ${nome} antes de apagar`);

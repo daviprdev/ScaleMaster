@@ -200,8 +200,9 @@ async function atualizarDeviceVps(admin: SupabaseClient, u: JobUpdate): Promise<
       }
       avisar("vps_devices.usuario", (await admin.from("vps_devices").update({ usuario: u.usuario }).eq("job_id", u.id)).error);
     }
-    const copiar = u.steps.find((s) => s.key === "copiar" && s.status === "done");
-    const dockerCreated = parseCriada(/docker_created=(\S+)/.exec(copiar?.message ?? "")?.[1]);
+    // O Created do container vem na mensagem da etapa copiar e, se o abrir() recriou o container, na do abrir: vale o último.
+    const comCreated = u.steps.filter((s) => s.status === "done" && /docker_created=/.test(s.message ?? ""));
+    const dockerCreated = parseCriada(/docker_created=(\S+)/.exec(comCreated[comCreated.length - 1]?.message ?? "")?.[1]);
     if (dockerCreated) {
       avisar("vps_devices.docker_created", (await admin.from("vps_devices").update({ docker_created: dockerCreated }).eq("job_id", u.id)).error);
     }
