@@ -56,6 +56,8 @@ export interface EmulatorJob {
 export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telefone";
 /** Captcha "Confirma que és uma pessoa" (código da imagem), pedido do dono em 02/11. */
 export const ALERTA_CAPTCHA = "Conta ERRO CRIAÇÃO, verificar captcha";
+/** Contas VPS: captcha/verificação de humano sem solução automática — a conta encerra e a aba mostra isto em vermelho. */
+export const ALERTA_ROBO = "Confirme que você não é um robô";
 const ALERTAS_CRIACAO: ReadonlySet<string> = new Set([ALERTA_TELEFONE, ALERTA_CAPTCHA]);
 
 export function ehAlertaCriacao(error: string | null | undefined): error is string {

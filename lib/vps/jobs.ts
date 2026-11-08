@@ -1,4 +1,4 @@
-import { ALERTA_CAPTCHA, ALERTA_TELEFONE, MAX_JOB_UPDATES, type EmulatorJob, type JobStep } from "@/lib/emulador/jobs";
+import { ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_TELEFONE, MAX_JOB_UPDATES, type EmulatorJob, type JobStep } from "@/lib/emulador/jobs";
 import type { VpsCapacidade, VpsJob } from "./types";
 
 /**
@@ -35,7 +35,7 @@ export const VPS_FLUXO_KEYS: ReadonlyArray<string> = VPS_FLUXO.map((s) => s.key)
 /** Proxy que não respondeu (ou país errado) na validação: a conta para e fica pausada. */
 export const PROXY_MORTA = "PROXY_MORTA: a proxy não respondeu ou é de outro país";
 
-const ALERTAS: ReadonlySet<string> = new Set([ALERTA_TELEFONE, ALERTA_CAPTCHA, PROXY_MORTA]);
+const ALERTAS: ReadonlySet<string> = new Set([ALERTA_TELEFONE, ALERTA_CAPTCHA, ALERTA_ROBO, PROXY_MORTA]);
 
 export function ehAlertaVps(error: string | null | undefined): error is string {
   return !!error && ALERTAS.has(error);

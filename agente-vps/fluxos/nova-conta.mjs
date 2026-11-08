@@ -27,7 +27,7 @@ import { abrirInstagram, editarPerfil, pararInstagram, proxyLigada, trocarFoto }
  * local) a identidade é gerada aqui.
  */
 
-export { ALERTA_CAPTCHA, ALERTA_TELEFONE } from "./cadastro.mjs";
+export { ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_TELEFONE } from "./cadastro.mjs";
 // decisão: SCALEMASTER_SESSOES_DIR só existe para os testes não escreverem em /opt.
 export const PASTA_SESSOES = process.env.SCALEMASTER_SESSOES_DIR || "/opt/scalemaster/sessoes";
 

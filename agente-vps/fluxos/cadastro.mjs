@@ -27,6 +27,8 @@ import { acharId, acharTexto, preencher, temTexto, tocarNo } from "./tela.mjs";
 /** Avisos em vermelho na linha da instância (iguais aos ALERTA_* de lib/emulador/jobs.ts). */
 export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telefone";
 export const ALERTA_CAPTCHA = "Conta ERRO CRIAÇÃO, verificar captcha";
+/** Captcha/verificação de humano que a automação não resolve: encerra a conta e a aba mostra isto em vermelho (pedido do dono, 08/11). */
+export const ALERTA_ROBO = "Confirme que você não é um robô";
 
 /**
  * O Instagram travou a conta nova numa tela que a automação não resolve
@@ -214,14 +216,15 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
         estado.captchas += 1;
         if (estado.captchas > 3) {
           salvarTela(nos, "captcha: confirma que és uma pessoa (3 tentativas)");
-          throw new ContaTravada(ALERTA_CAPTCHA, "O Instagram pediu o código da imagem (captcha) e o Capsolver não passou.");
+          throw new ContaTravada(ALERTA_ROBO, "O Instagram pediu o código da imagem (captcha) e o Capsolver não passou em 3 tentativas.");
         }
         const instrucao = resumoTela(nos);
-        // resolver nunca lança: null = sem chave, tipo que ele não resolve, erro ou timeout → o dono resolve na instância.
+        // resolver nunca lança: null = sem chave, tipo que ele não resolve, erro ou timeout.
         const pontos = await resolverCaptcha(await d.print(), { instrucao, log });
         if (!pontos) {
-          await manual(`O Instagram pediu um captcha que o Capsolver não resolveu (${instrucao}). Resolva o captcha na instância e mande continuar.`, nos);
-          return;
+          // decisão: sem Capsolver a conta encerra na hora (container desligado) e a aba mostra o aviso em vermelho; nada fica esperando o dono.
+          salvarTela(nos, "captcha sem solução automática");
+          throw new ContaTravada(ALERTA_ROBO, `O Instagram pediu um captcha que a automação não resolve (${instrucao}).`);
         }
         log(`captcha: ${pontos.length} toque(s) do Capsolver`);
         await tocarPontos(d, pontos);
@@ -234,7 +237,10 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
       nome: "verificacao",
       teste: (nos) =>
         temTexto(nos, ["Confirma que és tu", "Confirm it's you", "Confirme que é você", "reCAPTCHA", "não és um robô", "not a robot", "Ajuda-nos a confirmar", "Help us confirm", "suspendemos", "suspended"]),
-      agir: (nos) => manual(`O Instagram pediu uma verificação (${resumoTela(nos)}).`, nos),
+      agir: (nos) => {
+        salvarTela(nos, "verificação de humano/checkpoint");
+        throw new ContaTravada(ALERTA_ROBO, `O Instagram pediu uma verificação (${resumoTela(nos)}).`);
+      },
     },
     {
       // Depois dos termos o Instagram pode travar a conta nova até confirmar um telefone (sem "Ignorar").

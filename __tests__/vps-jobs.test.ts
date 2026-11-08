@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ALERTA_CAPTCHA, ALERTA_TELEFONE } from "../lib/emulador/jobs";
+import { ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_TELEFONE } from "../lib/emulador/jobs";
 import {
   PROXY_MORTA,
   TAREFA_GOLDEN,
@@ -17,7 +17,7 @@ import {
 } from "../lib/vps/jobs";
 import { geoDoPais, gerarImei, gerarMac, novoDevice, proximosIndices } from "../lib/vps/device";
 import type { VpsJob } from "../lib/vps/types";
-import { ALERTA_CAPTCHA as CAPTCHA_AGENTE, ALERTA_TELEFONE as TELEFONE_AGENTE, NOVA_CONTA, nomeDaInstancia } from "../agente-vps/fluxos/nova-conta.mjs";
+import { ALERTA_CAPTCHA as CAPTCHA_AGENTE, ALERTA_ROBO as ROBO_AGENTE, ALERTA_TELEFONE as TELEFONE_AGENTE, NOVA_CONTA, nomeDaInstancia } from "../agente-vps/fluxos/nova-conta.mjs";
 import { TAREFAS } from "../agente-vps/tarefas/index.mjs";
 import { ipDe, lerProxy } from "../agente-vps/lib/rede.mjs";
 import { Semaforo, capacidade } from "../agente-vps/lib/supervisor.mjs";
@@ -52,6 +52,9 @@ describe("Contas VPS: etapas", () => {
   it("avisos iguais nos dois lados", () => {
     expect(TELEFONE_AGENTE).toBe(ALERTA_TELEFONE);
     expect(CAPTCHA_AGENTE).toBe(ALERTA_CAPTCHA);
+    expect(ROBO_AGENTE).toBe(ALERTA_ROBO);
+    expect(ALERTA_ROBO).toBe("Confirme que você não é um robô");
+    expect(ehAlertaVps(ALERTA_ROBO)).toBe(true);
     expect(ehAlertaVps(ALERTA_TELEFONE)).toBe(true);
     expect(ehAlertaVps(PROXY_MORTA)).toBe(true);
     expect(ehAlertaVps("outro erro")).toBe(false);
