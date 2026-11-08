@@ -382,11 +382,21 @@ async function seguirUm(ctx, usuario) {
     campoDeTexto(nos) ?? acharId(nos, ig("action_bar_search_edit_text")) ?? acharTexto(nos, ["Pesquisar", "Search", "Pesquisa"], { exato: true });
 
   await irPara(ctx, "pesquisa");
-  let nos = await d.tela();
-  // A aba já estava num perfil aberto antes: o 2º toque volta para o começo da pesquisa.
+  let nos = await d.tela().catch(() => []);
   if (!acharCampo(nos)) {
-    await irPara(ctx, "pesquisa");
-    nos = await d.tela();
+    // A grade do Explorar toca reels e o uiautomator devolve "null root node" (ig-5/ig-6, 08/11). A barra
+    // "Pesquisar com a Meta AI" fica fixa no topo (1080x1920): toca pela posição e lê a tela de digitar, que não tem vídeo.
+    if (nos.length === 0 || (doInstagram(nos) && !acharCampo(nos))) {
+      ctx.log?.("pesquisa: barra pela posição (grade sem leitura)");
+      await d.tocar(540, 133);
+      await esperar(2500);
+      nos = await d.tela().catch(() => []);
+    }
+    // A aba já estava num perfil aberto antes: o 2º toque volta para o começo da pesquisa.
+    if (!acharCampo(nos)) {
+      await irPara(ctx, "pesquisa");
+      nos = await d.tela().catch(() => []);
+    }
   }
   let campo = acharCampo(nos) ?? (await esperarTela(d, acharCampo, { timeoutMs: 15_000, descricao: "a pesquisa do Instagram" }));
   if (!/EditText/.test(campo.classe)) {
