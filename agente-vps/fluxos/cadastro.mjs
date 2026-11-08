@@ -483,8 +483,8 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
       // Vem antes: o texto dela também fala em "sugestões de amizade".
       nome: "confirmar-ignorar-amigos",
       teste: (nos) =>
-        temTexto(nos, ["encontrar amigos mais depressa", "find friends faster", "find your friends faster"]) &&
-        botao(nos, ["Não, ignorar", "No, skip", "Não, pular", "Não, ignore"]),
+        temTexto(nos, ["encontrar amigos mais depressa", "encontrar seus amigos mais rapidamente", "encontrar amigos mais rapidamente", "find friends faster", "find your friends faster"]) &&
+        botao(nos, ["Não, ignorar", "No, skip", "Não, pular", "Não, ignore", "Not now"]),
       agir: async (nos, alvo) => tocarNo(d, alvo, 3000),
     },
     {
