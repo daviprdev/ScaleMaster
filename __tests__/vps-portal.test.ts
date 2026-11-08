@@ -244,3 +244,14 @@ describe("Portal: caixa de e-mail no cadastro (fluxos/caixa.mjs)", () => {
     expect(await conferirCaixa({ provedorEmail: "manual", conta: { email: "m@gmail.com" }, imap: {} })).toContain("pedido na aba");
   });
 });
+
+describe("Agente: abrir app pela atividade LAUNCHER (o monkey do redroid aborta)", () => {
+  it("resolve a última linha pacote/.Atividade e expande o ponto", async () => {
+    const { resolverAtividade } = await import("../agente-vps/lib/adb.mjs");
+    const saida = "priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=false\ncom.instagram.android/.activity.MainTabActivity\n";
+    expect(resolverAtividade(saida, "com.instagram.android")).toBe("com.instagram.android/com.instagram.android.activity.MainTabActivity");
+    expect(resolverAtividade("com.x.app/com.x.app.ui.Main", "com.x.app")).toBe("com.x.app/com.x.app.ui.Main");
+    expect(resolverAtividade("No activity found", "com.x.app")).toBeNull();
+    expect(resolverAtividade("", "com.x.app")).toBeNull();
+  });
+});

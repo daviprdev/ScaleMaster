@@ -61,6 +61,25 @@ export function casa(no, alvo, exato = false) {
   });
 }
 
+/**
+ * Atividade LAUNCHER na saída de `cmd package resolve-activity --brief`: a
+ * última linha "pacote/.Atividade" (ou "pacote/com.x.Atividade"), expandindo o
+ * ".Atividade" relativo. null = não resolveu (app sem launcher ou saída vazia).
+ */
+export function resolverAtividade(saida, pacote) {
+  const linhas = String(saida ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  for (const linha of linhas.reverse()) {
+    const m = new RegExp(`^${pacote.replace(/\./g, "\\.")}/(\\S+)$`).exec(linha);
+    if (!m) continue;
+    const classe = m[1].startsWith(".") ? `${pacote}${m[1]}` : m[1];
+    return `${pacote}/${classe}`;
+  }
+  return null;
+}
+
 /** Serial do container de índice n (porta publicada só em 127.0.0.1). */
 export function serialDe(index) {
   return `127.0.0.1:${PORTA_BASE + index}`;
@@ -169,8 +188,25 @@ export class Dispositivo {
     return this.shell("input", "keyevent", codigo);
   }
 
-  abrirApp(pacote) {
-    return this.shell("monkey", "-p", pacote, "-c", "android.intent.category.LAUNCHER", "1");
+  /**
+   * Abre o app pela atividade LAUNCHER resolvida (`cmd package resolve-activity`
+   * + `am start -W`). O `monkey` do redroid 13 aborta (rc 251, "VM exiting with
+   * result code -5") sem abrir nada, visto em 2026-11-08 no ig-2; fica só como
+   * último recurso quando a resolução falha.
+   */
+  async abrirApp(pacote) {
+    const saida = await this.shell("cmd", "package", "resolve-activity", "--brief", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", pacote).catch(() => "");
+    const atividade = resolverAtividade(saida, pacote);
+    if (atividade) {
+      const r = await this.shell("am", "start", "-W", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", "-n", atividade);
+      if (/Error|Exception/i.test(r) && !/Status:\s*ok/i.test(r)) throw new Error(`am start ${atividade} falhou: ${trecho(r)}`);
+      return r;
+    }
+    const r = await rodar(this.adb, ["-s", this.serial, "shell", "monkey", "-p", pacote, "-c", "android.intent.category.LAUNCHER", "1"], { timeoutMs: 60_000 });
+    if (r.codigo !== 0 || !/Events injected/i.test(String(r.stdout))) {
+      throw new Error(`não achei a atividade LAUNCHER de ${pacote} e o monkey falhou (rc ${r.codigo}): ${trecho(String(r.stdout + r.stderr).split("\n").slice(-3).join(" "))}`);
+    }
+    return String(r.stdout);
   }
 
   fecharApp(pacote) {
