@@ -57,3 +57,11 @@ export function resultPairs(result: unknown): Array<[string, string]> {
     .slice(0, 6)
     .map(([k, v]) => [k, String(v)]);
 }
+
+/** Máscara dd/mm/aaaa: fica só com os dígitos (até 8) e põe as barras sozinha conforme o dono digita. */
+export function mascaraData(valor: string): string {
+  const d = valor.replace(/[^0-9]/g, "").slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return d.slice(0, 2) + "/" + d.slice(2);
+  return d.slice(0, 2) + "/" + d.slice(2, 4) + "/" + d.slice(4);
+}

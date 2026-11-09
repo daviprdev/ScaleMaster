@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { mascaraData } from "@/lib/emulador/view";
 import { Plus, Server } from "lucide-react";
 import { Banner, Button, ConfirmDialog, Dialog, EmptyState, Input, PageHeader, Select, Skeleton } from "@/components/ui";
 import { AgenteVpsCard, ConectarVpsDialog } from "@/components/dashboard/vps/AgenteVpsCard";
@@ -412,7 +413,7 @@ function EditarContaDialog({ job, onClose, onSaved }: { job: VpsJob | null; onCl
         const lida = parseLinhaPortal(valor);
         if (lida) return { ...f, email: lida.link, senhaEmail: lida.codigo };
       }
-      return { ...f, [key]: valor };
+      return { ...f, [key]: key === "nascimento" ? mascaraData(valor) : valor };
     });
   // Trocar o provedor zera link/e-mail e senha: o que estava guardado era de outro provedor.
   const trocarProvedor = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -516,7 +517,7 @@ function EditarContaDialog({ job, onClose, onSaved }: { job: VpsJob | null; onCl
             <Input label="Senha do Instagram" type="password" hint="Em branco = mantém." value={form.senhaIg} onChange={set("senhaIg")} autoComplete="new-password" />
             <Input label="Nome completo" value={form.nome} onChange={set("nome")} autoComplete="off" required />
             <Input label="Usuário (opcional)" placeholder="sem @" value={form.usuario} onChange={set("usuario")} autoComplete="off" />
-            <Input label="Nascimento" placeholder="dd/mm/aaaa" value={form.nascimento} onChange={set("nascimento")} autoComplete="off" required />
+            <Input label="Nascimento" placeholder="dd/mm/aaaa" inputMode="numeric" maxLength={10} value={form.nascimento} onChange={set("nascimento")} autoComplete="off" required />
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={onClose}>

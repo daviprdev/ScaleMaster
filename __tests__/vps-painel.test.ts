@@ -127,3 +127,19 @@ describe("Aviso de captcha", () => {
     expect(rotuloAlerta(null)).toBeNull();
   });
 });
+
+describe("Máscara da data de nascimento", () => {
+  it("põe as barras sozinha conforme os números entram", async () => {
+    const { mascaraData } = await import("../lib/emulador/view");
+    expect(mascaraData("1")).toBe("1");
+    expect(mascaraData("14")).toBe("14");
+    expect(mascaraData("140")).toBe("14/0");
+    expect(mascaraData("1403")).toBe("14/03");
+    expect(mascaraData("14031")).toBe("14/03/1");
+    expect(mascaraData("14031998")).toBe("14/03/1998");
+    expect(mascaraData("14/03/1998")).toBe("14/03/1998");
+    expect(mascaraData("140319989999")).toBe("14/03/1998");
+    expect(mascaraData("14/0")).toBe("14/0");
+    expect(mascaraData("ab")).toBe("");
+  });
+});

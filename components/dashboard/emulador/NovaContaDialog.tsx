@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { mascaraData } from "@/lib/emulador/view";
 import { Banner, Button, Dialog, Input, Select, Skeleton } from "@/components/ui";
 import type { EmulatorJob } from "@/lib/emulador/jobs";
 import type { EmulatorAgent, EmulatorInstance } from "@/lib/emulador/types";
@@ -80,7 +81,7 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
   }, [target]);
 
   const set = (key: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((f) => ({ ...f, [key]: e.target.value }));
+    setForm((f) => ({ ...f, [key]: key === "nascimento" ? mascaraData(e.target.value) : e.target.value }));
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,6 +203,8 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
               <Input
                 label="Data de nascimento"
                 placeholder="dd/mm/aaaa"
+                inputMode="numeric"
+                maxLength={10}
                 value={form.nascimento}
                 onChange={set("nascimento")}
                 autoComplete="off"
