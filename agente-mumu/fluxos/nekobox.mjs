@@ -11,6 +11,8 @@ import { acharId, acharTexto, esperarTela, preencher, tocarNo } from "./tela.mjs
 
 const NEKO = "moe.nb4a";
 const id = (nome) => `${NEKO}:id/${nome}`;
+// O NekoBox não é o Instagram: aqui a tela é relida logo, sem ritmo de pessoa.
+const RAPIDO_MS = 500;
 
 /** http://usuario:senha@host:porta (o servidor já normalizou) → partes. */
 export function lerProxy(url) {
@@ -26,17 +28,18 @@ export function lerProxy(url) {
 
 async function campo(d, titulo, valor) {
   const linha = await esperarTela(d, (nos) => acharTexto(nos, [titulo], { exato: true }), {
+    intervaloMs: RAPIDO_MS,
     descricao: `o campo ${titulo} do NekoBox`,
   });
-  await tocarNo(d, linha, 900);
-  const caixa = await esperarTela(d, (nos) => acharId(nos, "android:id/edit"), { descricao: `a caixa de ${titulo}` });
+  await tocarNo(d, linha, 400);
+  const caixa = await esperarTela(d, (nos) => acharId(nos, "android:id/edit"), { intervaloMs: RAPIDO_MS, descricao: `a caixa de ${titulo}` });
   if (valor) await preencher(d, caixa, valor);
   else {
     await tocarNo(d, caixa, 300);
     await d.limparCampo();
   }
-  const ok = await esperarTela(d, (nos) => acharId(nos, "android:id/button1"), { descricao: "o OK da caixa" });
-  await tocarNo(d, ok, 900);
+  const ok = await esperarTela(d, (nos) => acharId(nos, "android:id/button1"), { intervaloMs: RAPIDO_MS, descricao: "o OK da caixa" });
+  await tocarNo(d, ok, 400);
 }
 
 export async function configurarProxy(d, proxyUrl, nomePerfil, log) {

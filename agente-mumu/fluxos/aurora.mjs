@@ -1,4 +1,7 @@
-import { esperar } from "../lib/processo.mjs";
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { arquivoDeEstado } from "../lib/estado.mjs";
+import { esperar, rodar } from "../lib/processo.mjs";
 import { acharId, acharTexto, esperarTela, tocarNo } from "./tela.mjs";
 
 /**
@@ -12,8 +15,66 @@ const AURORA = "com.aurora.store";
 export const INSTAGRAM = "com.instagram.android";
 const INSTALACAO_MAX_MS = 20 * 60_000;
 
+/**
+ * Cópia do Instagram que o Aurora instalou, guardada neste PC: a conta seguinte
+ * instala dela por adb (uns 20 s) em vez de baixar os ~275 MB de novo. O
+ * instalador registrado continua sendo o Aurora (-i), igual à instalação normal.
+ */
+const PASTA_APK = arquivoDeEstado("apk-instagram");
+// decisão: depois de 7 dias a cópia vence e o Aurora baixa a versão atual.
+export const APK_VALIDADE_MS = 7 * 24 * 60 * 60_000;
+
+/** Arquivos .apk da cópia guardada, ou null se não há cópia ou ela venceu. */
+export function apkGuardado(agora = Date.now(), pasta = PASTA_APK) {
+  try {
+    const meta = JSON.parse(readFileSync(path.join(pasta, "meta.json"), "utf8"));
+    if (!(agora - Number(meta.guardadoEm) < APK_VALIDADE_MS)) return null;
+    const apks = readdirSync(pasta).filter((n) => n.endsWith(".apk")).sort().map((n) => path.join(pasta, n));
+    return apks.length === meta.arquivos && apks.length > 0 ? apks : null;
+  } catch {
+    return null;
+  }
+}
+
+async function instalarDoPc(d, apks) {
+  const r = await rodar(d.adb, ["-s", d.serial, "install-multiple", "-r", "-i", AURORA, ...apks], { timeoutMs: 5 * 60_000 });
+  if (!/success/i.test(String(r.stdout)) || !(await d.temApp(INSTAGRAM))) throw new Error(String(r.stderr || r.stdout).trim().slice(0, 200));
+}
+
+/** Puxa os APKs instalados para o PC; falha aqui não derruba a conta. */
+async function guardarApk(d, log) {
+  const tmp = `${PASTA_APK}.tmp`;
+  try {
+    const caminhos = (await d.shell("pm", "path", INSTAGRAM)).split(/\r?\n/).map((l) => l.replace(/^package:/, "").trim()).filter(Boolean);
+    if (!caminhos.length) return;
+    rmSync(tmp, { recursive: true, force: true });
+    mkdirSync(tmp, { recursive: true });
+    for (const remoto of caminhos) {
+      const r = await rodar(d.adb, ["-s", d.serial, "pull", remoto, path.join(tmp, path.posix.basename(remoto))], { timeoutMs: 5 * 60_000 });
+      if (r.codigo !== 0) throw new Error(String(r.stderr || r.stdout).trim().slice(0, 200));
+    }
+    writeFileSync(path.join(tmp, "meta.json"), JSON.stringify({ guardadoEm: Date.now(), arquivos: caminhos.length }));
+    rmSync(PASTA_APK, { recursive: true, force: true });
+    renameSync(tmp, PASTA_APK);
+    log("Instagram guardado no PC para as próximas contas");
+  } catch (e) {
+    rmSync(tmp, { recursive: true, force: true });
+    log(`não guardei o Instagram no PC: ${e.message}`);
+  }
+}
+
 export async function instalarInstagram(d, log) {
   if (await d.temApp(INSTAGRAM)) return "já estava instalado";
+
+  const apks = apkGuardado();
+  if (apks) {
+    try {
+      await instalarDoPc(d, apks);
+      return "Instagram instalado (cópia do PC)";
+    } catch (e) {
+      log(`cópia do PC não instalou (${e.message}); indo pelo Aurora`);
+    }
+  }
 
   // A permissão "instalar apps desta fonte" sai por comando; sem ela o Aurora para numa tela de permissão.
   await d.shell("appops", "set", AURORA, "REQUEST_INSTALL_PACKAGES", "allow");
@@ -54,8 +115,9 @@ export async function instalarInstagram(d, log) {
     const permitir = acharTexto(nos, ["Permitir", "Allow"], { exato: true });
     if (confirmar) await tocarNo(d, confirmar, 3000);
     else if (permitir && acharTexto(nos, ["Permissão de instalação", "Install permission"])) await tocarNo(d, permitir, 3000);
-    else await esperar(5000);
+    else await esperar(3000);
   }
   await d.fecharApp(AURORA);
+  await guardarApk(d, log);
   return "Instagram instalado";
 }

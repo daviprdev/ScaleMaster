@@ -45,7 +45,7 @@ import { TAREFAS } from "./tarefas/index.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.9.0";
+const VERSAO = "1.10.0";
 /** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
 const ARQ_CONFIG = arquivoDeEstado("config.json");
