@@ -736,10 +736,22 @@ export async function editarPerfil(ctx, { nome, bio }) {
         teste: (nos) => estado.editando && !estado.preencheu && (campoRotulado(nos, ["Nome", "Name"]) ?? campoRotulado(nos, ["Bio", "Biografia"])),
         agir: async (nos) => {
           const campoNome = campoRotulado(nos, ["Nome", "Name"]);
-          if (campoNome && nome) {
+          // O nome do cadastro já é o da conta: se a linha já mostra ele, não mexe. Nesta build a linha "Nome" abre
+          // uma tela própria e o texto era acrescentado ("Amanda LopesLopes" → pedido de confirmação; ig-7, 09/11).
+          const nomeJaCerto = !!nome && nos.some((n) => n.texto.trim().toLowerCase() === nome.trim().toLowerCase());
+          if (campoNome && nome && !nomeJaCerto) {
             await preencher(d, campoNome, nome.slice(0, 64));
             await d.tecla("KEYCODE_BACK").catch(() => {});
             await esperar(800);
+            // Confirmação "Quer mesmo alterar seu nome para X?": só confirma se X for o nome pedido; senão cancela e sai.
+            const conf = await d.tela().catch(() => []);
+            if (temTexto(conf, ["Quer mesmo alterar seu nome", "alterar o teu nome", "change your name"])) {
+              const certo = conf.some((n) => n.texto.includes(`${nome}?`));
+              const alvoConf = botao(conf, certo ? ["Alterar nome", "Change name"] : ["Cancelar", "Cancel"]);
+              if (alvoConf) await tocarNo(d, alvoConf, 2500);
+              if (!certo) await d.tecla("KEYCODE_BACK").catch(() => {});
+              await esperar(1500);
+            }
           }
           let atual = await d.tela();
           const campoBio = campoRotulado(atual, ["Bio", "Biografia"]);
