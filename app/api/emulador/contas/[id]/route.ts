@@ -38,14 +38,15 @@ async function loadJob(id: string) {
   return { admin, job, input };
 }
 
-// GET — dados para o formulário Editar dados (sem a senha e sem as credenciais da proxy).
+// GET — dados para o formulário Editar dados (sem as credenciais da proxy). A senha do Instagram vai junto:
+// ela pode ter sido sorteada na criação e o dono (único usuário) precisa conseguir ver.
 export async function GET(_req: NextRequest, { params }: Params) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
   }
   const loaded = await loadJob((await params).id);
   if ("response" in loaded) return loaded.response;
-  return NextResponse.json(editableFrom(loaded.input));
+  return NextResponse.json({ ...editableFrom(loaded.input), senha: loaded.input.conta?.senha ?? "" });
 }
 
 // PATCH — salva os dados novos. Conta na fila ou que parou volta para a fila e

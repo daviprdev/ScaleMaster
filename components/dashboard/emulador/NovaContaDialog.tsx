@@ -34,6 +34,7 @@ interface Editable {
   usuario: string;
   nascimento: string;
   proxyHost: string;
+  senha?: string;
 }
 
 /**
@@ -49,6 +50,7 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
   const here = editing || registering ? null : (target?.instance ?? null);
   const viewOnly = editing?.status === "running";
   const [form, setForm] = React.useState(EMPTY);
+  const [senhaAtual, setSenhaAtual] = React.useState("");
   const [proxyHost, setProxyHost] = React.useState("");
   const [template, setTemplate] = React.useState<string>("");
   const [loading, setLoading] = React.useState(false);
@@ -72,6 +74,7 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
         if (!alive) return;
         setForm({ ...EMPTY, email: body.email, nome: body.nome, usuario: body.usuario, nascimento: body.nascimento });
         setProxyHost(body.proxyHost);
+        setSenhaAtual(body.senha ?? "");
       })
       .catch((e: Error) => alive && setError(e.message))
       .finally(() => alive && setLoading(false));
@@ -185,11 +188,10 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
               <Input
                 label="Senha do Instagram"
                 type="password"
-                hint={keepHint ?? "Sem acento."}
+                hint={editing ? (senhaAtual ? `Atual: ${senhaAtual}. Em branco = mantém.` : (keepHint ?? "Em branco = mantém.")) : "Em branco = senha aleatória (aparece depois em Editar dados)."}
                 value={form.senha}
                 onChange={set("senha")}
                 autoComplete="new-password"
-                required={!editing}
               />
               <Input label="Nome completo" hint="Sem acento." value={form.nome} onChange={set("nome")} autoComplete="off" required />
               <Input
@@ -205,10 +207,11 @@ export function ContaDialog({ target, onClose, onSaved }: ContaDialogProps) {
                 placeholder="dd/mm/aaaa"
                 inputMode="numeric"
                 maxLength={10}
+                hint={editing ? undefined : "Em branco = data aleatória entre 1988 e 2007."}
                 value={form.nascimento}
                 onChange={set("nascimento")}
                 autoComplete="off"
-                required
+                required={!!editing}
               />
             </div>
           </fieldset>

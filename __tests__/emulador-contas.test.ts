@@ -262,3 +262,23 @@ describe("Criar conta aqui", () => {
     expect(linkedJobs([{ ...base, status: "error" as const }], "pc", inst).size).toBe(0);
   });
 });
+
+describe("Criar instância: senha e nascimento sorteados quando em branco", () => {
+  it("gera senha forte e data entre 1988 e 2007; preenchidos são mantidos", () => {
+    const r = parseNovaContaInput({ ...OK, conta: { ...OK.conta, senha: "", nascimento: "" } });
+    expect(r).toHaveProperty("value");
+    if (!("value" in r)) return;
+    expect(r.value.conta.senha).toHaveLength(14);
+    expect(r.value.conta.senha).toMatch(/[A-Z]/);
+    expect(r.value.conta.senha).toMatch(/[0-9]/);
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(r.value.conta.nascimento);
+    expect(m).not.toBeNull();
+    expect(Number(m![3])).toBeGreaterThanOrEqual(1988);
+    expect(Number(m![3])).toBeLessThanOrEqual(2007);
+    const fixo = parseNovaContaInput(OK);
+    if ("value" in fixo) {
+      expect(fixo.value.conta.senha).toBe(OK.conta.senha);
+      expect(fixo.value.conta.nascimento).toBe(OK.conta.nascimento);
+    }
+  });
+});

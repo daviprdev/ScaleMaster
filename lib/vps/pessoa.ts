@@ -34,7 +34,7 @@ export const NOME_MAX = 28;
 export const USUARIO_MAX = 30;
 export const SENHA_TAMANHO = 14;
 export const NASCIMENTO_ANO_MIN = 1988;
-export const NASCIMENTO_ANO_MAX = 2006;
+export const NASCIMENTO_ANO_MAX = 2007;
 export const SIMBOLOS_SENHA = "!@#$%&*.";
 
 /** Gerador [0,1): o padrão é Math.random; os testes injetam um determinístico. */
@@ -163,7 +163,7 @@ export function diasNoMes(mes: number, ano: number): number {
   return [31, bissexto(ano) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mes - 1];
 }
 
-/** dd/mm/aaaa com ano entre 1988 e 2006 e dia válido para o mês e o ano. */
+/** dd/mm/aaaa com ano entre 1988 e 2007 e dia válido para o mês e o ano. */
 export function gerarNascimento(rng: Rng = Math.random): string {
   const ano = inteiro(rng, NASCIMENTO_ANO_MIN, NASCIMENTO_ANO_MAX);
   const mes = inteiro(rng, 1, 12);

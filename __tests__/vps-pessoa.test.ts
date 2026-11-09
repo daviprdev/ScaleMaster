@@ -147,7 +147,7 @@ describe("Pessoa: senha e nascimento", () => {
     expect(mascararSenha("abc")).toBe("•••");
   });
 
-  it("nascimento dd/mm/aaaa com ano 1988–2006 e dia válido; 29/02 só em bissexto", () => {
+  it("nascimento dd/mm/aaaa com ano 1988–2007 e dia válido; 29/02 só em bissexto", () => {
     const rng = rngDe(33);
     for (let i = 0; i < 500; i++) {
       const n = gerarNascimento(rng);
@@ -155,7 +155,7 @@ describe("Pessoa: senha e nascimento", () => {
       expect(m).not.toBeNull();
       const [dia, mes, ano] = [Number(m![1]), Number(m![2]), Number(m![3])];
       expect(ano).toBeGreaterThanOrEqual(1988);
-      expect(ano).toBeLessThanOrEqual(2006);
+      expect(ano).toBeLessThanOrEqual(2007);
       expect(mes).toBeGreaterThanOrEqual(1);
       expect(mes).toBeLessThanOrEqual(12);
       const d = new Date(Date.UTC(ano, mes - 1, dia));
@@ -165,7 +165,7 @@ describe("Pessoa: senha e nascimento", () => {
     }
     // rng que força fevereiro com dia no teto: 29 em 2000 (bissexto), 28 em 1999.
     const forcar = (ano: number) => {
-      const fila = [(ano - 1988) / 19 + 0.001, 1 / 12 + 0.001, 0.999];
+      const fila = [(ano - 1988) / 20 + 0.001, 1 / 12 + 0.001, 0.999];
       return () => (fila.length ? (fila.shift() as number) : 0.5);
     };
     expect(gerarNascimento(forcar(2000))).toBe("29/02/2000");

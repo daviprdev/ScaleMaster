@@ -1,4 +1,5 @@
 import { parseProxyLine } from "@/lib/proxy-pool";
+import { gerarNascimento, gerarSenha } from "@/lib/vps/pessoa";
 import type { NovaContaInput } from "./jobs";
 
 /** Só no servidor (proxy-pool puxa undici): valida o formulário Criar instância. */
@@ -30,6 +31,10 @@ export function parseNovaContaInput(raw: unknown): { value: NovaContaInput } | {
     },
   };
   const c = value.conta;
+  // Senha e nascimento em branco são sorteados aqui, na hora de criar (pedido do dono, 09/11):
+  // senha de 14 caracteres com as quatro classes e data entre 1988 e 2007 (lib/vps/pessoa.ts).
+  if (!c.senha) c.senha = gerarSenha();
+  if (!c.nascimento) c.nascimento = gerarNascimento();
 
   if (!EMAIL_RE.test(c.email)) return { error: "Informe o Gmail da conta." };
   if (c.senha.length < 6) return { error: "A senha do Instagram precisa de pelo menos 6 caracteres." };
