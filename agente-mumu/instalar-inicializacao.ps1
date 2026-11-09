@@ -1,7 +1,9 @@
 # Faz o agente subir sozinho (sem janela) quando voce entra no Windows e ja liga agora.
 # Desfazer: powershell -ExecutionPolicy Bypass -File remover-inicializacao.ps1
 $pasta = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not (Test-Path (Join-Path $pasta 'config.json'))) {
+# O codigo fica fora desta pasta (lib/estado.mjs); o da pasta antiga e levado na 1a vez que o agente roda.
+$estado = Join-Path $env:LOCALAPPDATA 'ScaleMaster\agente-mumu'
+if (-not ((Test-Path (Join-Path $estado 'config.json')) -or (Test-Path (Join-Path $pasta 'config.json')))) {
   Write-Output 'Conecte o PC antes: node agente.mjs conectar <codigo> (o codigo sai na aba Emulador).'
   exit 1
 }
@@ -16,4 +18,4 @@ $lnk.WorkingDirectory = $pasta
 $lnk.Save()
 
 Start-Process $wscript -ArgumentList ('"' + $vbs + '"')
-Write-Output "Pronto: o agente sobe com o Windows e ja esta rodando. Log em $pasta\agente.log"
+Write-Output "Pronto: o agente sobe com o Windows e ja esta rodando. Log em $estado\agente.log"

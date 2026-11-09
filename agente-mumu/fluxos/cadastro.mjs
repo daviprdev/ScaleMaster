@@ -15,7 +15,7 @@ import { acharId, acharTexto, preencher, temTexto, tocarNo } from "./tela.mjs";
  * Quando precisa do dono: o código que chega no Gmail (pergunta "codigo") e
  * qualquer tela desconhecida, captcha ou checkpoint (pergunta "manual": ele
  * resolve na instância e manda continuar). Cada tela desconhecida é salva em
- * agente-mumu/telas/ para virar automação depois.
+ * telas/ (pasta de lib/estado.mjs) para virar automação depois.
  */
 
 /** Avisos em vermelho na linha da instância (iguais aos ALERTA_* de lib/emulador/jobs.ts). */

@@ -12,7 +12,7 @@ import { acharId, acharTexto, esperarTela, preencher, temTexto, tocarNo } from "
  * volta e reage pelo texto (a instância está em pt-PT; às vezes vem inglês).
  *
  * Nenhuma dessas telas foi vista ainda numa conta real (01/11/2026): a que não
- * for reconhecida fica salva em agente-mumu/telas/ e vira pergunta na aba.
+ * for reconhecida fica salva em telas/ (pasta de lib/estado.mjs) e vira pergunta na aba.
  * Foto, story e destaque, se travarem, pedem para o dono terminar à mão — a
  * automação não pode arriscar fazer de novo o que ele fez (story duplicado).
  *

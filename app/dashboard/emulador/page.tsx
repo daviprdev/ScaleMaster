@@ -31,6 +31,7 @@ export default function EmuladorPage() {
   const [commandError, setCommandError] = React.useState<string | null>(null);
   const [sending, setSending] = React.useState<ReadonlySet<string>>(new Set());
   const [connectOpen, setConnectOpen] = React.useState(false);
+  const [recoding, setRecoding] = React.useState<EmulatorAgent | null>(null);
   const [disconnecting, setDisconnecting] = React.useState<EmulatorAgent | null>(null);
   const [disconnectBusy, setDisconnectBusy] = React.useState(false);
   const [contaDialog, setContaDialog] = React.useState<ContaDialogTarget>(null);
@@ -219,6 +220,7 @@ export default function EmuladorPage() {
                   now={now}
                   onCommand={sendCommand}
                   onDisconnect={setDisconnecting}
+                  onNewCode={setRecoding}
                   onCreateInstance={data.jobsAvailable ? (a) => setContaDialog({ agent: a }) : undefined}
                   alerts={instanceAlerts(data.jobs, agent.id, agent.instances)}
                   linked={linkedJobs(data.jobs, agent.id, agent.instances)}
@@ -257,7 +259,15 @@ export default function EmuladorPage() {
         confirmLabel="Remover"
       />
 
-      <ConnectDialog open={connectOpen} onClose={() => setConnectOpen(false)} onCreated={() => void load()} />
+      <ConnectDialog
+        open={connectOpen || !!recoding}
+        agent={recoding}
+        onClose={() => {
+          setConnectOpen(false);
+          setRecoding(null);
+        }}
+        onCreated={() => void load()}
+      />
 
       <ConfirmDialog
         open={!!disconnecting}

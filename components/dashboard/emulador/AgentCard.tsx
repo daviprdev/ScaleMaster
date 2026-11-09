@@ -39,7 +39,7 @@ const STATE_BADGE: Record<InstanceState, { tone: BadgeTone; label: string }> = {
 
 /** Link que agente-mumu/instalar-botao.ps1 registra no PC: sobe o agente sem janela. */
 const START_AGENT_URL = "scalemaster-agente:iniciar";
-/** Passou disso sem ficar Online, o botão Iniciar agente explica como instalar o link. */
+/** Passou disso sem ficar Online, o botão Iniciar agente explica o que pode ter faltado. */
 const START_WAIT_MS = 30_000;
 
 export type SendCommand = (
@@ -57,6 +57,8 @@ interface AgentCardProps {
   now: number;
   onCommand: SendCommand;
   onDisconnect: (agent: EmulatorAgent) => void;
+  /** Abre a janela de código novo para este PC (o código dele se perdeu). */
+  onNewCode?: (agent: EmulatorAgent) => void;
   /** Aviso em vermelho por índice de instância (conta travada pedindo telefone). */
   alerts?: ReadonlyMap<number, string>;
   /** Conta de cada instância (para o Editar dados na linha). */
@@ -82,6 +84,7 @@ export function AgentCard({
   now,
   onCommand,
   onDisconnect,
+  onNewCode,
   alerts,
   linked,
   onEditJob,
@@ -174,9 +177,20 @@ export function AgentCard({
       ) : (
         <div className="flex flex-col gap-4">
           {startFailed && (
-            <Banner tone="warning">
-              O agente não subiu. O botão só funciona no PC do MuMu e precisa ser instalado uma vez: na pasta{" "}
-              <span className="font-mono">agente-mumu</span>, rode{" "}
+            <Banner
+              tone="warning"
+              action={
+                onNewCode && (
+                  <Button variant="secondary" size="sm" onClick={() => onNewCode(agent)}>
+                    Gerar novo código
+                  </Button>
+                )
+              }
+            >
+              O agente não subiu. Se abriu um aviso do Scale Master no PC, o motivo está nele; se o código deste PC se
+              perdeu, gere um novo (as instâncias e as contas continuam aqui). Sem aviso nenhum, o botão ainda não foi
+              instalado: ele só funciona no PC do MuMu e precisa de uma instalação, na pasta{" "}
+              <span className="font-mono">agente-mumu</span>:{" "}
               <span className="font-mono">powershell -ExecutionPolicy Bypass -File instalar-botao.ps1</span>.
             </Banner>
           )}

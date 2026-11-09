@@ -21,6 +21,10 @@
  * Além dos comandos, o sync entrega a fila do PC (fluxos/): Criar instância e
  * Atividade, até duas ao mesmo tempo, com o andamento etapa a etapa (jobUpdates/runningJobs).
  *
+ * O código (config.json), o log e o PID ficam fora desta pasta, em
+ * %LOCALAPPDATA%\ScaleMaster\agente-mumu (lib/estado.mjs): clonar o repositório
+ * de novo não desconecta o PC.
+ *
  * Sem dependências: só Node 18+. Segurança: o servidor só escolhe entre
  * abrir/fechar/renomear/excluir/automação conhecida, pelo número da instância
  * (excluir confere o nome antes); nada vindo dele vira comando de terminal.
@@ -30,10 +34,10 @@ import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { appendFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Dispositivo } from "./lib/adb.mjs";
 import { alertaDe, limparAlerta } from "./lib/alertas.mjs";
+import { arquivoDeEstado } from "./lib/estado.mjs";
 import { listarMidias, pastaDeMidias } from "./lib/midias.mjs";
 import { MuMu } from "./lib/mumu.mjs";
 import { esperar } from "./lib/processo.mjs";
@@ -41,20 +45,18 @@ import { TAREFAS } from "./tarefas/index.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.8.0";
+const VERSAO = "1.9.0";
 /** "Instância" -1 = o MuMu em si: launch nela abre só a janela principal (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
-const PASTA = path.dirname(fileURLToPath(import.meta.url));
-const ARQ_CONFIG = path.join(PASTA, "config.json");
-const ARQ_LOG = path.join(PASTA, "agente.log");
-const ARQ_PID = path.join(PASTA, "agente.pid");
+const ARQ_CONFIG = arquivoDeEstado("config.json");
+const ARQ_LOG = arquivoDeEstado("agente.log");
+const ARQ_PID = arquivoDeEstado("agente.pid");
 const URL_PADRAO = "https://scalemaster.tech";
 const TOKEN_RE = /^smag_[A-Za-z0-9_-]{43}$/;
 
 const INTERVALO_MS = 3_000;
 const ESPERA_SEM_REDE_MS = 10_000;
 const ESPERA_SQL_MS = 30_000;
-const ESPERA_CODIGO_INVALIDO_MS = 60_000;
 const LOG_MAX_BYTES = 5 * 1024 * 1024;
 
 // ── log ─────────────────────────────────────────────────────────────────────
@@ -77,6 +79,21 @@ function logSemRepetir(mensagem) {
   if (mensagem === ultimaLinha) return;
   ultimaLinha = mensagem;
   log(mensagem);
+}
+
+/**
+ * Aberto sem janela (botão Iniciar agente, inicialização do Windows), ninguém vê
+ * o console: o iniciar-oculto.vbs passa um arquivo em SCALEMASTER_AGENTE_AVISO e
+ * mostra num aviso do Windows o que o agente escrever nele antes de sair.
+ */
+function avisarDono(texto) {
+  const arquivo = process.env.SCALEMASTER_AGENTE_AVISO;
+  if (!arquivo) return;
+  try {
+    writeFileSync(arquivo, `﻿${texto}`, "utf16le");
+  } catch {
+    /* sem aviso: fica só no log */
+  }
 }
 
 // ── config e instância única ───────────────────────────────────────────────
@@ -297,6 +314,10 @@ async function rodarAgente() {
   if (!config?.token) {
     console.log("Este PC ainda não está conectado. Gere o código na aba Emulador e rode:");
     console.log("  node agente.mjs conectar <código>");
+    avisarDono(
+      "Este PC não está conectado ao Scale Master (o código dele não está mais neste Windows).\n\n" +
+        "Na aba Emulador, clique em Gerar novo código no aviso amarelo deste PC e rode, na pasta agente-mumu, o comando que aparecer."
+    );
     process.exit(1);
   }
   travarInstanciaUnica();
@@ -404,9 +425,13 @@ async function rodarAgente() {
       const resposta = await res.json().catch(() => ({}));
 
       if (res.status === 401) {
-        online = false;
-        espera = ESPERA_CODIGO_INVALIDO_MS;
-        logSemRepetir(`Código recusado pelo SaaS: ${resposta.error ?? "401"}. Gere outro na aba Emulador e rode "node agente.mjs conectar <código>".`);
+        // decisão: código recusado não volta a valer sozinho; sair avisando em vez de ficar tentando escondido.
+        log(`Código recusado pelo SaaS: ${resposta.error ?? "401"}. Gere outro na aba Emulador e rode "node agente.mjs conectar <código>".`);
+        avisarDono(
+          "O Scale Master recusou o código deste PC (foi trocado ou o PC foi desconectado).\n\n" +
+            "Na aba Emulador, clique em Gerar novo código no aviso amarelo deste PC (ou em Conectar um PC, se ele saiu da lista) e rode, na pasta agente-mumu, o comando que aparecer."
+        );
+        process.exit(1);
       } else if (!res.ok) {
         resultados = [...enviando, ...resultados];
         devolverAndamentos(enviandoAndamentos);
@@ -478,7 +503,7 @@ function conectar(token, args) {
   const url = iUrl >= 0 ? args[iUrl + 1] : lerConfig()?.url;
   const anterior = lerConfig() ?? {};
   writeFileSync(ARQ_CONFIG, `${JSON.stringify({ ...anterior, url: url || URL_PADRAO, token }, null, 2)}\n`);
-  console.log("Código salvo em config.json.");
+  console.log(`Código salvo em ${ARQ_CONFIG}.`);
 }
 
 function indice(valor) {
@@ -564,5 +589,6 @@ async function main(args) {
 
 main(process.argv.slice(2)).catch((e) => {
   log(`Erro: ${e.message}`);
+  avisarDono(`O agente parou com um erro:\n${e.message}\n\nLog: ${ARQ_LOG}`);
   process.exit(1);
 });

@@ -25,9 +25,11 @@ Liga o PC onde está o MuMu Player à aba **Emulador** do Scale Master. Precisa 
    powershell -ExecutionPolicy Bypass -File instalar-botao.ps1
    ```
 
-   Registra o link `scalemaster-agente:` só para o seu usuário do Windows; o navegador pergunta se pode abrir e o link só roda o `iniciar-oculto.vbs` desta pasta (nada do site chega ao agente). Funciona só no navegador deste PC. Desfazer: `powershell -ExecutionPolicy Bypass -File remover-botao.ps1`.
+   Registra o link `scalemaster-agente:` só para o seu usuário do Windows; o navegador pergunta se pode abrir e o link só roda o `iniciar-oculto.vbs` desta pasta (nada do site chega ao agente). Funciona só no navegador deste PC. Se a pasta do Scale Master mudar de lugar, rode de novo (o link guarda o caminho). Desfazer: `powershell -ExecutionPolicy Bypass -File remover-botao.ps1`.
 
-O código fica em `config.json` (fora do git). O log fica em `agente.log`.
+O que é deste PC fica **fora desta pasta**, em `%LOCALAPPDATA%\ScaleMaster\agente-mumu` (`lib/estado.mjs`): `config.json` (o código), `agente.log`, `agente.pid`, `alertas.json` e `telas/`. Clonar o repositório de novo não desconecta o PC; um `config.json` ou `alertas.json` deixado nesta pasta é levado para lá na primeira vez que o agente roda.
+
+**Agente não sobe:** aberto sem janela (botão ou inicialização), o `iniciar-oculto.vbs` espera o agente e, se ele sair sem subir, mostra o motivo num aviso do Windows: PC sem código, código recusado pelo Scale Master, Node não encontrado ou erro (com o caminho do log). Código perdido ou recusado: na aba Emulador, **Iniciar agente** → no aviso amarelo, **Gerar novo código** → rodar o comando que aparece. O PC continua o mesmo na aba, com as instâncias e as contas (Desconectar apagaria as contas dele). Com o código recusado o agente encerra em vez de ficar tentando.
 
 ## Testar sem o SaaS
 
@@ -48,7 +50,7 @@ A aba Emulador → **Criar instância** põe uma conta na fila. O agente roda at
 2. dá à cópia o @ (ou o Gmail) como nome e liga;
 3. instala o Instagram pelo Aurora (`fluxos/aurora.mjs`), antes da proxy;
 4. põe a proxy HTTP no NekoBox e testa (`fluxos/nekobox.mjs`);
-5. cria a conta com o Gmail (`fluxos/cadastro.mjs`): reconhece cada tela pelo título; o código do Gmail e qualquer tela desconhecida são pedidos ao dono na aba. Telas desconhecidas ficam salvas em `telas/`; se o Instagram pedir telefone ou o captcha "Confirma que és uma pessoa", a conta encerra, a instância desliga e a linha dela ganha o aviso em vermelho (`alertas.json`). O **Continuar** religa a instância, reconecta a proxy do NekoBox (antes do Instagram) e volta ao cadastro; se a tela ainda estiver lá, encerra de novo com o aviso;
+5. cria a conta com o Gmail (`fluxos/cadastro.mjs`): reconhece cada tela pelo título; o código do Gmail e qualquer tela desconhecida são pedidos ao dono na aba. Telas desconhecidas ficam salvas em `telas/` (na pasta de estado); se o Instagram pedir telefone ou o captcha "Confirma que és uma pessoa", a conta encerra, a instância desliga e a linha dela ganha o aviso em vermelho (`alertas.json`). O **Continuar** religa a instância, reconecta a proxy do NekoBox (antes do Instagram) e volta ao cadastro; se a tela ainda estiver lá, encerra de novo com o aviso;
 6. aquece a conta nova: segue 2 ou 3 perfis sorteados de `fluxos/verificados.mjs` (segue pela própria pesquisa e pula conta com menos de 100 mil seguidores; 20–60 s entre um e outro) e rola de 1,5 a 2 min de Reels, sem curtir (`AQUECIMENTO` em `fluxos/atividade.mjs`);
 7. para o Instagram e desliga a instância (no Continuar, roda de novo).
 

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { arquivoDeEstado } from "./estado.mjs";
 import { rodar } from "./processo.mjs";
 
 /**
@@ -11,7 +11,7 @@ import { rodar } from "./processo.mjs";
  * a instância. Outra pasta: campo pastaMidias do config.json.
  */
 
-const ARQ_CONFIG = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "config.json");
+const ARQ_CONFIG = arquivoDeEstado("config.json");
 const TIPOS = { ".jpg": "imagem", ".jpeg": "imagem", ".png": "imagem", ".mp4": "video", ".mov": "video" };
 const MAX_ARQUIVOS = 500;
 const MAX_NIVEIS = 4;

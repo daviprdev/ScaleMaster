@@ -1,16 +1,15 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { arquivoDeEstado } from "./estado.mjs";
 
 /**
  * Avisos por instância que valem até a instância ser usada de novo (ex.: conta
- * travada pedindo telefone). Ficam no PC, em alertas.json, presos ao
+ * travada pedindo telefone). Ficam no PC, em alertas.json (lib/estado.mjs), presos ao
  * created_timestamp do MuMu: não somem ao remover o cartão na aba nem ao
  * renomear a instância, e uma instância nova que reaproveite o índice não herda.
  * Vão no retrato de cada sync (campo alert) e a aba mostra em vermelho.
  */
 
-const ARQUIVO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "alertas.json");
+const ARQUIVO = arquivoDeEstado("alertas.json");
 
 function ler() {
   try {

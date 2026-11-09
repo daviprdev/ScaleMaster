@@ -1,14 +1,14 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { arquivoDeEstado } from "../lib/estado.mjs";
 import { esperar } from "../lib/processo.mjs";
 
 /**
  * Quando a automação precisa do dono: guarda a tela que ela não conhece em
- * agente-mumu/telas/ (para virar automação depois) e pergunta na aba Emulador.
+ * telas/ (na pasta de lib/estado.mjs, para virar automação depois) e pergunta na aba Emulador.
  */
 
-const PASTA_TELAS = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "telas");
+const PASTA_TELAS = arquivoDeEstado("telas");
 
 export function salvarTela(nos, motivo) {
   try {
