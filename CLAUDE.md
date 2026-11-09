@@ -189,6 +189,8 @@ Tabelas: `supabase/emulador_agente.sql`, `supabase/emulador_contas.sql`, `supaba
 - **binder:** carrega nativo neste kernel (`linux-modules-extra`); persistido em `/etc/modules-load.d/redroid.conf` e `/etc/modprobe.d/redroid.conf`. Conferir com `lsmod | grep binder` antes de qualquer coisa.
 - **Incoerência de fingerprint em x86:** a lista de ABI diz `x86_64` enquanto o device falsificado é arm64. Em ARM o build é nativo e a lista bate.
 - **Mesmo sync do MuMu** (`/api/emulador/agente/sync`, `smag_`, fila `emulator_jobs`): o agente manda `agentKind: "vps"` e `capacity`; `emulator_agents.kind` separa as abas. **Nunca misturar drivers** — o driver entra em `ctx.mumu` (`Android` em `agente-vps/lib/android.mjs`).
+- **Remover conta apaga o container:** o `delete` leva `params.conta` (id da conta) e o agente apaga o container cuja label `scalemaster.conta` é esse id (`ehDaConta`), sem conferir Created/nome — o `abrir()` recria o container e o `docker_created` do banco fica para trás. Sem a label valem nome + Created. Container órfão: `node agente.mjs excluir <n>` na VPS.
+- **Painel Progresso/Log** (`ProgressoLotePanel`) fica sempre na aba; sem rodada ativa, tudo em 0.
 - **SQL manual:** `supabase/vps_contas.sql`. Sem ele a aba só avisa e nada lista.
 - Etapas em `lib/vps/jobs.ts` (`VPS_FLUXO`) = `agente-vps/fluxos/nova-conta.mjs`. Identidade em `lib/vps/device.ts` e `vps_devices`; `PROXY_MORTA` pausa a conta; e-mail por IMAP (`lib/imap.mjs`); captcha por Capsolver (`CAPSOLVER_KEY` em `/opt/scalemaster/agente-vps/.env`); sessões em `/opt/scalemaster/sessoes/`.
 - Instalação: `scripts/vps/instalar.sh`; base: `scripts/vps/golden.sh`; calibração: `scripts/vps/calibrar.mjs`; detalhes em `agente-vps/LEIAME.md`.

@@ -165,7 +165,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
 // DELETE — tira a conta da lista e da fila e apaga o device. Se o container já
 // existe na VPS, manda o agente apagar (container + volume + prune) pelo
-// comando `delete`, conferindo o nome, igual ao MuMu.
+// comando `delete`: vale a label scalemaster.conta do container (o id da
+// conta); sem ela, o agente confere nome e Created, igual ao MuMu.
 export async function DELETE(_req: NextRequest, { params }: Params) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
@@ -199,7 +200,8 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       agent_id: job.agent_id,
       instance_index: index,
       action: "delete",
-      params: { nome: nome ?? container, ...(criada ? { criada } : {}), container, volume: input.device.volume },
+      // conta = id da conta: o agente apaga o container que tem a label dela, mesmo com o Created do banco defasado.
+      params: { nome: nome ?? container, ...(criada ? { criada } : {}), container, volume: input.device.volume, conta: id },
     });
     if (cmdErr) return NextResponse.json({ error: cmdErr.message }, { status: 500 });
   }

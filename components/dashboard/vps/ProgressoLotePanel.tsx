@@ -11,8 +11,11 @@ import type { VpsJob } from "@/lib/vps/types";
  * "Progresso" + "Log" da rodada atual (lote mais recente com conta na fila ou
  * rodando). Contadores e proxies saem dos jobs; o log é montado no cliente a
  * partir do que muda entre um polling e outro (até LOG_MAX linhas). Sem lote
- * ativo o bloco não aparece.
+ * ativo o bloco continua na tela com tudo em 0 (o log da última rodada fica
+ * até a próxima começar).
  */
+const SEM_RODADA: readonly VpsJob[] = [];
+
 export function ProgressoLotePanel({ jobs }: { jobs: readonly VpsJob[] }) {
   const lote = React.useMemo(() => loteAtual(jobs), [jobs]);
   const rotulos = React.useMemo(() => new Map(VPS_FLUXO.map((s) => [s.key, s.label])), []);
@@ -43,13 +46,20 @@ export function ProgressoLotePanel({ jobs }: { jobs: readonly VpsJob[] }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [linhas]);
 
-  if (!lote) return null;
-  const c = contadoresDoLote(lote.jobs);
-  const proxies = proxiesDoLote(lote.jobs);
+  const doLote = lote?.jobs ?? SEM_RODADA;
+  const c = contadoresDoLote(doLote);
+  const proxies = proxiesDoLote(doLote);
 
   return (
     <div className="flex flex-col gap-4" data-testid="painel-progresso">
-      <Card title="Progresso" description={`Rodada atual · ${lote.jobs.length} conta${lote.jobs.length === 1 ? "" : "s"} · lote ${lote.loteId.slice(0, 8)}`}>
+      <Card
+        title="Progresso"
+        description={
+          lote
+            ? `Rodada atual · ${doLote.length} conta${doLote.length === 1 ? "" : "s"} · lote ${lote.loteId.slice(0, 8)}`
+            : "Nenhuma conta sendo criada agora. Os números voltam a andar quando uma rodada começar."
+        }
+      >
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatTile label="Na fila" value={String(c.queued)} hint="Esperando vaga de cadastro" />
           <StatTile label="Rodando" value={String(c.running)} hint="Container ligado, etapa em andamento" />
@@ -59,7 +69,7 @@ export function ProgressoLotePanel({ jobs }: { jobs: readonly VpsJob[] }) {
         <div className="mt-4">
           <p className="text-[13px] font-medium text-ink-2">Proxies da rodada</p>
           {proxies.length === 0 ? (
-            <p className="mt-1 text-xs text-ink-3">Sem proxy legível nas contas deste lote.</p>
+            <p className="mt-1 text-xs text-ink-3">{lote ? "Sem proxy legível nas contas deste lote." : "Nenhuma rodada em andamento."}</p>
           ) : (
             <ul className="mt-2 flex flex-wrap gap-2">
               {proxies.map((p) => (
@@ -75,7 +85,7 @@ export function ProgressoLotePanel({ jobs }: { jobs: readonly VpsJob[] }) {
       <Card title="Log" description={`Etapas das contas da rodada, na ordem em que chegam (últimas ${LOG_MAX} linhas).`}>
         <div ref={caixa} className="h-56 overflow-y-auto rounded-lg border border-line bg-surface-raised p-3 font-mono text-xs leading-5" aria-live="polite">
           {linhas.length === 0 ? (
-            <p className="text-ink-3">Esperando o agente…</p>
+            <p className="text-ink-3">{lote ? "Esperando o agente…" : "Nenhuma rodada em andamento."}</p>
           ) : (
             linhas.map((l) => (
               <div key={l.id} className={cn("whitespace-pre-wrap break-words", l.erro ? "text-danger" : "text-ink-2")}>

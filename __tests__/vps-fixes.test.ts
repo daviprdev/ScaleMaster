@@ -113,6 +113,19 @@ describe("Identidade do container (android.mjs)", () => {
     expect(JSON.parse(readFileSync(path.join(PASTA, "instancias", "ig-7.json"), "utf8")).nome).toBe("ana");
   });
 
+  it("excluir com a label da conta apaga mesmo com o Created do banco defasado; conta de outro container não vale", async () => {
+    const driver = new android.Android();
+    // ig-7 é da conta job-7: outra conta com o Created defasado continua recusada.
+    expect(await driver.ehDaConta(7, "job-9")).toBe(false);
+    await expect(driver.excluir(7, { nome: "ana", criada: "2026-11-07T07:00:01.000000000Z", conta: "job-9" })).rejects.toThrow(/não é o mesmo/);
+    expect(await driver.ehDaConta(7, "job-7")).toBe(true);
+    expect(await driver.ehDaConta(7, "")).toBe(false);
+    const logs: string[] = [];
+    await driver.excluir(7, { log: (m: string) => logs.push(m), nome: "outro nome", criada: "2026-11-07T07:00:01.000000000Z", conta: "job-7" });
+    expect(logs.some((l) => /label da conta/.test(l))).toBe(true);
+    expect(() => readFileSync(path.join(PASTA, "instancias", "ig-7.json"))).toThrow();
+  });
+
   it("retrato é gravado por rename atômico (sem .tmp sobrando)", async () => {
     const driver = new android.Android();
     await driver.renomear(3, "maria.nova");

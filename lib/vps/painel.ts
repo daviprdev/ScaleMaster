@@ -24,7 +24,7 @@ export interface LoteAtivo {
 
 /**
  * "Rodada atual": o lote mais recente (pela conta mais nova) que ainda tem
- * conta na fila ou rodando. null = nenhum lote ativo (o painel fica oculto).
+ * conta na fila ou rodando. null = nenhum lote ativo (o painel fica na tela, zerado).
  */
 export function loteAtual(jobs: readonly VpsJob[]): LoteAtivo | null {
   const pendentes = jobs.filter((j) => j.loteId && (j.status === "queued" || j.status === "running"));

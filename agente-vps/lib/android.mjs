@@ -452,6 +452,17 @@ export class Android {
     return lerSpec(index)?.jobId ?? null;
   }
 
+  /**
+   * true = o container do índice é desta conta: a label scalemaster.conta (sem
+   * container, o retrato) guarda o id dela. É a identidade que não muda quando
+   * o abrir() recria o container — o Created muda e o do banco fica para trás.
+   */
+  async ehDaConta(index, conta) {
+    if (typeof conta !== "string" || !conta) return false;
+    const inspecao = await inspecionar(nomeDe(index));
+    return (inspecao ? inspecao.jobId : lerSpec(index)?.jobId) === conta;
+  }
+
   deviceDe(index) {
     return lerSpec(index)?.device ?? null;
   }
@@ -510,18 +521,24 @@ export class Android {
    * o Created ao vivo (inspect) tem que bater com o do banco e com o do
    * retrato; sem valor no banco vale só o inspect (logado). Nome "Instância N"
    * é só rótulo de container sem retrato: com o Created batendo, aceita.
+   * `conta` = id da conta que a aba removeu: com a label scalemaster.conta do
+   * container igual a ele, é o container dela e nome/Created não são conferidos
+   * (ig-2 e ig-3, 08/11: recriados pelo abrir(), o Created do banco ficou 3 s
+   * atrás, o delete foi recusado e o container ficou órfão na aba).
    * @param {number} index
    * `forcar` = o próprio job está descartando o seu container (identidade garantida pelo índice): pula as conferências.
-   * @param {{ log?: (m: string) => void, nome?: string | null, criada?: string | null, forcar?: boolean }} [opcoes]
+   * @param {{ log?: (m: string) => void, nome?: string | null, criada?: string | null, conta?: string | null, forcar?: boolean }} [opcoes]
    */
-  async excluir(index, { log = () => {}, nome: nomeEsperado, criada: criadaEsperada, forcar = false } = {}) {
+  async excluir(index, { log = () => {}, nome: nomeEsperado, criada: criadaEsperada, conta = null, forcar = false } = {}) {
     const spec = lerSpec(index);
     const nome = nomeDe(index);
     const inspecao = await inspecionar(nome);
     const status = inspecao?.status ?? null;
     const criadaViva = inspecao?.criada ?? null;
     const criadaBanco = typeof criadaEsperada === "string" && criadaEsperada ? criadaEsperada : null;
-    if (!forcar) {
+    const daConta = typeof conta === "string" && !!conta && (inspecao ? inspecao.jobId : spec?.jobId) === conta;
+    if (daConta) log(`${nome} tem a label da conta ${conta.slice(0, 8)}: é o container dela`);
+    if (!forcar && !daConta) {
       if (criadaBanco && criadaViva && criadaBanco !== criadaViva) {
         throw new Error(`O container ${nome} não é o mesmo: criado em ${criadaViva}, o banco tem ${criadaBanco}. Nada foi apagado.`);
       }

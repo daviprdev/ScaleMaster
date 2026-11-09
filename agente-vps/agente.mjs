@@ -43,7 +43,7 @@ import { versoesDisponiveis } from "./fluxos/apk.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.0.0";
+const VERSAO = "1.0.1";
 const AGENT_KIND = "vps";
 /** "Instância" -1 = a VPS em si: só a automação rebuild-imagem roda nela (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
@@ -179,12 +179,15 @@ async function executar(driver, comando) {
     // Só apaga se o índice ainda é o container que a aba mostrou (o índice é reaproveitado depois).
     const atual = await driver.instancia(index);
     const esperado = String(comando.params?.nome ?? "");
-    if (!esperado || (atual.name.trim().slice(0, 80) !== esperado && `ig-${index}` !== esperado)) {
+    // Remover da aba manda o id da conta: container com a label dela é o dela, mesmo recriado (Created novo) ou renomeado.
+    const conta = typeof comando.params?.conta === "string" ? comando.params.conta : undefined;
+    const daConta = await driver.ehDaConta(index, conta);
+    if (!daConta && (!esperado || (atual.name.trim().slice(0, 80) !== esperado && `ig-${index}` !== esperado))) {
       throw new Error(`O container #${index} agora se chama "${atual.name}". Nada foi apagado.`);
     }
     // O driver confere de novo nome e Created (params.criada vem do retrato que a aba viu).
     const criada = typeof comando.params?.criada === "string" ? comando.params.criada : undefined;
-    await driver.excluir(index, { log: (m) => log(`[excluir ig-${index}] ${m}`), nome: atual.name, criada });
+    await driver.excluir(index, { log: (m) => log(`[excluir ig-${index}] ${m}`), nome: atual.name, criada, conta });
     limparAlerta(atual.criada);
     log(`Container ig-${index} (${atual.name}) apagado, com o volume.`);
     return null;
