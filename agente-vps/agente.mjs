@@ -244,6 +244,7 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
       // Contas VPS: @ aceito depois de recusa e conta descartada (container já apagado pelo próprio fluxo).
       ...(estado.usuario ? { usuario: estado.usuario } : {}),
       ...(estado.descartada ? { descartada: true } : {}),
+      ...(estado.portal ? { portal: estado.portal } : {}),
     });
 
   if (!fluxo) return enviar("error", `Este agente não conhece o fluxo "${job.kind}". Atualize a pasta agente-vps.`);
@@ -301,8 +302,9 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
         step.status = "error";
         step.message = String(e.message).slice(0, 300);
         logJob(`${etapa.rotulo} falhou: ${e.message}`);
-        // Conta parada = container desligado (sem Instagram aberto por aí); proxy morta também. Descartada já foi apagada.
-        if (estado.instanceIndex !== null && !estado.descartada) await driver.fechar(estado.instanceIndex).catch(() => {});
+        // Conta parada = container desligado (sem Instagram aberto por aí); proxy morta também. Descartada já foi
+        // apagada; código do portal vencido mantém o container ligado (e.manterContainer) à espera do código novo.
+        if (estado.instanceIndex !== null && !estado.descartada && !e.manterContainer) await driver.fechar(estado.instanceIndex).catch(() => {});
         return enviar("error", e.semPrefixo ? e.message : `${etapa.rotulo}: ${e.message}`);
       }
     }

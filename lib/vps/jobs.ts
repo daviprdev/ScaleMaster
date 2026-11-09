@@ -1,4 +1,4 @@
-import { ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_TELEFONE, ALERTA_USUARIO, MAX_JOB_UPDATES, ehDescarte, type EmulatorJob, type JobStep } from "@/lib/emulador/jobs";
+import { ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_TELEFONE, ALERTA_USUARIO, CODIGO_VENCIDO, MAX_JOB_UPDATES, ehDescarte, type EmulatorJob, type JobStep } from "@/lib/emulador/jobs";
 import type { VpsCapacidade, VpsJob } from "./types";
 
 /**
@@ -35,7 +35,7 @@ export const VPS_FLUXO_KEYS: ReadonlyArray<string> = VPS_FLUXO.map((s) => s.key)
 /** Proxy que não respondeu (ou país errado) na validação: a conta para e fica pausada. */
 export const PROXY_MORTA = "PROXY_MORTA: a proxy não respondeu ou é de outro país";
 
-const ALERTAS: ReadonlySet<string> = new Set([ALERTA_TELEFONE, ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_USUARIO, PROXY_MORTA]);
+const ALERTAS: ReadonlySet<string> = new Set([ALERTA_TELEFONE, ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_USUARIO, CODIGO_VENCIDO, PROXY_MORTA]);
 
 /** Conta descartada (captcha ou @ recusado 5 vezes): container e volume já apagados; só "Tentar de novo". */
 export function ehDescartada(job: Pick<EmulatorJob, "status" | "error">): boolean {

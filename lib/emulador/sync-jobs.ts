@@ -183,6 +183,23 @@ async function atualizarDeviceVps(admin: SupabaseClient, u: JobUpdate): Promise<
     } else if (u.status === "done") {
       avisar("vps_devices.status", (await admin.from("vps_devices").update({ status: "ativo" }).eq("job_id", u.id)).error);
     }
+    // Código do portal resgatado: fica no input para a etapa email saber se a sessão venceu (CODIGO_VENCIDO, sem reuso).
+    if (u.portal) {
+      const { data: row, error } = await admin.from("emulator_jobs").select("input_enc").eq("id", u.id).maybeSingle();
+      avisar("input_enc (ler portal)", error);
+      if (row?.input_enc) {
+        try {
+          const input = JSON.parse(decrypt(row.input_enc as string)) as { portalResgatadoEm?: string; portalExpiraEm?: string };
+          if (input.portalResgatadoEm !== u.portal.resgatadoEm || input.portalExpiraEm !== u.portal.expiraEm) {
+            input.portalResgatadoEm = u.portal.resgatadoEm;
+            input.portalExpiraEm = u.portal.expiraEm;
+            avisar("input_enc (portal)", (await admin.from("emulator_jobs").update({ input_enc: encrypt(JSON.stringify(input)) }).eq("id", u.id)).error);
+          }
+        } catch (e) {
+          console.warn(`[emulador/sync] portal não gravado (${u.id}): ${(e as Error).message}`);
+        }
+      }
+    }
     // @ aceito depois de o original ser recusado: entra no input (para Continuar/sessão), no label e em vps_devices.usuario.
     if (u.usuario) {
       const { data: row, error } = await admin.from("emulator_jobs").select("input_enc").eq("id", u.id).maybeSingle();

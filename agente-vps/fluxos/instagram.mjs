@@ -2,6 +2,7 @@ import { casa } from "../lib/adb.mjs";
 import { esperar } from "../lib/processo.mjs";
 import { proxyAtiva } from "../lib/rede.mjs";
 import { INSTAGRAM } from "./apk.mjs";
+import { VERIFICADOS as VERIFICADOS_AQUECIMENTO } from "./verificados.mjs";
 import { resumoTela, salvarTela } from "./dono.mjs";
 import { acharId, acharTexto, esperarTela, preencher, temTexto, tocarNo } from "./tela.mjs";
 
@@ -380,7 +381,7 @@ export function contaGrande(texto) {
  * Então segue da própria pesquisa; sem Seguir na linha, abre o perfil.
  * Devolve "seguiu" ou o motivo de ter pulado.
  */
-async function seguirUm(ctx, usuario) {
+async function seguirPorPesquisa(ctx, usuario) {
   const { d, log = () => {} } = ctx;
   const acharCampo = (nos) =>
     campoDeTexto(nos) ?? acharId(nos, ig("action_bar_search_edit_text")) ?? acharTexto(nos, ["Pesquisar", "Search", "Pesquisa"], { exato: true });
@@ -478,9 +479,97 @@ async function seguirUm(ctx, usuario) {
   return "seguiu";
 }
 
+/** `am start` do deep link do perfil (sem passar pelo Explorar, que derruba o Instagram no x86). */
+export function comandoDeepLink(usuario) {
+  return ["am", "start", "-a", "android.intent.action.VIEW", "-d", `instagram://user?username=${usuario}`, "-p", INSTAGRAM, "-f", "0x20000000"];
+}
+
 /**
- * Segue `quantos` perfis sorteados da lista, com 20–60 s entre um e outro. A
- * lista é de famosos; a pesquisa ainda confere que a conta é grande.
+ * Abre o perfil pelo deep link e espera o botão Seguir/Seguindo aparecer no
+ * dump (até 20 s). Devolve a tela do perfil ou null (deep link falhou ou a
+ * página não carregou).
+ */
+export async function abrirPerfil(ctx, usuario) {
+  const { d, log = () => {} } = ctx;
+  const saida = await d.shell(...comandoDeepLink(usuario)).catch((e) => {
+    log(`deep link @${usuario}: ${e.message}`);
+    return null;
+  });
+  if (saida === null || /Error|Exception|does not exist/i.test(saida)) return null;
+  await esperar(sortear(2500, 4500));
+  return esperarTela(d, (n) => (botaoDoPerfil(n) ? n : null), { timeoutMs: 20_000, descricao: `o perfil @${usuario}` }).catch(() => null);
+}
+
+/**
+ * Segue um perfil: deep link primeiro; se a página não carregar, tenta a
+ * pesquisa uma vez; falhando, devolve o motivo e o chamador pula o verificado.
+ * Depois do toque confirma que o botão virou "Seguindo".
+ */
+export async function seguirUm(ctx, usuario, { abrir = abrirPerfil, porPesquisa = seguirPorPesquisa } = {}) {
+  const { d, log = () => {} } = ctx;
+  const tela = await abrir(ctx, usuario);
+  if (!tela) {
+    log(`@${usuario}: deep link não abriu o perfil em 20 s, tentando a pesquisa`);
+    try {
+      return await porPesquisa(ctx, usuario);
+    } catch (e) {
+      if (/bloqueou|suspendeu|telefone/.test(e.message)) throw e;
+      return `falhou na pesquisa: ${e.message}`;
+    }
+  }
+  const seguidores = tela.find((n) => /seguidores|followers/i.test(n.descricao + " " + n.texto) && /[0-9]/.test(n.descricao + " " + n.texto));
+  const resumo = seguidores ? seguidores.descricao || seguidores.texto : "";
+  if (contaGrande(resumo) === false) return `conta pequena (${resumo})`;
+  const alvo = botaoDoPerfil(tela);
+  const rotulo = rotuloEm(tela, alvo);
+  if (ehUm(rotulo, SEGUINDO)) return "já seguia";
+  if (!ehUm(rotulo, SEGUIR) && !/^(Seguir|Follow)/i.test(alvo.descricao)) return `botão desconhecido (${rotulo || "sem texto"})`;
+  await esperar(sortear(3000, 8000)); // olha o perfil antes de seguir
+  await tocarNo(d, alvo, 3000);
+  const depois = await d.tela().catch(() => []);
+  if (ehBloqueio(depois)) {
+    salvarTela(depois, "seguir bloqueado");
+    throw new Error(`O Instagram bloqueou o seguir (${resumoTela(depois)}).`);
+  }
+  await tratarGeral(ctx, depois);
+  const confirmado = botaoDoPerfil(depois);
+  const rotuloDepois = confirmado ? rotuloEm(depois, confirmado) : "";
+  if (ehUm(rotuloDepois, SEGUINDO) || /^(Seguindo|A seguir|Following|Pedido|Requested)/i.test(confirmado?.descricao ?? "")) return "seguiu";
+  return rotuloDepois ? `seguiu (botão: ${rotuloDepois})` : "seguiu";
+}
+
+/**
+ * Rola a página aberta (grade do perfil ou feed) por `ms`, alternando a
+ * direção, sem tocar em nada. Confere que o Instagram segue na frente; se ele
+ * caiu, reabre e para de rolar.
+ */
+export async function rolarPerfil(ctx, ms) {
+  const { d, log = () => {} } = ctx;
+  const { largura, altura } = await d.tamanho().catch(() => ({ largura: 1080, altura: 1920 }));
+  const fim = Date.now() + ms;
+  let passos = 0;
+  while (Date.now() < fim) {
+    const paraCima = passos % 3 !== 2; // dois para baixo (conteúdo sobe), um de volta
+    const x = Math.round(largura / 2) + sortear(-120, 120);
+    const yA = Math.round(altura * (paraCima ? 0.7 : 0.35)) + sortear(-40, 40);
+    const yB = Math.round(altura * (paraCima ? 0.35 : 0.7)) + sortear(-40, 40);
+    await d.arrastar(x, yA, x + sortear(-20, 20), yB, sortear(350, 700));
+    passos += 1;
+    await esperar(Math.min(sortear(2500, 6000), Math.max(0, fim - Date.now())));
+    if (passos % 3 === 0 && !/com\.instagram\.android\//.test(await d.focoAtual())) {
+      log("o Instagram saiu da frente durante a rolagem: reabrindo");
+      await d.abrirApp(INSTAGRAM);
+      await esperar(6000);
+      return { passos, caiu: true };
+    }
+  }
+  return { passos, caiu: false };
+}
+
+/**
+ * Segue `quantos` perfis sorteados da lista (deep link), rolando a grade do
+ * perfil por ~25 s entre um e outro. Lista de famosos; a página ainda confere
+ * que a conta é grande.
  */
 export async function seguirVerificados(ctx, lista, quantos) {
   const { log } = ctx;
@@ -498,9 +587,9 @@ export async function seguirVerificados(ctx, lista, quantos) {
       resultado = `falhou: ${e.message}`;
     }
     log(`@${usuario}: ${resultado}`);
-    if (resultado === "seguiu") {
+    if (resultado.startsWith("seguiu")) {
       seguidos.push(usuario);
-      if (seguidos.length < quantos) await esperar(sortear(20_000, 60_000));
+      if (seguidos.length < quantos) await rolarPerfil(ctx, sortear(20_000, 30_000));
     }
   }
   await irPara(ctx, "inicio").catch(() => {});
@@ -509,43 +598,42 @@ export async function seguirVerificados(ctx, lista, quantos) {
 }
 
 /**
- * A cada poucos reels: proxy de pé e o Instagram na frente. Sem ler a tela: com
- * vídeo tocando o uiautomator trava até 1 min (visto em 02/11 — o vídeo ficava
- * parado esse tempo todo). O app da frente sai do dumpsys, que é na hora.
+ * Aquecimento sem Explorar/Reels (a grade de reels derruba o Instagram no x86):
+ * alterna ~25 s rolando a grade de um perfil verificado (deep link) e ~25 s
+ * rolando o feed inicial, enquanto o feed não derrubar o app. Devolve o resumo.
  */
-async function conferirReels(ctx) {
-  const { d, log } = ctx;
-  await garantirProxy(d);
-  const foco = await d.shell("dumpsys window 2>/dev/null | grep -m1 mCurrentFocus; true").catch(() => "");
-  if (foco.trim() && !foco.includes(INSTAGRAM)) {
-    log("fora do Instagram: voltando para os Reels");
-    await d.abrirApp(INSTAGRAM);
-    await esperar(6000);
-    await irPara(ctx, "reels");
-  }
-}
-
-/** Rola os Reels por `ms`: cada um de 4 a 20 s (às vezes até o fim), sem curtir nada. */
 export async function rolarReels(ctx, ms) {
-  const { d, log } = ctx;
-  await irPara(ctx, "reels");
-  await esperar(5000);
-  const { largura, altura } = await d.tamanho();
+  const { log = () => {} } = ctx;
   const fim = Date.now() + ms;
-  let vistos = 0;
+  const fila = embaralhar(VERIFICADOS_AQUECIMENTO);
+  let perfis = 0;
+  let feed = 0;
+  let feedOk = true;
   while (Date.now() < fim) {
-    const assistir = Math.random() < 0.15 ? sortear(20_000, 35_000) : sortear(4_000, 20_000);
-    await esperar(Math.min(assistir, Math.max(0, fim - Date.now())));
+    const usuario = fila.shift() ?? "instagram";
+    const tela = await abrirPerfil(ctx, usuario);
+    if (tela) {
+      const r = await rolarPerfil(ctx, Math.min(25_000, Math.max(5000, fim - Date.now())));
+      perfis += 1;
+      log(`rolou o perfil @${usuario} (${r.passos} arrastos)`);
+      if (r.caiu) continue;
+    } else {
+      log(`@${usuario}: perfil não abriu, pulando`);
+    }
     if (Date.now() >= fim) break;
-    if (vistos % 5 === 4) await conferirReels(ctx);
-    // Arrasto de baixo para cima, rápido (vira "fling" e passa de vídeo), longe da barra de abas.
-    const x = Math.round(largura / 2) + sortear(-80, 80);
-    await d.arrastar(x, Math.round(altura * 0.72) + sortear(-30, 30), x + sortear(-30, 30), Math.round(altura * 0.2) + sortear(-30, 30), sortear(150, 280));
-    vistos += 1;
-    log(`reel ${vistos}`);
+    if (feedOk) {
+      await irPara(ctx, "inicio").catch(() => {});
+      const r = await rolarPerfil(ctx, Math.min(25_000, Math.max(5000, fim - Date.now())));
+      if (r.caiu) {
+        feedOk = false;
+        log("o feed derrubou o Instagram: o resto do aquecimento fica só nos perfis");
+      } else {
+        feed += 1;
+      }
+    }
   }
   await irPara(ctx, "inicio").catch(() => {});
-  return `${vistos} reels em ${Math.round(ms / 60_000)} min`;
+  return `${perfis} perfil(is) e ${feed} rodada(s) de feed em ${Math.round(ms / 60_000)} min`;
 }
 
 /** Perfil → Editar perfil → Editar foto → Nova foto → 1ª da galeria → Seguinte → Concluído. */

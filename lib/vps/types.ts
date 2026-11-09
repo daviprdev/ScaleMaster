@@ -152,6 +152,9 @@ export interface VpsContaInput {
   /** Provedor portal: link do painel e código de resgate, como vieram da linha do hstock (também em conta.email / imap.senha). */
   portalLink?: string;
   portalCodigo?: string;
+  /** Quando o agente resgatou o código (só na hora de digitar o e-mail) e quando a sessão de 20 min vence. Ausentes = código intocado. */
+  portalResgatadoEm?: string;
+  portalExpiraEm?: string;
   conta: {
     /** Endereço; em `portal`, o link do painel. */
     email: string;

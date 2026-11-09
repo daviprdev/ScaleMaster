@@ -116,6 +116,12 @@ docker exec ig-3-proxy curl -sS -m 8 http://ip-api.com/json/ # proxy: o IP é o 
 
 Com a proxy morta a etapa `geo`/`rede` para com `PROXY_MORTA` e nada sai pelo IP da VPS (não existe fallback).
 
+## Aquecimento sem Explorar e código do portal vencido (08/11)
+
+No redroid x86 a aba de pesquisa/Explorar do Instagram derruba o app (SIGSEGV na RenderThread, ANGLE+SwiftShader). Por isso o `seguir` abre cada perfil pelo deep link `am start -a VIEW -d instagram://user?username=<x> -p com.instagram.android -f 0x20000000`, espera o botão Seguir no dump (20 s), toca e confirma "Seguindo"; se o deep link não abrir, tenta a pesquisa uma vez e pula o verificado. O `reels` não entra mais no Explorar: alterna ~25 s rolando a grade de um perfil verificado e ~25 s rolando o feed inicial (enquanto o feed não derrubar o app). O QuickSearchBox do Android fica desativado (`pm disable-user com.android.quicksearchbox`).
+
+Código do portal: o resgate acontece só na tela do e-mail; a hora do resgate e o fim da sessão (20 min) vão no andamento (`portal`) e o servidor grava em `input_enc` (`portalResgatadoEm`/`portalExpiraEm`). Se um Continuar chegar na etapa `email` com a sessão vencida ou com OTP já recebido, a conta para com `CODIGO_VENCIDO`, o container fica ligado e o card pede código novo (Editar); nunca se reusa o mesmo código. Código ainda não resgatado não é tocado (só o form do link é conferido).
+
 ## Captcha e @ recusado = conta descartada
 
 Tela "Confirme que você é uma pessoa" (ou verificação/reCAPTCHA) na etapa `cadastro`: sem tentativa de resolução (`lib/captcha.mjs` fica dormente, `CAPSOLVER_KEY` é opcional). O fluxo lança `ContaTravada(ALERTA_ROBO)`, apaga container, sidecar e volume na hora e manda `descartada: true` no andamento; o servidor marca `vps_devices.status = 'descartada'` e a proxy fica livre para outro lote. O card mostra o badge vermelho "Captcha — conta descartada", sem Continuar; "Tentar de novo" cria uma conta nova do zero (device, proxy, código do portal e pessoa novos). O mesmo vale para `ALERTA_USUARIO`: @ recusado 5 vezes seguidas (cada tentativa põe mais dígitos, `lib/usuario.mjs`); o @ que o Instagram aceita vai no andamento (`usuario`) e o servidor grava em `input_enc`, no label e em `vps_devices.usuario`.

@@ -28,6 +28,7 @@ import { abrirInstagram, editarPerfil, pararInstagram, proxyLigada, trocarFoto }
  */
 
 export { ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_TELEFONE, ALERTA_USUARIO, deveDescartar } from "./cadastro.mjs";
+export { CODIGO_VENCIDO } from "./caixa.mjs";
 // decisão: SCALEMASTER_SESSOES_DIR só existe para os testes não escreverem em /opt.
 export const PASTA_SESSOES = process.env.SCALEMASTER_SESSOES_DIR || "/opt/scalemaster/sessoes";
 
@@ -276,7 +277,13 @@ export const NOVA_CONTA = [
       const d = await dispositivo();
       // Continuar com o container religado: o sidecar sobe com a proxy gravada, mas confere antes de abrir o Instagram.
       if (!(await proxyLigada(d))) log(`proxy: ${await ligarProxy(mumu, container(estado), log)}`);
-      const caixa = criarCaixa(input, { log });
+      // O resgate do código do portal acontece só na tela do e-mail; a hora vai no andamento para o input_enc.
+      const caixa = criarCaixa(input, {
+        log,
+        aoResgatar: (portal) => {
+          estado.portal = portal;
+        },
+      });
       log(`caixa de e-mail: ${provedorDe(input)}`);
       try {
         return await cadastrarInstagram({

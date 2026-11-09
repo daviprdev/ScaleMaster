@@ -17,6 +17,36 @@ import * as portalLib from "../lib/portal.mjs";
  */
 
 export const PROVEDORES = ["portal", "mailtm", "imap", "manual"];
+/** Código do portal já resgatado com sessão vencida (ou OTP já recebido): a conta para, o container fica, o card pede código novo. Igual a lib/emulador/jobs.ts. */
+export const CODIGO_VENCIDO = "Código do portal vencido: edite a conta com um código novo";
+export const SESSAO_PORTAL_MS = 20 * 60_000;
+
+function erroCodigoVencido(motivo) {
+  const e = new Error(CODIGO_VENCIDO);
+  e.semPrefixo = true;
+  e.manterContainer = true;
+  e.motivo = motivo;
+  return e;
+}
+
+/**
+ * Código já resgatado antes (input.portalResgatadoEm) e vencido pelo relógio
+ * (20 min) ou pelo /status (sessão acabou / OTP recebido). Código nunca
+ * resgatado não é tocado: null.
+ * @param {any} input
+ * @param {any} [portal]
+ */
+export async function codigoVencido(input, portal = portalLib) {
+  const resgatadoEm = Date.parse(input?.portalResgatadoEm ?? "");
+  if (!Number.isFinite(resgatadoEm)) return null;
+  const expiraEm = Date.parse(input?.portalExpiraEm ?? "") || resgatadoEm + SESSAO_PORTAL_MS;
+  if (Date.now() >= expiraEm) return `sessão vencida em ${new Date(expiraEm).toISOString()}`;
+  const link = input?.portalLink ?? input?.conta?.email;
+  const codigo = input?.portalCodigo ?? input?.imap?.senha;
+  const status = await portal.statusDoCodigo(link, codigo).catch(() => null);
+  if (status?.acabou || status?.temOtp) return status.temOtp ? "sessão já recebeu OTP" : "sessão encerrada no portal";
+  return null;
+}
 
 export function provedorDe(input) {
   const p = String(input?.provedorEmail ?? "").toLowerCase();
@@ -51,8 +81,11 @@ export async function conferirCaixa(input, { portal = portalLib, imap = imapLib,
     const codigo = input?.portalCodigo ?? cred.senha;
     if (!link || !codigo) throw new Error("Essa conta veio sem o link do portal ou sem o código de resgate.");
     if (!portal.codigoValido(codigo)) throw new Error("Código de resgate fora do formato (6 a 12 letras/números).");
+    // Código já resgatado numa rodada anterior: nunca se reusa um vencido — para aqui e o card pede outro.
+    const vencido = await codigoVencido(input, portal);
+    if (vencido) throw erroCodigoVencido(vencido);
     await portal.verificarPortal(link);
-    return `portal acessível (código ${portal.mascarar(codigo)}); a sessão abre na hora do cadastro`;
+    return `portal acessível (código ${portal.mascarar(codigo)}${input?.portalResgatadoEm ? ", sessão ainda válida" : ""}); a sessão abre na hora do cadastro`;
   }
   if (p === "mailtm") {
     if (!conta.email || !cred.senha) throw new Error("Essa conta veio sem o endereço ou a senha do mail.tm.");
@@ -67,9 +100,11 @@ export async function conferirCaixa(input, { portal = portalLib, imap = imapLib,
 /**
  * A caixa viva durante o cadastro (fluxos/cadastro.mjs). `log` recebe só texto sem segredo.
  * @param {any} input
- * @param {{ log?: (m: string) => void, portal?: any, imap?: any, mailtm?: any }} [deps]
+ * `aoResgatar({ resgatadoEm, expiraEm })` avisa quando o código do portal foi resgatado (vai para o input_enc).
+ * @param {any} input
+ * @param {{ log?: (m: string) => void, portal?: any, imap?: any, mailtm?: any, aoResgatar?: (p: { resgatadoEm: string, expiraEm: string }) => void }} [deps]
  */
-export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = imapLib, mailtm = mailtmLib } = {}) {
+export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = imapLib, mailtm = mailtmLib, aoResgatar = () => {} } = {}) {
   const p = provedorDe(input);
   const conta = input?.conta ?? {};
   const cred = input?.imap ?? {};
@@ -85,10 +120,13 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
     const tentados = new Set();
     const abrir = async () => {
       if (sessao && sessao.fimEm && sessao.fimEm - Date.now() > 60_000) return sessao;
-      await portal.fechar(sessao).catch(() => {});
+      await Promise.resolve(portal.fechar(sessao)).catch(() => {});
       sessao = null;
       const aberta = await portal.abrir(link, codigo, { log });
       sessao = aberta.sessao;
+      // Hora do resgate e do fim da sessão: o servidor guarda no input_enc para a etapa email não reusar código vencido.
+      const agora = Date.now();
+      aoResgatar({ resgatadoEm: new Date(agora).toISOString(), expiraEm: new Date(sessao.fimEm ?? agora + SESSAO_PORTAL_MS).toISOString() });
       return sessao;
     };
     return {
@@ -99,9 +137,11 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
       async endereco() {
         try {
           const s = await abrir();
-          vistos = portal.mensagensVistas ? await portal.mensagensVistas(s).catch(() => null) : null;
+          vistos = portal.mensagensVistas ? await Promise.resolve(portal.mensagensVistas(s)).catch(() => null) : null;
           return s.email;
         } catch (e) {
+          // Código já gasto: não há endereço possível com ele — para o job (container fica) e o card pede código novo.
+          if (e.codigoVencido) throw erroCodigoVencido(e.message);
           log(`portal falhou ao abrir a sessão: ${e.message}`);
           return null;
         }

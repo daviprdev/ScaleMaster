@@ -335,7 +335,9 @@ export async function abrir(link, codigo, { modo = modoPortal(), log = () => {} 
   if (lido.acabou) {
     if (lido.temOtp || !lido.podeRenovar) {
       await via.fechar(sessao);
-      throw new Error(`o código ${mascarar(codigo)} já foi usado (sessão encerrada${lido.temOtp ? " com OTP recebido" : ""})`);
+      const usado = new Error(`o código ${mascarar(codigo)} já foi usado (sessão encerrada${lido.temOtp ? " com OTP recebido" : ""})`);
+      usado.codigoVencido = true;
+      throw usado;
     }
     log(`portal: sessão de ${mascarar(codigo)} vencida sem OTP, renovando`);
     await renovar(sessao);
@@ -413,6 +415,18 @@ export async function renovar(sessao) {
 export async function fechar(sessao) {
   if (!sessao) return;
   await caminho(sessao).fechar(sessao).catch(() => {});
+}
+
+/**
+ * Estado de um código JÁ resgatado (GET /status, sem POST): { email, restanteMs, acabou, temOtp, podeRenovar }.
+ * Só para códigos com resgate registrado — num código novo o /status pode iniciar a sessão.
+ */
+export async function statusDoCodigo(link, codigo) {
+  const url = urlSessao(link, codigo);
+  const r = await requisicao(`${url}/status`, { headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" } });
+  if (r.status === 404 || r.status === 410) return { email: null, restanteMs: 0, acabou: true, temOtp: false, podeRenovar: false, lease: [] };
+  if (r.status !== 200) throw new Error(`status do portal devolveu HTTP ${r.status}`);
+  return lerStatus(JSON.parse(r.body));
 }
 
 /** Só confere que o link é o portal (form com input name=code), sem gastar código. */

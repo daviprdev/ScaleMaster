@@ -60,6 +60,8 @@ export const ALERTA_CAPTCHA = "Conta ERRO CRIAÇÃO, verificar captcha";
 export const ALERTA_ROBO = "Confirme que você não é um robô";
 /** Contas VPS: o Instagram recusou 5 @ seguidos — a conta é descartada. */
 export const ALERTA_USUARIO = "Usuário recusado pelo Instagram 5 vezes";
+/** Contas VPS: o código do portal já foi resgatado e a sessão venceu (ou já recebeu OTP): a conta para, o container fica, e o card pede código novo (Editar). */
+export const CODIGO_VENCIDO = "Código do portal vencido: edite a conta com um código novo";
 const ALERTAS_CRIACAO: ReadonlySet<string> = new Set([ALERTA_TELEFONE, ALERTA_CAPTCHA]);
 /** Erros que descartam a conta da VPS: sem Continuar, só "Tentar de novo" (device e proxy novos). */
 const ALERTAS_DESCARTE: ReadonlySet<string> = new Set([ALERTA_ROBO, ALERTA_USUARIO]);
@@ -229,12 +231,28 @@ export interface JobUpdate {
   usuario?: string;
   /** Contas VPS: o agente já apagou container e volume (captcha / @ recusado 5 vezes). */
   descartada?: boolean;
+  /** Contas VPS: quando o código do portal foi resgatado e quando a sessão vence (vai para input_enc). */
+  portal?: { resgatadoEm: string; expiraEm: string };
 }
 
 const USUARIO_IG_RE = /^[a-z][a-z0-9._]{0,29}$/;
 
+function dataIso(valor: unknown): string | null {
+  if (typeof valor !== "string") return null;
+  const t = Date.parse(valor);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
+
 /** Teto de contas simultâneas que um agente pode reportar num sync (= maxCadastro máximo da VPS em lib/vps/jobs.ts). */
 export const MAX_JOB_UPDATES = 50;
+
+function portalDe(raw: unknown): { resgatadoEm: string; expiraEm: string } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const resgatadoEm = dataIso(r.resgatadoEm);
+  const expiraEm = dataIso(r.expiraEm);
+  return resgatadoEm && expiraEm ? { resgatadoEm, expiraEm } : null;
+}
 
 /** Andamento que o agente manda no sync, uma entrada por conta que mudou. */
 export function parseJobUpdates(raw: unknown): JobUpdate[] {
@@ -255,6 +273,7 @@ export function parseJobUpdates(raw: unknown): JobUpdate[] {
       prompt: r.prompt === undefined ? undefined : r.status === "running" ? parseJobPrompt(r.prompt) : null,
       ...(typeof r.usuario === "string" && USUARIO_IG_RE.test(r.usuario) ? { usuario: r.usuario } : {}),
       ...(r.descartada === true ? { descartada: true } : {}),
+      ...(portalDe(r.portal) ? { portal: portalDe(r.portal) as { resgatadoEm: string; expiraEm: string } } : {}),
     });
   }
   return out;
