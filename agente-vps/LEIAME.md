@@ -94,6 +94,43 @@ Mesmas chaves de `VPS_FLUXO` em `lib/vps/jobs.ts`; o Continuar retoma da etapa q
 
 Supervisor (`lib/supervisor.mjs`): semáforos de ligadas e de cadastro, watchdog de 1 h sem progresso (desliga o container e a conta para), e no boot do agente todo container de conta ligado sem conta em andamento é desligado.
 
+## Concorrência
+
+Os dois limites saem das vCPUs do host e vão no sync, em `capacity`:
+
+| vCPU | `maxLigadas` = clamp(vCPU ÷ 2, 1, 8) | `maxCadastro` = clamp(vCPU ÷ 2, 1, 4) |
+| ---- | ------------------------------------ | ------------------------------------- |
+| 1–3  | 1                                    | 1                                     |
+| 4    | 2                                    | 2                                     |
+| 8    | 4                                    | 4                                     |
+| 16+  | 8                                    | 4                                     |
+
+- `maxCadastro` nunca passa de `maxLigadas`. O servidor entrega no máximo `maxCadastro` jobs por vez (`syncJobs`); o que passar disso fica `queued`, sem container. Os semáforos do agente são a segunda trava.
+- O container sobe uma vez por job, na etapa **abrir**, e fica de pé até a **fechar**: nenhuma etapa do meio dá stop/start (a troca de proxy reinicia só o sidecar).
+- Host com menos de 4 vCPU roda um por vez e o card do agente mostra "host pequeno, 1 por vez".
+
+## Isolamento
+
+**Por que a proxy fica no netns e não num app de VPN.** Um app de VPN (NekoBox, como no MuMu) roda dentro do Android: o Instagram enxerga a interface `tun0`, o app instalado e o estado "VPN ativa" (`ConnectivityManager`), e se o app morre ou demora a subir o tráfego sai direto pelo IP da máquina. Aqui o redirecionamento é feito de fora, por um segundo container (o sidecar) que divide o network namespace com o Android: `iptables` manda todo TCP para o gost, o DNS para o unbound, derruba o QUIC e termina em `DROP`. Dentro do Android não existe interface, app nem permissão a mais — a rede parece uma conexão comum — e não há caminho sem proxy: sidecar fora do ar = nada sai.
+
+**O que o container isola, por conta:**
+
+- rede: namespace próprio, IP e MAC únicos e uma proxy fixa só dela (linha repetida no lote bloqueia o envio);
+- um /24 por lote (`10.77.<n>.0/24`, bridge `vpsnet-<n>`; as contas antigas ficam em `10.77.0.0/24`): contas de lotes diferentes não se enxergam na rede local;
+- disco: volume `/data` próprio (apps, sessão, Android ID);
+- identidade: `ro.serialno`, Android ID, MAC, IMEI e fingerprint sorteados por conta; fuso e idioma do país da proxy dela; `--hostname` com o modelo do aparelho;
+- processos: PID namespace próprio; teto de `--cpus 1` e `--memory 1536m`, para um container não tomar a máquina do outro.
+
+**O que ele não isola:**
+
+- o kernel é o do host e é o mesmo para todos: versão do kernel, `/proc/cpuinfo` (modelo e quantidade de CPUs do servidor), `/proc/meminfo` e uptime são iguais em todas as contas;
+- hardware: mesma GPU por software (SwiftShader), mesmo conjunto de sensores (nenhum), mesma lista de ABI (`x86_64` num aparelho que se diz ARM);
+- relógio: é o do host (só o fuso muda);
+- o container é `--privileged` (o redroid exige): não é barreira de segurança contra o que roda dentro dele — é separação entre contas, não sandbox;
+- as contas de um mesmo lote dividem a bridge do lote (alcançam umas às outras em L2); a saída para a internet de cada uma continua sendo só a própria proxy.
+
+IP e MAC são conferidos duas vezes antes de o container existir: no servidor, ao enviar o lote (MAC contra `vps_devices`, IP contra as identidades das outras contas), e no agente, antes do `docker create` (contra os containers que existem no Docker e os retratos). Colisão aborta o job com `ISOLAMENTO: …`.
+
 ## Diagnóstico de proxy
 
 ```

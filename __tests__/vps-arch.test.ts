@@ -66,12 +66,12 @@ describe("Contas VPS: arquitetura do host", () => {
     await expect(conferirAbiNoAparelho(errado, "x86_64")).rejects.toThrow(/ABI_AUSENTE/);
   });
 
-  it("capacidade: x86_64 → max(1, vCPU/2) ligadas e 1 cadastro, sem olhar a RAM; arm64 → RAM/1400 e max(2, vCPU/2)", () => {
+  it("capacidade: vCPU/2 nas duas arquiteturas (1 a 8 ligadas, 1 a 4 jobs), sem olhar a RAM", () => {
     expect(capacidade({ arch: "x86_64", vcpu: 2, totalMb: 7935, livreMb: 1145 })).toMatchObject({ arch: "x86_64", maxLigadas: 1, maxCadastro: 1 });
-    expect(capacidade({ arch: "x64", vcpu: 4, totalMb: 1024, livreMb: 100 })).toMatchObject({ maxLigadas: 2, maxCadastro: 1 });
-    expect(capacidade({ arch: "x86_64", vcpu: 16, totalMb: 131072, livreMb: 100000 })).toMatchObject({ maxLigadas: 8, maxCadastro: 1 });
-    expect(capacidade({ arch: "aarch64", vcpu: 8, totalMb: 32768, livreMb: 30000 })).toMatchObject({ arch: "arm64", maxLigadas: 23, maxCadastro: 4 });
-    expect(capacidade({ arch: "arm64", vcpu: 2, totalMb: 1000, livreMb: 500 })).toMatchObject({ maxLigadas: 1, maxCadastro: 2 });
+    expect(capacidade({ arch: "x64", vcpu: 4, totalMb: 1024, livreMb: 100 })).toMatchObject({ maxLigadas: 2, maxCadastro: 2 });
+    expect(capacidade({ arch: "x86_64", vcpu: 16, totalMb: 131072, livreMb: 100000 })).toMatchObject({ maxLigadas: 8, maxCadastro: 4 });
+    expect(capacidade({ arch: "aarch64", vcpu: 8, totalMb: 32768, livreMb: 30000 })).toMatchObject({ arch: "arm64", maxLigadas: 4, maxCadastro: 4 });
+    expect(capacidade({ arch: "arm64", vcpu: 2, totalMb: 1000, livreMb: 500 })).toMatchObject({ maxLigadas: 1, maxCadastro: 1 });
   });
 });
 

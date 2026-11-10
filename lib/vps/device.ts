@@ -122,15 +122,45 @@ function incremental(): string {
   return String(randomInt(1_000_000, 9_999_999));
 }
 
+export const REDE_MAX = 254;
+
+/**
+ * Rede de um lote novo: um /24 só dele (10.77.<n>.0/24), n de 1 a 254. Pega o
+ * número acima do maior já usado; esgotou, o menor livre. `usadas` = redes das
+ * contas que existem nessa VPS (0 = bridge antiga, não conta).
+ */
+export function proximaRede(usadas: Iterable<number>): number {
+  const set = new Set<number>();
+  for (const n of usadas) if (Number.isInteger(n) && n >= 1 && n <= REDE_MAX) set.add(n);
+  const acima = Math.max(0, ...set) + 1;
+  if (acima <= REDE_MAX) return acima;
+  for (let n = 1; n <= REDE_MAX; n++) if (!set.has(n)) return n;
+  throw new Error("Não há mais rede /24 livre nesta VPS (254 lotes vivos).");
+}
+
+/** IP do container na rede do lote (mesma conta de agente-vps/lib/rede.mjs). Rede 0 = bridge antiga (índice + 2). */
+export function ipNaRede(rede: number, index: number): string {
+  if (rede === 0) return `10.77.0.${index + 2}`;
+  return `10.77.${rede}.${2 + (index % 250)}`;
+}
+
+/** IP de uma identidade: o gravado ou, nas contas antigas, o da bridge de sempre. */
+export function ipDoDevice(device: Pick<VpsDeviceSpec, "index" | "rede" | "ip">): string {
+  return device.ip || ipNaRede(device.rede ?? 0, device.index);
+}
+
 export const RESOLUCAO = "1080x1920";
 export const DPI = 420;
 
 /**
  * Identidade imutável de uma conta: perfil real (ou sorteado), serial,
  * Android ID, MAC, fingerprint coerente com o Android 13 e fuso/idioma do país
- * da proxy. `index` = índice do container (ig-<índice>) que o servidor reserva.
+ * da proxy. `index` = índice do container (ig-<índice>) que o servidor reserva;
+ * `rede` = o /24 do lote (proximaRede). Nada aqui sai de constante por conta:
+ * serial, Android ID, MAC, IMEI e o incremental do fingerprint são sorteados, e
+ * fuso/idioma vêm do país da proxy da própria conta.
  */
-export function novoDevice(perfil: DevicePerfil, pais: string, index: number): VpsDeviceSpec {
+export function novoDevice(perfil: DevicePerfil, pais: string, index: number, rede = 0): VpsDeviceSpec {
   const real = perfil === "aleatorio" ? PERFIS_REAIS[randomInt(PERFIS_REAIS.length)] : PERFIS_REAIS.find((p) => p.key === perfil) ?? PERFIS_REAIS[0];
   const { timezone, locale } = geoDoPais(pais);
   const fingerprint = `${real.brand}/${real.product}/${real.device}:13/${real.buildId}/${incremental()}:user/release-keys`;
@@ -154,7 +184,26 @@ export function novoDevice(perfil: DevicePerfil, pais: string, index: number): V
     container: `ig-${index}`,
     volume: `scalemaster-ig-${index}`,
     index,
+    rede,
+    ip: ipNaRede(rede, index),
   };
+}
+
+/**
+ * IP ou MAC da identidade nova que já pertence a outra conta (linhas de
+ * vps_devices para o MAC, identidades das contas da VPS para o IP): devolve o
+ * motivo, ou null. Com colisão o envio é abortado.
+ */
+export function colisaoDeIdentidade(
+  novo: Pick<VpsDeviceSpec, "mac" | "index" | "rede" | "ip">,
+  existentes: ReadonlyArray<{ mac?: string | null; ip?: string | null; container?: string | null }>
+): string | null {
+  const ip = ipDoDevice(novo);
+  for (const e of existentes) {
+    if (e.mac && e.mac.toLowerCase() === novo.mac.toLowerCase()) return `o MAC ${novo.mac} já é de ${e.container ?? "outra conta"}`;
+    if (e.ip && e.ip === ip) return `o IP ${ip} já é de ${e.container ?? "outra conta"}`;
+  }
+  return null;
 }
 
 /**

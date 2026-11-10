@@ -5,7 +5,8 @@ import { parseJobPrompt, parseJobSteps, type JobStatus } from "@/lib/emulador/jo
 import { isOnline, parseInstances } from "@/lib/emulador/payload";
 import { parsePlano } from "./estruturacao";
 import { parseCapacidade } from "./jobs";
-import type { VpsAgent, VpsDevice, VpsDeviceStatus, VpsJob, VpsResponse } from "./types";
+import { ipDoDevice } from "./device";
+import type { VpsAgent, VpsDevice, VpsDeviceSpec, VpsDeviceStatus, VpsJob, VpsResponse } from "./types";
 
 /** Leitura da aba Contas VPS: só agentes kind='vps' do usuário, as contas deles e os devices. */
 
@@ -102,6 +103,18 @@ export function proxyHostDe(inputEnc: string | null | undefined): string | null 
   }
 }
 
+/** IP e rede do container guardados na identidade da conta (input criptografado); null se não der para ler. */
+export function redeDe(inputEnc: string | null | undefined): { ip: string; rede: number; container: string } | null {
+  if (!inputEnc) return null;
+  try {
+    const { device } = JSON.parse(decrypt(inputEnc)) as { device?: VpsDeviceSpec };
+    if (!device || !Number.isInteger(device.index)) return null;
+    return { ip: ipDoDevice(device), rede: device.rede ?? 0, container: device.container };
+  } catch {
+    return null;
+  }
+}
+
 export function toVpsJob(row: JobRow): VpsJob {
   return {
     id: row.id,
@@ -121,6 +134,7 @@ export function toVpsJob(row: JobRow): VpsJob {
     pausa: row.pausa === "proxy" ? "proxy" : null,
     versaoIg: row.versao_ig,
     proxyHost: row.kind === "estruturacao" ? null : proxyHostDe(row.input_enc),
+    ip: row.kind === "estruturacao" ? null : (redeDe(row.input_enc)?.ip ?? null),
     ...(row.kind === "estruturacao" ? { plano: parsePlano(row.acoes), contaId: row.conta_id ?? null, agendadoPara: row.agendado_para ?? null } : {}),
   };
 }

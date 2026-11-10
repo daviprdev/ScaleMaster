@@ -126,22 +126,22 @@ describe("Contas VPS: ligação conta ↔ container", () => {
 
 describe("Contas VPS: capacidade e identidade", () => {
   it("capacidade com limites e padrões", () => {
-    expect(parseCapacidade(null)).toEqual({ maxLigadas: 2, maxCadastro: 2, ramTotalMb: 0, ramUsadaMb: 0, ligadas: 0, versoesIg: [] });
+    expect(parseCapacidade(null)).toEqual({ maxLigadas: 2, maxCadastro: 2, vcpu: 0, ramTotalMb: 0, ramUsadaMb: 0, ligadas: 0, versoesIg: [] });
     const c = parseCapacidade({ maxLigadas: 23.4, maxCadastro: 400, versoesIg: ["309.0.0.40.113", "ruim ç", 5], ligadas: -2 });
     expect(c.maxLigadas).toBe(23);
-    expect(c.maxCadastro).toBe(50);
+    // maxCadastro nunca passa de maxLigadas.
+    expect(c.maxCadastro).toBe(23);
     expect(c.versoesIg).toEqual(["309.0.0.40.113"]);
     expect(c.ligadas).toBe(0);
   });
 
   it("supervisor: capacidade por arquitetura; semáforo respeita a vaga", async () => {
-    // x86_64: maxLigadas = max(1, vCPU/2), maxCadastro = 1, nada vem da RAM.
+    // maxLigadas = clamp(vCPU/2, 1, 8) e maxCadastro = clamp(vCPU/2, 1, 4): nada vem da RAM nem da arquitetura.
     expect(capacidade({ arch: "x86_64", vcpu: 2, totalMb: 7935, livreMb: 1145 })).toMatchObject({ arch: "x86_64", maxLigadas: 1, maxCadastro: 1, ramTotalMb: 7935, ramUsadaMb: 6790 });
-    expect(capacidade({ arch: "x64", vcpu: 8, totalMb: 2000, livreMb: 500 })).toMatchObject({ maxLigadas: 4, maxCadastro: 1 });
+    expect(capacidade({ arch: "x64", vcpu: 8, totalMb: 2000, livreMb: 500 })).toMatchObject({ maxLigadas: 4, maxCadastro: 4 });
     expect(capacidade({ arch: "x86_64", vcpu: 1, totalMb: 65536, livreMb: 60000 })).toMatchObject({ maxLigadas: 1, maxCadastro: 1 });
-    // arm64: maxLigadas = RAM/1400, maxCadastro = max(2, vCPU/2) (Hetzner CAX31 → 23 / 4).
-    expect(capacidade({ arch: "aarch64", vcpu: 8, totalMb: 32768, livreMb: 30000 })).toMatchObject({ arch: "arm64", maxLigadas: 23, maxCadastro: 4 });
-    expect(capacidade({ arch: "arm64", vcpu: 2, totalMb: 4096, livreMb: 1000 })).toMatchObject({ maxLigadas: 2, maxCadastro: 2 });
+    expect(capacidade({ arch: "aarch64", vcpu: 8, totalMb: 32768, livreMb: 30000 })).toMatchObject({ arch: "arm64", maxLigadas: 4, maxCadastro: 4 });
+    expect(capacidade({ arch: "arm64", vcpu: 2, totalMb: 4096, livreMb: 1000 })).toMatchObject({ maxLigadas: 1, maxCadastro: 1 });
     const c = capacidade();
     expect(c.maxLigadas).toBeGreaterThanOrEqual(1);
     expect(c.maxCadastro).toBeGreaterThanOrEqual(1);

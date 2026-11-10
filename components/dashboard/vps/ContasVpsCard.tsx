@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, Circle, Contact, Copy, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Trash2, UserPlus, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, Contact, Copy, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, ShieldAlert, ShieldCheck, Trash2, UserPlus, XCircle } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Input, ProgressBar, type BadgeTone } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ALERTA_ROBO, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
 import { progressoEstrutura } from "@/lib/vps/estruturacao";
-import { VPS_FLUXO, ehAlertaVps, ehDescartada, ehProxyMorta, progresso } from "@/lib/vps/jobs";
+import { VPS_FLUXO, ehAlertaVps, ehDescartada, ehProxyMorta, isolamentoUnico, progresso, type Isolamento } from "@/lib/vps/jobs";
 import { rotuloAlerta } from "@/lib/vps/painel";
 import type { VpsDevice, VpsJob } from "@/lib/vps/types";
 
@@ -62,6 +62,8 @@ export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onE
               onAction={onAction}
               onReply={onReply}
               onEdit={onEdit}
+              isolamento={isolamentoDe(job, devices.get(job.id))}
+              doLote={jobs.filter((j) => (job.loteId ? j.loteId === job.loteId : j.id === job.id) && !ehDescartada(j)).map((j) => isolamentoDe(j, devices.get(j.id)))}
               estrutura={estruturas.get(job.id)}
               estruturaBusy={busy.has(estruturas.get(job.id)?.id ?? "")}
               onEstruturar={onEstruturar}
@@ -82,13 +84,51 @@ interface JobRowProps {
   onAction: ContasVpsCardProps["onAction"];
   onReply: ContasVpsCardProps["onReply"];
   onEdit: ContasVpsCardProps["onEdit"];
+  isolamento: Isolamento;
+  /** Isolamento de todas as contas vivas do mesmo lote (esta incluída). */
+  doLote: readonly Isolamento[];
   estrutura: VpsJob | undefined;
   estruturaBusy: boolean;
   onEstruturar: ContasVpsCardProps["onEstruturar"];
   onEstrutura: ContasVpsCardProps["onEstrutura"];
 }
 
-function JobRow({ job, device, busy, now, onAction, onReply, onEdit, estrutura, estruturaBusy, onEstruturar, onEstrutura }: JobRowProps) {
+/** IP (identidade da conta), MAC, modelo, serial e Android ID (vps_devices) de uma conta. */
+function isolamentoDe(job: VpsJob, device: VpsDevice | undefined): Isolamento {
+  return { ip: job.ip ?? null, mac: device?.mac ?? null, modelo: device?.model ?? null, serial: device?.serial ?? null, androidId: device?.androidId ?? null };
+}
+
+/** Bloco "Isolamento": IP, MAC, modelo, serial e Android ID da conta; escudo verde quando estão únicos no lote. */
+function IsolamentoBox({ isolamento, doLote }: { isolamento: Isolamento; doLote: readonly Isolamento[] }) {
+  const unico = isolamentoUnico(isolamento, doLote);
+  const itens: Array<[string, string | null]> = [
+    ["IP", isolamento.ip],
+    ["MAC", isolamento.mac],
+    ["Modelo", isolamento.modelo],
+    ["Serial", isolamento.serial],
+    ["Android ID", isolamento.androidId],
+  ];
+  return (
+    <div className="mt-3 rounded-lg border border-line p-3">
+      <p className={cn("flex items-center gap-1.5 text-xs font-medium", unico ? "text-success" : "text-warning")}>
+        {unico ? <ShieldCheck size={14} className="shrink-0" /> : <ShieldAlert size={14} className="shrink-0" />}
+        Isolamento · {unico ? "únicos no lote" : "valor repetido ou ausente no lote"}
+      </p>
+      <dl className="mt-2 grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-5">
+        {itens.map(([rotulo, valor]) => (
+          <div key={rotulo} className="min-w-0">
+            <dt className="text-ink-3">{rotulo}</dt>
+            <dd className="truncate font-mono text-ink" title={valor ?? undefined}>
+              {valor ?? "—"}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function JobRow({ job, device, busy, now, onAction, onReply, onEdit, isolamento, doLote, estrutura, estruturaBusy, onEstruturar, onEstrutura }: JobRowProps) {
   const [aberto, setAberto] = React.useState(false);
   const [dados, setDados] = React.useState(false);
   const badge = STATUS_BADGE[job.status];
@@ -178,6 +218,8 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, estrutura, 
       )}
 
       {job.status === "running" && job.prompt && <PromptBox job={job} busy={busy} onReply={onReply} />}
+
+      {!descartada && <IsolamentoBox isolamento={isolamento} doLote={doLote} />}
 
       {dados && <PessoaBox jobId={job.id} />}
 

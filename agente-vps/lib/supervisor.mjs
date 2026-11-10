@@ -5,19 +5,29 @@ import { rodar, trecho } from "./processo.mjs";
  * Pool de workers da VPS: dois semáforos (containers ligados e cadastros ao
  * mesmo tempo), um watchdog por conta e a limpeza de órfãos no boot.
  *
- * Por arquitetura:
- *   x86_64  maxLigadas  = max(1, vCPU / 2)   (o redroid x86 come CPU: 2 vCPU → 1 ligada)
- *           maxCadastro = 1                  (acima disso o cadastro estoura timeout)
- *           — nada derivado da RAM em x86.
- *   arm64   maxLigadas  = RAM_MB / 1400      (cada redroid com o Instagram fica em ~1,4 GB)
- *           maxCadastro = max(2, vCPU / 2)
+ * Concorrência pela CPU da máquina (igual em x86_64 e arm64):
+ *   maxLigadas  = clamp(floor(vCPU / 2), 1, 8)   containers de pé ao mesmo tempo
+ *   maxCadastro = clamp(floor(vCPU / 2), 1, 4)   jobs rodando ao mesmo tempo, nunca acima de maxLigadas
+ * Cada container roda com --cpus 1 e --memory 1536m (lib/android.mjs); com
+ * menos de 4 vCPU é um por vez e a aba avisa "host pequeno".
  *
  * O servidor já entrega no máximo maxCadastro contas por vez (vai no sync como
  * capacity); o semáforo aqui é a trava local para o caso de o servidor e o
  * agente discordarem (versão antiga do SaaS).
  */
 
-export const MB_POR_CONTAINER = 1400;
+export const MB_POR_CONTAINER = 1536;
+export const MAX_LIGADAS = 8;
+export const MAX_CADASTRO = 4;
+
+const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+
+/** Os dois limites a partir das vCPUs: maxCadastro nunca passa de maxLigadas. */
+export function limitesPorVcpu(vcpu) {
+  const metade = Math.floor((Number.isFinite(vcpu) && vcpu > 0 ? vcpu : 1) / 2);
+  const maxLigadas = clamp(metade, 1, MAX_LIGADAS);
+  return { maxLigadas, maxCadastro: Math.min(clamp(metade, 1, MAX_CADASTRO), maxLigadas) };
+}
 /** Conta sem progresso de etapa por mais que isso é morta pelo watchdog (o cadastro em si tem limite próprio de 45 min). */
 export const TRAVADO_MS = 60 * 60_000;
 
@@ -35,11 +45,7 @@ function archNormalizada(arch) {
  */
 export function capacidade({ arch = process.arch, vcpu = os.cpus().length || 1, totalMb = Math.floor(os.totalmem() / 1024 / 1024), livreMb = Math.floor(os.freemem() / 1024 / 1024) } = {}) {
   const a = archNormalizada(arch);
-  const base = { arch: a, vcpu, ramTotalMb: totalMb, ramUsadaMb: Math.max(0, totalMb - livreMb) };
-  if (a === "x86_64") {
-    return { ...base, maxLigadas: Math.max(1, Math.floor(vcpu / 2)), maxCadastro: 1 };
-  }
-  return { ...base, maxLigadas: Math.max(1, Math.floor(totalMb / MB_POR_CONTAINER)), maxCadastro: Math.max(2, Math.floor(vcpu / 2)) };
+  return { arch: a, vcpu, ramTotalMb: totalMb, ramUsadaMb: Math.max(0, totalMb - livreMb), ...limitesPorVcpu(vcpu) };
 }
 /** Semáforo simples: `pegar()` espera uma vaga e devolve a função que solta. */
 export class Semaforo {

@@ -39,6 +39,73 @@ export function ipDe(index) {
   return `10.77.0.${index + 2}`;
 }
 
+/**
+ * Rede do lote: 0 (ou ausente, contas antigas) = a bridge de sempre; n de 1 a
+ * 254 = um /24 só daquele lote (10.77.n.0/24, bridge vpsnet-n). Lotes
+ * diferentes não se enxergam: o Docker isola uma bridge da outra.
+ */
+export function redeDoLote(n) {
+  const i = Number.isInteger(n) && n >= 1 && n <= 254 ? n : 0;
+  if (i === 0) return { indice: 0, nome: REDE, subrede: SUBREDE, gateway: "10.77.0.1", bridge: "vpsnet" };
+  return { indice: i, nome: `${REDE}-${i}`, subrede: `10.77.${i}.0/24`, gateway: `10.77.${i}.1`, bridge: `vpsnet${i}` };
+}
+
+/** IP do container de índice `index` na rede do lote n (mesma conta de lib/vps/device.ts). */
+export function ipNaRede(n, index) {
+  const rede = redeDoLote(n);
+  if (rede.indice === 0) return ipDe(index);
+  if (!Number.isInteger(index) || index < 1) throw new Error(`Índice ${index} inválido para a rede do lote.`);
+  return `10.77.${rede.indice}.${2 + (index % 250)}`;
+}
+
+const IP_RE = /^10\.77\.(\d{1,3})\.(\d{1,3})$/;
+
+/** Rede e IP de um container: os que o servidor gravou na identidade (device.rede / device.ip) ou, nas contas antigas, os de sempre. */
+export function enderecoDe(device, index) {
+  const rede = redeDoLote(device?.rede);
+  const m = IP_RE.exec(String(device?.ip ?? ""));
+  const valido = m && Number(m[1]) === rede.indice && Number(m[2]) >= 2 && Number(m[2]) <= 254;
+  return { rede, ip: valido ? device.ip : ipNaRede(rede.indice, index) };
+}
+
+/**
+ * IP ou MAC do container novo já usados por outro (containers vivos e
+ * retratos): devolve o motivo, ou null. O job que bate aqui é abortado.
+ */
+export function colisao(novo, outros) {
+  const mac = String(novo.mac ?? "").toLowerCase();
+  for (const o of outros) {
+    if (!o || o.nome === novo.nome) continue;
+    if (novo.ip && (o.ips ?? []).includes(novo.ip)) return `o IP ${novo.ip} já é do container ${o.nome}`;
+    if (mac && (o.macs ?? []).some((m) => String(m).toLowerCase() === mac)) return `o MAC ${novo.mac} já é do container ${o.nome}`;
+  }
+  return null;
+}
+
+/** IP e MAC de todos os containers do Scale Master que existem no Docker (ligados ou não). */
+export async function enderecosVivos() {
+  const lista = await rodar("docker", ["ps", "-a", "--filter", "label=scalemaster.vps=1", "--format", "{{.Names}}"], { timeoutMs: 20_000 });
+  const nomes = String(lista.stdout ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const out = [];
+  for (const nome of nomes) {
+    const r = await rodar(
+      "docker",
+      ["inspect", "--format", "{{range .NetworkSettings.Networks}}{{if .IPAMConfig}}{{.IPAMConfig.IPv4Address}}{{end}},{{.IPAddress}},{{.MacAddress}};{{end}}", nome],
+      { timeoutMs: 20_000 }
+    );
+    if (r.codigo !== 0) continue;
+    const ips = [];
+    const macs = [];
+    for (const parte of trecho(r.stdout, 1000).split(";")) {
+      const [fixo, atual, mac] = parte.split(",");
+      for (const ip of [fixo, atual]) if (ip && !ips.includes(ip)) ips.push(ip);
+      if (mac) macs.push(mac);
+    }
+    out.push({ nome, ips, macs });
+  }
+  return out;
+}
+
 /** http://usuario:senha@host:porta → partes. */
 export function lerProxy(url) {
   const u = new URL(url);
@@ -46,14 +113,28 @@ export function lerProxy(url) {
   return { host: u.hostname, porta: Number(u.port), usuario: decodeURIComponent(u.username), senha: decodeURIComponent(u.password) };
 }
 
-/** Cria a bridge uma vez (instalar.sh também faz; aqui garante no boot do agente). */
-export async function garantirBridge() {
-  const ins = await rodar("docker", ["network", "inspect", REDE], { timeoutMs: 20_000 });
+/** Argumentos do docker network create da rede de um lote. */
+export function argsDaRede(rede) {
+  return ["network", "create", "--driver", "bridge", "--subnet", rede.subrede, "--gateway", rede.gateway, "-o", `com.docker.network.bridge.name=${rede.bridge}`, rede.nome];
+}
+
+/** Cria a bridge do lote se ainda não existe. */
+export async function garantirRede(rede) {
+  const ins = await rodar("docker", ["network", "inspect", rede.nome], { timeoutMs: 20_000 });
   if (ins.codigo === 0) return;
-  const r = await rodar("docker", ["network", "create", "--driver", "bridge", "--subnet", SUBREDE, "--gateway", "10.77.0.1", "-o", "com.docker.network.bridge.name=vpsnet", REDE], {
-    timeoutMs: 60_000,
-  });
-  if (r.codigo !== 0) throw new Error(`docker network create ${REDE}: ${trecho(r.stderr)}`);
+  const r = await rodar("docker", argsDaRede(rede), { timeoutMs: 60_000 });
+  if (r.codigo !== 0) throw new Error(`docker network create ${rede.nome}: ${trecho(r.stderr)}`);
+}
+
+/** Apaga a bridge de um lote quando o último container dele sai (com container dentro o Docker recusa: fica). */
+export async function soltarRede(rede) {
+  if (rede.indice === 0) return;
+  await rodar("docker", ["network", "rm", rede.nome], { timeoutMs: 30_000 });
+}
+
+/** Cria a bridge de sempre (instalar.sh também faz; aqui garante no boot do agente). */
+export async function garantirBridge() {
+  await garantirRede(redeDoLote(0));
 }
 
 /**

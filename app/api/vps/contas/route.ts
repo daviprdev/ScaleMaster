@@ -7,8 +7,8 @@ import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseInstances } from "@/lib/emulador/payload";
 import { parseLoteInput } from "@/lib/vps/input";
 import { parseCapacidade, proxiesEmUso } from "@/lib/vps/jobs";
-import { proxyHostDe } from "@/lib/vps/load";
-import { novoDevice, proximosIndices } from "@/lib/vps/device";
+import { proxyHostDe, redeDe } from "@/lib/vps/load";
+import { colisaoDeIdentidade, novoDevice, proximaRede, proximosIndices } from "@/lib/vps/device";
 import { gerarPessoa } from "@/lib/vps/pessoa";
 import type { VpsContaInput } from "@/lib/vps/types";
 
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Índices reservados acima de tudo o que a VPS já tem (containers, contas, devices).
-  const { data: devicesAntigos } = await admin.from("vps_devices").select("container").eq("user_id", user.id);
+  const { data: devicesAntigos } = await admin.from("vps_devices").select("container, mac").eq("user_id", user.id);
   const ocupados: number[] = [
     ...parseInstances(agent.instances).map((i) => i.index),
     ...ativosLista.map((j) => j.instance_index ?? 0),
@@ -98,6 +98,26 @@ export async function POST(req: NextRequest) {
   const { data: labels } = await admin.from("emulator_jobs").select("label").eq("user_id", user.id);
   const usados = new Set(((labels ?? []) as Array<{ label: string | null }>).map((l) => l.label ?? "").filter(Boolean));
 
+  // Isolamento: um /24 novo para este lote e, antes de gravar qualquer conta, IP e MAC de cada identidade conferidos
+  // contra as linhas de vps_devices (MAC) e as identidades das contas da VPS (IP). Colisão aborta o envio inteiro.
+  const redesExistentes = ((existentes ?? []) as Array<{ input_enc: string }>).map((j) => redeDe(j.input_enc)).filter((r) => r !== null);
+  let redeDoLote: number;
+  try {
+    redeDoLote = proximaRede(redesExistentes.map((r) => r.rede));
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 409 });
+  }
+  const identidades: Array<{ mac?: string | null; ip?: string | null; container?: string | null }> = [
+    ...((devicesAntigos ?? []) as Array<{ container: string; mac: string | null }>).map((d) => ({ mac: d.mac, container: d.container })),
+    ...redesExistentes.map((r) => ({ ip: r.ip, container: r.container })),
+  ];
+  const devices = lote.proxies.slice(0, lote.quantidade).map((proxy, i) => novoDevice(lote.perfil, proxy.pais ?? lote.pais, indices[i], redeDoLote));
+  for (const device of devices) {
+    const batida = colisaoDeIdentidade(device, identidades);
+    if (batida) return NextResponse.json({ error: `Isolamento: ${batida}. Nada foi enviado; tente de novo.` }, { status: 409 });
+    identidades.push({ mac: device.mac, ip: device.ip, container: device.container });
+  }
+
   const loteId = randomUUID();
   const now = new Date().toISOString();
   const criados: string[] = [];
@@ -106,7 +126,7 @@ export async function POST(req: NextRequest) {
     const pessoa = lote.gerarPessoa ? gerarPessoa({ usados }) : null;
     const conta = pessoa ? { ...bruta, senhaIg: pessoa.senha, nome: pessoa.nome, usuario: pessoa.usuario, nascimento: pessoa.nascimento } : bruta;
     const proxy = lote.proxies[i];
-    const device = novoDevice(lote.perfil, proxy.pais ?? lote.pais, indices[i]);
+    const device = devices[i];
     const input: VpsContaInput = {
       proxy: proxy.url,
       pais: device.pais,

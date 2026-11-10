@@ -89,7 +89,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const usados = new Set(((labels ?? []) as Array<{ label: string | null }>).map((l) => l.label ?? "").filter(Boolean));
   const pessoa = gerarPessoa({ usados });
   const pais = proxy.pais ?? anterior.pais;
-  const device = novoDevice(anterior.perfil, pais, index);
+  // Mesmo lote, mesma rede /24 (contas antigas ficam na bridge de sempre).
+  const device = novoDevice(anterior.perfil, pais, index, anterior.device?.rede ?? 0);
   const input: VpsContaInput = {
     proxy: proxy.url,
     pais: device.pais,

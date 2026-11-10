@@ -5,6 +5,7 @@ import { Check, Copy, HardDriveDownload, Plus, Power, PowerOff, Server, Unplug }
 import { Badge, Banner, Button, Card, Dialog, EmptyState, ProgressBar, type BadgeTone } from "@/components/ui";
 import type { EmulatorInstance, InstanceState } from "@/lib/emulador/types";
 import { timeAgo } from "@/lib/emulador/view";
+import { AVISO_HOST_PEQUENO, hostPequeno } from "@/lib/vps/jobs";
 import { rotuloAlerta } from "@/lib/vps/painel";
 import type { VpsAgent, VpsJob } from "@/lib/vps/types";
 
@@ -71,9 +72,14 @@ export function AgenteVpsCard({ agent, now, linked, queued, alerts, sending, onC
       ) : (
         <div className="flex flex-col gap-4">
           {agent.engineError && <Banner tone="warning">{agent.engineError}</Banner>}
+          {hostPequeno(cap) && (
+            <Banner tone="warning">
+              {AVISO_HOST_PEQUENO} ({cap.vcpu} vCPU; com 4 ou mais a VPS roda contas em paralelo).
+            </Banner>
+          )}
           <div className="grid gap-3 sm:grid-cols-4">
-            <Stat label="Ligados agora" value={`${cap.ligadas} / ${cap.maxLigadas}`} hint="x86: vCPU ÷ 2 · ARM: RAM ÷ 1,4 GB" />
-            <Stat label="Cadastros ao mesmo tempo" value={String(cap.maxCadastro)} hint="x86: 1 · ARM: max(2, vCPU ÷ 2)" />
+            <Stat label="Ligados agora" value={`${cap.ligadas} / ${cap.maxLigadas}`} hint={`vCPU ÷ 2, de 1 a 8${cap.vcpu ? ` · ${cap.vcpu} vCPU` : ""}`} />
+            <Stat label="Jobs ao mesmo tempo" value={String(cap.maxCadastro)} hint="vCPU ÷ 2, de 1 a 4; o resto espera na fila" />
             <Stat label="APKs do Instagram" value={cap.versoesIg.length ? cap.versoesIg.join(", ") : "nenhum"} hint="/opt/scalemaster/apks" />
             <div className="rounded-lg border border-line p-3">
               <p className="text-xs text-ink-3">RAM usada</p>

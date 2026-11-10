@@ -22,10 +22,12 @@ export const DEVICE_PERFIS: ReadonlyArray<{ key: DevicePerfil; label: string }> 
 
 /** O que a VPS informa no sync (emulator_agents.capacidade). */
 export interface VpsCapacidade {
-  /** RAM_MB / 1400: containers ligados ao mesmo tempo. */
+  /** clamp(floor(vCPU / 2), 1, 8): containers ligados ao mesmo tempo. */
   maxLigadas: number;
-  /** max(2, vCPU / 2): cadastros rodando ao mesmo tempo. */
+  /** clamp(floor(vCPU / 2), 1, 4), nunca acima de maxLigadas: jobs rodando ao mesmo tempo. */
   maxCadastro: number;
+  /** vCPUs do host (0 = agente antigo, que não informa). */
+  vcpu: number;
   ramTotalMb: number;
   ramUsadaMb: number;
   /** Containers ligados agora. */
@@ -78,6 +80,8 @@ export interface VpsJob extends Omit<EmulatorJob, "kind"> {
   versaoIg: string | null;
   /** host:porta da proxy da conta (sem credenciais); null se ilegível. */
   proxyHost: string | null;
+  /** IP do container na bridge do lote (bloco Isolamento); null se ilegível. */
+  ip?: string | null;
   /** Só estruturacao: etapas expandidas na criação do job (emulator_jobs.acoes). */
   plano?: PlanoEtapa[];
   /** Só estruturacao: id da conta (job nova-conta) estruturada. */
@@ -148,6 +152,10 @@ export interface VpsDeviceSpec {
   container: string;
   volume: string;
   index: number;
+  /** Rede do lote: 10.77.<rede>.0/24 (ausente ou 0 = contas antigas, na bridge de sempre). */
+  rede?: number;
+  /** IP fixo do container nessa rede. */
+  ip?: string;
 }
 
 /** O que vai criptografado em emulator_jobs.input_enc de uma conta da VPS. */

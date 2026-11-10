@@ -4,7 +4,7 @@ import { Dispositivo, PORTA_BASE, serialDe } from "./adb.mjs";
 import { apagarVolume, conferirQuota, copiarVolume, prune } from "./disco.mjs";
 import { aplicarProps, propsDe } from "./fingerprint.mjs";
 import { esperar, rodar, trecho } from "./processo.mjs";
-import { IMAGEM_SIDECAR, REDE, garantirBridge, ipDe, nomeSidecar, pararSidecar, subirSidecar } from "./rede.mjs";
+import { IMAGEM_SIDECAR, colisao, enderecoDe, enderecosVivos, garantirBridge, garantirRede, nomeSidecar, pararSidecar, soltarRede, subirSidecar } from "./rede.mjs";
 
 /**
  * Driver dos containers redroid. Mesma superfície da classe MuMu de
@@ -90,7 +90,43 @@ export const PASTA_INSTANCIAS = path.join(PASTA_VPS, "instancias");
 export const PASTA_PROPS = path.join(PASTA_VPS, "props");
 export const PASTA_BASE_PROPS = path.join(PASTA_VPS, "base");
 const LABEL = "scalemaster.vps=1";
-const MEMORIA = "1400m";
+/** Teto de cada container: 1 CPU e 1536 MB (sem swap por fora), para um não tomar a máquina do outro. */
+export const CPUS = "1";
+export const MEMORIA = "1536m";
+
+/** --hostname do container = modelo do aparelho ("moto g84 5G" → "moto-g84-5G"): só letras, números e hífen. */
+export function hostnameDe(modelo) {
+  const nome = String(modelo ?? "")
+    .normalize("NFD")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63)
+    .replace(/-+$/, "");
+  return nome || "android";
+}
+
+/**
+ * Argumentos do docker create de uma conta. `props` = pasta com os build.prop
+ * dela; `rede`/`ip` = enderecoDe(spec.device, spec.index).
+ */
+export function argsDoContainer(spec, { props, rede, ip }) {
+  const nome = nomeDe(spec.index);
+  const args = [
+    "create", "--name", nome, "--privileged",
+    "--hostname", hostnameDe(spec.device.model),
+    "--label", LABEL, "--label", `scalemaster.conta=${spec.jobId ?? ""}`, "--label", `scalemaster.nome=${spec.nome ?? nome}`,
+    "--network", rede.nome, "--ip", ip, "--mac-address", spec.device.mac,
+    "-p", `127.0.0.1:${PORTA_BASE + spec.index}:5555`,
+    "-v", `${spec.volume}:/data`,
+    "--cpus", CPUS, "--memory", MEMORIA, "--memory-swap", MEMORIA, "--restart", "no",
+    // SELinux permissivo: o tar da sessão em /data/data é bloqueado mesmo como root com enforcing.
+    "-e", "androidboot.selinux=permissive",
+  ];
+  for (const p of PARTICOES) args.push("-v", `${path.join(props, `${p.nome}.prop`)}:${p.destino}:ro`);
+  // decisão: além do -e, o mesmo androidboot.selinux vai na cmdline, que é de onde o redroid lê os androidboot.*.
+  args.push(IMAGEM, ...ARGS_REDROID, `androidboot.redroid_net_dns1=${ip}`, "androidboot.selinux=permissive", `androidboot.serialno=${spec.device.serial}`);
+  return args;
+}
 /** Props que só entram no boot (build.prop / cmdline): mudar uma delas recria o container. */
 const CHAVES_DE_BOOT = new Set(["model", "manufacturer", "brand", "device", "product", "fingerprint", "buildId", "serial", "mac"]);
 /** Props aplicadas por adb com o container ligado. */
@@ -301,6 +337,24 @@ export class Android {
     return n;
   }
 
+  /** IP e MAC que os retratos das outras contas reservam (container apagado à mão ainda conta). */
+  enderecosDosRetratos(excetoIndex) {
+    mkdirSync(PASTA_INSTANCIAS, { recursive: true, mode: 0o700 });
+    return readdirSync(PASTA_INSTANCIAS)
+      .filter((f) => /^ig-\d+\.json$/.test(f))
+      .map((f) => lerSpec(Number(/\d+/.exec(f)[0])))
+      .filter((s) => s && Number.isInteger(s.index) && s.index !== excetoIndex)
+      .map((s) => {
+        let ip = null;
+        try {
+          ip = enderecoDe(s.device, s.index).ip;
+        } catch {
+          /* índice fora da bridge antiga: sem IP reservado */
+        }
+        return { nome: nomeDe(s.index), ips: ip ? [ip] : [], macs: s.device?.mac ? [s.device.mac] : [] };
+      });
+  }
+
   /** Arquivos de build.prop da conta: os da base com a identidade por cima. */
   gerarProps(spec) {
     const pasta = path.join(PASTA_PROPS, nomeDe(spec.index));
@@ -319,21 +373,13 @@ export class Android {
     if (!spec.device?.fingerprint || !spec.device?.mac || !spec.device?.serial) {
       throw new Error(`O retrato de ${nome} foi reconstruído sem a identidade do aparelho: não dá para recriar o container.`);
     }
+    const { rede, ip } = enderecoDe(spec.device, spec.index);
+    // IP e MAC únicos: contra os containers que existem no Docker e os retratos das outras contas. Colisão aborta o job.
+    const batida = colisao({ nome, ip, mac: spec.device.mac }, [...(await enderecosVivos()), ...this.enderecosDosRetratos(spec.index)]);
+    if (batida) throw new Error(`ISOLAMENTO: ${batida}. O container ${nome} não foi criado.`);
+    await garantirRede(rede);
     const props = this.gerarProps(spec);
-    const args = [
-      "create", "--name", nome, "--privileged",
-      "--label", LABEL, "--label", `scalemaster.conta=${spec.jobId ?? ""}`, "--label", `scalemaster.nome=${spec.nome ?? nome}`,
-      "--network", REDE, "--ip", ipDe(spec.index), "--mac-address", spec.device.mac,
-      "-p", `127.0.0.1:${PORTA_BASE + spec.index}:5555`,
-      "-v", `${spec.volume}:/data`,
-      "--memory", MEMORIA, "--memory-swap", MEMORIA, "--restart", "no",
-      // SELinux permissivo: o tar da sessão em /data/data é bloqueado mesmo como root com enforcing.
-      "-e", "androidboot.selinux=permissive",
-    ];
-    for (const p of PARTICOES) args.push("-v", `${path.join(props, `${p.nome}.prop`)}:${p.destino}:ro`);
-    // decisão: além do -e, o mesmo androidboot.selinux vai na cmdline, que é de onde o redroid lê os androidboot.*.
-    args.push(IMAGEM, ...ARGS_REDROID, `androidboot.redroid_net_dns1=${ipDe(spec.index)}`, "androidboot.selinux=permissive", `androidboot.serialno=${spec.device.serial}`);
-    await docker(args, 120_000);
+    await docker(argsDoContainer(spec, { props, rede, ip }), 120_000);
     spec.recriar = false;
     // O retrato guarda o Created vivo: o abrir() recria o container e o excluir confere por ele (ig-4, 08/11: ficou defasado).
     const viva = (await inspecionar(nomeDe(spec.index)))?.criada;
@@ -562,6 +608,8 @@ export class Android {
     rmSync(path.join(PASTA_PROPS, nome), { recursive: true, force: true });
     rmSync(arquivoSpec(index), { force: true });
     this.prontos.delete(index);
+    // Último container do lote: a bridge /24 dele sai junto (com outro container dentro o Docker recusa e ela fica).
+    if (spec?.device) await soltarRede(enderecoDe(spec.device, index).rede).catch(() => {});
     await prune([BASE_VOLUME, ...this.volumesVivos()]);
     log(`${nome} apagado (container, volume ${spec?.volume ?? "?"}, props)`);
   }

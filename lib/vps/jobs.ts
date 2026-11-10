@@ -134,14 +134,48 @@ export function parseCapacidade(raw: unknown): VpsCapacidade {
   const versoes = Array.isArray(r.versoesIg)
     ? r.versoesIg.filter((v): v is string => typeof v === "string" && /^[0-9][0-9A-Za-z.\-_]{0,30}$/.test(v)).slice(0, 20)
     : [];
+  const maxLigadas = int(r.maxLigadas, 1, 200, 2);
   return {
-    maxLigadas: int(r.maxLigadas, 1, 200, 2),
-    maxCadastro: int(r.maxCadastro, 1, MAX_JOB_UPDATES, 2),
+    maxLigadas,
+    // Nunca acima de maxLigadas: job rodando sem vaga de container só ficaria parado na VPS.
+    maxCadastro: Math.min(int(r.maxCadastro, 1, MAX_JOB_UPDATES, 2), maxLigadas),
+    vcpu: int(r.vcpu, 0, 1024, 0),
     ramTotalMb: int(r.ramTotalMb, 0, 1_000_000, 0),
     ramUsadaMb: int(r.ramUsadaMb, 0, 1_000_000, 0),
     ligadas: int(r.ligadas, 0, 200, 0),
     versoesIg: versoes,
   };
+}
+
+/** Host com menos de 4 vCPU roda um container por vez: o card do agente avisa. */
+export const VCPU_HOST_PEQUENO = 4;
+export const AVISO_HOST_PEQUENO = "host pequeno, 1 por vez";
+
+export function hostPequeno(cap: Pick<VpsCapacidade, "vcpu">): boolean {
+  return cap.vcpu > 0 && cap.vcpu < VCPU_HOST_PEQUENO;
+}
+
+export interface Isolamento {
+  ip: string | null;
+  mac: string | null;
+  modelo: string | null;
+  serial: string | null;
+  androidId: string | null;
+}
+
+/**
+ * Bloco Isolamento do card: os valores da conta e se estão únicos no lote.
+ * `doLote` = todas as contas do mesmo lote (a própria incluída). IP, MAC,
+ * serial e Android ID têm que existir e não repetir em nenhuma outra.
+ */
+// decisão: o modelo aparece no bloco mas não entra na conta de "único": são 3 perfis reais de aparelho, então
+// lote com mais de 3 contas sempre repete modelo (como no mundo real) e o ícone nunca ficaria verde.
+export function isolamentoUnico(conta: Isolamento, doLote: readonly Isolamento[]): boolean {
+  const campos: Array<keyof Isolamento> = ["ip", "mac", "serial", "androidId"];
+  return campos.every((campo) => {
+    const valor = conta[campo]?.toLowerCase();
+    return !!valor && doLote.filter((o) => o[campo]?.toLowerCase() === valor).length === 1;
+  });
 }
 
 /** "Continuar" depois de uma proxy morta: a etapa geo roda de novo (as anteriores ficam). */
