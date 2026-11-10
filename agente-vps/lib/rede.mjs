@@ -98,8 +98,9 @@ export async function enderecosVivos() {
     const macs = [];
     for (const parte of trecho(r.stdout, 1000).split(";")) {
       const [fixo, atual, mac] = parte.split(",");
-      for (const ip of [fixo, atual]) if (ip && !ips.includes(ip)) ips.push(ip);
-      if (mac) macs.push(mac);
+      // Container desligado: o Docker 29 devolve "invalid IP" no IPAddress e MAC vazio (o MAC dele vem do retrato).
+      for (const ip of [fixo, atual]) if (/^\d+\.\d+\.\d+\.\d+$/.test(ip ?? "") && !ips.includes(ip)) ips.push(ip);
+      if (/^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/i.test(mac ?? "")) macs.push(mac);
     }
     out.push({ nome, ips, macs });
   }
