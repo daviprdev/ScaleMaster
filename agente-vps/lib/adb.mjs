@@ -10,6 +10,8 @@ import { esperar, rodar, trecho } from "./processo.mjs";
  */
 
 export const PORTA_BASE = 6000;
+/** Dumps seguidos do uiautomator antes de desistir de ler a tela. */
+export const TENTATIVAS_DUMP = 10;
 
 const ENTIDADES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 
@@ -253,10 +255,10 @@ export class Dispositivo {
 
   /** Elementos da tela agora (uiautomator dump). */
   async tela() {
-    // O uiautomator devolve "null root node" enquanto a tela ainda está desenhando: tenta de novo.
+    // O uiautomator devolve "null root node" enquanto a tela ainda está desenhando: novo dump em 1 s, até 10.
     let ultima = "";
-    for (let tentativa = 0; tentativa < 4; tentativa++) {
-      if (tentativa > 0) await esperar(1500);
+    for (let tentativa = 0; tentativa < TENTATIVAS_DUMP; tentativa++) {
+      if (tentativa > 0) await esperar(1000);
       const r = await rodar(this.adb, ["-s", this.serial, "shell", "uiautomator", "dump", "/sdcard/sm_ui.xml"], { timeoutMs: 60_000 });
       if (/dumped/i.test(String(r.stdout))) return lerNos(await this.shell("cat", "/sdcard/sm_ui.xml"));
       ultima = trecho(r.stderr || r.stdout);

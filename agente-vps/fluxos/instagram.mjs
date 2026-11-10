@@ -37,12 +37,12 @@ export function embaralhar(lista) {
   return copia;
 }
 
-const SEGUINTE = ["Seguinte", "Next", "Avançar", "Continuar", "Continue"];
-const CONCLUIR = ["Concluído", "Concluir", "Done", "Guardar", "Save", "Salvar"];
+export const SEGUINTE = ["Seguinte", "Next", "Avançar", "Continuar", "Continue"];
+export const CONCLUIR = ["Concluído", "Concluir", "Done", "Guardar", "Save", "Salvar"];
 const PULAR = ["Agora não", "Not now", "Ignorar", "Skip", "Pular", "Não permitir", "Don't allow", "Don’t allow", "Entendi", "Got it", "OK"];
 const SEGUIR = ["Seguir", "Follow", "Seguir também", "Follow back", "Seguir de volta"];
 const SEGUINDO = ["A seguir", "Following", "Seguindo", "Pedido feito", "Requested", "Solicitado", "Pedido enviado"];
-const EDITAR_PERFIL = ["Editar perfil", "Edit profile"];
+export const EDITAR_PERFIL = ["Editar perfil", "Edit profile"];
 
 /** Galeria e câmera liberadas antes: foto e story não param no pedido do Android. */
 const PERMISSOES = [
@@ -189,7 +189,7 @@ function telasGerais({ d, ajuda }) {
  * seguidas vai para `travou` (padrão: o dono resolve e a automação segue);
  * `travou` que devolve texto também encerra.
  */
-async function percorrer(ctx, { nome, telas, fim, limiteMs, travou }) {
+export async function percorrer(ctx, { nome, telas, fim, limiteMs, travou }) {
   const { d, log, ajuda } = ctx;
   const todas = [...telas, ...telasGerais(ctx)];
   const parar = travou ?? ((texto, nos) => ajuda.manual(texto, nos));
@@ -346,7 +346,7 @@ function rotuloEm(nos, no) {
 }
 
 /** Botão Seguir/A seguir do topo do perfil (não os das sugestões, mais abaixo). */
-function botaoDoPerfil(nos) {
+export function botaoDoPerfil(nos) {
   const porId = acharId(nos, ig("profile_header_follow_button"));
   if (porId) return porId;
   return (

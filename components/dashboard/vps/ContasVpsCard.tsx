@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, Circle, Contact, Copy, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Trash2, UserPlus, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, Contact, Copy, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Trash2, UserPlus, XCircle } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Input, ProgressBar, type BadgeTone } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ALERTA_ROBO, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
+import { progressoEstrutura } from "@/lib/vps/estruturacao";
 import { VPS_FLUXO, ehAlertaVps, ehDescartada, ehProxyMorta, progresso } from "@/lib/vps/jobs";
 import { rotuloAlerta } from "@/lib/vps/painel";
 import type { VpsDevice, VpsJob } from "@/lib/vps/types";
@@ -18,6 +19,7 @@ const STATUS_BADGE: Record<JobStatus, { tone: BadgeTone; label: string }> = {
 };
 
 export type JobAction = "continuar" | "remover" | "pausar" | "despausar" | "refazer";
+export type EstruturaAction = "continuar" | "remover";
 
 interface ContasVpsCardProps {
   jobs: readonly VpsJob[];
@@ -28,10 +30,15 @@ interface ContasVpsCardProps {
   onAction: (job: VpsJob, action: JobAction) => void;
   onReply: (job: VpsJob, resposta: string) => void;
   onEdit: (job: VpsJob) => void;
+  /** Estruturação mais nova de cada conta (id da conta → job kind estruturacao): segunda linha do card. */
+  estruturas: ReadonlyMap<string, VpsJob>;
+  /** Abre o diálogo Estruturar da conta. */
+  onEstruturar: (job: VpsJob) => void;
+  onEstrutura: (estrutura: VpsJob, action: EstruturaAction) => void;
 }
 
 /** Uma linha por conta da VPS: índice do container, @, etapa atual com barra, Continuar, Remover, Pausar proxy e avisos. */
-export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onEdit }: ContasVpsCardProps) {
+export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onEdit, estruturas, onEstruturar, onEstrutura }: ContasVpsCardProps) {
   return (
     <Card
       title="Contas da VPS"
@@ -46,7 +53,20 @@ export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onE
       ) : (
         <ul className="flex flex-col gap-3">
           {jobs.map((job) => (
-            <JobRow key={job.id} job={job} device={devices.get(job.id)} busy={busy.has(job.id)} now={now} onAction={onAction} onReply={onReply} onEdit={onEdit} />
+            <JobRow
+              key={job.id}
+              job={job}
+              device={devices.get(job.id)}
+              busy={busy.has(job.id)}
+              now={now}
+              onAction={onAction}
+              onReply={onReply}
+              onEdit={onEdit}
+              estrutura={estruturas.get(job.id)}
+              estruturaBusy={busy.has(estruturas.get(job.id)?.id ?? "")}
+              onEstruturar={onEstruturar}
+              onEstrutura={onEstrutura}
+            />
           ))}
         </ul>
       )}
@@ -62,9 +82,13 @@ interface JobRowProps {
   onAction: ContasVpsCardProps["onAction"];
   onReply: ContasVpsCardProps["onReply"];
   onEdit: ContasVpsCardProps["onEdit"];
+  estrutura: VpsJob | undefined;
+  estruturaBusy: boolean;
+  onEstruturar: ContasVpsCardProps["onEstruturar"];
+  onEstrutura: ContasVpsCardProps["onEstrutura"];
 }
 
-function JobRow({ job, device, busy, now, onAction, onReply, onEdit }: JobRowProps) {
+function JobRow({ job, device, busy, now, onAction, onReply, onEdit, estrutura, estruturaBusy, onEstruturar, onEstrutura }: JobRowProps) {
   const [aberto, setAberto] = React.useState(false);
   const [dados, setDados] = React.useState(false);
   const badge = STATUS_BADGE[job.status];
@@ -78,6 +102,8 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit }: JobRowPro
   const badgeDescartada = job.error === ALERTA_ROBO ? "Captcha — conta descartada" : "@ recusado — conta descartada";
   const indice = job.instanceIndex ?? Number(/^ig-(\d+)$/.exec(device?.container ?? "")?.[1] ?? NaN);
   const onde = Number.isFinite(indice) ? `ig-${indice}` : "container a criar";
+  // Estruturar: só em conta criada e sem estruturação na fila ou rodando.
+  const estruturaAtiva = estrutura?.status === "queued" || estrutura?.status === "running";
 
   return (
     <li className="rounded-lg border border-line p-4">
@@ -102,6 +128,11 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit }: JobRowPro
           {job.status === "error" && !pausada && !descartada && (
             <Button size="sm" icon={<RotateCw size={14} />} loading={busy} onClick={() => onAction(job, "continuar")}>
               Continuar
+            </Button>
+          )}
+          {job.status === "done" && !estruturaAtiva && (
+            <Button size="sm" icon={<Layers size={14} />} disabled={busy} onClick={() => onEstruturar(job)}>
+              Estruturar
             </Button>
           )}
           {job.status !== "running" && !descartada && (
@@ -170,7 +201,106 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit }: JobRowPro
       )}
 
       {job.status === "error" && job.error && !alerta && <p className="mt-3 text-xs text-danger">{rotuloAlerta(job.error)}</p>}
+
+      {estrutura && <EstruturaLinha estrutura={estrutura} busy={estruturaBusy} now={now} onEstrutura={onEstrutura} />}
     </li>
+  );
+}
+
+const ESTRUTURA_BADGE: Record<JobStatus, { tone: BadgeTone; label: string }> = {
+  queued: { tone: "neutral", label: "Na fila" },
+  running: { tone: "info", label: "Estruturando" },
+  done: { tone: "success", label: "Estruturada" },
+  error: { tone: "danger", label: "Parou" },
+};
+
+/**
+ * Segunda linha do card: a estruturação da conta, com a barra e a checklist
+ * montadas do array de etapas do próprio job (expandido por alvo) e a
+ * miniatura do print de cada etapa. Falha aqui não muda o status da conta.
+ */
+function EstruturaLinha({ estrutura, busy, now, onEstrutura }: { estrutura: VpsJob; busy: boolean; now: number; onEstrutura: ContasVpsCardProps["onEstrutura"] }) {
+  const [aberto, setAberto] = React.useState(false);
+  const [ampliado, setAmpliado] = React.useState<string | null>(null);
+  const plano = estrutura.plano ?? [];
+  const steps = new Map(estrutura.steps.map((s) => [s.key, s]));
+  const prog = progressoEstrutura({ plano, steps: estrutura.steps, status: estrutura.status });
+  const agenda = estrutura.agendadoPara ? Date.parse(estrutura.agendadoPara) : NaN;
+  const agendada = estrutura.status === "queued" && Number.isFinite(agenda) && agenda > now;
+  const badge = agendada
+    ? { tone: "neutral" as BadgeTone, label: `Agendada · ${new Date(agenda).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` }
+    : ESTRUTURA_BADGE[estrutura.status];
+  const print = (key: string) => `/api/vps/estruturacoes/${encodeURIComponent(estrutura.id)}/prints/${key}`;
+
+  return (
+    <div className="mt-4 border-t border-line pt-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <p className="min-w-0 flex-1 text-xs font-medium text-ink-2">Estruturação · {timeAgo(estrutura.updatedAt, now)}</p>
+        <Badge tone={badge.tone} dot>
+          {badge.label}
+        </Badge>
+        {estrutura.status === "error" && (
+          <Button size="sm" icon={<RotateCw size={14} />} loading={busy} onClick={() => onEstrutura(estrutura, "continuar")}>
+            Continuar
+          </Button>
+        )}
+        {estrutura.status !== "running" && (
+          <Button variant="ghost" size="sm" icon={<Trash2 size={14} />} disabled={busy} onClick={() => onEstrutura(estrutura, "remover")}>
+            Remover
+          </Button>
+        )}
+      </div>
+
+      <div className="mt-2 flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <ProgressBar value={prog.pct} size="sm" />
+        </div>
+        <button type="button" className="shrink-0 text-xs text-ink-2 hover:text-ink" onClick={() => setAberto((v) => !v)}>
+          {prog.label} · {prog.feitas}/{prog.total} {aberto ? "▲" : "▼"}
+        </button>
+      </div>
+
+      {estrutura.status === "error" && estrutura.error && <p className="mt-2 text-xs text-danger">{estrutura.error}</p>}
+
+      {aberto && (
+        <ol className="mt-3 flex flex-col gap-1.5">
+          {plano.map((def) => {
+            const step = steps.get(def.key);
+            const temPrint = (step?.status === "done" || step?.status === "error") && def.key !== "fechar";
+            return (
+              <li key={def.key} className="flex items-start gap-2 text-sm">
+                <StepIcon status={step?.status} />
+                <span className="min-w-0 flex-1 text-ink">
+                  {def.label}
+                  {step?.message && <span className={cn("text-xs", step.status === "error" ? "text-danger" : "text-ink-2")}> · {step.message}</span>}
+                </span>
+                {temPrint && (
+                  <button type="button" className="shrink-0" aria-label={`Ampliar o print de ${def.label}`} onClick={() => setAmpliado((a) => (a === def.key ? null : def.key))}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={print(def.key)}
+                      alt=""
+                      loading="lazy"
+                      className="h-12 w-7 rounded border border-line object-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+
+      {aberto && ampliado && (
+        <button type="button" className="mt-3 block" aria-label="Fechar o print" onClick={() => setAmpliado(null)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={print(ampliado)} alt={`Tela ao fim da etapa ${ampliado}`} className="max-h-[70vh] rounded-lg border border-line" />
+        </button>
+      )}
+    </div>
   );
 }
 

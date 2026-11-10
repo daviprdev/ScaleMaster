@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const ARQ_CONFIG = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "config.json");
 export const PASTA_PADRAO = "/opt/scalemaster/midias";
-const TIPOS = { ".jpg": "imagem", ".jpeg": "imagem", ".png": "imagem", ".mp4": "video", ".mov": "video" };
+const TIPOS = { ".jpg": "imagem", ".jpeg": "imagem", ".png": "imagem", ".webp": "imagem", ".mp4": "video", ".mov": "video" };
 const MAX_ARQUIVOS = 500;
 const MAX_NIVEIS = 4;
 

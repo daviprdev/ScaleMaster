@@ -6,6 +6,7 @@
 
 import type { EmulatorJob } from "@/lib/emulador/jobs";
 import type { EmulatorInstance } from "@/lib/emulador/types";
+import type { PlanoEtapa } from "./estruturacao";
 
 export type AgentKind = "mumu" | "vps";
 
@@ -69,12 +70,20 @@ export interface VpsDevice {
 }
 
 /** Conta da fila da VPS: o job comum mais lote, pausa e versão do IG. */
-export interface VpsJob extends EmulatorJob {
+export interface VpsJob extends Omit<EmulatorJob, "kind"> {
+  /** estruturacao = Estruturar desta aba (lib/vps/estruturacao.ts): segunda linha do card da conta. */
+  kind: EmulatorJob["kind"] | "estruturacao";
   loteId: string | null;
   pausa: "proxy" | null;
   versaoIg: string | null;
   /** host:porta da proxy da conta (sem credenciais); null se ilegível. */
   proxyHost: string | null;
+  /** Só estruturacao: etapas expandidas na criação do job (emulator_jobs.acoes). */
+  plano?: PlanoEtapa[];
+  /** Só estruturacao: id da conta (job nova-conta) estruturada. */
+  contaId?: string | null;
+  /** Só estruturacao: quando sai da fila; null = agora. */
+  agendadoPara?: string | null;
 }
 
 export interface VpsResponse {
@@ -85,6 +94,8 @@ export interface VpsResponse {
   agents: VpsAgent[];
   jobs: VpsJob[];
   devices: VpsDevice[];
+  /** false = supabase/vps_estruturacao.sql ainda não aplicado (o botão Estruturar avisa). */
+  estruturaAvailable?: boolean;
 }
 
 /**

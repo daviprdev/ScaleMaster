@@ -35,6 +35,7 @@ import { Dispositivo } from "./lib/adb.mjs";
 import { alertaDe, limparAlerta } from "./lib/alertas.mjs";
 import { ARCH, Android, IMAGEM } from "./lib/android.mjs";
 import { listarMidias, pastaDeMidias } from "./lib/midias.mjs";
+import { limparPrintsAntigos, salvarPrint } from "./lib/prints.mjs";
 import { esperar } from "./lib/processo.mjs";
 import { validar } from "./lib/rede.mjs";
 import { Semaforo, capacidade, criarWatchdog, limparOrfaos } from "./lib/supervisor.mjs";
@@ -43,7 +44,7 @@ import { versoesDisponiveis } from "./fluxos/apk.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.0.1";
+const VERSAO = "1.1.0";
 const AGENT_KIND = "vps";
 /** "Instância" -1 = a VPS em si: só a automação rebuild-imagem roda nela (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
@@ -253,7 +254,7 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
   if (!fluxo) return enviar("error", `Este agente não conhece o fluxo "${job.kind}". Atualize a pasta agente-vps.`);
   if (!driver) return enviar("error", "Docker/redroid não encontrado nesta VPS.");
 
-  const logJob = (m) => log(`[${job.kind === "atividade" ? "estruturar" : "conta"} ${nomeDoJob(job)}] ${m}`);
+  const logJob = (m) => log(`[${job.kind === "nova-conta" ? "conta" : "estruturar"} ${nomeDoJob(job)}] ${m}`);
 
   // Vagas do supervisor: uma de cadastro para o job inteiro e uma de "ligado" enquanto o container está de pé.
   const soltarCadastro = semaforos ? await semaforos.cadastro.pegar() : () => {};
@@ -283,12 +284,43 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
     }
   };
 
+  // Estruturar: print da tela no fim de cada etapa (o card mostra a miniatura). Nunca derruba a etapa.
+  const comPrint = job.kind === "estruturacao";
+  if (comPrint) {
+    try {
+      limparPrintsAntigos();
+    } catch {
+      /* pasta de prints fora do ar: segue sem limpar */
+    }
+  }
+  const fotografar = async (chave) => {
+    if (!comPrint || estado.instanceIndex === null) return;
+    try {
+      const atual = await driver.instancia(estado.instanceIndex);
+      if (atual?.state !== "on" || !atual.adb) return;
+      salvarPrint(job.id, chave, await new Dispositivo(driver.adb, atual.adb).print());
+    } catch (e) {
+      logJob(`print de ${chave}: ${e.message}`);
+    }
+  };
+  /** Etapas com `segue` que falharam (ou foram puladas por causa delas): o job continua e termina como erro. */
+  const falhas = new Set();
+
   try {
     for (const etapa of fluxo) {
       const feita = steps.findIndex((s) => s.key === etapa.chave);
       if (feita >= 0) {
         if (!etapa.sempre) continue;
         steps.splice(feita, 1);
+      }
+      // Etapa bloqueada pela falha de outra (OAuth sem conta profissional, resto do alvo sem o link): registra e vai para a próxima.
+      const motivo = etapa.pular?.(falhas);
+      if (motivo) {
+        steps.push({ key: etapa.chave, status: "error", message: String(motivo).slice(0, 300) });
+        falhas.add(etapa.chave);
+        logJob(`${etapa.rotulo}: ${motivo}`);
+        enviar("running");
+        continue;
       }
       const step = { key: etapa.chave, status: "running", message: null };
       steps.push(step);
@@ -300,16 +332,29 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
         step.message = mensagem ? String(mensagem).slice(0, 300) : null;
         watchdog.bater();
         logJob(`${etapa.rotulo}: ok${step.message ? ` (${step.message})` : ""}`);
+        if (etapa.chave !== "fechar") await fotografar(etapa.chave);
         enviar("running");
       } catch (e) {
         step.status = "error";
         step.message = String(e.message).slice(0, 300);
         logJob(`${etapa.rotulo} falhou: ${e.message}`);
+        await fotografar(etapa.chave);
+        // Etapa independente (`segue`): a falha fica registrada e o job vai para a próxima.
+        if (etapa.segue) {
+          falhas.add(etapa.chave);
+          watchdog.bater();
+          enviar("running");
+          continue;
+        }
         // Conta parada = container desligado (sem Instagram aberto por aí); proxy morta também. Descartada já foi
         // apagada; código do portal vencido mantém o container ligado (e.manterContainer) à espera do código novo.
         if (estado.instanceIndex !== null && !estado.descartada && !e.manterContainer) await driver.fechar(estado.instanceIndex).catch(() => {});
         return enviar("error", e.semPrefixo ? e.message : `${etapa.rotulo}: ${e.message}`);
       }
+    }
+    if (falhas.size > 0) {
+      logJob(`terminou com falha em: ${[...falhas].join(", ")}`);
+      return enviar("error", `Etapas com falha: ${[...falhas].join(", ")}`.slice(0, 480));
     }
     logJob("terminou");
     return enviar("done");
@@ -482,7 +527,7 @@ async function rodarAgente() {
         for (const job of Array.isArray(resposta.jobs) ? resposta.jobs : []) {
           if (typeof job?.id !== "string" || contasEmAndamento.has(job.id)) continue;
           contasEmAndamento.add(job.id);
-          log(job.kind === "atividade" ? `Estruturação na fila: ${nomeDoJob(job)} (ig-${job.instanceIndex})` : `Conta na fila: ${nomeDoJob(job)} (lote, ig-${job.input?.device?.index ?? "?"})`);
+          log(job.kind !== "nova-conta" ? `Estruturação na fila: ${nomeDoJob(job)} (ig-${job.instanceIndex})` : `Conta na fila: ${nomeDoJob(job)} (lote, ig-${job.input?.device?.index ?? "?"})`);
           rodarJob(driver, job, (u) => andamentos.set(u.id, u), aguardarResposta, semaforos)
             .catch((e) => andamentos.set(job.id, { id: job.id, steps: [], status: "error", error: e.message }))
             .finally(() => contasEmAndamento.delete(job.id));

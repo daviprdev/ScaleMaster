@@ -200,7 +200,8 @@ export function parseJobSteps(raw: unknown): JobStep[] {
   if (!Array.isArray(raw)) return [];
   const out: JobStep[] = [];
   const seen = new Set<string>();
-  for (const item of raw.slice(0, 30)) {
+  // Estruturação: 9 etapas fixas + 6 por alvo (até 10 alvos).
+  for (const item of raw.slice(0, 100)) {
     if (!item || typeof item !== "object") continue;
     const r = item as Record<string, unknown>;
     if (typeof r.key !== "string" || !STEP_KEY_RE.test(r.key) || seen.has(r.key)) continue;

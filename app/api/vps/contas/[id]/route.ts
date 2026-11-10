@@ -179,6 +179,12 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "A conta está rodando agora. Espere terminar ou parar." }, { status: 409 });
   }
 
+  // Estruturação rodando no container da conta: espera terminar (as paradas somem com a conta, pelo conta_id).
+  const { data: estruturando } = await admin.from("emulator_jobs").select("id").eq("conta_id", id).eq("status", "running").limit(1);
+  if (estruturando?.length) {
+    return NextResponse.json({ error: "A estruturação dessa conta está rodando agora. Espere terminar." }, { status: 409 });
+  }
+
   const steps = parseJobSteps(job.steps);
   const nome = steps.find((s) => s.key === "nome")?.message;
   const criado = steps.some((s) => s.key === "copiar" && s.status === "done");

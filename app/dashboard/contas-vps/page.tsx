@@ -5,7 +5,8 @@ import { mascaraData } from "@/lib/emulador/view";
 import { Plus, Server } from "lucide-react";
 import { Banner, Button, ConfirmDialog, Dialog, EmptyState, Input, PageHeader, Select, Skeleton } from "@/components/ui";
 import { AgenteVpsCard, ConectarVpsDialog } from "@/components/dashboard/vps/AgenteVpsCard";
-import { ContasVpsCard, type JobAction } from "@/components/dashboard/vps/ContasVpsCard";
+import { ContasVpsCard, type EstruturaAction, type JobAction } from "@/components/dashboard/vps/ContasVpsCard";
+import { EstruturarDialog } from "@/components/dashboard/vps/EstruturarDialog";
 import { LoteDialog } from "@/components/dashboard/vps/LoteDialog";
 import { ProgressoLotePanel } from "@/components/dashboard/vps/ProgressoLotePanel";
 import { parseLinhaPortal, parseProxy } from "@/lib/vps/input";
@@ -37,6 +38,7 @@ export default function ContasVpsPage() {
   const [removing, setRemoving] = React.useState<VpsJob | null>(null);
   const [editing, setEditing] = React.useState<VpsJob | null>(null);
   const [refazendo, setRefazendo] = React.useState<VpsJob | null>(null);
+  const [estruturando, setEstruturando] = React.useState<VpsJob | null>(null);
   const [jobBusy, setJobBusy] = React.useState<ReadonlySet<string>>(new Set());
   const [sending, setSending] = React.useState<ReadonlySet<string>>(new Set());
   const [rebuilding, setRebuilding] = React.useState<ReadonlySet<string>>(new Set());
@@ -94,6 +96,23 @@ export default function ContasVpsPage() {
       setActionError((e as Error).message);
     } finally {
       withSet(setJobBusy, job.id, false);
+    }
+  };
+
+  /** Continuar / Remover da segunda linha do card (a estruturação); a conta não é tocada. */
+  const estruturaRequest = async (estrutura: VpsJob, action: EstruturaAction) => {
+    if (jobBusy.has(estrutura.id)) return;
+    setActionError(null);
+    withSet(setJobBusy, estrutura.id, true);
+    try {
+      const url = `/api/vps/estruturacoes/${encodeURIComponent(estrutura.id)}`;
+      if (action === "remover") await request(url, { method: "DELETE" }, "Não foi possível remover a estruturação.");
+      else await request(url, { method: "POST" }, "Não foi possível continuar a estruturação.");
+      await load();
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      withSet(setJobBusy, estrutura.id, false);
     }
   };
 
@@ -210,6 +229,10 @@ export default function ContasVpsPage() {
           {data.jobsAvailable && <ProgressoLotePanel jobs={data.jobs} />}
           {data.agents.map((agent) => {
             const jobs = data.jobs.filter((j) => j.agentId === agent.id);
+            // Estruturação não é linha própria: a mais nova de cada conta vira a segunda barra do card dela.
+            const contas = jobs.filter((j) => j.kind !== "estruturacao");
+            const estruturas = new Map<string, VpsJob>();
+            for (const j of jobs) if (j.kind === "estruturacao" && j.contaId && !estruturas.has(j.contaId)) estruturas.set(j.contaId, j);
             return (
               <React.Fragment key={agent.id}>
                 <AgenteVpsCard
@@ -227,7 +250,12 @@ export default function ContasVpsPage() {
                 />
                 {data.jobsAvailable && agent.lastSeenAt && (
                   <ContasVpsCard
-                    jobs={jobs}
+                    jobs={contas}
+                    estruturas={estruturas}
+                    onEstruturar={(job) =>
+                      data.estruturaAvailable === false ? setActionError("Falta aplicar o SQL supabase/vps_estruturacao.sql no Supabase.") : setEstruturando(job)
+                    }
+                    onEstrutura={(estrutura, action) => void estruturaRequest(estrutura, action)}
                     devices={devices}
                     busy={jobBusy}
                     now={now}
@@ -245,6 +273,7 @@ export default function ContasVpsPage() {
       <LoteDialog agent={loteFor} onClose={() => setLoteFor(null)} onSaved={() => void load()} />
       <EditarContaDialog job={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />
       <RefazerContaDialog job={refazendo} onClose={() => setRefazendo(null)} onSaved={() => void load()} />
+      <EstruturarDialog job={estruturando} onClose={() => setEstruturando(null)} onSaved={() => void load()} />
       <ConectarVpsDialog open={connectOpen} onClose={() => setConnectOpen(false)} onCreated={() => void load()} />
 
       <ConfirmDialog

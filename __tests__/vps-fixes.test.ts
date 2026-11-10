@@ -285,7 +285,7 @@ describe("Sync do MuMu com vps_devices", () => {
       from(table: string) {
         let op = "select";
         const builder: Record<string, unknown> = {};
-        for (const m of ["eq", "in", "gte", "order", "limit", "not", "neq", "select"]) builder[m] = () => builder;
+        for (const m of ["eq", "in", "gte", "order", "limit", "not", "neq", "select", "or"]) builder[m] = () => builder;
         builder.update = () => {
           op = "update";
           return builder;

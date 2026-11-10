@@ -116,13 +116,17 @@ export async function syncJobs(
   const slots = maxConcurrent - runningCount;
   if (slots <= 0) return { jobs: [], replies };
 
-  const { data: nextRows, error: nextErr } = await admin
-    .from("emulator_jobs")
-    .select("id, kind, label, template_index, instance_index, input_enc, steps")
-    .eq("agent_id", agentId)
-    .eq("status", "queued")
-    .order("created_at", { ascending: true })
-    .limit(slots);
+  const naFila = () =>
+    admin
+      .from("emulator_jobs")
+      .select("id, kind, label, template_index, instance_index, input_enc, steps")
+      .eq("agent_id", agentId)
+      .eq("status", "queued")
+      .order("created_at", { ascending: true })
+      .limit(slots);
+  // Estruturação agendada (Contas VPS) só sai da fila na hora marcada. Sem a coluna (SQL não aplicado), fila de sempre.
+  let { data: nextRows, error: nextErr } = await naFila().or(`agendado_para.is.null,agendado_para.lte.${now}`);
+  if (isMissingSchemaError(nextErr)) ({ data: nextRows, error: nextErr } = await naFila());
   if (nextErr) throw new Error(nextErr.message);
   const jobs: ClaimedJob[] = [];
   for (const row of (nextRows ?? []) as QueuedRow[]) {
@@ -175,7 +179,8 @@ async function atualizarDeviceVps(admin: SupabaseClient, u: JobUpdate): Promise<
   };
   try {
     if (u.status === "error" && u.error?.startsWith("PROXY_MORTA")) {
-      avisar("pausa", (await admin.from("emulator_jobs").update({ pausa: "proxy" }).eq("id", u.id)).error);
+      // Só a conta pausa; a estruturação com proxy morta fica parada com o erro e volta pelo Continuar.
+      avisar("pausa", (await admin.from("emulator_jobs").update({ pausa: "proxy" }).eq("id", u.id).eq("kind", "nova-conta")).error);
       avisar("vps_devices.status", (await admin.from("vps_devices").update({ status: "proxy-morta" }).eq("job_id", u.id)).error);
     } else if (u.status === "error" && (u.descartada || ehDescarte(u.error))) {
       // Captcha ou @ recusado 5 vezes: o agente já apagou container e volume; a proxy fica livre (proxiesEmUso ignora descartadas).

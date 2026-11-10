@@ -11,6 +11,7 @@ import { AQUECIMENTO, ATIVIDADE, ligarProxy } from "./atividade.mjs";
 import { ContaTravada, cadastrarInstagram, deveDescartar } from "./cadastro.mjs";
 import { conferirCaixa, criarCaixa, provedorDe } from "./caixa.mjs";
 import { criarAjuda } from "./dono.mjs";
+import { ESTRUTURACAO } from "./estruturacao.mjs";
 import { abrirInstagram, editarPerfil, pararInstagram, proxyLigada, trocarFoto } from "./instagram.mjs";
 
 /**
@@ -368,6 +369,6 @@ export const NOVA_CONTA = [
 ];
 
 /** Fluxos da fila por kind: lista de etapas, ou função do input que monta a lista. */
-export const FLUXOS = { "nova-conta": NOVA_CONTA, atividade: ATIVIDADE };
+export const FLUXOS = { "nova-conta": NOVA_CONTA, atividade: ATIVIDADE, estruturacao: ESTRUTURACAO };
 
 export { ProxyMorta };

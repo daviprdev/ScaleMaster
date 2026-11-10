@@ -3,6 +3,7 @@ import { decrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseJobPrompt, parseJobSteps, type JobStatus } from "@/lib/emulador/jobs";
 import { isOnline, parseInstances } from "@/lib/emulador/payload";
+import { parsePlano } from "./estruturacao";
 import { parseCapacidade } from "./jobs";
 import type { VpsAgent, VpsDevice, VpsDeviceStatus, VpsJob, VpsResponse } from "./types";
 
@@ -40,6 +41,10 @@ interface JobRow {
   updated_at: string;
   /** Só na leitura da aba: para mostrar host:porta da proxy no painel (nunca a credencial). */
   input_enc?: string | null;
+  /** Só com supabase/vps_estruturacao.sql aplicado. */
+  acoes?: unknown;
+  conta_id?: string | null;
+  agendado_para?: string | null;
 }
 
 interface DeviceRow {
@@ -101,7 +106,7 @@ export function toVpsJob(row: JobRow): VpsJob {
   return {
     id: row.id,
     agentId: row.agent_id,
-    kind: row.kind === "atividade" ? "atividade" : "nova-conta",
+    kind: row.kind === "atividade" ? "atividade" : row.kind === "estruturacao" ? "estruturacao" : "nova-conta",
     acoes: [],
     label: row.label,
     templateIndex: row.template_index,
@@ -115,7 +120,8 @@ export function toVpsJob(row: JobRow): VpsJob {
     loteId: row.lote_id,
     pausa: row.pausa === "proxy" ? "proxy" : null,
     versaoIg: row.versao_ig,
-    proxyHost: proxyHostDe(row.input_enc),
+    proxyHost: row.kind === "estruturacao" ? null : proxyHostDe(row.input_enc),
+    ...(row.kind === "estruturacao" ? { plano: parsePlano(row.acoes), contaId: row.conta_id ?? null, agendadoPara: row.agendado_para ?? null } : {}),
   };
 }
 
@@ -142,6 +148,8 @@ function toDevice(row: DeviceRow): VpsDevice {
 export const AGENT_COLUMNS = "id, hostname, agent_version, mumu_version, mumu_error, instances, capacidade, last_seen_at, created_at";
 export const JOB_COLUMNS =
   "id, agent_id, kind, label, template_index, instance_index, steps, status, error, prompt, lote_id, pausa, versao_ig, created_at, updated_at";
+/** Colunas do Estruturar (supabase/vps_estruturacao.sql); sem elas a aba lê só as de sempre. */
+const ESTRUTURA_COLUMNS = "acoes, conta_id, agendado_para";
 const DEVICE_COLUMNS =
   "id, job_id, android_id, serial, mac, model, manufacturer, fingerprint, resolucao, timezone, locale, container, volume, status, created_at";
 
@@ -161,16 +169,15 @@ export async function loadVps(admin: SupabaseClient, userId: string): Promise<Vp
   if (agents.length === 0) return { available: true, jobsAvailable: true, agents, jobs: [], devices: [] };
 
   const agentIds = agents.map((a) => a.id);
-  const [jobsRes, devicesRes] = await Promise.all([
-    admin
-      .from("emulator_jobs")
-      .select(`${JOB_COLUMNS}, input_enc`)
-      .eq("user_id", userId)
-      .in("agent_id", agentIds)
-      .order("created_at", { ascending: false })
-      .limit(300),
+  const lerJobs = (colunas: string) =>
+    admin.from("emulator_jobs").select(colunas).eq("user_id", userId).in("agent_id", agentIds).order("created_at", { ascending: false }).limit(400);
+  const [jobsCompletos, devicesRes] = await Promise.all([
+    lerJobs(`${JOB_COLUMNS}, input_enc, ${ESTRUTURA_COLUMNS}`),
     admin.from("vps_devices").select(DEVICE_COLUMNS).eq("user_id", userId).order("created_at", { ascending: false }).limit(300),
   ]);
+  // Sem o SQL do Estruturar as colunas novas não existem: lê de novo só com as antigas.
+  const estruturaAvailable = !isMissingSchemaError(jobsCompletos.error);
+  const jobsRes = estruturaAvailable ? jobsCompletos : await lerJobs(`${JOB_COLUMNS}, input_enc`);
   if (isMissingSchemaError(jobsRes.error)) return { available: true, jobsAvailable: false, agents, jobs: [], devices: [] };
   if (jobsRes.error) throw new VpsLoadError(jobsRes.error.message);
   if (devicesRes.error && !isMissingSchemaError(devicesRes.error)) throw new VpsLoadError(devicesRes.error.message);
@@ -181,5 +188,6 @@ export async function loadVps(admin: SupabaseClient, userId: string): Promise<Vp
     agents,
     jobs: ((jobsRes.data ?? []) as unknown as JobRow[]).map(toVpsJob),
     devices: ((devicesRes.data ?? []) as unknown as DeviceRow[]).map(toDevice),
+    estruturaAvailable,
   };
 }
