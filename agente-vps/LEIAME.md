@@ -94,6 +94,14 @@ Mesmas chaves de `VPS_FLUXO` em `lib/vps/jobs.ts`; o Continuar retoma da etapa q
 
 Supervisor (`lib/supervisor.mjs`): semáforos de ligadas e de cadastro, watchdog de 1 h sem progresso (desliga o container e a conta para), e no boot do agente todo container de conta ligado sem conta em andamento é desligado.
 
+## Teclado, sessão, navegador e órfãos (10/11)
+
+- **Teclado ADB** (`lib/teclado.mjs`): `/opt/scalemaster/apks/adbkeyboard.apk` (ADBKeyboard 2.0 de github.com/senzhk/ADBKeyBoard, `adbkeyboard.apk.sha256` ao lado) é instalado na etapa **instagram** quando o container não tem, e definido como padrão (`ime set com.android.adbkeyboard/.AdbIME`). `d.digitar()` manda o texto por `am broadcast -a ADB_INPUT_TEXT --es msg '<texto>'` — aceita acento e emoji — e cai no `input text` se o broadcast falhar; texto não ASCII nesse caso para a etapa com `TECLADO_INDISPONIVEL`.
+- **Sessão** (`conferirSessao`): a etapa **sessao** do Estruturar roda antes da foto e exige a barra de navegação ou o @ da conta no dump. Tela de login, ou 90 s sem nenhum dos dois, = `SESSAO_PERDIDA`: o job para e o container é desligado; a conta não é descartada.
+- **Navegador**: Chrome x86_64 pinado em `/opt/scalemaster/apks/browser/chrome-<versão>/` (base + splits tirados do Aurora com `pm path` + `adb pull`) e `browser/SHA256SUMS`. O `scripts/vps/golden.sh` confere o sha256 e instala na base; containers criados antes do Rebuild imagem não têm. Página do link sem sessão e container sem `com.android.chrome` = `SEM_NAVEGADOR`.
+- **Esperas**: foto, bio, story e destaque não têm pausa fixa — cada toque espera o dump mudar (`tocarAteMudar`, 6 s, toca de novo uma vez; publicar e salvar não repetem) e cada campo espera o foco e o texto aparecer (`preencherEsperando`).
+- **Órfãos**: no primeiro sync depois do boot o SaaS manda os containers que conhece (`vps_devices` e contas da fila); `ig-N` fora dessa lista, sem job ativo e parado há mais de 24 h leva `docker rm` (o sidecar junto), com log. O volume e o retrato ficam.
+
 ## Concorrência
 
 Os dois limites saem das vCPUs do host e vão no sync, em `capacity`:

@@ -5,7 +5,8 @@ import { esperar } from "../lib/processo.mjs";
 import { ProxyMorta, subirSidecar, validar, validarNoNetns } from "../lib/rede.mjs";
 import { INSTAGRAM } from "./apk.mjs";
 import { salvarTela } from "./dono.mjs";
-import { abrirInstagram, destacarStory, editarPerfil, garantirProxy, pararInstagram, postarStory, trocarFoto } from "./instagram.mjs";
+import { garantirTeclado } from "../lib/teclado.mjs";
+import { conferirSessao, destacarStory, editarPerfil, garantirProxy, iniciarInstagram, pararInstagram, postarStory, trocarFoto } from "./instagram.mjs";
 import { abrirDestaque, abrirPerfilAlvo, conectar, confirmar, consentir, tocarLinkDoDestaque, tornarProfissional } from "./oauth.mjs";
 
 /**
@@ -13,7 +14,8 @@ import { abrirDestaque, abrirPerfilAlvo, conectar, confirmar, consentir, tocarLi
  * vêm prontas do servidor em input.plano ([{ key, label }], expandidas por alvo
  * em lib/vps/estruturacao.ts): aqui cada chave ganha o que rodar.
  *
- *   rede, abrir, instagram            — param tudo se falharem (proxy morta = PROXY_MORTA; a conta fica como está)
+ *   rede, abrir, instagram, sessao    — param tudo se falharem (proxy morta = PROXY_MORTA, conta deslogada =
+ *                                       SESSAO_PERDIDA; a conta fica como está, nada é descartado)
  *   foto, bio, story, destacar        — `segue`: a falha é registrada e a próxima etapa independente roda
  *   profissional                      — `segue`: falha = PROFISSIONAL_FALHOU e só as etapas de OAuth são bloqueadas
  *   perfil-N … confirmar-N (por alvo) — `segue`: falha em uma pula o resto do alvo N e vai para o alvo seguinte
@@ -110,7 +112,17 @@ const FIXAS = {
       const c = await contexto(ctx);
       // Sem reinstalar: o app e a sessão são os do cadastro.
       if (!(await c.d.temApp(INSTAGRAM))) throw new Error("o Instagram não está instalado nesse container");
-      return abrirInstagram(c);
+      // Teclado ADB (acento e emoji na bio, na legenda e no destaque): instala se o container ainda não tem.
+      const teclado = await garantirTeclado(c.d, ctx.log);
+      return `${await iniciarInstagram(c)}${teclado ? " · teclado ADB ativo" : " · sem teclado ADB (só ASCII)"}`;
+    },
+  },
+  sessao: {
+    rotulo: "Conferir que a conta está logada",
+    sempre: true,
+    async rodar(ctx) {
+      // Antes da foto e de tudo o que mexe na conta: sem sessão o job para com SESSAO_PERDIDA (nada é descartado).
+      return conferirSessao(await contexto(ctx), ctx.input?.conta?.usuario);
     },
   },
   foto: {
@@ -149,7 +161,7 @@ const FIXAS = {
       const c = await contexto(ctx);
       const nome = await fotoNaGaleria(c.d, input.fotoStory, ctx.log);
       // decisão: a legenda configurada vai como texto do sticker de link.
-      return `${await postarStory(c, { link, texto: input.legenda || "" })} (${nome})`;
+      return `${await postarStory(c, { link, texto: String(input.legenda || "").replace(/\s*\r?\n\s*/g, " ") })} (${nome})`;
     },
   },
   destacar: {

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { pastaPrints } from "@/lib/vps/midias";
+import { caminhoDoPrint, pastaPrints } from "@/lib/vps/midias";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,8 +19,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const { data: job } = await getSupabaseAdmin().from("emulator_jobs").select("id").eq("id", id).eq("user_id", user.id).maybeSingle();
   if (!job) return NextResponse.json({ error: "Estruturação não encontrada." }, { status: 404 });
+  // O caminho resolvido tem que ficar dentro de /opt/scalemaster/vps/prints, mesmo com id e etapa já validados.
+  const arquivo = caminhoDoPrint(pastaPrints(), id, etapa);
+  if (!arquivo) return NextResponse.json({ error: "Print inválido." }, { status: 400 });
   try {
-    const png = await readFile(path.join(pastaPrints(), id.toLowerCase(), `${etapa}.png`));
+    const png = await readFile(arquivo);
     return new NextResponse(new Uint8Array(png), { headers: { "Content-Type": "image/png", "Cache-Control": "private, max-age=60" } });
   } catch {
     return NextResponse.json({ error: "Sem print dessa etapa." }, { status: 404 });

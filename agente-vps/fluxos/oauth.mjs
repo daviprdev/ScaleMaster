@@ -1,5 +1,5 @@
 import { esperar } from "../lib/processo.mjs";
-import { CONEXAO_OUTRA_CONTA, PROFISSIONAL_FALHOU, arrobaDaConfirmacao, conferirConexao, hostDoLink } from "../lib/estrutura.mjs";
+import { CONEXAO_OUTRA_CONTA, PROFISSIONAL_FALHOU, SEM_NAVEGADOR, arrobaDaConfirmacao, conferirConexao, hostDoLink } from "../lib/estrutura.mjs";
 import { INSTAGRAM } from "./apk.mjs";
 import { resumoTela, salvarTela } from "./dono.mjs";
 import { CONCLUIR, EDITAR_PERFIL, SEGUINTE, acharAba, botaoDoPerfil, comandoDeepLink, irPara, percorrer, temBarra } from "./instagram.mjs";
@@ -377,18 +377,17 @@ async function preencherLogin(d, conta, log) {
 }
 
 /**
- * Página sem sessão. Em Chrome Custom Tab: abre o Chrome do container, loga com
- * o @ e a senha da conta, reabre o link nele e toca em Conectar de novo (mesma
- * proxy: tudo sai pelo sidecar). No WebView do Instagram: loga ali mesmo.
+ * Página sem sessão: abre o navegador do container, loga com o @ e a senha da
+ * conta, reabre o link nele e toca em Conectar de novo (mesma proxy: tudo sai
+ * pelo sidecar). Antes de qualquer coisa confere se o pacote do navegador
+ * existe: sem ele a etapa falha com SEM_NAVEGADOR (a base precisa ser refeita
+ * pelo scripts/vps/golden.sh, que instala o Chrome pinado).
  */
-async function entrarEVoltar(ctx, { link, conta }) {
+export async function entrarEVoltar(ctx, { link, conta }) {
   const { d, log } = ctx;
-  const nos = await d.tela().catch(() => []);
-  if (!nos.some((n) => n.pacote === CHROME)) {
-    await preencherLogin(d, conta, log);
-    return "login feito na página";
+  if (!(await d.temApp(CHROME))) {
+    throw new Error(`${SEM_NAVEGADOR}: a página abriu sem sessão e o container não tem navegador (${CHROME}); refaça a imagem base (Rebuild imagem)`);
   }
-  if (!(await d.temApp(CHROME))) throw new Error("a página abriu sem sessão e o Chrome não está instalado no container");
   await d.shell(...comandoAbrirUrl("https://www.instagram.com/accounts/login/", CHROME));
   await aguardar(d, (n) => (n.some((x) => x.pacote === CHROME) ? n : null), { timeoutMs: 30_000, descricao: "o Chrome" });
   await preencherLogin(d, conta, log);
@@ -444,4 +443,4 @@ export async function confirmar(ctx, usuarioDaConta) {
   return conferido.mensagem;
 }
 
-export { CONEXAO_OUTRA_CONTA };
+export { CONEXAO_OUTRA_CONTA, SEM_NAVEGADOR };

@@ -174,7 +174,7 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
             value={form.bio}
             onChange={(e) => set("bio", e.target.value)}
             disabled={!form.fazerPerfil}
-            hint="Sem acento nem emoji (limite do teclado do container). Em branco = não mexe na bio."
+            hint="Aceita acento e emoji. Em branco = não mexe na bio."
           />
           <Textarea
             label={`Alvos (${alvos.alvos.length}/${ALVOS_MAX})`}
@@ -196,7 +196,7 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
               value={form.legenda}
               onChange={(e) => set("legenda", e.target.value)}
               disabled={!form.fazerStory}
-              hint="Vai como texto do sticker de link. Sem acento nem emoji."
+              hint="Vai como texto do sticker de link. Aceita acento e emoji."
             />
             <div className="flex flex-col gap-4">
               <Input

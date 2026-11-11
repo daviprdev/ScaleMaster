@@ -4,7 +4,8 @@ import { proxyAtiva } from "../lib/rede.mjs";
 import { INSTAGRAM } from "./apk.mjs";
 import { VERIFICADOS as VERIFICADOS_AQUECIMENTO } from "./verificados.mjs";
 import { resumoTela, salvarTela } from "./dono.mjs";
-import { acharId, acharTexto, esperarTela, preencher, temTexto, tocarNo } from "./tela.mjs";
+import { SESSAO_PERDIDA } from "../lib/estrutura.mjs";
+import { acharId, acharTexto, esperarMudar, esperarTela, preencher, preencherEsperando, temTexto, tocarAteMudar, tocarNo } from "./tela.mjs";
 
 /**
  * Cópia adaptada de agente-mumu/fluxos/instagram.mjs para a VPS: a proxy não é
@@ -250,7 +251,7 @@ export async function percorrer(ctx, { nome, telas, fim, limiteMs, travou }) {
 }
 
 /** Uma volta das telas gerais (pop-up, aviso); true = tratou alguma. */
-async function tratarGeral(ctx, nos) {
+export async function tratarGeral(ctx, nos) {
   for (const tela of telasGerais(ctx)) {
     const alvo = tela.teste(nos);
     if (!alvo) continue;
@@ -299,6 +300,60 @@ export async function abrirInstagram(ctx) {
   });
 }
 
+/**
+ * Abre o Instagram do zero e espera só o app aparecer na tela (sem exigir a
+ * barra de abas): quem diz se a conta está logada é conferirSessao.
+ */
+export async function iniciarInstagram(ctx) {
+  const { d } = ctx;
+  await d.fecharApp(INSTAGRAM);
+  for (const p of PERMISSOES) await d.shell("pm", "grant", INSTAGRAM, p).catch(() => {});
+  await d.abrirApp(INSTAGRAM);
+  await esperarTela(d, (nos) => (doInstagram(nos) ? nos : null), { timeoutMs: 60_000, intervaloMs: 1000, descricao: "o Instagram abrir" });
+  return "Instagram aberto";
+}
+
+/**
+ * Estado da sessão pelo dump da tela inicial: "logada" (barra de navegação ou
+ * o @ da conta na tela), "deslogada" (tela de login ou "Continuar como") ou
+ * "indefinida" (pop-up, tela carregando).
+ */
+export function estadoDaSessao(nos, usuario) {
+  const arroba = String(usuario ?? "").replace(/^@/, "").toLowerCase();
+  const doApp = nos.filter((n) => n.pacote === INSTAGRAM);
+  if (temBarra(nos)) return "logada";
+  if (arroba && doApp.some((n) => [n.texto, n.descricao].some((v) => v.trim().toLowerCase().replace(/^@/, "") === arroba))) return "logada";
+  const entrar = botao(doApp, ["Iniciar sessão", "Log in", "Entrar"]);
+  const login = entrar && temTexto(doApp, ["Palavra-passe", "Password", "Senha", "Criar nova conta", "Create new account", "Esqueceu a senha", "Forgot password"]);
+  if (login || temTexto(doApp, ["Continuar como", "Continue as"])) return "deslogada";
+  return "indefinida";
+}
+
+/**
+ * Antes de mexer na conta: confere que ela está logada. Tela de login, ou 90 s
+ * sem a barra nem o @, = SESSAO_PERDIDA (o job para; a conta não é descartada).
+ */
+export async function conferirSessao(ctx, usuario, { timeoutMs = 90_000 } = {}) {
+  const { d } = ctx;
+  const perdida = (motivo, nos) => {
+    if (nos?.length) salvarTela(nos, `sessão perdida: ${motivo}`);
+    const erro = new Error(`${SESSAO_PERDIDA}: ${motivo}`);
+    erro.semPrefixo = true;
+    return erro;
+  };
+  const limite = Date.now() + timeoutMs;
+  let nos = [];
+  for (;;) {
+    nos = await d.tela().catch(() => []);
+    const estado = nos.length > 0 ? estadoDaSessao(nos, usuario) : "indefinida";
+    if (estado === "logada") return temBarra(nos) ? "logada (barra de navegação)" : `logada (@${String(usuario).replace(/^@/, "")} na tela)`;
+    if (estado === "deslogada") throw perdida(`o Instagram abriu na tela de login (${resumoTela(nos)})`, nos);
+    if (Date.now() > limite) throw perdida(`sem a barra de navegação nem o @ em ${Math.round(timeoutMs / 1000)} s (na tela: ${resumoTela(nos) || "sem leitura"})`, nos);
+    // Pop-up por cima (salvar login, permissão, "Agora não"): trata e relê.
+    if (nos.length === 0 || !(await tratarGeral(ctx, nos))) await esperar(1000);
+  }
+}
+
 /** Vai para uma aba (inicio, pesquisa, reels, perfil), fechando o que estiver por cima. */
 /**
  * Centro de cada aba na barra de baixo em 1080x1920 (RESOLUCAO/DPI fixos de lib/vps/device.ts):
@@ -308,13 +363,15 @@ export async function abrirInstagram(ctx) {
 // Ordem desta build (454, medida no ig-6): início, reels, mensagens, pesquisa, perfil.
 const ABA_XY = { inicio: [108, 1731], reels: [324, 1731], pesquisa: [756, 1731], perfil: [972, 1731] };
 
-export async function irPara(ctx, aba) {
+export async function irPara(ctx, aba, { porMudanca = false } = {}) {
   const { d, log = () => {} } = ctx;
   for (let tentativa = 0; tentativa < 8; tentativa++) {
     const nos = await d.tela().catch(() => []);
     const alvo = acharAba(nos, aba);
     if (alvo) {
-      await tocarNo(d, alvo, 2500);
+      // porMudanca (foto, bio, story, destaque): espera a tela reagir ao toque em vez da pausa fixa.
+      if (porMudanca) await tocarAteMudar(d, alvo, nos, { timeoutMs: 4000 });
+      else await tocarNo(d, alvo, 2500);
       return;
     }
     // Feed sem leitura (dump vazio) mas com o Instagram na frente: toca a aba pela posição fixa da barra.
@@ -636,11 +693,27 @@ export async function rolarReels(ctx, ms) {
   return `${perfis} perfil(is) e ${feed} rodada(s) de feed em ${Math.round(ms / 60_000)} min`;
 }
 
+/**
+ * Toque dos fluxos de foto, bio, story e destaque: toca e espera a tela reagir
+ * (dump diferente), com nova tentativa se nada mudou — sem pausa fixa. `unico`
+ * = toque que não pode repetir (publicar, salvar): uma tentativa só, com mais tempo.
+ */
+function toque(d, nos, alvo, { unico = false, timeoutMs } = {}) {
+  return tocarAteMudar(d, alvo, nos, { tentativas: unico ? 1 : 2, timeoutMs: timeoutMs ?? (unico ? 15_000 : 6_000) });
+}
+
+/** Fecha o teclado (BACK) e espera a tela mudar; devolve a tela de depois. */
+async function fecharTeclado(d) {
+  const antes = await d.tela().catch(() => []);
+  await d.tecla("KEYCODE_BACK").catch(() => {});
+  return (await esperarMudar(d, antes, { timeoutMs: 3000 })) ?? (await d.tela().catch(() => []));
+}
+
 /** Perfil → Editar perfil → Editar foto → Nova foto → 1ª da galeria → Seguinte → Concluído. */
 export async function trocarFoto(ctx) {
   const { d, ajuda } = ctx;
   const estado = { abriuMenu: false, escolheu: false, concluiu: false };
-  await irPara(ctx, "perfil");
+  await irPara(ctx, "perfil", { porMudanca: true });
   return percorrer(ctx, {
     nome: "A troca da foto",
     limiteMs: 8 * 60_000,
@@ -651,20 +724,20 @@ export async function trocarFoto(ctx) {
         nome: "concluir",
         teste: (nos) => estado.escolheu && !estado.concluiu && botao(nos, CONCLUIR),
         agir: async (nos, alvo) => {
-          await tocarNo(d, alvo, 6000);
+          await toque(d, nos, alvo, { unico: true });
           estado.concluiu = true;
         },
       },
       {
         nome: "seguinte",
         teste: (nos) => estado.escolheu && !estado.concluiu && botao(nos, SEGUINTE),
-        agir: (nos, alvo) => tocarNo(d, alvo, 3000),
+        agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
         nome: "galeria",
         teste: (nos) => estado.abriuMenu && !estado.escolheu && primeiraMidia(nos),
         agir: async (nos, alvo) => {
-          await tocarNo(d, alvo, 2500);
+          await toque(d, nos, alvo);
           estado.escolheu = true;
         },
       },
@@ -674,7 +747,7 @@ export async function trocarFoto(ctx) {
           !estado.abriuMenu &&
           acharTexto(nos, ["Nova foto de perfil", "Nova foto do perfil", "New profile picture", "Escolher da biblioteca", "Choose from library", "Escolher da galeria", "Choose from gallery", "Carregar foto", "Upload photo"]),
         agir: async (nos, alvo) => {
-          await tocarNo(d, alvo, 3500);
+          await toque(d, nos, alvo);
           estado.abriuMenu = true;
         },
       },
@@ -683,17 +756,17 @@ export async function trocarFoto(ctx) {
         teste: (nos) =>
           !estado.abriuMenu &&
           acharTexto(nos, ["Editar foto ou avatar", "Edit picture or avatar", "Alterar foto do perfil", "Change profile photo", "Mudar foto do perfil", "Editar foto", "Edit picture"]),
-        agir: (nos, alvo) => tocarNo(d, alvo, 2500),
+        agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
         nome: "editar-perfil",
         teste: (nos) => !estado.abriuMenu && botao(nos, EDITAR_PERFIL),
-        agir: (nos, alvo) => tocarNo(d, alvo, 3000),
+        agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
         nome: "perfil",
         teste: (nos) => !estado.abriuMenu && temBarra(nos) && acharAba(nos, "perfil"),
-        agir: (nos, alvo) => tocarNo(d, alvo, 3000),
+        agir: (nos, alvo) => toque(d, nos, alvo),
       },
     ],
   });
@@ -701,7 +774,8 @@ export async function trocarFoto(ctx) {
 
 /**
  * Perfil → Editar perfil → campos Nome e Bio → Concluído. Só na VPS (etapa
- * "perfil" de fluxos/nova-conta.mjs). Campo que não aparecer é pulado.
+ * "perfil" de fluxos/nova-conta.mjs e "bio" do Estruturar). Campo que não
+ * aparecer é pulado.
  */
 export async function editarPerfil(ctx, { nome, bio }) {
   const { d, log, ajuda } = ctx;
@@ -716,7 +790,7 @@ export async function editarPerfil(ctx, { nome, bio }) {
         .sort((a, b) => a.y - b.y)[0] ?? null
     );
   };
-  await irPara(ctx, "perfil");
+  await irPara(ctx, "perfil", { porMudanca: true });
   return percorrer(ctx, {
     nome: "A edição do perfil",
     limiteMs: 6 * 60_000,
@@ -727,7 +801,7 @@ export async function editarPerfil(ctx, { nome, bio }) {
         nome: "concluir",
         teste: (nos) => estado.preencheu && !estado.concluiu && (botao(nos, CONCLUIR) ?? acharId(nos, ig("action_bar_button_action"))),
         agir: async (nos, alvo) => {
-          await tocarNo(d, alvo, 4000);
+          await toque(d, nos, alvo, { unico: true, timeoutMs: 10_000 });
           estado.concluiu = true;
         },
       },
@@ -740,25 +814,21 @@ export async function editarPerfil(ctx, { nome, bio }) {
           // uma tela própria e o texto era acrescentado ("Amanda LopesLopes" → pedido de confirmação; ig-7, 09/11).
           const nomeJaCerto = !!nome && nos.some((n) => n.texto.trim().toLowerCase() === nome.trim().toLowerCase());
           if (campoNome && nome && !nomeJaCerto) {
-            await preencher(d, campoNome, nome.slice(0, 64));
-            await d.tecla("KEYCODE_BACK").catch(() => {});
-            await esperar(800);
+            await preencherEsperando(d, campoNome, nome.slice(0, 64), nos);
+            const conf = await fecharTeclado(d);
             // Confirmação "Quer mesmo alterar seu nome para X?": só confirma se X for o nome pedido; senão cancela e sai.
-            const conf = await d.tela().catch(() => []);
             if (temTexto(conf, ["Quer mesmo alterar seu nome", "alterar o teu nome", "change your name"])) {
               const certo = conf.some((n) => n.texto.includes(`${nome}?`));
               const alvoConf = botao(conf, certo ? ["Alterar nome", "Change name"] : ["Cancelar", "Cancel"]);
-              if (alvoConf) await tocarNo(d, alvoConf, 2500);
-              if (!certo) await d.tecla("KEYCODE_BACK").catch(() => {});
-              await esperar(1500);
+              if (alvoConf) await toque(d, conf, alvoConf);
+              if (!certo) await fecharTeclado(d);
             }
           }
-          let atual = await d.tela();
+          const atual = await d.tela();
           const campoBio = campoRotulado(atual, ["Bio", "Biografia"]);
           if (campoBio && bio) {
-            await preencher(d, campoBio, bio.slice(0, 150));
-            await d.tecla("KEYCODE_BACK").catch(() => {});
-            await esperar(800);
+            await preencherEsperando(d, campoBio, bio.slice(0, 150), atual);
+            await fecharTeclado(d);
           } else if (!campoBio) log("não achei o campo Bio: só o nome");
           estado.preencheu = true;
         },
@@ -767,14 +837,14 @@ export async function editarPerfil(ctx, { nome, bio }) {
         nome: "editar-perfil",
         teste: (nos) => !estado.editando && botao(nos, EDITAR_PERFIL),
         agir: async (nos, alvo) => {
-          await tocarNo(d, alvo, 3000);
+          await toque(d, nos, alvo);
           estado.editando = true;
         },
       },
       {
         nome: "perfil",
         teste: (nos) => !estado.editando && temBarra(nos) && acharAba(nos, "perfil"),
-        agir: (nos, alvo) => tocarNo(d, alvo, 3000),
+        agir: (nos, alvo) => toque(d, nos, alvo),
       },
     ],
   });
@@ -789,7 +859,7 @@ export async function postarStory(ctx, { link, texto }) {
   if (!link) throw new Error("A estruturação veio sem o link do story.");
   const estado = { abriu: false, escolheu: false, stickers: false, pesquisou: false, sticker: false, partilhou: false };
   const aMao = (motivo, nos) => ajuda.terminarAMao(motivo, nos, "o story (sticker de link e postar)");
-  await irPara(ctx, "inicio");
+  await irPara(ctx, "inicio", { porMudanca: true });
   return percorrer(ctx, {
     nome: "O story",
     limiteMs: 12 * 60_000,
@@ -807,17 +877,15 @@ export async function postarStory(ctx, { link, texto }) {
         teste: (nos) =>
           !estado.sticker && temTexto(nos, ["Adicionar link", "Add link", "Adicionar ligação", "Add a link", "URL"]) && campoDeTexto(nos),
         agir: async (nos, campo) => {
-          await preencher(d, campo, link);
-          await esperar(1500);
+          await preencherEsperando(d, campo, link, nos);
           let atual = await d.tela();
           if (texto) {
             const personalizar = acharTexto(atual, ["Personalizar texto do sticker", "Customize sticker text", "Personalizar o texto", "Personalizar texto", "Customize text"]);
             if (personalizar) {
-              await tocarNo(d, personalizar, 1500);
-              atual = await d.tela();
+              atual = (await toque(d, atual, personalizar)) ?? (await d.tela());
               const campos = atual.filter((n) => /EditText/.test(n.classe));
               const campoTexto = campos.find((n) => !/^https?:/i.test(n.texto) && n.texto !== link.replace(/^https?:\/\//i, "")) ?? campos[campos.length - 1];
-              if (campoTexto) await preencher(d, campoTexto, texto);
+              if (campoTexto) await preencherEsperando(d, campoTexto, texto, atual);
               atual = await d.tela();
             } else {
               log("não achei Personalizar texto do sticker: fica o endereço");
@@ -825,29 +893,28 @@ export async function postarStory(ctx, { link, texto }) {
           }
           const ok = botao(atual, CONCLUIR);
           if (!ok) return;
-          await tocarNo(d, ok, 3000);
+          await toque(d, atual, ok);
           estado.sticker = true;
         },
       },
       {
         nome: "sticker-link",
         teste: (nos) => estado.stickers && !estado.sticker && botao(nos, ["LINK", "LIGAÇÃO"]),
-        agir: (nos, alvo) => tocarNo(d, alvo, 2500),
+        agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
         nome: "pesquisar-sticker",
         teste: (nos) => estado.stickers && !estado.sticker && !estado.pesquisou && campoDeTexto(nos),
         agir: async (nos, campo) => {
-          await preencher(d, campo, "link");
+          await preencherEsperando(d, campo, "link", nos);
           estado.pesquisou = true;
-          await esperar(2500);
         },
       },
       {
         nome: "stickers",
         teste: (nos) => estado.escolheu && !estado.stickers && acharTexto(nos, ["Autocolantes", "Stickers", "Sticker", "Figurinhas", "Adesivos"], { exato: true }),
         agir: async (nos, alvo) => {
-          await tocarNo(d, alvo, 2500);
+          await toque(d, nos, alvo);
           estado.stickers = true;
         },
       },
@@ -858,7 +925,8 @@ export async function postarStory(ctx, { link, texto }) {
           !estado.partilhou &&
           botao(nos, ["O teu story", "Your story", "Seu story", "A tua história", "Os teus stories", "Your stories", "Partilhar", "Share", "Compartilhar"]),
         agir: async (nos, alvo) => {
-          await tocarNo(d, alvo, 8000);
+          // Publicar não repete: um toque só e até 20 s para a tela sair do editor.
+          await toque(d, nos, alvo, { unico: true, timeoutMs: 20_000 });
           estado.partilhou = true;
         },
       },
@@ -866,21 +934,21 @@ export async function postarStory(ctx, { link, texto }) {
         nome: "galeria",
         teste: (nos) => estado.abriu && !estado.escolheu && primeiraMidia(nos),
         agir: async (nos, alvo) => {
-          await tocarNo(d, alvo, 4000);
+          await toque(d, nos, alvo);
           estado.escolheu = true;
         },
       },
       {
         nome: "abrir-galeria",
         teste: (nos) => estado.abriu && !estado.escolheu && acharTexto(nos, ["Galeria", "Gallery", "Abrir galeria", "Open gallery", "Rolo da câmara", "Camera roll"]),
-        agir: (nos, alvo) => tocarNo(d, alvo, 3000),
+        agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
         // Tela de criar (abas PUBLICAÇÃO / STORY / REEL) ou o menu do "+".
         nome: "modo-story",
         teste: (nos) => !estado.escolheu && temTexto(nos, ["PUBLICAÇÃO", "POST", "REEL"], { exato: true }) && botao(nos, ["STORY", "HISTÓRIA"]),
         agir: async (nos, alvo) => {
-          await tocarNo(d, alvo, 3000);
+          await toque(d, nos, alvo);
           estado.abriu = true;
         },
       },
@@ -889,14 +957,14 @@ export async function postarStory(ctx, { link, texto }) {
         teste: (nos) =>
           !estado.abriu && temBarra(nos) && acharTexto(nos, ["O teu story", "Your story", "A tua história", "Seu story", "Adicionar ao story", "Add to story"]),
         agir: async (nos, alvo) => {
-          await tocarNo(d, alvo, 4000);
+          await toque(d, nos, alvo);
           estado.abriu = true;
         },
       },
       {
         nome: "criar",
         teste: (nos) => !estado.abriu && temBarra(nos) && acharTexto(nos, ["Criar", "Create", "Nova publicação", "New post"], { exato: true }),
-        agir: (nos, alvo) => tocarNo(d, alvo, 3000),
+        agir: (nos, alvo) => toque(d, nos, alvo),
       },
     ],
   });
@@ -907,7 +975,7 @@ export async function destacarStory(ctx, nome) {
   const { d, ajuda } = ctx;
   if (!nome) throw new Error("A estruturação veio sem o nome do destaque.");
   const estado = { novo: false, escolheu: false, nomeou: false };
-  await irPara(ctx, "perfil");
+  await irPara(ctx, "perfil", { porMudanca: true });
   return percorrer(ctx, {
     nome: "O destaque",
     limiteMs: 8 * 60_000,
@@ -918,23 +986,24 @@ export async function destacarStory(ctx, nome) {
         nome: "nome",
         teste: (nos) => estado.escolheu && !estado.nomeou && campoDeTexto(nos),
         agir: async (nos, campo) => {
-          await preencher(d, campo, nome);
-          const ok = botao(await d.tela(), ["Concluído", "Done", "Adicionar", "Add", "Guardar", "Save"]);
+          await preencherEsperando(d, campo, nome, nos);
+          const atual = await d.tela();
+          const ok = botao(atual, ["Concluído", "Done", "Adicionar", "Add", "Guardar", "Save"]);
           if (!ok) return;
-          await tocarNo(d, ok, 4000);
+          await toque(d, atual, ok, { unico: true, timeoutMs: 10_000 });
           estado.nomeou = true;
         },
       },
       {
         nome: "seguinte",
         teste: (nos) => estado.escolheu && !estado.nomeou && botao(nos, SEGUINTE),
-        agir: (nos, alvo) => tocarNo(d, alvo, 2500),
+        agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
         nome: "escolher-story",
         teste: (nos) => estado.novo && !estado.escolheu && primeiraMidia(nos),
         agir: async (nos, alvo) => {
-          await tocarNo(d, alvo, 1500);
+          await toque(d, nos, alvo);
           estado.escolheu = true;
         },
       },
@@ -942,19 +1011,19 @@ export async function destacarStory(ctx, nome) {
         nome: "novo",
         teste: (nos) => !estado.novo && botao(nos, ["Novo", "New"]),
         agir: async (nos, alvo) => {
-          await tocarNo(d, alvo, 3000);
+          await toque(d, nos, alvo);
           estado.novo = true;
         },
       },
       {
         nome: "abrir-destaques",
         teste: (nos) => !estado.novo && acharTexto(nos, ["Destaques dos stories", "Story highlights", "Destaques de stories", "Destaques do story"]),
-        agir: (nos, alvo) => tocarNo(d, alvo, 2000),
+        agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
         nome: "perfil",
         teste: (nos) => !estado.novo && temBarra(nos) && !botao(nos, EDITAR_PERFIL) && acharAba(nos, "perfil"),
-        agir: (nos, alvo) => tocarNo(d, alvo, 3000),
+        agir: (nos, alvo) => toque(d, nos, alvo),
       },
     ],
   });

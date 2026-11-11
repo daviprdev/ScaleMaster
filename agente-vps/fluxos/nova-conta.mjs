@@ -4,6 +4,7 @@ import { limparAlerta, marcarAlerta } from "../lib/alertas.mjs";
 import { conferirAbiNoAparelho } from "../lib/android.mjs";
 import { aplicarNoAparelho, conferir, gerar as gerarDevice } from "../lib/fingerprint.mjs";
 import { pastaDeMidias, sortearFoto } from "../lib/midias.mjs";
+import { garantirTeclado } from "../lib/teclado.mjs";
 import { esperar, rodar } from "../lib/processo.mjs";
 import { ProxyMorta, provarBloqueio, subirSidecar, validar, validarNoNetns } from "../lib/rede.mjs";
 import { INSTAGRAM, instalarInstagram } from "./apk.mjs";
@@ -225,7 +226,14 @@ export const NOVA_CONTA = [
     rotulo: "Instalar o Instagram (APK pinado)",
     async rodar({ dispositivo, input, log }) {
       if (!input?.versaoIg) throw new Error("Essa conta veio sem a versão do Instagram.");
-      return instalarInstagram(await dispositivo(), input.versaoIg, log);
+      const d = await dispositivo();
+      const instalado = await instalarInstagram(d, input.versaoIg, log);
+      // Teclado ADB junto com o Instagram: acento e emoji por broadcast (lib/teclado.mjs); sem ele, input text.
+      const teclado = await garantirTeclado(d, log).catch((e) => {
+        log(`teclado ADB: ${e.message}`);
+        return false;
+      });
+      return `${instalado}${teclado ? " · teclado ADB" : ""}`;
     },
   },
   {

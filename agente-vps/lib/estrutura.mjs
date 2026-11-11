@@ -5,6 +5,10 @@
  */
 
 export const PROFISSIONAL_FALHOU = "PROFISSIONAL_FALHOU";
+/** A conta não está logada no Instagram do container: o job para, a conta fica. */
+export const SESSAO_PERDIDA = "SESSAO_PERDIDA";
+/** A página abriu sem sessão e o container não tem navegador para fazer o login. */
+export const SEM_NAVEGADOR = "SEM_NAVEGADOR";
 export const CONEXAO_OUTRA_CONTA = "CONEXAO_OUTRA_CONTA";
 
 const DO_ALVO_RE = /^(perfil|destaque|link|conectar|consentir|confirmar)-(\d+)$/;

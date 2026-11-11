@@ -30,12 +30,12 @@ const MIDIAS = ["perfil/foto.jpg", "story.png"];
 const no = (extra: Record<string, unknown>) => ({ texto: "", descricao: "", id: "", classe: "", pacote: "com.instagram.android", clicavel: false, x: 100, y: 500, ...extra });
 
 describe("Estruturar: etapas expandidas por alvo na criação do job", () => {
-  it("9 etapas fixas + 6 por alvo, na ordem de execução", () => {
+  it("10 etapas fixas + 6 por alvo, na ordem de execução", () => {
     const parsed = parseEstrutura(BASE, MIDIAS);
     if (!("value" in parsed)) throw new Error(parsed.error);
     const chaves = expandirEtapas(parsed.value).map((e) => e.key);
     expect(chaves).toEqual([
-      "rede", "abrir", "instagram", "foto", "bio", "profissional",
+      "rede", "abrir", "instagram", "sessao", "foto", "bio", "profissional",
       "perfil-1", "destaque-1", "link-1", "conectar-1", "consentir-1", "confirmar-1",
       "perfil-2", "destaque-2", "link-2", "conectar-2", "consentir-2", "confirmar-2",
       "story", "destacar", "fechar",
@@ -48,17 +48,17 @@ describe("Estruturar: etapas expandidas por alvo na criação do job", () => {
   it("interruptores tiram as etapas deles; bio vazia não vira etapa", () => {
     const alvos = parseAlvos(ALVOS).alvos;
     const k = (d: Parameters<typeof expandirEtapas>[0]) => expandirEtapas(d).map((e) => e.key);
-    expect(k({ alvos, bio: "", fazerPerfil: true, fazerOauth: false, fazerStory: false })).toEqual(["rede", "abrir", "instagram", "foto", "fechar"]);
-    expect(k({ alvos, bio: "x", fazerPerfil: false, fazerOauth: false, fazerStory: true })).toEqual(["rede", "abrir", "instagram", "story", "destacar", "fechar"]);
+    expect(k({ alvos, bio: "", fazerPerfil: true, fazerOauth: false, fazerStory: false })).toEqual(["rede", "abrir", "instagram", "sessao", "foto", "fechar"]);
+    expect(k({ alvos, bio: "x", fazerPerfil: false, fazerOauth: false, fazerStory: true })).toEqual(["rede", "abrir", "instagram", "sessao", "story", "destacar", "fechar"]);
     expect(k({ alvos: alvos.slice(0, 1), bio: "", fazerPerfil: false, fazerOauth: true, fazerStory: false })).toEqual([
-      "rede", "abrir", "instagram", "profissional", "perfil-1", "destaque-1", "link-1", "conectar-1", "consentir-1", "confirmar-1", "fechar",
+      "rede", "abrir", "instagram", "sessao", "profissional", "perfil-1", "destaque-1", "link-1", "conectar-1", "consentir-1", "confirmar-1", "fechar",
     ]);
   });
 
-  it("10 alvos cabem no andamento do agente (69 etapas) e o card lê o array do job", () => {
+  it("10 alvos cabem no andamento do agente (70 etapas) e o card lê o array do job", () => {
     const alvos = Array.from({ length: ALVOS_MAX }, (_, i) => ({ perfil: `p${i}`, destaque: "D", link: "https://exemplo.com/" }));
     const plano = expandirEtapas({ alvos, bio: "b", fazerPerfil: true, fazerOauth: true, fazerStory: true });
-    expect(plano).toHaveLength(9 + 6 * ALVOS_MAX);
+    expect(plano).toHaveLength(10 + 6 * ALVOS_MAX);
     const steps = parseJobSteps(plano.map((p) => ({ key: p.key, status: "done", message: null })));
     expect(steps).toHaveLength(plano.length);
     expect(parsePlano(JSON.parse(JSON.stringify(plano)))).toEqual(plano);
@@ -80,8 +80,8 @@ describe("Estruturar: etapas expandidas por alvo na criação do job", () => {
       { key: "profissional", status: "error" }, { key: "perfil-1", status: "running" },
     ];
     const p = progressoEstrutura({ plano, steps, status: "running" });
-    expect(p).toMatchObject({ feitas: 3, falhas: 1, total: 11, label: "Alvo 1: abrir o perfil @loja.um" });
-    expect(p.pct).toBe(Math.round((4 / 11) * 100));
+    expect(p).toMatchObject({ feitas: 3, falhas: 1, total: 12, label: "Alvo 1: abrir o perfil @loja.um" });
+    expect(p.pct).toBe(Math.round((4 / 12) * 100));
     expect(progressoEstrutura({ plano, steps: [], status: "queued" }).label).toBe("Na fila");
     expect(progressoEstrutura({ plano, steps: [], status: "done" }).pct).toBe(100);
   });
@@ -132,13 +132,14 @@ describe("Estruturar: validação do diálogo (a mesma do servidor)", () => {
     expect(erro({ fotoPerfil: "sumiu.jpg" }, null)).toBeNull();
   });
 
-  it("limites: bio 150, legenda 200, destaque 30, só texto que o teclado do container digita", () => {
+  it("limites: bio 150, legenda 200, destaque 30; acento e emoji passam (o agente digita pelo teclado ADB)", () => {
     expect(erro({ bio: "a".repeat(BIO_MAX) })).toBeNull();
     expect(erro({ bio: "a".repeat(BIO_MAX + 1) })).toMatch(/150/);
     expect(erro({ legenda: "a".repeat(201) })).toMatch(/200/);
     expect(erro({ destaque: "a".repeat(31) })).toMatch(/30/);
     expect(erro({ destaque: "" })).toMatch(/nome do destaque/);
-    expect(erro({ bio: "promoção" })).toMatch(/acento/);
+    expect(erro({ bio: "Promoção de verão 🔥", legenda: "Clique já 👉", destaque: "Ação ✨" })).toBeNull();
+    expect(erro({ destaque: "duas\nlinhas" })).toMatch(/quebra de linha/);
     expect(erro({ agendarHoras: -1 })).toMatch(/Agendar/);
     expect(erro({ fazerPerfil: false, fazerOauth: false, fazerStory: false })).toMatch(/interruptor/);
   });
@@ -171,13 +172,13 @@ describe("Estruturar: regras de falha no agente", () => {
     expect(motivoParaPular("destacar", new Set(["story"]))).toBe("pulada: story falhou");
   });
 
-  it("o fluxo do agente sai do plano do job: rede/abrir/instagram/fechar param tudo, o resto segue", () => {
+  it("o fluxo do agente sai do plano do job: rede/abrir/instagram/sessao/fechar param tudo, o resto segue", () => {
     const parsed = parseEstrutura(BASE, MIDIAS);
     if (!("value" in parsed)) throw new Error(parsed.error);
     const plano = expandirEtapas(parsed.value);
     const fluxo = ESTRUTURACAO({ ...parsed.value, plano }) as Array<{ chave: string; rotulo: string; segue?: boolean; sempre?: boolean; pular: (f: Set<string>) => string | null }>;
     expect(fluxo.map((e) => e.chave)).toEqual(plano.map((p) => p.key));
-    expect(fluxo.filter((e) => !e.segue).map((e) => e.chave)).toEqual(["rede", "abrir", "instagram", "fechar"]);
+    expect(fluxo.filter((e) => !e.segue).map((e) => e.chave)).toEqual(["rede", "abrir", "instagram", "sessao", "fechar"]);
     expect(fluxo.find((e) => e.chave === "fechar")?.sempre).toBe(true);
     expect(fluxo.find((e) => e.chave === "link-2")?.rotulo).toBe("Alvo 2: tocar no link do destaque");
 
@@ -195,7 +196,7 @@ describe("Estruturar: regras de falha no agente", () => {
       }
       return { rodadas, falhas: [...falhas] };
     };
-    expect(rodar(["profissional"]).rodadas).toEqual(["rede", "abrir", "instagram", "foto", "bio", "profissional", "story", "destacar", "fechar"]);
+    expect(rodar(["profissional"]).rodadas).toEqual(["rede", "abrir", "instagram", "sessao", "foto", "bio", "profissional", "story", "destacar", "fechar"]);
     const semLink = rodar(["link-1"]);
     expect(semLink.rodadas).not.toContain("conectar-1");
     expect(semLink.rodadas).toEqual(expect.arrayContaining(["perfil-2", "destaque-2", "link-2", "conectar-2", "consentir-2", "confirmar-2", "story"]));

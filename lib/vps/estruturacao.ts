@@ -20,6 +20,10 @@ export const AGENDAR_MAX_H = 720;
 export const MIDIA_MAX_BYTES = 8 * 1024 * 1024;
 export const MIDIA_EXTENSOES: ReadonlyArray<string> = [".jpg", ".jpeg", ".png", ".webp"];
 
+/** A conta não está logada no Instagram do container: o job para (a conta não é descartada). */
+export const SESSAO_PERDIDA = "SESSAO_PERDIDA";
+/** A página abriu sem sessão e o container não tem navegador para o login. */
+export const SEM_NAVEGADOR = "SEM_NAVEGADOR";
 /** Falha da etapa profissional: só as etapas de OAuth ficam bloqueadas. */
 export const PROFISSIONAL_FALHOU = "PROFISSIONAL_FALHOU";
 /** A página confirmou um @ diferente do da conta. */
@@ -64,8 +68,6 @@ export interface EstruturaInput extends EstruturaDados {
 }
 
 const PERFIL_RE = /^[a-z0-9._]{1,30}$/;
-/** O teclado do container (`input text`) só digita ASCII visível. */
-const DIGITAVEL_RE = /^[\x20-\x7E]*$/;
 
 function texto(valor: unknown): string {
   return typeof valor === "string" ? valor.trim() : "";
@@ -129,9 +131,8 @@ export function parseEstrutura(raw: unknown, midias: ReadonlyArray<string> | nul
   if (legenda.length > LEGENDA_MAX) return { error: `A legenda do story passa de ${LEGENDA_MAX} caracteres.` };
   if (destaque.length > DESTAQUE_MAX) return { error: `O nome do destaque passa de ${DESTAQUE_MAX} caracteres.` };
   if (fazerStory && !destaque) return { error: "Informe o nome do destaque (ou desligue Story)." };
-  for (const [nome, valor] of [["bio", bio], ["legenda", legenda], ["nome do destaque", destaque]] as const) {
-    if (!DIGITAVEL_RE.test(valor)) return { error: `A ${nome} não pode ter acento, emoji nem quebra de linha (limite do teclado do container).` };
-  }
+  // Acento e emoji valem: o agente digita pelo teclado ADB (broadcast). Só o nome do destaque não quebra linha.
+  if (/[\r\n]/.test(destaque)) return { error: "O nome do destaque não pode ter quebra de linha." };
   if (!fazerPerfil && !fazerOauth && !fazerStory) return { error: "Ligue ao menos um interruptor." };
 
   const horas = r.agendarHoras === undefined || r.agendarHoras === null || r.agendarHoras === "" ? AGENDAR_PADRAO_H : Number(r.agendarHoras);
@@ -151,6 +152,7 @@ export function expandirEtapas(d: Pick<EstruturaDados, "alvos" | "bio" | "fazerP
     { key: "rede", label: "Validar a proxy e subir o sidecar" },
     { key: "abrir", label: "Ligar o container" },
     { key: "instagram", label: "Abrir o Instagram" },
+    { key: "sessao", label: "Conferir que a conta está logada" },
   ];
   if (d.fazerPerfil) {
     plano.push({ key: "foto", label: "Trocar a foto de perfil" });

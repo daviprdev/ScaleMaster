@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   const admin = getSupabaseAdmin();
   const { data: agent, error: agentErr } = await admin
     .from("emulator_agents")
-    .select("id")
+    .select("id, user_id")
     .eq("token_hash", hashAgentToken(token))
     .maybeSingle();
 
@@ -187,5 +187,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 
-  return NextResponse.json({ commands, jobs: jobSync.jobs, replies: jobSync.replies });
+  // Boot do agente da VPS: os containers que o SaaS conhece (linhas de vps_devices e contas da fila), para ele
+  // achar os órfãos. Qualquer erro de leitura = campo ausente (o agente não apaga nada sem a lista).
+  let conhecidos: string[] | undefined;
+  if (agentKind === "vps" && body.querConhecidos === true) {
+    const [devs, contas] = await Promise.all([
+      admin.from("vps_devices").select("container").eq("user_id", agent.user_id),
+      admin.from("emulator_jobs").select("instance_index").eq("agent_id", agent.id).not("instance_index", "is", null),
+    ]);
+    if (!devs.error && !contas.error) {
+      conhecidos = [
+        ...new Set([
+          ...((devs.data ?? []) as Array<{ container: string | null }>).map((d) => d.container ?? "").filter(Boolean),
+          ...((contas.data ?? []) as Array<{ instance_index: number }>).map((j) => `ig-${j.instance_index}`),
+        ]),
+      ];
+    }
+  }
+
+  return NextResponse.json({ commands, jobs: jobSync.jobs, replies: jobSync.replies, ...(conhecidos ? { conhecidos } : {}) });
 }

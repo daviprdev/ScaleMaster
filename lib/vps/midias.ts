@@ -16,6 +16,21 @@ export function pastaPrints(): string {
   return process.env.VPS_PRINTS_DIR || "/opt/scalemaster/vps/prints";
 }
 
+/**
+ * Arquivo do print de uma etapa dentro da pasta de prints. O caminho é
+ * resolvido e tem que continuar dentro da pasta: qualquer coisa que escape
+ * ("..", caminho absoluto, separador) devolve null.
+ */
+export function caminhoDoPrint(base: string, jobId: string, etapa: string): string | null {
+  const raiz = path.resolve(base);
+  const alvo = path.resolve(raiz, String(jobId).toLowerCase(), `${etapa}.png`);
+  if (!alvo.startsWith(raiz + path.sep)) return null;
+  // Exatamente <pasta>/<job>/<etapa>.png: nem outro nível, nem a pasta de outro job (etapa "../outro-job/foto").
+  const pastaDoJob = path.join(raiz, String(jobId).toLowerCase());
+  if (path.dirname(pastaDoJob) !== raiz || path.dirname(alvo) !== pastaDoJob) return null;
+  return alvo;
+}
+
 export interface MidiaArquivo {
   path: string;
   size: number;

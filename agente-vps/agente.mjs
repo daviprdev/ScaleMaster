@@ -38,13 +38,13 @@ import { listarMidias, pastaDeMidias } from "./lib/midias.mjs";
 import { limparPrintsAntigos, salvarPrint } from "./lib/prints.mjs";
 import { esperar } from "./lib/processo.mjs";
 import { validar } from "./lib/rede.mjs";
-import { Semaforo, capacidade, criarWatchdog, limparOrfaos } from "./lib/supervisor.mjs";
+import { Semaforo, capacidade, criarWatchdog, limparOrfaos, limparOrfaosAntigos } from "./lib/supervisor.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
 import { versoesDisponiveis } from "./fluxos/apk.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.2.0";
+const VERSAO = "1.3.0";
 const AGENT_KIND = "vps";
 /** "Instância" -1 = a VPS em si: só a automação rebuild-imagem roda nela (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
@@ -412,6 +412,8 @@ async function rodarAgente() {
   let midiasEnviadas = "";
   let reenviarMidias = 0;
   let orfaosLimpos = false;
+  // Boot: pede ao SaaS os containers que ele conhece (vps_devices e fila) até limpar os órfãos velhos uma vez.
+  let orfaosAntigosVistos = false;
 
   log(`Agente ${VERSAO} (VPS) iniciado (${os.hostname()}, ${ARCH} → ${IMAGEM}) → ${url} · ${cap.maxLigadas} ligadas / ${cap.maxCadastro} cadastros`);
 
@@ -472,6 +474,7 @@ async function rodarAgente() {
       running: [...emAndamento],
       jobUpdates: enviandoAndamentos,
       runningJobs: [...contasEmAndamento],
+      ...(orfaosAntigosVistos ? {} : { querConhecidos: true }),
       ...(mandarMidias ? { media: midias } : {}),
     };
 
@@ -503,6 +506,12 @@ async function rodarAgente() {
           online = true;
           ultimaLinha = "";
           log(`Conectado ao SaaS. ${instancias.length} container(s) de conta.`);
+        }
+        if (!orfaosAntigosVistos && driver && Array.isArray(resposta.conhecidos)) {
+          orfaosAntigosVistos = true;
+          // Sem job ativo = nem rodando aqui, nem chegando neste mesmo sync.
+          const ativos = new Set((Array.isArray(resposta.jobs) ? resposta.jobs : []).map((j) => `ig-${j?.instanceIndex ?? j?.input?.device?.index}`));
+          limparOrfaosAntigos({ conhecidos: new Set(resposta.conhecidos.map(String)), ativos, log }).catch((e) => log(`órfãos antigos: ${e.message}`));
         }
         for (const comando of Array.isArray(resposta.commands) ? resposta.commands : []) {
           if (typeof comando?.id !== "string" || emAndamento.has(comando.id)) continue;

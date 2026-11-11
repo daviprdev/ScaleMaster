@@ -140,6 +140,36 @@ PRIMARIA="$(adb -s "$IP" shell dumpsys package com.instagram.android 2>/dev/null
 [ "$PRIMARIA" = "$ABI" ] || { log "ABI_AUSENTE: o Instagram instalou como ${PRIMARIA:-?}, esta VPS exige $ABI"; docker rm -f "${BASE_CONTAINER}-proxy" "$BASE_CONTAINER" >/dev/null 2>&1 || true; exit 1; }
 log "primaryCpuAbi=$PRIMARIA"
 
+# Navegador da base: Chrome pinado em $APKS/browser/chrome-<versão>/ (base + splits, puxados do Aurora com
+# pm path + adb pull) e conferido pelo $APKS/browser/SHA256SUMS. É o que o Estruturar usa quando a página do
+# link abre sem sessão (login pelo navegador); sem ele essa etapa falha com SEM_NAVEGADOR.
+BROWSER_DIR="$APKS/browser"
+CHROME_DIR="$(ls -d "$BROWSER_DIR"/chrome-*/ 2>/dev/null | sort -V | tail -1 || true)"
+if [ -n "$CHROME_DIR" ] && ls "$CHROME_DIR"*.apk >/dev/null 2>&1; then
+  if [ "$FORCE" = 1 ]; then
+    log "AVISO: --force, pulando a conferência do sha256 do navegador"
+  else
+    [ -f "$BROWSER_DIR/SHA256SUMS" ] || { log "Falta $BROWSER_DIR/SHA256SUMS. Gere com: (cd $BROWSER_DIR && sha256sum chrome-*/*.apk > SHA256SUMS) ou rode com --force"; exit 1; }
+    (cd "$BROWSER_DIR" && sha256sum -c --quiet SHA256SUMS) || { log "sha256 do navegador não bate com $BROWSER_DIR/SHA256SUMS"; exit 1; }
+    for a in "$CHROME_DIR"*.apk; do
+      grep -q " $(basename "$CHROME_DIR")/$(basename "$a")\$" "$BROWSER_DIR/SHA256SUMS" || { log "$(basename "$a") não está no SHA256SUMS do navegador"; exit 1; }
+    done
+    log "sha256 do navegador conferido ($(basename "$CHROME_DIR"))"
+  fi
+  log "instalando o navegador: $(basename "$CHROME_DIR")"
+  adb -s "$IP" install-multiple -r -g "$CHROME_DIR"*.apk | tail -1
+  NAVEGADOR="$(adb -s "$IP" shell dumpsys package com.android.chrome 2>/dev/null | grep -m1 versionName | sed 's/.*versionName=//' | tr -d '\r')"
+  [ -n "$NAVEGADOR" ] || { log "o Chrome não instalou na base"; docker rm -f "${BASE_CONTAINER}-proxy" "$BASE_CONTAINER" >/dev/null 2>&1 || true; exit 1; }
+  # Sem a tela de boas-vindas nem o pedido de navegador padrão: o Chrome abre direto na página.
+  adb -s "$IP" shell "echo 'chrome --no-first-run --disable-fre --no-default-browser-check' > /data/local/tmp/chrome-command-line" >/dev/null 2>&1 || true
+  adb -s "$IP" shell am set-debug-app --persistent com.android.chrome >/dev/null 2>&1 || true
+  adb -s "$IP" shell am force-stop com.android.chrome >/dev/null 2>&1 || true
+  log "navegador: Chrome $NAVEGADOR"
+else
+  NAVEGADOR=""
+  log "AVISO: sem navegador em $BROWSER_DIR/chrome-<versão>/: a base fica sem Chrome (o Estruturar para em SEM_NAVEGADOR se a página pedir login)"
+fi
+
 log "parando e guardando"
 adb disconnect "$IP" >/dev/null 2>&1 || true
 docker stop -t 30 "$BASE_CONTAINER" >/dev/null
@@ -148,4 +178,4 @@ docker volume inspect "$BASE_VOLUME" >/dev/null
 # Versão usada na base: o agente põe esta em primeiro na lista que a aba mostra.
 echo "$VERSAO" > "$APKS/ATUAL"
 
-echo "RESUMO: base pronta com Instagram ${INSTALADA:-$VERSAO} $ABI (imagem $IMAGEM, volume $BASE_VOLUME, props em $PROPS)"
+echo "RESUMO: base pronta com Instagram ${INSTALADA:-$VERSAO} $ABI e ${NAVEGADOR:+Chrome $NAVEGADOR}${NAVEGADOR:-sem navegador} (imagem $IMAGEM, volume $BASE_VOLUME, props em $PROPS)"

@@ -1,4 +1,5 @@
 import { esperar, rodar, trecho } from "./processo.mjs";
+import { IME, digitarCom } from "./teclado.mjs";
 
 /**
  * Um container redroid visto pelo adb da VPS (pacote android-tools-adb). Cópia
@@ -47,6 +48,7 @@ export function lerNos(xml) {
       classe: attrs.class ?? "",
       pacote: attrs.package ?? "",
       clicavel: attrs.clickable === "true",
+      focado: attrs.focused === "true",
       x: Math.round((x1 + x2) / 2),
       y: Math.round((y1 + y2) / 2),
     });
@@ -181,8 +183,29 @@ export class Dispositivo {
     return this.shell("input", "swipe", x1, y1, x2, y2, ms);
   }
 
+  /** O teclado ADB é o teclado padrão deste container? (o "sim" fica guardado; o "não" é conferido de novo) */
+  async tecladoAdb() {
+    if (this.tecladoAdb_) return true;
+    const atual = await this.shell("settings", "get", "secure", "default_input_method").catch(() => "");
+    this.tecladoAdb_ = atual.trim() === IME;
+    return this.tecladoAdb_;
+  }
+
+  /**
+   * Digita no campo focado. Com o teclado ADB ativo vai por broadcast
+   * (ADB_INPUT_TEXT: aceita acento e emoji); se o broadcast falhar, ou sem o
+   * teclado, cai no `input text`, que só digita ASCII — texto com acento ou
+   * emoji nesse caso para a etapa com TECLADO_INDISPONIVEL. Devolve por onde foi.
+   */
   digitar(texto) {
-    return this.shell("input", "text", escaparTexto(String(texto)));
+    return digitarCom(texto, {
+      ativo: () => this.tecladoAdb(),
+      broadcast: (args) => rodar(this.adb, ["-s", this.serial, "shell", ...args], { timeoutMs: 30_000 }),
+      inputText: (t) => this.shell("input", "text", escaparTexto(t)),
+      aoFalhar: () => {
+        this.tecladoAdb_ = false;
+      },
+    });
   }
 
   /** Ex.: tecla("KEYCODE_BACK"), tecla("KEYCODE_ENTER"). */

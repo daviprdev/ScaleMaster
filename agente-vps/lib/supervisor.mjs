@@ -102,6 +102,71 @@ export function criarWatchdog(matar, { travadoMs = TRAVADO_MS } = {}) {
   };
 }
 
+/** Container órfão só sai depois de parado por este tempo. */
+export const ORFAO_PARADO_MS = 24 * 60 * 60_000;
+
+/**
+ * Quais containers de conta são órfãos velhos: sem job ativo, sem linha em
+ * vps_devices (nem conta na fila) e parados há mais de 24 h.
+ * `containers` = [{ nome, rodando, paradoEm, criadoEm }] (datas ISO do docker inspect);
+ * `conhecidos` = nomes que o servidor conhece; `ativos` = nomes com job rodando agora.
+ * @param {Array<{ nome: string, rodando: boolean, paradoEm?: string | null, criadoEm?: string | null }>} containers
+ * @param {{ conhecidos?: Iterable<string>, ativos?: Iterable<string>, agora?: number, paradoMs?: number }} [opcoes]
+ */
+export function orfaosParaApagar(containers, { conhecidos, ativos = new Set(), agora = Date.now(), paradoMs = ORFAO_PARADO_MS } = {}) {
+  const sabe = conhecidos instanceof Set ? conhecidos : new Set(conhecidos ?? []);
+  const emUso = ativos instanceof Set ? ativos : new Set(ativos ?? []);
+  return containers.filter((c) => {
+    if (!/^ig-\d+$/.test(c.nome) || c.rodando || sabe.has(c.nome) || emUso.has(c.nome)) return false;
+    // Nunca ligado: o Docker devolve 0001-01-01 em FinishedAt; vale a data de criação.
+    const parado = Date.parse(c.paradoEm ?? "");
+    const desde = Number.isFinite(parado) && parado > 0 ? parado : Date.parse(c.criadoEm ?? "");
+    return Number.isFinite(desde) && agora - desde > paradoMs;
+  });
+}
+
+/** Containers de conta que existem no Docker, com estado e datas. */
+export async function containersDeConta() {
+  const lista = await rodar("docker", ["ps", "-a", "--filter", "label=scalemaster.vps=1", "--filter", "label=scalemaster.conta", "--format", "{{.Names}}"], { timeoutMs: 20_000 });
+  const out = [];
+  for (const nome of String(lista.stdout ?? "").split(/\r?\n/).map((l) => l.trim()).filter((n) => /^ig-\d+$/.test(n))) {
+    const r = await rodar("docker", ["inspect", "--format", "{{.State.Running}}|{{.State.FinishedAt}}|{{.Created}}", nome], { timeoutMs: 20_000 });
+    if (r.codigo !== 0) continue;
+    const [rodando, paradoEm, criadoEm] = trecho(r.stdout, 300).split("|");
+    out.push({ nome, rodando: rodando === "true", paradoEm, criadoEm });
+  }
+  return out;
+}
+
+/**
+ * Boot do agente (primeiro sync): container de conta sem job ativo e sem linha
+ * em vps_devices, parado há mais de 24 h, vira `docker rm` (ele e o sidecar),
+ * com log. O volume e o retrato ficam: nada da conta é apagado aqui.
+ * @param {{ conhecidos?: Iterable<string>, ativos?: Iterable<string>, log?: (m: string) => void, agora?: number, listar?: () => Promise<Array<{ nome: string, rodando: boolean, paradoEm?: string | null, criadoEm?: string | null }>>, remover?: (nome: string) => Promise<void> }} [opcoes]
+ */
+export async function limparOrfaosAntigos({ conhecidos, ativos, log = () => {}, agora = Date.now(), listar = containersDeConta, remover } = {}) {
+  const apagar =
+    remover ??
+    (async (nome) => {
+      await rodar("docker", ["rm", "-f", `${nome}-proxy`], { timeoutMs: 60_000 });
+      const r = await rodar("docker", ["rm", nome], { timeoutMs: 120_000 });
+      if (r.codigo !== 0) throw new Error(trecho(r.stderr || r.stdout));
+    });
+  const orfaos = orfaosParaApagar(await listar(), { conhecidos, ativos, agora });
+  const removidos = [];
+  for (const c of orfaos) {
+    const horas = Math.round((agora - (Date.parse(c.paradoEm ?? "") > 0 ? Date.parse(c.paradoEm) : Date.parse(c.criadoEm))) / 3_600_000);
+    try {
+      await apagar(c.nome);
+      removidos.push(c.nome);
+      log(`órfão: container ${c.nome} sem job e sem linha em vps_devices, parado há ${horas} h: docker rm (volume e retrato mantidos)`);
+    } catch (e) {
+      log(`órfão: não removi ${c.nome}: ${trecho(e.message)}`);
+    }
+  }
+  return removidos;
+}
+
 /** Containers do Scale Master que estão ligados agora (nome → id). */
 export async function containersLigados() {
   const r = await rodar("docker", ["ps", "--filter", "label=scalemaster.vps=1", "--filter", "label=scalemaster.conta", "--format", "{{.Names}}"], { timeoutMs: 20_000 });
