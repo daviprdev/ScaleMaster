@@ -2,7 +2,7 @@ import { esperar } from "../lib/processo.mjs";
 import { CONEXAO_OUTRA_CONTA, PROFISSIONAL_FALHOU, SEM_NAVEGADOR, arrobaDaConfirmacao, arrobaDaPermissao, conferirConexao, hostDoLink } from "../lib/estrutura.mjs";
 import { INSTAGRAM } from "./apk.mjs";
 import { resumoTela, salvarTela } from "./dono.mjs";
-import { SEGUINTE, botaoDoPerfil, comandoDeepLink, irPara, noProprioPerfil, percorrer, temBarra } from "./instagram.mjs";
+import { SEGUINTE, atividadeNoTopo, botaoDoPerfil, comandoDeepLink, irPara, noProprioPerfil, percorrer, temBarra } from "./instagram.mjs";
 import { acharId, acharTexto, esperarMudar, preencher, preencherEsperando, temTexto } from "./tela.mjs";
 
 /**
@@ -449,7 +449,7 @@ export async function abrirDestaque(ctx, nome) {
 
 /** Dump com o story parado: segura o toque (pausa a animação) enquanto lê. */
 async function lerComPausa(d) {
-  const segurando = d.arrastar(540, 330, 540, 330, 9000).catch(() => {});
+  const segurando = d.arrastar(540, 330, 540, 330, 4500).catch(() => {});
   const nos = await d.tela().catch(() => []);
   await segurando;
   return nos;
@@ -464,64 +464,72 @@ async function reabrirDestaque(d, nos, destaque, log) {
   await esperar(1000);
 }
 
+const descreverPagina = (nos) => {
+  const titulo =
+    nos.find((n) => /ig_browser_text_subtitle/.test(n.id))?.texto.trim() ??
+    nos.find((n) => n.texto.trim().length >= 3 && n.pacote !== "com.android.systemui")?.texto.trim().slice(0, 60) ??
+    "";
+  return `página aberta${nos.some((n) => n.pacote === CHROME) ? " no Chrome" : ""}${titulo ? ` (${titulo})` : ""}`;
+};
+
+const NAVEGADOR_RE = /inappbrowser|BrowserLite|com\.android\.chrome/i;
+
 /**
- * Com o destaque aberto: acha o sticker de link (passando de story em story,
- * até 6), toca, toca no balão "Acessar link" e espera a página carregar no
- * navegador do Instagram. O story dura ~5 s: se acabou entre as etapas (print,
- * sync), reabre o destaque pelo nome e lê de novo.
+ * Com o destaque aberto: lê a posição do sticker com o story pausado (dedo
+ * segurando), solta, toca no sticker e logo no balão "Acessar link" (sem ler a
+ * tela no meio: o story de foto dura ~5 s e um dump leva ~2,3 s; o toque caía
+ * no perfil, josiane 11/11) e espera a página no navegador do Instagram. Se o
+ * story acabou, reabre o destaque e repete, até 5 tentativas.
  */
 export async function tocarLinkDoDestaque(ctx, { link = "", destaque = "" } = {}) {
   const { d, log = () => {} } = ctx;
   const host = hostDoLink(link);
   let sticker = null;
   let ultima = [];
-  for (let volta = 0; volta < 6 && !sticker; volta++) {
-    let nos = await d.tela().catch(() => []);
-    if (nos.length === 0) nos = await lerComPausa(d);
-    if (nos.length > 0 && noPerfil(nos) && !noVisualizador(nos)) {
-      await reabrirDestaque(d, nos, destaque, log);
-      nos = await d.tela().catch(() => []);
-      if (nos.length === 0) nos = await lerComPausa(d);
-    }
-    if (nos.length > 0) ultima = nos;
-    sticker = stickerDeLink(nos, host);
-    if (!sticker && nos.length > 0 && noVisualizador(nos)) {
-      salvarTela(nos, "estruturar: story sem sticker de link");
-      log(`story ${volta + 1} do destaque sem sticker de link: próximo`);
-      await d.tocar(980, 900);
-      await esperar(1000);
-    }
-  }
-  if (!sticker) {
-    if (ultima.length > 0) salvarTela(ultima, "estruturar: sticker de link não achado");
-    throw new Error(`nenhum story do destaque mostrou o sticker de link (na tela: ${resumoTela(ultima) || "sem leitura"})`);
-  }
-  await d.tocar(sticker.x, sticker.y);
-
-  // O toque no sticker abre o balão "Acessar link" (não sai no dump) e pausa o story.
-  let tocouBalao = false;
-  const limite = Date.now() + 40_000;
-  for (;;) {
+  for (let tentativa = 1; tentativa <= 5; tentativa++) {
     const nos = await d.tela().catch(() => []);
-    if (paginaAberta(nos)) {
-      const titulo = nos.find((n) => /ig_browser_text_subtitle/.test(n.id))?.texto.trim() ?? nos.find((n) => n.texto.trim().length >= 3 && n.pacote !== "com.android.systemui")?.texto.trim().slice(0, 60) ?? "";
-      return `página aberta${nos.some((n) => n.pacote === CHROME) ? " no Chrome" : ""}${titulo ? ` (${titulo})` : ""}`;
+    if (paginaAberta(nos)) return descreverPagina(nos);
+    if (nos.length > 0) ultima = nos;
+    if (nos.length > 0 && noPerfil(nos) && !noVisualizador(nos)) await reabrirDestaque(d, nos, destaque, log);
+
+    if (!sticker) {
+      const pausada = await lerComPausa(d);
+      if (pausada.length > 0) ultima = pausada;
+      sticker = stickerDeLink(pausada, host);
+      if (!sticker) {
+        if (pausada.length > 0 && !(noPerfil(pausada) && !noVisualizador(pausada))) {
+          salvarTela(pausada, "estruturar: story sem sticker de link");
+          log(`story do destaque sem sticker de link (tentativa ${tentativa}): próximo story`);
+          await d.tocar(980, 900);
+          await esperar(1000);
+        }
+        continue;
+      }
     }
-    const visitar = acharBotao(nos, VISITAR);
-    if (visitar) {
-      await d.tocar(visitar.x, visitar.y);
-      tocouBalao = true;
-    } else if (!tocouBalao && (nos.length === 0 || noVisualizador(nos))) {
+
+    await d.tocar(sticker.x, sticker.y);
+    await esperar(700);
+    // Sticker que abre direto o navegador (outra build): não toca no balão por cima da página.
+    if (!NAVEGADOR_RE.test(await atividadeNoTopo(d))) {
       log("balão do link: tocando acima do sticker");
       await d.tocar(sticker.x, Math.max(150, sticker.y - BALAO_ACIMA_PX));
-      tocouBalao = true;
     }
-    if (Date.now() > limite) {
-      if (nos.length > 0) salvarTela(nos, "estruturar: a página do link não abriu");
-      throw new Error(`toquei no sticker e a página do link não abriu em 40 s (na tela: ${resumoTela(nos) || "sem leitura"})`);
+
+    const limite = Date.now() + 25_000;
+    while (Date.now() < limite) {
+      const tela = await d.tela().catch(() => []);
+      if (tela.length > 0) ultima = tela;
+      if (paginaAberta(tela)) return descreverPagina(tela);
+      const visitar = acharBotao(tela, VISITAR);
+      if (visitar) await d.tocar(visitar.x, visitar.y);
+      // O story acabou (perfil de volta): reabre na próxima tentativa.
+      else if (tela.length > 0 && noPerfil(tela) && !noVisualizador(tela)) break;
+      await esperar(1000);
     }
-    await esperar(1000);
+    log(`a página do link não abriu (tentativa ${tentativa}/5; na tela: ${resumoTela(ultima) || "sem leitura"})`);
   }
+  if (ultima.length > 0) salvarTela(ultima, "estruturar: a página do link não abriu");
+  throw new Error(`toquei no sticker e no balão 5 vezes e a página do link não abriu (na tela: ${resumoTela(ultima) || "sem leitura"})`);
 }
 
 /** Preenche usuário e senha na tela de login que está na frente e espera sair dela. */

@@ -144,6 +144,8 @@ describe("Destaque do link.zada → sticker → navegador", () => {
         else if (tela === "balao" && y === 897 - BALAO_ACIMA_PX) tela = "pagina";
       },
       arrastar: async () => {},
+      // Visualizador no topo (não é o navegador): o agente toca no balão.
+      shell: async () => "  topResumedActivity=ActivityRecord{1 u0 com.instagram.android/com.instagram.modal.TransparentModalActivity} t39}",
     };
     const logs: string[] = [];
     const r = await tocarLinkDoDestaque({ d, log: (m: string) => logs.push(m) }, { link: "", destaque: "LINKADA" });
@@ -225,7 +227,7 @@ describe("Destacar pelo próprio story (josiane, ig-8)", () => {
       tocar: async (x: number, y: number) => {
         const alvo = (tela === "perfil" ? PERFIL_SEM_DESTAQUES : tela === "sheet" ? SHEET(nome) : MEU_STORY).find((n) => n.x === Math.round(x) && n.y === Math.round(y));
         toques.push(`${tela}:${alvo?.texto || alvo?.descricao || alvo?.id.split("/")[1] || "?"}`);
-        if (tela === "perfil" && y === 394) tela = "story";
+        if (tela === "perfil" && y === 394 + 25) tela = "story";
         else if (tela === "story" && y === 1670) tela = "sheet";
         else if (tela === "sheet" && y === 1720) {
           criado = true;
@@ -244,7 +246,7 @@ describe("Destacar pelo próprio story (josiane, ig-8)", () => {
         return "broadcast";
       },
       focoAtual: async () => `${IG}/com.instagram.mainactivity.InstagramMainActivity`,
-      shell: async () => "",
+      shell: async () => "  topResumedActivity=ActivityRecord{1 u0 com.instagram.android/com.instagram.modal.TransparentModalActivity} t17}",
       abrirApp: async () => "",
     };
     const semDono = (texto: string) => {
@@ -255,8 +257,9 @@ describe("Destacar pelo próprio story (josiane, ig-8)", () => {
     expect(criado).toBe(true);
     expect(nome).toBe("AQUI 🔗👆");
     expect(toques.filter((t) => /Ignorar/.test(t))).toEqual([]);
-    expect(toques[0]).toBe("perfil:row_profile_header_imageview_f");
-    expect(toques).toContain("story:Destacar");
+    // Foto um pouco abaixo do centro (a nota cobre o alto) e o Destacar logo em seguida, sem ler a tela no meio.
+    expect(toques[0]).toBe("perfil:?");
+    expect(toques[1]).toBe("story:Destacar");
     expect(toques).toContain("sheet:Adicionar");
     expect(toques[toques.length - 1]).toBe("KEYCODE_BACK");
   }, 20_000);

@@ -58,6 +58,32 @@ function botao(nos, textos) {
   return acharTexto(nos, textos, { exato: true });
 }
 
+/**
+ * Ids com "Ignorar"/"OK" que não são pop-up: o fundo escuro de um sheet
+ * (fecha o sheet do destaque) e os X das sugestões do perfil (o pular ficava
+ * tocando neles em volta; josiane, 11/11).
+ */
+const NAO_E_POPUP = /background_dimmer|dismiss_button|hide_icon|find_people_dismiss|suggested_|netego|recommended/;
+
+export function botaoPular(nos) {
+  return botao(
+    nos.filter((n) => !NAO_E_POPUP.test(n.id)),
+    PULAR
+  );
+}
+
+/** Atividade no topo (`topResumedActivity`), na hora e sem uiautomator. */
+export async function atividadeNoTopo(d) {
+  const saida = await d.shell("dumpsys", "activity", "activities", "|", "grep", "-m1", "topResumedActivity").catch(() => "");
+  return /\{[^}]*\s([\w.]+\/[\w.$]+)/.exec(saida)?.[1] ?? "";
+}
+
+/** Visualizador de story (TransparentModalActivity); a nota do perfil abre em ModalActivity. */
+export const ehVisualizador = (atividade) => /TransparentModalActivity|ReelViewer|StoryViewer/i.test(atividade);
+
+// decisão: "Destacar" da barra de baixo do próprio story em 1080x1920 (toolbar_highlights_button, josiane, 11/11).
+export const DESTACAR_XY = [476, 1670];
+
 const doInstagram = (nos) => nos.some((n) => n.pacote === INSTAGRAM);
 const doSistema = (nos) => nos.some((n) => /permissioncontroller|packageinstaller|vpndialogs/.test(n.pacote));
 const campoDeTexto = (nos) => nos.find((n) => /EditText/.test(n.classe) && n.pacote === INSTAGRAM) ?? null;
@@ -223,7 +249,7 @@ function telasGerais({ d, ajuda }) {
     },
     {
       nome: "pular",
-      teste: (nos) => doInstagram(nos) && botao(nos, PULAR),
+      teste: (nos) => doInstagram(nos) && botaoPular(nos),
       agir: (nos, alvo) => tocarNo(d, alvo, 2500),
     },
   ];
@@ -1125,7 +1151,7 @@ export async function postarStory(ctx, { link, texto }) {
 export async function destacarStory(ctx, nome) {
   const { d, ajuda } = ctx;
   if (!nome) throw new Error("A estruturação veio sem o nome do destaque.");
-  const estado = { novo: false, escolheu: false, nomeou: false, pelaFoto: false, destacou: false };
+  const estado = { novo: false, escolheu: false, nomeou: false, pelaFoto: false, destacou: false, aberturas: 0 };
   const noStory = (nos) => nos.some((n) => /reel_viewer|story_viewer|viewer_toolbar/.test(n.id));
   await irPara(ctx, "perfil", { porMudanca: true, abas: true });
   return percorrer(ctx, {
@@ -1193,16 +1219,42 @@ export async function destacarStory(ctx, nome) {
         agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
-        // Sem a faixa de destaques: abre o próprio story pela foto do perfil.
+        // O story acabou antes do toque no Destacar (voltou o perfil sem o sheet): abre de novo, até 3 vezes.
+        nome: "refazer-story",
+        teste: (nos) => estado.pelaFoto && !estado.nomeou && !campoDeTexto(nos) && noProprioPerfil(nos) && estado.aberturas < 3,
+        agir: () => {
+          ctx.log?.(`o story acabou antes do Destacar: abrindo de novo (${estado.aberturas}/3)`);
+          estado.pelaFoto = false;
+          estado.destacou = false;
+        },
+      },
+      {
+        // Sem a faixa de destaques: abre o próprio story pela foto do perfil e toca no Destacar logo em seguida,
+        // sem ler a tela: o story de foto dura ~5 s e um dump leva ~2,3 s (o toque caía no perfil; josiane, 11/11).
         nome: "abrir-meu-story",
         teste: (nos) =>
           !estado.novo &&
           !estado.pelaFoto &&
+          estado.aberturas < 3 &&
           noProprioPerfil(nos) &&
           (acharId(nos, ig("row_profile_header_imageview")) ?? nos.find((n) => /^(seu perfil|your profile)\b/i.test(n.descricao))),
         agir: async (nos, alvo) => {
-          await toque(d, nos, alvo);
+          estado.aberturas += 1;
           estado.pelaFoto = true;
+          // Um pouco abaixo do centro: a nota ("Não consigo decidir…") cobre o alto da foto e abre o editor de nota.
+          await d.tocar(alvo.x, alvo.y + 25);
+          await esperar(1300);
+          const topo = await atividadeNoTopo(d);
+          if (!ehVisualizador(topo)) {
+            ctx.log?.(`a foto não abriu o story (${topo || "sem atividade"}): voltando`);
+            await d.tecla("KEYCODE_BACK");
+            await esperar(1000);
+            estado.pelaFoto = false;
+            return;
+          }
+          await d.tocar(...DESTACAR_XY);
+          estado.destacou = true;
+          await esperar(1500);
         },
       },
       {
