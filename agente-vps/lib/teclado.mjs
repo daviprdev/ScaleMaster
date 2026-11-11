@@ -29,6 +29,15 @@ export function comandoDigitar(texto) {
   return ["am", "broadcast", "--receiver-foreground", "-a", "ADB_INPUT_TEXT", "--es", "msg", aspas(texto)];
 }
 
+/**
+ * Apaga todo o texto do campo focado (ADB_CLEAR_TEXT do teclado ADB), de
+ * qualquer tamanho: os 60 DELs de antes não davam conta da bio de 150 com
+ * emoji e o texto novo entrava colado no antigo (aline.guimaraes82807, 11/11).
+ */
+export function comandoLimpar() {
+  return ["am", "broadcast", "--receiver-foreground", "-a", "ADB_CLEAR_TEXT"];
+}
+
 /** O `am broadcast` entregou? (sem "Broadcast completed" ou com erro = falhou) */
 export function broadcastOk(saida) {
   const s = String(saida ?? "");

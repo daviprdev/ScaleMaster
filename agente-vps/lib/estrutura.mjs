@@ -63,6 +63,20 @@ export function arrobaDaConfirmacao(textos) {
   return { confirmado, usuario: usuario || null };
 }
 
+const PERMISSAO_RE = /(?:solicitando acesso a|requesting access to|pede acesso a|quer acessar)\s*:?\s*@?([A-Za-z0-9._]{1,30})/i;
+
+/**
+ * @ que a tela de permissão do OAuth está liberando ("Inst Provider … está
+ * solicitando acesso a: aline.guimaraes82807. Ao selecionar Permitir, …"),
+ * minúsculo e sem o ponto final; null se a tela não mostra.
+ */
+export function arrobaDaPermissao(textos) {
+  const tudo = (Array.isArray(textos) ? textos : []).map((t) => String(t ?? "")).join(" ");
+  const m = PERMISSAO_RE.exec(tudo);
+  const usuario = m ? m[1].replace(/[._]+$/, "").toLowerCase() : "";
+  return usuario || null;
+}
+
 /** O @ que a página confirmou é o da conta? Sem @ na página não dá para dizer que divergiu. */
 export function conferirConexao(usuarioDaPagina, usuarioDaConta) {
   if (!usuarioDaPagina) return { ok: true, mensagem: "conectada (a página não mostrou o @)" };

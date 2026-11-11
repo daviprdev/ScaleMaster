@@ -202,9 +202,10 @@ const FIXAS = {
 const DO_ALVO = {
   perfil: (ctx, c, alvo) => abrirPerfilAlvo(c, alvo.perfil),
   destaque: (ctx, c, alvo) => abrirDestaque(c, alvo.destaque),
-  link: (ctx, c, alvo) => tocarLinkDoDestaque(c, alvo.link),
+  // O destaque vai junto: o story dura ~5 s e, se acabar entre as etapas, o link reabre o destaque.
+  link: (ctx, c, alvo) => tocarLinkDoDestaque(c, { link: alvo.link, destaque: alvo.destaque }),
   conectar: (ctx, c, alvo) => conectar(c, { link: alvo.link, conta: ctx.input?.conta }),
-  consentir: (ctx, c) => consentir(c),
+  consentir: (ctx, c) => consentir(c, ctx.input?.conta?.usuario),
   confirmar: (ctx, c) => confirmar(c, ctx.input?.conta?.usuario),
 };
 

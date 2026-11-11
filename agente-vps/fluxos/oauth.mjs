@@ -1,9 +1,9 @@
 import { esperar } from "../lib/processo.mjs";
-import { CONEXAO_OUTRA_CONTA, PROFISSIONAL_FALHOU, SEM_NAVEGADOR, arrobaDaConfirmacao, conferirConexao, hostDoLink } from "../lib/estrutura.mjs";
+import { CONEXAO_OUTRA_CONTA, PROFISSIONAL_FALHOU, SEM_NAVEGADOR, arrobaDaConfirmacao, arrobaDaPermissao, conferirConexao, hostDoLink } from "../lib/estrutura.mjs";
 import { INSTAGRAM } from "./apk.mjs";
 import { resumoTela, salvarTela } from "./dono.mjs";
-import { CONCLUIR, EDITAR_PERFIL, SEGUINTE, acharAba, botaoDoPerfil, comandoDeepLink, irPara, percorrer, temBarra } from "./instagram.mjs";
-import { acharTexto, preencher, temTexto } from "./tela.mjs";
+import { SEGUINTE, botaoDoPerfil, comandoDeepLink, irPara, noProprioPerfil, percorrer, temBarra } from "./instagram.mjs";
+import { acharId, acharTexto, esperarMudar, preencher, preencherEsperando, temTexto } from "./tela.mjs";
 
 /**
  * Parte do Estruturar que sai do perfil da própria conta: mudar para conta
@@ -11,23 +11,24 @@ import { acharTexto, preencher, temTexto } from "./tela.mjs";
  * Conectar → Permitir → confirmação. Todo toque sai do uiautomator dump (centro
  * dos bounds) e toda espera é por texto na tela (`aguardar`), relendo a cada 1 s.
  *
- * mapa de telas (09/11/2026, por texto; a que não bater fica salva em telas/
- * pelo salvarTela e a etapa falha com o resumo do que estava na tela):
+ * mapa de telas (ig-10, Instagram 454 x86_64, 11/11/2026; a que não bater fica
+ * salva em telas/ pelo salvarTela e a etapa falha com o resumo da tela):
  *   perfil (deep link)      → @ do alvo ou botão Seguir/Seguindo
- *   destaque                → rótulo com o nome do destaque na bandeja do perfil
- *   visualizador do story   → sticker de link (id *link*, host do link ou descrição "link")
- *   "Visitar link"          → folha que o sticker abre antes do navegador
- *   página                  → WebView do Instagram ou Chrome Custom Tab com texto
- *   Conectar                → botão da página
- *   permissão (OAuth)       → Permitir / Allow / Continuar como …
+ *   destaque                → círculo da faixa (descrição "Story do destaque de …", rótulo embaixo)
+ *   visualizador do story   → sticker de link: nó clicável sem texto no meio da tela
+ *                             (o story dura ~5 s: acabou, reabre o destaque)
+ *   balão "Acessar link"    → aparece acima do sticker e não sai no dump: toque ~205 px acima
+ *   página                  → navegador do Instagram (ig_browser_*), ex.: "Para onde você quer ir?" → OAUTH
+ *   permissão (OAuth)       → "… está solicitando acesso a: <@>" → Permitir (@ diferente = CONEXAO_OUTRA_CONTA)
  *   login (sem sessão)      → campos de usuário e senha
- *   confirmação             → texto de conectado/sucesso com o @
+ *   confirmação             → "Conta conectada!" → Fechar navegador (volta ao Instagram)
  */
 
 export const CHROME = "com.android.chrome";
 
 const VISITAR = ["Visitar link", "Visit link", "Acessar link", "Abrir link", "Open link", "Ver link", "Go to link"];
 const CONECTAR = [
+  "OAUTH",
   "Conectar com Instagram",
   "Conectar Instagram",
   "Connect with Instagram",
@@ -93,9 +94,17 @@ export function stickerDeLink(nos, host) {
     ig.find((n) => /link_sticker|story_link|sticker_link|cta_link/i.test(n.id)) ??
     (host ? ig.find((n) => `${n.texto} ${n.descricao}`.toLowerCase().includes(host)) : null) ??
     ig.find((n) => /\b(link|ligação)\b/i.test(n.descricao) && n.y > 250 && n.y < 1650) ??
+    // Nesta build o sticker sai no dump como um nó clicável sem texto, id nem descrição, no meio da tela (ig-10, 11/11).
+    ig.find((n) => n.clicavel && !n.texto && !n.descricao && !n.id && n.y > 250 && n.y < 1600) ??
     null
   );
 }
+
+/** Visualizador de story na frente (ids reel_viewer_*, barra de mensagem do story). */
+export const noVisualizador = (nos) => nos.some((n) => /reel_viewer|story_viewer|viewer_toolbar|message_composer/.test(n.id));
+
+// decisão: o balão "Acessar link" que o sticker abre não sai no dump (overlay); fica ~205 px acima do centro do sticker (ig-10, 11/11).
+export const BALAO_ACIMA_PX = 205;
 
 /**
  * Relê a tela a cada 1 s até `teste(nos)` devolver algo. Dump que falha (story
@@ -123,128 +132,159 @@ export function comandoAbrirUrl(url, pacote) {
 
 // ── conta profissional ────────────────────────────────────────────────────
 
-const PAINEL = ["Painel profissional", "Professional dashboard", "Painel do profissional", "Ver painel", "View dashboard"];
+const TIPO_DE_CONTA = ["Tipo e ferramentas da conta", "Tipo de conta e ferramentas", "Account type and tools", "Ferramentas e tipo de conta"];
+const TROCAR_PROFISSIONAL = ["Trocar para conta profissional", "Mudar para conta profissional", "Switch to professional account", "Mudar para a conta profissional"];
+const JA_PROFISSIONAL = ["Trocar para conta pessoal", "Mudar para conta pessoal", "Switch to personal account", "Mudar para a conta pessoal"];
+const CATEGORIA_CRIADOR = ["Criador de conteúdo digital", "Digital creator"];
+const CONFIGURACOES = ["Configurações e atividade", "Settings and activity", "Configurações e privacidade", "Settings and privacy", "Definições e atividade"];
+const OPCOES = ["Opções", "Options", "Menu", "Definições", "Configurações"];
 
 /**
- * Perfil → menu → Configurações e atividade → Tipo de conta e ferramentas →
- * Mudar para conta profissional → Criador → telas nativas (Avançar/Concluir).
- * Confirma pelo texto "Painel profissional" no perfil. Qualquer falha sai como
- * PROFISSIONAL_FALHOU (bloqueia só as etapas de OAuth).
+ * Conta profissional (Criador), pelo caminho desta build (Instagram 454 x86_64,
+ * ig-10, 11/11):
+ *   perfil (aba)                          → Opções (≡, topo à direita)
+ *   Configurações e atividade             → rola até "Tipo e ferramentas da conta"
+ *   Tipo e ferramentas da conta           → "Trocar para conta profissional"
+ *                                           ("Trocar para conta pessoal" = já é profissional)
+ *   Troque para uma conta profissional    → Avançar
+ *   Qual categoria mais bem descreve você? → pesquisa "Criador de conteúdo" →
+ *                                           "Criador de conteúdo digital" → Trocar para conta profissional
+ *   Que tipo de profissional você é?      → Criador de conteúdo → Avançar
+ *   Alterações nas configurações de segurança → OK
+ *   Emails promocionais                   → Avançar
+ *   Configure sua conta profissional      → Fechar → perfil
+ * Qualquer falha sai como PROFISSIONAL_FALHOU (bloqueia só as etapas de OAuth).
  */
 export async function tornarProfissional(ctx) {
   const { d, log } = ctx;
-  const estado = { menu: false, config: false, mudou: false, criador: false, categoria: false, rolagens: 0 };
+  const estado = { menu: false, tipo: false, trocou: false, pesquisou: false, categoria: false, confirmou: false, criador: false, fechou: false, rolagens: 0 };
   const falhar = (texto, nos) => {
     if (nos) salvarTela(nos, `profissional: ${texto}`);
     throw new Error(texto);
   };
+  const naCategoria = (nos) => temTexto(nos, ["Qual categoria", "categoria mais bem", "What best describes", "Choose a category"]);
+  const tocarEsperar = async (nos, alvo) => {
+    await d.tocar(alvo.x, alvo.y);
+    await esperarMudar(d, nos, { timeoutMs: 6000 });
+  };
   try {
-    await irPara(ctx, "perfil");
+    await irPara(ctx, "perfil", { abas: true });
     return await percorrer(ctx, {
       nome: "A mudança para conta profissional",
       limiteMs: 8 * 60_000,
       travou: falhar,
-      fim: (nos) => (temBarra(nos) && temTexto(nos, PAINEL) ? (estado.mudou ? "conta profissional (Criador)" : "a conta já era profissional") : null),
+      fim: (nos) => (estado.fechou && noProprioPerfil(nos) ? "conta profissional (Criador)" : null),
       telas: [
         {
-          nome: "ja-profissional",
-          teste: (nos) => acharTexto(nos, ["Mudar para conta pessoal", "Switch to personal account", "Mudar para a conta pessoal"]),
-          agir: () => (estado.mudou ? "conta profissional (Criador)" : "a conta já era profissional"),
-        },
-        {
-          nome: "criador",
-          teste: (nos) => !estado.criador && temTexto(nos, ["Empresa", "Business"], { exato: true }) && acharBotao(nos, ["Criador de conteúdo", "Criador", "Creator"]),
-          agir: async (nos, alvo) => {
-            await d.tocar(alvo.x, alvo.y);
-            estado.criador = true;
-            await aguardar(d, (n) => acharBotao(n, [...SEGUINTE, ...CONCLUIR]), { timeoutMs: 10_000, descricao: "o Avançar depois de Criador" }).catch(() => {});
-          },
-        },
-        {
-          nome: "categoria",
+          nome: "fechar-guia",
           teste: (nos) =>
-            estado.mudou &&
-            !estado.categoria &&
-            temTexto(nos, ["categoria", "category", "O que melhor descreve", "What best describes"]) &&
-            (nos.find((n) => /RadioButton|CheckBox/.test(n.classe)) ?? acharBotao(nos, ["Criador de conteúdo digital", "Digital creator", "Blogueiro", "Blogger", "Artista", "Artist"])),
+            temTexto(nos, ["Configure sua conta profissional", "Set up your professional account"]) &&
+            (acharId(nos, `${INSTAGRAM}:id/action_bar_button_action`) ?? acharBotao(nos, ["Fechar", "Close"])),
           agir: async (nos, alvo) => {
-            await d.tocar(alvo.x, alvo.y);
-            estado.categoria = true;
-            await esperar(1000);
+            await tocarEsperar(nos, alvo);
+            estado.fechou = true;
           },
         },
         {
-          nome: "mudar",
-          teste: (nos) => !estado.mudou && acharTexto(nos, ["Mudar para conta profissional", "Switch to professional account", "Mudar para profissional", "Mudar para a conta profissional"]),
+          nome: "emails",
+          teste: (nos) => temTexto(nos, ["Emails promocionais", "E-mails promocionais", "Promotional emails"]) && acharBotao(nos, SEGUINTE),
+          agir: tocarEsperar,
+        },
+        {
+          nome: "seguranca",
+          teste: (nos) => temTexto(nos, ["configurações de segurança", "security settings"]) && acharBotao(nos, ["OK"]),
+          agir: tocarEsperar,
+        },
+        {
+          nome: "tipo-profissional",
+          teste: (nos) =>
+            temTexto(nos, ["Que tipo de profissional", "What type of professional"]) &&
+            (estado.criador ? acharBotao(nos, SEGUINTE) : acharTexto(nos, ["Criador de conteúdo", "Creator"], { exato: true })),
+          agir: async (nos, alvo) => {
+            if (estado.criador) return tocarEsperar(nos, alvo);
+            // O cartão Criador costuma vir marcado: o toque pode não mudar nada no dump.
+            await d.tocar(alvo.x, alvo.y);
+            await esperar(800);
+            estado.criador = true;
+          },
+        },
+        {
+          nome: "categoria-confirmar",
+          teste: (nos) => naCategoria(nos) && estado.categoria && !estado.confirmou && acharBotao(nos, TROCAR_PROFISSIONAL),
           agir: async (nos, alvo) => {
             await d.tocar(alvo.x, alvo.y);
-            estado.mudou = true;
-            await esperar(1500);
+            estado.confirmou = true;
+            await esperarMudar(d, nos, { timeoutMs: 15_000 });
+          },
+        },
+        {
+          nome: "categoria-escolher",
+          teste: (nos) => naCategoria(nos) && !estado.categoria && acharTexto(nos, CATEGORIA_CRIADOR, { exato: true }),
+          agir: async (nos, alvo) => {
+            await d.tocar(alvo.x, alvo.y);
+            await esperar(800);
+            estado.categoria = true;
+          },
+        },
+        {
+          nome: "categoria-pesquisar",
+          teste: (nos) =>
+            naCategoria(nos) &&
+            !estado.categoria &&
+            !estado.pesquisou &&
+            (acharId(nos, `${INSTAGRAM}:id/search_edit_text`) ?? nos.find((n) => /EditText/.test(n.classe)) ?? acharTexto(nos, ["Pesquisar categorias", "Search categories"])),
+          agir: async (nos, campo) => {
+            await preencherEsperando(d, campo, "Criador de conteúdo", nos);
+            estado.pesquisou = true;
+          },
+        },
+        {
+          nome: "intro",
+          teste: (nos) => temTexto(nos, ["Troque para uma conta profissional", "Switch to a professional account"]) && acharBotao(nos, SEGUINTE),
+          agir: tocarEsperar,
+        },
+        {
+          // "Trocar para conta pessoal", ou a página Tipo de conta mostrando "Profissional"/"Criador" no lugar de "Pessoal".
+          nome: "ja-profissional",
+          teste: (nos) =>
+            acharTexto(nos, JA_PROFISSIONAL) ??
+            (temTexto(nos, ["Tipo de conta", "Account type"]) &&
+              !acharTexto(nos, TROCAR_PROFISSIONAL) &&
+              acharTexto(nos, ["Profissional", "Criador de conteúdo", "Criador", "Empresa", "Professional", "Creator", "Business"], { exato: true })),
+          agir: () => (estado.trocou ? "conta profissional (Criador)" : "a conta já era profissional"),
+        },
+        {
+          nome: "trocar",
+          teste: (nos) => !estado.trocou && temTexto(nos, ["Tipo de conta", "Account type"]) && acharTexto(nos, TROCAR_PROFISSIONAL),
+          agir: async (nos, alvo) => {
+            estado.trocou = true;
+            await tocarEsperar(nos, alvo);
           },
         },
         {
           nome: "tipo-de-conta",
-          teste: (nos) => !estado.mudou && acharTexto(nos, ["Tipo de conta e ferramentas", "Account type and tools", "Ferramentas e tipo de conta", "Tipo de conta"]),
+          teste: (nos) => !estado.tipo && temTexto(nos, CONFIGURACOES) && nos.find((n) => TIPO_DE_CONTA.some((t) => n.texto.trim() === t) && n.y < 1800),
           agir: async (nos, alvo) => {
-            await d.tocar(alvo.x, alvo.y);
-            await esperar(1500);
+            estado.tipo = true;
+            await tocarEsperar(nos, alvo);
           },
         },
         {
-          nome: "avancar",
-          teste: (nos) => estado.mudou && acharBotao(nos, [...SEGUINTE, ...CONCLUIR]),
-          agir: async (nos, alvo) => {
-            await d.tocar(alvo.x, alvo.y);
-            await esperar(1500);
-          },
-        },
-        {
-          nome: "fechar-guia",
-          teste: (nos) => estado.criador && !temBarra(nos) && nos.find((n) => n.pacote === INSTAGRAM && ["Fechar", "Close"].some((t) => igual(n, t))),
-          agir: async (nos, alvo) => {
-            await d.tocar(alvo.x, alvo.y);
-            await esperar(1500);
-          },
-        },
-        {
-          // Lista de configurações: "Tipo de conta e ferramentas" fica lá embaixo.
+          // Lista de configurações: "Tipo e ferramentas da conta" fica lá embaixo (4 rolagens nesta build).
           nome: "rolar-configuracoes",
-          teste: (nos) =>
-            (estado.menu || estado.config) && !estado.mudou && estado.rolagens < 14 && temTexto(nos, ["Central de Contas", "Accounts Center", "Como você usa o Instagram", "How you use Instagram", "Configurações e atividade", "Settings and activity"]),
-          agir: async () => {
+          teste: (nos) => estado.menu && !estado.tipo && estado.rolagens < 14 && temTexto(nos, [...CONFIGURACOES, "Sua conta", "Your account", "Como você usa o Instagram", "How you use Instagram"]),
+          agir: async (nos) => {
             estado.rolagens += 1;
             await d.arrastar(540, 1500, 540, 600, 400);
-            await esperar(1000);
+            await esperarMudar(d, nos, { timeoutMs: 3000 });
           },
         },
         {
-          nome: "configuracoes",
-          teste: (nos) => !estado.config && acharTexto(nos, ["Configurações e atividade", "Settings and activity", "Configurações e privacidade", "Settings and privacy", "Definições e atividade"]),
+          nome: "opcoes",
+          teste: (nos) => !estado.menu && noProprioPerfil(nos) && nos.find((n) => n.pacote === INSTAGRAM && n.y < 300 && OPCOES.some((t) => igual(n, t))),
           agir: async (nos, alvo) => {
-            await d.tocar(alvo.x, alvo.y);
-            estado.config = true;
-            await esperar(1500);
-          },
-        },
-        {
-          nome: "menu",
-          teste: (nos) =>
-            !estado.menu &&
-            temBarra(nos) &&
-            acharBotao(nos, EDITAR_PERFIL) &&
-            nos.find((n) => n.pacote === INSTAGRAM && n.y < 300 && ["Opções", "Options", "Menu", "Definições", "Configurações"].some((t) => igual(n, t))),
-          agir: async (nos, alvo) => {
-            await d.tocar(alvo.x, alvo.y);
             estado.menu = true;
-            await esperar(1500);
-          },
-        },
-        {
-          nome: "perfil",
-          teste: (nos) => !estado.menu && temBarra(nos) && !acharBotao(nos, EDITAR_PERFIL) && acharAba(nos, "perfil"),
-          agir: async (nos, alvo) => {
-            await d.tocar(alvo.x, alvo.y);
-            await esperar(1500);
+            await tocarEsperar(nos, alvo);
           },
         },
       ],
@@ -269,7 +309,8 @@ export async function abrirPerfilAlvo(ctx, usuario) {
   return `perfil @${usuario} aberto`;
 }
 
-const noPerfil = (nos) => !!botaoDoPerfil(nos) || temBarra(nos);
+// Pelos ids do cabeçalho: o "Seguir" do visualizador de story (reel_header_unconnected_follow) não conta como perfil.
+const noPerfil = (nos) => nos.some((n) => n.pacote === INSTAGRAM && /:id\/(row_)?profile_header/.test(n.id)) || temBarra(nos);
 
 export const DESTAQUE_POR_PREFIXO_FALHOU = "DESTAQUE_POR_PREFIXO_FALHOU";
 
@@ -307,8 +348,25 @@ export function itensDaFaixa(nos) {
   const validos = (lista) => lista.filter((n) => rotuloDe(n) && !NAO_E_DESTAQUE.test(rotuloDe(n))).sort((a, b) => a.x - b.x);
   const porId = validos(doApp.filter((n) => /highlight|reel_tray|story_tray|tray_item/i.test(n.id) && n.texto));
   if (porId.length > 0) return porId.map((n) => ({ no: n, texto: rotuloDe(n) }));
-  const porDescricao = validos(doApp.filter((n) => /destaque|highlight/i.test(n.descricao)));
-  if (porDescricao.length > 0) return porDescricao.map((n) => ({ no: n, texto: rotuloDe(n).replace(/^(destaque|highlight)\s*/i, "") }));
+  // Círculo com a descrição "Story do destaque de <perfil> na coluna …": o nome é o texto logo embaixo dele.
+  const rotuloAbaixo = (c) =>
+    doApp
+      .filter((n) => n.texto.trim() && Math.abs(n.x - c.x) <= 80 && n.y > c.y && n.y - c.y <= 220 && !NAO_E_DESTAQUE.test(n.texto.trim()))
+      .sort((a, b) => a.y - b.y)[0] ?? null;
+  const porDescricao = doApp.filter((n) => /destaque|highlight/i.test(n.descricao)).sort((a, b) => a.x - b.x);
+  if (porDescricao.length > 0) {
+    const vistos = new Set();
+    const itens = [];
+    for (const c of porDescricao) {
+      const r = rotuloAbaixo(c);
+      const item = r ? { no: r, texto: r.texto.trim() } : { no: c, texto: rotuloDe(c).replace(/^(destaque|highlight)\s*/i, "") };
+      const chave = `${item.no.x},${item.no.y}`;
+      if (vistos.has(chave) || !item.texto || NAO_E_DESTAQUE.test(item.texto)) continue;
+      vistos.add(chave);
+      itens.push(item);
+    }
+    if (itens.length > 0) return itens;
+  }
   // Último recurso: textos curtos alinhados numa linha horizontal (a faixa), abaixo do cabeçalho.
   const curtos = doApp.filter((n) => n.texto && [...n.texto].length <= 30 && !NAO_E_DESTAQUE.test(n.texto.trim()) && !/^\d|\d$/.test(n.texto.trim()));
   const linhas = new Map();
@@ -381,48 +439,73 @@ async function lerComPausa(d) {
   return nos;
 }
 
+/** Reabre o destaque pela faixa do perfil (o story dele acabou e o perfil voltou). */
+async function reabrirDestaque(d, nos, destaque, log) {
+  const escolha = escolherDestaque(nos, destaque ?? "");
+  if (!escolha) throw new Error("o story do destaque fechou e a faixa de destaques não aparece mais");
+  log(`o story do destaque acabou: reabrindo "${escolha.texto}"`);
+  await d.tocar(escolha.no.x, escolha.no.texto ? escolha.no.y - 90 : escolha.no.y);
+  await esperar(1000);
+}
+
 /**
  * Com o destaque aberto: acha o sticker de link (passando de story em story,
- * até 6), toca, confirma "Visitar link" se aparecer e espera a página carregar
- * (navegador com texto na tela).
+ * até 6), toca, toca no balão "Acessar link" e espera a página carregar no
+ * navegador do Instagram. O story dura ~5 s: se acabou entre as etapas (print,
+ * sync), reabre o destaque pelo nome e lê de novo.
  */
-export async function tocarLinkDoDestaque(ctx, link) {
-  const { d, log } = ctx;
+export async function tocarLinkDoDestaque(ctx, { link = "", destaque = "" } = {}) {
+  const { d, log = () => {} } = ctx;
   const host = hostDoLink(link);
   let sticker = null;
-  for (let story = 0; story < 6 && !sticker; story++) {
+  let ultima = [];
+  for (let volta = 0; volta < 6 && !sticker; volta++) {
     let nos = await d.tela().catch(() => []);
     if (nos.length === 0) nos = await lerComPausa(d);
-    if (nos.length > 0 && noPerfil(nos)) break;
+    if (nos.length > 0 && noPerfil(nos) && !noVisualizador(nos)) {
+      await reabrirDestaque(d, nos, destaque, log);
+      nos = await d.tela().catch(() => []);
+      if (nos.length === 0) nos = await lerComPausa(d);
+    }
+    if (nos.length > 0) ultima = nos;
     sticker = stickerDeLink(nos, host);
-    if (!sticker) {
-      if (nos.length > 0) salvarTela(nos, "estruturar: story sem sticker de link");
-      log(`story ${story + 1} do destaque sem sticker de link: próximo`);
+    if (!sticker && nos.length > 0 && noVisualizador(nos)) {
+      salvarTela(nos, "estruturar: story sem sticker de link");
+      log(`story ${volta + 1} do destaque sem sticker de link: próximo`);
       await d.tocar(980, 900);
       await esperar(1000);
     }
   }
-  if (!sticker) throw new Error("nenhum story do destaque mostrou o sticker de link");
+  if (!sticker) {
+    if (ultima.length > 0) salvarTela(ultima, "estruturar: sticker de link não achado");
+    throw new Error(`nenhum story do destaque mostrou o sticker de link (na tela: ${resumoTela(ultima) || "sem leitura"})`);
+  }
   await d.tocar(sticker.x, sticker.y);
 
-  let visitou = false;
-  const primeiro = await aguardar(
-    d,
-    (nos) => {
-      if (paginaAberta(nos)) return { pagina: nos };
-      const visitar = !visitou && acharBotao(nos, VISITAR);
-      return visitar ? { visitar } : null;
-    },
-    { timeoutMs: 20_000, descricao: "a página do link (ou o Visitar link)" }
-  );
-  let pagina = primeiro.pagina;
-  if (primeiro.visitar) {
-    visitou = true;
-    await d.tocar(primeiro.visitar.x, primeiro.visitar.y);
-    pagina = await aguardar(d, (nos) => (paginaAberta(nos) ? nos : null), { timeoutMs: 40_000, descricao: "a página do link carregar" });
+  // O toque no sticker abre o balão "Acessar link" (não sai no dump) e pausa o story.
+  let tocouBalao = false;
+  const limite = Date.now() + 40_000;
+  for (;;) {
+    const nos = await d.tela().catch(() => []);
+    if (paginaAberta(nos)) {
+      const titulo = nos.find((n) => /ig_browser_text_subtitle/.test(n.id))?.texto.trim() ?? nos.find((n) => n.texto.trim().length >= 3 && n.pacote !== "com.android.systemui")?.texto.trim().slice(0, 60) ?? "";
+      return `página aberta${nos.some((n) => n.pacote === CHROME) ? " no Chrome" : ""}${titulo ? ` (${titulo})` : ""}`;
+    }
+    const visitar = acharBotao(nos, VISITAR);
+    if (visitar) {
+      await d.tocar(visitar.x, visitar.y);
+      tocouBalao = true;
+    } else if (!tocouBalao && (nos.length === 0 || noVisualizador(nos))) {
+      log("balão do link: tocando acima do sticker");
+      await d.tocar(sticker.x, Math.max(150, sticker.y - BALAO_ACIMA_PX));
+      tocouBalao = true;
+    }
+    if (Date.now() > limite) {
+      if (nos.length > 0) salvarTela(nos, "estruturar: a página do link não abriu");
+      throw new Error(`toquei no sticker e a página do link não abriu em 40 s (na tela: ${resumoTela(nos) || "sem leitura"})`);
+    }
+    await esperar(1000);
   }
-  const titulo = pagina.find((n) => n.texto.trim().length >= 3 && n.pacote !== "com.android.systemui")?.texto.trim().slice(0, 60) ?? "";
-  return `página aberta${pagina.some((n) => n.pacote === CHROME) ? " no Chrome" : ""}${titulo ? ` (${titulo})` : ""}`;
 }
 
 /** Preenche usuário e senha na tela de login que está na frente e espera sair dela. */
@@ -478,10 +561,26 @@ export async function entrarEVoltar(ctx, { link, conta }) {
 
 const confirmada = (nos) => arrobaDaConfirmacao(textosDe(nos)).confirmado;
 
-/** Toca em Conectar e espera a tela de permissão; se a página pedir login, entra e refaz. */
+/**
+ * Toca no botão da página (OAUTH / Conectar) e espera a tela de permissão; se
+ * a página já abriu no Permitir (ou já confirmou), não toca em nada; se pedir
+ * login, entra e refaz.
+ */
 export async function conectar(ctx, { link, conta }) {
   const { d } = ctx;
-  const botao = await aguardar(d, (nos) => paginaAberta(nos) && acharBotao(nos, CONECTAR), { timeoutMs: 30_000, descricao: "o botão Conectar" });
+  const achado = await aguardar(
+    d,
+    (nos) => {
+      if (botaoDePermissao(nos)) return { permissao: true };
+      if (paginaAberta(nos) && confirmada(nos)) return { confirmada: true };
+      const botao = paginaAberta(nos) && acharBotao(nos, CONECTAR);
+      return botao ? { botao } : null;
+    },
+    { timeoutMs: 30_000, descricao: "o botão da página (OAUTH/Conectar) ou a tela de permissão" }
+  );
+  if (achado.permissao) return "tela de permissão aberta (a página foi direto)";
+  if (achado.confirmada) return "já estava autorizado";
+  const botao = achado.botao;
   await d.tocar(botao.x, botao.y);
   const depois = (descricao) =>
     aguardar(d, (nos) => (botaoDePermissao(nos) ? "permissao" : telaDeLogin(nos) ? "login" : confirmada(nos) ? "confirmada" : null), { timeoutMs: 40_000, descricao });
@@ -495,15 +594,35 @@ export async function conectar(ctx, { link, conta }) {
   return `${chegou === "confirmada" ? "já estava autorizado" : "tela de permissão aberta"}${como}`;
 }
 
-/** Toca em Permitir e espera a tela de permissão sair. */
-export async function consentir(ctx) {
+/**
+ * Confere o @ da tela de permissão ("… está solicitando acesso a: <@>") com o
+ * da conta, toca em Permitir e espera a tela sair. @ diferente =
+ * CONEXAO_OUTRA_CONTA, sem tocar em Permitir.
+ */
+export async function consentir(ctx, usuarioDaConta) {
   const { d } = ctx;
   const nos = await aguardar(d, (n) => (botaoDePermissao(n) || confirmada(n) ? n : null), { timeoutMs: 30_000, descricao: "o botão Permitir" });
   const botao = botaoDePermissao(nos);
   if (!botao) return "já estava autorizado";
+  const pedida = arrobaDaPermissao(textosDe(nos));
+  const conta = String(usuarioDaConta ?? "").replace(/^@/, "").toLowerCase();
+  if (pedida && conta && pedida !== conta) {
+    salvarTela(nos, `estruturar: ${CONEXAO_OUTRA_CONTA}`);
+    throw new Error(`${CONEXAO_OUTRA_CONTA}: a tela de permissão é de @${pedida}, a conta é @${conta} (não toquei em Permitir)`);
+  }
   await d.tocar(botao.x, botao.y);
   await aguardar(d, (n) => (!botaoDePermissao(n) ? n : null), { timeoutMs: 30_000, descricao: "a permissão ser aceita" });
-  return "permitido";
+  return pedida ? `permitido para @${pedida}` : "permitido";
+}
+
+/** Fecha o navegador do Instagram (X do topo) e volta para o app. */
+export async function fecharNavegador(d) {
+  const nos = await d.tela().catch(() => []);
+  const x = acharId(nos, `${INSTAGRAM}:id/ig_browser_close_button`) ?? nos.find((n) => /^(fechar navegador|close browser)$/i.test(n.descricao.trim()));
+  if (!x) return false;
+  await d.tocar(x.x, x.y);
+  await esperarMudar(d, nos, { timeoutMs: 4000 });
+  return true;
 }
 
 /** Espera a confirmação e confere o @ exibido com o da conta (diferente = CONEXAO_OUTRA_CONTA). */
@@ -519,7 +638,9 @@ export async function confirmar(ctx, usuarioDaConta) {
   );
   const conferido = conferirConexao(lido.usuario, usuarioDaConta);
   if (!conferido.ok) throw new Error(conferido.mensagem);
-  return conferido.mensagem;
+  // "Você já pode fechar esta aba": fecha o navegador e o fluxo segue no Instagram.
+  const fechou = await fecharNavegador(d).catch(() => false);
+  return `${conferido.mensagem}${fechou ? " · navegador fechado" : ""}`;
 }
 
 export { CONEXAO_OUTRA_CONTA, SEM_NAVEGADOR };

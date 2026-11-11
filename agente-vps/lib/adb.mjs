@@ -1,5 +1,5 @@
 import { esperar, rodar, trecho } from "./processo.mjs";
-import { IME, digitarCom } from "./teclado.mjs";
+import { IME, broadcastOk, comandoLimpar, digitarCom } from "./teclado.mjs";
 
 /**
  * Um container redroid visto pelo adb da VPS (pacote android-tools-adb). Cópia
@@ -170,8 +170,18 @@ export class Dispositivo {
   }
 
   /** Apaga o campo focado: vai ao fim e dá backspace. */
-  limparCampo(caracteres = 60) {
-    return this.shell("input", "keyevent", "KEYCODE_MOVE_END", ...Array(caracteres).fill("KEYCODE_DEL"));
+  /**
+   * Apaga o campo focado. Com o teclado ADB ativo vai por ADB_CLEAR_TEXT (apaga
+   * tudo); sem ele, ou se o broadcast falhar, MOVE_END + DELs. Devolve por onde foi.
+   */
+  async limparCampo(caracteres = 300) {
+    this.telaGuardada_ = null;
+    if (await this.tecladoAdb()) {
+      const r = await rodar(this.adb, ["-s", this.serial, "shell", ...comandoLimpar()], { timeoutMs: 30_000 }).catch(() => null);
+      if (r?.codigo === 0 && broadcastOk(r.stdout)) return "broadcast";
+    }
+    await this.shell("input", "keyevent", "KEYCODE_MOVE_END", ...Array(caracteres).fill("KEYCODE_DEL"));
+    return "del";
   }
 
   async prop(nome) {

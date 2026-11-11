@@ -269,6 +269,7 @@ describe("Esperas: por mudança de dump, com timeout e nova tentativa", () => {
     const telas: Record<Tela, () => No[]> = {
       perfil: () => [
         ...BARRA,
+        no({ texto: "Fulana", id: `${IG}:id/profile_header_full_name_above`, x: 400, y: 380 }),
         no({ texto: "Editar perfil", clicavel: true, x: 300, y: 600 }),
         no({ texto: criado ? digitado : "Novo", clicavel: true, x: 120, y: 800 }),
       ],
@@ -393,7 +394,11 @@ describe("Prints: path traversal", () => {
 
 describe("Sessão: o Instagram cai (vídeo no feed) e a conferência reabre no perfil da conta", () => {
   const LAUNCHER: No[] = [no({ texto: "Galeria", pacote: "com.android.launcher3" }), no({ texto: "Search", pacote: "com.android.launcher3" })];
-  const PERFIL: No[] = [no({ texto: "minha.conta", id: `${IG}:id/action_bar_title`, y: 136 }), no({ texto: "Editar perfil", clicavel: true, y: 700 })];
+  const PERFIL: No[] = [
+    no({ texto: "minha.conta", id: `${IG}:id/action_bar_title`, y: 136 }),
+    no({ texto: "Minha Conta", id: `${IG}:id/profile_header_full_name_above`, y: 380 }),
+    no({ texto: "Editar perfil", clicavel: true, y: 700 }),
+  ];
 
   it("launcher na frente: reabre pelo deep link do próprio perfil e confirma a sessão", async () => {
     const comandos: string[] = [];

@@ -98,19 +98,65 @@ function ehBloqueio(nos) {
   );
 }
 
-/** Primeira mídia da galeria do Instagram (a mais nova: a que o agente acabou de pôr). */
-function primeiraMidia(nos) {
-  return (
-    nos
-      .filter(
-        (n) =>
-          n.clicavel &&
-          n.pacote === INSTAGRAM &&
-          (/gallery|thumbnail|media_picker|grid_item|media_item/i.test(n.id) || /^(foto|photo|vídeo|video|imagem|image)\b/i.test(n.descricao)) &&
-          !/câmara|câmera|camera/i.test(`${n.descricao} ${n.id}`)
-      )
-      .sort((a, b) => a.y - b.y || a.x - b.x)[0] ?? null
-  );
+/** Ids da galeria que não são mídia: cancelar, engrenagem, Modelos/Música/Colagem, "Recentes", Selecionar, câmera. */
+const NAO_E_MIDIA = /cancel|settings|gear|destination|folder|multi_select|camera|câmera|câmara/i;
+
+/**
+ * Primeira mídia da galeria do Instagram (a mais nova: a que o agente acabou
+ * de pôr). A grade (gallery_grid_item_thumbnail) primeiro: pelo id genérico
+ * "gallery" o mais alto era o "Recentes" (gallery_folder_menu_tv), que abre a
+ * lista de álbuns em vez de escolher a foto (ig-10, 11/11).
+ */
+export function primeiraMidia(nos) {
+  const doApp = nos.filter((n) => n.pacote === INSTAGRAM);
+  const grade = doApp.filter((n) => /grid_item_thumbnail|media_thumbnail/.test(n.id) && !NAO_E_MIDIA.test(`${n.descricao} ${n.id}`));
+  const candidatos =
+    grade.length > 0
+      ? grade
+      : doApp.filter(
+          (n) =>
+            n.clicavel &&
+            (/gallery|thumbnail|media_picker|grid_item|media_item/i.test(n.id) || /^(foto|photo|vídeo|video|imagem|image|miniatura)\b/i.test(n.descricao)) &&
+            !NAO_E_MIDIA.test(`${n.descricao} ${n.id}`)
+        );
+  return [...candidatos].sort((a, b) => a.y - b.y || a.x - b.x)[0] ?? null;
+}
+
+/** A miniatura já vem marcada ("Selecionado Miniatura…"): tocar de novo desmarcaria. */
+export const midiaSelecionada = (no) => /^(selecionad[ao]|selected)\b/i.test(String(no?.descricao ?? "").trim());
+
+/** Página "Editar perfil" (a do formulário, não o botão do perfil). */
+export function naEdicao(nos) {
+  return nos.some((n) => n.id === ig("change_avatar_button")) || temTexto(nos, ["Editar foto ou avatar", "Edit picture or avatar"]);
+}
+
+/**
+ * O próprio perfil na frente: cabeçalho do perfil (ids profile_header_*) com o
+ * botão "Editar perfil". O título "Editar perfil" da página de edição não
+ * conta (antes contava, e a bio e a conta profissional achavam que já estavam
+ * no perfil: PROFISSIONAL_FALHOU, 11/11).
+ */
+export function noProprioPerfil(nos) {
+  if (naEdicao(nos)) return false;
+  const cabecalho = nos.some((n) => n.pacote === INSTAGRAM && /:id\/(row_)?profile_header/.test(n.id));
+  return cabecalho && !!acharTexto(nos, EDITAR_PERFIL, { exato: true });
+}
+
+/** Botão "Editar perfil" do próprio perfil (null fora dele). */
+function botaoEditar(nos) {
+  if (!noProprioPerfil(nos)) return null;
+  return nos.find((n) => n.clicavel && EDITAR_PERFIL.some((t) => casa(n, t, true))) ?? acharTexto(nos, EDITAR_PERFIL, { exato: true });
+}
+
+/** Sai da página de edição (ou de outra tela por cima) até o próprio perfil: até 3 BACK. */
+export async function voltarAoPerfil(ctx) {
+  const { d } = ctx;
+  for (let i = 0; i < 3; i++) {
+    const nos = await d.tela().catch(() => []);
+    if (noProprioPerfil(nos)) return;
+    await d.tecla("KEYCODE_BACK");
+    await esperarMudar(d, nos, { timeoutMs: 3000 });
+  }
 }
 
 /** Telas que podem aparecer em qualquer ponto: avisos que param tudo, pedidos ao dono e pop-ups. */
@@ -303,8 +349,21 @@ export async function abrirInstagram(ctx) {
  * Abre o Instagram do zero e espera só o app aparecer na tela (sem exigir a
  * barra de abas): quem diz se a conta está logada é conferirSessao.
  */
+/**
+ * Tela sempre ligada: com o Android dormindo (mWakefulness=Asleep) os toques
+ * se perdem e o dump continua mostrando a última tela, então a etapa achava
+ * que tocou e não saía do lugar (ig-10, 11/11, depois de ~5 min parado).
+ */
+export async function manterTelaLigada(d) {
+  await d.shell("svc", "power", "stayon", "true").catch(() => {});
+  await d.shell("settings", "put", "system", "screen_off_timeout", "2147483647").catch(() => {});
+  await d.shell("input", "keyevent", "KEYCODE_WAKEUP").catch(() => {});
+  await d.shell("wm", "dismiss-keyguard").catch(() => {});
+}
+
 export async function iniciarInstagram(ctx) {
   const { d } = ctx;
+  await manterTelaLigada(d);
   await d.fecharApp(INSTAGRAM);
   for (const p of PERMISSOES) await d.shell("pm", "grant", INSTAGRAM, p).catch(() => {});
   const onde = await reabrirInstagram(ctx);
@@ -402,12 +461,28 @@ export async function conferirSessao(ctx, usuario, { timeoutMs = 90_000, porReab
 // Ordem desta build (454, medida no ig-6): início, reels, mensagens, pesquisa, perfil.
 const ABA_XY = { inicio: [108, 1731], reels: [324, 1731], pesquisa: [756, 1731], perfil: [972, 1731] };
 
-export async function irPara(ctx, aba, { porMudanca = false } = {}) {
+/**
+ * abas: o destino precisa da barra de abas (Opções da conta profissional,
+ * "Adicionar ao story", destaques): o perfil aberto pelo deep link não tem, e
+ * aí volta (BACK) até a tela principal e toca na aba.
+ */
+export async function irPara(ctx, aba, { porMudanca = false, abas = false } = {}) {
   const { d, log = () => {} } = ctx;
   for (let tentativa = 0; tentativa < 8; tentativa++) {
     const nos = await d.tela().catch(() => []);
     // Já no próprio perfil (o deep link abre nele, sem a barra de abas): não volta para o feed só para tocar na aba.
-    if (aba === "perfil" && doInstagram(nos) && botao(nos, EDITAR_PERFIL)) return;
+    if (aba === "perfil" && noProprioPerfil(nos) && (!abas || temBarra(nos))) return;
+    // Perfil do deep link (UrlHandlerActivity, sem a barra): cada deep link empilha uma página e o BACK só
+    // tira uma; o "Ignorar" das sugestões ainda caía no pular. Traz a tela principal por cima (CLEAR_TOP) e
+    // toca na aba logo, antes de o feed tocar vídeo (ig-10, 11/11).
+    if (abas && !temBarra(nos) && doInstagram(nos) && noProprioPerfil(nos)) {
+      log("perfil do deep link sem a barra de abas: trazendo a tela principal");
+      await d.shell(...comandoTelaPrincipal()).catch(() => "");
+      await esperar(2500);
+      if (ABA_XY[aba]) await d.tocar(...ABA_XY[aba]);
+      await esperar(2500);
+      continue;
+    }
     const alvo = acharAba(nos, aba);
     if (alvo) {
       // porMudanca (foto, bio, story, destaque): espera a tela reagir ao toque em vez da pausa fixa.
@@ -575,6 +650,11 @@ async function seguirPorPesquisa(ctx, usuario) {
   }
   await tratarGeral(ctx, depois);
   return "seguiu";
+}
+
+/** Tela principal do Instagram (a das abas) por cima de tudo: FLAG_ACTIVITY_CLEAR_TOP tira as páginas do deep link. */
+export function comandoTelaPrincipal() {
+  return ["am", "start", "-n", `${INSTAGRAM}/com.instagram.mainactivity.InstagramMainActivity`, "-f", "0x04000000"];
 }
 
 /** `am start` do deep link do perfil (sem passar pelo Explorar, que derruba o Instagram no x86). */
@@ -751,16 +831,20 @@ async function fecharTeclado(d) {
   return (await esperarMudar(d, antes, { timeoutMs: 3000 })) ?? (await d.tela().catch(() => []));
 }
 
-/** Perfil → Editar perfil → Editar foto → Nova foto → 1ª da galeria → Seguinte → Concluído. */
+/**
+ * Perfil → Editar perfil → Editar foto ou avatar → Escolher da biblioteca →
+ * foto da grade (já vem marcada: não toca de novo) → Concluir → volta ao perfil.
+ * Se abrir a lista de álbuns, toca em "Recentes" e depois na foto.
+ */
 export async function trocarFoto(ctx) {
   const { d, ajuda } = ctx;
   const estado = { abriuMenu: false, escolheu: false, concluiu: false };
   await irPara(ctx, "perfil", { porMudanca: true });
-  return percorrer(ctx, {
+  const feito = await percorrer(ctx, {
     nome: "A troca da foto",
     limiteMs: 8 * 60_000,
     travou: (texto, nos) => ajuda.terminarAMao(texto, nos, "a troca da foto de perfil"),
-    fim: (nos) => (estado.concluiu && (temBarra(nos) || temTexto(nos, EDITAR_PERFIL, { exato: true })) ? "foto trocada" : null),
+    fim: (nos) => (estado.concluiu && (noProprioPerfil(nos) || naEdicao(nos) || temBarra(nos)) ? "foto trocada" : null),
     telas: [
       {
         nome: "concluir",
@@ -776,10 +860,16 @@ export async function trocarFoto(ctx) {
         agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
+        // Lista de álbuns ("Recentes" tocado por engano ou aberta pelo app): volta para Recentes.
+        nome: "album",
+        teste: (nos) => estado.abriuMenu && !estado.escolheu && temTexto(nos, ["Selecione um álbum", "Selecionar álbum", "Select album", "Escolher álbum"]) && acharTexto(nos, ["Recentes", "Recents"], { exato: true }),
+        agir: (nos, alvo) => toque(d, nos, alvo),
+      },
+      {
         nome: "galeria",
         teste: (nos) => estado.abriuMenu && !estado.escolheu && primeiraMidia(nos),
         agir: async (nos, alvo) => {
-          await toque(d, nos, alvo);
+          if (!midiaSelecionada(alvo)) await toque(d, nos, alvo);
           estado.escolheu = true;
         },
       },
@@ -802,16 +892,18 @@ export async function trocarFoto(ctx) {
       },
       {
         nome: "editar-perfil",
-        teste: (nos) => !estado.abriuMenu && botao(nos, EDITAR_PERFIL),
+        teste: (nos) => !estado.abriuMenu && botaoEditar(nos),
         agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
         nome: "perfil",
-        teste: (nos) => !estado.abriuMenu && temBarra(nos) && acharAba(nos, "perfil"),
+        teste: (nos) => !estado.abriuMenu && temBarra(nos) && !noProprioPerfil(nos) && acharAba(nos, "perfil"),
         agir: (nos, alvo) => toque(d, nos, alvo),
       },
     ],
   });
+  await voltarAoPerfil(ctx);
+  return feito;
 }
 
 /**
@@ -833,11 +925,11 @@ export async function editarPerfil(ctx, { nome, bio }) {
     );
   };
   await irPara(ctx, "perfil", { porMudanca: true });
-  return percorrer(ctx, {
+  const feito = await percorrer(ctx, {
     nome: "A edição do perfil",
     limiteMs: 6 * 60_000,
     travou: (texto, nos) => ajuda.terminarAMao(texto, nos, "o nome e a bio"),
-    fim: (nos) => (estado.concluiu && (temBarra(nos) || botao(nos, EDITAR_PERFIL)) ? "nome e bio preenchidos" : null),
+    fim: (nos) => (estado.concluiu && (noProprioPerfil(nos) || naEdicao(nos) || temBarra(nos)) ? "nome e bio preenchidos" : null),
     telas: [
       {
         nome: "concluir",
@@ -877,31 +969,43 @@ export async function editarPerfil(ctx, { nome, bio }) {
       },
       {
         nome: "editar-perfil",
-        teste: (nos) => !estado.editando && botao(nos, EDITAR_PERFIL),
+        teste: (nos) => !estado.editando && botaoEditar(nos),
         agir: async (nos, alvo) => {
           await toque(d, nos, alvo);
           estado.editando = true;
         },
       },
       {
+        // Já na página de edição (sobrou da foto): segue dela.
+        nome: "ja-editando",
+        teste: (nos) => !estado.editando && naEdicao(nos),
+        agir: () => {
+          estado.editando = true;
+        },
+      },
+      {
         nome: "perfil",
-        teste: (nos) => !estado.editando && temBarra(nos) && acharAba(nos, "perfil"),
+        teste: (nos) => !estado.editando && temBarra(nos) && !noProprioPerfil(nos) && acharAba(nos, "perfil"),
         agir: (nos, alvo) => toque(d, nos, alvo),
       },
     ],
   });
+  await voltarAoPerfil(ctx);
+  return feito;
 }
 
 /**
- * Início → "O teu story" (ou Criar → Story) → galeria → 1ª mídia → Autocolantes
- * → Link → endereço e texto do sticker → Concluído → "O teu story".
+ * Perfil (aba) → "Adicionar ao story" (ou Criar novo → Story) → galeria → 1ª
+ * mídia → Figurinhas → Figurinha de link → URL e texto da figurinha → Concluir
+ * → "Seu story". Sai do perfil e não do feed: o feed toca vídeo e o Instagram
+ * cai neste host (ig-10, 11/11).
  */
 export async function postarStory(ctx, { link, texto }) {
   const { d, log, ajuda } = ctx;
   if (!link) throw new Error("A estruturação veio sem o link do story.");
   const estado = { abriu: false, escolheu: false, stickers: false, pesquisou: false, sticker: false, partilhou: false };
   const aMao = (motivo, nos) => ajuda.terminarAMao(motivo, nos, "o story (sticker de link e postar)");
-  await irPara(ctx, "inicio", { porMudanca: true });
+  await irPara(ctx, "perfil", { porMudanca: true, abas: true });
   return percorrer(ctx, {
     nome: "O story",
     limiteMs: 12 * 60_000,
@@ -941,7 +1045,7 @@ export async function postarStory(ctx, { link, texto }) {
       },
       {
         nome: "sticker-link",
-        teste: (nos) => estado.stickers && !estado.sticker && botao(nos, ["LINK", "LIGAÇÃO"]),
+        teste: (nos) => estado.stickers && !estado.sticker && (acharTexto(nos, ["Figurinha de link", "Link sticker"], { exato: true }) ?? botao(nos, ["LINK", "LIGAÇÃO"])),
         agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
@@ -1005,36 +1109,57 @@ export async function postarStory(ctx, { link, texto }) {
       },
       {
         nome: "criar",
-        teste: (nos) => !estado.abriu && temBarra(nos) && acharTexto(nos, ["Criar", "Create", "Nova publicação", "New post"], { exato: true }),
+        teste: (nos) => !estado.abriu && temBarra(nos) && acharTexto(nos, ["Criar novo", "Criar", "Create", "Nova publicação", "New post"], { exato: true }),
         agir: (nos, alvo) => toque(d, nos, alvo),
       },
     ],
   });
 }
 
-/** Perfil → Novo (destaques) → o story → Seguinte → nome → Concluído. */
+/**
+ * Perfil (aba) → Novo (faixa de destaques) → o story → Seguinte → nome →
+ * Concluído. Sem o "Novo" na faixa (conta nova: a faixa só aparece depois do
+ * primeiro destaque), abre o próprio story pela foto → Destacar → Novo → nome
+ * → Adicionar, e fecha o story.
+ */
 export async function destacarStory(ctx, nome) {
   const { d, ajuda } = ctx;
   if (!nome) throw new Error("A estruturação veio sem o nome do destaque.");
-  const estado = { novo: false, escolheu: false, nomeou: false };
-  await irPara(ctx, "perfil", { porMudanca: true });
+  const estado = { novo: false, escolheu: false, nomeou: false, pelaFoto: false, viuStory: false };
+  const noStory = (nos) => nos.some((n) => /reel_viewer|story_viewer|viewer_toolbar/.test(n.id));
+  await irPara(ctx, "perfil", { porMudanca: true, abas: true });
   return percorrer(ctx, {
     nome: "O destaque",
     limiteMs: 8 * 60_000,
     travou: (texto, nos) => ajuda.terminarAMao(texto, nos, `o destaque "${nome}"`),
-    fim: (nos) => (estado.nomeou && (temBarra(nos) || botao(nos, EDITAR_PERFIL)) ? `destaque "${nome}" criado` : null),
+    fim: (nos) => (estado.nomeou && !noStory(nos) && (temBarra(nos) || noProprioPerfil(nos)) ? `destaque "${nome}" criado` : null),
     telas: [
       {
+        // Destaque criado pelo story: o visualizador continua aberto.
+        nome: "fechar-story",
+        teste: (nos) => estado.nomeou && noStory(nos),
+        agir: async (nos) => {
+          await d.tecla("KEYCODE_BACK");
+          await esperarMudar(d, nos, { timeoutMs: 3000 });
+        },
+      },
+      {
         nome: "nome",
-        teste: (nos) => estado.escolheu && !estado.nomeou && campoDeTexto(nos),
+        teste: (nos) => (estado.escolheu || (estado.pelaFoto && estado.novo)) && !estado.nomeou && campoDeTexto(nos),
         agir: async (nos, campo) => {
           await preencherEsperando(d, campo, nome, nos);
           const atual = await telaAtual(d);
-          const ok = botao(atual, ["Concluído", "Done", "Adicionar", "Add", "Guardar", "Save"]);
+          const ok = botao(atual, ["Concluído", "Concluir", "Done", "Adicionar", "Add", "Guardar", "Salvar", "Save"]);
           if (!ok) return;
           await toque(d, atual, ok, { unico: true, timeoutMs: 10_000 });
           estado.nomeou = true;
         },
+      },
+      {
+        // No próprio story: botão Destacar da barra de baixo.
+        nome: "destacar-no-story",
+        teste: (nos) => estado.pelaFoto && !estado.novo && acharTexto(nos, ["Destacar", "Highlight", "Destaque"], { exato: true }),
+        agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
         nome: "seguinte",
@@ -1063,8 +1188,21 @@ export async function destacarStory(ctx, nome) {
         agir: (nos, alvo) => toque(d, nos, alvo),
       },
       {
+        // Sem a faixa de destaques: abre o próprio story pela foto do perfil.
+        nome: "abrir-meu-story",
+        teste: (nos) =>
+          !estado.novo &&
+          !estado.pelaFoto &&
+          noProprioPerfil(nos) &&
+          (acharId(nos, ig("row_profile_header_imageview")) ?? nos.find((n) => /^(seu perfil|your profile)\b/i.test(n.descricao))),
+        agir: async (nos, alvo) => {
+          await toque(d, nos, alvo);
+          estado.pelaFoto = true;
+        },
+      },
+      {
         nome: "perfil",
-        teste: (nos) => !estado.novo && temBarra(nos) && !botao(nos, EDITAR_PERFIL) && acharAba(nos, "perfil"),
+        teste: (nos) => !estado.novo && temBarra(nos) && !noProprioPerfil(nos) && !noStory(nos) && acharAba(nos, "perfil"),
         agir: (nos, alvo) => toque(d, nos, alvo),
       },
     ],
