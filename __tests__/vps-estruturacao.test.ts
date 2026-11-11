@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ALVOS_MAX, BIO_MAX, agendadoPara, expandirEtapas, parseAlvos, parseEstrutura, parsePlano, progressoEstrutura } from "../lib/vps/estruturacao";
+import { ALVOS_MAX, BIO_MAX, NOME_DESTAQUE_PADRAO, PERFIL_PADRAO, agendadoPara, contarCaracteres, errosPorCampo, expandirEtapas, parseAlvos, parseEstrutura, parsePlano, progressoEstrutura } from "../lib/vps/estruturacao";
 import { listarMidias, nomeSeguro, salvarMidia } from "../lib/vps/midias";
 import { parseJobSteps } from "../lib/emulador/jobs";
 import { toVpsJob } from "../lib/vps/load";
@@ -13,36 +13,38 @@ import { ESTRUTURACAO } from "../agente-vps/fluxos/estruturacao.mjs";
 import { acharBotao, botaoDePermissao, comandoAbrirUrl, paginaAberta, stickerDeLink, telaDeLogin } from "../agente-vps/fluxos/oauth.mjs";
 
 const ALVOS = "@loja.um | Link | https://exemplo.com/a\n@loja_dois | Meu destaque | https://exemplo.com/b?x=1&y=2";
+/** O formulário de campos fixos do diálogo. */
 const BASE = {
   fotoPerfil: "perfil/foto.jpg",
   fotoStory: "story.png",
   bio: "Bio simples",
-  alvos: ALVOS,
-  legenda: "Clique aqui",
-  destaque: "Link",
-  fazerPerfil: true,
-  fazerOauth: true,
-  fazerStory: true,
-  agendarHoras: 24,
+  perfil: "@link.zada",
+  nomeDestaque: "AQUI 🔗👆",
+  linkStory: "https://exemplo.com/oferta?x=1&y=2",
+  legendaSticker: "Clique aqui",
+  legendaDestaque: "",
+  agendarHoras: "24",
 };
 const MIDIAS = ["perfil/foto.jpg", "story.png"];
 
 const no = (extra: Record<string, unknown>) => ({ texto: "", descricao: "", id: "", classe: "", pacote: "com.instagram.android", clicavel: false, x: 100, y: 500, ...extra });
 
 describe("Estruturar: etapas expandidas por alvo na criação do job", () => {
-  it("10 etapas fixas + 6 por alvo, na ordem de execução", () => {
+  it("formulário de campos fixos: 10 etapas fixas + as 6 do perfil configurado, na ordem de execução", () => {
     const parsed = parseEstrutura(BASE, MIDIAS);
     if (!("value" in parsed)) throw new Error(parsed.error);
     const chaves = expandirEtapas(parsed.value).map((e) => e.key);
     expect(chaves).toEqual([
       "rede", "abrir", "instagram", "sessao", "foto", "bio", "profissional",
       "perfil-1", "destaque-1", "link-1", "conectar-1", "consentir-1", "confirmar-1",
-      "perfil-2", "destaque-2", "link-2", "conectar-2", "consentir-2", "confirmar-2",
       "story", "destacar", "fechar",
     ]);
     const rotulos = new Map(expandirEtapas(parsed.value).map((e) => [e.key, e.label]));
-    expect(rotulos.get("perfil-2")).toBe("Alvo 2: abrir o perfil @loja_dois");
-    expect(rotulos.get("destaque-2")).toBe('Alvo 2: abrir o destaque "Meu destaque"');
+    expect(rotulos.get("perfil-1")).toBe("Alvo 1: abrir o perfil @link.zada");
+    expect(rotulos.get("destaque-1")).toBe('Alvo 1: abrir o destaque "AQUI 🔗👆"');
+    // Bio em branco: sem a etapa bio.
+    const semBio = parseEstrutura({ ...BASE, bio: "" }, MIDIAS);
+    expect("value" in semBio && expandirEtapas(semBio.value).map((e) => e.key)).not.toContain("bio");
   });
 
   it("interruptores tiram as etapas deles; bio vazia não vira etapa", () => {
@@ -95,53 +97,66 @@ describe("Estruturar: etapas expandidas por alvo na criação do job", () => {
 });
 
 describe("Estruturar: validação do diálogo (a mesma do servidor)", () => {
-  const erro = (extra: Record<string, unknown>, midias: string[] | null = MIDIAS) => {
-    const r = parseEstrutura({ ...BASE, ...extra }, midias);
-    return "error" in r ? r.error : null;
-  };
-
-  it("aceita o formulário completo e usa 24 h quando a agenda vem vazia", () => {
-    const r = parseEstrutura({ ...BASE, agendarHoras: "" }, MIDIAS);
+  it("padrões: perfil @link.zada e nome do destaque AQUI 🔗👆 quando o campo não vem", () => {
+    expect(PERFIL_PADRAO).toBe("link.zada");
+    expect(NOME_DESTAQUE_PADRAO).toBe("AQUI 🔗👆");
+    const { perfil: _p, nomeDestaque: _n, ...semPadroes } = BASE;
+    void _p;
+    void _n;
+    const r = parseEstrutura(semPadroes, MIDIAS);
     if (!("value" in r)) throw new Error(r.error);
-    expect(r.value.agendarHoras).toBe(24);
-    expect(r.value.alvos).toEqual([
-      { perfil: "loja.um", destaque: "Link", link: "https://exemplo.com/a" },
-      { perfil: "loja_dois", destaque: "Meu destaque", link: "https://exemplo.com/b?x=1&y=2" },
-    ]);
-    expect(erro({ agendarHoras: 0 })).toBeNull();
-    expect(erro({ agendarHoras: "0" })).toBeNull();
+    expect(r.value.alvos).toEqual([{ perfil: "link.zada", destaque: "AQUI 🔗👆", link: "" }]);
   });
 
-  it("alvos: mínimo 1, três partes por linha, link https://", () => {
-    expect(erro({ alvos: "" })).toMatch(/ao menos um alvo/);
-    expect(erro({ alvos: "@a | Destaque" })).toMatch(/Linha 1/);
-    expect(erro({ alvos: "@a | D | http://exemplo.com" })).toMatch(/https:\/\//);
-    expect(erro({ alvos: "@a b | D | https://exemplo.com" })).toMatch(/@ inválido/);
-    expect(erro({ alvos: "@a |  | https://exemplo.com" })).toMatch(/nome do destaque/);
-    expect(parseAlvos("\n@a | D | https://exemplo.com\n\n").alvos).toHaveLength(1);
-    const muitos = Array.from({ length: ALVOS_MAX + 1 }, (_, i) => `@p${i} | D | https://exemplo.com`).join("\n");
-    expect(erro({ alvos: muitos })).toMatch(/No máximo/);
+  it("o story leva o link e a legenda informados; o destaque da conta leva o nome do destaque (ou a legenda do destaque)", () => {
+    const r = parseEstrutura(BASE, MIDIAS);
+    if (!("value" in r)) throw new Error(r.error);
+    expect(r.value.linkStory).toBe("https://exemplo.com/oferta?x=1&y=2");
+    expect(r.value.legenda).toBe("Clique aqui");
+    expect(r.value.destaque).toBe("AQUI 🔗👆");
+    expect(r.value.alvos[0]).toEqual({ perfil: "link.zada", destaque: "AQUI 🔗👆", link: "" });
+    const comLegenda = parseEstrutura({ ...BASE, legendaDestaque: "Ofertas 🔥" }, MIDIAS);
+    expect("value" in comLegenda && comLegenda.value.destaque).toBe("Ofertas 🔥");
+    // "@" e caixa no perfil são normalizados.
+    const perfil = parseEstrutura({ ...BASE, perfil: "@Link.Zada" }, MIDIAS);
+    expect("value" in perfil && perfil.value.alvos[0].perfil).toBe("link.zada");
+    // Agenda vazia = 24 h; 0 = agora.
+    const vazia = parseEstrutura({ ...BASE, agendarHoras: "" }, MIDIAS);
+    expect("value" in vazia && vazia.value.agendarHoras).toBe(24);
+    const agora = parseEstrutura({ ...BASE, agendarHoras: "0" }, MIDIAS);
+    expect("value" in agora && agora.value.agendarHoras).toBe(0);
   });
 
-  it("sem foto com o interruptor correspondente ligado não passa; desligado passa", () => {
-    expect(erro({ fotoPerfil: "" })).toMatch(/foto de perfil/);
-    expect(erro({ fotoPerfil: "", fazerPerfil: false })).toBeNull();
-    expect(erro({ fotoStory: "" })).toMatch(/foto do story/);
-    expect(erro({ fotoStory: "", fazerStory: false, destaque: "" })).toBeNull();
-    expect(erro({ fotoPerfil: "sumiu.jpg" })).toMatch(/não está em/);
-    expect(erro({ fotoPerfil: "sumiu.jpg" }, null)).toBeNull();
+  it("validação por campo: sem foto de perfil, sem foto do story, sem perfil e sem nome do destaque bloqueiam, cada um com a sua mensagem", () => {
+    expect(errosPorCampo(BASE, MIDIAS)).toEqual({});
+    expect(errosPorCampo({ ...BASE, fotoPerfil: "", fotoStory: "", perfil: "", nomeDestaque: "" }, MIDIAS)).toEqual({
+      fotoPerfil: "Escolha a foto de perfil.",
+      fotoStory: "Escolha a foto do story.",
+      perfil: "Informe o perfil com o destaque.",
+      nomeDestaque: "Informe o nome do destaque (o texto embaixo da capa).",
+    });
+    expect(errosPorCampo({ ...BASE, fotoPerfil: "sumiu.jpg" }, MIDIAS)).toEqual({ fotoPerfil: 'A foto de perfil "sumiu.jpg" não está em /opt/scalemaster/midias.' });
+    expect(errosPorCampo({ ...BASE, fotoPerfil: "sumiu.jpg" }, null)).toEqual({});
+    expect(errosPorCampo({ ...BASE, perfil: "@link zada" }, MIDIAS)).toEqual({ perfil: "@ inválido: só letras, números, ponto e _ (até 30)." });
+    expect(errosPorCampo({ ...BASE, linkStory: "" }, MIDIAS)).toEqual({ linkStory: "Informe o link do sticker do story." });
+    expect(errosPorCampo({ ...BASE, linkStory: "http://exemplo.com" }, MIDIAS)).toEqual({ linkStory: "O link precisa começar com https://." });
+    expect(errosPorCampo({ ...BASE, agendarHoras: "-1" }, MIDIAS)).toEqual({ agendarHoras: '"Agendar em" vai de 0 a 720 horas.' });
+    // O servidor recusa com o primeiro, na ordem da tela.
+    expect(parseEstrutura({ ...BASE, fotoStory: "", perfil: "" }, MIDIAS)).toEqual({ error: "Escolha a foto do story." });
   });
 
-  it("limites: bio 150, legenda 200, destaque 30; acento e emoji passam (o agente digita pelo teclado ADB)", () => {
-    expect(erro({ bio: "a".repeat(BIO_MAX) })).toBeNull();
-    expect(erro({ bio: "a".repeat(BIO_MAX + 1) })).toMatch(/150/);
-    expect(erro({ legenda: "a".repeat(201) })).toMatch(/200/);
-    expect(erro({ destaque: "a".repeat(31) })).toMatch(/30/);
-    expect(erro({ destaque: "" })).toMatch(/nome do destaque/);
-    expect(erro({ bio: "Promoção de verão 🔥", legenda: "Clique já 👉", destaque: "Ação ✨" })).toBeNull();
-    expect(erro({ destaque: "duas\nlinhas" })).toMatch(/quebra de linha/);
-    expect(erro({ agendarHoras: -1 })).toMatch(/Agendar/);
-    expect(erro({ fazerPerfil: false, fazerOauth: false, fazerStory: false })).toMatch(/interruptor/);
+  it("limites por code point (emoji conta 1): bio 150, legenda do sticker 200, nome e legenda do destaque 30", () => {
+    expect(contarCaracteres("AQUI 🔗👆")).toBe(7);
+    expect("AQUI 🔗👆".length).toBe(9);
+    expect(contarCaracteres("")).toBe(0);
+    expect(errosPorCampo({ ...BASE, bio: "😀".repeat(BIO_MAX) }, MIDIAS)).toEqual({});
+    expect(errosPorCampo({ ...BASE, bio: "😀".repeat(BIO_MAX + 1) }, MIDIAS)).toEqual({ bio: "A bio passa de 150 caracteres (151)." });
+    expect(errosPorCampo({ ...BASE, legendaSticker: "a".repeat(201) }, MIDIAS)).toEqual({ legendaSticker: "A legenda do sticker passa de 200 caracteres (201)." });
+    // 15 emoji = 15 caracteres (30 unidades UTF-16): cabe nos 30.
+    expect(errosPorCampo({ ...BASE, nomeDestaque: "🔗".repeat(30) }, MIDIAS)).toEqual({});
+    expect(errosPorCampo({ ...BASE, nomeDestaque: "🔗".repeat(31) }, MIDIAS)).toEqual({ nomeDestaque: "O nome do destaque passa de 30 caracteres." });
+    expect(errosPorCampo({ ...BASE, legendaDestaque: "x".repeat(31) }, MIDIAS)).toEqual({ legendaDestaque: "A legenda do destaque passa de 30 caracteres." });
+    expect(errosPorCampo({ ...BASE, bio: "Promoção de verão 🔥", legendaSticker: "Clique já 👉", nomeDestaque: "Ação ✨" }, MIDIAS)).toEqual({});
   });
 });
 
@@ -173,8 +188,10 @@ describe("Estruturar: regras de falha no agente", () => {
   });
 
   it("o fluxo do agente sai do plano do job: rede/abrir/instagram/sessao/fechar param tudo, o resto segue", () => {
-    const parsed = parseEstrutura(BASE, MIDIAS);
-    if (!("value" in parsed)) throw new Error(parsed.error);
+    // Dois alvos (jobs antigos ou API) para provar que a falha num não derruba o outro.
+    const lido = parseEstrutura(BASE, MIDIAS);
+    if (!("value" in lido)) throw new Error(lido.error);
+    const parsed = { value: { ...lido.value, alvos: parseAlvos(ALVOS).alvos } };
     const plano = expandirEtapas(parsed.value);
     const fluxo = ESTRUTURACAO({ ...parsed.value, plano }) as Array<{ chave: string; rotulo: string; segue?: boolean; sempre?: boolean; pular: (f: Set<string>) => string | null }>;
     expect(fluxo.map((e) => e.chave)).toEqual(plano.map((p) => p.key));

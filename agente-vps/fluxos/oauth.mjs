@@ -271,14 +271,91 @@ export async function abrirPerfilAlvo(ctx, usuario) {
 
 const noPerfil = (nos) => !!botaoDoPerfil(nos) || temBarra(nos);
 
-/** Acha o destaque pelo texto do nome na bandeja do perfil, toca e espera o visualizador abrir. */
+export const DESTAQUE_POR_PREFIXO_FALHOU = "DESTAQUE_POR_PREFIXO_FALHOU";
+
+/**
+ * Texto de destaque para comparar: sem emoji, sem acento, sem nada que não
+ * seja letra, em minúsculas. "AQUI 🔗👆" → "aqui"; "Aquí" → "aqui"; "" → "".
+ */
+export function normalizarDestaque(valor) {
+  return String(valor ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+}
+
+/** O texto do dump bate com o nome configurado pelo prefixo normalizado ("AQUI 🔗👆", "Aqui", "AQUI…" cortado). */
+export function bateDestaque(textoDaTela, nome) {
+  const alvo = normalizarDestaque(nome);
+  const visto = normalizarDestaque(textoDaTela);
+  if (!alvo || !visto) return false;
+  return visto.startsWith(alvo) || (visto.length >= 3 && alvo.startsWith(visto));
+}
+
+/** Rótulos do topo do perfil que ficam na mesma altura da faixa e não são destaques. */
+const NAO_E_DESTAQUE = /^(novo|new|seguir|follow|seguindo|following|mensagem|message|editar perfil|edit profile|compartilhar perfil|share profile|e-mail|email|ligar|call|publica[cç][oõ]es|posts|seguidores|followers)$/i;
+
+/**
+ * Itens da faixa de destaques do perfil (rótulo embaixo da capa), da esquerda
+ * para a direita. Pelo id do Instagram quando o dump traz; senão, pela
+ * descrição; senão, a linha de textos curtos na mesma altura (≥ 2 itens).
+ */
+export function itensDaFaixa(nos) {
+  const doApp = nos.filter((n) => n.pacote === INSTAGRAM && n.y > 250 && n.y < 1500);
+  const rotuloDe = (n) => (n.texto || n.descricao).trim();
+  const validos = (lista) => lista.filter((n) => rotuloDe(n) && !NAO_E_DESTAQUE.test(rotuloDe(n))).sort((a, b) => a.x - b.x);
+  const porId = validos(doApp.filter((n) => /highlight|reel_tray|story_tray|tray_item/i.test(n.id) && n.texto));
+  if (porId.length > 0) return porId.map((n) => ({ no: n, texto: rotuloDe(n) }));
+  const porDescricao = validos(doApp.filter((n) => /destaque|highlight/i.test(n.descricao)));
+  if (porDescricao.length > 0) return porDescricao.map((n) => ({ no: n, texto: rotuloDe(n).replace(/^(destaque|highlight)\s*/i, "") }));
+  // Último recurso: textos curtos alinhados numa linha horizontal (a faixa), abaixo do cabeçalho.
+  const curtos = doApp.filter((n) => n.texto && [...n.texto].length <= 30 && !NAO_E_DESTAQUE.test(n.texto.trim()) && !/^\d|\d$/.test(n.texto.trim()));
+  const linhas = new Map();
+  for (const n of curtos) {
+    const chave = [...linhas.keys()].find((y) => Math.abs(y - n.y) <= 12) ?? n.y;
+    linhas.set(chave, [...(linhas.get(chave) ?? []), n]);
+  }
+  const faixa = [...linhas.values()].filter((l) => l.length >= 2).sort((a, b) => b.length - a.length)[0] ?? [];
+  return validos(faixa).map((n) => ({ no: n, texto: rotuloDe(n) }));
+}
+
+/**
+ * Qual destaque abrir: o que bate pelo prefixo normalizado; sem nenhum, o
+ * primeiro da faixa (porPrefixo = false); faixa vazia = null.
+ */
+export function escolherDestaque(nos, nome) {
+  const itens = itensDaFaixa(nos);
+  if (itens.length === 0) return null;
+  const achado = itens.find((i) => bateDestaque(i.texto, nome));
+  return achado ? { ...achado, porPrefixo: true } : { ...itens[0], porPrefixo: false };
+}
+
+/**
+ * Acha o destaque pelo prefixo do nome (sem emoji, acento nem caixa: "AQUI 🔗👆",
+ * "Aqui" e "AQUI" batem), toca e espera o visualizador abrir. Não achou: abre o
+ * primeiro da faixa e loga DESTAQUE_POR_PREFIXO_FALHOU; faixa vazia: a etapa
+ * falha com o dump salvo.
+ */
 export async function abrirDestaque(ctx, nome) {
-  const { d } = ctx;
-  const alvo = nome.trim().toLowerCase();
-  const rotulo = await aguardar(d, (nos) => nos.find((n) => n.pacote === INSTAGRAM && n.y > 300 && (n.texto.trim().toLowerCase() === alvo || n.descricao.trim().toLowerCase().includes(alvo))), {
-    timeoutMs: 15_000,
-    descricao: `o destaque "${nome}"`,
+  const { d, log = () => {} } = ctx;
+  let ultimo = [];
+  const escolha = await aguardar(
+    d,
+    (nos) => {
+      ultimo = nos;
+      return escolherDestaque(nos, nome);
+    },
+    { timeoutMs: 15_000, descricao: `a faixa de destaques (procurando "${nome}")` }
+  ).catch((e) => {
+    if (ultimo.length > 0) salvarTela(ultimo, "estruturar: faixa de destaques vazia");
+    throw new Error(`a faixa de destaques do perfil está vazia: ${e.message}`);
   });
+  if (!escolha.porPrefixo) {
+    log(`${DESTAQUE_POR_PREFIXO_FALHOU}: nenhum destaque bate com "${nome}"; abrindo o primeiro da faixa ("${escolha.texto}")`);
+    salvarTela(ultimo, `estruturar: ${DESTAQUE_POR_PREFIXO_FALHOU}`);
+  }
+  const rotulo = escolha.no;
   // O rótulo fica embaixo do círculo: toca no círculo; se o visualizador não abrir, no próprio rótulo.
   const toques = rotulo.texto ? [[rotulo.x, rotulo.y - 90], [rotulo.x, rotulo.y]] : [[rotulo.x, rotulo.y]];
   for (const [x, y] of toques) {
@@ -288,7 +365,7 @@ export async function abrirDestaque(ctx, nome) {
       const nos = await d.tela().catch(() => []);
       // Story tocando costuma deixar o dump sem leitura: com o Instagram na frente, é o visualizador.
       if (nos.length === 0 ? /com\.instagram\.android/.test(await d.focoAtual()) : !noPerfil(nos) && nos.some((n) => n.pacote === INSTAGRAM)) {
-        return `destaque "${nome}" aberto`;
+        return escolha.porPrefixo ? `destaque "${escolha.texto}" aberto` : `${DESTAQUE_POR_PREFIXO_FALHOU}: abri o primeiro destaque ("${escolha.texto}")`;
       }
       await esperar(1000);
     }
@@ -391,6 +468,8 @@ export async function entrarEVoltar(ctx, { link, conta }) {
   await d.shell(...comandoAbrirUrl("https://www.instagram.com/accounts/login/", CHROME));
   await aguardar(d, (n) => (n.some((x) => x.pacote === CHROME) ? n : null), { timeoutMs: 30_000, descricao: "o Chrome" });
   await preencherLogin(d, conta, log);
+  // O link da página vem do sticker do destaque; sem ele não dá para reabrir no navegador.
+  if (!link) throw new Error("a página de permissões pediu login e o link do sticker não foi capturado para reabrir no navegador");
   await d.shell(...comandoAbrirUrl(link, CHROME));
   const botao = await aguardar(d, (n) => paginaAberta(n) && acharBotao(n, CONECTAR), { timeoutMs: 40_000, descricao: "o botão Conectar depois do login" });
   await d.tocar(botao.x, botao.y);

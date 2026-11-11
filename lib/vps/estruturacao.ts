@@ -1,8 +1,10 @@
 /**
  * "Estruturar" da aba Contas VPS (emulator_jobs.kind = 'estruturacao'): numa
  * conta já criada, o agente sobe a proxy, abre o Instagram, troca foto e bio,
- * muda para conta profissional, percorre os alvos (perfil → destaque → link →
- * Conectar → Permitir → confirmação), posta o story com link e destaca.
+ * muda para conta profissional, entra no perfil e no destaque configurados,
+ * toca no link (página de permissões da Meta), aceita as permissões, posta o
+ * story com o link, destaca e desliga o container. O formulário tem campos
+ * fixos (um perfil com destaque); as etapas por alvo continuam valendo.
  *
  * As etapas são expandidas AQUI, na criação do job (uma leva por alvo), e vão
  * em emulator_jobs.acoes como [{ key, label }]: a tela e o agente
@@ -34,7 +36,7 @@ export interface EstruturaAlvo {
   perfil: string;
   /** Nome do destaque do alvo onde está o link. */
   destaque: string;
-  /** Link do sticker (https://). */
+  /** Link do sticker do destaque do alvo; "" = não informado (o agente acha o sticker na tela). */
   link: string;
 }
 
@@ -44,6 +46,9 @@ export interface EstruturaDados {
   fotoStory: string;
   bio: string;
   alvos: EstruturaAlvo[];
+  /** Link do sticker do story (jobs antigos: ausente, vale o link do 1º alvo). */
+  linkStory?: string;
+  /** Legenda do sticker de link do story. */
   legenda: string;
   /** Nome do destaque criado na conta com o story. */
   destaque: string;
@@ -102,35 +107,71 @@ export function parseAlvos(raw: unknown): { alvos: EstruturaAlvo[]; erros: strin
   return { alvos, erros };
 }
 
-/**
- * Valida o que o diálogo manda. `midias` = arquivos existentes na pasta (null =
- * não conferir, usado só em teste). Regras do botão: sem foto com o
- * interruptor correspondente ligado, ou sem alvo válido, não passa.
- */
-/** Campos do diálogo Estruturar que podem ter erro próprio. */
-export type CampoEstrutura = "alvos" | "fotoPerfil" | "fotoStory" | "bio" | "legenda" | "destaque" | "agendarHoras" | "interruptores";
+/** Perfil com o destaque que leva à página de permissões (padrão do campo). */
+export const PERFIL_PADRAO = "link.zada";
+/** Texto embaixo da capa do destaque do perfil configurado (padrão do campo). */
+export const NOME_DESTAQUE_PADRAO = "AQUI 🔗👆";
+
+/** Caracteres contados por code point (o que a pessoa vê): emoji conta 1, não 2. */
+export function contarCaracteres(valor: string): number {
+  return [...valor].length;
+}
+
+/** Campos do diálogo Estruturar, na ordem da tela. */
+export type CampoEstrutura =
+  | "fotoPerfil"
+  | "fotoStory"
+  | "bio"
+  | "perfil"
+  | "nomeDestaque"
+  | "linkStory"
+  | "legendaSticker"
+  | "legendaDestaque"
+  | "agendarHoras";
+
+const ORDEM_DOS_ERROS: ReadonlyArray<CampoEstrutura> = [
+  "fotoPerfil",
+  "fotoStory",
+  "bio",
+  "perfil",
+  "nomeDestaque",
+  "linkStory",
+  "legendaSticker",
+  "legendaDestaque",
+  "agendarHoras",
+];
 
 function lerEstrutura(raw: unknown) {
   const r = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const horasBruto = r.agendarHoras;
   return {
-    fazerPerfil: r.fazerPerfil !== false,
-    fazerOauth: r.fazerOauth !== false,
-    fazerStory: r.fazerStory !== false,
     fotoPerfil: texto(r.fotoPerfil),
     fotoStory: texto(r.fotoStory),
     bio: texto(r.bio),
-    legenda: texto(r.legenda),
-    destaque: texto(r.destaque),
-    lidos: parseAlvos(r.alvos),
+    // Campo ausente (API sem o campo) = o padrão; campo enviado vazio = vazio (bloqueia).
+    perfil: (r.perfil === undefined ? PERFIL_PADRAO : texto(r.perfil)).replace(/^@/, "").toLowerCase(),
+    nomeDestaque: r.nomeDestaque === undefined ? NOME_DESTAQUE_PADRAO : texto(r.nomeDestaque),
+    linkStory: texto(r.linkStory),
+    legendaSticker: texto(r.legendaSticker),
+    legendaDestaque: texto(r.legendaDestaque),
     horas: horasBruto === undefined || horasBruto === null || horasBruto === "" ? AGENDAR_PADRAO_H : Number(horasBruto),
   };
 }
 
+function linkHttps(valor: string): boolean {
+  try {
+    const u = new URL(valor);
+    return u.protocol === "https:" && u.hostname.includes(".");
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Todos os erros do formulário, um por campo (o primeiro de cada), na ordem
- * em que aparecem na tela. Vazio = pode enviar. O servidor usa o mesmo
- * (parseEstrutura devolve o primeiro).
+ * Um erro por campo (o primeiro de cada), na ordem da tela. Vazio = pode
+ * enviar. Bloqueiam: sem foto de perfil, sem foto do story, sem perfil, sem
+ * nome do destaque e sem link do story (sem ele não há sticker). Limites
+ * contados por code point. O servidor usa o mesmo (parseEstrutura devolve o primeiro).
  */
 export function errosPorCampo(raw: unknown, midias: ReadonlyArray<string> | null): Partial<Record<CampoEstrutura, string>> {
   const f = lerEstrutura(raw);
@@ -139,28 +180,37 @@ export function errosPorCampo(raw: unknown, midias: ReadonlyArray<string> | null
     if (!erros[campo]) erros[campo] = msg;
   };
 
-  if (f.lidos.erros.length > 0) marcar("alvos", f.lidos.erros[0]);
-  else if (f.lidos.alvos.length < 1) marcar("alvos", "Informe ao menos um alvo: @perfil | Nome do destaque | link.");
+  if (!f.fotoPerfil) marcar("fotoPerfil", "Escolha a foto de perfil.");
+  else if (midias && !midias.includes(f.fotoPerfil)) marcar("fotoPerfil", `A foto de perfil "${f.fotoPerfil}" não está em /opt/scalemaster/midias.`);
+  if (!f.fotoStory) marcar("fotoStory", "Escolha a foto do story.");
+  else if (midias && !midias.includes(f.fotoStory)) marcar("fotoStory", `A foto do story "${f.fotoStory}" não está em /opt/scalemaster/midias.`);
 
-  if (f.fazerPerfil && !f.fotoPerfil) marcar("fotoPerfil", "Escolha a foto de perfil (ou desligue Foto + bio).");
-  else if (f.fazerPerfil && midias && !midias.includes(f.fotoPerfil)) marcar("fotoPerfil", `A foto de perfil "${f.fotoPerfil}" não está em /opt/scalemaster/midias.`);
-  if (f.fazerStory && !f.fotoStory) marcar("fotoStory", "Escolha a foto do story (ou desligue Story).");
-  else if (f.fazerStory && midias && !midias.includes(f.fotoStory)) marcar("fotoStory", `A foto do story "${f.fotoStory}" não está em /opt/scalemaster/midias.`);
+  if (contarCaracteres(f.bio) > BIO_MAX) marcar("bio", `A bio passa de ${BIO_MAX} caracteres (${contarCaracteres(f.bio)}).`);
 
-  if (f.bio.length > BIO_MAX) marcar("bio", `A bio passa de ${BIO_MAX} caracteres (${f.bio.length}).`);
-  if (f.legenda.length > LEGENDA_MAX) marcar("legenda", `A legenda do story passa de ${LEGENDA_MAX} caracteres (${f.legenda.length}).`);
-  if (f.destaque.length > DESTAQUE_MAX) marcar("destaque", `O nome do destaque passa de ${DESTAQUE_MAX} caracteres.`);
-  if (f.fazerStory && !f.destaque) marcar("destaque", "Informe o nome do destaque (ou desligue Story).");
-  // Acento e emoji valem: o agente digita pelo teclado ADB (broadcast). Só o nome do destaque não quebra linha.
-  if (/[\r\n]/.test(f.destaque)) marcar("destaque", "O nome do destaque não pode ter quebra de linha.");
-  if (!f.fazerPerfil && !f.fazerOauth && !f.fazerStory) marcar("interruptores", "Ligue ao menos um interruptor.");
+  if (!f.perfil) marcar("perfil", "Informe o perfil com o destaque.");
+  else if (!PERFIL_RE.test(f.perfil)) marcar("perfil", "@ inválido: só letras, números, ponto e _ (até 30).");
+
+  if (!f.nomeDestaque) marcar("nomeDestaque", "Informe o nome do destaque (o texto embaixo da capa).");
+  else if (contarCaracteres(f.nomeDestaque) > DESTAQUE_MAX) marcar("nomeDestaque", `O nome do destaque passa de ${DESTAQUE_MAX} caracteres.`);
+  else if (/[\r\n]/.test(f.nomeDestaque)) marcar("nomeDestaque", "O nome do destaque não pode ter quebra de linha.");
+
+  if (!f.linkStory) marcar("linkStory", "Informe o link do sticker do story.");
+  else if (!linkHttps(f.linkStory)) marcar("linkStory", "O link precisa começar com https://.");
+
+  if (contarCaracteres(f.legendaSticker) > LEGENDA_MAX) marcar("legendaSticker", `A legenda do sticker passa de ${LEGENDA_MAX} caracteres (${contarCaracteres(f.legendaSticker)}).`);
+  if (contarCaracteres(f.legendaDestaque) > DESTAQUE_MAX) marcar("legendaDestaque", `A legenda do destaque passa de ${DESTAQUE_MAX} caracteres.`);
+  else if (/[\r\n]/.test(f.legendaDestaque)) marcar("legendaDestaque", "A legenda do destaque não pode ter quebra de linha.");
+
   if (!Number.isFinite(f.horas) || f.horas < 0 || f.horas > AGENDAR_MAX_H) marcar("agendarHoras", `"Agendar em" vai de 0 a ${AGENDAR_MAX_H} horas.`);
   return erros;
 }
 
-/** Ordem de prioridade do primeiro erro (a mesma das mensagens antigas). */
-const ORDEM_DOS_ERROS: ReadonlyArray<CampoEstrutura> = ["alvos", "fotoPerfil", "fotoStory", "bio", "legenda", "destaque", "interruptores", "agendarHoras"];
-
+/**
+ * Formulário → dados do job. Um alvo só: o perfil configurado, achado pelo
+ * nome do destaque; o link do alvo é o do sticker do destaque dele (não é
+ * informado: o agente acha o sticker na tela). O story usa o link e a legenda
+ * do sticker configurados.
+ */
 export function parseEstrutura(raw: unknown, midias: ReadonlyArray<string> | null): { value: EstruturaDados } | { error: string } {
   const erros = errosPorCampo(raw, midias);
   const primeiro = ORDEM_DOS_ERROS.find((c) => erros[c]);
@@ -171,12 +221,14 @@ export function parseEstrutura(raw: unknown, midias: ReadonlyArray<string> | nul
       fotoPerfil: f.fotoPerfil,
       fotoStory: f.fotoStory,
       bio: f.bio,
-      alvos: f.lidos.alvos,
-      legenda: f.legenda,
-      destaque: f.destaque,
-      fazerPerfil: f.fazerPerfil,
-      fazerOauth: f.fazerOauth,
-      fazerStory: f.fazerStory,
+      alvos: [{ perfil: f.perfil, destaque: f.nomeDestaque, link: "" }],
+      linkStory: f.linkStory,
+      legenda: f.legendaSticker,
+      // decisão: o destaque da conta leva o nome do destaque configurado; a "legenda do destaque", se preenchida, substitui.
+      destaque: f.legendaDestaque || f.nomeDestaque,
+      fazerPerfil: true,
+      fazerOauth: true,
+      fazerStory: true,
       agendarHoras: Math.round(f.horas * 100) / 100,
     },
   };

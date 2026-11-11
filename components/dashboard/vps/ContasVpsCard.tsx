@@ -432,6 +432,9 @@ interface Informacoes {
     atualizadaEm: string;
     agendadoPara: string | null;
     bio: string;
+    linkStory: string;
+    legendaSticker: string;
+    destaqueDaConta: string;
     resumo: string | null;
     alvos: InformacoesAlvo[];
   } | null;
@@ -528,6 +531,15 @@ function InformacoesBox({ jobId }: { jobId: string }) {
               </p>
               {est.resumo && <p className="font-medium text-ink">{est.resumo}</p>}
             </div>
+            <div className="min-w-0">
+              <p className="text-ink-3">Story</p>
+              <p className="break-all text-ink">{est.linkStory || "—"}</p>
+              {est.legendaSticker && <p className="text-ink-2">sticker: “{est.legendaSticker}”</p>}
+            </div>
+            <div className="min-w-0">
+              <p className="text-ink-3">Destaque da conta</p>
+              <p className="text-ink">{est.destaqueDaConta || "—"}</p>
+            </div>
           </div>
           <div>
             <p className="text-ink-3">Alvos configurados</p>
@@ -539,9 +551,11 @@ function InformacoesBox({ jobId }: { jobId: string }) {
                   </Badge>
                   <span className="font-mono text-ink">@{a.perfil}</span>
                   <span className="text-ink-2">· destaque “{a.destaque}”</span>
-                  <a href={a.link} target="_blank" rel="noreferrer noopener" className="min-w-0 truncate text-accent hover:underline">
-                    {a.link}
-                  </a>
+                  {a.link && (
+                    <a href={a.link} target="_blank" rel="noreferrer noopener" className="min-w-0 truncate text-accent hover:underline">
+                      {a.link}
+                    </a>
+                  )}
                   {a.mensagem && <span className={cn("w-full", a.resultado === "falhou" ? "text-danger" : "text-ink-3")}>{a.mensagem}</span>}
                 </li>
               ))}

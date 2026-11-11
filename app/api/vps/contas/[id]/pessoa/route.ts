@@ -62,6 +62,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       atualizadaEm: est.updated_at,
       agendadoPara: est.agendado_para ?? null,
       bio: dados.bio ?? "",
+      linkStory: dados.linkStory ?? dados.alvos?.[0]?.link ?? "",
+      legendaSticker: dados.legenda ?? "",
+      destaqueDaConta: dados.destaque ?? "",
       resumo: resumoDosAlvos(resultados),
       alvos: (dados.alvos ?? []).map((a, i) => ({ ...a, ...(resultados.find((r) => r.n === i + 1) ?? { resultado: "pendente", mensagem: null }) })),
     };

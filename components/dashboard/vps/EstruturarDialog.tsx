@@ -2,18 +2,19 @@
 
 import * as React from "react";
 import { Upload } from "lucide-react";
-import { Banner, Button, Dialog, Input, Select, Switch, Textarea } from "@/components/ui";
+import { Banner, Button, Dialog, Input, Select, Textarea } from "@/components/ui";
 import {
   AGENDAR_MAX_H,
   AGENDAR_PADRAO_H,
-  ALVOS_MAX,
   BIO_MAX,
   DESTAQUE_MAX,
   LEGENDA_MAX,
   MIDIA_MAX_BYTES,
+  NOME_DESTAQUE_PADRAO,
+  PERFIL_PADRAO,
+  contarCaracteres,
   errosPorCampo,
   expandirEtapas,
-  parseAlvos,
   parseEstrutura,
 } from "@/lib/vps/estruturacao";
 import type { VpsJob } from "@/lib/vps/types";
@@ -29,21 +30,25 @@ const VAZIO = {
   fotoPerfil: "",
   fotoStory: "",
   bio: "",
-  alvos: "",
-  legenda: "",
-  destaque: "",
-  fazerPerfil: true,
-  fazerOauth: true,
-  fazerStory: true,
+  perfil: `@${PERFIL_PADRAO}`,
+  nomeDestaque: NOME_DESTAQUE_PADRAO,
+  linkStory: "",
+  legendaSticker: "",
+  legendaDestaque: "",
   agendarHoras: String(AGENDAR_PADRAO_H),
 };
 
+type Campo = keyof typeof VAZIO;
+
+/** Contador por code point (emoji conta 1), no rótulo do campo. */
+const contador = (valor: string, max: number) => `${contarCaracteres(valor)}/${max}`;
+
 /**
- * "Estruturar" de uma conta da VPS: fotos de /opt/scalemaster/midias, bio,
- * alvos (`@perfil | Nome do destaque | link`), legenda e nome do destaque, três
- * interruptores e a agenda em horas. A validação é a do servidor
- * (lib/vps/estruturacao.ts); o botão fica bloqueado sem foto com o interruptor
- * correspondente ligado e sem alvo válido.
+ * "Estruturar" de uma conta da VPS, com campos fixos: as duas fotos de
+ * /opt/scalemaster/midias (com envio), a bio, o perfil com o destaque e o nome
+ * do destaque (texto embaixo da capa), o link e a legenda do sticker do story,
+ * a legenda do destaque e a agenda. Cada campo mostra o seu erro; a validação é
+ * a do servidor (lib/vps/estruturacao.ts).
  */
 export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProps) {
   const [form, setForm] = React.useState(VAZIO);
@@ -51,7 +56,7 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
   const [saving, setSaving] = React.useState(false);
   const [enviando, setEnviando] = React.useState<"fotoPerfil" | "fotoStory" | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const set = <K extends keyof typeof VAZIO>(campo: K, valor: (typeof VAZIO)[K]) => setForm((f) => ({ ...f, [campo]: valor }));
+  const set = (campo: Campo, valor: string) => setForm((f) => ({ ...f, [campo]: valor }));
 
   const lerMidias = React.useCallback(async () => {
     const res = await fetch("/api/vps/midias", { cache: "no-store" });
@@ -68,10 +73,7 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
     lerMidias().catch((e: Error) => setError(e.message));
   }, [job, lerMidias]);
 
-  const alvos = React.useMemo(() => parseAlvos(form.alvos), [form.alvos]);
   const validado = React.useMemo(() => parseEstrutura(form, midias), [form, midias]);
-  // Uma mensagem por campo (a mesma regra do servidor); qualquer uma bloqueia o envio.
-  // Antes de a pasta de mídias carregar não acusa foto ausente da pasta, só a falta de escolha.
   const erros = React.useMemo(() => errosPorCampo(form, midias), [form, midias]);
   const etapas = "value" in validado ? expandirEtapas(validado.value).length : 0;
   const qtdErros = Object.keys(erros).length;
@@ -89,6 +91,7 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
       const body = (await res.json().catch(() => null)) as { path?: string; error?: string } | null;
       if (!res.ok || !body?.path) throw new Error(body?.error ?? "Não foi possível enviar a foto.");
       await lerMidias();
+      // Enviou: já fica selecionada no campo.
       set(campo, body.path);
     } catch (e) {
       setError((e as Error).message);
@@ -121,25 +124,26 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
   };
 
   const opcoes = (midias ?? []).map((m) => ({ value: m, label: m }));
-  const seletor = (campo: "fotoPerfil" | "fotoStory", rotulo: string, ligado: boolean) => (
-    <div className="flex flex-col gap-2">
-      <Select
-        label={rotulo}
-        value={form[campo]}
-        onChange={(e) => set(campo, e.target.value)}
-        placeholder={midias === null ? "lendo a pasta…" : opcoes.length === 0 ? "nenhuma foto na pasta" : "escolha a foto"}
-        options={opcoes}
-        disabled={!ligado}
-        error={ligado ? erros[campo] : undefined}
-      />
-      <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-xs text-ink-2 hover:text-ink">
-        <Upload size={13} />
-        {enviando === campo ? "enviando…" : "Enviar foto (jpg, png ou webp, até 8 MB)"}
+  const seletor = (campo: "fotoPerfil" | "fotoStory", rotulo: string) => (
+    <div className="flex items-start gap-2">
+      <div className="min-w-0 flex-1">
+        <Select
+          label={rotulo}
+          value={form[campo]}
+          onChange={(e) => set(campo, e.target.value)}
+          placeholder={midias === null ? "lendo a pasta…" : opcoes.length === 0 ? "nenhuma foto na pasta" : "escolha a foto"}
+          options={opcoes}
+          error={erros[campo]}
+        />
+      </div>
+      <label className="mt-[26px] inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-line-control px-3 text-sm text-ink hover:bg-surface-hover">
+        <Upload size={14} />
+        {enviando === campo ? "Enviando…" : "Enviar"}
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"
           className="hidden"
-          disabled={!ligado || enviando !== null}
+          disabled={enviando !== null}
           onChange={(e) => {
             void enviarFoto(campo, e.target.files?.[0]);
             e.target.value = "";
@@ -154,64 +158,70 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
       open={!!job}
       onClose={onClose}
       title={`Estruturar ${job?.label ? `@${job.label}` : "a conta"}`}
-      description="A VPS sobe a proxy da conta, abre o Instagram, troca foto e bio, muda para conta profissional, percorre os alvos (perfil → destaque → link → Conectar → Permitir), posta o story com link, destaca e desliga o container."
+      description="A VPS sobe a proxy, abre o Instagram, troca foto e bio, muda para conta profissional, entra no perfil e no destaque configurados, toca no link, aceita as permissões, posta o story com o link, destaca e desliga o container."
       className="flex max-h-[90vh] max-w-3xl flex-col overflow-hidden"
     >
       <form className="flex min-h-0 flex-1 flex-col gap-4" onSubmit={(e) => void submit(e)}>
         {error && <Banner tone="danger">{error}</Banner>}
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-          <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap gap-x-6 gap-y-3">
-              <Switch label="Foto + bio" checked={form.fazerPerfil} onChange={(e) => set("fazerPerfil", e.target.checked)} />
-              <Switch label="OAuth (alvos)" checked={form.fazerOauth} onChange={(e) => set("fazerOauth", e.target.checked)} />
-              <Switch label="Story" checked={form.fazerStory} onChange={(e) => set("fazerStory", e.target.checked)} />
-            </div>
-            {erros.interruptores && <p className="text-xs text-danger">{erros.interruptores}</p>}
-          </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            {seletor("fotoPerfil", "Foto de perfil", form.fazerPerfil)}
-            {seletor("fotoStory", "Foto do story", form.fazerStory)}
+            {seletor("fotoPerfil", "Foto de perfil")}
+            {seletor("fotoStory", "Foto do story")}
           </div>
           <Textarea
-            label={`Bio (${form.bio.length}/${BIO_MAX})`}
+            label={`Bio (${contador(form.bio, BIO_MAX)})`}
             rows={2}
             value={form.bio}
             onChange={(e) => set("bio", e.target.value)}
-            disabled={!form.fazerPerfil}
-            error={form.fazerPerfil ? erros.bio : undefined}
+            error={erros.bio}
             hint="Aceita acento e emoji. Em branco = não mexe na bio."
           />
-          <Textarea
-            label={`Alvos (${alvos.alvos.length}/${ALVOS_MAX})`}
-            rows={Math.min(8, Math.max(3, alvos.alvos.length + 1))}
-            placeholder={"@perfil | Nome do destaque | https://link\n@outroperfil | Destaque | https://outro.link"}
-            value={form.alvos}
-            onChange={(e) => set("alvos", e.target.value)}
-            className="font-mono text-xs"
-            error={erros.alvos}
-            hint="Uma linha por alvo. O story usa o link do primeiro alvo."
-            required
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="Perfil com o destaque"
+              value={form.perfil}
+              onChange={(e) => set("perfil", e.target.value)}
+              error={erros.perfil}
+              hint="O agente abre esse perfil pelo deep link."
+              autoComplete="off"
+            />
+            <Input
+              label={`Nome do destaque (${contador(form.nomeDestaque, DESTAQUE_MAX)})`}
+              value={form.nomeDestaque}
+              onChange={(e) => set("nomeDestaque", e.target.value)}
+              error={erros.nomeDestaque}
+              hint="O texto embaixo da capa. Também vira o nome do destaque da conta."
+              autoComplete="off"
+            />
+          </div>
+          <Input
+            label="Link do sticker do story"
+            type="url"
+            placeholder="https://"
+            value={form.linkStory}
+            onChange={(e) => set("linkStory", e.target.value)}
+            error={erros.linkStory}
+            autoComplete="off"
           />
           <div className="grid gap-4 sm:grid-cols-2">
             <Textarea
-              label={`Legenda do story (${form.legenda.length}/${LEGENDA_MAX})`}
+              label={`Legenda do sticker do link (${contador(form.legendaSticker, LEGENDA_MAX)})`}
               rows={2}
-              error={form.fazerStory ? erros.legenda : undefined}
-              value={form.legenda}
-              onChange={(e) => set("legenda", e.target.value)}
-              disabled={!form.fazerStory}
-              hint="Vai como texto do sticker de link. Aceita acento e emoji."
+              value={form.legendaSticker}
+              onChange={(e) => set("legendaSticker", e.target.value)}
+              error={erros.legendaSticker}
+              hint="Texto que aparece no sticker. Em branco = o endereço do link."
             />
             <div className="flex flex-col gap-4">
               <Input
-                label={`Nome do destaque (${form.destaque.length}/${DESTAQUE_MAX})`}
-                error={form.fazerStory ? erros.destaque : undefined}
-                value={form.destaque}
-                onChange={(e) => set("destaque", e.target.value)}
-                disabled={!form.fazerStory}
-                required={form.fazerStory}
+                label={`Legenda do destaque (${contador(form.legendaDestaque, DESTAQUE_MAX)})`}
+                value={form.legendaDestaque}
+                onChange={(e) => set("legendaDestaque", e.target.value)}
+                error={erros.legendaDestaque}
+                hint="Nome do destaque criado na conta. Em branco = o nome do destaque acima."
+                autoComplete="off"
               />
-              <div className="flex items-end gap-2">
+              <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
                   <Input
                     label="Agendar em (horas)"
@@ -222,10 +232,16 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
                     value={form.agendarHoras}
                     onChange={(e) => set("agendarHoras", e.target.value)}
                     error={erros.agendarHoras}
-                    hint="0 = agora (teste imediato)."
+                    hint="0 = agora."
                   />
                 </div>
-                <Button type="button" variant={form.agendarHoras === "0" ? "primary" : "secondary"} size="md" className="mb-6" onClick={() => set("agendarHoras", "0")}>
+                <Button
+                  type="button"
+                  variant={form.agendarHoras === "0" ? "primary" : "secondary"}
+                  size="md"
+                  className="mt-[26px]"
+                  onClick={() => set("agendarHoras", "0")}
+                >
                   Agora
                 </Button>
               </div>
@@ -236,7 +252,7 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
           <p className="text-xs text-ink-2">
             {qtdErros > 0
               ? `${qtdErros} campo${qtdErros === 1 ? "" : "s"} para corrigir`
-              : `${etapas} etapas · ${alvos.alvos.length} alvo${alvos.alvos.length === 1 ? "" : "s"}${form.agendarHoras === "0" ? " · roda agora" : ` · em ${form.agendarHoras} h`}`}
+              : `${etapas} etapas${form.agendarHoras === "0" ? " · roda agora" : ` · em ${form.agendarHoras} h`}`}
           </p>
           <div className="flex gap-2">
             <Button type="button" variant="secondary" onClick={onClose}>

@@ -31,34 +31,29 @@ describe("Diálogo Estruturar: erro por campo", () => {
     fotoPerfil: "perfil/a.jpg",
     fotoStory: "s.png",
     bio: "ok",
-    alvos: "@loja | Link | https://exemplo.com",
-    legenda: "",
-    destaque: "Link",
-    fazerPerfil: true,
-    fazerOauth: true,
-    fazerStory: true,
+    perfil: "@link.zada",
+    nomeDestaque: "AQUI 🔗👆",
+    linkStory: "https://exemplo.com",
+    legendaSticker: "",
+    legendaDestaque: "",
     agendarHoras: "0",
   };
   const MIDIAS = ["perfil/a.jpg", "s.png"];
 
-  it("alvo inválido, foto ausente e bio acima de 150 dão cada um a sua mensagem, todos de uma vez", () => {
-    const erros = errosPorCampo({ ...BASE, alvos: "@loja | Link | http://exemplo.com", fotoPerfil: "", fotoStory: "sumiu.png", bio: "x".repeat(151) }, MIDIAS);
+  it("perfil vazio, foto ausente e bio acima de 150 dão cada um a sua mensagem, todos de uma vez", () => {
+    const erros = errosPorCampo({ ...BASE, perfil: "", fotoPerfil: "", fotoStory: "sumiu.png", bio: "x".repeat(151) }, MIDIAS);
     expect(erros).toEqual({
-      alvos: "Linha 1: o link precisa começar com https://.",
-      fotoPerfil: "Escolha a foto de perfil (ou desligue Foto + bio).",
+      fotoPerfil: "Escolha a foto de perfil.",
       fotoStory: 'A foto do story "sumiu.png" não está em /opt/scalemaster/midias.',
       bio: "A bio passa de 150 caracteres (151).",
+      perfil: "Informe o perfil com o destaque.",
     });
-    // O servidor recusa com o primeiro, na ordem da tela.
-    expect(parseEstrutura({ ...BASE, alvos: "", bio: "x".repeat(151) }, MIDIAS)).toEqual({ error: "Informe ao menos um alvo: @perfil | Nome do destaque | link." });
   });
 
   it("formulário certo e Agendar em 0: sem erros, roda agora", () => {
     expect(errosPorCampo(BASE, MIDIAS)).toEqual({});
     const ok = parseEstrutura(BASE, MIDIAS);
     expect("value" in ok && ok.value.agendarHoras).toBe(0);
-    expect(errosPorCampo({ ...BASE, agendarHoras: "-1" }, MIDIAS)).toEqual({ agendarHoras: '"Agendar em" vai de 0 a 720 horas.' });
-    expect(errosPorCampo({ ...BASE, fazerPerfil: false, fazerOauth: false, fazerStory: false }, MIDIAS)).toEqual({ interruptores: "Ligue ao menos um interruptor." });
   });
 });
 

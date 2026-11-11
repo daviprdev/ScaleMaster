@@ -80,6 +80,22 @@ async function fotoNaGaleria(d, relativo, log) {
   return path.basename(relativo);
 }
 
+/**
+ * O que vai no story: o link do sticker configurado no diálogo (jobs antigos:
+ * o do primeiro alvo) e a legenda do sticker, numa linha só.
+ */
+export function dadosDoStory(input) {
+  return {
+    link: input?.linkStory || input?.alvos?.[0]?.link || "",
+    texto: String(input?.legenda || "").replace(/\s*\r?\n\s*/g, " "),
+  };
+}
+
+/** Nome do destaque que a conta cria com o story (vai por broadcast, com emoji). */
+export function nomeDoDestaqueDaConta(input) {
+  return String(input?.destaque || input?.alvos?.[0]?.destaque || "").trim();
+}
+
 const FIXAS = {
   rede: {
     rotulo: "Validar a proxy e subir o sidecar",
@@ -155,20 +171,20 @@ const FIXAS = {
     segue: true,
     async rodar(ctx) {
       const { input } = ctx;
-      const link = input?.alvos?.[0]?.link;
-      if (!link) throw new Error("a estruturação veio sem o link do primeiro alvo");
+      const { link, texto } = dadosDoStory(input);
+      if (!link) throw new Error("a estruturação veio sem o link do story");
       if (!input?.fotoStory) throw new Error("a estruturação veio sem a foto do story");
       const c = await contexto(ctx);
       const nome = await fotoNaGaleria(c.d, input.fotoStory, ctx.log);
-      // decisão: a legenda configurada vai como texto do sticker de link.
-      return `${await postarStory(c, { link, texto: String(input.legenda || "").replace(/\s*\r?\n\s*/g, " ") })} (${nome})`;
+      return `${await postarStory(c, { link, texto })} (${nome})`;
     },
   },
   destacar: {
     rotulo: "Destacar o story",
     segue: true,
     async rodar(ctx) {
-      return destacarStory(await contexto(ctx), ctx.input?.destaque);
+      // O nome vai digitado pelo teclado ADB (broadcast): o emoji de "AQUI 🔗👆" entra como está.
+      return destacarStory(await contexto(ctx), nomeDoDestaqueDaConta(ctx.input));
     },
   },
   fechar: {
