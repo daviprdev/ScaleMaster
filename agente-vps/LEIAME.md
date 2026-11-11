@@ -144,7 +144,7 @@ ufw reload
 
 ## Preenchimento de campo
 
-`preencherEsperando` (`fluxos/tela.mjs`) usa duas leituras de tela no máximo: a de quem achou o campo e uma de verificação. No meio: um toque, a espera do teclado pelo `dumpsys input_method` (`mInputShown=true`, ~60 ms, sem uiautomator), o broadcast do texto. O dump de verificação fica guardado no `Dispositivo` (`telaAtual()`) e só é descartado por uma ação que muda a tela (toque, tecla, texto, abrir/fechar app). Se o campo aparece vazio na verificação, repete do toque uma vez, sem dump antes de digitar. Neste host um dump leva ~2,3 s; o campo fecha em menos de 6 s.
+`preencherEsperando` (`fluxos/tela.mjs`) usa duas leituras de tela no máximo: a de quem achou o campo e uma de verificação. No meio: um toque, a espera do teclado pelo `dumpsys input_method` (`mInputShown=true`, ~60 ms, sem uiautomator), o broadcast do texto. O dump de verificação fica guardado no `Dispositivo` (`telaAtual()`) e só é descartado por uma ação que muda a tela (toque, tecla, texto, abrir/fechar app). Se o campo aparece vazio na verificação, repete do toque uma vez, sem dump antes de digitar. Neste host um dump leva ~2,3 s; o campo fecha em menos de 6 s. O broadcast vai com `--receiver-foreground`: sem a flag, logo depois de o Instagram abrir, ele esperava 4–9 s na fila de segundo plano do Android.
 
 ## Isolamento
 

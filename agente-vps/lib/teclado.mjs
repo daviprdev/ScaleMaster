@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 /**
  * Teclado ADB (ADBKeyboard, github.com/senzhk/ADBKeyBoard): o `input text` do
  * Android só digita ASCII; com este teclado como padrão o texto chega por
- * broadcast (`am broadcast -a ADB_INPUT_TEXT --es msg "<texto>"`) e aceita
+ * broadcast (`am broadcast --receiver-foreground -a ADB_INPUT_TEXT --es msg "<texto>"`) e aceita
  * acento e emoji. O APK fica pinado em /opt/scalemaster/apks/adbkeyboard.apk
  * (sha256 ao lado) e é instalado na etapa `instagram` se o container não tiver.
  */
@@ -19,9 +19,14 @@ export function aspas(texto) {
   return `'${String(texto).replace(/'/g, `'\\''`)}'`;
 }
 
-/** Argumentos do `adb shell` que mandam o texto para o campo focado. */
+/**
+ * Argumentos do `adb shell` que mandam o texto para o campo focado.
+ * --receiver-foreground põe o broadcast na fila de primeiro plano: logo depois
+ * de o Instagram abrir a fila de segundo plano fica congestionada e o mesmo
+ * broadcast levava 4,4–8,9 s; com a flag, 35–44 ms (teste-ig, 11/11).
+ */
 export function comandoDigitar(texto) {
-  return ["am", "broadcast", "-a", "ADB_INPUT_TEXT", "--es", "msg", aspas(texto)];
+  return ["am", "broadcast", "--receiver-foreground", "-a", "ADB_INPUT_TEXT", "--es", "msg", aspas(texto)];
 }
 
 /** O `am broadcast` entregou? (sem "Broadcast completed" ou com erro = falhou) */

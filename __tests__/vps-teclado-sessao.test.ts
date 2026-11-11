@@ -31,7 +31,8 @@ beforeAll(() => {
 
 describe("Teclado ADB: broadcast do texto com fallback", () => {
   it("monta o am broadcast ADB_INPUT_TEXT com o texto entre aspas simples", () => {
-    expect(comandoDigitar("Promoção de verão 🔥")).toEqual(["am", "broadcast", "-a", "ADB_INPUT_TEXT", "--es", "msg", "'Promoção de verão 🔥'"]);
+    // Fila de primeiro plano: sem a flag o broadcast levava 4–9 s logo depois de o Instagram abrir.
+    expect(comandoDigitar("Promoção de verão 🔥")).toEqual(["am", "broadcast", "--receiver-foreground", "-a", "ADB_INPUT_TEXT", "--es", "msg", "'Promoção de verão 🔥'"]);
     expect(aspas("it's")).toBe(`'it'\\''s'`);
     expect(aspas("a & b; $(x) `y`")).toBe("'a & b; $(x) `y`'");
     expect(IME).toBe("com.android.adbkeyboard/.AdbIME");

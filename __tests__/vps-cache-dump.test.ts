@@ -77,6 +77,6 @@ describe("Cache do dump por tela (Dispositivo.telaAtual)", () => {
   it("o texto com acento e emoji sai pelo broadcast do teclado ADB (uma chamada, sem input text)", async () => {
     const d = new Dispositivo("adb", "127.0.0.1:6000");
     expect(await d.digitar("Olá 😀")).toBe("broadcast");
-    expect(chamadas).toEqual(["settings get secure default_input_method", "am broadcast -a ADB_INPUT_TEXT --es msg 'Olá 😀'"]);
+    expect(chamadas).toEqual(["settings get secure default_input_method", "am broadcast --receiver-foreground -a ADB_INPUT_TEXT --es msg 'Olá 😀'"]);
   });
 });
