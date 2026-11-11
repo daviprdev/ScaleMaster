@@ -128,6 +128,9 @@ describe("Sessão: SESSAO_PERDIDA antes da foto", () => {
     expect(estadoDaSessao([no({ texto: "@maria.silva" })], "maria.silva")).toBe("logada");
     expect(estadoDaSessao(LOGIN, "maria.silva")).toBe("deslogada");
     expect(estadoDaSessao([no({ texto: "Continuar como maria.silva", clicavel: true })], "outra.conta")).toBe("deslogada");
+    // Boas-vindas sem campos (vista no teste-ig em 11/11).
+    const boasVindas = [no({ texto: "Join Instagram" }), no({ descricao: "Get started", clicavel: true }), no({ descricao: "I already have a profile", clicavel: true })];
+    expect(estadoDaSessao(boasVindas, "maria.silva")).toBe("deslogada");
     expect(estadoDaSessao([no({ texto: "Ativar notificações" }), no({ texto: "Agora não", clicavel: true })], "maria.silva")).toBe("indefinida");
     // O @ de outro app na tela não conta.
     expect(estadoDaSessao([no({ texto: "maria.silva", pacote: "com.android.chrome" })], "maria.silva")).toBe("indefinida");

@@ -325,7 +325,9 @@ export function estadoDaSessao(nos, usuario) {
   if (arroba && doApp.some((n) => [n.texto, n.descricao].some((v) => v.trim().toLowerCase().replace(/^@/, "") === arroba))) return "logada";
   const entrar = botao(doApp, ["Iniciar sessão", "Log in", "Entrar"]);
   const login = entrar && temTexto(doApp, ["Palavra-passe", "Password", "Senha", "Criar nova conta", "Create new account", "Esqueceu a senha", "Forgot password"]);
-  if (login || temTexto(doApp, ["Continuar como", "Continue as"])) return "deslogada";
+  // Tela de boas-vindas sem campos ("Join Instagram" · "Get started" · "I already have a profile"; teste-ig, 11/11).
+  const boasVindas = botao(doApp, ["I already have a profile", "I already have an account", "Já tenho um perfil", "Já tenho uma conta", "Já tenho conta"]);
+  if (login || boasVindas || temTexto(doApp, ["Continuar como", "Continue as"])) return "deslogada";
   return "indefinida";
 }
 
