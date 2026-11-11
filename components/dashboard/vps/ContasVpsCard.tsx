@@ -6,6 +6,7 @@ import { Badge, Button, Card, EmptyState, Input, ProgressBar, type BadgeTone } f
 import { cn } from "@/lib/utils";
 import { ALERTA_ROBO, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
+import { PrintThumb, PrintViewer, type PrintItem } from "./PrintViewer";
 import { progressoEstrutura, resultadoPorAlvo, resumoDosAlvos, type AlvoResultado, type ResultadoAlvo } from "@/lib/vps/estruturacao";
 import { VPS_FLUXO, ehAlertaVps, ehDescartada, ehProxyMorta, estadoIsolamento, progresso, type Isolamento } from "@/lib/vps/jobs";
 import { rotuloAlerta } from "@/lib/vps/painel";
@@ -239,7 +240,7 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, isolamento,
           {VPS_FLUXO.map((def) => {
             const step = steps.get(def.key);
             return (
-              <li key={def.key} className="flex items-start gap-2 text-sm">
+              <li key={def.key} className="flex items-center gap-2 text-sm">
                 <StepIcon status={step?.status} />
                 <span className="min-w-0 text-ink">
                   {def.label}
@@ -285,6 +286,11 @@ function EstruturaLinha({ estrutura, busy, now, onEstrutura }: { estrutura: VpsJ
     : ESTRUTURA_BADGE[estrutura.status];
   const print = (key: string) => `/api/vps/estruturacoes/${encodeURIComponent(estrutura.id)}/prints/${key}`;
   const alvos = resultadoPorAlvo(plano, estrutura.steps);
+  // Etapas com print (concluídas ou com falha), na ordem do job: o visualizador passa entre elas.
+  const comPrint: PrintItem[] = plano
+    .map((def) => ({ def, step: steps.get(def.key) }))
+    .filter(({ def, step }) => (step?.status === "done" || step?.status === "error") && def.key !== "fechar")
+    .map(({ def, step }) => ({ key: def.key, label: def.label, status: step?.status, message: step?.message ?? null }));
   // Resumo em uma linha quando o job terminou (concluído ou parado): "N de M alvos conectados".
   const resumo = estrutura.status === "done" || estrutura.status === "error" ? resumoDosAlvos(alvos) : null;
 
@@ -322,10 +328,7 @@ function EstruturaLinha({ estrutura, busy, now, onEstrutura }: { estrutura: VpsJ
       <AlvosResultado
         alvos={alvos}
         print={print}
-        ampliar={(key) => {
-          setAberto(true);
-          setAmpliado(key);
-        }}
+        ampliar={(key) => setAmpliado(key)}
       />
 
       {aberto && (
@@ -334,37 +337,21 @@ function EstruturaLinha({ estrutura, busy, now, onEstrutura }: { estrutura: VpsJ
             const step = steps.get(def.key);
             const temPrint = (step?.status === "done" || step?.status === "error") && def.key !== "fechar";
             return (
-              <li key={def.key} className="flex items-start gap-2 text-sm">
+              <li key={def.key} className="flex items-center gap-2 text-sm">
                 <StepIcon status={step?.status} />
                 <span className="min-w-0 flex-1 text-ink">
                   {def.label}
                   {step?.message && <span className={cn("text-xs", step.status === "error" ? "text-danger" : "text-ink-2")}> · {step.message}</span>}
                 </span>
-                {temPrint && (
-                  <button type="button" className="shrink-0" aria-label={`Ampliar o print de ${def.label}`} onClick={() => setAmpliado((a) => (a === def.key ? null : def.key))}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={print(def.key)}
-                      alt=""
-                      loading="lazy"
-                      className="h-12 w-7 rounded border border-line object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                      }}
-                    />
-                  </button>
-                )}
+                {temPrint && <PrintThumb src={print(def.key)} label={def.label} erro={step?.status === "error"} onOpen={() => setAmpliado(def.key)} />}
               </li>
             );
           })}
         </ol>
       )}
 
-      {aberto && ampliado && (
-        <button type="button" className="mt-3 block" aria-label="Fechar o print" onClick={() => setAmpliado(null)}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={print(ampliado)} alt={`Tela ao fim da etapa ${ampliado}`} className="max-h-[70vh] rounded-lg border border-line" />
-        </button>
+      {ampliado && comPrint.some((i) => i.key === ampliado) && (
+        <PrintViewer itens={comPrint} atual={ampliado} src={print} onChange={setAmpliado} onClose={() => setAmpliado(null)} />
       )}
     </div>
   );
@@ -594,25 +581,7 @@ function AlvosResultado({ alvos, print, ampliar }: { alvos: AlvoResultado[]; pri
           {a.tentativas.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {a.tentativas.map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  title={key}
-                  aria-label={`Ampliar o print de ${key}`}
-                  className={cn("rounded border", key === a.etapaComFalha ? "border-danger" : "border-line")}
-                  onClick={() => ampliar(key)}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={print(key)}
-                    alt=""
-                    loading="lazy"
-                    className="h-14 w-8 rounded object-cover"
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none";
-                    }}
-                  />
-                </button>
+                <PrintThumb key={key} src={print(key)} label={key} erro={key === a.etapaComFalha} onOpen={() => ampliar(key)} />
               ))}
             </div>
           )}
