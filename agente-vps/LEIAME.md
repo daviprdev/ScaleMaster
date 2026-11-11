@@ -117,6 +117,35 @@ Os dois limites saem das vCPUs do host e vão no sync, em `capacity`:
 - O container sobe uma vez por job, na etapa **abrir**, e fica de pé até a **fechar**: nenhuma etapa do meio dá stop/start (a troca de proxy reinicia só o sidecar).
 - Host com menos de 4 vCPU roda um por vez e o card do agente mostra "host pequeno, 1 por vez".
 
+## Firewall (ufw) e Docker
+
+Com o ufw ativo e as políticas padrão (`INPUT` e `FORWARD` em `DROP`), os containers não falam com o host nem são encaminhados pelas bridges criadas depois: em 10/11 o `teste-ig` não alcançava o gost do host (`172.17.0.1:18080`) e ficou sem internet. O que está aplicado na VPS (e o `scripts/vps/instalar.sh` repete, de forma idempotente):
+
+```
+# /etc/default/ufw
+DEFAULT_FORWARD_POLICY="ACCEPT"
+
+ufw allow from 10.77.0.0/16        # bridges dos lotes (10.77.<n>.0/24) → host
+ufw allow from 172.17.0.0/16       # bridge padrão do Docker (teste-ig → gost do host)
+ufw route allow in on vpsnet+      # saída das bridges vpsnet, vpsnet1 … vpsnet254
+ufw route allow out on vpsnet+     # volta para elas
+ufw reload
+```
+
+- As regras de rota são `in on vpsnet+` e `out on vpsnet+`, **sem** `out on any` / `in on any`: nessa forma o ufw gera `-o any` / `-i any`, o nome de uma interface que não existe, e a regra não casa com nada.
+- Persistência: a política fica em `/etc/default/ufw` e as regras em `/etc/ufw/user.rules`; valem depois de reboot. Conferir com `ufw status verbose` — tem que mostrar `allow (routed)`, as duas linhas `ALLOW IN` das sub-redes e as duas `ALLOW FWD` de `vpsnet+`.
+- Cópia do arquivo de antes: `/etc/default/ufw.antes-2026-11-11`.
+- Isso não abre nada para a internet: as portas publicadas pelo Docker continuam só em `127.0.0.1`, e a saída das contas continua presa ao sidecar (kill switch no netns).
+- Prova de dentro do `teste-ig`: `nsenter -t $(docker inspect -f '{{.State.Pid}}' teste-ig) -n curl -x http://172.17.0.1:18080 https://ipinfo.io/json` (tem que sair pelo IP da proxy) e `adb -s 127.0.0.1:6000 shell ping -c 1 instagram.com` (tem que resolver o nome). O Android 13 não tem `getprop net.dns*`; o DNS em uso aparece em `dumpsys connectivity | grep DnsAddresses`.
+
+## Base (golden) sem risco
+
+`scripts/vps/golden.sh` monta a base nova no volume temporário `scalemaster-base-novo`, instala o Instagram e o Chrome pinados e só troca `scalemaster-base` depois da verificação obrigatória: `pm list packages` com `com.android.chrome` e `com.instagram.android`, e `primaryCpuAbi` dos dois igual à ABI da VPS (x86_64 aqui). Falha em qualquer ponto antes disso apaga só os temporários; a base em uso não é tocada. Na troca, a base anterior fica em `scalemaster-base-anterior` (uma geração) e volta sozinha se a cópia falhar. Os temporários não levam o label `scalemaster.vps`, para o prune do agente não apagá-los.
+
+## Preenchimento de campo
+
+`preencherEsperando` (`fluxos/tela.mjs`) usa duas leituras de tela no máximo: a de quem achou o campo e uma de verificação. No meio: um toque, a espera do teclado pelo `dumpsys input_method` (`mInputShown=true`, ~60 ms, sem uiautomator), o broadcast do texto. O dump de verificação fica guardado no `Dispositivo` (`telaAtual()`) e só é descartado por uma ação que muda a tela (toque, tecla, texto, abrir/fechar app). Se o campo aparece vazio na verificação, repete do toque uma vez, sem dump antes de digitar. Neste host um dump leva ~2,3 s; o campo fecha em menos de 6 s.
+
 ## Isolamento
 
 **Por que a proxy fica no netns e não num app de VPN.** Um app de VPN (NekoBox, como no MuMu) roda dentro do Android: o Instagram enxerga a interface `tun0`, o app instalado e o estado "VPN ativa" (`ConnectivityManager`), e se o app morre ou demora a subir o tráfego sai direto pelo IP da máquina. Aqui o redirecionamento é feito de fora, por um segundo container (o sidecar) que divide o network namespace com o Android: `iptables` manda todo TCP para o gost, o DNS para o unbound, derruba o QUIC e termina em `DROP`. Dentro do Android não existe interface, app nem permissão a mais — a rede parece uma conexão comum — e não há caminho sem proxy: sidecar fora do ar = nada sai.

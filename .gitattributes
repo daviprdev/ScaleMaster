@@ -1,0 +1,2 @@
+# Scripts de shell rodam na VPS (e nos testes pelo bash): sempre LF, mesmo no checkout do Windows.
+*.sh text eol=lf

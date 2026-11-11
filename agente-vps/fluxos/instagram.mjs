@@ -5,7 +5,7 @@ import { INSTAGRAM } from "./apk.mjs";
 import { VERIFICADOS as VERIFICADOS_AQUECIMENTO } from "./verificados.mjs";
 import { resumoTela, salvarTela } from "./dono.mjs";
 import { SESSAO_PERDIDA } from "../lib/estrutura.mjs";
-import { acharId, acharTexto, esperarMudar, esperarTela, preencher, preencherEsperando, temTexto, tocarAteMudar, tocarNo } from "./tela.mjs";
+import { acharId, acharTexto, esperarMudar, esperarTela, preencher, preencherEsperando, telaAtual, temTexto, tocarAteMudar, tocarNo } from "./tela.mjs";
 
 /**
  * Cópia adaptada de agente-mumu/fluxos/instagram.mjs para a VPS: a proxy não é
@@ -704,7 +704,8 @@ function toque(d, nos, alvo, { unico = false, timeoutMs } = {}) {
 
 /** Fecha o teclado (BACK) e espera a tela mudar; devolve a tela de depois. */
 async function fecharTeclado(d) {
-  const antes = await d.tela().catch(() => []);
+  // Logo depois de preencher, a tela guardada é o dump de verificação do campo: não lê de novo.
+  const antes = await telaAtual(d).catch(() => []);
   await d.tecla("KEYCODE_BACK").catch(() => {});
   return (await esperarMudar(d, antes, { timeoutMs: 3000 })) ?? (await d.tela().catch(() => []));
 }
@@ -878,7 +879,7 @@ export async function postarStory(ctx, { link, texto }) {
           !estado.sticker && temTexto(nos, ["Adicionar link", "Add link", "Adicionar ligação", "Add a link", "URL"]) && campoDeTexto(nos),
         agir: async (nos, campo) => {
           await preencherEsperando(d, campo, link, nos);
-          let atual = await d.tela();
+          let atual = await telaAtual(d);
           if (texto) {
             const personalizar = acharTexto(atual, ["Personalizar texto do sticker", "Customize sticker text", "Personalizar o texto", "Personalizar texto", "Customize text"]);
             if (personalizar) {
@@ -886,7 +887,7 @@ export async function postarStory(ctx, { link, texto }) {
               const campos = atual.filter((n) => /EditText/.test(n.classe));
               const campoTexto = campos.find((n) => !/^https?:/i.test(n.texto) && n.texto !== link.replace(/^https?:\/\//i, "")) ?? campos[campos.length - 1];
               if (campoTexto) await preencherEsperando(d, campoTexto, texto, atual);
-              atual = await d.tela();
+              atual = await telaAtual(d);
             } else {
               log("não achei Personalizar texto do sticker: fica o endereço");
             }
@@ -987,7 +988,7 @@ export async function destacarStory(ctx, nome) {
         teste: (nos) => estado.escolheu && !estado.nomeou && campoDeTexto(nos),
         agir: async (nos, campo) => {
           await preencherEsperando(d, campo, nome, nos);
-          const atual = await d.tela();
+          const atual = await telaAtual(d);
           const ok = botao(atual, ["Concluído", "Done", "Adicionar", "Add", "Guardar", "Save"]);
           if (!ok) return;
           await toque(d, atual, ok, { unico: true, timeoutMs: 10_000 });

@@ -112,6 +112,19 @@ echo "== bridge vpsnet (10.77.0.0/24)"
 docker network inspect vpsnet >/dev/null 2>&1 || \
   docker network create --driver bridge --subnet 10.77.0.0/24 --gateway 10.77.0.1 -o com.docker.network.bridge.name=vpsnet vpsnet >/dev/null
 
+# Firewall: com o ufw ativo, INPUT e FORWARD em DROP barram os containers (o teste-ig não chegava ao gost do
+# host, 10/11). Encaminhamento liberado e as bridges do Docker aceitas; idempotente. Detalhes no LEIAME.
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+  echo "== ufw (forward ACCEPT, bridges 10.77.0.0/16 e 172.17.0.0/16, rota vpsnet+)"
+  sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+  ufw allow from 10.77.0.0/16 >/dev/null
+  ufw allow from 172.17.0.0/16 >/dev/null
+  # "in on vpsnet+" / "out on vpsnet+": com "out on any" o ufw gera -o any, uma interface que não existe.
+  ufw route allow in on vpsnet+ >/dev/null
+  ufw route allow out on vpsnet+ >/dev/null
+  ufw reload >/dev/null
+fi
+
 echo "== pastas"
 install -d -m 0755 /opt/scalemaster/apks /opt/scalemaster/midias /opt/scalemaster/midias/perfil
 install -d -m 0700 /opt/scalemaster/sessoes /opt/scalemaster/vps /opt/scalemaster/vps/instancias /opt/scalemaster/vps/props /opt/scalemaster/vps/base /opt/scalemaster/vps/rede

@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# Cria (ou refaz) o container base dos redroids: sobe um redroid com
-# fingerprint neutro no volume scalemaster-base, espera o boot, instala o APK
-# mais novo de /opt/scalemaster/apks, para e guarda o volume como template.
-# Também extrai os build.prop da imagem (system, vendor, product) para
-# /opt/scalemaster/vps/base, que o driver reescreve por conta.
+# Cria (ou refaz) a base dos redroids SEM tocar na base atual até a nova estar
+# conferida: sobe um redroid com fingerprint neutro num volume temporário
+# (scalemaster-base-novo), instala o Instagram e o Chrome pinados de
+# /opt/scalemaster/apks, confere a presença dos dois e só então troca o volume
+# scalemaster-base. Os build.prop da imagem (system, vendor, product), que o
+# driver reescreve por conta, também só entram em /opt/scalemaster/vps/base na troca.
 #
 #   bash scripts/vps/golden.sh [versão-do-apk] [--force]
 #
-# O APK precisa do instagram-<versão>.apk.sha256 ao lado (formato do
-# sha256sum: "<hash>  instagram-<versão>.apk"); --force pula a conferência.
+# Qualquer falha antes da troca apaga só o que é temporário (container
+# scalemaster-golden, volume scalemaster-base-novo, pasta base.novo): a base em
+# uso continua igual. Na troca, a base anterior fica guardada em
+# scalemaster-base-anterior (uma geração) e volta sozinha se a cópia falhar.
+#
+# O APK precisa do .sha256 ao lado (formato do sha256sum) e o navegador do
+# browser/SHA256SUMS; --force pula a conferência dos hashes, nunca a verificação
+# de presença dos pacotes.
 #
 # Chamado pelo botão "Rebuild imagem" da aba (agente-vps/tarefas/rebuild-imagem.mjs).
 set -euo pipefail
@@ -23,10 +30,16 @@ case "$ARCH" in
   *) echo "arquitetura sem imagem do redroid: $ARCH" >&2; exit 1 ;;
 esac
 BASE_VOLUME="scalemaster-base"
+# Temporários sem o label scalemaster.vps: o prune do agente (lib/disco.mjs) apaga volume com o label que não é de conta.
+NOVO_VOLUME="scalemaster-base-novo"
+ANTERIOR_VOLUME="scalemaster-base-anterior"
 BASE_CONTAINER="scalemaster-golden"
 PORTA=5999
-APKS=/opt/scalemaster/apks
-PROPS=/opt/scalemaster/vps/base
+# decisão: SCALEMASTER_APKS / SCALEMASTER_PROPS só existem para os testes apontarem para um diretório temporário.
+APKS="${SCALEMASTER_APKS:-/opt/scalemaster/apks}"
+PROPS="${SCALEMASTER_PROPS:-/opt/scalemaster/vps/base}"
+PROPS_NOVO="${PROPS}.novo"
+COPIADOR="alpine:3.20"
 VERSAO=""
 FORCE=0
 for arg in "$@"; do
@@ -35,19 +48,36 @@ for arg in "$@"; do
     *) VERSAO="$arg" ;;
   esac
 done
+INICIO=$SECONDS
 
 log() { echo "[golden $(date +%H:%M:%S)] $*"; }
+
+# Tudo o que é temporário sai em qualquer saída que não seja a troca concluída. A base atual não é tocada.
+TROCADA=0
+limpar() {
+  local rc=$?
+  adb disconnect "127.0.0.1:${PORTA}" >/dev/null 2>&1 || true
+  docker rm -f "${BASE_CONTAINER}-proxy" "$BASE_CONTAINER" scalemaster-props >/dev/null 2>&1 || true
+  docker volume rm -f "$NOVO_VOLUME" >/dev/null 2>&1 || true
+  rm -rf "$PROPS_NOVO"
+  if [ "$TROCADA" != 1 ]; then log "FALHOU (rc $rc): temporários apagados, a base $BASE_VOLUME em uso não foi alterada"; fi
+}
+trap limpar EXIT
+
+falhar() { log "$*"; exit 1; }
 
 # Confere "<arquivo>.sha256" (formato do sha256sum) dentro da pasta do arquivo.
 conferir_sha() {
   local arquivo="$1" sha="$1.sha256"
   if [ "$FORCE" = 1 ]; then log "AVISO: --force, pulando a conferência do sha256 de $(basename "$arquivo")"; return 0; fi
-  [ -f "$sha" ] || { log "Falta o checksum $sha. Gere com: (cd $(dirname "$arquivo") && sha256sum $(basename "$arquivo") > $(basename "$sha")) ou rode com --force"; exit 1; }
-  (cd "$(dirname "$arquivo")" && sha256sum -c --quiet "$(basename "$sha")") || {
-    log "sha256 de $(basename "$arquivo") não bate com $sha. Baixe de novo (ou --force para instalar mesmo assim)"
-    exit 1
-  }
+  [ -f "$sha" ] || falhar "Falta o checksum $sha. Gere com: (cd $(dirname "$arquivo") && sha256sum $(basename "$arquivo") > $(basename "$sha")) ou rode com --force"
+  (cd "$(dirname "$arquivo")" && sha256sum -c --quiet "$(basename "$sha")") || falhar "sha256 de $(basename "$arquivo") não bate com $sha. Baixe de novo (ou --force para instalar mesmo assim)"
   log "sha256 de $(basename "$arquivo") conferido"
+}
+
+# cp -a de um volume para outro (o destino já existe).
+copiar_volume() {
+  docker run --rm -v "$1:/de:ro" -v "$2:/para" "$COPIADOR" sh -c "cp -a /de/. /para/" >/dev/null
 }
 
 if [ "$ABI" = "x86_64" ]; then
@@ -57,46 +87,62 @@ if [ "$ABI" = "x86_64" ]; then
   APK_DIR="$APKS/x86-${VERSAO}"
   APK_ARQUIVOS=("$APK_DIR/base.apk" "$APK_DIR/split_config.xxhdpi.apk")
   for a in "${APK_ARQUIVOS[@]}"; do
-    [ -f "$a" ] || { log "APK x86_64 não encontrado: $a (fixe base.apk + split_config.xxhdpi.apk + .sha256 em $APK_DIR/)"; exit 1; }
+    [ -f "$a" ] || falhar "APK x86_64 não encontrado: $a (fixe base.apk + split_config.xxhdpi.apk + .sha256 em $APK_DIR/)"
     conferir_sha "$a"
   done
-  APK="$APK_DIR"
 else
   if [ -z "$VERSAO" ]; then
     VERSAO="$(ls "$APKS"/instagram-*.apk 2>/dev/null | sed -E 's#.*/instagram-(.+)\.apk#\1#' | sort -V | tail -1 || true)"
   fi
   APK="$APKS/instagram-${VERSAO}.apk"
-  [ -f "$APK" ] || { log "APK não encontrado: $APK (copie instagram-<versão>.apk e instagram-<versão>.apk.sha256 para $APKS/)"; exit 1; }
+  [ -f "$APK" ] || falhar "APK não encontrado: $APK (copie instagram-<versão>.apk e instagram-<versão>.apk.sha256 para $APKS/)"
   conferir_sha "$APK"
   APK_ARQUIVOS=("$APK")
+fi
+
+# Navegador: Chrome pinado em $APKS/browser/chrome-<versão>/ (base + splits tirados do Aurora com pm path +
+# adb pull), conferido pelo $APKS/browser/SHA256SUMS. O Estruturar usa quando a página do link abre sem sessão.
+BROWSER_DIR="$APKS/browser"
+CHROME_DIR="$(ls -d "$BROWSER_DIR"/chrome-*/ 2>/dev/null | sort -V | tail -1 || true)"
+{ [ -n "$CHROME_DIR" ] && ls "$CHROME_DIR"*.apk >/dev/null 2>&1; } || falhar "Navegador não encontrado: fixe os APKs do Chrome em $BROWSER_DIR/chrome-<versão>/ e o SHA256SUMS em $BROWSER_DIR/"
+if [ "$FORCE" = 1 ]; then
+  log "AVISO: --force, pulando a conferência do sha256 do navegador"
+else
+  [ -f "$BROWSER_DIR/SHA256SUMS" ] || falhar "Falta $BROWSER_DIR/SHA256SUMS. Gere com: (cd $BROWSER_DIR && sha256sum chrome-*/*.apk > SHA256SUMS) ou rode com --force"
+  (cd "$BROWSER_DIR" && sha256sum -c --quiet SHA256SUMS) || falhar "sha256 do navegador não bate com $BROWSER_DIR/SHA256SUMS"
+  for a in "$CHROME_DIR"*.apk; do
+    grep -q "[ *]$(basename "$CHROME_DIR")/$(basename "$a")\$" "$BROWSER_DIR/SHA256SUMS" || falhar "$(basename "$a") não está no SHA256SUMS do navegador"
+  done
+  log "sha256 do navegador conferido ($(basename "$CHROME_DIR"))"
 fi
 
 log "imagem $IMAGEM"
 docker pull -q "$IMAGEM" >/dev/null
 
-log "build.prop da imagem → $PROPS"
-install -d -m 0700 "$PROPS"
+log "build.prop da imagem → $PROPS_NOVO (entra em $PROPS só na troca)"
+rm -rf "$PROPS_NOVO"
+mkdir -p "$PROPS_NOVO"
+chmod 0700 "$PROPS_NOVO" 2>/dev/null || true
 docker rm -f scalemaster-props >/dev/null 2>&1 || true
 docker create --name scalemaster-props "$IMAGEM" >/dev/null
-docker cp scalemaster-props:/system/build.prop "$PROPS/system.prop"
-docker cp scalemaster-props:/vendor/build.prop "$PROPS/vendor.prop"
-docker cp scalemaster-props:/product/etc/build.prop "$PROPS/product.prop" 2>/dev/null || docker cp scalemaster-props:/product/build.prop "$PROPS/product.prop"
+docker cp scalemaster-props:/system/build.prop "$PROPS_NOVO/system.prop"
+docker cp scalemaster-props:/vendor/build.prop "$PROPS_NOVO/vendor.prop"
+docker cp scalemaster-props:/product/etc/build.prop "$PROPS_NOVO/product.prop" 2>/dev/null || docker cp scalemaster-props:/product/build.prop "$PROPS_NOVO/product.prop"
 docker rm -f scalemaster-props >/dev/null
 
-log "volume $BASE_VOLUME (recriado)"
-docker rm -f "$BASE_CONTAINER" >/dev/null 2>&1 || true
-docker volume rm -f "$BASE_VOLUME" >/dev/null 2>&1 || true
-docker volume create --label scalemaster.vps=1 "$BASE_VOLUME" >/dev/null
+log "volume temporário $NOVO_VOLUME (a base $BASE_VOLUME em uso fica como está)"
+docker rm -f "${BASE_CONTAINER}-proxy" "$BASE_CONTAINER" >/dev/null 2>&1 || true
+docker volume rm -f "$NOVO_VOLUME" >/dev/null 2>&1 || true
+docker volume create "$NOVO_VOLUME" >/dev/null
 
-log "subindo a base na vpsnet (porta adb 127.0.0.1:$PORTA), sem internet"
+log "subindo a base nova na vpsnet (porta adb 127.0.0.1:$PORTA), sem internet"
 docker run -d --name "$BASE_CONTAINER" --privileged --network vpsnet --label scalemaster.vps=1 \
-  -p "127.0.0.1:${PORTA}:5555" -v "$BASE_VOLUME:/data" --memory 2g \
+  -p "127.0.0.1:${PORTA}:5555" -v "$NOVO_VOLUME:/data" --memory 2g \
   "$IMAGEM" \
   androidboot.redroid_gpu_mode=guest androidboot.redroid_width=1080 androidboot.redroid_height=1920 \
   androidboot.redroid_dpi=420 androidboot.redroid_fps=30 androidboot.use_memfd=true \
   androidboot.redroid_net_ndns=1 androidboot.redroid_net_dns1=1.1.1.1 >/dev/null
 # Mesmo kill switch dos containers de conta (lib/rede.mjs, modo bloqueado): a base nunca sai para a internet.
-docker rm -f "${BASE_CONTAINER}-proxy" >/dev/null 2>&1 || true
 docker run -d --name "${BASE_CONTAINER}-proxy" --network "container:${BASE_CONTAINER}" --cap-add NET_ADMIN scalemaster-redsocks:1 \
   sh -c 'iptables -A OUTPUT -o lo -j ACCEPT; iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT; iptables -A OUTPUT -j DROP; exec sleep infinity' >/dev/null
 IP="127.0.0.1:${PORTA}"
@@ -107,10 +153,10 @@ for i in $(seq 1 100); do
     break
   fi
   sleep 3
-  [ "$i" = 100 ] && { log "a base não terminou de ligar"; docker logs --tail 30 "$BASE_CONTAINER"; exit 1; }
+  if [ "$i" = 100 ]; then docker logs --tail 30 "$BASE_CONTAINER" || true; falhar "a base nova não terminou de ligar"; fi
 done
 adb -s "$IP" root >/dev/null 2>&1 || true
-sleep 2
+sleep "${GOLDEN_ESPERA_ROOT:-2}"
 adb connect "$IP" >/dev/null 2>&1 || true
 
 log "fingerprint neutro e ajustes de base"
@@ -125,57 +171,72 @@ adb -s "$IP" shell setprop persist.sys.locale en-US >/dev/null
 ABILIST="$(adb -s "$IP" shell getprop ro.product.cpu.abilist 2>/dev/null | tr -d '\r')"
 case ",$ABILIST," in
   *",$ABI,"*) log "abilist ok: $ABILIST" ;;
-  *) log "ABI_AUSENTE: ro.product.cpu.abilist=$ABILIST não traz $ABI"; docker rm -f "${BASE_CONTAINER}-proxy" "$BASE_CONTAINER" >/dev/null 2>&1 || true; exit 1 ;;
+  *) falhar "ABI_AUSENTE: ro.product.cpu.abilist=$ABILIST não traz $ABI" ;;
 esac
 
-log "instalando ${APK_ARQUIVOS[*]}"
+log "instalando o Instagram: ${APK_ARQUIVOS[*]}"
 if [ "$ABI" = "x86_64" ]; then
   adb -s "$IP" install-multiple -r -g "${APK_ARQUIVOS[@]}" | tail -1
 else
   adb -s "$IP" install -r -g "${APK_ARQUIVOS[@]}" | tail -1
 fi
 adb -s "$IP" shell am force-stop com.instagram.android >/dev/null 2>&1 || true
-INSTALADA="$(adb -s "$IP" shell dumpsys package com.instagram.android 2>/dev/null | grep -m1 versionName | sed 's/.*versionName=//' | tr -d '\r')"
-PRIMARIA="$(adb -s "$IP" shell dumpsys package com.instagram.android 2>/dev/null | grep -m1 primaryCpuAbi | sed 's/.*primaryCpuAbi=//' | tr -d '\r')"
-[ "$PRIMARIA" = "$ABI" ] || { log "ABI_AUSENTE: o Instagram instalou como ${PRIMARIA:-?}, esta VPS exige $ABI"; docker rm -f "${BASE_CONTAINER}-proxy" "$BASE_CONTAINER" >/dev/null 2>&1 || true; exit 1; }
-log "primaryCpuAbi=$PRIMARIA"
 
-# Navegador da base: Chrome pinado em $APKS/browser/chrome-<versão>/ (base + splits, puxados do Aurora com
-# pm path + adb pull) e conferido pelo $APKS/browser/SHA256SUMS. É o que o Estruturar usa quando a página do
-# link abre sem sessão (login pelo navegador); sem ele essa etapa falha com SEM_NAVEGADOR.
-BROWSER_DIR="$APKS/browser"
-CHROME_DIR="$(ls -d "$BROWSER_DIR"/chrome-*/ 2>/dev/null | sort -V | tail -1 || true)"
-if [ -n "$CHROME_DIR" ] && ls "$CHROME_DIR"*.apk >/dev/null 2>&1; then
-  if [ "$FORCE" = 1 ]; then
-    log "AVISO: --force, pulando a conferência do sha256 do navegador"
-  else
-    [ -f "$BROWSER_DIR/SHA256SUMS" ] || { log "Falta $BROWSER_DIR/SHA256SUMS. Gere com: (cd $BROWSER_DIR && sha256sum chrome-*/*.apk > SHA256SUMS) ou rode com --force"; exit 1; }
-    (cd "$BROWSER_DIR" && sha256sum -c --quiet SHA256SUMS) || { log "sha256 do navegador não bate com $BROWSER_DIR/SHA256SUMS"; exit 1; }
-    for a in "$CHROME_DIR"*.apk; do
-      grep -q " $(basename "$CHROME_DIR")/$(basename "$a")\$" "$BROWSER_DIR/SHA256SUMS" || { log "$(basename "$a") não está no SHA256SUMS do navegador"; exit 1; }
-    done
-    log "sha256 do navegador conferido ($(basename "$CHROME_DIR"))"
-  fi
-  log "instalando o navegador: $(basename "$CHROME_DIR")"
-  adb -s "$IP" install-multiple -r -g "$CHROME_DIR"*.apk | tail -1
-  NAVEGADOR="$(adb -s "$IP" shell dumpsys package com.android.chrome 2>/dev/null | grep -m1 versionName | sed 's/.*versionName=//' | tr -d '\r')"
-  [ -n "$NAVEGADOR" ] || { log "o Chrome não instalou na base"; docker rm -f "${BASE_CONTAINER}-proxy" "$BASE_CONTAINER" >/dev/null 2>&1 || true; exit 1; }
-  # Sem a tela de boas-vindas nem o pedido de navegador padrão: o Chrome abre direto na página.
-  adb -s "$IP" shell "echo 'chrome --no-first-run --disable-fre --no-default-browser-check' > /data/local/tmp/chrome-command-line" >/dev/null 2>&1 || true
-  adb -s "$IP" shell am set-debug-app --persistent com.android.chrome >/dev/null 2>&1 || true
-  adb -s "$IP" shell am force-stop com.android.chrome >/dev/null 2>&1 || true
-  log "navegador: Chrome $NAVEGADOR"
-else
-  NAVEGADOR=""
-  log "AVISO: sem navegador em $BROWSER_DIR/chrome-<versão>/: a base fica sem Chrome (o Estruturar para em SEM_NAVEGADOR se a página pedir login)"
-fi
+log "instalando o navegador: $(basename "$CHROME_DIR")"
+adb -s "$IP" install-multiple -r -g "$CHROME_DIR"*.apk | tail -1
+# Sem a tela de boas-vindas nem o pedido de navegador padrão: o Chrome abre direto na página.
+adb -s "$IP" shell "echo 'chrome --no-first-run --disable-fre --no-default-browser-check' > /data/local/tmp/chrome-command-line" >/dev/null 2>&1 || true
+adb -s "$IP" shell am set-debug-app --persistent com.android.chrome >/dev/null 2>&1 || true
+adb -s "$IP" shell am force-stop com.android.chrome >/dev/null 2>&1 || true
 
-log "parando e guardando"
+# ── VERIFICAÇÃO OBRIGATÓRIA (antes de qualquer toque na base em uso; --force não pula) ──────────────────────
+# pm list packages com o Chrome e o Instagram, e o primaryCpuAbi dos dois igual à ABI da VPS (x86_64 neste host).
+log "verificando a base nova"
+PACOTES="$(adb -s "$IP" shell pm list packages 2>/dev/null | tr -d '\r')"
+for pacote in com.android.chrome com.instagram.android; do
+  echo "$PACOTES" | grep -qx "package:$pacote" || falhar "VERIFICACAO: pm list packages não traz $pacote"
+done
+abi_de() { adb -s "$IP" shell dumpsys package "$1" 2>/dev/null | grep -m1 primaryCpuAbi | sed 's/.*primaryCpuAbi=//' | tr -d '\r'; }
+versao_de() { adb -s "$IP" shell dumpsys package "$1" 2>/dev/null | grep -m1 versionName | sed 's/.*versionName=//' | tr -d '\r'; }
+ABI_CHROME="$(abi_de com.android.chrome)"
+[ "$ABI_CHROME" = "$ABI" ] || falhar "VERIFICACAO: primaryCpuAbi do Chrome é ${ABI_CHROME:-?}, esta VPS exige $ABI"
+PRIMARIA="$(abi_de com.instagram.android)"
+[ "$PRIMARIA" = "$ABI" ] || falhar "ABI_AUSENTE: o Instagram instalou como ${PRIMARIA:-?}, esta VPS exige $ABI"
+INSTALADA="$(versao_de com.instagram.android)"
+NAVEGADOR="$(versao_de com.android.chrome)"
+log "verificado: com.android.chrome $NAVEGADOR ($ABI_CHROME) e com.instagram.android $INSTALADA ($PRIMARIA)"
+
+log "parando a base nova"
 adb disconnect "$IP" >/dev/null 2>&1 || true
 docker stop -t 30 "$BASE_CONTAINER" >/dev/null
 docker rm -f "${BASE_CONTAINER}-proxy" "$BASE_CONTAINER" >/dev/null
-docker volume inspect "$BASE_VOLUME" >/dev/null
+
+# ── TROCA: só daqui para baixo a base em uso é tocada ───────────────────────────────────────────────────────
+log "trocando $BASE_VOLUME pela base nova (a anterior fica em $ANTERIOR_VOLUME)"
+TINHA_BASE=0
+if docker volume inspect "$BASE_VOLUME" >/dev/null 2>&1; then
+  TINHA_BASE=1
+  docker volume rm -f "$ANTERIOR_VOLUME" >/dev/null 2>&1 || true
+  docker volume create "$ANTERIOR_VOLUME" >/dev/null
+  # Se esta cópia falhar a base em uso ainda está inteira: sai sem trocar.
+  copiar_volume "$BASE_VOLUME" "$ANTERIOR_VOLUME" || { docker volume rm -f "$ANTERIOR_VOLUME" >/dev/null 2>&1 || true; falhar "não consegui guardar a base anterior: nada foi trocado"; }
+fi
+docker volume rm -f "$BASE_VOLUME" >/dev/null
+docker volume create --label scalemaster.vps=1 "$BASE_VOLUME" >/dev/null
+if ! copiar_volume "$NOVO_VOLUME" "$BASE_VOLUME"; then
+  log "a cópia para $BASE_VOLUME falhou: voltando a base anterior"
+  docker volume rm -f "$BASE_VOLUME" >/dev/null 2>&1 || true
+  if [ "$TINHA_BASE" = 1 ]; then
+    docker volume create --label scalemaster.vps=1 "$BASE_VOLUME" >/dev/null
+    copiar_volume "$ANTERIOR_VOLUME" "$BASE_VOLUME" || falhar "ATENÇÃO: a base anterior não voltou; ela está inteira em $ANTERIOR_VOLUME"
+  fi
+  falhar "troca desfeita: a base em uso é a anterior"
+fi
+rm -rf "$PROPS"
+mv "$PROPS_NOVO" "$PROPS"
 # Versão usada na base: o agente põe esta em primeiro na lista que a aba mostra.
 echo "$VERSAO" > "$APKS/ATUAL"
+TROCADA=1
 
-echo "RESUMO: base pronta com Instagram ${INSTALADA:-$VERSAO} $ABI e ${NAVEGADOR:+Chrome $NAVEGADOR}${NAVEGADOR:-sem navegador} (imagem $IMAGEM, volume $BASE_VOLUME, props em $PROPS)"
+TAMANHO="$(du -sh "$(docker volume inspect -f '{{.Mountpoint}}' "$BASE_VOLUME" 2>/dev/null)" 2>/dev/null | cut -f1 || true)"
+echo "RESUMO: base pronta com Instagram ${INSTALADA:-$VERSAO} $ABI e Chrome $NAVEGADOR (imagem $IMAGEM, volume $BASE_VOLUME ${TAMANHO:-?}, props em $PROPS, $((SECONDS - INICIO)) s)"

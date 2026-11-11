@@ -131,7 +131,14 @@ export class Dispositivo {
     await this.conectar();
   }
 
+  /**
+   * Comandos que só leem: não mudam a tela, então o dump guardado continua valendo.
+   * Qualquer outro shell (input, am, pm, monkey…) invalida o dump.
+   */
+  static SO_LEITURA = new Set(["dumpsys", "getprop", "cat", "wm"]);
+
   async shell(...args) {
+    if (!Dispositivo.SO_LEITURA.has(String(args[0]))) this.telaGuardada_ = null;
     const r = await rodar(this.adb, ["-s", this.serial, "shell", ...args], { timeoutMs: 60_000 });
     if (r.codigo !== 0) throw new Error(`adb shell ${args[0]} falhou: ${trecho(r.stderr || r.stdout)}`);
     return String(r.stdout);
@@ -198,6 +205,7 @@ export class Dispositivo {
    * emoji nesse caso para a etapa com TECLADO_INDISPONIVEL. Devolve por onde foi.
    */
   digitar(texto) {
+    this.telaGuardada_ = null;
     return digitarCom(texto, {
       ativo: () => this.tecladoAdb(),
       broadcast: (args) => rodar(this.adb, ["-s", this.serial, "shell", ...args], { timeoutMs: 30_000 }),
@@ -226,6 +234,7 @@ export class Dispositivo {
    * último recurso quando a resolução falha.
    */
   async abrirApp(pacote) {
+    this.telaGuardada_ = null;
     const saida = await this.shell("cmd", "package", "resolve-activity", "--brief", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", pacote).catch(() => "");
     const atividade = resolverAtividade(saida, pacote);
     if (atividade) {
@@ -258,6 +267,7 @@ export class Dispositivo {
 
   /** Saída binária de um comando do Android (exec-out). */
   async binario(...args) {
+    if (args[0] !== "screencap") this.telaGuardada_ = null;
     const r = await rodar(this.adb, ["-s", this.serial, "exec-out", ...args], { timeoutMs: 120_000, binario: true });
     if (r.codigo !== 0 || !r.stdout?.length) throw new Error(`exec-out ${args[0]} falhou: ${trecho(r.stderr)}`);
     return r.stdout;
@@ -276,8 +286,26 @@ export class Dispositivo {
     return this.binario("screencap", "-p");
   }
 
-  /** Elementos da tela agora (uiautomator dump). */
+  /**
+   * A tela do último dump, se nada mudou a tela desde então (toque, tecla,
+   * texto, abrir/fechar app invalidam); senão, um dump novo. É o cache "por
+   * tela": depois do dump de verificação de um campo, quem chama relê daqui em
+   * vez de pagar outros 2,3 s de uiautomator.
+   */
+  async telaAtual() {
+    return this.telaGuardada_ ?? this.tela();
+  }
+
+  /** Elementos da tela agora (uiautomator dump). O resultado fica guardado para telaAtual(). */
   async tela() {
+    this.telaGuardada_ = null;
+    const nos = await this.dump_();
+    this.telaGuardada_ = nos;
+    return nos;
+  }
+
+  /** O dump em si (sem cache). */
+  async dump_() {
     // O uiautomator devolve "null root node" enquanto a tela ainda está desenhando: novo dump em 1 s, até 10.
     let ultima = "";
     for (let tentativa = 0; tentativa < TENTATIVAS_DUMP; tentativa++) {

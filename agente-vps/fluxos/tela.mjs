@@ -83,29 +83,63 @@ export async function tocarAteMudar(d, no, antes, { timeoutMs = 6000, tentativas
   return null;
 }
 
+/** Dump guardado do aparelho quando ele tem cache (lib/adb.mjs); senão, um dump novo. */
+export function telaAtual(d) {
+  return typeof d.telaAtual === "function" ? d.telaAtual() : d.tela();
+}
+
 /**
- * preencher() sem pausa fixa: toca no campo e espera ele ganhar o foco (ou a
- * tela mudar), apaga, digita e espera o texto aparecer no dump. Devolve por
- * onde o texto foi ("broadcast" ou "input").
+ * Espera o teclado abrir depois do toque no campo, SEM uiautomator: lê o
+ * mInputShown do dumpsys input_method (uns 60 ms por leitura, contra 2,3 s de
+ * um dump). Devolve true quando abriu; no fim do tempo segue assim mesmo.
+ */
+export async function esperarTeclado(d, { timeoutMs = 1500, intervaloMs = 120 } = {}) {
+  if (typeof d.shell !== "function") return false;
+  const limite = Date.now() + timeoutMs;
+  for (;;) {
+    const saida = await d.shell("dumpsys", "input_method").catch(() => "");
+    if (/mInputShown=true/.test(saida)) return true;
+    if (Date.now() >= limite) return false;
+    await esperar(intervaloMs);
+  }
+}
+
+const ehCampo = (n) => /EditText/.test(n.classe);
+
+/** O texto digitado está na tela (ou, em campo de senha, o conteúdo dos campos mudou em relação a `antes`)? */
+export function campoPreenchido(depois, valor, antes) {
+  const texto = String(valor);
+  if (depois.some((n) => n.texto.includes(texto))) return true;
+  const campos = (nos) => (nos ?? []).filter(ehCampo).map((n) => n.texto).join("\n");
+  return campos(depois) !== campos(antes) && depois.filter(ehCampo).some((n) => n.texto !== "");
+}
+
+/**
+ * Preenche um campo com o mínimo de leituras de tela:
+ *   1. o dump que achou o campo é o de quem chama (`antes`), não se repete;
+ *   2. um toque;
+ *   3. espera do teclado pelo dumpsys (sem dump);
+ *   4. apaga só se o campo já tinha texto, e manda o texto (broadcast do teclado ADB);
+ *   5. um dump de verificação — que fica guardado no aparelho para quem chama (telaAtual).
+ * Se a verificação mostra o campo ainda vazio, repete do toque uma vez, sem
+ * nenhum dump a mais antes de digitar. Devolve por onde o texto foi
+ * ("broadcast" ou "input").
  */
 export async function preencherEsperando(d, no, valor, antes) {
-  const base = assinatura(antes ?? []);
+  const texto = String(valor);
+  let limpar = !!no.texto;
+  let via = "input";
   for (let tentativa = 0; tentativa < 2; tentativa++) {
     await d.tocar(no.x, no.y);
-    const limite = Date.now() + 3000;
-    let pronto = false;
-    while (!pronto) {
-      const nos = await d.tela().catch(() => null);
-      pronto = !!nos && nos.length > 0 && (nos.some((n) => n.focado && /EditText/.test(n.classe)) || assinatura(nos) !== base);
-      if (pronto || Date.now() >= limite) break;
-      await esperar(TEMPOS.intervaloMs);
-    }
-    if (pronto) break;
+    await esperarTeclado(d);
+    if (limpar) await d.limparCampo();
+    via = await d.digitar(texto);
+    if (texto === "") return via;
+    const depois = await d.tela();
+    if (campoPreenchido(depois, texto, antes)) return via;
+    // Segunda volta: só apaga se o campo ficou com algum texto que não é o pedido.
+    limpar = depois.some((n) => ehCampo(n) && n.texto !== "" && Math.abs(n.y - no.y) < 200);
   }
-  await d.limparCampo();
-  const vazio = await d.tela().catch(() => []);
-  const via = await d.digitar(valor);
-  if (String(valor) !== "") await esperarMudar(d, vazio, { timeoutMs: 5000 });
   return via;
 }
 
