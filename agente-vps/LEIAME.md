@@ -152,11 +152,12 @@ ufw reload
 
 **O que o container isola, por conta:**
 
-- rede: namespace próprio, IP e MAC únicos e uma proxy fixa só dela (linha repetida no lote bloqueia o envio);
+- rede: namespace próprio, IP e MAC únicos e uma proxy fixa só dela (dedupe por `host:porta:usuário`: o mesmo usuário repetido bloqueia o envio; a mesma host:porta com outro usuário — gateway rotativo — só avisa);
 - um /24 por lote (`10.77.<n>.0/24`, bridge `vpsnet-<n>`; as contas antigas ficam em `10.77.0.0/24`): contas de lotes diferentes não se enxergam na rede local;
 - disco: volume `/data` próprio (apps, sessão, Android ID);
 - identidade: `ro.serialno`, Android ID, MAC, IMEI e fingerprint sorteados por conta; fuso e idioma do país da proxy dela; `--hostname` com o modelo do aparelho;
-- processos: PID namespace próprio; teto de `--cpus 1` e `--memory 1536m`, para um container não tomar a máquina do outro.
+- processos: PID namespace próprio; teto de `--cpus max(1, floor(vCPU ÷ maxLigadas))` (2 neste host) e `--memory`/`--memory-swap 2048m`, para um container não tomar a máquina do outro. A cota entra no `docker create` e, ao ligar, por `docker update` (vale para os containers criados antes dela).
+- memória do host: o lote só é aceito com `MemAvailable` ≥ `maxLigadas × 1600` MB, lido pelo app do `/proc/meminfo` na hora do envio (app e agente na mesma VPS). O card do agente mostra a RAM livre (vermelho abaixo de 2000 MB), o motivo do bloqueio e os 5 processos com mais RSS (`ps` + cgroup, mandados pelo agente a cada 30 s).
 
 **O que ele não isola:**
 

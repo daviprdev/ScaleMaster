@@ -3,7 +3,7 @@ import { syncJobs } from "../lib/emulador/sync-jobs";
 import { colisaoDeIdentidade, ipDoDevice, ipNaRede, novoDevice, proximaRede } from "../lib/vps/device";
 import { parseProxies } from "../lib/vps/input";
 import { AVISO_HOST_PEQUENO, hostPequeno, isolamentoUnico, parseCapacidade, type Isolamento } from "../lib/vps/jobs";
-import { CPUS, MEMORIA, argsDoContainer, hostnameDe } from "../agente-vps/lib/android.mjs";
+import { MEMORIA, argsDoContainer, hostnameDe } from "../agente-vps/lib/android.mjs";
 import { argsDaRede, colisao, enderecoDe, ipDe, ipNaRede as ipNaRedeAgente, redeDoLote } from "../agente-vps/lib/rede.mjs";
 import { capacidade, limitesPorVcpu } from "../agente-vps/lib/supervisor.mjs";
 
@@ -89,16 +89,16 @@ describe("Isolamento: docker run", () => {
     device: { model: "moto g84 5G", mac: "3c:11:22:33:44:55", serial: "ZYABCDEFGH12", fingerprint: "motorola/bangkk_g/bangkk:13/x/1:user/release-keys", rede: 3, ip: "10.77.3.9" },
   };
 
-  it("--hostname com o modelo do aparelho, --cpus 1 e --memory 1536m", () => {
+  it("--hostname com o modelo do aparelho, --cpus pela cota e --memory 2048m", () => {
     const { rede, ip } = enderecoDe(spec.device, spec.index);
-    const args: string[] = argsDoContainer(spec, { props: "/opt/scalemaster/vps/props/ig-7", rede, ip });
+    const args: string[] = argsDoContainer(spec, { props: "/opt/scalemaster/vps/props/ig-7", rede, ip, cota: { cpus: "2", memoria: "2048m" } });
     const valor = (flag: string) => args[args.indexOf(flag) + 1];
     expect(args[0]).toBe("create");
     expect(valor("--hostname")).toBe("moto-g84-5G");
-    expect(valor("--cpus")).toBe("1");
-    expect(valor("--memory")).toBe("1536m");
-    expect(valor("--memory-swap")).toBe("1536m");
-    expect([CPUS, MEMORIA]).toEqual(["1", "1536m"]);
+    expect(valor("--cpus")).toBe("2");
+    expect(valor("--memory")).toBe("2048m");
+    expect(valor("--memory-swap")).toBe("2048m");
+    expect(MEMORIA).toBe("2048m");
     expect(valor("--network")).toBe("vpsnet-3");
     expect(valor("--ip")).toBe("10.77.3.9");
     expect(valor("--mac-address")).toBe("3c:11:22:33:44:55");
@@ -187,9 +187,9 @@ describe("Isolamento: um /24 por lote, IP e MAC únicos", () => {
     );
   });
 
-  it("proxy repetida no lote bloqueia o envio", () => {
-    const repetida = parseProxies("1.2.3.4:8000:user1:pass1\n5.6.7.8:8000:user2:pass2\n1.2.3.4:8000:user3:pass3");
-    expect(repetida).toEqual({ error: "A proxy 1.2.3.4:8000 aparece mais de uma vez: cada conta precisa da sua." });
+  it("proxy repetida no lote (mesmo usuário) bloqueia o envio", () => {
+    const repetida = parseProxies("1.2.3.4:8000:user1:pass1\n5.6.7.8:8000:user2:pass2\n1.2.3.4:8000:user1:outra");
+    expect(repetida).toEqual({ error: "A proxy 1.2.3.4:8000 com o usuário user1 aparece nas linhas 1 e 3: cada conta precisa da sua." });
     const ok = parseProxies("1.2.3.4:8000:user1:pass1\n1.2.3.4:8001:user1:pass1");
     expect("value" in ok && ok.value).toHaveLength(2);
   });

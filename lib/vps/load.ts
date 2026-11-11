@@ -4,7 +4,8 @@ import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseJobPrompt, parseJobSteps, type JobStatus } from "@/lib/emulador/jobs";
 import { isOnline, parseInstances } from "@/lib/emulador/payload";
 import { parsePlano } from "./estruturacao";
-import { parseCapacidade } from "./jobs";
+import { chaveProxy, parseCapacidade } from "./jobs";
+import { ramDoHost } from "./ram";
 import { ipDoDevice } from "./device";
 import type { VpsAgent, VpsDevice, VpsDeviceSpec, VpsDeviceStatus, VpsJob, VpsResponse } from "./types";
 
@@ -98,6 +99,19 @@ export function proxyHostDe(inputEnc: string | null | undefined): string | null 
     const input = JSON.parse(decrypt(inputEnc)) as { proxy?: unknown };
     const u = new URL(String(input.proxy ?? ""));
     return u.hostname ? `${u.hostname}${u.port ? `:${u.port}` : ""}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/** host:porta:usuário da proxy da conta (chave de dedupe, ver chaveProxy); null se não der para ler. */
+export function proxyChaveDe(inputEnc: string | null | undefined): string | null {
+  if (!inputEnc) return null;
+  try {
+    const input = JSON.parse(decrypt(inputEnc)) as { proxy?: unknown };
+    const u = new URL(String(input.proxy ?? ""));
+    if (!u.hostname || !u.port) return null;
+    return chaveProxy({ host: u.hostname, porta: u.port, usuario: decodeURIComponent(u.username) });
   } catch {
     return null;
   }
@@ -203,5 +217,7 @@ export async function loadVps(admin: SupabaseClient, userId: string): Promise<Vp
     jobs: ((jobsRes.data ?? []) as unknown as JobRow[]).map(toVpsJob),
     devices: ((devicesRes.data ?? []) as unknown as DeviceRow[]).map(toDevice),
     estruturaAvailable,
+    // Lida agora (não do retrato do agente): é a mesma conta do bloqueio no envio do lote.
+    ramHost: ramDoHost(Math.max(1, ...agents.map((a) => a.capacidade.maxLigadas))),
   };
 }

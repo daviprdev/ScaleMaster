@@ -38,13 +38,13 @@ import { listarMidias, pastaDeMidias } from "./lib/midias.mjs";
 import { limparPrintsAntigos, salvarPrint } from "./lib/prints.mjs";
 import { esperar } from "./lib/processo.mjs";
 import { validar } from "./lib/rede.mjs";
-import { Semaforo, capacidade, criarWatchdog, limparOrfaos, limparOrfaosAntigos } from "./lib/supervisor.mjs";
+import { Semaforo, capacidade, criarWatchdog, limparOrfaos, limparOrfaosAntigos, maioresConsumidores } from "./lib/supervisor.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
 import { versoesDisponiveis } from "./fluxos/apk.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.4.0";
+const VERSAO = "1.5.0";
 const AGENT_KIND = "vps";
 /** "Instância" -1 = a VPS em si: só a automação rebuild-imagem roda nela (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
@@ -412,6 +412,7 @@ async function rodarAgente() {
   let midiasEnviadas = "";
   let reenviarMidias = 0;
   let orfaosLimpos = false;
+  let topRss = [];
   // Boot: pede ao SaaS os containers que ele conhece (vps_devices e fila) até limpar os órfãos velhos uma vez.
   let orfaosAntigosVistos = false;
 
@@ -451,6 +452,8 @@ async function rodarAgente() {
       proximaLeituraMidias = Date.now() + 30_000;
       const raiz = await pastaDeMidias().catch(() => null);
       midias = { root: raiz, files: raiz ? listarMidias(raiz) : [] };
+      // Mesmo ritmo das mídias: os 5 processos com mais RAM (o card do agente mostra).
+      topRss = await maioresConsumidores().catch(() => topRss);
     }
     const textoMidias = JSON.stringify(midias);
     const mandarMidias = textoMidias !== midiasEnviadas || Date.now() >= reenviarMidias;
@@ -460,6 +463,7 @@ async function rodarAgente() {
     const enviando = resultados;
     resultados = [];
     const enviandoAndamentos = [...andamentos.values()];
+    const macsEnviando = driver ? [...driver.macsAprendidos].map(([jobId, mac]) => ({ jobId, mac })) : [];
     andamentos.clear();
     const corpo = {
       agentKind: AGENT_KIND,
@@ -469,12 +473,13 @@ async function rodarAgente() {
       mumuError: erroDriver,
       instances: instancias.map(({ index, name, state, criada }) => ({ index, name, state, criada, alert: alertaDe(criada) })),
       tasks: tarefas,
-      capacity: { ...agora, ligadas, versoesIg: versoesDisponiveis() },
+      capacity: { ...agora, ligadas, versoesIg: versoesDisponiveis(), topRss },
       results: enviando,
       running: [...emAndamento],
       jobUpdates: enviandoAndamentos,
       runningJobs: [...contasEmAndamento],
       ...(orfaosAntigosVistos ? {} : { querConhecidos: true }),
+      ...(macsEnviando.length ? { macs: macsEnviando } : {}),
       ...(mandarMidias ? { media: midias } : {}),
     };
 
@@ -498,6 +503,8 @@ async function rodarAgente() {
         espera = res.status === 503 ? ESPERA_SQL_MS : ESPERA_SEM_REDE_MS;
         logSemRepetir(`SaaS respondeu ${res.status}: ${resposta.error ?? "sem mensagem"}`);
       } else {
+        // MAC entregue ao SaaS: sai da fila (o retrato já guarda o MAC).
+        for (const { jobId, mac } of macsEnviando) if (driver?.macsAprendidos.get(jobId) === mac) driver.macsAprendidos.delete(jobId);
         if (mandarMidias) {
           midiasEnviadas = textoMidias;
           reenviarMidias = Date.now() + 5 * 60_000;

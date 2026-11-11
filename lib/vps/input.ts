@@ -1,3 +1,4 @@
+import { chaveProxy } from "./jobs";
 import type { DevicePerfil, ProvedorEmail, VpsContaDados } from "./types";
 
 /**
@@ -94,6 +95,8 @@ export interface ProxyLida {
   url: string;
   host: string;
   porta: number;
+  /** Usuário da proxy (entra na chave de dedupe host:porta:usuário). */
+  usuario: string;
   /** País (ISO-2) quando a linha trouxe um 5º campo; senão null (vale o do lote). */
   pais: string | null;
 }
@@ -111,7 +114,7 @@ export function parseProxy(raw: string): ProxyLida | null {
     if (!hostValido(host) || !portaValida(porta) || !usuario || !senha) return null;
     if (pais !== null && !PAIS_RE.test(pais)) return null;
     const url = `http://${encodeURIComponent(usuario)}:${encodeURIComponent(senha)}@${host.toLowerCase()}:${Number(porta)}`;
-    return { url, host: host.toLowerCase(), porta: Number(porta), pais };
+    return { url, host: host.toLowerCase(), porta: Number(porta), usuario, pais };
   };
 
   if (linha.includes("://")) {
@@ -147,22 +150,35 @@ export function parseProxy(raw: string): ProxyLida | null {
   return null;
 }
 
-/** A caixa inteira: uma proxy por linha, sem linha vazia contar. */
-export function parseProxies(raw: unknown): { value: ProxyLida[] } | { error: string } {
+/**
+ * A caixa inteira: uma proxy por linha, sem linha vazia contar. Dedupe por
+ * host:porta:usuário: o mesmo usuário na mesma host:porta bloqueia; a mesma
+ * host:porta com usuários diferentes (gateway rotativo) só gera aviso.
+ */
+export function parseProxies(raw: unknown): { value: ProxyLida[]; avisos: string[] } | { error: string } {
   const linhas = (Array.isArray(raw) ? raw.map((l) => (typeof l === "string" ? l : "")) : typeof raw === "string" ? raw.split(/\r?\n/) : [])
     .map((l) => l.trim())
     .filter(Boolean);
   const out: ProxyLida[] = [];
-  const vistas = new Set<string>();
+  const vistas = new Map<string, number>();
+  const porHost = new Map<string, number[]>();
   for (const [i, linha] of linhas.entries()) {
     const p = parseProxy(linha);
     if (!p) return { error: `Proxy da linha ${i + 1} no formato host:porta:usuário:senha.` };
-    const chave = `${p.host}:${p.porta}`;
-    if (vistas.has(chave)) return { error: `A proxy ${chave} aparece mais de uma vez: cada conta precisa da sua.` };
-    vistas.add(chave);
+    const chave = chaveProxy(p);
+    const antes = vistas.get(chave);
+    if (antes !== undefined) {
+      return { error: `A proxy ${p.host}:${p.porta} com o usuário ${p.usuario} aparece nas linhas ${antes + 1} e ${i + 1}: cada conta precisa da sua.` };
+    }
+    vistas.set(chave, i);
+    const hp = `${p.host}:${p.porta}`;
+    porHost.set(hp, [...(porHost.get(hp) ?? []), i + 1]);
     out.push(p);
   }
-  return { value: out };
+  const avisos = [...porHost.entries()]
+    .filter(([, ls]) => ls.length > 1)
+    .map(([hp, ls]) => `A proxy ${hp} aparece nas linhas ${ls.join(", ")} com usuários diferentes: segue, cada linha conta como uma proxy.`);
+  return { value: out, avisos };
 }
 
 /**
@@ -263,6 +279,8 @@ export interface LoteInput {
   contas: VpsContaDados[];
   /** true = o servidor gera nome, @, senha e nascimento. */
   gerarPessoa: boolean;
+  /** Avisos que não bloqueiam (mesma host:porta com usuários diferentes). */
+  avisos: string[];
 }
 
 /**
@@ -311,7 +329,10 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
       vistos.add(chave);
       contas.push({ provedorEmail: "portal", email: lida.link, senhaEmail: lida.codigo, imapHost: "", imapPorta: 0, senhaIg: "", nome: "", usuario: "", nascimento: "" });
     }
-    return { value: { agentId, quantidade, proxies: proxies.value.slice(0, quantidade), perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: true } };
+    const usadas = proxies.value.slice(0, quantidade);
+    // Avisos só das linhas que entram no lote.
+    const avisos = parseProxies(usadas.map((p) => p.url)) as { avisos?: string[] };
+    return { value: { agentId, quantidade, proxies: usadas, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: true, avisos: avisos.avisos ?? [] } };
   }
 
   const quantidade = typeof body.quantidade === "number" ? body.quantidade : Number(field(body.quantidade, 3));
@@ -338,5 +359,5 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
     contas.push(c.value);
   }
 
-  return { value: { agentId, quantidade, proxies: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: false } };
+  return { value: { agentId, quantidade, proxies: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: false, avisos: proxies.avisos } };
 }

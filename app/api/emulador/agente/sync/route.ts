@@ -187,6 +187,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 
+  // Container antigo sem MAC no retrato: o agente leu do docker inspect ao ligar e manda uma vez; vai para vps_devices.
+  if (agentKind === "vps" && Array.isArray(body.macs)) {
+    for (const item of body.macs.slice(0, 50) as Array<Record<string, unknown>>) {
+      const jobId = typeof item?.jobId === "string" ? item.jobId : "";
+      const mac = typeof item?.mac === "string" ? item.mac.toLowerCase() : "";
+      if (!/^[0-9a-f-]{36}$/.test(jobId) || !/^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/.test(mac)) continue;
+      const { error } = await admin.from("vps_devices").update({ mac }).eq("job_id", jobId).eq("user_id", agent.user_id);
+      if (error) console.warn(`[emulador/sync] vps_devices.mac não gravado (${jobId}): ${error.message}`);
+    }
+  }
+
   // Boot do agente da VPS: os containers que o SaaS conhece (linhas de vps_devices e contas da fila), para ele
   // achar os órfãos. Qualquer erro de leitura = campo ausente (o agente não apaga nada sem a lista).
   let conhecidos: string[] | undefined;

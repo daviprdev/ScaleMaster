@@ -8,8 +8,8 @@ import { DEVICE_PERFIS, type VpsAgent } from "@/lib/vps/types";
 interface LoteDialogProps {
   agent: VpsAgent | null;
   onClose: () => void;
-  /** Lote enviado (a lista recarrega). */
-  onSaved: () => void;
+  /** Lote enviado (a lista recarrega); `avisos` = o que passou mas merece atenção (proxy com outro usuário). */
+  onSaved: (avisos: string[]) => void;
 }
 
 /**
@@ -64,9 +64,9 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      const data = (await res.json().catch(() => null)) as { error?: string; avisos?: string[] } | null;
       if (!res.ok) throw new Error(data?.error ?? "Não foi possível enviar o lote. Tente de novo.");
-      onSaved();
+      onSaved(Array.isArray(data?.avisos) ? data.avisos : []);
       onClose();
     } catch (err) {
       setError((err as Error).message);
@@ -136,7 +136,9 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
                 ? proxiesLidas.error
                 : faltamProxies > 0
                   ? `${proxiesCount} proxies para ${quantidade} contas: falta${faltamProxies === 1 ? "" : "m"} ${faltamProxies}.`
-                  : "Uma por linha, na ordem dos códigos. Opcional: o país no fim (:US). Sobrando, as últimas são ignoradas."
+                  : proxiesLidas.avisos.length > 0
+                    ? `Aviso (não bloqueia): ${proxiesLidas.avisos.join(" ")}`
+                    : "Uma por linha, na ordem dos códigos. Opcional: o país no fim (:US). A mesma proxy com o mesmo usuário não pode repetir."
             }
             value={proxies}
             onChange={(e) => setProxies(e.target.value)}

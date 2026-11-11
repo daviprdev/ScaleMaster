@@ -31,6 +31,8 @@ export default function ContasVpsPage() {
   const [data, setData] = React.useState<VpsResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  /** Avisos do último lote enviado (mesma proxy com outro usuário): não bloquearam. */
+  const [avisos, setAvisos] = React.useState<string[]>([]);
   const [connectOpen, setConnectOpen] = React.useState(false);
   const [loteFor, setLoteFor] = React.useState<VpsAgent | null>(null);
   const [disconnecting, setDisconnecting] = React.useState<VpsAgent | null>(null);
@@ -216,6 +218,11 @@ export default function ContasVpsPage() {
       ) : (
         <div className="flex flex-col gap-4">
           {error && <Banner tone="warning">{error}</Banner>}
+          {avisos.length > 0 && (
+            <Banner tone="warning" onClose={() => setAvisos([])}>
+              {avisos.join(" ")}
+            </Banner>
+          )}
           {actionError && (
             <Banner tone="danger" onClose={() => setActionError(null)}>
               {actionError}
@@ -247,6 +254,7 @@ export default function ContasVpsPage() {
                   onRebuild={(a) => void rebuild(a)}
                   onDisconnect={setDisconnecting}
                   rebuilding={rebuilding.has(agent.id)}
+                  ramHost={data.ramHost ?? null}
                 />
                 {data.jobsAvailable && agent.lastSeenAt && (
                   <ContasVpsCard
@@ -270,7 +278,14 @@ export default function ContasVpsPage() {
         </div>
       )}
 
-      <LoteDialog agent={loteFor} onClose={() => setLoteFor(null)} onSaved={() => void load()} />
+      <LoteDialog
+        agent={loteFor}
+        onClose={() => setLoteFor(null)}
+        onSaved={(avisos) => {
+          setAvisos(avisos);
+          void load();
+        }}
+      />
       <EditarContaDialog job={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />
       <RefazerContaDialog job={refazendo} onClose={() => setRefazendo(null)} onSaved={() => void load()} />
       <EstruturarDialog job={estruturando} onClose={() => setEstruturando(null)} onSaved={() => void load()} />

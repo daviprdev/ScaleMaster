@@ -4,6 +4,7 @@ import { Dispositivo, PORTA_BASE, serialDe } from "./adb.mjs";
 import { apagarVolume, conferirQuota, copiarVolume, prune } from "./disco.mjs";
 import { aplicarProps, propsDe } from "./fingerprint.mjs";
 import { esperar, rodar, trecho } from "./processo.mjs";
+import { capacidade } from "./supervisor.mjs";
 import { IMAGEM_SIDECAR, colisao, enderecoDe, enderecosVivos, garantirBridge, garantirRede, nomeSidecar, pararSidecar, soltarRede, subirSidecar } from "./rede.mjs";
 
 /**
@@ -90,9 +91,29 @@ export const PASTA_INSTANCIAS = path.join(PASTA_VPS, "instancias");
 export const PASTA_PROPS = path.join(PASTA_VPS, "props");
 export const PASTA_BASE_PROPS = path.join(PASTA_VPS, "base");
 const LABEL = "scalemaster.vps=1";
-/** Teto de cada container: 1 CPU e 1536 MB (sem swap por fora), para um não tomar a máquina do outro. */
-export const CPUS = "1";
-export const MEMORIA = "1536m";
+/** Teto de memória de cada container: 2048 MB, sem swap por fora (--memory-swap igual). */
+export const MEMORIA = "2048m";
+
+/**
+ * CPUs de cada container: as vCPUs do host divididas pelos containers que
+ * podem ficar de pé ao mesmo tempo, no mínimo 1. Neste host (2 vCPU,
+ * maxLigadas 1) = 2.
+ */
+export function cpusPorContainer(vcpu, maxLigadas) {
+  const v = Number.isFinite(vcpu) && vcpu > 0 ? Math.floor(vcpu) : 1;
+  const l = Number.isFinite(maxLigadas) && maxLigadas > 0 ? Math.floor(maxLigadas) : 1;
+  return String(Math.max(1, Math.floor(v / l)));
+}
+
+/** Cota desta máquina agora (vCPU e maxLigadas do supervisor). */
+export function cotaAtual(cap = capacidade()) {
+  return { cpus: cpusPorContainer(cap.vcpu, cap.maxLigadas), memoria: MEMORIA };
+}
+
+/** docker update que põe a cota num container que já existe (vale também para os criados com a cota antiga). */
+export function argsDaCota(nome, cota = cotaAtual()) {
+  return ["update", "--cpus", cota.cpus, "--memory", cota.memoria, "--memory-swap", cota.memoria, nome];
+}
 
 /** --hostname do container = modelo do aparelho ("moto g84 5G" → "moto-g84-5G"): só letras, números e hífen. */
 export function hostnameDe(modelo) {
@@ -109,7 +130,7 @@ export function hostnameDe(modelo) {
  * Argumentos do docker create de uma conta. `props` = pasta com os build.prop
  * dela; `rede`/`ip` = enderecoDe(spec.device, spec.index).
  */
-export function argsDoContainer(spec, { props, rede, ip }) {
+export function argsDoContainer(spec, { props, rede, ip, cota = cotaAtual() }) {
   const nome = nomeDe(spec.index);
   const args = [
     "create", "--name", nome, "--privileged",
@@ -118,7 +139,7 @@ export function argsDoContainer(spec, { props, rede, ip }) {
     "--network", rede.nome, "--ip", ip, "--mac-address", spec.device.mac,
     "-p", `127.0.0.1:${PORTA_BASE + spec.index}:5555`,
     "-v", `${spec.volume}:/data`,
-    "--cpus", CPUS, "--memory", MEMORIA, "--memory-swap", MEMORIA, "--restart", "no",
+    "--cpus", cota.cpus, "--memory", cota.memoria, "--memory-swap", cota.memoria, "--restart", "no",
     // SELinux permissivo: o tar da sessão em /data/data é bloqueado mesmo como root com enforcing.
     "-e", "androidboot.selinux=permissive",
   ];
@@ -208,6 +229,8 @@ export class Android {
     this.manager = "docker";
     /** Containers cujo Android já terminou de ligar (evita um adb por sync). */
     this.prontos = new Set();
+    /** MAC lido do docker inspect de container sem MAC no retrato: jobId → mac, mandado no próximo sync. */
+    this.macsAprendidos = new Map();
   }
 
   /** Confere docker, a bridge, a imagem do redroid, a do sidecar e a base (volume + props). */
@@ -537,8 +560,12 @@ export class Android {
       await pararSidecar(nome);
       await this.criarContainer(spec);
     }
+    // Cota atual (CPU por maxLigadas, 2048 MB) também nos containers criados antes dela.
+    await rodar("docker", argsDaCota(nome), { timeoutMs: 60_000 });
     await docker(["start", nome], 120_000);
     this.prontos.delete(index);
+    // Retrato sem MAC (container antigo ou reconstruído): lê do inspect agora que está ligado e guarda.
+    if (!spec.device?.mac) await this.aprenderMac(index, spec).catch(() => {});
     // O sidecar entra junto: sem proxy gravada, bloqueado (nada sai); com proxy, redsocks.
     // Se ele não subir, o container não fica ligado sem kill switch.
     try {
@@ -548,6 +575,16 @@ export class Android {
       await pararSidecar(nome);
       throw e;
     }
+  }
+
+  /** Grava no retrato o MAC que o Docker deu ao container e guarda para o sync mandar a vps_devices. */
+  async aprenderMac(index, spec = lerSpec(index)) {
+    const mac = (await inspecionar(nomeDe(index)))?.mac?.toLowerCase();
+    if (!spec || !mac || !/^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/.test(mac)) return null;
+    spec.device = { ...(spec.device ?? {}), mac };
+    gravarSpec(spec);
+    if (spec.jobId) this.macsAprendidos.set(spec.jobId, mac);
+    return mac;
   }
 
   /** Desliga: docker stop (o fluxo já parou o Instagram), sidecar fora, adb desconectado. */

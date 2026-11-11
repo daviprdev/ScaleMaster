@@ -6,8 +6,9 @@ import { encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseInstances } from "@/lib/emulador/payload";
 import { parseLoteInput } from "@/lib/vps/input";
-import { parseCapacidade, proxiesEmUso } from "@/lib/vps/jobs";
-import { proxyHostDe, redeDe } from "@/lib/vps/load";
+import { chaveProxy, hostPortaDaChave, parseCapacidade, proxiesEmUso } from "@/lib/vps/jobs";
+import { proxyChaveDe, proxyHostDe, redeDe } from "@/lib/vps/load";
+import { ramDoHost } from "@/lib/vps/ram";
 import { colisaoDeIdentidade, novoDevice, proximaRede, proximosIndices } from "@/lib/vps/device";
 import { gerarPessoa } from "@/lib/vps/pessoa";
 import type { VpsContaInput } from "@/lib/vps/types";
@@ -67,6 +68,9 @@ export async function POST(req: NextRequest) {
   if (capacidade.maxLigadas < 1) {
     return NextResponse.json({ error: "A VPS não comporta nenhum container ligado (capacidade zero)." }, { status: 409 });
   }
+  // RAM livre lida do host agora (não do retrato do agente): precisa de maxLigadas × 1600 MB.
+  const ram = ramDoHost(capacidade.maxLigadas);
+  if (ram?.bloqueio) return NextResponse.json({ error: ram.bloqueio, ramLivreMb: ram.livreMb }, { status: 409 });
 
   // Índices reservados acima de tudo o que a VPS já tem (containers, contas, devices).
   const { data: devicesAntigos } = await admin.from("vps_devices").select("container, mac").eq("user_id", user.id);
@@ -81,17 +85,23 @@ export async function POST(req: NextRequest) {
 
   // Proxy em uso por conta viva desta VPS não entra de novo; conta descartada libera a dela.
   const { data: existentes } = await admin.from("emulator_jobs").select("id, status, error, label, input_enc").eq("agent_id", agent.id);
-  const emUso = proxiesEmUso(
-    ((existentes ?? []) as Array<{ status: "queued" | "running" | "done" | "error"; error: string | null; label: string | null; input_enc: string }>).map((j) => ({
-      status: j.status,
-      error: j.error,
-      label: j.label,
-      proxyHost: proxyHostDe(j.input_enc),
-    }))
-  );
+  // Dedupe contra as contas vivas por host:porta:usuário (bloqueia); mesma host:porta com outro usuário só avisa.
+  const vivos = ((existentes ?? []) as Array<{ status: "queued" | "running" | "done" | "error"; error: string | null; label: string | null; input_enc: string }>).map((j) => ({
+    status: j.status,
+    error: j.error,
+    label: j.label,
+    proxyHost: proxyChaveDe(j.input_enc) ?? proxyHostDe(j.input_enc),
+  }));
+  const emUso = proxiesEmUso(vivos);
+  const hostsEmUso = proxiesEmUso(vivos.map((v) => ({ ...v, proxyHost: v.proxyHost ? hostPortaDaChave(v.proxyHost) : null })));
+  const avisos = [...lote.avisos];
   for (const p of lote.proxies) {
-    const chave = `${p.host}:${p.porta}`;
-    if (emUso.has(chave)) return NextResponse.json({ error: `A proxy ${chave} já está em uso pela conta @${emUso.get(chave)}.` }, { status: 409 });
+    const chave = chaveProxy(p);
+    const hp = `${p.host}:${p.porta}`;
+    if (emUso.has(chave)) {
+      return NextResponse.json({ error: `A proxy ${hp} com o usuário ${p.usuario} já está em uso pela conta @${emUso.get(chave)}.` }, { status: 409 });
+    }
+    if (hostsEmUso.has(hp)) avisos.push(`A proxy ${hp} já é usada pela conta @${hostsEmUso.get(hp)} com outro usuário: segue.`);
   }
 
   // Nome, @, senha e nascimento gerados aqui (lib/vps/pessoa.ts); o @ não repete nenhum já gravado nem outro do lote.
@@ -181,5 +191,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ loteId, ids: criados });
+  return NextResponse.json({ loteId, ids: criados, avisos });
 }

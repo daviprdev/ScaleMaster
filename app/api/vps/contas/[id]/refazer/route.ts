@@ -6,8 +6,8 @@ import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { ehDescarte } from "@/lib/emulador/jobs";
 import { parseInstances } from "@/lib/emulador/payload";
 import { parseLinhaPortal, parseProxy } from "@/lib/vps/input";
-import { proxiesEmUso } from "@/lib/vps/jobs";
-import { proxyHostDe } from "@/lib/vps/load";
+import { chaveProxy, proxiesEmUso } from "@/lib/vps/jobs";
+import { proxyChaveDe, proxyHostDe } from "@/lib/vps/load";
 import { novoDevice, proximosIndices } from "@/lib/vps/device";
 import { gerarPessoa } from "@/lib/vps/pessoa";
 import type { VpsContaInput } from "@/lib/vps/types";
@@ -69,11 +69,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       status: j.status,
       error: j.error,
       label: j.label,
-      proxyHost: proxyHostDe(j.input_enc),
+      proxyHost: proxyChaveDe(j.input_enc) ?? proxyHostDe(j.input_enc),
     }))
   );
-  const chave = `${proxy.host}:${proxy.porta}`;
-  if (emUso.has(chave)) return NextResponse.json({ error: `A proxy ${chave} já está em uso pela conta @${emUso.get(chave)}.` }, { status: 409 });
+  // Dedupe por host:porta:usuário: mesma host:porta com outro usuário passa.
+  const chave = chaveProxy(proxy);
+  if (emUso.has(chave)) {
+    return NextResponse.json({ error: `A proxy ${proxy.host}:${proxy.porta} com o usuário ${proxy.usuario} já está em uso pela conta @${emUso.get(chave)}.` }, { status: 409 });
+  }
 
   // Índice novo acima de tudo o que já existiu.
   const { data: devices } = await admin.from("vps_devices").select("container").eq("user_id", user.id);

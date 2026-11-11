@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, Circle, Contact, Copy, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, ShieldAlert, ShieldCheck, Trash2, UserPlus, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, Contact, Copy, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Shield, ShieldAlert, ShieldCheck, Trash2, UserPlus, XCircle } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Input, ProgressBar, type BadgeTone } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ALERTA_ROBO, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
 import { progressoEstrutura } from "@/lib/vps/estruturacao";
-import { VPS_FLUXO, ehAlertaVps, ehDescartada, ehProxyMorta, isolamentoUnico, progresso, type Isolamento } from "@/lib/vps/jobs";
+import { VPS_FLUXO, ehAlertaVps, ehDescartada, ehProxyMorta, estadoIsolamento, progresso, type Isolamento } from "@/lib/vps/jobs";
 import { rotuloAlerta } from "@/lib/vps/painel";
 import type { VpsDevice, VpsJob } from "@/lib/vps/types";
 
@@ -98,9 +98,20 @@ function isolamentoDe(job: VpsJob, device: VpsDevice | undefined): Isolamento {
   return { ip: job.ip ?? null, mac: device?.mac ?? null, modelo: device?.model ?? null, serial: device?.serial ?? null, androidId: device?.androidId ?? null };
 }
 
-/** Bloco "Isolamento": IP, MAC, modelo, serial e Android ID da conta; escudo verde quando estão únicos no lote. */
+const ESCUDO = {
+  unico: { cor: "text-success", Icone: ShieldCheck, texto: "únicos no lote" },
+  repetido: { cor: "text-danger", Icone: ShieldAlert, texto: "valor repetido no lote" },
+  neutro: { cor: "text-ink-3", Icone: Shield, texto: "MAC ou outro valor ainda desconhecido" },
+} as const;
+
+/**
+ * Bloco "Isolamento": IP, MAC, modelo, serial e Android ID da conta. Escudo
+ * verde quando os quatro identificadores existem e são únicos no lote,
+ * vermelho quando algum repete, neutro (cinza) quando falta algum — container
+ * antigo sem MAC conhecido não conta como único.
+ */
 function IsolamentoBox({ isolamento, doLote }: { isolamento: Isolamento; doLote: readonly Isolamento[] }) {
-  const unico = isolamentoUnico(isolamento, doLote);
+  const escudo = ESCUDO[estadoIsolamento(isolamento, doLote)];
   const itens: Array<[string, string | null]> = [
     ["IP", isolamento.ip],
     ["MAC", isolamento.mac],
@@ -110,9 +121,9 @@ function IsolamentoBox({ isolamento, doLote }: { isolamento: Isolamento; doLote:
   ];
   return (
     <div className="mt-3 rounded-lg border border-line p-3">
-      <p className={cn("flex items-center gap-1.5 text-xs font-medium", unico ? "text-success" : "text-warning")}>
-        {unico ? <ShieldCheck size={14} className="shrink-0" /> : <ShieldAlert size={14} className="shrink-0" />}
-        Isolamento · {unico ? "únicos no lote" : "valor repetido ou ausente no lote"}
+      <p className={cn("flex items-center gap-1.5 text-xs font-medium", escudo.cor)}>
+        <escudo.Icone size={14} className="shrink-0" />
+        Isolamento · {escudo.texto}
       </p>
       <dl className="mt-2 grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-5">
         {itens.map(([rotulo, valor]) => (

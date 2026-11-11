@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import os from "node:os";
 import { rodar, trecho } from "./processo.mjs";
 
@@ -100,6 +101,52 @@ export function criarWatchdog(matar, { travadoMs = TRAVADO_MS } = {}) {
       timer = null;
     },
   };
+}
+
+/** Id do container Docker no /proc/<pid>/cgroup ("docker-<64 hex>.scope" ou ".../docker/<64 hex>"), ou null. */
+export function containerDoCgroup(texto) {
+  return /(?:docker-|docker\/)([0-9a-f]{64})/.exec(String(texto ?? ""))?.[1] ?? null;
+}
+
+/** Linhas do `ps -eo pid=,rss=,args= --sort=-rss` → [{ pid, rssMb, nome }] (nome sem o caminho do executável). */
+export function lerPs(saida, limite = 5) {
+  const out = [];
+  for (const linha of String(saida ?? "").split(/\r?\n/)) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(.+)$/.exec(linha);
+    if (!m) continue;
+    const nome = m[3].trim().replace(/^\S*\//, "").replace(/\s+/g, " ").slice(0, 60);
+    if (!nome) continue;
+    out.push({ pid: Number(m[1]), rssMb: Math.round(Number(m[2]) / 1024), nome });
+    if (out.length >= limite) break;
+  }
+  return out;
+}
+
+/**
+ * Os 5 processos do host com mais RAM residente, com o container de cada um
+ * (pelo cgroup) quando roda dentro de um. Vai no sync em capacity.topRss.
+ */
+export async function maioresConsumidores({ limite = 5 } = {}) {
+  const ps = await rodar("ps", ["-eo", "pid=,rss=,args=", "--sort=-rss"], { timeoutMs: 15_000 });
+  const top = lerPs(ps.stdout, limite);
+  const nomes = new Map();
+  const lista = await rodar("docker", ["ps", "--no-trunc", "--format", "{{.ID}} {{.Names}}"], { timeoutMs: 20_000 });
+  for (const l of String(lista.stdout ?? "").split(/\r?\n/)) {
+    const [id, nome] = l.trim().split(/\s+/);
+    if (id && nome) nomes.set(id, nome);
+  }
+  const out = [];
+  for (const p of top) {
+    let cgroup = "";
+    try {
+      cgroup = readFileSync(`/proc/${p.pid}/cgroup`, "utf8");
+    } catch {
+      /* o processo acabou */
+    }
+    const id = containerDoCgroup(cgroup);
+    out.push({ nome: p.nome, rssMb: p.rssMb, container: id ? (nomes.get(id) ?? id.slice(0, 12)) : null });
+  }
+  return out;
 }
 
 /** Container órfão só sai depois de parado por este tempo. */

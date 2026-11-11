@@ -1,5 +1,6 @@
 import { ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_TELEFONE, ALERTA_USUARIO, CODIGO_VENCIDO, MAX_JOB_UPDATES, ehDescarte, type EmulatorJob, type JobStep } from "@/lib/emulador/jobs";
-import type { VpsCapacidade, VpsJob } from "./types";
+import type { ProcessoRss, VpsCapacidade, VpsJob } from "./types";
+export type { RamHost } from "./types";
 
 /**
  * Fila da aba Contas VPS: etapas, avisos, ligação conta ↔ container e a
@@ -144,7 +145,39 @@ export function parseCapacidade(raw: unknown): VpsCapacidade {
     ramUsadaMb: int(r.ramUsadaMb, 0, 1_000_000, 0),
     ligadas: int(r.ligadas, 0, 200, 0),
     versoesIg: versoes,
+    topRss: parseTopRss(r.topRss),
   };
+}
+
+/** Lista dos maiores consumidores que o agente mandou: no máximo 5, valores saneados. */
+export function parseTopRss(raw: unknown): ProcessoRss[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ProcessoRss[] = [];
+  for (const item of raw.slice(0, 5)) {
+    if (!item || typeof item !== "object") continue;
+    const r = item as Record<string, unknown>;
+    const rss = typeof r.rssMb === "number" && Number.isFinite(r.rssMb) ? Math.max(0, Math.round(r.rssMb)) : null;
+    const nome = typeof r.nome === "string" ? r.nome.replace(/[^\x20-\x7E]/g, "").trim().slice(0, 60) : "";
+    if (rss === null || !nome) continue;
+    const container = typeof r.container === "string" && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/.test(r.container) ? r.container : null;
+    out.push({ nome, rssMb: rss, container });
+  }
+  return out;
+}
+
+/** RAM livre mínima por container ligado para aceitar um lote. */
+export const RAM_POR_CONTA_MB = 1600;
+/** Abaixo disto o card do agente mostra a RAM livre em vermelho. */
+export const RAM_ALERTA_MB = 2000;
+
+/**
+ * Lote só entra com RAM livre para `maxLigadas` containers de pé ao mesmo
+ * tempo (`maxLigadas × 1600` MB). null = libera; senão o motivo, com o número.
+ */
+export function bloqueioPorRam(livreMb: number, maxLigadas: number): string | null {
+  const contas = Math.max(1, Math.floor(maxLigadas));
+  if (livreMb >= contas * RAM_POR_CONTA_MB) return null;
+  return `RAM insuficiente: ${Math.max(0, Math.floor(livreMb))} MB livres para ${contas} ${contas === 1 ? "conta" : "contas"}`;
 }
 
 /** Host com menos de 4 vCPU roda um container por vez: o card do agente avisa. */
@@ -153,6 +186,19 @@ export const AVISO_HOST_PEQUENO = "host pequeno, 1 por vez";
 
 export function hostPequeno(cap: Pick<VpsCapacidade, "vcpu">): boolean {
   return cap.vcpu > 0 && cap.vcpu < VCPU_HOST_PEQUENO;
+}
+
+/**
+ * Chave de dedupe de proxy: host:porta:usuário. Mesmo usuário na mesma
+ * host:porta é a mesma proxy (bloqueia); usuários diferentes na mesma
+ * host:porta são proxies diferentes de um gateway (só avisa).
+ */
+export function chaveProxy(p: { host: string; porta: number | string; usuario: string }): string {
+  return `${p.host.toLowerCase()}:${Number(p.porta)}:${p.usuario}`;
+}
+
+export function hostPortaDaChave(chave: string): string {
+  return chave.split(":").slice(0, 2).join(":");
 }
 
 export interface Isolamento {
@@ -171,11 +217,27 @@ export interface Isolamento {
 // decisão: o modelo aparece no bloco mas não entra na conta de "único": são 3 perfis reais de aparelho, então
 // lote com mais de 3 contas sempre repete modelo (como no mundo real) e o ícone nunca ficaria verde.
 export function isolamentoUnico(conta: Isolamento, doLote: readonly Isolamento[]): boolean {
+  return estadoIsolamento(conta, doLote) === "unico";
+}
+
+/**
+ * Escudo do bloco Isolamento: "repetido" (vermelho) quando algum valor
+ * conhecido aparece em outra conta do lote; "neutro" quando falta algum (MAC
+ * desconhecido de container antigo, por exemplo) — sem dado não dá para dizer
+ * que é único; "unico" (verde) quando os quatro existem e não repetem.
+ */
+export function estadoIsolamento(conta: Isolamento, doLote: readonly Isolamento[]): "unico" | "repetido" | "neutro" {
   const campos: Array<keyof Isolamento> = ["ip", "mac", "serial", "androidId"];
-  return campos.every((campo) => {
+  let faltou = false;
+  for (const campo of campos) {
     const valor = conta[campo]?.toLowerCase();
-    return !!valor && doLote.filter((o) => o[campo]?.toLowerCase() === valor).length === 1;
-  });
+    if (!valor) {
+      faltou = true;
+      continue;
+    }
+    if (doLote.filter((o) => o[campo]?.toLowerCase() === valor).length > 1) return "repetido";
+  }
+  return faltou ? "neutro" : "unico";
 }
 
 /** "Continuar" depois de uma proxy morta: a etapa geo roda de novo (as anteriores ficam). */

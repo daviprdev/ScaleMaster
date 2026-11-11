@@ -34,6 +34,16 @@ export interface VpsCapacidade {
   ligadas: number;
   /** APKs do Instagram em /opt/scalemaster/apks (versões). */
   versoesIg: string[];
+  /** Os 5 processos do host que mais usam RAM (RSS), lidos pelo agente a cada 30 s. */
+  topRss: ProcessoRss[];
+}
+
+export interface ProcessoRss {
+  /** Comando (sem o caminho), cortado em 60 caracteres. */
+  nome: string;
+  rssMb: number;
+  /** Container Docker do processo, quando ele roda num (ex.: teste-ig, ig-7). */
+  container: string | null;
 }
 
 export interface VpsAgent {
@@ -100,6 +110,16 @@ export interface VpsResponse {
   devices: VpsDevice[];
   /** false = supabase/vps_estruturacao.sql ainda não aplicado (o botão Estruturar avisa). */
   estruturaAvailable?: boolean;
+  /** RAM do host lida na hora pelo servidor (null = não deu para ler). */
+  ramHost?: RamHost | null;
+}
+
+/** RAM do host no momento da leitura, e o motivo do bloqueio de lote (null = libera). */
+export interface RamHost {
+  livreMb: number;
+  totalMb: number;
+  lidaEm: string;
+  bloqueio: string | null;
 }
 
 /**

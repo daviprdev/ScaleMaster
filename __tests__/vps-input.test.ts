@@ -22,6 +22,7 @@ describe("Contas VPS: proxies", () => {
       url: "http://usuario1:senha1@sv2.exemplo.com:10114",
       host: "sv2.exemplo.com",
       porta: 10114,
+      usuario: "usuario1",
       pais: null,
     });
     expect(parseProxy("1.2.3.4:8080:u:p:us")?.pais).toBe("US");
@@ -40,11 +41,14 @@ describe("Contas VPS: proxies", () => {
     expect(portaValida("0")).toBe(false);
   });
 
-  it("uma por linha, sem repetir host:porta", () => {
+  it("uma por linha; repetir host:porta com o mesmo usuário bloqueia, com outro usuário só avisa", () => {
     const ok = parseProxies("a.com:1:u:p\n\nb.com:2:u:p\n");
     expect(ok).toHaveProperty("value");
     if ("value" in ok) expect(ok.value.map((p) => p.host)).toEqual(["a.com", "b.com"]);
-    expect(parseProxies("a.com:1:u:p\na.com:1:x:y")).toHaveProperty("error");
+    expect(parseProxies("a.com:1:u:p\na.com:1:u:outra")).toHaveProperty("error");
+    expect(parseProxies("a.com:1:u:p\na.com:1:x:y")).toHaveProperty("avisos", [
+      "A proxy a.com:1 aparece nas linhas 1, 2 com usuários diferentes: segue, cada linha conta como uma proxy.",
+    ]);
     expect(parseProxies("a.com:1:u:p\nruim")).toEqual({ error: "Proxy da linha 2 no formato host:porta:usuário:senha." });
   });
 });
