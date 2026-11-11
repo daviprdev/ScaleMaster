@@ -162,7 +162,10 @@ export async function tornarProfissional(ctx) {
     if (nos) salvarTela(nos, `profissional: ${texto}`);
     throw new Error(texto);
   };
-  const naCategoria = (nos) => temTexto(nos, ["Qual categoria", "categoria mais bem", "What best describes", "Choose a category"]);
+  // A pesquisa de categoria pode abrir em tela cheia (search_bar_real_field, sem o título; josiane, 11/11).
+  const naCategoria = (nos) =>
+    temTexto(nos, ["Qual categoria", "categoria mais bem", "What best describes", "Choose a category"]) ||
+    nos.some((n) => ["search_bar_real_field", "categories_header_text", "suggested_categories_header"].some((id) => n.id.endsWith(`:id/${id}`)));
   const tocarEsperar = async (nos, alvo) => {
     await d.tocar(alvo.x, alvo.y);
     await esperarMudar(d, nos, { timeoutMs: 6000 });
@@ -272,11 +275,24 @@ export async function tornarProfissional(ctx) {
         {
           // Lista de configurações: "Tipo e ferramentas da conta" fica lá embaixo (4 rolagens nesta build).
           nome: "rolar-configuracoes",
-          teste: (nos) => estado.menu && !estado.tipo && estado.rolagens < 14 && temTexto(nos, [...CONFIGURACOES, "Sua conta", "Your account", "Como você usa o Instagram", "How you use Instagram"]),
+          // Rola tudo numa volta só: a lista leva 4–5 rolagens (josiane, 11/11) e o percorrer dava "não avançou" na 4ª.
+          teste: (nos) => estado.menu && !estado.tipo && temTexto(nos, [...CONFIGURACOES, "Sua conta", "Your account", "Como você usa o Instagram", "How you use Instagram"]),
           agir: async (nos) => {
-            estado.rolagens += 1;
-            await d.arrastar(540, 1500, 540, 600, 400);
-            await esperarMudar(d, nos, { timeoutMs: 3000 });
+            let atual = nos;
+            for (let i = 0; i < 14; i++) {
+              const alvo = atual.find((n) => TIPO_DE_CONTA.some((t) => n.texto.trim() === t) && n.y < 1800);
+              if (alvo) {
+                estado.tipo = true;
+                await tocarEsperar(atual, alvo);
+                return;
+              }
+              await d.arrastar(540, 1500, 540, 600, 400);
+              const depois = await esperarMudar(d, atual, { timeoutMs: 3000 });
+              // Fim da lista sem o item: a tela não muda mais.
+              if (!depois) break;
+              atual = depois;
+            }
+            falhar("rolei as configurações até o fim e não achei \"Tipo e ferramentas da conta\"", atual);
           },
         },
         {

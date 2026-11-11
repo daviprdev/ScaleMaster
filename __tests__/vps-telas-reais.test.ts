@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { arrobaDaPermissao } from "../agente-vps/lib/estrutura.mjs";
 import { comandoLimpar } from "../agente-vps/lib/teclado.mjs";
-import { comandoTelaPrincipal, midiaSelecionada, naEdicao, noProprioPerfil, primeiraMidia } from "../agente-vps/fluxos/instagram.mjs";
+import { comandoTelaPrincipal, destacarStory, midiaSelecionada, naEdicao, noProprioPerfil, primeiraMidia } from "../agente-vps/fluxos/instagram.mjs";
 import { BALAO_ACIMA_PX, consentir, escolherDestaque, noVisualizador, stickerDeLink, tocarLinkDoDestaque } from "../agente-vps/fluxos/oauth.mjs";
 
 /**
@@ -182,4 +182,82 @@ describe("Permissão do OAuth: confere o @ antes de Permitir", () => {
     await expect(consentir({ d: d2 }, "aline.guimaraes82807")).rejects.toThrow(/^CONEXAO_OUTRA_CONTA: a tela de permissão é de @outra\.conta, a conta é @aline\.guimaraes82807/);
     expect(outros).toEqual([]);
   });
+});
+
+describe("Destacar pelo próprio story (josiane, ig-8)", () => {
+  const BARRA: No[] = [
+    no({ descricao: "Página inicial", id: id("feed_tab"), clicavel: true, x: 108, y: 1731 }),
+    no({ descricao: "Pesquisar e explorar", id: id("search_tab"), clicavel: true, x: 756, y: 1731 }),
+    no({ descricao: "Perfil", id: id("profile_tab"), clicavel: true, x: 972, y: 1731 }),
+  ];
+  const PERFIL_SEM_DESTAQUES: No[] = [
+    no({ texto: "Não vejo a hora de…", id: id("pog_bubble_text"), x: 157, y: 276 }),
+    no({ id: id("row_profile_header_imageview_f"), clicavel: true, x: 158, y: 394 }),
+    no({ descricao: "Seu perfil. Story visto", id: id("row_profile_header_imageview"), x: 158, y: 394 }),
+    no({ descricao: "Adicionar ao story", id: id("reel_empty_badge"), clicavel: true, x: 226, y: 462 }),
+    no({ texto: "Josiane Cavalcanti", id: id("profile_header_full_name_above"), x: 480, y: 299 }),
+    no({ descricao: "Editar perfil", id: id("button_container"), clicavel: true, x: 257, y: 843 }),
+    no({ texto: "Editar perfil", x: 257, y: 842 }),
+    no({ descricao: "Ignorar", id: id("dismiss_button_prism_style"), clicavel: true, x: 402, y: 1150 }),
+    ...BARRA,
+  ];
+  const MEU_STORY: No[] = [
+    no({ clicavel: true, x: 540, y: 897 }),
+    no({ descricao: "Destacar", id: id("toolbar_highlights_button"), clicavel: true, x: 476, y: 1670 }),
+    no({ texto: "Destacar", id: id("highlights_label"), x: 476, y: 1733 }),
+    no({ id: id("reel_viewer_profile_picture"), clicavel: true, x: 109, y: 91 }),
+  ];
+  const SHEET = (nome: string): No[] => [
+    ...MEU_STORY,
+    no({ descricao: "Ignorar", id: id("background_dimmer"), clicavel: true, x: 540, y: 897 }),
+    no({ texto: "Adicionar ao destaque", id: id("header_text"), x: 540, y: 1285 }),
+    no({ texto: nome, id: id("highlight_title"), classe: "android.widget.EditText", clicavel: true, focado: true, x: 540, y: 1602 }),
+    no({ texto: "Adicionar", id: id("action_button"), clicavel: true, x: 540, y: 1720 }),
+  ];
+
+  it("conta sem destaque: foto → Destacar → nome no campo do sheet → Adicionar → fecha o story; nunca toca no Ignorar do fundo", async () => {
+    let tela: "perfil" | "story" | "sheet" | "story2" = "perfil";
+    let nome = "Destaques";
+    let criado = false;
+    const toques: string[] = [];
+    const d = {
+      tela: async () => (tela === "perfil" ? PERFIL_SEM_DESTAQUES : tela === "sheet" ? SHEET(nome) : MEU_STORY),
+      tocar: async (x: number, y: number) => {
+        const alvo = (tela === "perfil" ? PERFIL_SEM_DESTAQUES : tela === "sheet" ? SHEET(nome) : MEU_STORY).find((n) => n.x === Math.round(x) && n.y === Math.round(y));
+        toques.push(`${tela}:${alvo?.texto || alvo?.descricao || alvo?.id.split("/")[1] || "?"}`);
+        if (tela === "perfil" && y === 394) tela = "story";
+        else if (tela === "story" && y === 1670) tela = "sheet";
+        else if (tela === "sheet" && y === 1720) {
+          criado = true;
+          tela = "story2";
+        }
+      },
+      tecla: async (k: string) => {
+        toques.push(k);
+        if (tela === "story2") tela = "perfil";
+      },
+      limparCampo: async () => {
+        nome = "";
+      },
+      digitar: async (v: string) => {
+        nome = v;
+        return "broadcast";
+      },
+      focoAtual: async () => `${IG}/com.instagram.mainactivity.InstagramMainActivity`,
+      shell: async () => "",
+      abrirApp: async () => "",
+    };
+    const semDono = (texto: string) => {
+      throw new Error(texto);
+    };
+    const r = await destacarStory({ d, log: () => {}, ajuda: { manual: semDono, terminarAMao: semDono } }, "AQUI 🔗👆");
+    expect(r).toBe(`destaque "AQUI 🔗👆" criado`);
+    expect(criado).toBe(true);
+    expect(nome).toBe("AQUI 🔗👆");
+    expect(toques.filter((t) => /Ignorar/.test(t))).toEqual([]);
+    expect(toques[0]).toBe("perfil:row_profile_header_imageview_f");
+    expect(toques).toContain("story:Destacar");
+    expect(toques).toContain("sheet:Adicionar");
+    expect(toques[toques.length - 1]).toBe("KEYCODE_BACK");
+  }, 20_000);
 });

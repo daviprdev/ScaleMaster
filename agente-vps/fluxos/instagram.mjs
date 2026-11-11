@@ -1125,7 +1125,7 @@ export async function postarStory(ctx, { link, texto }) {
 export async function destacarStory(ctx, nome) {
   const { d, ajuda } = ctx;
   if (!nome) throw new Error("A estruturação veio sem o nome do destaque.");
-  const estado = { novo: false, escolheu: false, nomeou: false, pelaFoto: false, viuStory: false };
+  const estado = { novo: false, escolheu: false, nomeou: false, pelaFoto: false, destacou: false };
   const noStory = (nos) => nos.some((n) => /reel_viewer|story_viewer|viewer_toolbar/.test(n.id));
   await irPara(ctx, "perfil", { porMudanca: true, abas: true });
   return percorrer(ctx, {
@@ -1145,7 +1145,9 @@ export async function destacarStory(ctx, nome) {
       },
       {
         nome: "nome",
-        teste: (nos) => (estado.escolheu || (estado.pelaFoto && estado.novo)) && !estado.nomeou && campoDeTexto(nos),
+        // Pelo story: "Adicionar ao destaque" já abre com o campo do nome ("Destaques") quando a conta não tem
+        // destaque; com destaques, primeiro o "Novo" (josiane, 11/11).
+        teste: (nos) => (estado.escolheu || estado.destacou) && !estado.nomeou && campoDeTexto(nos),
         agir: async (nos, campo) => {
           await preencherEsperando(d, campo, nome, nos);
           const atual = await telaAtual(d);
@@ -1158,8 +1160,11 @@ export async function destacarStory(ctx, nome) {
       {
         // No próprio story: botão Destacar da barra de baixo.
         nome: "destacar-no-story",
-        teste: (nos) => estado.pelaFoto && !estado.novo && acharTexto(nos, ["Destacar", "Highlight", "Destaque"], { exato: true }),
-        agir: (nos, alvo) => toque(d, nos, alvo),
+        teste: (nos) => estado.pelaFoto && !estado.destacou && !estado.novo && acharTexto(nos, ["Destacar", "Highlight", "Destaque"], { exato: true }),
+        agir: async (nos, alvo) => {
+          await toque(d, nos, alvo);
+          estado.destacou = true;
+        },
       },
       {
         nome: "seguinte",
