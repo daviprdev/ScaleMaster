@@ -47,10 +47,11 @@ function ajudaSemDono(log) {
 }
 
 /** Aparelho com a proxy conferida (sidecar de pé) antes de cada etapa no Instagram. */
-async function contexto({ dispositivo, log }) {
+async function contexto({ dispositivo, log, input }) {
   const d = await dispositivo();
   await garantirProxy(d);
-  return { d, log, ajuda: ajudaSemDono(log) };
+  // usuario: o Instagram abre e reabre direto no perfil da conta (deep link), sem passar pelo feed.
+  return { d, log, ajuda: ajudaSemDono(log), usuario: input?.conta?.usuario ?? "" };
 }
 
 /**

@@ -6,7 +6,7 @@ import { SEM_NAVEGADOR, SESSAO_PERDIDA } from "../agente-vps/lib/estrutura.mjs";
 import { ORFAO_PARADO_MS, limparOrfaosAntigos, orfaosParaApagar } from "../agente-vps/lib/supervisor.mjs";
 import { IME, TECLADO_INDISPONIVEL, aspas, broadcastOk, comandoDigitar, digitarCom, garantirTeclado, soAscii } from "../agente-vps/lib/teclado.mjs";
 import { ESTRUTURACAO } from "../agente-vps/fluxos/estruturacao.mjs";
-import { conferirSessao, destacarStory, editarPerfil, estadoDaSessao, postarStory, trocarFoto } from "../agente-vps/fluxos/instagram.mjs";
+import { conferirSessao, destacarStory, editarPerfil, estadoDaSessao, irPara, postarStory, trocarFoto } from "../agente-vps/fluxos/instagram.mjs";
 import { CHROME, entrarEVoltar } from "../agente-vps/fluxos/oauth.mjs";
 import { TEMPOS, assinatura, esperarMudar, preencherEsperando, tocarAteMudar } from "../agente-vps/fluxos/tela.mjs";
 
@@ -315,7 +315,8 @@ describe("Esperas: por mudança de dump, com timeout e nova tentativa", () => {
     const resultado = await destacarStory({ d, log: () => {}, ajuda: { manual: semDono, terminarAMao: semDono } }, "Promoção 🔥");
     expect(resultado).toBe('destaque "Promoção 🔥" criado');
     expect(digitado).toBe("Promoção 🔥");
-    expect(toques).toEqual(["perfil:Perfil", "perfil:Novo", "escolher:Foto de hoje", "escolher:Seguinte", "nome:campo", "nome:Concluído"]);
+    // Já no próprio perfil ("Editar perfil" na tela): não toca na aba Perfil de novo.
+    expect(toques).toEqual(["perfil:Novo", "escolher:Foto de hoje", "escolher:Seguinte", "nome:campo", "nome:Concluído"]);
     // Com as pausas fixas de antes (2,5 + 3 + 1,5 + 2,5 + 0,6 + 0,5 + 4 s) isto passava de 14 s.
     expect(Date.now() - inicio).toBeLessThan(3000);
   });
@@ -387,5 +388,68 @@ describe("Prints: path traversal", () => {
     ]) {
       expect(caminhoDoPrint(base, id, etapa), `${id} / ${etapa}`).toBeNull();
     }
+  });
+});
+
+describe("Sessão: o Instagram cai (vídeo no feed) e a conferência reabre no perfil da conta", () => {
+  const LAUNCHER: No[] = [no({ texto: "Galeria", pacote: "com.android.launcher3" }), no({ texto: "Search", pacote: "com.android.launcher3" })];
+  const PERFIL: No[] = [no({ texto: "minha.conta", id: `${IG}:id/action_bar_title`, y: 136 }), no({ texto: "Editar perfil", clicavel: true, y: 700 })];
+
+  it("launcher na frente: reabre pelo deep link do próprio perfil e confirma a sessão", async () => {
+    const comandos: string[] = [];
+    let reaberto = false;
+    const d = {
+      tela: async () => (reaberto ? PERFIL : LAUNCHER),
+      shell: async (...args: string[]) => {
+        comandos.push(args.join(" "));
+        if (args.includes("instagram://user?username=minha.conta")) reaberto = true;
+        return "Starting: Intent";
+      },
+      abrirApp: async () => {
+        throw new Error("não devia abrir pelo launcher (feed)");
+      },
+    };
+    const logs: string[] = [];
+    const r = await conferirSessao({ d, log: (m: string) => logs.push(m), ajuda: {}, usuario: "minha.conta" }, "minha.conta");
+    expect(r).toBe("logada (@minha.conta na tela), depois de reabrir o Instagram 1x");
+    expect(comandos).toEqual(["am start -a android.intent.action.VIEW -d instagram://user?username=minha.conta -p com.instagram.android -f 0x20000000"]);
+    expect(logs[0]).toMatch(/^Instagram fora da frente \(Galeria \| Search\): reabrindo \(1\/3\)$/);
+  });
+
+  it("cai de novo a cada reabertura: depois de 3 vezes, SESSAO_PERDIDA dizendo que o app não voltou", async () => {
+    let aberturas = 0;
+    const d = {
+      tela: async () => LAUNCHER,
+      shell: async () => {
+        aberturas += 1;
+        return "Starting";
+      },
+      abrirApp: async () => {},
+    };
+    const erro = await conferirSessao({ d, log: () => {}, ajuda: {}, usuario: "minha.conta" }, "minha.conta").catch((e: Error) => e);
+    expect(aberturas).toBe(3);
+    expect((erro as Error).message).toMatch(new RegExp(`^${SESSAO_PERDIDA}: o Instagram saiu da frente 4x e não voltou`));
+  });
+
+  it("sem o @ no contexto, reabre pelo launcher", async () => {
+    let pelaLista = false;
+    let reaberto = false;
+    const d = {
+      tela: async () => (reaberto ? BARRA : LAUNCHER),
+      shell: async () => "",
+      abrirApp: async () => {
+        pelaLista = true;
+        reaberto = true;
+      },
+    };
+    expect(await conferirSessao({ d, log: () => {}, ajuda: {} }, "minha.conta")).toBe("logada (barra de navegação), depois de reabrir o Instagram 1x");
+    expect(pelaLista).toBe(true);
+  });
+
+  it("irPara(perfil) já no próprio perfil (deep link, sem a barra de abas) não volta para o feed", async () => {
+    const teclas: string[] = [];
+    const d = { tela: async () => PERFIL, tocar: async () => void teclas.push("toque"), tecla: async (t: string) => void teclas.push(t), focoAtual: async () => "" };
+    await irPara({ d, log: () => {} }, "perfil");
+    expect(teclas).toEqual([]);
   });
 });

@@ -233,8 +233,7 @@ export async function percorrer(ctx, { nome, telas, fim, limiteMs, travou }) {
     }
 
     if (!doInstagram(nos) && !doSistema(nos)) {
-      log("fora do Instagram: abrindo de novo");
-      await d.abrirApp(INSTAGRAM);
+      log(`fora do Instagram: abrindo de novo (${await reabrirInstagram(ctx)})`);
       await esperar(6000);
       continue;
     }
@@ -308,9 +307,27 @@ export async function iniciarInstagram(ctx) {
   const { d } = ctx;
   await d.fecharApp(INSTAGRAM);
   for (const p of PERMISSOES) await d.shell("pm", "grant", INSTAGRAM, p).catch(() => {});
-  await d.abrirApp(INSTAGRAM);
+  const onde = await reabrirInstagram(ctx);
+  // Se cair já na abertura (vídeo do feed), a conferência de sessão reabre: aqui basta o app ter aparecido uma vez.
   await esperarTela(d, (nos) => (doInstagram(nos) ? nos : null), { timeoutMs: 60_000, intervaloMs: 1000, descricao: "o Instagram abrir" });
-  return "Instagram aberto";
+  return onde === "perfil" ? "Instagram aberto no perfil da conta" : "Instagram aberto";
+}
+
+/**
+ * Abre (ou reabre) o Instagram. Com o @ da conta em ctx.usuario vai direto ao
+ * perfil dela pelo deep link: o feed toca vídeo sozinho e, neste host, o
+ * RenderThread do Android cai desenhando vídeo (SIGSEGV em libhwui
+ * DeferredLayerUpdater, ANGLE sobre SwiftShader; ig-8 e ig-10, 11/11). Sem o @,
+ * pelo launcher. Devolve "perfil" ou "launcher".
+ */
+export async function reabrirInstagram(ctx) {
+  const usuario = String(ctx.usuario ?? "").replace(/^@/, "");
+  if (usuario) {
+    const saida = await ctx.d.shell(...comandoDeepLink(usuario)).catch(() => null);
+    if (saida !== null && !/Error|Exception|does not exist/i.test(saida)) return "perfil";
+  }
+  await ctx.d.abrirApp(INSTAGRAM);
+  return "launcher";
 }
 
 /**
@@ -335,21 +352,41 @@ export function estadoDaSessao(nos, usuario) {
  * Antes de mexer na conta: confere que ela está logada. Tela de login, ou 90 s
  * sem a barra nem o @, = SESSAO_PERDIDA (o job para; a conta não é descartada).
  */
-export async function conferirSessao(ctx, usuario, { timeoutMs = 90_000 } = {}) {
-  const { d } = ctx;
+/** Vezes que conferirSessao reabre o Instagram quando ele sai da frente. */
+export const REABERTURAS_MAX = 3;
+
+export async function conferirSessao(ctx, usuario, { timeoutMs = 90_000, porReabertura = 60_000 } = {}) {
+  const { d, log = () => {} } = ctx;
   const perdida = (motivo, nos) => {
     if (nos?.length) salvarTela(nos, `sessão perdida: ${motivo}`);
     const erro = new Error(`${SESSAO_PERDIDA}: ${motivo}`);
     erro.semPrefixo = true;
     return erro;
   };
-  const limite = Date.now() + timeoutMs;
+  let limite = Date.now() + timeoutMs;
+  let reaberturas = 0;
   let nos = [];
   for (;;) {
     nos = await d.tela().catch(() => []);
     const estado = nos.length > 0 ? estadoDaSessao(nos, usuario) : "indefinida";
-    if (estado === "logada") return temBarra(nos) ? "logada (barra de navegação)" : `logada (@${String(usuario).replace(/^@/, "")} na tela)`;
+    if (estado === "logada") {
+      const como = temBarra(nos) ? "logada (barra de navegação)" : `logada (@${String(usuario).replace(/^@/, "")} na tela)`;
+      return reaberturas ? `${como}, depois de reabrir o Instagram ${reaberturas}x` : como;
+    }
     if (estado === "deslogada") throw perdida(`o Instagram abriu na tela de login (${resumoTela(nos)})`, nos);
+    // O Instagram cai e a tela fica no launcher: crash nativo no RenderThread desenhando vídeo do feed
+    // (SIGSEGV em libhwui, ig-8 e ig-10, 11/11). Fora do Instagram (e sem diálogo do sistema na frente) =
+    // reabre no perfil da conta (sem feed) e espera de novo, até REABERTURAS_MAX vezes.
+    if (nos.length > 0 && !doInstagram(nos) && !doSistema(nos)) {
+      if (reaberturas >= REABERTURAS_MAX) {
+        throw perdida(`o Instagram saiu da frente ${reaberturas + 1}x e não voltou (na tela: ${resumoTela(nos) || "sem leitura"})`, nos);
+      }
+      reaberturas += 1;
+      log(`Instagram fora da frente (${resumoTela(nos) || "sem leitura"}): reabrindo (${reaberturas}/${REABERTURAS_MAX})`);
+      await reabrirInstagram(ctx);
+      limite = Math.max(limite, Date.now() + porReabertura);
+      continue;
+    }
     if (Date.now() > limite) throw perdida(`sem a barra de navegação nem o @ em ${Math.round(timeoutMs / 1000)} s (na tela: ${resumoTela(nos) || "sem leitura"})`, nos);
     // Pop-up por cima (salvar login, permissão, "Agora não"): trata e relê.
     if (nos.length === 0 || !(await tratarGeral(ctx, nos))) await esperar(1000);
@@ -369,6 +406,8 @@ export async function irPara(ctx, aba, { porMudanca = false } = {}) {
   const { d, log = () => {} } = ctx;
   for (let tentativa = 0; tentativa < 8; tentativa++) {
     const nos = await d.tela().catch(() => []);
+    // Já no próprio perfil (o deep link abre nele, sem a barra de abas): não volta para o feed só para tocar na aba.
+    if (aba === "perfil" && doInstagram(nos) && botao(nos, EDITAR_PERFIL)) return;
     const alvo = acharAba(nos, aba);
     if (alvo) {
       // porMudanca (foto, bio, story, destaque): espera a tela reagir ao toque em vez da pausa fixa.
@@ -387,7 +426,7 @@ export async function irPara(ctx, aba, { porMudanca = false } = {}) {
       }
     }
     if (nos.length > 0 && !doInstagram(nos) && !doSistema(nos)) {
-      await d.abrirApp(INSTAGRAM);
+      await reabrirInstagram(ctx);
       await esperar(6000);
       continue;
     }
