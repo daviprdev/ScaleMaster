@@ -6,7 +6,7 @@ import { Badge, Button, Card, EmptyState, Input, ProgressBar, type BadgeTone } f
 import { cn } from "@/lib/utils";
 import { ALERTA_ROBO, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
-import { progressoEstrutura } from "@/lib/vps/estruturacao";
+import { progressoEstrutura, resultadoPorAlvo, resumoDosAlvos, type AlvoResultado, type ResultadoAlvo } from "@/lib/vps/estruturacao";
 import { VPS_FLUXO, ehAlertaVps, ehDescartada, ehProxyMorta, estadoIsolamento, progresso, type Isolamento } from "@/lib/vps/jobs";
 import { rotuloAlerta } from "@/lib/vps/painel";
 import type { VpsDevice, VpsJob } from "@/lib/vps/types";
@@ -192,7 +192,7 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, isolamento,
             </Button>
           )}
           <Button variant="secondary" size="sm" icon={<Contact size={14} />} onClick={() => setDados((v) => !v)}>
-            Dados
+            {dados ? "Ocultar informações" : "Informações"}
           </Button>
           {(job.status === "queued" || job.status === "error") && !pausada && !descartada && (
             <Button variant="secondary" size="sm" icon={<PauseCircle size={14} />} disabled={busy} onClick={() => onAction(job, "pausar")}>
@@ -232,7 +232,7 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, isolamento,
 
       {!descartada && <IsolamentoBox isolamento={isolamento} doLote={doLote} />}
 
-      {dados && <PessoaBox jobId={job.id} />}
+      {dados && <InformacoesBox jobId={job.id} />}
 
       {aberto && (
         <ol className="mt-3 flex flex-col gap-1.5">
@@ -284,6 +284,9 @@ function EstruturaLinha({ estrutura, busy, now, onEstrutura }: { estrutura: VpsJ
     ? { tone: "neutral" as BadgeTone, label: `Agendada · ${new Date(agenda).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` }
     : ESTRUTURA_BADGE[estrutura.status];
   const print = (key: string) => `/api/vps/estruturacoes/${encodeURIComponent(estrutura.id)}/prints/${key}`;
+  const alvos = resultadoPorAlvo(plano, estrutura.steps);
+  // Resumo em uma linha quando o job terminou (concluído ou parado): "N de M alvos conectados".
+  const resumo = estrutura.status === "done" || estrutura.status === "error" ? resumoDosAlvos(alvos) : null;
 
   return (
     <div className="mt-4 border-t border-line pt-3">
@@ -313,7 +316,17 @@ function EstruturaLinha({ estrutura, busy, now, onEstrutura }: { estrutura: VpsJ
         </button>
       </div>
 
+      {resumo && <p className="mt-2 text-xs font-semibold text-ink">{resumo}</p>}
       {estrutura.status === "error" && estrutura.error && <p className="mt-2 text-xs text-danger">{estrutura.error}</p>}
+
+      <AlvosResultado
+        alvos={alvos}
+        print={print}
+        ampliar={(key) => {
+          setAberto(true);
+          setAmpliado(key);
+        }}
+      />
 
       {aberto && (
         <ol className="mt-3 flex flex-col gap-1.5">
@@ -399,17 +412,50 @@ function PromptBox({ job, busy, onReply }: { job: VpsJob; busy: boolean; onReply
   );
 }
 
-interface Pessoa {
+interface InformacoesAlvo {
+  perfil: string;
+  destaque: string;
+  link: string;
+  resultado: ResultadoAlvo;
+  mensagem: string | null;
+}
+
+interface Informacoes {
   nome: string;
   usuario: string;
   nascimento: string;
   senha: string;
   senhaMascarada: string;
+  estruturacao: {
+    status: string;
+    criadaEm: string;
+    atualizadaEm: string;
+    agendadoPara: string | null;
+    bio: string;
+    resumo: string | null;
+    alvos: InformacoesAlvo[];
+  } | null;
 }
 
-/** Nome, @, nascimento e senha mascarada gerados para a conta, com botão copiar (a senha inteira só vai para a área de transferência). */
-function PessoaBox({ jobId }: { jobId: string }) {
-  const [pessoa, setPessoa] = React.useState<Pessoa | null>(null);
+const RESULTADO_ALVO: Record<ResultadoAlvo, { tone: BadgeTone; label: string }> = {
+  conectado: { tone: "success", label: "Conectado" },
+  falhou: { tone: "danger", label: "Falhou" },
+  pulado: { tone: "neutral", label: "Pulado" },
+  rodando: { tone: "info", label: "Rodando" },
+  pendente: { tone: "neutral", label: "Pendente" },
+};
+
+const dataHora = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+
+/**
+ * Bloco "Informações" da conta (recolhível pelo botão do card): nome, @,
+ * nascimento, senha com copiar e, da estruturação mais nova, a bio, os alvos
+ * configurados, a data e o resultado de cada alvo. A senha inteira só vai para
+ * a área de transferência.
+ */
+function InformacoesBox({ jobId }: { jobId: string }) {
+  const [info, setInfo] = React.useState<Informacoes | null>(null);
   const [erro, setErro] = React.useState<string | null>(null);
   const [copiado, setCopiado] = React.useState<string | null>(null);
 
@@ -417,9 +463,9 @@ function PessoaBox({ jobId }: { jobId: string }) {
     let alive = true;
     fetch(`/api/vps/contas/${encodeURIComponent(jobId)}/pessoa`, { cache: "no-store" })
       .then(async (res) => {
-        const body = (await res.json().catch(() => null)) as (Pessoa & { error?: string }) | null;
+        const body = (await res.json().catch(() => null)) as (Informacoes & { error?: string }) | null;
         if (!res.ok || !body) throw new Error(body?.error ?? "Não foi possível ler os dados.");
-        if (alive) setPessoa(body);
+        if (alive) setInfo(body);
       })
       .catch((e: Error) => alive && setErro(e.message));
     return () => {
@@ -438,32 +484,127 @@ function PessoaBox({ jobId }: { jobId: string }) {
   };
 
   if (erro) return <p className="mt-3 text-xs text-danger">{erro}</p>;
-  if (!pessoa) return <p className="mt-3 text-xs text-ink-3">Lendo os dados…</p>;
+  if (!info) return <p className="mt-3 text-xs text-ink-3">Lendo as informações…</p>;
   const linhas: Array<[string, string, string, string]> = [
-    ["Nome", pessoa.nome, pessoa.nome, "nome"],
-    ["Usuário", `@${pessoa.usuario}`, pessoa.usuario, "usuario"],
-    ["Nascimento", pessoa.nascimento, pessoa.nascimento, "nascimento"],
-    ["Senha", pessoa.senhaMascarada, pessoa.senha, "senha"],
+    ["Nome", info.nome, info.nome, "nome"],
+    ["Usuário", `@${info.usuario}`, info.usuario, "usuario"],
+    ["Nascimento", info.nascimento, info.nascimento, "nascimento"],
+    ["Senha", info.senhaMascarada, info.senha, "senha"],
   ];
+  const est = info.estruturacao;
   return (
-    <dl className="mt-3 grid gap-2 rounded-lg border border-line bg-surface-raised p-3 text-xs sm:grid-cols-2">
-      {linhas.map(([rotulo, mostrar, valor, chave]) => (
-        <div key={chave} className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <dt className="text-ink-3">{rotulo}</dt>
-            <dd className={cn("truncate text-ink", chave === "senha" && "font-mono")}>{mostrar}</dd>
+    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-line bg-surface-raised p-3 text-xs">
+      <p className="font-medium text-ink-2">Informações</p>
+      <dl className="grid gap-2 sm:grid-cols-2">
+        {linhas.map(([rotulo, mostrar, valor, chave]) => (
+          <div key={chave} className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <dt className="text-ink-3">{rotulo}</dt>
+              <dd className={cn("truncate text-ink", chave === "senha" && "font-mono")}>{mostrar}</dd>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 rounded-md p-1 text-ink-3 hover:bg-surface-hover hover:text-ink"
+              aria-label={`Copiar ${rotulo.toLowerCase()}`}
+              onClick={() => void copiar(chave, valor)}
+            >
+              {copiado === chave ? <CheckCircle2 size={14} className="text-success" /> : <Copy size={14} />}
+            </button>
           </div>
-          <button
-            type="button"
-            className="shrink-0 rounded-md p-1 text-ink-3 hover:bg-surface-hover hover:text-ink"
-            aria-label={`Copiar ${rotulo.toLowerCase()}`}
-            onClick={() => void copiar(chave, valor)}
-          >
-            {copiado === chave ? <CheckCircle2 size={14} className="text-success" /> : <Copy size={14} />}
-          </button>
+        ))}
+      </dl>
+      {est ? (
+        <div className="flex flex-col gap-2 border-t border-line pt-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="min-w-0">
+              <p className="text-ink-3">Bio</p>
+              <p className="whitespace-pre-wrap break-words text-ink">{est.bio || "— (não mexe na bio)"}</p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-ink-3">Estruturação</p>
+              <p className="text-ink">
+                criada {dataHora(est.criadaEm)} · última atualização {dataHora(est.atualizadaEm)}
+                {est.agendadoPara ? ` · agendada para ${dataHora(est.agendadoPara)}` : ""}
+              </p>
+              {est.resumo && <p className="font-medium text-ink">{est.resumo}</p>}
+            </div>
+          </div>
+          <div>
+            <p className="text-ink-3">Alvos configurados</p>
+            <ul className="mt-1 flex flex-col gap-1.5">
+              {est.alvos.map((a, i) => (
+                <li key={`${a.perfil}-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Badge tone={RESULTADO_ALVO[a.resultado].tone} dot>
+                    {RESULTADO_ALVO[a.resultado].label}
+                  </Badge>
+                  <span className="font-mono text-ink">@{a.perfil}</span>
+                  <span className="text-ink-2">· destaque “{a.destaque}”</span>
+                  <a href={a.link} target="_blank" rel="noreferrer noopener" className="min-w-0 truncate text-accent hover:underline">
+                    {a.link}
+                  </a>
+                  {a.mensagem && <span className={cn("w-full", a.resultado === "falhou" ? "text-danger" : "text-ink-3")}>{a.mensagem}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
+      ) : (
+        <p className="border-t border-line pt-3 text-ink-3">Esta conta ainda não foi estruturada.</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Resultado por alvo dentro do bloco Estruturação: conectado, falhou (com a
+ * mensagem, ex.: CONEXAO_OUTRA_CONTA) ou pulado, e o print de cada tentativa
+ * (uma miniatura por etapa do alvo que rodou). Um alvo vermelho não derruba
+ * os outros.
+ */
+function AlvosResultado({ alvos, print, ampliar }: { alvos: AlvoResultado[]; print: (key: string) => string; ampliar: (key: string) => void }) {
+  if (alvos.length === 0) return null;
+  return (
+    <ul className="mt-3 flex flex-col gap-2">
+      {alvos.map((a) => (
+        <li key={a.n} className={cn("rounded-lg border p-2.5", a.resultado === "falhou" ? "border-danger" : "border-line")}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+            <Badge tone={RESULTADO_ALVO[a.resultado].tone} dot>
+              {RESULTADO_ALVO[a.resultado].label}
+            </Badge>
+            <span className="font-medium text-ink">
+              Alvo {a.n} · @{a.perfil}
+            </span>
+            {a.destaque && <span className="text-ink-2">· destaque “{a.destaque}”</span>}
+          </div>
+          {a.mensagem && <p className={cn("mt-1 text-xs", a.resultado === "falhou" ? "font-semibold text-danger" : "text-ink-3")}>{a.mensagem}</p>}
+          {a.tentativas.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {a.tentativas.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  title={key}
+                  aria-label={`Ampliar o print de ${key}`}
+                  className={cn("rounded border", key === a.etapaComFalha ? "border-danger" : "border-line")}
+                  onClick={() => ampliar(key)}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={print(key)}
+                    alt=""
+                    loading="lazy"
+                    className="h-14 w-8 rounded object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </li>
       ))}
-    </dl>
+    </ul>
   );
 }
 

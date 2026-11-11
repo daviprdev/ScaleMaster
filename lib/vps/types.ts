@@ -36,6 +36,8 @@ export interface VpsCapacidade {
   versoesIg: string[];
   /** Os 5 processos do host que mais usam RAM (RSS), lidos pelo agente a cada 30 s. */
   topRss: ProcessoRss[];
+  /** HOST_TESTE=1 no .env do agente: o bloqueio de RAM do lote vira aviso e o envio passa. */
+  hostTeste: boolean;
 }
 
 export interface ProcessoRss {
@@ -120,6 +122,12 @@ export interface RamHost {
   totalMb: number;
   lidaEm: string;
   bloqueio: string | null;
+}
+
+/** RAM do lote já decidida para um agente: bloqueia, ou passa com aviso (host de teste), ou passa. */
+export interface DecisaoRam {
+  bloqueio: string | null;
+  aviso: string | null;
 }
 
 /**

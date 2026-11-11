@@ -6,7 +6,7 @@ import { Badge, Banner, Button, Card, Dialog, EmptyState, ProgressBar, type Badg
 import type { EmulatorInstance, InstanceState } from "@/lib/emulador/types";
 import { timeAgo } from "@/lib/emulador/view";
 import { cn } from "@/lib/utils";
-import { AVISO_HOST_PEQUENO, RAM_ALERTA_MB, RAM_POR_CONTA_MB, hostPequeno } from "@/lib/vps/jobs";
+import { AVISO_HOST_PEQUENO, RAM_ALERTA_MB, RAM_POR_CONTA_MB, decidirRam, hostPequeno } from "@/lib/vps/jobs";
 import { rotuloAlerta } from "@/lib/vps/painel";
 import type { RamHost, VpsAgent, VpsJob } from "@/lib/vps/types";
 
@@ -44,7 +44,8 @@ export function AgenteVpsCard({ agent, now, linked, queued, alerts, sending, onC
   const livreMb = ramHost ? ramHost.livreMb : cap.ramTotalMb > 0 ? cap.ramTotalMb - cap.ramUsadaMb : null;
   const ramPct = totalMb > 0 && livreMb !== null ? Math.round(((totalMb - livreMb) / totalMb) * 100) : 0;
   const ramBaixa = livreMb !== null && livreMb < RAM_ALERTA_MB;
-  const bloqueio = ramHost?.bloqueio ?? null;
+  // HOST_TESTE=1 no agente: o mesmo número vira aviso amarelo e o envio passa.
+  const { bloqueio, aviso: avisoRam } = decidirRam(ramHost?.bloqueio ?? null, cap.hostTeste);
   const details = [
     agent.engineVersion ? `Docker ${agent.engineVersion}` : null,
     agent.agentVersion ? `agente ${agent.agentVersion}` : null,
@@ -85,6 +86,7 @@ export function AgenteVpsCard({ agent, now, linked, queued, alerts, sending, onC
               {bloqueio} (cada container ligado precisa de {RAM_POR_CONTA_MB} MB; esta VPS liga {cap.maxLigadas} por vez). Envio de lote bloqueado até liberar memória.
             </Banner>
           )}
+          {avisoRam && <Banner tone="warning">{avisoRam}</Banner>}
           {hostPequeno(cap) && (
             <Banner tone="warning">
               {AVISO_HOST_PEQUENO} ({cap.vcpu} vCPU; com 4 ou mais a VPS roda contas em paralelo).

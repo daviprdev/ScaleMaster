@@ -107,39 +107,78 @@ export function parseAlvos(raw: unknown): { alvos: EstruturaAlvo[]; erros: strin
  * não conferir, usado só em teste). Regras do botão: sem foto com o
  * interruptor correspondente ligado, ou sem alvo válido, não passa.
  */
-export function parseEstrutura(raw: unknown, midias: ReadonlyArray<string> | null): { value: EstruturaDados } | { error: string } {
+/** Campos do diálogo Estruturar que podem ter erro próprio. */
+export type CampoEstrutura = "alvos" | "fotoPerfil" | "fotoStory" | "bio" | "legenda" | "destaque" | "agendarHoras" | "interruptores";
+
+function lerEstrutura(raw: unknown) {
   const r = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
-  const fazerPerfil = r.fazerPerfil !== false;
-  const fazerOauth = r.fazerOauth !== false;
-  const fazerStory = r.fazerStory !== false;
-  const fotoPerfil = texto(r.fotoPerfil);
-  const fotoStory = texto(r.fotoStory);
-  const bio = texto(r.bio);
-  const legenda = texto(r.legenda);
-  const destaque = texto(r.destaque);
-
-  const { alvos, erros } = parseAlvos(r.alvos);
-  if (erros.length > 0) return { error: erros[0] };
-  if (alvos.length < 1) return { error: "Informe ao menos um alvo: @perfil | Nome do destaque | link." };
-
-  if (fazerPerfil && !fotoPerfil) return { error: "Escolha a foto de perfil (ou desligue Foto + bio)." };
-  if (fazerStory && !fotoStory) return { error: "Escolha a foto do story (ou desligue Story)." };
-  for (const [nome, arquivo, ligado] of [["foto de perfil", fotoPerfil, fazerPerfil], ["foto do story", fotoStory, fazerStory]] as const) {
-    if (ligado && midias && !midias.includes(arquivo)) return { error: `A ${nome} "${arquivo}" não está em /opt/scalemaster/midias.` };
-  }
-  if (bio.length > BIO_MAX) return { error: `A bio passa de ${BIO_MAX} caracteres.` };
-  if (legenda.length > LEGENDA_MAX) return { error: `A legenda do story passa de ${LEGENDA_MAX} caracteres.` };
-  if (destaque.length > DESTAQUE_MAX) return { error: `O nome do destaque passa de ${DESTAQUE_MAX} caracteres.` };
-  if (fazerStory && !destaque) return { error: "Informe o nome do destaque (ou desligue Story)." };
-  // Acento e emoji valem: o agente digita pelo teclado ADB (broadcast). Só o nome do destaque não quebra linha.
-  if (/[\r\n]/.test(destaque)) return { error: "O nome do destaque não pode ter quebra de linha." };
-  if (!fazerPerfil && !fazerOauth && !fazerStory) return { error: "Ligue ao menos um interruptor." };
-
-  const horas = r.agendarHoras === undefined || r.agendarHoras === null || r.agendarHoras === "" ? AGENDAR_PADRAO_H : Number(r.agendarHoras);
-  if (!Number.isFinite(horas) || horas < 0 || horas > AGENDAR_MAX_H) return { error: `"Agendar em" vai de 0 a ${AGENDAR_MAX_H} horas.` };
-
+  const horasBruto = r.agendarHoras;
   return {
-    value: { fotoPerfil, fotoStory, bio, alvos, legenda, destaque, fazerPerfil, fazerOauth, fazerStory, agendarHoras: Math.round(horas * 100) / 100 },
+    fazerPerfil: r.fazerPerfil !== false,
+    fazerOauth: r.fazerOauth !== false,
+    fazerStory: r.fazerStory !== false,
+    fotoPerfil: texto(r.fotoPerfil),
+    fotoStory: texto(r.fotoStory),
+    bio: texto(r.bio),
+    legenda: texto(r.legenda),
+    destaque: texto(r.destaque),
+    lidos: parseAlvos(r.alvos),
+    horas: horasBruto === undefined || horasBruto === null || horasBruto === "" ? AGENDAR_PADRAO_H : Number(horasBruto),
+  };
+}
+
+/**
+ * Todos os erros do formulário, um por campo (o primeiro de cada), na ordem
+ * em que aparecem na tela. Vazio = pode enviar. O servidor usa o mesmo
+ * (parseEstrutura devolve o primeiro).
+ */
+export function errosPorCampo(raw: unknown, midias: ReadonlyArray<string> | null): Partial<Record<CampoEstrutura, string>> {
+  const f = lerEstrutura(raw);
+  const erros: Partial<Record<CampoEstrutura, string>> = {};
+  const marcar = (campo: CampoEstrutura, msg: string) => {
+    if (!erros[campo]) erros[campo] = msg;
+  };
+
+  if (f.lidos.erros.length > 0) marcar("alvos", f.lidos.erros[0]);
+  else if (f.lidos.alvos.length < 1) marcar("alvos", "Informe ao menos um alvo: @perfil | Nome do destaque | link.");
+
+  if (f.fazerPerfil && !f.fotoPerfil) marcar("fotoPerfil", "Escolha a foto de perfil (ou desligue Foto + bio).");
+  else if (f.fazerPerfil && midias && !midias.includes(f.fotoPerfil)) marcar("fotoPerfil", `A foto de perfil "${f.fotoPerfil}" não está em /opt/scalemaster/midias.`);
+  if (f.fazerStory && !f.fotoStory) marcar("fotoStory", "Escolha a foto do story (ou desligue Story).");
+  else if (f.fazerStory && midias && !midias.includes(f.fotoStory)) marcar("fotoStory", `A foto do story "${f.fotoStory}" não está em /opt/scalemaster/midias.`);
+
+  if (f.bio.length > BIO_MAX) marcar("bio", `A bio passa de ${BIO_MAX} caracteres (${f.bio.length}).`);
+  if (f.legenda.length > LEGENDA_MAX) marcar("legenda", `A legenda do story passa de ${LEGENDA_MAX} caracteres (${f.legenda.length}).`);
+  if (f.destaque.length > DESTAQUE_MAX) marcar("destaque", `O nome do destaque passa de ${DESTAQUE_MAX} caracteres.`);
+  if (f.fazerStory && !f.destaque) marcar("destaque", "Informe o nome do destaque (ou desligue Story).");
+  // Acento e emoji valem: o agente digita pelo teclado ADB (broadcast). Só o nome do destaque não quebra linha.
+  if (/[\r\n]/.test(f.destaque)) marcar("destaque", "O nome do destaque não pode ter quebra de linha.");
+  if (!f.fazerPerfil && !f.fazerOauth && !f.fazerStory) marcar("interruptores", "Ligue ao menos um interruptor.");
+  if (!Number.isFinite(f.horas) || f.horas < 0 || f.horas > AGENDAR_MAX_H) marcar("agendarHoras", `"Agendar em" vai de 0 a ${AGENDAR_MAX_H} horas.`);
+  return erros;
+}
+
+/** Ordem de prioridade do primeiro erro (a mesma das mensagens antigas). */
+const ORDEM_DOS_ERROS: ReadonlyArray<CampoEstrutura> = ["alvos", "fotoPerfil", "fotoStory", "bio", "legenda", "destaque", "interruptores", "agendarHoras"];
+
+export function parseEstrutura(raw: unknown, midias: ReadonlyArray<string> | null): { value: EstruturaDados } | { error: string } {
+  const erros = errosPorCampo(raw, midias);
+  const primeiro = ORDEM_DOS_ERROS.find((c) => erros[c]);
+  if (primeiro) return { error: erros[primeiro] as string };
+  const f = lerEstrutura(raw);
+  return {
+    value: {
+      fotoPerfil: f.fotoPerfil,
+      fotoStory: f.fotoStory,
+      bio: f.bio,
+      alvos: f.lidos.alvos,
+      legenda: f.legenda,
+      destaque: f.destaque,
+      fazerPerfil: f.fazerPerfil,
+      fazerOauth: f.fazerOauth,
+      fazerStory: f.fazerStory,
+      agendarHoras: Math.round(f.horas * 100) / 100,
+    },
   };
 }
 
@@ -217,6 +256,59 @@ export function progressoEstrutura(job: {
             ? `Parou (${falhas} etapa${falhas === 1 ? "" : "s"} com falha)`
             : "Rodando";
   return { label, pct: job.status === "done" ? 100 : pct, feitas, total, falhas };
+}
+
+export type ResultadoAlvo = "conectado" | "falhou" | "pulado" | "rodando" | "pendente";
+
+export interface AlvoResultado {
+  n: number;
+  /** @ do alvo (do rótulo da etapa perfil-N). */
+  perfil: string;
+  /** Nome do destaque (do rótulo da etapa destaque-N). */
+  destaque: string;
+  resultado: ResultadoAlvo;
+  /** Mensagem que decide o resultado: a confirmação, a falha (ex.: CONEXAO_OUTRA_CONTA) ou o motivo do salto. */
+  mensagem: string | null;
+  /** Etapa que falhou, se falhou (para o print). */
+  etapaComFalha: string | null;
+  /** Chaves das etapas do alvo que já rodaram (concluídas ou com falha): uma miniatura de print cada. */
+  tentativas: string[];
+}
+
+const PULADA_RE = /^(pulada:|PROFISSIONAL_FALHOU)/;
+
+/**
+ * Resultado de cada alvo do job, a partir do plano e do andamento:
+ * conectado = confirmar-N concluída; falhou = alguma etapa do alvo falhou de
+ * verdade (CONEXAO_OUTRA_CONTA inclusive); pulado = só saltos (profissional
+ * falhou, ou etapa anterior do alvo); rodando / pendente.
+ */
+export function resultadoPorAlvo(plano: ReadonlyArray<PlanoEtapa>, steps: ReadonlyArray<{ key: string; status: string; message?: string | null }>): AlvoResultado[] {
+  const porChave = new Map(steps.map((s) => [s.key, s]));
+  const numeros = [...new Set(plano.map((p) => /^perfil-(\d+)$/.exec(p.key)?.[1]).filter(Boolean).map(Number))].sort((a, b) => a - b);
+  return numeros.map((n) => {
+    const rotulo = (tipo: string) => plano.find((p) => p.key === `${tipo}-${n}`)?.label ?? "";
+    const perfil = /@([a-z0-9._]+)/.exec(rotulo("perfil"))?.[1] ?? "";
+    const destaque = /"(.*)"/.exec(rotulo("destaque"))?.[1] ?? "";
+    const doAlvo = ETAPAS_DO_ALVO.map((tipo) => ({ key: `${tipo}-${n}`, step: porChave.get(`${tipo}-${n}`) }));
+    const tentativas = doAlvo.filter((e) => e.step && (e.step.status === "done" || (e.step.status === "error" && !PULADA_RE.test(e.step.message ?? "")))).map((e) => e.key);
+    const falha = doAlvo.find((e) => e.step?.status === "error" && !PULADA_RE.test(e.step.message ?? ""));
+    const salto = doAlvo.find((e) => e.step?.status === "error" && PULADA_RE.test(e.step.message ?? ""));
+    const confirmar = porChave.get(`confirmar-${n}`);
+    const base = { n, perfil, destaque, tentativas };
+    if (falha) return { ...base, resultado: "falhou" as const, mensagem: falha.step?.message ?? null, etapaComFalha: falha.key };
+    if (confirmar?.status === "done") return { ...base, resultado: "conectado" as const, mensagem: confirmar.message ?? null, etapaComFalha: null };
+    if (salto) return { ...base, resultado: "pulado" as const, mensagem: salto.step?.message ?? null, etapaComFalha: null };
+    if (doAlvo.some((e) => e.step?.status === "running")) return { ...base, resultado: "rodando" as const, mensagem: null, etapaComFalha: null };
+    return { ...base, resultado: "pendente" as const, mensagem: null, etapaComFalha: null };
+  });
+}
+
+/** Resumo de uma linha no fim do job: "N de M alvos conectados". null = job sem alvos. */
+export function resumoDosAlvos(alvos: ReadonlyArray<Pick<AlvoResultado, "resultado">>): string | null {
+  if (alvos.length === 0) return null;
+  const conectados = alvos.filter((a) => a.resultado === "conectado").length;
+  return `${conectados} de ${alvos.length} ${alvos.length === 1 ? "alvo conectado" : "alvos conectados"}`;
 }
 
 /** Quando o job pode sair da fila; null = agora. */

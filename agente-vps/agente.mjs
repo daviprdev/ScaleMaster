@@ -44,7 +44,7 @@ import { versoesDisponiveis } from "./fluxos/apk.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.5.1";
+const VERSAO = "1.6.0";
 const AGENT_KIND = "vps";
 /** "Instância" -1 = a VPS em si: só a automação rebuild-imagem roda nela (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
@@ -473,7 +473,8 @@ async function rodarAgente() {
       mumuError: erroDriver,
       instances: instancias.map(({ index, name, state, criada }) => ({ index, name, state, criada, alert: alertaDe(criada) })),
       tasks: tarefas,
-      capacity: { ...agora, ligadas, versoesIg: versoesDisponiveis(), topRss },
+      // HOST_TESTE=1 no .env do agente: o SaaS troca o bloqueio de RAM do lote por um aviso.
+      capacity: { ...agora, ligadas, versoesIg: versoesDisponiveis(), topRss, hostTeste: process.env.HOST_TESTE === "1" },
       results: enviando,
       running: [...emAndamento],
       jobUpdates: enviandoAndamentos,

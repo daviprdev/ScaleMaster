@@ -11,6 +11,7 @@ import {
   DESTAQUE_MAX,
   LEGENDA_MAX,
   MIDIA_MAX_BYTES,
+  errosPorCampo,
   expandirEtapas,
   parseAlvos,
   parseEstrutura,
@@ -69,10 +70,12 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
 
   const alvos = React.useMemo(() => parseAlvos(form.alvos), [form.alvos]);
   const validado = React.useMemo(() => parseEstrutura(form, midias), [form, midias]);
+  // Uma mensagem por campo (a mesma regra do servidor); qualquer uma bloqueia o envio.
+  // Antes de a pasta de mídias carregar não acusa foto ausente da pasta, só a falta de escolha.
+  const erros = React.useMemo(() => errosPorCampo(form, midias), [form, midias]);
   const etapas = "value" in validado ? expandirEtapas(validado.value).length : 0;
-  const semFoto = (form.fazerPerfil && !form.fotoPerfil) || (form.fazerStory && !form.fotoStory);
-  const semAlvo = alvos.alvos.length < 1 || alvos.erros.length > 0;
-  const podeEnviar = !semFoto && !semAlvo && "value" in validado;
+  const qtdErros = Object.keys(erros).length;
+  const podeEnviar = qtdErros === 0 && "value" in validado;
 
   const enviarFoto = async (campo: "fotoPerfil" | "fotoStory", arquivo: File | undefined) => {
     if (!arquivo) return;
@@ -127,7 +130,7 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
         placeholder={midias === null ? "lendo a pasta…" : opcoes.length === 0 ? "nenhuma foto na pasta" : "escolha a foto"}
         options={opcoes}
         disabled={!ligado}
-        error={ligado && !form[campo] && midias !== null ? "Escolha uma foto." : undefined}
+        error={ligado ? erros[campo] : undefined}
       />
       <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-xs text-ink-2 hover:text-ink">
         <Upload size={13} />
@@ -157,23 +160,25 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
       <form className="flex min-h-0 flex-1 flex-col gap-4" onSubmit={(e) => void submit(e)}>
         {error && <Banner tone="danger">{error}</Banner>}
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-          <div className="flex flex-wrap gap-x-6 gap-y-3">
-            <Switch label="Foto + bio" checked={form.fazerPerfil} onChange={(e) => set("fazerPerfil", e.target.checked)} />
-            <Switch label="OAuth (alvos)" checked={form.fazerOauth} onChange={(e) => set("fazerOauth", e.target.checked)} />
-            <Switch label="Story" checked={form.fazerStory} onChange={(e) => set("fazerStory", e.target.checked)} />
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap gap-x-6 gap-y-3">
+              <Switch label="Foto + bio" checked={form.fazerPerfil} onChange={(e) => set("fazerPerfil", e.target.checked)} />
+              <Switch label="OAuth (alvos)" checked={form.fazerOauth} onChange={(e) => set("fazerOauth", e.target.checked)} />
+              <Switch label="Story" checked={form.fazerStory} onChange={(e) => set("fazerStory", e.target.checked)} />
+            </div>
+            {erros.interruptores && <p className="text-xs text-danger">{erros.interruptores}</p>}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {seletor("fotoPerfil", "Foto de perfil", form.fazerPerfil)}
             {seletor("fotoStory", "Foto do story", form.fazerStory)}
           </div>
           <Textarea
-            label="Bio"
+            label={`Bio (${form.bio.length}/${BIO_MAX})`}
             rows={2}
-            maxLength={BIO_MAX}
-            showCounter
             value={form.bio}
             onChange={(e) => set("bio", e.target.value)}
             disabled={!form.fazerPerfil}
+            error={form.fazerPerfil ? erros.bio : undefined}
             hint="Aceita acento e emoji. Em branco = não mexe na bio."
           />
           <Textarea
@@ -183,16 +188,15 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
             value={form.alvos}
             onChange={(e) => set("alvos", e.target.value)}
             className="font-mono text-xs"
-            error={alvos.erros[0]}
+            error={erros.alvos}
             hint="Uma linha por alvo. O story usa o link do primeiro alvo."
             required
           />
           <div className="grid gap-4 sm:grid-cols-2">
             <Textarea
-              label="Legenda do story"
+              label={`Legenda do story (${form.legenda.length}/${LEGENDA_MAX})`}
               rows={2}
-              maxLength={LEGENDA_MAX}
-              showCounter
+              error={form.fazerStory ? erros.legenda : undefined}
               value={form.legenda}
               onChange={(e) => set("legenda", e.target.value)}
               disabled={!form.fazerStory}
@@ -200,29 +204,39 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
             />
             <div className="flex flex-col gap-4">
               <Input
-                label="Nome do destaque"
-                maxLength={DESTAQUE_MAX}
+                label={`Nome do destaque (${form.destaque.length}/${DESTAQUE_MAX})`}
+                error={form.fazerStory ? erros.destaque : undefined}
                 value={form.destaque}
                 onChange={(e) => set("destaque", e.target.value)}
                 disabled={!form.fazerStory}
                 required={form.fazerStory}
               />
-              <Input
-                label="Agendar em (horas)"
-                type="number"
-                min={0}
-                max={AGENDAR_MAX_H}
-                step="0.5"
-                value={form.agendarHoras}
-                onChange={(e) => set("agendarHoras", e.target.value)}
-                hint="0 = agora."
-              />
+              <div className="flex items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <Input
+                    label="Agendar em (horas)"
+                    type="number"
+                    min={0}
+                    max={AGENDAR_MAX_H}
+                    step="0.5"
+                    value={form.agendarHoras}
+                    onChange={(e) => set("agendarHoras", e.target.value)}
+                    error={erros.agendarHoras}
+                    hint="0 = agora (teste imediato)."
+                  />
+                </div>
+                <Button type="button" variant={form.agendarHoras === "0" ? "primary" : "secondary"} size="md" className="mb-6" onClick={() => set("agendarHoras", "0")}>
+                  Agora
+                </Button>
+              </div>
             </div>
           </div>
         </div>
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-line pt-3">
           <p className="text-xs text-ink-2">
-            {"error" in validado ? validado.error : `${etapas} etapas · ${alvos.alvos.length} alvo${alvos.alvos.length === 1 ? "" : "s"}`}
+            {qtdErros > 0
+              ? `${qtdErros} campo${qtdErros === 1 ? "" : "s"} para corrigir`
+              : `${etapas} etapas · ${alvos.alvos.length} alvo${alvos.alvos.length === 1 ? "" : "s"}${form.agendarHoras === "0" ? " · roda agora" : ` · em ${form.agendarHoras} h`}`}
           </p>
           <div className="flex gap-2">
             <Button type="button" variant="secondary" onClick={onClose}>

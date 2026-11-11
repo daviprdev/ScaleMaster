@@ -6,7 +6,7 @@ import { encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseInstances } from "@/lib/emulador/payload";
 import { parseLoteInput } from "@/lib/vps/input";
-import { chaveProxy, hostPortaDaChave, parseCapacidade, proxiesEmUso } from "@/lib/vps/jobs";
+import { chaveProxy, decidirRam, hostPortaDaChave, parseCapacidade, proxiesEmUso } from "@/lib/vps/jobs";
 import { proxyChaveDe, proxyHostDe, redeDe } from "@/lib/vps/load";
 import { ramDoHost } from "@/lib/vps/ram";
 import { colisaoDeIdentidade, novoDevice, proximaRede, proximosIndices } from "@/lib/vps/device";
@@ -69,8 +69,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "A VPS não comporta nenhum container ligado (capacidade zero)." }, { status: 409 });
   }
   // RAM livre lida do host agora (não do retrato do agente): precisa de maxLigadas × 1600 MB.
+  // Com HOST_TESTE=1 no .env do agente o bloqueio vira aviso e o envio passa.
   const ram = ramDoHost(capacidade.maxLigadas);
-  if (ram?.bloqueio) return NextResponse.json({ error: ram.bloqueio, ramLivreMb: ram.livreMb }, { status: 409 });
+  const decisaoRam = decidirRam(ram?.bloqueio ?? null, capacidade.hostTeste);
+  if (decisaoRam.bloqueio) return NextResponse.json({ error: decisaoRam.bloqueio, ramLivreMb: ram?.livreMb ?? null }, { status: 409 });
 
   // Índices reservados acima de tudo o que a VPS já tem (containers, contas, devices).
   const { data: devicesAntigos } = await admin.from("vps_devices").select("container, mac").eq("user_id", user.id);
@@ -94,7 +96,7 @@ export async function POST(req: NextRequest) {
   }));
   const emUso = proxiesEmUso(vivos);
   const hostsEmUso = proxiesEmUso(vivos.map((v) => ({ ...v, proxyHost: v.proxyHost ? hostPortaDaChave(v.proxyHost) : null })));
-  const avisos = [...lote.avisos];
+  const avisos = [...(decisaoRam.aviso ? [decisaoRam.aviso] : []), ...lote.avisos];
   for (const p of lote.proxies) {
     const chave = chaveProxy(p);
     const hp = `${p.host}:${p.porta}`;

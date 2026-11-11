@@ -4,14 +4,17 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { mascararSenha } from "@/lib/vps/pessoa";
+import { parsePlano, resultadoPorAlvo, resumoDosAlvos, type EstruturaInput } from "@/lib/vps/estruturacao";
+import { parseJobSteps } from "@/lib/emulador/jobs";
 import type { VpsContaInput } from "@/lib/vps/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// GET — a pessoa gerada para a conta (nome, @, nascimento, senha do Instagram):
-// só o dono, só sob demanda (botão "Dados" do card). A senha vai inteira para o
-// botão copiar e mascarada para a tela.
+// GET — bloco "Informações" do card: a pessoa gerada para a conta (nome, @,
+// nascimento, senha do Instagram) e, se houver, a estruturação mais nova (bio,
+// alvos configurados, data e resultado por alvo). Só o dono, só sob demanda.
+// A senha vai inteira para o botão copiar e mascarada para a tela.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
@@ -33,7 +36,38 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   } catch {
     return NextResponse.json({ error: "Não deu para abrir os dados dessa conta." }, { status: 500 });
   }
+  // Estruturação mais nova da conta (sem o SQL do Estruturar a coluna conta_id não existe: segue sem ela).
+  let estruturacao: Record<string, unknown> | null = null;
+  const { data: est } = await admin
+    .from("emulator_jobs")
+    .select("id, status, steps, acoes, input_enc, created_at, updated_at, agendado_para")
+    .eq("conta_id", id)
+    .eq("user_id", user.id)
+    .eq("kind", "estruturacao")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (est) {
+    let dados: Partial<EstruturaInput> = {};
+    try {
+      dados = JSON.parse(decrypt(est.input_enc as string)) as EstruturaInput;
+    } catch {
+      /* sem os dados: mostra só o resultado */
+    }
+    const resultados = resultadoPorAlvo(parsePlano(est.acoes), parseJobSteps(est.steps));
+    estruturacao = {
+      id: est.id,
+      status: est.status,
+      criadaEm: est.created_at,
+      atualizadaEm: est.updated_at,
+      agendadoPara: est.agendado_para ?? null,
+      bio: dados.bio ?? "",
+      resumo: resumoDosAlvos(resultados),
+      alvos: (dados.alvos ?? []).map((a, i) => ({ ...a, ...(resultados.find((r) => r.n === i + 1) ?? { resultado: "pendente", mensagem: null }) })),
+    };
+  }
   return NextResponse.json({
+    estruturacao,
     nome: input.conta.nome,
     usuario: input.conta.usuario,
     nascimento: input.conta.nascimento,

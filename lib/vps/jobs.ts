@@ -1,5 +1,5 @@
 import { ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_TELEFONE, ALERTA_USUARIO, CODIGO_VENCIDO, MAX_JOB_UPDATES, ehDescarte, type EmulatorJob, type JobStep } from "@/lib/emulador/jobs";
-import type { ProcessoRss, VpsCapacidade, VpsJob } from "./types";
+import type { DecisaoRam, ProcessoRss, VpsCapacidade, VpsJob } from "./types";
 export type { RamHost } from "./types";
 
 /**
@@ -146,6 +146,7 @@ export function parseCapacidade(raw: unknown): VpsCapacidade {
     ligadas: int(r.ligadas, 0, 200, 0),
     versoesIg: versoes,
     topRss: parseTopRss(r.topRss),
+    hostTeste: r.hostTeste === true,
   };
 }
 
@@ -186,6 +187,17 @@ export const AVISO_HOST_PEQUENO = "host pequeno, 1 por vez";
 
 export function hostPequeno(cap: Pick<VpsCapacidade, "vcpu">): boolean {
   return cap.vcpu > 0 && cap.vcpu < VCPU_HOST_PEQUENO;
+}
+
+export const AVISO_HOST_TESTE = "host de teste: envio liberado";
+
+/**
+ * Bloqueio de RAM de um agente: sem HOST_TESTE continua bloqueando; com ele
+ * vira aviso amarelo com o mesmo número e "host de teste: envio liberado".
+ */
+export function decidirRam(bloqueio: string | null, hostTeste: boolean): DecisaoRam {
+  if (!bloqueio) return { bloqueio: null, aviso: null };
+  return hostTeste ? { bloqueio: null, aviso: `${bloqueio} · ${AVISO_HOST_TESTE}` } : { bloqueio, aviso: null };
 }
 
 /**

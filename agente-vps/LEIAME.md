@@ -117,6 +117,23 @@ Os dois limites saem das vCPUs do host e vão no sync, em `capacity`:
 - O container sobe uma vez por job, na etapa **abrir**, e fica de pé até a **fechar**: nenhuma etapa do meio dá stop/start (a troca de proxy reinicia só o sidecar).
 - Host com menos de 4 vCPU roda um por vez e o card do agente mostra "host pequeno, 1 por vez".
 
+## Host de teste e teto de 1 container
+
+Este host (2 vCPU / 8 GB) liga **um container de conta por vez** (`maxLigadas = maxCadastro = 1`, aviso "host pequeno, 1 por vez" no card). Cada container tem teto de `--cpus 2` e `--memory 2048m`, e o lote só é aceito com `maxLigadas × 1600 MB` livres no host (lidos pelo app na hora do envio).
+
+Num host de teste, onde a RAM livre fica abaixo disso por causa de outras coisas (o `teste-ig`, o build do app), o bloqueio vira aviso com `HOST_TESTE=1` no `.env` do agente:
+
+```
+echo HOST_TESTE=1 >> /opt/scalemaster/agente-vps/.env
+systemctl restart scalemaster-vps-agent
+```
+
+O agente manda `hostTeste: true` na capacidade; o envio passa e o card mostra em amarelo "RAM insuficiente: X MB livres para 1 conta · host de teste: envio liberado". Sem a linha (ou com qualquer outro valor) volta a bloquear. O teto de 1 container continua valendo: o lote entra na fila e roda uma conta de cada vez.
+
+## Migrar para outro host
+
+Ver [MIGRACAO.md](MIGRACAO.md): `scripts/vps/exportar.sh` no host antigo, `scripts/vps/importar.sh` no novo.
+
 ## Firewall (ufw) e Docker
 
 Com o ufw ativo e as políticas padrão (`INPUT` e `FORWARD` em `DROP`), os containers não falam com o host nem são encaminhados pelas bridges criadas depois: em 10/11 o `teste-ig` não alcançava o gost do host (`172.17.0.1:18080`) e ficou sem internet. O que está aplicado na VPS (e o `scripts/vps/instalar.sh` repete, de forma idempotente):
