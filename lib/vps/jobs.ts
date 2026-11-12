@@ -147,6 +147,7 @@ export function parseCapacidade(raw: unknown): VpsCapacidade {
     versoesIg: versoes,
     topRss: parseTopRss(r.topRss),
     hostTeste: r.hostTeste === true,
+    ramDisponivelMb: typeof r.ramDisponivelMb === "number" && Number.isFinite(r.ramDisponivelMb) ? Math.max(0, Math.round(r.ramDisponivelMb)) : null,
   };
 }
 

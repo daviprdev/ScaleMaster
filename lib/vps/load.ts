@@ -5,7 +5,7 @@ import { parseJobPrompt, parseJobSteps, type JobStatus } from "@/lib/emulador/jo
 import { isOnline, parseInstances } from "@/lib/emulador/payload";
 import { parsePlano } from "./estruturacao";
 import { chaveProxy, parseCapacidade } from "./jobs";
-import { ramDoHost } from "./ram";
+import { ramDoAgente } from "./ram";
 import { ipDoDevice } from "./device";
 import type { VpsAgent, VpsDevice, VpsDeviceSpec, VpsDeviceStatus, VpsJob, VpsResponse } from "./types";
 
@@ -224,6 +224,7 @@ export async function loadVps(admin: SupabaseClient, userId: string): Promise<Vp
     estruturaAvailable,
     pastasAvailable,
     // Lida agora (não do retrato do agente): é a mesma conta do bloqueio no envio do lote.
-    ramHost: ramDoHost(Math.max(1, ...agents.map((a) => a.capacidade.maxLigadas))),
+    // A do agente (a máquina dos containers); agente antigo: o /proc/meminfo do app.
+    ramHost: agents[0] ? ramDoAgente(agents[0].capacidade) : null,
   };
 }

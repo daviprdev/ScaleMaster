@@ -38,6 +38,8 @@ export interface VpsCapacidade {
   topRss: ProcessoRss[];
   /** HOST_TESTE=1 no .env do agente: o bloqueio de RAM do lote vira aviso e o envio passa. */
   hostTeste: boolean;
+  /** MemAvailable do host do agente em MB (agente 1.9.5+); null = agente antigo (o app lê o próprio /proc/meminfo). */
+  ramDisponivelMb: number | null;
 }
 
 export interface ProcessoRss {

@@ -8,7 +8,7 @@ import { parseInstances } from "@/lib/emulador/payload";
 import { parseLoteInput } from "@/lib/vps/input";
 import { chaveProxy, decidirRam, hostPortaDaChave, parseCapacidade, proxiesEmUso } from "@/lib/vps/jobs";
 import { proxyChaveDe, proxyHostDe, redeDe } from "@/lib/vps/load";
-import { ramDoHost } from "@/lib/vps/ram";
+import { ramDoAgente } from "@/lib/vps/ram";
 import { colisaoDeIdentidade, novoDevice, proximaRede, proximosIndices } from "@/lib/vps/device";
 import { gerarPessoa } from "@/lib/vps/pessoa";
 import { FALTA_SQL_PASTAS, normalizarPasta } from "@/lib/vps/pastas";
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
   }
   // RAM livre lida do host agora (não do retrato do agente): precisa de maxLigadas × 1600 MB.
   // Com HOST_TESTE=1 no .env do agente o bloqueio vira aviso e o envio passa.
-  const ram = ramDoHost(capacidade.maxLigadas);
+  const ram = ramDoAgente(capacidade);
   const decisaoRam = decidirRam(ram?.bloqueio ?? null, capacidade.hostTeste);
   if (decisaoRam.bloqueio) return NextResponse.json({ error: decisaoRam.bloqueio, ramLivreMb: ram?.livreMb ?? null }, { status: 409 });
 

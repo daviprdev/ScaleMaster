@@ -34,7 +34,8 @@ import { fileURLToPath } from "node:url";
 import { Dispositivo } from "./lib/adb.mjs";
 import { alertaDe, limparAlerta } from "./lib/alertas.mjs";
 import { ARCH, Android, IMAGEM } from "./lib/android.mjs";
-import { listarMidias, pastaDeMidias } from "./lib/midias.mjs";
+import { PASTA_PADRAO, listarMidias, pastaDeMidias } from "./lib/midias.mjs";
+import { definirSaas, enviarPrint, sincronizarMidias } from "./lib/saas.mjs";
 import { limparPrintsAntigos, salvarPrint } from "./lib/prints.mjs";
 import { esperar } from "./lib/processo.mjs";
 import { validar } from "./lib/rede.mjs";
@@ -44,7 +45,7 @@ import { versoesDisponiveis } from "./fluxos/apk.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.9.4";
+const VERSAO = "1.9.5";
 const AGENT_KIND = "vps";
 /** "Instância" -1 = a VPS em si: só a automação rebuild-imagem roda nela (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
@@ -256,6 +257,12 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
 
   const logJob = (m) => log(`[${job.kind === "nova-conta" ? "conta" : "estruturar"} ${nomeDoJob(job)}] ${m}`);
 
+  // Fotos do app (agente noutra máquina): baixa o que falta antes do job. Sem rede, segue com o que já tem.
+  if (job.kind === "nova-conta" || job.kind === "estruturacao") {
+    const raiz = (await pastaDeMidias()) ?? PASTA_PADRAO;
+    await sincronizarMidias(raiz, { log: logJob }).catch((e) => logJob(`fotos do SaaS: ${e.message}`));
+  }
+
   // Vagas do supervisor: uma de cadastro para o job inteiro e uma de "ligado" enquanto o container está de pé.
   const soltarCadastro = semaforos ? await semaforos.cadastro.pegar() : () => {};
   const soltarLigada = semaforos ? await semaforos.ligadas.pegar() : () => {};
@@ -298,7 +305,10 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
     try {
       const atual = await driver.instancia(estado.instanceIndex);
       if (atual?.state !== "on" || !atual.adb) return;
-      salvarPrint(job.id, chave, await new Dispositivo(driver.adb, atual.adb).print());
+      const png = await new Dispositivo(driver.adb, atual.adb).print();
+      salvarPrint(job.id, chave, png);
+      // O card lê o print no app: com o agente noutra máquina ele sobe por HTTP (mesma máquina: o app grava o mesmo arquivo).
+      void enviarPrint(job.id, chave, png);
     } catch (e) {
       logJob(`print de ${chave}: ${e.message}`);
     }
@@ -379,6 +389,7 @@ async function rodarAgente() {
   travarInstanciaUnica();
 
   const url = String(config.url || URL_PADRAO).replace(/\/+$/, "");
+  definirSaas(url, config.token);
   const tarefas = TAREFAS.map((t) => ({ name: t.nome, label: t.rotulo, description: t.descricao }));
   const emAndamento = new Set();
   let resultados = [];

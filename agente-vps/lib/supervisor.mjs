@@ -39,14 +39,30 @@ function archNormalizada(arch) {
   return "x86_64";
 }
 
+/** MemAvailable do /proc/meminfo deste host em MB (o que o kernel ainda consegue dar); null fora do Linux. */
+export function ramDisponivelMb(texto) {
+  const m = /^MemAvailable:\s+(\d+)\s*kB/m.exec(String(texto ?? ""));
+  return m ? Math.floor(Number(m[1]) / 1024) : null;
+}
+
+function lerRamDisponivel() {
+  try {
+    return ramDisponivelMb(readFileSync("/proc/meminfo", "utf8"));
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Capacidade desta máquina. Os parâmetros existem para os testes (e para o
- * comando `capacidade`); sem eles lê a máquina real.
- * @param {{ arch?: string, vcpu?: number, totalMb?: number, livreMb?: number }} [opcoes]
+ * comando `capacidade`); sem eles lê a máquina real. ramDisponivelMb vai junto:
+ * com o agente noutra máquina (12/11) o app decide o bloqueio de RAM do lote
+ * por ela, não pelo /proc/meminfo dele.
+ * @param {{ arch?: string, vcpu?: number, totalMb?: number, livreMb?: number, disponivelMb?: number | null }} [opcoes]
  */
-export function capacidade({ arch = process.arch, vcpu = os.cpus().length || 1, totalMb = Math.floor(os.totalmem() / 1024 / 1024), livreMb = Math.floor(os.freemem() / 1024 / 1024) } = {}) {
+export function capacidade({ arch = process.arch, vcpu = os.cpus().length || 1, totalMb = Math.floor(os.totalmem() / 1024 / 1024), livreMb = Math.floor(os.freemem() / 1024 / 1024), disponivelMb = lerRamDisponivel() } = {}) {
   const a = archNormalizada(arch);
-  return { arch: a, vcpu, ramTotalMb: totalMb, ramUsadaMb: Math.max(0, totalMb - livreMb), ...limitesPorVcpu(vcpu) };
+  return { arch: a, vcpu, ramTotalMb: totalMb, ramUsadaMb: Math.max(0, totalMb - livreMb), ...(disponivelMb === null ? {} : { ramDisponivelMb: disponivelMb }), ...limitesPorVcpu(vcpu) };
 }
 /** Semáforo simples: `pegar()` espera uma vaga e devolve a função que solta. */
 export class Semaforo {

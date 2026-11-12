@@ -126,7 +126,7 @@ describe("Contas VPS: ligação conta ↔ container", () => {
 
 describe("Contas VPS: capacidade e identidade", () => {
   it("capacidade com limites e padrões", () => {
-    expect(parseCapacidade(null)).toEqual({ maxLigadas: 2, maxCadastro: 2, vcpu: 0, ramTotalMb: 0, ramUsadaMb: 0, ligadas: 0, versoesIg: [], topRss: [], hostTeste: false });
+    expect(parseCapacidade(null)).toEqual({ maxLigadas: 2, maxCadastro: 2, vcpu: 0, ramTotalMb: 0, ramUsadaMb: 0, ligadas: 0, versoesIg: [], topRss: [], hostTeste: false, ramDisponivelMb: null });
     const c = parseCapacidade({ maxLigadas: 23.4, maxCadastro: 400, versoesIg: ["309.0.0.40.113", "ruim ç", 5], ligadas: -2 });
     expect(c.maxLigadas).toBe(23);
     // maxCadastro nunca passa de maxLigadas.
