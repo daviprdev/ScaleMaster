@@ -180,6 +180,8 @@ Tabelas: `supabase/emulador_agente.sql`, `supabase/emulador_contas.sql`, `supaba
 
 ## Aba Contas VPS (agente-vps/)
 
+- **Desde 12/11 o agente roda na KVM 8** (`root@187.53.109.83`, Hostinger KVM 8, Brasil, 8 vCPU / 32 GB / 387 GB, Ubuntu 26.04.1, kernel `7.0.0-38`, hostname `srv2155190`), checkout `/opt/scalemaster`, unit `scalemaster-vps-agent`, capacidade 4 ligadas / 4 cadastros, sem `HOST_TESTE`. O site (app + python-server) continua em `2.25.244.181`, onde o agente antigo está **parado e desativado** (`systemctl disable`; não religar: dois agentes com o mesmo código disputam a fila). Deploy do agente: na KVM 8, `git pull` + `systemctl restart scalemaster-vps-agent`. Fotos descem do app (`/api/emulador/agente/midias`), prints sobem (`/api/emulador/agente/prints`), RAM do lote vem do agente (`capacity.ramDisponivelMb`). Migração feita com `exportar.sh`/`importar.sh` (cópia por `rsync` direto entre as VPSs com a chave do PC encaminhada, `ssh -A`); export ainda em `/opt/scalemaster/migracao` nas duas.
+
 - Contas em containers **redroid** (`redroid/redroid:13.0.0-latest`, Android 13 sem tela), uma proxy fixa por conta e kill switch; tudo é docker + adb + props.
 - **O host é x86_64.** O build arm64 do Instagram instala e **crasha em 7 s com SIGSEGV em `libnb.so`** (ponte de tradução). Em x86 use sempre o APK **x86_64**. `ro.product.cpu.abilist` traz `arm64-v8a`, mas isso só garante instalação, não execução.
 - APK x86_64 pinado em `/opt/scalemaster/apks/x86-454.0.0.54.77/` (`base.apk` + `split_config.xxhdpi.apk`, sha256 em `docs/relatorio-teste-ig-2026-11-07.pdf`). Reinstalar: `adb install-multiple -r`. `primaryCpuAbi` tem que ser `x86_64`.
