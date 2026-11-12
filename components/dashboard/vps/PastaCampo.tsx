@@ -14,18 +14,21 @@ interface PastaCampoProps {
   /** Nome da pasta escolhida/digitada; "" = sem pasta. */
   value: string;
   onChange: (pasta: string) => void;
+  /** Texto da opção vazia (padrão "Sem pasta"). */
+  rotuloVazio?: string;
 }
 
 /**
  * Pasta da conta: escolhe uma que já existe, "Sem pasta" ou "Nova pasta…"
  * (aí aparece o campo do nome). Usado no Enviar lote e no Mover de pasta.
  */
-export function PastaCampo({ label = "Pasta", hint, pastas, value, onChange }: PastaCampoProps) {
+export function PastaCampo({ label = "Pasta", hint, pastas, value, onChange, rotuloVazio = "Sem pasta" }: PastaCampoProps) {
   const existe = value === "" || pastas.includes(value);
   const [nova, setNova] = React.useState(!existe);
   // Valor vindo de fora (abrir o diálogo de outra conta) volta para o seletor quando a pasta já existe.
   React.useEffect(() => {
-    if (value === "" || pastas.includes(value)) setNova(false);
+    // Nome que não está na lista (pasta renomeada, destino lembrado) abre o campo de texto com ele.
+    setNova(!(value === "" || pastas.includes(value)));
   }, [value, pastas]);
 
   return (
@@ -43,7 +46,7 @@ export function PastaCampo({ label = "Pasta", hint, pastas, value, onChange }: P
             onChange(e.target.value);
           }
         }}
-        options={[{ value: "", label: "Sem pasta" }, ...pastas.map((p) => ({ value: p, label: p })), { value: NOVA, label: "+ Nova pasta…" }]}
+        options={[{ value: "", label: rotuloVazio }, ...pastas.map((p) => ({ value: p, label: p })), { value: NOVA, label: "+ Nova pasta…" }]}
       />
       {nova && (
         <Input

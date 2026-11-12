@@ -24,7 +24,8 @@ export async function criarEstruturacao(
   admin: SupabaseClient,
   userId: string,
   conta: ContaRow,
-  dados: EstruturaDados
+  dados: EstruturaDados,
+  { pastaDestino = null }: { pastaDestino?: string | null } = {}
 ): Promise<{ id: string; etapas: number } | { error: string; status: number }> {
   if (conta.kind !== "nova-conta") return { error: "Conta não encontrada.", status: 404 };
   if (conta.status !== "done") return { error: "Só dá para estruturar uma conta já criada.", status: 409 };
@@ -69,6 +70,8 @@ export async function criarEstruturacao(
       conta_id: conta.id,
       agendado_para: agendadoPara(dados.agendarHoras),
       input_enc: encrypt(JSON.stringify(entrada)),
+      // "Ao concluir, mover para a pasta": lib/vps/mover-ao-concluir.ts aplica quando ela termina conectada.
+      ...(pastaDestino ? { pasta: pastaDestino } : {}),
     })
     .select("id")
     .single();

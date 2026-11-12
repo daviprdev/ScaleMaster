@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
   if (!agentId) return NextResponse.json({ error: "VPS não informada." }, { status: 400 });
   if (typeof body.pasta !== "string" || !body.pasta.trim()) return NextResponse.json({ error: "Escolha a pasta." }, { status: 400 });
   const pasta = body.pasta === SEM_PASTA ? null : normalizarPasta(body.pasta);
+  const pastaDestino = normalizarPasta(body.pastaDestino);
 
   const parsed = parseEstrutura(body, listarMidias(pastaMidias()).map((m) => m.path));
   if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
   const { elegiveis, puladas } = elegiveisDaPasta(lista, pasta, (id) => maisNova.get(id));
   const criadas: Array<{ id: string; label: string | null }> = [];
   for (const conta of elegiveis) {
-    const r = await criarEstruturacao(admin, user.id, conta, parsed.value);
+    const r = await criarEstruturacao(admin, user.id, conta, parsed.value, { pastaDestino });
     if ("error" in r) {
       if (r.status === 503) return NextResponse.json({ error: r.error, criadas, puladas }, { status: 503 });
       puladas.push({ label: conta.label ? `@${conta.label}` : "conta", motivo: r.error });

@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { parseEstrutura } from "@/lib/vps/estruturacao";
 import { CONTA_COLUNAS, criarEstruturacao, type ContaRow } from "@/lib/vps/estruturar-conta";
 import { listarMidias, pastaMidias } from "@/lib/vps/midias";
+import { normalizarPasta } from "@/lib/vps/pastas";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,7 +34,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (contaErr) return NextResponse.json({ error: contaErr.message }, { status: 500 });
   if (!conta) return NextResponse.json({ error: "Conta não encontrada." }, { status: 404 });
 
-  const r = await criarEstruturacao(admin, user.id, conta as unknown as ContaRow, parsed.value);
+  const pastaDestino = normalizarPasta((body as Record<string, unknown> | null)?.pastaDestino);
+  const r = await criarEstruturacao(admin, user.id, conta as unknown as ContaRow, parsed.value, { pastaDestino });
   if ("error" in r) return NextResponse.json({ error: r.error }, { status: r.status });
   return NextResponse.json(r);
 }

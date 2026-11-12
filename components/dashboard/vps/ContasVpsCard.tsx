@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Contact, Copy, Folder, FolderOpen, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Shield, ShieldAlert, ShieldCheck, Trash2, UserPlus, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Pencil, Circle, Contact, Copy, Folder, FolderOpen, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Shield, ShieldAlert, ShieldCheck, Trash2, UserPlus, XCircle } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Input, ProgressBar, Segmented, type BadgeTone } from "@/components/ui";
 import { SEM_PASTA, gruposDePasta, type AbaContas } from "@/lib/vps/pastas";
 import { cn } from "@/lib/utils";
@@ -45,10 +45,12 @@ interface ContasVpsCardProps {
   conectadasSaas?: ReadonlySet<string>;
   /** Avisa a página da pasta aberta (null = na grade): vira a pasta inicial do Enviar lote e do Estruturar pasta. */
   onPastaAberta?: (pasta: string | null) => void;
+  /** Lápis do cartão da pasta (não aparece no "Sem pasta"). */
+  onRenomearPasta?: (pasta: string) => void;
 }
 
 /** Uma linha por conta da VPS: índice do container, @, etapa atual com barra, Continuar, Remover, Pausar proxy e avisos. */
-export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onEdit, estruturas, onEstruturar, onEstrutura, onPasta, pastasOn = false, onPastaAberta, conectadasSaas }: ContasVpsCardProps) {
+export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onEdit, estruturas, onEstruturar, onEstrutura, onPasta, pastasOn = false, onPastaAberta, conectadasSaas, onRenomearPasta }: ContasVpsCardProps) {
   const [aba, setAba] = React.useState<AbaContas>("criadas");
   /** Pasta aberta (nome ou SEM_PASTA); null = grade de pastas. */
   const [aberta, setAberta] = React.useState<string | null>(null);
@@ -109,11 +111,11 @@ export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onE
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {daAba.map((g) => (
+              <div key={g.chave} className="relative">
               <button
-                key={g.chave}
                 type="button"
                 onClick={() => setAberta(g.chave)}
-                className="flex items-start gap-3 rounded-lg border border-line p-4 text-left transition-colors hover:border-line-control hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                className="flex w-full items-start gap-3 rounded-lg border border-line p-4 pr-12 text-left transition-colors hover:border-line-control hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
               >
                 <span className={cn("mt-0.5 shrink-0", aba === "estruturadas" ? "text-success" : "text-accent")}>
                   <Folder size={22} />
@@ -126,6 +128,18 @@ export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onE
                   {g.resumo.length > 0 && <span className="mt-1 block text-xs text-ink-2">{g.resumo.join(" · ")}</span>}
                 </span>
               </button>
+              {onRenomearPasta && g.chave !== SEM_PASTA && (
+                <button
+                  type="button"
+                  onClick={() => onRenomearPasta(g.chave)}
+                  title="Renomear a pasta"
+                  aria-label={`Renomear a pasta ${g.nome}`}
+                  className="absolute right-2 top-2 rounded-md p-2 text-ink-3 hover:bg-surface-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus"
+                >
+                  <Pencil size={14} />
+                </button>
+              )}
+              </div>
             ))}
           </div>
         )

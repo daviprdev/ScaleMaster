@@ -6,6 +6,7 @@ import { parseJobUpdates } from "@/lib/emulador/jobs";
 import { parseCapacidade } from "@/lib/vps/jobs";
 import { MAX_CONCURRENT_JOBS_PER_AGENT } from "@/lib/emulador/sync-jobs";
 import { syncDeletes, syncJobs, syncRenames, type SyncJobsResult } from "@/lib/emulador/sync-jobs";
+import { moverEstruturadas } from "@/lib/vps/mover-ao-concluir";
 import {
   QUEUED_COMMAND_TTL_MS,
   parseAgentKind,
@@ -186,6 +187,9 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
+
+  // Estruturação que terminou com a conta conectada: a conta vai para a pasta escolhida no Estruturar.
+  if (agentKind === "vps") await moverEstruturadas(admin, agent.id).catch((e: Error) => console.warn(`[emulador/sync] mover ao concluir: ${e.message}`));
 
   // Container antigo sem MAC no retrato: o agente leu do docker inspect ao ligar e manda uma vez; vai para vps_devices.
   if (agentKind === "vps" && Array.isArray(body.macs)) {

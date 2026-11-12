@@ -50,6 +50,8 @@ export default function ContasVpsPage() {
   const [estruturarPasta, setEstruturarPasta] = React.useState<VpsAgent | null>(null);
   /** Conta sendo movida de pasta. */
   const [movendo, setMovendo] = React.useState<VpsJob | null>(null);
+  /** Pasta sendo renomeada (nome atual). */
+  const [renomeando, setRenomeando] = React.useState<string | null>(null);
   /** Pasta aberta na lista de contas (nome ou SEM_PASTA); "" = na grade de pastas. */
   const [filtroPasta, setFiltroPasta] = React.useState("");
   const aoAbrirPasta = React.useCallback((p: string | null) => setFiltroPasta(p ?? ""), []);
@@ -327,6 +329,7 @@ export default function ContasVpsPage() {
                     onPasta={pastasOn ? setMovendo : undefined}
                     pastasOn={pastasOn}
                     conectadasSaas={conectadasSaas}
+                    onRenomearPasta={pastasOn ? setRenomeando : undefined}
                     onPastaAberta={aoAbrirPasta}
                   />
                 )}
@@ -348,9 +351,10 @@ export default function ContasVpsPage() {
       />
       <EditarContaDialog job={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />
       <RefazerContaDialog job={refazendo} onClose={() => setRefazendo(null)} onSaved={() => void load()} />
-      <EstruturarDialog job={estruturando} onClose={() => setEstruturando(null)} onSaved={() => void load()} />
+      <EstruturarDialog job={estruturando} pastas={pastasOn ? nomesPastas : []} onClose={() => setEstruturando(null)} onSaved={() => void load()} />
       <EstruturarDialog
         job={null}
+        pastas={pastasOn ? nomesPastas : []}
         pastaDe={estruturarPasta ? { agent: estruturarPasta, opcoes: opcoesDaPasta(estruturarPasta), inicial: filtroPasta } : null}
         onClose={() => setEstruturarPasta(null)}
         onSaved={(resumo) => {
@@ -358,6 +362,7 @@ export default function ContasVpsPage() {
           void load();
         }}
       />
+      <RenomearPastaDialog pasta={renomeando} onClose={() => setRenomeando(null)} onSaved={() => void load()} />
       <MoverPastaDialog job={movendo} pastas={nomesPastas} onClose={() => setMovendo(null)} onSaved={() => void load()} />
       <ConectarVpsDialog open={connectOpen} onClose={() => setConnectOpen(false)} onCreated={() => void load()} />
 
@@ -395,6 +400,58 @@ export default function ContasVpsPage() {
         confirmLabel="Desconectar"
       />
     </div>
+  );
+}
+
+/** Renomear a pasta: todas as contas dela passam para o nome novo (nome que já existe = junta as duas). */
+function RenomearPastaDialog({ pasta, onClose, onSaved }: { pasta: string | null; onClose: () => void; onSaved: () => void }) {
+  const [nome, setNome] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (pasta === null) return;
+    setNome(pasta);
+    setError(null);
+  }, [pasta]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pasta === null) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/vps/pastas/renomear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ de: pasta, para: nome }),
+      });
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(body?.error ?? "Não foi possível renomear a pasta.");
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={pasta !== null} onClose={onClose} title="Renomear pasta" description="Todas as contas da pasta passam para o nome novo. Se já existir uma pasta com esse nome, as duas viram uma só." className="max-w-md">
+      <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)}>
+        {error && <Banner tone="danger">{error}</Banner>}
+        <Input label="Nome da pasta" value={nome} maxLength={40} onChange={(e) => setNome(e.target.value)} autoComplete="off" autoFocus required />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" loading={saving} disabled={!nome.trim() || nome.trim() === pasta}>
+            Salvar
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
