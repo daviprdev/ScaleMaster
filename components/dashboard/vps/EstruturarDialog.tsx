@@ -136,7 +136,7 @@ export function EstruturarDialog({ job, pastaDe = null, onClose, onSaved }: Estr
         const criadas = body?.criadas?.length ?? 0;
         const puladas = body?.puladas ?? [];
         onSaved([
-          `Estruturar pasta "${opcaoPasta?.label ?? pasta}": ${criadas} conta${criadas === 1 ? "" : "s"} na fila (uma por vez).`,
+          `Estruturar pasta "${opcaoPasta?.label ?? pasta}": ${criadas} conta${criadas === 1 ? "" : "s"} na fila (a VPS roda ${pastaDe.agent.capacidade.maxCadastro} por vez).`,
           ...(puladas.length ? [`Puladas: ${puladas.map((p) => `${p.label} (${p.motivo})`).join(", ")}.`] : []),
         ]);
       } else onSaved();
@@ -197,7 +197,7 @@ export function EstruturarDialog({ job, pastaDe = null, onClose, onSaved }: Estr
               placeholder={pastaDe.opcoes.length === 0 ? "nenhuma conta criada nesta VPS" : "escolha a pasta"}
               options={pastaDe.opcoes.map((o) => ({ value: o.value, label: `${o.label} · ${o.elegiveis} para estruturar` }))}
               error={opcaoPasta && opcaoPasta.elegiveis === 0 ? "Nenhuma conta dessa pasta para estruturar (já prontas, na fila ou ainda sendo criadas)." : undefined}
-              hint="Entram as contas criadas da pasta que ainda não estão prontas; o agente faz uma por vez."
+              hint={`Entram as contas criadas da pasta que ainda não estão prontas; a VPS roda até ${pastaDe.agent.capacidade.maxCadastro} ao mesmo tempo e o resto espera na fila.`}
             />
           )}
           {seletor("fotoStory", "Foto do story")}

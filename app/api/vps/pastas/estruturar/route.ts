@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 // POST — "Estruturar pasta": os mesmos campos do Estruturar da conta + agentId e
 // pasta (nome, ou "__sem_pasta__"). Cria uma estruturação para cada conta criada
 // da pasta nesta VPS que não tem estruturação na fila e ainda não está pronta;
-// o agente roda uma por vez (capacidade do host). Devolve criadas e puladas.
+// o agente roda até maxCadastro ao mesmo tempo (capacidade do host). Devolve criadas e puladas.
 export async function POST(req: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
   const supabase = await createClient();
