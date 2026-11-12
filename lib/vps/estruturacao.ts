@@ -363,6 +363,25 @@ export function resumoDosAlvos(alvos: ReadonlyArray<Pick<AlvoResultado, "resulta
   return `${conectados} de ${alvos.length} ${alvos.length === 1 ? "alvo conectado" : "alvos conectados"}`;
 }
 
+/**
+ * Selo verde do card da conta (12/11):
+ *   "pronta"    — estruturação concluída sem falha e todos os alvos conectados
+ *                 (conectada no SaaS e pronta para receber postagens);
+ *   "conectada" — todos os alvos conectados, mas alguma etapa de fora (ex.: destaque) falhou;
+ *   null        — sem estruturação, rodando, ou algum alvo sem conexão.
+ */
+export type Prontidao = "pronta" | "conectada" | null;
+
+export function prontidaoDaConta(
+  estrutura: { status: string; plano?: ReadonlyArray<PlanoEtapa> | null; steps: ReadonlyArray<{ key: string; status: string; message?: string | null }> } | null | undefined
+): Prontidao {
+  if (!estrutura || (estrutura.status !== "done" && estrutura.status !== "error")) return null;
+  const alvos = resultadoPorAlvo(estrutura.plano ?? [], estrutura.steps);
+  const todos = alvos.length > 0 && alvos.every((a) => a.resultado === "conectado");
+  if (estrutura.status === "done" && (todos || alvos.length === 0)) return "pronta";
+  return todos ? "conectada" : null;
+}
+
 /** Quando o job pode sair da fila; null = agora. */
 export function agendadoPara(horas: number, agora = Date.now()): string | null {
   return horas > 0 ? new Date(agora + horas * 3_600_000).toISOString() : null;

@@ -1,13 +1,13 @@
 import path from "node:path";
 import { etapaDoAlvo, motivoParaPular } from "../lib/estrutura.mjs";
 import { pastaDeMidias, resolverMidia } from "../lib/midias.mjs";
-import { esperar } from "../lib/processo.mjs";
+import { fotoUnicaNaGaleria } from "../lib/galeria.mjs";
 import { ProxyMorta, subirSidecar, validar, validarNoNetns } from "../lib/rede.mjs";
 import { INSTAGRAM } from "./apk.mjs";
 import { salvarTela } from "./dono.mjs";
 import { garantirTeclado } from "../lib/teclado.mjs";
 import { conferirSessao, destacarStory, editarPerfil, garantirProxy, iniciarInstagram, pararInstagram, postarStory, trocarFoto } from "./instagram.mjs";
-import { abrirDestaque, abrirPerfilAlvo, conectar, confirmar, consentir, tocarLinkDoDestaque, tornarProfissional } from "./oauth.mjs";
+import { abrirDestaque, abrirPerfilAlvo, conectar, confirmar, consentir, garantirPerfilAlvo, tocarLinkDoDestaque, tornarProfissional } from "./oauth.mjs";
 
 /**
  * Estruturar uma conta da VPS (emulator_jobs.kind = 'estruturacao'). As etapas
@@ -55,28 +55,14 @@ async function contexto({ dispositivo, log, input }) {
 }
 
 /**
- * adb push da foto para /sdcard/Pictures (a pasta ScaleMaster fica só com ela:
- * é a mais nova da galeria) e espera a galeria do Android enxergar o arquivo.
+ * A foto (de perfil ou do story) vira a única das pastas do agente na galeria
+ * e a mais nova dela (lib/galeria.mjs): a foto do story virava foto de perfil.
  */
 async function fotoNaGaleria(d, relativo, log) {
   const raiz = await pastaDeMidias();
   if (!raiz) throw new Error("não achei a pasta de mídias (/opt/scalemaster/midias) nesta VPS");
   const local = resolverMidia(raiz, relativo);
-  const nome = `sm-${Date.now()}${path.extname(local).toLowerCase()}`;
-  const remoto = `${PASTA_FOTOS}/${nome}`;
-  await d.shell(`rm -rf ${PASTA_FOTOS}; mkdir -p ${PASTA_FOTOS}`);
-  await d.enviar(local, remoto);
-  await d.shell("am", "broadcast", "-a", "android.intent.action.MEDIA_SCANNER_SCAN_FILE", "-d", `file://${remoto}`).catch(() => {});
-  const limite = Date.now() + 20_000;
-  for (;;) {
-    const lista = await d.shell("content", "query", "--uri", "content://media/external/images/media", "--projection", "_display_name").catch(() => "");
-    if (lista.includes(nome)) break;
-    if (Date.now() > limite) {
-      log("a galeria não confirmou a foto em 20 s: seguindo assim mesmo");
-      break;
-    }
-    await esperar(1000);
-  }
+  await fotoUnicaNaGaleria(d, local, { pasta: PASTA_FOTOS, log });
   log(`foto na galeria: ${relativo}`);
   return path.basename(relativo);
 }
@@ -201,9 +187,13 @@ const FIXAS = {
 
 const DO_ALVO = {
   perfil: (ctx, c, alvo) => abrirPerfilAlvo(c, alvo.perfil),
-  destaque: (ctx, c, alvo) => abrirDestaque(c, alvo.destaque),
+  destaque: async (ctx, c, alvo) => {
+    await garantirPerfilAlvo(c, alvo.perfil);
+    return abrirDestaque(c, alvo.destaque);
+  },
   // O destaque vai junto: o story dura ~5 s e, se acabar entre as etapas, o link reabre o destaque.
-  link: (ctx, c, alvo) => tocarLinkDoDestaque(c, { link: alvo.link, destaque: alvo.destaque }),
+  // e o perfil: no Continuar a etapa pode começar fora do perfil do alvo.
+  link: (ctx, c, alvo) => tocarLinkDoDestaque(c, { link: alvo.link, destaque: alvo.destaque, perfil: alvo.perfil }),
   conectar: (ctx, c, alvo) => conectar(c, { link: alvo.link, conta: ctx.input?.conta }),
   consentir: (ctx, c) => consentir(c, ctx.input?.conta?.usuario),
   confirmar: (ctx, c) => confirmar(c, ctx.input?.conta?.usuario),

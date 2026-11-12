@@ -125,9 +125,10 @@ export function campoPreenchido(depois, valor, antes) {
  * nenhum dump a mais antes de digitar. Devolve por onde o texto foi
  * ("broadcast" ou "input").
  */
-export async function preencherEsperando(d, no, valor, antes) {
+export async function preencherEsperando(d, no, valor, antes, { limpar: sempreLimpar = false } = {}) {
   const texto = String(valor);
-  let limpar = !!no.texto;
+  // sempreLimpar: campo que abre outra tela (bio) — o nó tocado não mostra o texto que está lá dentro.
+  let limpar = sempreLimpar || !!no.texto;
   let via = "input";
   for (let tentativa = 0; tentativa < 2; tentativa++) {
     await d.tocar(no.x, no.y);

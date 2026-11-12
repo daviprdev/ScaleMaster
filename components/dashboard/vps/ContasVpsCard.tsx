@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { ALERTA_ROBO, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
 import { PrintThumb, PrintViewer, type PrintItem } from "./PrintViewer";
-import { progressoEstrutura, resultadoPorAlvo, resumoDosAlvos, type AlvoResultado, type ResultadoAlvo } from "@/lib/vps/estruturacao";
+import { progressoEstrutura, prontidaoDaConta, resultadoPorAlvo, resumoDosAlvos, type AlvoResultado, type ResultadoAlvo } from "@/lib/vps/estruturacao";
 import { VPS_FLUXO, ehAlertaVps, ehDescartada, ehProxyMorta, estadoIsolamento, progresso, type Isolamento } from "@/lib/vps/jobs";
 import { rotuloAlerta } from "@/lib/vps/painel";
 import type { VpsDevice, VpsJob } from "@/lib/vps/types";
@@ -156,9 +156,11 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, isolamento,
   const onde = Number.isFinite(indice) ? `ig-${indice}` : "container a criar";
   // Estruturar: só em conta criada e sem estruturação na fila ou rodando.
   const estruturaAtiva = estrutura?.status === "queued" || estrutura?.status === "running";
+  // Selo verde: estruturada e conectada no SaaS (pronta para postar), ou só conectada.
+  const prontidao = prontidaoDaConta(estrutura);
 
   return (
-    <li className="rounded-lg border border-line p-4">
+    <li className={cn("rounded-lg border p-4", prontidao === "pronta" ? "border-success" : "border-line")}>
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-ink">
@@ -171,6 +173,12 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, isolamento,
         <Badge tone={job.prompt ? "warning" : pausada ? "warning" : descartada ? "danger" : badge.tone} dot>
           {job.prompt ? "Esperando você" : pausada ? "Pausada (proxy)" : descartada ? badgeDescartada : badge.label}
         </Badge>
+        {prontidao && (
+          <Badge tone="success">
+            <CheckCircle2 size={12} className="mr-1 inline" />
+            {prontidao === "pronta" ? "Conectada · pronta para postar" : "Conectada"}
+          </Badge>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           {descartada && (
             <Button size="sm" icon={<RefreshCw size={14} />} loading={busy} onClick={() => onAction(job, "refazer")}>

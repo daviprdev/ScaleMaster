@@ -973,7 +973,9 @@ export async function editarPerfil(ctx, { nome, bio }) {
           // O nome do cadastro já é o da conta: se a linha já mostra ele, não mexe. Nesta build a linha "Nome" abre
           // uma tela própria e o texto era acrescentado ("Amanda LopesLopes" → pedido de confirmação; ig-7, 09/11).
           const nomeJaCerto = !!nome && nos.some((n) => n.texto.trim().toLowerCase() === nome.trim().toLowerCase());
+          let mexeu = false;
           if (campoNome && nome && !nomeJaCerto) {
+            mexeu = true;
             await preencherEsperando(d, campoNome, nome.slice(0, 64), nos);
             const conf = await fecharTeclado(d);
             // Confirmação "Quer mesmo alterar seu nome para X?": só confirma se X for o nome pedido; senão cancela e sai.
@@ -987,10 +989,23 @@ export async function editarPerfil(ctx, { nome, bio }) {
           const atual = await d.tela();
           const campoBio = campoRotulado(atual, ["Bio", "Biografia"]);
           if (campoBio && bio) {
-            await preencherEsperando(d, campoBio, bio.slice(0, 150), atual);
+            mexeu = true;
+            // Apaga a bio antiga antes (o texto novo entrava colado no velho) e confere o campo: sobrou outra coisa,
+            // apaga e digita de novo uma vez.
+            const nova = bio.slice(0, 150);
+            await preencherEsperando(d, campoBio, nova, atual, { limpar: true });
+            const igual = (a, b) => String(a).replace(/\s+/g, "") === String(b).replace(/\s+/g, "");
+            const campo = (await telaAtual(d).catch(() => [])).find((n) => /EditText/.test(n.classe) && n.pacote === INSTAGRAM);
+            if (campo && !igual(campo.texto, nova)) {
+              log(`a bio ficou diferente do pedido ("${campo.texto.slice(0, 40)}…"): apagando e digitando de novo`);
+              await d.limparCampo();
+              await d.digitar(nova);
+            }
             await fecharTeclado(d);
-          } else if (!campoBio) log("não achei o campo Bio: só o nome");
+          } else if (!campoBio && bio) log("não achei o campo Bio: só o nome");
           estado.preencheu = true;
+          // Nada para salvar (criação sem bio e com o nome já certo): sai da edição sem procurar o Concluir.
+          if (!mexeu) estado.concluiu = true;
         },
       },
       {
@@ -1160,6 +1175,15 @@ export async function destacarStory(ctx, nome) {
     travou: (texto, nos) => ajuda.terminarAMao(texto, nos, `o destaque "${nome}"`),
     fim: (nos) => (estado.nomeou && !noStory(nos) && (temBarra(nos) || noProprioPerfil(nos)) ? `destaque "${nome}" criado` : null),
     telas: [
+      {
+        // Confirmação "Adicionado aos destaques" (Ver no perfil / Concluir) por cima do story: Concluir (aline, 12/11).
+        nome: "adicionado",
+        teste: (nos) => temTexto(nos, ["Adicionado aos destaques", "Added to highlights", "Adicionado ao destaque"]) && botao(nos, ["Concluir", "Concluído", "Done"]),
+        agir: async (nos, alvo) => {
+          estado.nomeou = true;
+          await toque(d, nos, alvo);
+        },
+      },
       {
         // Destaque criado pelo story: o visualizador continua aberto.
         nome: "fechar-story",

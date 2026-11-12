@@ -325,6 +325,25 @@ export async function abrirPerfilAlvo(ctx, usuario) {
   return `perfil @${usuario} aberto`;
 }
 
+/** O perfil na frente é o do @ (título da barra de cima)? */
+export function noPerfilDe(nos, usuario) {
+  const u = String(usuario ?? "").replace(/^@/, "").trim().toLowerCase();
+  return !!u && nos.some((n) => n.pacote === INSTAGRAM && n.id.endsWith(":id/action_bar_title") && n.texto.trim().toLowerCase() === u);
+}
+
+/**
+ * Garante o perfil do alvo na frente. O Continuar retoma da etapa que falhou
+ * (ex.: link-1) com o Instagram aberto no perfil da própria conta: sem isto a
+ * nota dela virava "destaque" e o toque caía no Meta Verified (josiane, 12/11).
+ */
+export async function garantirPerfilAlvo(ctx, usuario) {
+  if (!usuario) return;
+  const nos = await ctx.d.tela().catch(() => []);
+  if (noPerfilDe(nos, usuario) || noVisualizador(nos) || paginaAberta(nos)) return;
+  ctx.log?.(`fora do perfil @${usuario}: abrindo pelo deep link`);
+  await abrirPerfilAlvo(ctx, usuario);
+}
+
 // Pelos ids do cabeçalho: o "Seguir" do visualizador de story (reel_header_unconnected_follow) não conta como perfil.
 const noPerfil = (nos) => nos.some((n) => n.pacote === INSTAGRAM && /:id\/(row_)?profile_header/.test(n.id)) || temBarra(nos);
 
@@ -359,7 +378,8 @@ const NAO_E_DESTAQUE = /^(novo|new|seguir|follow|seguindo|following|mensagem|mes
  * descrição; senão, a linha de textos curtos na mesma altura (≥ 2 itens).
  */
 export function itensDaFaixa(nos) {
-  const doApp = nos.filter((n) => n.pacote === INSTAGRAM && n.y > 250 && n.y < 1500);
+  // A nota do perfil ("Preciso de inspiração…", pog_bubble_text) fica na mesma altura e não é destaque.
+  const doApp = nos.filter((n) => n.pacote === INSTAGRAM && n.y > 250 && n.y < 1500 && !/pog_|note_bubble|bubble_text/.test(n.id));
   const rotuloDe = (n) => (n.texto || n.descricao).trim();
   const validos = (lista) => lista.filter((n) => rotuloDe(n) && !NAO_E_DESTAQUE.test(rotuloDe(n))).sort((a, b) => a.x - b.x);
   const porId = validos(doApp.filter((n) => /highlight|reel_tray|story_tray|tray_item/i.test(n.id) && n.texto));
@@ -481,14 +501,19 @@ const NAVEGADOR_RE = /inappbrowser|BrowserLite|com\.android\.chrome/i;
  * no perfil, josiane 11/11) e espera a página no navegador do Instagram. Se o
  * story acabou, reabre o destaque e repete, até 5 tentativas.
  */
-export async function tocarLinkDoDestaque(ctx, { link = "", destaque = "" } = {}) {
+export async function tocarLinkDoDestaque(ctx, { link = "", destaque = "", perfil = "" } = {}) {
   const { d, log = () => {} } = ctx;
   const host = hostDoLink(link);
   let sticker = null;
   let ultima = [];
   for (let tentativa = 1; tentativa <= 5; tentativa++) {
-    const nos = await d.tela().catch(() => []);
+    let nos = await d.tela().catch(() => []);
     if (paginaAberta(nos)) return descreverPagina(nos);
+    if (nos.length > 0 && !noVisualizador(nos) && perfil && !noPerfilDe(nos, perfil)) {
+      log(`fora do perfil @${perfil}: abrindo pelo deep link`);
+      await abrirPerfilAlvo(ctx, perfil);
+      nos = await d.tela().catch(() => []);
+    }
     if (nos.length > 0) ultima = nos;
     if (nos.length > 0 && noPerfil(nos) && !noVisualizador(nos)) await reabrirDestaque(d, nos, destaque, log);
 

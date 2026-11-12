@@ -21,7 +21,7 @@ export const VPS_FLUXO: ReadonlyArray<{ key: string; label: string }> = [
   { key: "limpar", label: "Preparar o Instagram para o cadastro" },
   { key: "email", label: "Conferir a caixa de e-mail" },
   { key: "cadastro", label: "Criar a conta no Instagram" },
-  { key: "perfil", label: "Foto, nome de exibição e bio" },
+  { key: "perfil", label: "Foto e nome de exibição" },
   { key: "seguir", label: "Aquecer: seguir perfis verificados" },
   { key: "reels", label: "Aquecer: rolar os Reels" },
   { key: "sessao", label: "Exportar a sessão" },

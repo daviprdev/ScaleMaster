@@ -3,6 +3,7 @@ import path from "node:path";
 import { limparAlerta, marcarAlerta } from "../lib/alertas.mjs";
 import { conferirAbiNoAparelho } from "../lib/android.mjs";
 import { aplicarNoAparelho, conferir, gerar as gerarDevice } from "../lib/fingerprint.mjs";
+import { fotoUnicaNaGaleria } from "../lib/galeria.mjs";
 import { pastaDeMidias, sortearFoto } from "../lib/midias.mjs";
 import { garantirTeclado } from "../lib/teclado.mjs";
 import { esperar, rodar } from "../lib/processo.mjs";
@@ -35,7 +36,6 @@ export { CODIGO_VENCIDO } from "./caixa.mjs";
 export const PASTA_SESSOES = process.env.SCALEMASTER_SESSOES_DIR || "/opt/scalemaster/sessoes";
 
 /** Bios curtas (ASCII: o Android digita por input text) quando o lote não traz uma. */
-const BIOS = ["living the moment", "good vibes only", "coffee, music and sun", "exploring new places", "simple life, big dreams", "always learning"];
 
 function container(estado) {
   if (estado.instanceIndex === null || estado.instanceIndex === undefined) throw new Error("O container ainda não foi criado.");
@@ -335,7 +335,7 @@ export const NOVA_CONTA = [
   },
   {
     chave: "perfil",
-    rotulo: "Foto, nome de exibição e bio",
+    rotulo: "Foto e nome de exibição",
     async rodar(ctx) {
       const { mumu, estado, dispositivo, input, perguntar, log } = ctx;
       const d = await dispositivo();
@@ -346,13 +346,11 @@ export const NOVA_CONTA = [
       const raiz = await pastaDeMidias();
       const foto = raiz ? sortearFoto(raiz) : null;
       if (foto) {
-        await d.shell("rm -rf /sdcard/DCIM/ScaleMaster; mkdir -p /sdcard/DCIM/ScaleMaster");
-        await d.enviar(foto, `/sdcard/DCIM/ScaleMaster/sm-${Date.now()}${path.extname(foto).toLowerCase()}`);
-        await esperar(3000);
+        await fotoUnicaNaGaleria(d, foto, { pasta: "/sdcard/DCIM/ScaleMaster", log });
         feitos.push(await trocarFoto(c));
       } else log("sem foto em /opt/scalemaster/midias: pulando a foto");
-      const bio = input?.conta?.bio || BIOS[Math.floor(Math.random() * BIOS.length)];
-      feitos.push(await editarPerfil(c, { nome: input?.conta?.nome ?? "", bio }));
+      // Sem bio na criação (12/11): a bio é do Estruturar.
+      feitos.push(await editarPerfil(c, { nome: input?.conta?.nome ?? "", bio: "" }));
       return feitos.join(" · ");
     },
   },
