@@ -118,6 +118,8 @@ export interface VpsResponse {
   estruturaAvailable?: boolean;
   /** false = supabase/vps_pastas.sql ainda não aplicado (pastas avisam). */
   pastasAvailable?: boolean;
+  /** @ (minúsculo) das contas que estão em "Contas do Instagram" com token (conectadas no SaaS pelo OAuth). */
+  conectadasSaas?: string[];
   /** RAM do host lida na hora pelo servidor (null = não deu para ler). */
   ramHost?: RamHost | null;
 }

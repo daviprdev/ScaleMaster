@@ -202,10 +202,15 @@ export async function loadVps(admin: SupabaseClient, userId: string): Promise<Vp
   const agentIds = agents.map((a) => a.id);
   const lerJobs = (colunas: string) =>
     admin.from("emulator_jobs").select(colunas).eq("user_id", userId).in("agent_id", agentIds).order("created_at", { ascending: false }).limit(400);
-  const [comPastas, devicesRes] = await Promise.all([
+  const [comPastas, devicesRes, conectadas] = await Promise.all([
     lerJobs(`${JOB_COLUMNS}, input_enc, ${ESTRUTURA_COLUMNS}, pasta`),
     admin.from("vps_devices").select(DEVICE_COLUMNS).eq("user_id", userId).order("created_at", { ascending: false }).limit(300),
+    // Selo "Conectada no SaaS" da lista de containers: a conta está em Contas do Instagram com token.
+    admin.from("instagram_accounts").select("username, meta_access_token, access_token").eq("user_id", userId).limit(1000),
   ]);
+  const conectadasSaas = ((conectadas.data ?? []) as Array<{ username: string | null; meta_access_token: string | null; access_token: string | null }>)
+    .filter((c) => c.username && (c.meta_access_token || c.access_token))
+    .map((c) => String(c.username).replace(/^@/, "").toLowerCase());
   // Sem o SQL das pastas (supabase/vps_pastas.sql) lê sem a coluna; sem o do Estruturar, só com as antigas.
   const pastasAvailable = !isMissingSchemaError(comPastas.error);
   const jobsCompletos = pastasAvailable ? comPastas : await lerJobs(`${JOB_COLUMNS}, input_enc, ${ESTRUTURA_COLUMNS}`);
@@ -223,6 +228,7 @@ export async function loadVps(admin: SupabaseClient, userId: string): Promise<Vp
     devices: ((devicesRes.data ?? []) as unknown as DeviceRow[]).map(toDevice),
     estruturaAvailable,
     pastasAvailable,
+    conectadasSaas,
     // Lida agora (não do retrato do agente): é a mesma conta do bloqueio no envio do lote.
     // A do agente (a máquina dos containers); agente antigo: o /proc/meminfo do app.
     ramHost: agents[0] ? ramDoAgente(agents[0].capacidade) : null,

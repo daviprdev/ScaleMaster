@@ -283,8 +283,14 @@ export default function ContasVpsPage() {
             const estruturas = new Map<string, VpsJob>();
             for (const j of jobs) if (j.kind === "estruturacao" && j.contaId && !estruturas.has(j.contaId)) estruturas.set(j.contaId, j);
             const ligados = linkedJobs(jobs, agent.id, agent.instances);
-            // Selo verde "Conectada no SaaS" na lista de containers: Estruturar concluído sem falha (prontidão "pronta").
-            const prontas = new Set([...ligados].filter(([, conta]) => prontidaoDaConta(estruturas.get(conta.id)) === "pronta").map(([indice]) => indice));
+            // Selo verde "Conectada no SaaS" na lista de containers: a conta está em Contas do Instagram com token
+            // (conectada de verdade), ou o Estruturar terminou sem falha.
+            const noSaas = new Set(data.conectadasSaas ?? []);
+            const prontas = new Set(
+              [...ligados]
+                .filter(([, conta]) => noSaas.has(String(conta.label ?? "").toLowerCase()) || prontidaoDaConta(estruturas.get(conta.id)) === "pronta")
+                .map(([indice]) => indice)
+            );
             return (
               <React.Fragment key={agent.id}>
                 <AgenteVpsCard
