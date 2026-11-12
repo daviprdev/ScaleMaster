@@ -41,16 +41,18 @@ interface ContasVpsCardProps {
   onPasta?: (job: VpsJob) => void;
   /** Pastas ligadas (SQL aplicado): abas Criadas/Estruturadas com a grade de pastas; senão, a lista corrida. */
   pastasOn?: boolean;
+  /** @ (minúsculo) das contas em Contas do Instagram com token: contam como estruturadas e ganham o selo. */
+  conectadasSaas?: ReadonlySet<string>;
   /** Avisa a página da pasta aberta (null = na grade): vira a pasta inicial do Enviar lote e do Estruturar pasta. */
   onPastaAberta?: (pasta: string | null) => void;
 }
 
 /** Uma linha por conta da VPS: índice do container, @, etapa atual com barra, Continuar, Remover, Pausar proxy e avisos. */
-export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onEdit, estruturas, onEstruturar, onEstrutura, onPasta, pastasOn = false, onPastaAberta }: ContasVpsCardProps) {
+export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onEdit, estruturas, onEstruturar, onEstrutura, onPasta, pastasOn = false, onPastaAberta, conectadasSaas }: ContasVpsCardProps) {
   const [aba, setAba] = React.useState<AbaContas>("criadas");
   /** Pasta aberta (nome ou SEM_PASTA); null = grade de pastas. */
   const [aberta, setAberta] = React.useState<string | null>(null);
-  const grupos = React.useMemo(() => gruposDePasta(jobs, (id) => estruturas.get(id)), [jobs, estruturas]);
+  const grupos = React.useMemo(() => gruposDePasta(jobs, (id) => estruturas.get(id), conectadasSaas), [jobs, estruturas, conectadasSaas]);
   const daAba = grupos[aba];
   const pasta = aberta === null ? null : (daAba.find((g) => g.chave === aberta) ?? null);
   // Pasta que esvaziou nesta aba (conta mudou de aba ou de pasta): volta para a grade.
@@ -156,6 +158,7 @@ export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onE
               onReply={onReply}
               onEdit={onEdit}
               onPasta={onPasta}
+              noSaas={conectadasSaas?.has(String(job.label ?? "").toLowerCase()) ?? false}
               isolamento={isolamentoDe(job, devices.get(job.id))}
               doLote={jobs.filter((j) => (job.loteId ? j.loteId === job.loteId : j.id === job.id) && !ehDescartada(j)).map((j) => isolamentoDe(j, devices.get(j.id)))}
               estrutura={estruturas.get(job.id)}
@@ -180,6 +183,8 @@ interface JobRowProps {
   onReply: ContasVpsCardProps["onReply"];
   onEdit: ContasVpsCardProps["onEdit"];
   onPasta: ContasVpsCardProps["onPasta"];
+  /** A conta está em Contas do Instagram com token. */
+  noSaas: boolean;
   isolamento: Isolamento;
   /** Isolamento de todas as contas vivas do mesmo lote (esta incluída). */
   doLote: readonly Isolamento[];
@@ -235,7 +240,7 @@ function IsolamentoBox({ isolamento, doLote }: { isolamento: Isolamento; doLote:
   );
 }
 
-function JobRow({ job, device, busy, now, onAction, onReply, onEdit, onPasta, isolamento, doLote, estrutura, estruturaBusy, onEstruturar, onEstrutura }: JobRowProps) {
+function JobRow({ job, device, busy, now, onAction, onReply, onEdit, onPasta, noSaas, isolamento, doLote, estrutura, estruturaBusy, onEstruturar, onEstrutura }: JobRowProps) {
   const [aberto, setAberto] = React.useState(false);
   const [dados, setDados] = React.useState(false);
   const badge = STATUS_BADGE[job.status];
@@ -252,7 +257,8 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, onPasta, is
   // Estruturar: só em conta criada e sem estruturação na fila ou rodando.
   const estruturaAtiva = estrutura?.status === "queued" || estrutura?.status === "running";
   // Selo verde: estruturada e conectada no SaaS (pronta para postar), ou só conectada.
-  const prontidao = prontidaoDaConta(estrutura);
+  // Conectada no SaaS vale como pronta (é o que a postagem precisa), mesmo sem o registro do Estruturar.
+  const prontidao = noSaas ? "pronta" : prontidaoDaConta(estrutura);
 
   return (
     <li className={cn("rounded-lg border p-4", prontidao === "pronta" ? "border-success" : "border-line")}>

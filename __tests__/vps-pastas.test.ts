@@ -120,3 +120,14 @@ describe("Linha de resumo sem rodada de criação", () => {
     expect(resumoDasContas(jobs)).toEqual({ total: 4, criadas: 2, prontas: 1, criando: 1, falhas: 1 });
   });
 });
+
+describe("Conectada no SaaS conta como estruturada", () => {
+  it("sem registro do Estruturar, a conta em Contas do Instagram vai para Estruturadas e soma no resumo", async () => {
+    const { resumoDasContas } = await import("../lib/vps/pastas");
+    const contas = [conta("josianecavalcanti85432", { pasta: "PRONTAS" }), conta("outra", { pasta: "PRONTAS" })];
+    const g = gruposDePasta(contas, () => null, new Set(["josianecavalcanti85432"]));
+    expect(g.estruturadas.map((p) => [p.nome, p.contas.map((c) => c.id), p.resumo])).toEqual([["PRONTAS", ["josianecavalcanti85432"], ["1 pronta para postar"]]]);
+    expect(g.criadas.map((p) => p.contas.map((c) => c.id))).toEqual([["outra"]]);
+    expect(resumoDasContas(contas, new Set(["josianecavalcanti85432"])).prontas).toBe(1);
+  });
+});

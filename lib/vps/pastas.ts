@@ -47,33 +47,38 @@ export interface GrupoDePasta<T> {
 /**
  * Abas da lista de contas, cada uma com as suas pastas (cartões; Sem pasta
  * por último). Estruturadas = selo verde (prontidaoDaConta "pronta" ou
- * "conectada"); Criadas = todo o resto (criando, com falha, esperando estruturar).
+ * "conectada") ou conectada no SaaS (Contas do Instagram com token, mesmo sem
+ * registro do Estruturar); Criadas = todo o resto (criando, com falha, esperando estruturar).
  */
-export function gruposDePasta<T extends { id: string; kind: string; status: string; pasta?: string | null; pausa?: string | null }>(
+export function gruposDePasta<T extends { id: string; kind: string; status: string; label?: string | null; pasta?: string | null; pausa?: string | null }>(
   contas: ReadonlyArray<T>,
-  estruturaDe: (contaId: string) => EstruturaDaConta | null | undefined
+  estruturaDe: (contaId: string) => EstruturaDaConta | null | undefined,
+  noSaas: ReadonlySet<string> = new Set()
 ): Record<AbaContas, Array<GrupoDePasta<T>>> {
+  const conectadaNoSaas = (c: T) => noSaas.has(String(c.label ?? "").replace(/^@/, "").toLowerCase());
   const abas: Record<AbaContas, Map<string, T[]>> = { criadas: new Map(), estruturadas: new Map() };
   for (const c of contas) {
     if (c.kind !== "nova-conta") continue;
-    const aba: AbaContas = prontidaoDaConta(estruturaDe(c.id)) ? "estruturadas" : "criadas";
+    const aba: AbaContas = prontidaoDaConta(estruturaDe(c.id)) || conectadaNoSaas(c) ? "estruturadas" : "criadas";
     const chave = c.pasta || SEM_PASTA;
     abas[aba].set(chave, [...(abas[aba].get(chave) ?? []), c]);
   }
   const ordenar = (m: Map<string, T[]>, aba: AbaContas): Array<GrupoDePasta<T>> =>
     [...m.entries()]
       .sort(([a], [b]) => (a === SEM_PASTA ? 1 : b === SEM_PASTA ? -1 : a.localeCompare(b, "pt-BR")))
-      .map(([chave, lista]) => ({ chave, nome: chave === SEM_PASTA ? "Sem pasta" : chave, contas: lista, resumo: resumoDaPasta(lista, aba, estruturaDe) }));
+      .map(([chave, lista]) => ({ chave, nome: chave === SEM_PASTA ? "Sem pasta" : chave, contas: lista, resumo: resumoDaPasta(lista, aba, estruturaDe, conectadaNoSaas) }));
   return { criadas: ordenar(abas.criadas, "criadas"), estruturadas: ordenar(abas.estruturadas, "estruturadas") };
 }
 
 function resumoDaPasta<T extends { id: string; status: string; pausa?: string | null }>(
   contas: ReadonlyArray<T>,
   aba: AbaContas,
-  estruturaDe: (contaId: string) => EstruturaDaConta | null | undefined
+  estruturaDe: (contaId: string) => EstruturaDaConta | null | undefined,
+  conectadaNoSaas: (c: T) => boolean = () => false
 ): string[] {
   if (aba === "estruturadas") {
-    const prontas = contas.filter((c) => prontidaoDaConta(estruturaDe(c.id)) === "pronta").length;
+    // Conectada no SaaS = pronta para postar (é o que a postagem precisa); "só conectada" = conectou mas não está em Contas do Instagram.
+    const prontas = contas.filter((c) => conectadaNoSaas(c) || prontidaoDaConta(estruturaDe(c.id)) === "pronta").length;
     const conectadas = contas.length - prontas;
     return [prontas ? `${prontas} pronta${prontas === 1 ? "" : "s"} para postar` : "", conectadas ? `${conectadas} só conectada${conectadas === 1 ? "" : "s"}` : ""].filter(Boolean);
   }
@@ -98,8 +103,9 @@ function resumoDaPasta<T extends { id: string; status: string; pausa?: string | 
 }
 
 /** Linha de resumo da aba quando não há rodada de criação: totais das contas (não as estruturações). */
-export function resumoDasContas<T extends { id: string; kind: string; status: string; contaId?: string | null } & Partial<EstruturaDaConta>>(
-  jobs: ReadonlyArray<T>
+export function resumoDasContas<T extends { id: string; kind: string; status: string; label?: string | null; contaId?: string | null } & Partial<EstruturaDaConta>>(
+  jobs: ReadonlyArray<T>,
+  noSaas: ReadonlySet<string> = new Set()
 ): { total: number; criadas: number; prontas: number; criando: number; falhas: number } {
   const estrutura = new Map<string, T>();
   for (const j of jobs) if (j.kind === "estruturacao" && j.contaId && !estrutura.has(j.contaId)) estrutura.set(j.contaId, j);
@@ -111,7 +117,8 @@ export function resumoDasContas<T extends { id: string; kind: string; status: st
     else if (c.status === "error") r.falhas += 1;
     else r.criando += 1;
     const e = estrutura.get(c.id);
-    if (e && prontidaoDaConta({ status: e.status, plano: e.plano ?? [], steps: e.steps ?? [] })) r.prontas += 1;
+    const conectada = noSaas.has(String(c.label ?? "").replace(/^@/, "").toLowerCase());
+    if (conectada || (e && prontidaoDaConta({ status: e.status, plano: e.plano ?? [], steps: e.steps ?? [] }))) r.prontas += 1;
   }
   return r;
 }

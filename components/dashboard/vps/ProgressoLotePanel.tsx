@@ -18,7 +18,7 @@ import type { VpsJob } from "@/lib/vps/types";
  */
 const SEM_RODADA: readonly VpsJob[] = [];
 
-export function ProgressoLotePanel({ jobs }: { jobs: readonly VpsJob[] }) {
+export function ProgressoLotePanel({ jobs, conectadasSaas }: { jobs: readonly VpsJob[]; conectadasSaas?: ReadonlySet<string> }) {
   const lote = React.useMemo(() => loteAtual(jobs), [jobs]);
   const rotulos = React.useMemo(() => new Map(VPS_FLUXO.map((s) => [s.key, s.label])), []);
   const [linhas, setLinhas] = React.useState<LinhaLog[]>([]);
@@ -51,7 +51,7 @@ export function ProgressoLotePanel({ jobs }: { jobs: readonly VpsJob[] }) {
   const doLote = lote?.jobs ?? SEM_RODADA;
   const c = contadoresDoLote(doLote);
   const proxies = proxiesDoLote(doLote);
-  const total = React.useMemo(() => resumoDasContas(jobs), [jobs]);
+  const total = React.useMemo(() => resumoDasContas(jobs, conectadasSaas), [jobs, conectadasSaas]);
 
   if (!lote) {
     if (total.total === 0) return null;

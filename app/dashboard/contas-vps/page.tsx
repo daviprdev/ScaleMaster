@@ -181,6 +181,7 @@ export default function ContasVpsPage() {
   const devices = React.useMemo(() => new Map((data?.devices ?? []).map((d) => [d.jobId, d])), [data]);
   const now = Date.now();
   const pastasOn = data?.pastasAvailable === true;
+  const conectadasSaas = React.useMemo(() => new Set(data?.conectadasSaas ?? []), [data]);
   const pastas = React.useMemo(() => pastasDasContas(data?.jobs ?? []), [data]);
   const nomesPastas = React.useMemo(() => pastas.map((p) => p.nome), [pastas]);
   const contasTodas = React.useMemo(() => (data?.jobs ?? []).filter((j) => j.kind === "nova-conta"), [data]);
@@ -269,7 +270,7 @@ export default function ContasVpsPage() {
               Para a fila de contas falta aplicar o SQL <span className="font-mono">supabase/emulador_contas.sql</span> no Supabase.
             </Banner>
           )}
-          {data.jobsAvailable && <ProgressoLotePanel jobs={data.jobs} />}
+          {data.jobsAvailable && <ProgressoLotePanel jobs={data.jobs} conectadasSaas={conectadasSaas} />}
           {data.jobsAvailable && !pastasOn && (
             <Banner tone="warning">
               Para as pastas falta aplicar o SQL <span className="font-mono">supabase/vps_pastas.sql</span> no Supabase (SQL Editor).
@@ -285,10 +286,9 @@ export default function ContasVpsPage() {
             const ligados = linkedJobs(jobs, agent.id, agent.instances);
             // Selo verde "Conectada no SaaS" na lista de containers: a conta está em Contas do Instagram com token
             // (conectada de verdade), ou o Estruturar terminou sem falha.
-            const noSaas = new Set(data.conectadasSaas ?? []);
             const prontas = new Set(
               [...ligados]
-                .filter(([, conta]) => noSaas.has(String(conta.label ?? "").toLowerCase()) || prontidaoDaConta(estruturas.get(conta.id)) === "pronta")
+                .filter(([, conta]) => conectadasSaas.has(String(conta.label ?? "").toLowerCase()) || prontidaoDaConta(estruturas.get(conta.id)) === "pronta")
                 .map(([indice]) => indice)
             );
             return (
@@ -326,6 +326,7 @@ export default function ContasVpsPage() {
                     onEdit={setEditing}
                     onPasta={pastasOn ? setMovendo : undefined}
                     pastasOn={pastasOn}
+                    conectadasSaas={conectadasSaas}
                     onPastaAberta={aoAbrirPasta}
                   />
                 )}
