@@ -69,11 +69,10 @@ export function resolverMidia(raiz, rel) {
   return alvo;
 }
 
-/** Uma foto de perfil sorteada da pasta (subpasta perfil/ se existir), ou null. */
+/** Uma foto de perfil sorteada da subpasta perfil/ das mídias, ou null (sem foto: a criação pula a troca). */
 export function sortearFoto(raiz) {
-  const todas = listarMidias(raiz).filter((m) => m.tipo === "imagem");
-  const perfil = todas.filter((m) => m.path.startsWith("perfil/"));
-  const lista = perfil.length > 0 ? perfil : todas;
+  // Só da subpasta perfil/: sem ela o sorteio pegava qualquer foto da pasta, inclusive a do story (12/11).
+  const lista = listarMidias(raiz).filter((m) => m.tipo === "imagem" && m.path.startsWith("perfil/"));
   if (lista.length === 0) return null;
   return path.join(raiz, lista[Math.floor(Math.random() * lista.length)].path);
 }

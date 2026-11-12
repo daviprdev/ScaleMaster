@@ -1,3 +1,4 @@
+import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { MIDIA_MAX_BYTES } from "@/lib/vps/estruturacao";
@@ -30,8 +31,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "A foto passa de 8 MB." }, { status: 413 });
   }
   let arquivo: FormDataEntryValue | null;
+  let subpasta = "";
   try {
-    arquivo = (await req.formData()).get("arquivo");
+    const form = await req.formData();
+    arquivo = form.get("arquivo");
+    // pasta=perfil: foto de perfil da criação de conta (o agente sorteia só de midias/perfil/).
+    subpasta = form.get("pasta") === "perfil" ? "perfil" : "";
   } catch {
     return NextResponse.json({ error: SEM_ARQUIVO }, { status: 400 });
   }
@@ -39,9 +44,10 @@ export async function POST(req: NextRequest) {
   if (arquivo.size > MIDIA_MAX_BYTES) return NextResponse.json({ error: "A foto passa de 8 MB." }, { status: 413 });
 
   try {
-    const salvo = salvarMidia(pastaMidias(), arquivo.name, new Uint8Array(await arquivo.arrayBuffer()));
+    const raiz = subpasta ? path.join(pastaMidias(), subpasta) : pastaMidias();
+    const salvo = salvarMidia(raiz, arquivo.name, new Uint8Array(await arquivo.arrayBuffer()));
     if ("error" in salvo) return NextResponse.json({ error: salvo.error }, { status: 400 });
-    return NextResponse.json({ path: salvo.path });
+    return NextResponse.json({ path: subpasta ? `${subpasta}/${salvo.path}` : salvo.path });
   } catch (e) {
     return NextResponse.json({ error: `Não gravei em ${pastaMidias()}: ${(e as Error).message}` }, { status: 500 });
   }

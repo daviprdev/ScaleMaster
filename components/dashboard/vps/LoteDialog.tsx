@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { Upload } from "lucide-react";
 import { Banner, Button, Dialog, Input, Select, Textarea } from "@/components/ui";
+import { MIDIA_MAX_BYTES } from "@/lib/vps/estruturacao";
 import { LOTE_MAX, parseLinhasPortal, parseLoteInput, parseProxies } from "@/lib/vps/input";
 import { DEVICE_PERFIS, type VpsAgent } from "@/lib/vps/types";
 import { PastaCampo } from "./PastaCampo";
@@ -30,10 +32,47 @@ export function LoteDialog({ agent, pastas, pastaInicial = "", onClose, onSaved 
   const [versaoIg, setVersaoIg] = React.useState("");
   const [pais, setPais] = React.useState("BR");
   const [pasta, setPasta] = React.useState("");
+  /** Fotos de perfil (midias/perfil/): a criação sorteia uma por conta. null = lendo. */
+  const [fotosPerfil, setFotosPerfil] = React.useState<string[] | null>(null);
+  const [enviandoFotos, setEnviandoFotos] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const versoes = agent?.capacidade.versoesIg ?? [];
+
+  const lerFotosPerfil = async () => {
+    setFotosPerfil(null);
+    try {
+      const res = await fetch("/api/vps/midias", { cache: "no-store" });
+      const body = (await res.json().catch(() => null)) as { files?: Array<{ path: string }> } | null;
+      setFotosPerfil((body?.files ?? []).map((f) => f.path).filter((p) => p.startsWith("perfil/")));
+    } catch {
+      setFotosPerfil([]);
+    }
+  };
+
+  /** Sobe as fotos escolhidas para midias/perfil/ (uma por vez). */
+  const enviarFotosPerfil = async (arquivos: FileList | null) => {
+    if (!arquivos?.length) return;
+    setEnviandoFotos(true);
+    setError(null);
+    try {
+      for (const arquivo of Array.from(arquivos)) {
+        if (arquivo.size > MIDIA_MAX_BYTES) throw new Error(`"${arquivo.name}" passa de 8 MB.`);
+        const corpo = new FormData();
+        corpo.append("arquivo", arquivo);
+        corpo.append("pasta", "perfil");
+        const res = await fetch("/api/vps/midias", { method: "POST", body: corpo });
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        if (!res.ok) throw new Error(body?.error ?? `Não foi possível enviar "${arquivo.name}".`);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setEnviandoFotos(false);
+      void lerFotosPerfil();
+    }
+  };
 
   React.useEffect(() => {
     if (!agent) return;
@@ -44,6 +83,7 @@ export function LoteDialog({ agent, pastas, pastaInicial = "", onClose, onSaved 
     setPais("BR");
     setPasta(pastaInicial);
     setError(null);
+    void lerFotosPerfil();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a pasta inicial só vale ao abrir.
   }, [agent]);
 
@@ -120,6 +160,33 @@ export function LoteDialog({ agent, pastas, pastaInicial = "", onClose, onSaved 
             />
           </div>
           <PastaCampo pastas={pastas} value={pasta} onChange={setPasta} hint="As contas do lote entram nessa pasta (dá para trocar depois no card)." />
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line p-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ink">Fotos de perfil</p>
+              <p className="text-xs text-ink-3">
+                {fotosPerfil === null
+                  ? "lendo a pasta…"
+                  : fotosPerfil.length === 0
+                    ? "Nenhuma foto em midias/perfil: as contas ficam sem foto de perfil."
+                    : `${fotosPerfil.length} foto${fotosPerfil.length === 1 ? "" : "s"} em midias/perfil · cada conta recebe uma sorteada.`}
+              </p>
+            </div>
+            <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-line-control px-3 text-sm text-ink hover:bg-surface-hover">
+              <Upload size={14} />
+              {enviandoFotos ? "Enviando…" : "Enviar fotos"}
+              <input
+                type="file"
+                multiple
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                disabled={enviandoFotos}
+                onChange={(e) => {
+                  void enviarFotosPerfil(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
           <Textarea
             label="Códigos do hstock"
             rows={Math.min(8, Math.max(3, quantidade))}

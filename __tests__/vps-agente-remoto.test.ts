@@ -84,3 +84,16 @@ describe("RAM: a do host do agente", () => {
     expect(parseCapacidade({ maxLigadas: 1 }).ramDisponivelMb).toBeNull();
   });
 });
+
+describe("Foto de perfil da criação: só de midias/perfil/", () => {
+  it("nunca sorteia a foto do story (raiz da pasta); sem perfil/ não há foto", async () => {
+    const { sortearFoto } = await import("../agente-vps/lib/midias.mjs");
+    const raiz = mkdtempSync(path.join(os.tmpdir(), "midias-"));
+    pastas.push(raiz);
+    writeFileSync(path.join(raiz, "cta-destaques-02.png"), "x");
+    expect(sortearFoto(raiz)).toBeNull();
+    mkdirSync(path.join(raiz, "perfil"));
+    writeFileSync(path.join(raiz, "perfil", "rosto.jpg"), "x");
+    for (let i = 0; i < 10; i++) expect(sortearFoto(raiz)).toBe(path.join(raiz, "perfil", "rosto.jpg"));
+  });
+});

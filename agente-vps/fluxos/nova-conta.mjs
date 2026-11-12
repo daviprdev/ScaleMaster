@@ -348,7 +348,7 @@ export const NOVA_CONTA = [
       if (foto) {
         await fotoUnicaNaGaleria(d, foto, { pasta: "/sdcard/DCIM/ScaleMaster", log });
         feitos.push(await trocarFoto(c));
-      } else log("sem foto em /opt/scalemaster/midias: pulando a foto");
+      } else log("sem foto em /opt/scalemaster/midias/perfil (Enviar lote → Fotos de perfil): pulando a foto");
       // Sem bio na criação (12/11): a bio é do Estruturar.
       feitos.push(await editarPerfil(c, { nome: input?.conta?.nome ?? "", bio: "" }));
       return feitos.join(" · ");
