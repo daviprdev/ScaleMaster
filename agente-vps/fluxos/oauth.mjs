@@ -2,7 +2,7 @@ import { esperar } from "../lib/processo.mjs";
 import { CONEXAO_OUTRA_CONTA, PROFISSIONAL_FALHOU, SEM_NAVEGADOR, arrobaDaConfirmacao, arrobaDaPermissao, conferirConexao, hostDoLink } from "../lib/estrutura.mjs";
 import { INSTAGRAM } from "./apk.mjs";
 import { resumoTela, salvarTela } from "./dono.mjs";
-import { SEGUINTE, atividadeNoTopo, botaoDoPerfil, comandoDeepLink, irPara, noProprioPerfil, percorrer, temBarra } from "./instagram.mjs";
+import { SEGUINTE, xDoMetaVerified, atividadeNoTopo, botaoDoPerfil, comandoDeepLink, irPara, noProprioPerfil, percorrer, temBarra } from "./instagram.mjs";
 import { acharId, acharTexto, esperarMudar, preencher, preencherEsperando, temTexto } from "./tela.mjs";
 
 /**
@@ -546,6 +546,13 @@ export async function tocarLinkDoDestaque(ctx, { link = "", destaque = "", perfi
       if (tela.length > 0) ultima = tela;
       if (paginaAberta(tela)) return descreverPagina(tela);
       const visitar = acharBotao(tela, VISITAR);
+      const xMeta = xDoMetaVerified(tela);
+      if (xMeta) {
+        log("oferta do Meta Verified na frente: fechando no X");
+        await d.tocar(xMeta.x, xMeta.y);
+        await esperar(1500);
+        break;
+      }
       if (visitar) await d.tocar(visitar.x, visitar.y);
       // O story acabou (perfil de volta): reabre na próxima tentativa.
       else if (tela.length > 0 && noPerfil(tela) && !noVisualizador(tela)) break;

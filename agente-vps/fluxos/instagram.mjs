@@ -65,6 +65,12 @@ function botao(nos, textos) {
  */
 const NAO_E_POPUP = /background_dimmer|dismiss_button|hide_icon|find_people_dismiss|suggested_|netego|recommended/;
 
+/** Oferta do Meta Verified ("Aproveitar benefícios"): o X do topo (descrição "Fechar") fecha (josiane, 12/11). */
+export function xDoMetaVerified(nos) {
+  if (!temTexto(nos, ["Meta Verified", "Aproveitar benefícios", "Selo de verificado"])) return null;
+  return nos.find((n) => n.clicavel && /^(fechar|close)$/i.test(n.descricao.trim()) && n.y < 400) ?? null;
+}
+
 export function botaoPular(nos) {
   return botao(
     nos.filter((n) => !NAO_E_POPUP.test(n.id)),
@@ -245,6 +251,11 @@ function telasGerais({ d, ajuda }) {
           ? botao(nos, ["Permitir tudo", "Allow all", "Permitir", "Allow", "Durante a utilização da app", "While using the app", "Só desta vez", "Only this time"])
           : botao(nos, ["Não permitir", "Don't allow", "Don’t allow"]);
       },
+      agir: (nos, alvo) => tocarNo(d, alvo, 2000),
+    },
+    {
+      nome: "meta-verified",
+      teste: (nos) => xDoMetaVerified(nos),
       agir: (nos, alvo) => tocarNo(d, alvo, 2000),
     },
     {
