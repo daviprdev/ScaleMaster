@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PASTA_MAX, SEM_PASTA, elegiveisDaPasta, filtrarPorPasta, normalizarPasta, pastasDasContas } from "../lib/vps/pastas";
+import { PASTA_MAX, SEM_PASTA, elegiveisDaPasta, filtrarPorPasta, gruposDePasta, normalizarPasta, pastasDasContas } from "../lib/vps/pastas";
 import { errosPorCampo, expandirEtapas, parseEstrutura } from "../lib/vps/estruturacao";
 
 const conta = (id: string, extra: Partial<{ status: string; pasta: string | null; label: string; kind: string }> = {}) => ({
@@ -75,5 +75,32 @@ describe("Estruturar sem a foto de perfil (é da criação de conta)", () => {
     const lido = parseEstrutura(form, ["s.png"]);
     if (!("value" in lido)) throw new Error(lido.error);
     expect(expandirEtapas(lido.value).map((p) => p.key)).not.toContain("foto");
+  });
+});
+
+describe("Abas Criadas/Estruturadas com as pastas", () => {
+  const plano = expandirEtapas({ alvos: [{ perfil: "link.zada", destaque: "AQUI", link: "" }], bio: "", fazerPerfil: true, fazerOauth: true, fazerStory: true });
+  const pronta = { status: "done", plano, steps: plano.map((p) => ({ key: p.key, status: "done" })) };
+  const soConectada = { status: "error", plano, steps: plano.map((p) => ({ key: p.key, status: p.key === "destacar" ? "error" : "done", message: "travou" })) };
+
+  it("selo verde vai para Estruturadas; o resto fica em Criadas, cada uma com as suas pastas e Sem pasta por último", () => {
+    const contas = [
+      conta("a", { pasta: "Novembro" }),
+      conta("b", { pasta: "Novembro" }),
+      conta("c", { pasta: "Novembro", status: "running" }),
+      conta("d"),
+      conta("e", { pasta: "Agência" }),
+    ];
+    const est: Record<string, typeof pronta> = { a: pronta, e: soConectada };
+    const g = gruposDePasta(contas, (id) => est[id]);
+    expect(g.estruturadas.map((p) => [p.nome, p.contas.map((c) => c.id), p.resumo])).toEqual([
+      ["Agência", ["e"], ["1 só conectada"]],
+      ["Novembro", ["a"], ["1 pronta para postar"]],
+    ]);
+    expect(g.criadas.map((p) => [p.nome, p.contas.map((c) => c.id), p.resumo])).toEqual([
+      ["Novembro", ["b", "c"], ["1 criando", "1 para estruturar"]],
+      ["Sem pasta", ["d"], ["1 para estruturar"]],
+    ]);
+    expect(g.criadas[1].chave).toBe(SEM_PASTA);
   });
 });

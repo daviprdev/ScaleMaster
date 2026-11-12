@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, Circle, Contact, Copy, Folder, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Shield, ShieldAlert, ShieldCheck, Trash2, UserPlus, XCircle } from "lucide-react";
-import { Badge, Button, Card, EmptyState, Input, ProgressBar, type BadgeTone } from "@/components/ui";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Circle, Contact, Copy, Folder, FolderOpen, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Shield, ShieldAlert, ShieldCheck, Trash2, UserPlus, XCircle } from "lucide-react";
+import { Badge, Button, Card, EmptyState, Input, ProgressBar, Segmented, type BadgeTone } from "@/components/ui";
+import { SEM_PASTA, gruposDePasta, type AbaContas } from "@/lib/vps/pastas";
 import { cn } from "@/lib/utils";
 import { ALERTA_ROBO, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
@@ -38,14 +39,53 @@ interface ContasVpsCardProps {
   onEstrutura: (estrutura: VpsJob, action: EstruturaAction) => void;
   /** Mover a conta de pasta; sem ele (SQL das pastas não aplicado) o botão some. */
   onPasta?: (job: VpsJob) => void;
+  /** Pastas ligadas (SQL aplicado): abas Criadas/Estruturadas com a grade de pastas; senão, a lista corrida. */
+  pastasOn?: boolean;
+  /** Avisa a página da pasta aberta (null = na grade): vira a pasta inicial do Enviar lote e do Estruturar pasta. */
+  onPastaAberta?: (pasta: string | null) => void;
 }
 
 /** Uma linha por conta da VPS: índice do container, @, etapa atual com barra, Continuar, Remover, Pausar proxy e avisos. */
-export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onEdit, estruturas, onEstruturar, onEstrutura, onPasta }: ContasVpsCardProps) {
+export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onEdit, estruturas, onEstruturar, onEstrutura, onPasta, pastasOn = false, onPastaAberta }: ContasVpsCardProps) {
+  const [aba, setAba] = React.useState<AbaContas>("criadas");
+  /** Pasta aberta (nome ou SEM_PASTA); null = grade de pastas. */
+  const [aberta, setAberta] = React.useState<string | null>(null);
+  const grupos = React.useMemo(() => gruposDePasta(jobs, (id) => estruturas.get(id)), [jobs, estruturas]);
+  const daAba = grupos[aba];
+  const pasta = aberta === null ? null : (daAba.find((g) => g.chave === aberta) ?? null);
+  // Pasta que esvaziou nesta aba (conta mudou de aba ou de pasta): volta para a grade.
+  React.useEffect(() => {
+    if (aberta !== null && !pasta) setAberta(null);
+  }, [aberta, pasta]);
+  React.useEffect(() => {
+    onPastaAberta?.(pasta ? pasta.chave : null);
+  }, [pasta, onPastaAberta]);
+
+  const lista = pastasOn ? (pasta?.contas ?? []) : jobs;
+  const descricao = pastasOn
+    ? "Contas separadas por pasta. Criadas: ainda sem a estruturação concluída. Estruturadas: conectadas no SaaS (selo verde). Abra uma pasta para ver as contas."
+    : "Cada conta roda no seu container redroid com a sua proxy. Até maxCadastro contas cadastram ao mesmo tempo; as outras esperam na fila.";
+
   return (
     <Card
       title="Contas da VPS"
-      description="Cada conta roda no seu container redroid com a sua proxy. Até maxCadastro contas cadastram ao mesmo tempo; as outras esperam na fila."
+      description={descricao}
+      actions={
+        pastasOn && jobs.length > 0 ? (
+          <Segmented
+            size="sm"
+            value={aba}
+            onChange={(v) => {
+              setAba(v as AbaContas);
+              setAberta(null);
+            }}
+            options={[
+              { value: "criadas", label: `Criadas (${grupos.criadas.reduce((n, g) => n + g.contas.length, 0)})` },
+              { value: "estruturadas", label: `Estruturadas (${grupos.estruturadas.reduce((n, g) => n + g.contas.length, 0)})` },
+            ]}
+          />
+        ) : undefined
+      }
     >
       {jobs.length === 0 ? (
         <EmptyState
@@ -53,9 +93,59 @@ export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onE
           title="Nenhuma conta ainda"
           description="Clique em Enviar lote, cole as proxies e preencha as contas; a VPS faz o resto."
         />
+      ) : pastasOn && !pasta ? (
+        daAba.length === 0 ? (
+          <EmptyState
+            icon={<Folder size={18} />}
+            title={aba === "estruturadas" ? "Nenhuma conta estruturada ainda" : "Nenhuma conta esperando estruturação"}
+            description={
+              aba === "estruturadas"
+                ? "Quando a estruturação termina com a conta conectada no SaaS, ela aparece aqui, na pasta dela."
+                : "Todas as contas já estão estruturadas. Contas novas entram pelo Enviar lote."
+            }
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {daAba.map((g) => (
+              <button
+                key={g.chave}
+                type="button"
+                onClick={() => setAberta(g.chave)}
+                className="flex items-start gap-3 rounded-lg border border-line p-4 text-left transition-colors hover:border-line-control hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                <span className={cn("mt-0.5 shrink-0", aba === "estruturadas" ? "text-success" : "text-accent")}>
+                  <Folder size={22} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-ink">{g.nome}</span>
+                  <span className="block text-xs text-ink-3">
+                    {g.contas.length} conta{g.contas.length === 1 ? "" : "s"}
+                  </span>
+                  {g.resumo.length > 0 && <span className="mt-1 block text-xs text-ink-2">{g.resumo.join(" · ")}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        )
       ) : (
+        <div className="flex flex-col gap-3">
+          {pastasOn && pasta && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="ghost" size="sm" icon={<ArrowLeft size={14} />} onClick={() => setAberta(null)}>
+                Pastas
+              </Button>
+              <span className="inline-flex items-center gap-1.5 text-sm font-medium text-ink">
+                <FolderOpen size={16} className={aba === "estruturadas" ? "text-success" : "text-accent"} />
+                {pasta.nome}
+              </span>
+              <span className="text-xs text-ink-3">
+                · {pasta.contas.length} conta{pasta.contas.length === 1 ? "" : "s"} {aba === "estruturadas" ? "estruturada" : "criada"}
+                {pasta.contas.length === 1 ? "" : "s"}
+              </span>
+            </div>
+          )}
         <ul className="flex flex-col gap-3">
-          {jobs.map((job) => (
+          {lista.map((job) => (
             <JobRow
               key={job.id}
               job={job}
@@ -75,6 +165,7 @@ export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onE
             />
           ))}
         </ul>
+        </div>
       )}
     </Card>
   );
@@ -173,12 +264,7 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, onPasta, is
           <p className="text-xs text-ink-3">
             {device ? `${device.model} · ${device.serial}` : "sem device"} · {job.versaoIg ? `IG ${job.versaoIg}` : ""} · {timeAgo(job.updatedAt, now)}
           </p>
-          {onPasta && (
-            <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-ink-3">
-              <Folder size={12} />
-              {job.pasta ?? "Sem pasta"}
-            </p>
-          )}
+
         </div>
         <Badge tone={job.prompt ? "warning" : pausada ? "warning" : descartada ? "danger" : badge.tone} dot>
           {job.prompt ? "Esperando você" : pausada ? "Pausada (proxy)" : descartada ? badgeDescartada : badge.label}

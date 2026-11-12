@@ -2,13 +2,13 @@
 
 import * as React from "react";
 import { mascaraData } from "@/lib/emulador/view";
-import { Folder, Plus, Server } from "lucide-react";
-import { Banner, Button, ChipToggle, ConfirmDialog, Dialog, EmptyState, Input, PageHeader, Select, Skeleton } from "@/components/ui";
+import { Plus, Server } from "lucide-react";
+import { Banner, Button, ConfirmDialog, Dialog, EmptyState, Input, PageHeader, Select, Skeleton } from "@/components/ui";
 import { AgenteVpsCard, ConectarVpsDialog } from "@/components/dashboard/vps/AgenteVpsCard";
 import { ContasVpsCard, type EstruturaAction, type JobAction } from "@/components/dashboard/vps/ContasVpsCard";
 import { EstruturarDialog, type PastaOpcao } from "@/components/dashboard/vps/EstruturarDialog";
 import { PastaCampo } from "@/components/dashboard/vps/PastaCampo";
-import { SEM_PASTA, elegiveisDaPasta, filtrarPorPasta, pastasDasContas } from "@/lib/vps/pastas";
+import { SEM_PASTA, elegiveisDaPasta, pastasDasContas } from "@/lib/vps/pastas";
 import { LoteDialog } from "@/components/dashboard/vps/LoteDialog";
 import { ProgressoLotePanel } from "@/components/dashboard/vps/ProgressoLotePanel";
 import { parseLinhaPortal, parseProxy } from "@/lib/vps/input";
@@ -47,8 +47,9 @@ export default function ContasVpsPage() {
   const [estruturarPasta, setEstruturarPasta] = React.useState<VpsAgent | null>(null);
   /** Conta sendo movida de pasta. */
   const [movendo, setMovendo] = React.useState<VpsJob | null>(null);
-  /** Filtro da lista: "" = todas, SEM_PASTA = sem pasta, nome = a pasta. */
+  /** Pasta aberta na lista de contas (nome ou SEM_PASTA); "" = na grade de pastas. */
   const [filtroPasta, setFiltroPasta] = React.useState("");
+  const aoAbrirPasta = React.useCallback((p: string | null) => setFiltroPasta(p ?? ""), []);
   const [jobBusy, setJobBusy] = React.useState<ReadonlySet<string>>(new Set());
   const [sending, setSending] = React.useState<ReadonlySet<string>>(new Set());
   const [rebuilding, setRebuilding] = React.useState<ReadonlySet<string>>(new Set());
@@ -180,11 +181,6 @@ export default function ContasVpsPage() {
   const pastas = React.useMemo(() => pastasDasContas(data?.jobs ?? []), [data]);
   const nomesPastas = React.useMemo(() => pastas.map((p) => p.nome), [pastas]);
   const contasTodas = React.useMemo(() => (data?.jobs ?? []).filter((j) => j.kind === "nova-conta"), [data]);
-  const semPasta = contasTodas.filter((j) => !j.pasta).length;
-  // Filtro que sumiu (pasta esvaziada): volta para Todas.
-  React.useEffect(() => {
-    if (filtroPasta && filtroPasta !== SEM_PASTA && !nomesPastas.includes(filtroPasta)) setFiltroPasta("");
-  }, [filtroPasta, nomesPastas]);
 
   /** Estruturação mais nova de cada conta, de todas as VPSs. */
   const estruturasDe = React.useMemo(() => {
@@ -276,31 +272,11 @@ export default function ContasVpsPage() {
               Para as pastas falta aplicar o SQL <span className="font-mono">supabase/vps_pastas.sql</span> no Supabase (SQL Editor).
             </Banner>
           )}
-          {data.jobsAvailable && pastasOn && contasTodas.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2" role="listbox" aria-label="Filtrar por pasta">
-              <Folder size={14} className="text-ink-3" />
-              <ChipToggle selected={filtroPasta === ""} onChange={() => setFiltroPasta("")} count={contasTodas.length}>
-                Todas
-              </ChipToggle>
-              {pastas.map((p) => (
-                <ChipToggle key={p.nome} selected={filtroPasta === p.nome} onChange={() => setFiltroPasta(p.nome)} count={p.contas}>
-                  {p.nome}
-                </ChipToggle>
-              ))}
-              {semPasta > 0 && (
-                <ChipToggle selected={filtroPasta === SEM_PASTA} onChange={() => setFiltroPasta(SEM_PASTA)} count={semPasta}>
-                  Sem pasta
-                </ChipToggle>
-              )}
-            </div>
-          )}
+
           {data.agents.map((agent) => {
             const jobs = data.jobs.filter((j) => j.agentId === agent.id);
             // Estruturação não é linha própria: a mais nova de cada conta vira a segunda barra do card dela.
-            const contas = filtrarPorPasta(
-              jobs.filter((j) => j.kind !== "estruturacao"),
-              pastasOn ? filtroPasta : ""
-            );
+            const contas = jobs.filter((j) => j.kind !== "estruturacao");
             const estruturas = new Map<string, VpsJob>();
             for (const j of jobs) if (j.kind === "estruturacao" && j.contaId && !estruturas.has(j.contaId)) estruturas.set(j.contaId, j);
             return (
@@ -335,6 +311,8 @@ export default function ContasVpsPage() {
                     onReply={(job, resposta) => void jobRequest(job, "responder", resposta)}
                     onEdit={setEditing}
                     onPasta={pastasOn ? setMovendo : undefined}
+                    pastasOn={pastasOn}
+                    onPastaAberta={aoAbrirPasta}
                   />
                 )}
               </React.Fragment>

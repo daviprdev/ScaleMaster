@@ -33,6 +33,70 @@ export function pastasDasContas(contas: ReadonlyArray<ContaComPasta>): Array<{ n
   return [...conta.entries()].sort(([a], [b]) => a.localeCompare(b, "pt-BR")).map(([nome, n]) => ({ nome, contas: n }));
 }
 
+export type AbaContas = "criadas" | "estruturadas";
+
+export interface GrupoDePasta<T> {
+  /** Nome da pasta, ou SEM_PASTA. */
+  chave: string;
+  nome: string;
+  contas: T[];
+  /** Linha curta do cartão da pasta ("2 criando · 1 com falha"). */
+  resumo: string[];
+}
+
+/**
+ * Abas da lista de contas, cada uma com as suas pastas (cartões; Sem pasta
+ * por último). Estruturadas = selo verde (prontidaoDaConta "pronta" ou
+ * "conectada"); Criadas = todo o resto (criando, com falha, esperando estruturar).
+ */
+export function gruposDePasta<T extends { id: string; kind: string; status: string; pasta?: string | null; pausa?: string | null }>(
+  contas: ReadonlyArray<T>,
+  estruturaDe: (contaId: string) => EstruturaDaConta | null | undefined
+): Record<AbaContas, Array<GrupoDePasta<T>>> {
+  const abas: Record<AbaContas, Map<string, T[]>> = { criadas: new Map(), estruturadas: new Map() };
+  for (const c of contas) {
+    if (c.kind !== "nova-conta") continue;
+    const aba: AbaContas = prontidaoDaConta(estruturaDe(c.id)) ? "estruturadas" : "criadas";
+    const chave = c.pasta || SEM_PASTA;
+    abas[aba].set(chave, [...(abas[aba].get(chave) ?? []), c]);
+  }
+  const ordenar = (m: Map<string, T[]>, aba: AbaContas): Array<GrupoDePasta<T>> =>
+    [...m.entries()]
+      .sort(([a], [b]) => (a === SEM_PASTA ? 1 : b === SEM_PASTA ? -1 : a.localeCompare(b, "pt-BR")))
+      .map(([chave, lista]) => ({ chave, nome: chave === SEM_PASTA ? "Sem pasta" : chave, contas: lista, resumo: resumoDaPasta(lista, aba, estruturaDe) }));
+  return { criadas: ordenar(abas.criadas, "criadas"), estruturadas: ordenar(abas.estruturadas, "estruturadas") };
+}
+
+function resumoDaPasta<T extends { id: string; status: string; pausa?: string | null }>(
+  contas: ReadonlyArray<T>,
+  aba: AbaContas,
+  estruturaDe: (contaId: string) => EstruturaDaConta | null | undefined
+): string[] {
+  if (aba === "estruturadas") {
+    const prontas = contas.filter((c) => prontidaoDaConta(estruturaDe(c.id)) === "pronta").length;
+    const conectadas = contas.length - prontas;
+    return [prontas ? `${prontas} pronta${prontas === 1 ? "" : "s"} para postar` : "", conectadas ? `${conectadas} só conectada${conectadas === 1 ? "" : "s"}` : ""].filter(Boolean);
+  }
+  let criando = 0;
+  let falha = 0;
+  let paraEstruturar = 0;
+  let estruturando = 0;
+  for (const c of contas) {
+    const e = estruturaDe(c.id);
+    if (c.status === "queued" || c.status === "running") criando += 1;
+    else if (c.status === "error") falha += 1;
+    else if (e && (e.status === "queued" || e.status === "running")) estruturando += 1;
+    else if (e && e.status === "error") falha += 1;
+    else paraEstruturar += 1;
+  }
+  return [
+    criando ? `${criando} criando` : "",
+    estruturando ? `${estruturando} estruturando` : "",
+    paraEstruturar ? `${paraEstruturar} para estruturar` : "",
+    falha ? `${falha} com falha` : "",
+  ].filter(Boolean);
+}
+
 /** Filtro da lista: "" = todas, SEM_PASTA = só as sem pasta, nome = só as da pasta. */
 export function filtrarPorPasta<T extends { pasta?: string | null }>(contas: ReadonlyArray<T>, filtro: string): T[] {
   if (!filtro) return [...contas];
