@@ -97,6 +97,25 @@ function resumoDaPasta<T extends { id: string; status: string; pausa?: string | 
   ].filter(Boolean);
 }
 
+/** Linha de resumo da aba quando não há rodada de criação: totais das contas (não as estruturações). */
+export function resumoDasContas<T extends { id: string; kind: string; status: string; contaId?: string | null } & Partial<EstruturaDaConta>>(
+  jobs: ReadonlyArray<T>
+): { total: number; criadas: number; prontas: number; criando: number; falhas: number } {
+  const estrutura = new Map<string, T>();
+  for (const j of jobs) if (j.kind === "estruturacao" && j.contaId && !estrutura.has(j.contaId)) estrutura.set(j.contaId, j);
+  const r = { total: 0, criadas: 0, prontas: 0, criando: 0, falhas: 0 };
+  for (const c of jobs) {
+    if (c.kind !== "nova-conta") continue;
+    r.total += 1;
+    if (c.status === "done") r.criadas += 1;
+    else if (c.status === "error") r.falhas += 1;
+    else r.criando += 1;
+    const e = estrutura.get(c.id);
+    if (e && prontidaoDaConta({ status: e.status, plano: e.plano ?? [], steps: e.steps ?? [] })) r.prontas += 1;
+  }
+  return r;
+}
+
 /** Filtro da lista: "" = todas, SEM_PASTA = só as sem pasta, nome = só as da pasta. */
 export function filtrarPorPasta<T extends { pasta?: string | null }>(contas: ReadonlyArray<T>, filtro: string): T[] {
   if (!filtro) return [...contas];

@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { CheckCircle2, UserPlus } from "lucide-react";
 import { Card, StatTile } from "@/components/ui";
+import { resumoDasContas } from "@/lib/vps/pastas";
 import { cn } from "@/lib/utils";
 import { VPS_FLUXO } from "@/lib/vps/jobs";
 import { LOG_MAX, acrescentarLog, contadoresDoLote, diferencasDeLog, loteAtual, proxiesDoLote, retratar, type LinhaLog, type Retrato } from "@/lib/vps/painel";
@@ -11,8 +13,8 @@ import type { VpsJob } from "@/lib/vps/types";
  * "Progresso" + "Log" da rodada atual (lote mais recente com conta na fila ou
  * rodando). Contadores e proxies saem dos jobs; o log é montado no cliente a
  * partir do que muda entre um polling e outro (até LOG_MAX linhas). Sem lote
- * ativo o bloco continua na tela com tudo em 0 (o log da última rodada fica
- * até a próxima começar).
+ * ativo, Progresso e Log somem e fica uma linha com os totais das contas
+ * (12/11); voltam sozinhos quando uma rodada começa.
  */
 const SEM_RODADA: readonly VpsJob[] = [];
 
@@ -49,6 +51,30 @@ export function ProgressoLotePanel({ jobs }: { jobs: readonly VpsJob[] }) {
   const doLote = lote?.jobs ?? SEM_RODADA;
   const c = contadoresDoLote(doLote);
   const proxies = proxiesDoLote(doLote);
+  const total = React.useMemo(() => resumoDasContas(jobs), [jobs]);
+
+  if (!lote) {
+    if (total.total === 0) return null;
+    const partes = [
+      `${total.criadas} criada${total.criadas === 1 ? "" : "s"}`,
+      total.criando ? `${total.criando} na fila` : "",
+      total.falhas ? `${total.falhas} com falha` : "",
+    ].filter(Boolean);
+    return (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-line bg-surface px-4 py-3 text-sm" data-testid="painel-progresso">
+        <span className="inline-flex items-center gap-1.5 font-medium text-ink">
+          <UserPlus size={14} className="text-ink-3" />
+          {total.total} conta{total.total === 1 ? "" : "s"}
+        </span>
+        <span className="text-ink-2">{partes.join(" · ")}</span>
+        <span className="inline-flex items-center gap-1.5 text-success">
+          <CheckCircle2 size={14} />
+          {total.prontas} conectada{total.prontas === 1 ? "" : "s"} no SaaS
+        </span>
+        <span className="ml-auto text-xs text-ink-3">Progresso e log aparecem quando um lote estiver sendo criado.</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4" data-testid="painel-progresso">

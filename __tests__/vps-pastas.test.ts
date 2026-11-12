@@ -104,3 +104,19 @@ describe("Abas Criadas/Estruturadas com as pastas", () => {
     expect(g.criadas[1].chave).toBe(SEM_PASTA);
   });
 });
+
+describe("Linha de resumo sem rodada de criação", () => {
+  it("conta só as contas (não as estruturações) e as conectadas pelo selo", async () => {
+    const { resumoDasContas } = await import("../lib/vps/pastas");
+    const plano = expandirEtapas({ alvos: [{ perfil: "link.zada", destaque: "AQUI", link: "" }], bio: "", fazerPerfil: true, fazerOauth: true, fazerStory: true });
+    const jobs = [
+      conta("a"),
+      conta("b"),
+      conta("c", { status: "error" }),
+      conta("d", { status: "queued" }),
+      { id: "e1", kind: "estruturacao", status: "done", label: "a", contaId: "a", plano, steps: plano.map((p) => ({ key: p.key, status: "done" })) },
+      { id: "e2", kind: "estruturacao", status: "error", label: "b", contaId: "b", plano, steps: plano.map((p) => ({ key: p.key, status: p.key === "link-1" ? "error" : "done", message: "x" })) },
+    ];
+    expect(resumoDasContas(jobs)).toEqual({ total: 4, criadas: 2, prontas: 1, criando: 1, falhas: 1 });
+  });
+});
