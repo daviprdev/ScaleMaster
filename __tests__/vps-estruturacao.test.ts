@@ -99,15 +99,15 @@ describe("Estruturar: etapas expandidas por alvo na criação do job", () => {
 });
 
 describe("Estruturar: validação do diálogo (a mesma do servidor)", () => {
-  it("padrões: perfil @link.zada e nome do destaque AQUI 🔗👆 quando o campo não vem", () => {
+  it("padrões: perfil @link.zada e nome do destaque LINKADA quando o campo não vem", () => {
     expect(PERFIL_PADRAO).toBe("link.zada");
-    expect(NOME_DESTAQUE_PADRAO).toBe("AQUI 🔗👆");
+    expect(NOME_DESTAQUE_PADRAO).toBe("LINKADA");
     const { perfil: _p, nomeDestaque: _n, ...semPadroes } = BASE;
     void _p;
     void _n;
     const r = parseEstrutura(semPadroes, MIDIAS);
     if (!("value" in r)) throw new Error(r.error);
-    expect(r.value.alvos).toEqual([{ perfil: "link.zada", destaque: "AQUI 🔗👆", link: "" }]);
+    expect(r.value.alvos).toEqual([{ perfil: "link.zada", destaque: "LINKADA", link: "" }]);
   });
 
   it("o story leva o link e a legenda informados; o destaque da conta leva o nome do destaque (ou a legenda do destaque)", () => {
@@ -122,9 +122,9 @@ describe("Estruturar: validação do diálogo (a mesma do servidor)", () => {
     // "@" e caixa no perfil são normalizados.
     const perfil = parseEstrutura({ ...BASE, perfil: "@Link.Zada" }, MIDIAS);
     expect("value" in perfil && perfil.value.alvos[0].perfil).toBe("link.zada");
-    // Agenda vazia = 24 h; 0 = agora.
+    // Agenda vazia = agora (padrão 0 desde 12/11); 0 = agora.
     const vazia = parseEstrutura({ ...BASE, agendarHoras: "" }, MIDIAS);
-    expect("value" in vazia && vazia.value.agendarHoras).toBe(24);
+    expect("value" in vazia && vazia.value.agendarHoras).toBe(0);
     const agora = parseEstrutura({ ...BASE, agendarHoras: "0" }, MIDIAS);
     expect("value" in agora && agora.value.agendarHoras).toBe(0);
   });

@@ -16,7 +16,8 @@ export const BIO_MAX = 150;
 export const LEGENDA_MAX = 200;
 export const DESTAQUE_MAX = 30;
 export const ALVOS_MAX = 10;
-export const AGENDAR_PADRAO_H = 24;
+// 0 = roda na hora (12/11: com 24 as estruturações ficavam agendadas para o dia seguinte sem o dono perceber).
+export const AGENDAR_PADRAO_H = 0;
 export const AGENDAR_MAX_H = 720;
 
 export const MIDIA_MAX_BYTES = 8 * 1024 * 1024;
@@ -110,7 +111,7 @@ export function parseAlvos(raw: unknown): { alvos: EstruturaAlvo[]; erros: strin
 /** Perfil com o destaque que leva à página de permissões (padrão do campo). */
 export const PERFIL_PADRAO = "link.zada";
 /** Texto embaixo da capa do destaque do perfil configurado (padrão do campo). */
-export const NOME_DESTAQUE_PADRAO = "AQUI 🔗👆";
+export const NOME_DESTAQUE_PADRAO = "LINKADA";
 
 /** Caracteres contados por code point (o que a pessoa vê): emoji conta 1, não 2. */
 export function contarCaracteres(valor: string): number {
