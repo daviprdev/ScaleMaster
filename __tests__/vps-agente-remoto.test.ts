@@ -97,3 +97,11 @@ describe("Foto de perfil da criação: só de midias/perfil/", () => {
     for (let i = 0; i < 10; i++) expect(sortearFoto(raiz)).toBe(path.join(raiz, "perfil", "rosto.jpg"));
   });
 });
+
+describe("Rede do lote com contas em paralelo", () => {
+  it("\"already exists\" do docker network create conta como rede pronta", async () => {
+    const { redeJaExiste } = await import("../agente-vps/lib/rede.mjs");
+    expect(redeJaExiste("Error response from daemon: network with name vpsnet-1 already exists")).toBe(true);
+    expect(redeJaExiste("Error response from daemon: Pool overlaps with other one on this address space")).toBe(false);
+  });
+});

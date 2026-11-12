@@ -120,11 +120,30 @@ export function argsDaRede(rede) {
 }
 
 /** Cria a bridge do lote se ainda não existe. */
-export async function garantirRede(rede) {
+/** Criação em andamento por nome: contas do mesmo lote ligando juntas esperam a mesma criação. */
+const criandoRede = new Map();
+
+/**
+ * Garante a bridge do lote. Com 4 contas do mesmo lote começando juntas (KVM 8, 12/11) todas tentavam o
+ * `docker network create vpsnet-N` ao mesmo tempo e 3 caíam em "already exists": agora a criação é uma só
+ * por nome (as outras esperam a mesma promessa) e "already exists" conta como pronto.
+ */
+export function garantirRede(rede) {
+  const emAndamento = criandoRede.get(rede.nome);
+  if (emAndamento) return emAndamento;
+  const p = criarRede(rede).finally(() => criandoRede.delete(rede.nome));
+  criandoRede.set(rede.nome, p);
+  return p;
+}
+
+/** "already exists" do docker network create (outro processo criou no meio). */
+export const redeJaExiste = (stderr) => /already exists/i.test(String(stderr ?? ""));
+
+async function criarRede(rede) {
   const ins = await rodar("docker", ["network", "inspect", rede.nome], { timeoutMs: 20_000 });
   if (ins.codigo === 0) return;
   const r = await rodar("docker", argsDaRede(rede), { timeoutMs: 60_000 });
-  if (r.codigo !== 0) throw new Error(`docker network create ${rede.nome}: ${trecho(r.stderr)}`);
+  if (r.codigo !== 0 && !redeJaExiste(r.stderr)) throw new Error(`docker network create ${rede.nome}: ${trecho(r.stderr)}`);
 }
 
 /** Apaga a bridge de um lote quando o último container dele sai (com container dentro o Docker recusa: fica). */
