@@ -9,6 +9,7 @@ import { ContasVpsCard, type EstruturaAction, type JobAction } from "@/component
 import { EstruturarDialog, type PastaOpcao } from "@/components/dashboard/vps/EstruturarDialog";
 import { PastaCampo } from "@/components/dashboard/vps/PastaCampo";
 import { SEM_PASTA, elegiveisDaPasta, pastasDasContas } from "@/lib/vps/pastas";
+import { prontidaoDaConta } from "@/lib/vps/estruturacao";
 import { LoteDialog } from "@/components/dashboard/vps/LoteDialog";
 import { ProgressoLotePanel } from "@/components/dashboard/vps/ProgressoLotePanel";
 import { parseLinhaPortal, parseProxy } from "@/lib/vps/input";
@@ -279,12 +280,16 @@ export default function ContasVpsPage() {
             const contas = jobs.filter((j) => j.kind !== "estruturacao");
             const estruturas = new Map<string, VpsJob>();
             for (const j of jobs) if (j.kind === "estruturacao" && j.contaId && !estruturas.has(j.contaId)) estruturas.set(j.contaId, j);
+            const ligados = linkedJobs(jobs, agent.id, agent.instances);
+            // Selo verde "Conectada no SaaS" na lista de containers: Estruturar concluído sem falha (prontidão "pronta").
+            const prontas = new Set([...ligados].filter(([, conta]) => prontidaoDaConta(estruturas.get(conta.id)) === "pronta").map(([indice]) => indice));
             return (
               <React.Fragment key={agent.id}>
                 <AgenteVpsCard
                   agent={agent}
                   now={now}
-                  linked={linkedJobs(jobs, agent.id, agent.instances)}
+                  linked={ligados}
+                  prontas={prontas}
                   queued={busyInstances(jobs, agent.id)}
                   alerts={instanceAlerts(jobs, agent.id, agent.instances)}
                   sending={sending}

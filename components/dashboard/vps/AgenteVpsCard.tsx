@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, HardDriveDownload, Layers, Plus, Power, PowerOff, Server, Unplug } from "lucide-react";
+import { Check, CheckCircle2, Copy, HardDriveDownload, Layers, Plus, Power, PowerOff, Server, Unplug } from "lucide-react";
 import { Badge, Banner, Button, Card, Dialog, EmptyState, ProgressBar, type BadgeTone } from "@/components/ui";
 import type { EmulatorInstance, InstanceState } from "@/lib/emulador/types";
 import { timeAgo } from "@/lib/emulador/view";
@@ -21,6 +21,8 @@ interface AgenteVpsCardProps {
   now: number;
   /** Conta de cada container (pelo índice), para mostrar o @ na linha. */
   linked: ReadonlyMap<number, VpsJob>;
+  /** Containers (índice) cuja conta terminou o Estruturar sem falha e com os alvos conectados: selo verde na lista. */
+  prontas?: ReadonlySet<number>;
   /** Containers com algo na fila ou rodando (sem Abrir/Fechar). */
   queued: ReadonlySet<number>;
   /** Aviso em vermelho por container. */
@@ -38,7 +40,7 @@ interface AgenteVpsCardProps {
 }
 
 /** Uma VPS conectada: online/offline, capacidade, RAM usada, Rebuild imagem e os containers dela. */
-export function AgenteVpsCard({ agent, now, linked, queued, alerts, sending, onCommand, onLote, onEstruturarPasta, onRebuild, onDisconnect, rebuilding, ramHost = null }: AgenteVpsCardProps) {
+export function AgenteVpsCard({ agent, now, linked, prontas, queued, alerts, sending, onCommand, onLote, onEstruturarPasta, onRebuild, onDisconnect, rebuilding, ramHost = null }: AgenteVpsCardProps) {
   const cap = agent.capacidade;
   const neverSeen = !agent.lastSeenAt;
   // RAM: a leitura do servidor na hora; sem ela, o retrato do agente.
@@ -138,6 +140,7 @@ export function AgenteVpsCard({ agent, now, linked, queued, alerts, sending, onC
                   agent={agent}
                   instance={inst}
                   conta={linked.get(inst.index)}
+                  pronta={prontas?.has(inst.index) ?? false}
                   alert={rotuloAlerta(inst.alert ?? alerts.get(inst.index)) ?? undefined}
                   busy={queued.has(inst.index) || sending.has(`${agent.id}:${inst.index}`)}
                   onCommand={onCommand}
@@ -165,6 +168,7 @@ function InstanceRow({
   agent,
   instance,
   conta,
+  pronta,
   alert,
   busy,
   onCommand,
@@ -172,6 +176,8 @@ function InstanceRow({
   agent: VpsAgent;
   instance: EmulatorInstance;
   conta: VpsJob | undefined;
+  /** Estruturar concluído e conectada no SaaS: selo verde antes do estado do container. */
+  pronta: boolean;
   alert: string | undefined;
   busy: boolean;
   onCommand: AgenteVpsCardProps["onCommand"];
@@ -188,6 +194,12 @@ function InstanceRow({
           {alert && <span className="text-xs font-semibold text-danger">{alert}</span>}
         </div>
       </div>
+      {pronta && (
+        <Badge tone="success">
+          <CheckCircle2 size={12} className="mr-1 inline" />
+          Conectada no SaaS
+        </Badge>
+      )}
       <Badge tone={badge.tone} dot>
         {badge.label}
       </Badge>
