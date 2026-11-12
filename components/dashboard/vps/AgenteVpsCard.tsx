@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, CheckCircle2, Copy, HardDriveDownload, Layers, Plus, Power, PowerOff, Server, Unplug } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, ChevronRight, Copy, HardDriveDownload, Layers, Plus, Power, PowerOff, Server, Trash2, Unplug } from "lucide-react";
 import { Badge, Banner, Button, Card, Dialog, EmptyState, ProgressBar, type BadgeTone } from "@/components/ui";
 import type { EmulatorInstance, InstanceState } from "@/lib/emulador/types";
 import { timeAgo } from "@/lib/emulador/view";
@@ -29,6 +29,8 @@ interface AgenteVpsCardProps {
   alerts: ReadonlyMap<number, string>;
   sending: ReadonlySet<string>;
   onCommand: (agent: VpsAgent, index: number, action: "launch" | "shutdown") => void;
+  /** Lixeira da linha do container: com conta = remove a conta (e o container); sem conta = apaga só o container. */
+  onExcluir?: (agent: VpsAgent, instance: EmulatorInstance, conta: VpsJob | undefined) => void;
   onLote: (agent: VpsAgent) => void;
   /** "Estruturar pasta": abre o Estruturar para todas as contas criadas de uma pasta. */
   onEstruturarPasta?: (agent: VpsAgent) => void;
@@ -40,9 +42,30 @@ interface AgenteVpsCardProps {
 }
 
 /** Uma VPS conectada: online/offline, capacidade, RAM usada, Rebuild imagem e os containers dela. */
-export function AgenteVpsCard({ agent, now, linked, prontas, queued, alerts, sending, onCommand, onLote, onEstruturarPasta, onRebuild, onDisconnect, rebuilding, ramHost = null }: AgenteVpsCardProps) {
+export function AgenteVpsCard({ agent, now, linked, prontas, queued, alerts, sending, onCommand, onExcluir, onLote, onEstruturarPasta, onRebuild, onDisconnect, rebuilding, ramHost = null }: AgenteVpsCardProps) {
   const cap = agent.capacidade;
   const neverSeen = !agent.lastSeenAt;
+  // Lista de containers recolhível pela seta; lembra a escolha neste navegador (por VPS).
+  const chaveLista = `vps-containers-aberto-${agent.id}`;
+  const [listaAberta, setListaAberta] = React.useState(false);
+  React.useEffect(() => {
+    try {
+      setListaAberta(window.localStorage.getItem(chaveLista) === "1");
+    } catch {
+      /* sem storage: começa recolhida */
+    }
+  }, [chaveLista]);
+  const alternarLista = () =>
+    setListaAberta((v) => {
+      try {
+        window.localStorage.setItem(chaveLista, v ? "0" : "1");
+      } catch {
+        /* sem storage */
+      }
+      return !v;
+    });
+  const semConta = agent.instances.filter((i) => !linked.get(i.index)).length;
+  const ligadosAgora = agent.instances.filter((i) => i.state !== "off").length;
   // RAM: a leitura do servidor na hora; sem ela, o retrato do agente.
   const totalMb = ramHost?.totalMb ?? cap.ramTotalMb;
   const livreMb = ramHost ? ramHost.livreMb : cap.ramTotalMb > 0 ? cap.ramTotalMb - cap.ramUsadaMb : null;
@@ -114,25 +137,25 @@ export function AgenteVpsCard({ agent, now, linked, prontas, queued, alerts, sen
               {ramBaixa && <p className="mt-1 text-[11px] font-semibold text-danger">Abaixo de {RAM_ALERTA_MB.toLocaleString("pt-BR")} MB livres</p>}
             </div>
           </div>
-          {cap.topRss.length > 0 && (
-            <div className="rounded-lg border border-line p-3">
-              <p className="text-xs text-ink-3">Maiores consumidores de RAM (RSS)</p>
-              <ol className="mt-2 flex flex-col gap-1 text-xs">
-                {cap.topRss.map((p, i) => (
-                  <li key={`${p.nome}-${i}`} className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0 truncate font-mono text-ink" title={p.nome}>
-                      {p.container ? <span className="text-ink-3">{p.container} · </span> : null}
-                      {p.nome}
-                    </span>
-                    <span className="shrink-0 tabular-nums text-ink-2">{p.rssMb.toLocaleString("pt-BR")} MB</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
           {agent.instances.length === 0 ? (
             <EmptyState icon={<Server size={18} />} title="Nenhum container" description="A VPS ainda não criou nenhum container de conta." />
           ) : (
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={alternarLista}
+                aria-expanded={listaAberta}
+                className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-left text-sm hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                {listaAberta ? <ChevronDown size={16} className="text-ink-3" /> : <ChevronRight size={16} className="text-ink-3" />}
+                <span className="font-medium text-ink">Containers ({agent.instances.length})</span>
+                <span className="text-xs text-ink-3">
+                  {ligadosAgora} ligado{ligadosAgora === 1 ? "" : "s"}
+                  {prontas?.size ? ` · ${prontas.size} conectada${prontas.size === 1 ? "" : "s"} no SaaS` : ""}
+                  {semConta ? ` · ${semConta} sem conta` : ""}
+                </span>
+              </button>
+              {listaAberta && (
             <ul className="flex flex-col divide-y divide-line">
               {agent.instances.map((inst) => (
                 <InstanceRow
@@ -144,9 +167,12 @@ export function AgenteVpsCard({ agent, now, linked, prontas, queued, alerts, sen
                   alert={rotuloAlerta(inst.alert ?? alerts.get(inst.index)) ?? undefined}
                   busy={queued.has(inst.index) || sending.has(`${agent.id}:${inst.index}`)}
                   onCommand={onCommand}
+                  onExcluir={onExcluir}
                 />
               ))}
             </ul>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -172,6 +198,7 @@ function InstanceRow({
   alert,
   busy,
   onCommand,
+  onExcluir,
 }: {
   agent: VpsAgent;
   instance: EmulatorInstance;
@@ -181,6 +208,7 @@ function InstanceRow({
   alert: string | undefined;
   busy: boolean;
   onCommand: AgenteVpsCardProps["onCommand"];
+  onExcluir: AgenteVpsCardProps["onExcluir"];
 }) {
   const badge = STATE_BADGE[instance.state];
   const off = instance.state === "off";
@@ -191,6 +219,7 @@ function InstanceRow({
           <span className="font-mono text-xs text-ink-3">ig-{instance.index}</span>
           <span className="truncate text-sm font-medium text-ink">{instance.name}</span>
           {conta && conta.label && conta.label !== instance.name && <span className="text-xs text-ink-2">@{conta.label}</span>}
+          {!conta && <span className="text-xs text-ink-3">sem conta no SaaS</span>}
           {alert && <span className="text-xs font-semibold text-danger">{alert}</span>}
         </div>
       </div>
@@ -212,6 +241,18 @@ function InstanceRow({
       >
         {off ? "Ligar" : "Desligar"}
       </Button>
+      {onExcluir && (
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<Trash2 size={14} />}
+          disabled={busy || !agent.online}
+          title={conta ? "Remove a conta do SaaS e apaga o container" : "Apaga o container (não tem conta no SaaS)"}
+          onClick={() => onExcluir(agent, instance, conta)}
+        >
+          Excluir
+        </Button>
+      )}
     </li>
   );
 }

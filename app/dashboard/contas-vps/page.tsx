@@ -44,6 +44,8 @@ export default function ContasVpsPage() {
   const [editing, setEditing] = React.useState<VpsJob | null>(null);
   const [refazendo, setRefazendo] = React.useState<VpsJob | null>(null);
   const [estruturando, setEstruturando] = React.useState<VpsJob | null>(null);
+  /** Lixeira da lista de containers sem conta no SaaS: apaga só o container. */
+  const [excluindoContainer, setExcluindoContainer] = React.useState<{ agent: VpsAgent; index: number; nome: string } | null>(null);
   /** "Estruturar pasta" aberto para esta VPS. */
   const [estruturarPasta, setEstruturarPasta] = React.useState<VpsAgent | null>(null);
   /** Conta sendo movida de pasta. */
@@ -128,7 +130,7 @@ export default function ContasVpsPage() {
     }
   };
 
-  const sendCommand = async (agent: VpsAgent, index: number, action: "launch" | "shutdown") => {
+  const sendCommand = async (agent: VpsAgent, index: number, action: "launch" | "shutdown" | "delete") => {
     const key = `${agent.id}:${index}`;
     if (sending.has(key)) return;
     setActionError(null);
@@ -294,6 +296,7 @@ export default function ContasVpsPage() {
                   alerts={instanceAlerts(jobs, agent.id, agent.instances)}
                   sending={sending}
                   onCommand={(a, index, action) => void sendCommand(a, index, action)}
+                  onExcluir={(a, inst, conta) => (conta ? setRemoving(conta) : setExcluindoContainer({ agent: a, index: inst.index, nome: inst.name }))}
                   onLote={setLoteFor}
                   onEstruturarPasta={pastasOn && data.estruturaAvailable !== false ? setEstruturarPasta : undefined}
                   onRebuild={(a) => void rebuild(a)}
@@ -361,6 +364,18 @@ export default function ContasVpsPage() {
         title="Remover esta conta?"
         description="Sai da lista e da fila. Se o container já existe, a VPS apaga o container, o volume e o device. A conta do Instagram em si não é apagada. Não dá para desfazer."
         confirmLabel="Remover"
+      />
+
+      <ConfirmDialog
+        open={!!excluindoContainer}
+        onClose={() => setExcluindoContainer(null)}
+        onConfirm={() => {
+          if (excluindoContainer) void sendCommand(excluindoContainer.agent, excluindoContainer.index, "delete");
+          setExcluindoContainer(null);
+        }}
+        title={`Excluir o container ig-${excluindoContainer?.index ?? ""}?`}
+        description={`"${excluindoContainer?.nome ?? ""}" não tem conta no SaaS. A VPS apaga o container, o disco e o aparelho dele, e ele sai desta lista. Não dá para desfazer.`}
+        confirmLabel="Excluir"
       />
 
       <ConfirmDialog

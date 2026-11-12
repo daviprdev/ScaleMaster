@@ -62,7 +62,8 @@ function lerRamDisponivel() {
  */
 export function capacidade({ arch = process.arch, vcpu = os.cpus().length || 1, totalMb = Math.floor(os.totalmem() / 1024 / 1024), livreMb = Math.floor(os.freemem() / 1024 / 1024), disponivelMb = lerRamDisponivel() } = {}) {
   const a = archNormalizada(arch);
-  return { arch: a, vcpu, ramTotalMb: totalMb, ramUsadaMb: Math.max(0, totalMb - livreMb), ...(disponivelMb === null ? {} : { ramDisponivelMb: disponivelMb }), ...limitesPorVcpu(vcpu) };
+  // Usada = total − MemAvailable (o cache de arquivos que o kernel devolve na hora não conta como usado).
+  return { arch: a, vcpu, ramTotalMb: totalMb, ramUsadaMb: Math.max(0, totalMb - (disponivelMb ?? livreMb)), ...(disponivelMb === null ? {} : { ramDisponivelMb: disponivelMb }), ...limitesPorVcpu(vcpu) };
 }
 /** Semáforo simples: `pegar()` espera uma vaga e devolve a função que solta. */
 export class Semaforo {
