@@ -1187,6 +1187,12 @@ export async function destacarStory(ctx, nome) {
     fim: (nos) => (estado.nomeou && !noStory(nos) && (temBarra(nos) || noProprioPerfil(nos)) ? `destaque "${nome}" criado` : null),
     telas: [
       {
+        // Destaque pede o arquivo de stories ligado ("Turbine seus stories" → Ativar arquivo de stories; dandara, 12/11).
+        nome: "arquivo-de-stories",
+        teste: (nos) => acharTexto(nos, ["Ativar arquivo de stories", "Turn on story archive", "Ativar o arquivo de stories"]),
+        agir: (nos, alvo) => toque(d, nos, alvo),
+      },
+      {
         // Confirmação "Adicionado aos destaques" (Ver no perfil / Concluir) por cima do story: Concluir (aline, 12/11).
         nome: "adicionado",
         teste: (nos) => temTexto(nos, ["Adicionado aos destaques", "Added to highlights", "Adicionado ao destaque"]) && botao(nos, ["Concluir", "Concluído", "Done"]),

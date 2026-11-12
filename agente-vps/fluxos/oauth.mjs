@@ -157,7 +157,7 @@ const OPCOES = ["Opções", "Options", "Menu", "Definições", "Configurações"
  */
 export async function tornarProfissional(ctx) {
   const { d, log } = ctx;
-  const estado = { menu: false, tipo: false, trocou: false, pesquisou: false, categoria: false, confirmou: false, criador: false, fechou: false, rolagens: 0 };
+  const estado = { menu: false, tipo: false, trocou: false, pesquisou: false, categoria: false, confirmou: false, criador: false, fechou: false, rolagens: 0, tentativasTipo: 0 };
   const falhar = (texto, nos) => {
     if (nos) salvarTela(nos, `profissional: ${texto}`);
     throw new Error(texto);
@@ -273,6 +273,16 @@ export async function tornarProfissional(ctx) {
           },
         },
         {
+          // Tocou em "Tipo e ferramentas da conta" e continuou nas configurações (toque perdido no fim da
+          // rolagem; joana, 12/11): libera a rolagem para achar e tocar de novo, até 3 vezes.
+          nome: "tipo-nao-abriu",
+          teste: (nos) => estado.tipo && !estado.trocou && estado.tentativasTipo < 3 && temTexto(nos, CONFIGURACOES) && !temTexto(nos, ["Tipo de conta", "Account type"]),
+          agir: () => {
+            estado.tentativasTipo += 1;
+            estado.tipo = false;
+          },
+        },
+        {
           // Lista de configurações: "Tipo e ferramentas da conta" fica lá embaixo (4 rolagens nesta build).
           nome: "rolar-configuracoes",
           // Rola tudo numa volta só: a lista leva 4–5 rolagens (josiane, 11/11) e o percorrer dava "não avançou" na 4ª.
@@ -283,7 +293,15 @@ export async function tornarProfissional(ctx) {
               const alvo = atual.find((n) => TIPO_DE_CONTA.some((t) => n.texto.trim() === t) && n.y < 1800);
               if (alvo) {
                 estado.tipo = true;
-                await tocarEsperar(atual, alvo);
+                // Depois de uma rolagem a lista ainda desliza: lê de novo parada e toca na posição final (joana, 12/11).
+                let parado = alvo;
+                if (i > 0) {
+                  await esperar(700);
+                  const releitura = await d.tela().catch(() => []);
+                  parado = releitura.find((n) => TIPO_DE_CONTA.some((t) => n.texto.trim() === t) && n.y < 1800) ?? alvo;
+                  if (releitura.length > 0) atual = releitura;
+                }
+                await tocarEsperar(atual, parado);
                 return;
               }
               await d.arrastar(540, 1500, 540, 600, 400);

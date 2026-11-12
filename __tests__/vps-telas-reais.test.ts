@@ -264,3 +264,63 @@ describe("Destacar pelo próprio story (josiane, ig-8)", () => {
     expect(toques[toques.length - 1]).toBe("KEYCODE_BACK");
   }, 20_000);
 });
+
+describe("Destacar: o Instagram pede o arquivo de stories", () => {
+  it("toca em Ativar arquivo de stories e segue para o nome do destaque", async () => {
+    const BARRA = [
+      no({ descricao: "Página inicial", id: id("feed_tab"), clicavel: true, x: 108, y: 1731 }),
+      no({ descricao: "Pesquisar e explorar", id: id("search_tab"), clicavel: true, x: 756, y: 1731 }),
+    ];
+    const PERFIL = [
+      ...BARRA,
+      no({ descricao: "Seu perfil. Story visto", id: id("row_profile_header_imageview"), x: 158, y: 482 }),
+      no({ texto: "Dandara", id: id("profile_header_full_name_above"), x: 456, y: 387 }),
+      no({ descricao: "Editar perfil", id: id("button_container"), clicavel: true, x: 257, y: 931 }),
+      no({ texto: "Editar perfil", x: 257, y: 930 }),
+    ];
+    const STORY = [no({ id: id("reel_viewer_profile_picture"), clicavel: true, x: 109, y: 91 })];
+    const ARQUIVO = [
+      no({ texto: "Turbine seus stories", x: 540, y: 900 }),
+      no({ texto: "Ativar arquivo de stories", clicavel: true, x: 540, y: 1300 }),
+      no({ texto: "Cancelar", clicavel: true, x: 540, y: 1420 }),
+    ];
+    const SHEET = (nome: string) => [
+      ...STORY,
+      no({ texto: "Adicionar ao destaque", id: id("header_text"), x: 540, y: 1285 }),
+      no({ texto: nome, id: id("highlight_title"), classe: "android.widget.EditText", clicavel: true, x: 540, y: 1602 }),
+      no({ texto: "Adicionar", id: id("action_button"), clicavel: true, x: 540, y: 1720 }),
+    ];
+    let tela: "perfil" | "story" | "arquivo" | "sheet" | "story2" = "perfil";
+    let nome = "Destaques";
+    const toques: string[] = [];
+    const telaDe = () => (tela === "perfil" ? PERFIL : tela === "arquivo" ? ARQUIVO : tela === "sheet" ? SHEET(nome) : STORY);
+    const d = {
+      tela: async () => telaDe(),
+      tocar: async (x: number, y: number) => {
+        toques.push(`${tela}:${x},${y}`);
+        if (tela === "perfil") tela = "story";
+        else if (tela === "story" && y === 1670) tela = "arquivo";
+        else if (tela === "arquivo" && y === 1300) tela = "sheet";
+        else if (tela === "sheet" && y === 1720) tela = "story2";
+      },
+      tecla: async () => {
+        if (tela === "story2") tela = "perfil";
+      },
+      limparCampo: async () => void (nome = ""),
+      digitar: async (v: string) => {
+        nome = v;
+        return "broadcast";
+      },
+      shell: async () => "  topResumedActivity=ActivityRecord{1 u0 com.instagram.android/com.instagram.modal.TransparentModalActivity} t17}",
+      focoAtual: async () => "",
+      abrirApp: async () => "",
+    };
+    const semDono = (t: string) => {
+      throw new Error(t);
+    };
+    const r = await destacarStory({ d, log: () => {}, ajuda: { manual: semDono, terminarAMao: semDono } }, "LINKADA");
+    expect(r).toBe('destaque "LINKADA" criado');
+    expect(toques).toContain("arquivo:540,1300");
+    expect(nome).toBe("LINKADA");
+  }, 20_000);
+});
