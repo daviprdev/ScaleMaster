@@ -169,7 +169,7 @@ function linkHttps(valor: string): boolean {
 
 /**
  * Um erro por campo (o primeiro de cada), na ordem da tela. Vazio = pode
- * enviar. Bloqueiam: sem foto de perfil, sem foto do story, sem perfil, sem
+ * enviar. Bloqueiam: sem foto do story, sem perfil, sem
  * nome do destaque e sem link do story (sem ele não há sticker). Limites
  * contados por code point. O servidor usa o mesmo (parseEstrutura devolve o primeiro).
  */
@@ -180,8 +180,8 @@ export function errosPorCampo(raw: unknown, midias: ReadonlyArray<string> | null
     if (!erros[campo]) erros[campo] = msg;
   };
 
-  if (!f.fotoPerfil) marcar("fotoPerfil", "Escolha a foto de perfil.");
-  else if (midias && !midias.includes(f.fotoPerfil)) marcar("fotoPerfil", `A foto de perfil "${f.fotoPerfil}" não está em /opt/scalemaster/midias.`);
+  // Foto de perfil saiu do Estruturar (12/11): é da criação de conta. Só confere se alguém ainda mandar.
+  if (f.fotoPerfil && midias && !midias.includes(f.fotoPerfil)) marcar("fotoPerfil", `A foto de perfil "${f.fotoPerfil}" não está em /opt/scalemaster/midias.`);
   if (!f.fotoStory) marcar("fotoStory", "Escolha a foto do story.");
   else if (midias && !midias.includes(f.fotoStory)) marcar("fotoStory", `A foto do story "${f.fotoStory}" não está em /opt/scalemaster/midias.`);
 
@@ -238,7 +238,7 @@ export function parseEstrutura(raw: unknown, midias: ReadonlyArray<string> | nul
 export const ETAPAS_DO_ALVO: ReadonlyArray<string> = ["perfil", "destaque", "link", "conectar", "consentir", "confirmar"];
 
 /** Etapas do job, expandidas por alvo. A ordem é a de execução. */
-export function expandirEtapas(d: Pick<EstruturaDados, "alvos" | "bio" | "fazerPerfil" | "fazerOauth" | "fazerStory">): PlanoEtapa[] {
+export function expandirEtapas(d: Pick<EstruturaDados, "alvos" | "bio" | "fazerPerfil" | "fazerOauth" | "fazerStory"> & { fotoPerfil?: string }): PlanoEtapa[] {
   const plano: PlanoEtapa[] = [
     { key: "rede", label: "Validar a proxy e subir o sidecar" },
     { key: "abrir", label: "Ligar o container" },
@@ -246,7 +246,8 @@ export function expandirEtapas(d: Pick<EstruturaDados, "alvos" | "bio" | "fazerP
     { key: "sessao", label: "Conferir que a conta está logada" },
   ];
   if (d.fazerPerfil) {
-    plano.push({ key: "foto", label: "Trocar a foto de perfil" });
+    // A foto de perfil é da criação de conta; a etapa só entra se a foto vier (jobs/API antigos).
+    if (d.fotoPerfil) plano.push({ key: "foto", label: "Trocar a foto de perfil" });
     if (d.bio) plano.push({ key: "bio", label: "Preencher a bio" });
   }
   if (d.fazerOauth) {

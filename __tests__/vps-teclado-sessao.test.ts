@@ -154,7 +154,7 @@ describe("Sessão: SESSAO_PERDIDA antes da foto", () => {
 
   it("a etapa sessao vem antes da foto e para o job (não é das que seguem)", () => {
     const alvos = parseAlvos("@loja | Link | https://exemplo.com").alvos;
-    const plano = expandirEtapas({ alvos, bio: "x", fazerPerfil: true, fazerOauth: true, fazerStory: true });
+    const plano = expandirEtapas({ alvos, bio: "x", fotoPerfil: "a.jpg", fazerPerfil: true, fazerOauth: true, fazerStory: true });
     const chaves = plano.map((p) => p.key);
     expect(chaves.indexOf("sessao")).toBe(chaves.indexOf("instagram") + 1);
     expect(chaves.indexOf("sessao")).toBeLessThan(chaves.indexOf("foto"));

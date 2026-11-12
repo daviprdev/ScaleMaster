@@ -17,13 +17,25 @@ import {
   expandirEtapas,
   parseEstrutura,
 } from "@/lib/vps/estruturacao";
-import type { VpsJob } from "@/lib/vps/types";
+import type { VpsAgent, VpsJob } from "@/lib/vps/types";
+
+/** Uma opção do seletor de pasta do "Estruturar pasta". */
+export interface PastaOpcao {
+  /** Nome da pasta, ou "__sem_pasta__". */
+  value: string;
+  label: string;
+  /** Contas da pasta que entram (criadas, sem estruturação na fila e ainda não prontas). */
+  elegiveis: number;
+}
 
 interface EstruturarDialogProps {
-  /** Conta criada que vai ser estruturada; null = fechado. */
+  /** Conta criada que vai ser estruturada; null = fechado (ou modo pasta). */
   job: VpsJob | null;
+  /** "Estruturar pasta": a VPS e as pastas com quantas contas entram; null = fechado (ou modo conta). */
+  pastaDe?: { agent: VpsAgent; opcoes: ReadonlyArray<PastaOpcao>; inicial?: string } | null;
   onClose: () => void;
-  onSaved: () => void;
+  /** `avisos`: resumo do Estruturar pasta (criadas e puladas). */
+  onSaved: (avisos?: string[]) => void;
 }
 
 const VAZIO = {
@@ -50,8 +62,10 @@ const contador = (valor: string, max: number) => `${contarCaracteres(valor)}/${m
  * a legenda do destaque e a agenda. Cada campo mostra o seu erro; a validação é
  * a do servidor (lib/vps/estruturacao.ts).
  */
-export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProps) {
+export function EstruturarDialog({ job, pastaDe = null, onClose, onSaved }: EstruturarDialogProps) {
+  const aberto = !!job || !!pastaDe;
   const [form, setForm] = React.useState(VAZIO);
+  const [pasta, setPasta] = React.useState("");
   const [midias, setMidias] = React.useState<string[] | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [enviando, setEnviando] = React.useState<"fotoPerfil" | "fotoStory" | null>(null);
@@ -66,18 +80,21 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
   }, []);
 
   React.useEffect(() => {
-    if (!job) return;
+    if (!aberto) return;
     setForm(VAZIO);
     setError(null);
     setMidias(null);
+    if (pastaDe) setPasta(pastaDe.inicial && pastaDe.opcoes.some((o) => o.value === pastaDe.inicial) ? pastaDe.inicial : (pastaDe.opcoes.find((o) => o.elegiveis > 0)?.value ?? ""));
     lerMidias().catch((e: Error) => setError(e.message));
-  }, [job, lerMidias]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reabre o formulário só quando o diálogo abre.
+  }, [job, pastaDe?.agent.id, aberto, lerMidias]);
+  const opcaoPasta = pastaDe?.opcoes.find((o) => o.value === pasta) ?? null;
 
   const validado = React.useMemo(() => parseEstrutura(form, midias), [form, midias]);
   const erros = React.useMemo(() => errosPorCampo(form, midias), [form, midias]);
   const etapas = "value" in validado ? expandirEtapas(validado.value).length : 0;
   const qtdErros = Object.keys(erros).length;
-  const podeEnviar = qtdErros === 0 && "value" in validado;
+  const podeEnviar = qtdErros === 0 && "value" in validado && (!pastaDe || (opcaoPasta?.elegiveis ?? 0) > 0);
 
   const enviarFoto = async (campo: "fotoPerfil" | "fotoStory", arquivo: File | undefined) => {
     if (!arquivo) return;
@@ -102,19 +119,27 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!job) return;
+    if (!job && !pastaDe) return;
     if ("error" in validado) return setError(validado.error);
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/vps/contas/${encodeURIComponent(job.id)}/estruturar`, {
+      const url = pastaDe ? "/api/vps/pastas/estruturar" : `/api/vps/contas/${encodeURIComponent(job!.id)}/estruturar`;
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(pastaDe ? { ...form, agentId: pastaDe.agent.id, pasta } : form),
       });
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const body = (await res.json().catch(() => null)) as { error?: string; criadas?: Array<{ label: string | null }>; puladas?: Array<{ label: string; motivo: string }> } | null;
       if (!res.ok) throw new Error(body?.error ?? "Não foi possível estruturar. Tente de novo.");
-      onSaved();
+      if (pastaDe) {
+        const criadas = body?.criadas?.length ?? 0;
+        const puladas = body?.puladas ?? [];
+        onSaved([
+          `Estruturar pasta "${opcaoPasta?.label ?? pasta}": ${criadas} conta${criadas === 1 ? "" : "s"} na fila (uma por vez).`,
+          ...(puladas.length ? [`Puladas: ${puladas.map((p) => `${p.label} (${p.motivo})`).join(", ")}.`] : []),
+        ]);
+      } else onSaved();
       onClose();
     } catch (err) {
       setError((err as Error).message);
@@ -155,19 +180,27 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
 
   return (
     <Dialog
-      open={!!job}
+      open={aberto}
       onClose={onClose}
-      title={`Estruturar ${job?.label ? `@${job.label}` : "a conta"}`}
-      description="A VPS sobe a proxy, abre o Instagram, troca foto e bio, muda para conta profissional, entra no perfil e no destaque configurados, toca no link, aceita as permissões, posta o story com o link, destaca e desliga o container."
+      title={pastaDe ? "Estruturar pasta" : `Estruturar ${job?.label ? `@${job.label}` : "a conta"}`}
+      description="A VPS sobe a proxy, abre o Instagram, troca a bio, muda para conta profissional, entra no perfil e no destaque configurados, toca no link, aceita as permissões, posta o story com o link, destaca e desliga o container."
       className="flex max-h-[90vh] max-w-3xl flex-col overflow-hidden"
     >
       <form className="flex min-h-0 flex-1 flex-col gap-4" onSubmit={(e) => void submit(e)}>
         {error && <Banner tone="danger">{error}</Banner>}
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-          <div className="grid gap-4 sm:grid-cols-2">
-            {seletor("fotoPerfil", "Foto de perfil")}
-            {seletor("fotoStory", "Foto do story")}
-          </div>
+          {pastaDe && (
+            <Select
+              label="Pasta de contas criadas"
+              value={pasta}
+              onChange={(e) => setPasta(e.target.value)}
+              placeholder={pastaDe.opcoes.length === 0 ? "nenhuma conta criada nesta VPS" : "escolha a pasta"}
+              options={pastaDe.opcoes.map((o) => ({ value: o.value, label: `${o.label} · ${o.elegiveis} para estruturar` }))}
+              error={opcaoPasta && opcaoPasta.elegiveis === 0 ? "Nenhuma conta dessa pasta para estruturar (já prontas, na fila ou ainda sendo criadas)." : undefined}
+              hint="Entram as contas criadas da pasta que ainda não estão prontas; o agente faz uma por vez."
+            />
+          )}
+          {seletor("fotoStory", "Foto do story")}
           <Textarea
             label={`Bio (${contador(form.bio, BIO_MAX)})`}
             rows={2}
@@ -259,7 +292,7 @@ export function EstruturarDialog({ job, onClose, onSaved }: EstruturarDialogProp
               Cancelar
             </Button>
             <Button type="submit" loading={saving} disabled={!podeEnviar}>
-              Estruturar
+              {pastaDe ? `Estruturar ${opcaoPasta?.elegiveis ?? 0} conta${opcaoPasta?.elegiveis === 1 ? "" : "s"}` : "Estruturar"}
             </Button>
           </div>
         </div>

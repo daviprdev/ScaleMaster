@@ -4,9 +4,14 @@ import * as React from "react";
 import { Banner, Button, Dialog, Input, Select, Textarea } from "@/components/ui";
 import { LOTE_MAX, parseLinhasPortal, parseLoteInput, parseProxies } from "@/lib/vps/input";
 import { DEVICE_PERFIS, type VpsAgent } from "@/lib/vps/types";
+import { PastaCampo } from "./PastaCampo";
 
 interface LoteDialogProps {
   agent: VpsAgent | null;
+  /** Pastas que já existem (para escolher; dá para criar uma nova no próprio campo). */
+  pastas: ReadonlyArray<string>;
+  /** Pasta que vem marcada (a do filtro da aba). */
+  pastaInicial?: string;
   onClose: () => void;
   /** Lote enviado (a lista recarrega); `avisos` = o que passou mas merece atenção (proxy com outro usuário). */
   onSaved: (avisos: string[]) => void;
@@ -18,12 +23,13 @@ interface LoteDialogProps {
  * nome, @, senha e nascimento são gerados no servidor (lib/vps/pessoa.ts). A
  * validação é a mesma do servidor (lib/vps/input.ts).
  */
-export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
+export function LoteDialog({ agent, pastas, pastaInicial = "", onClose, onSaved }: LoteDialogProps) {
   const [proxies, setProxies] = React.useState("");
   const [codigos, setCodigos] = React.useState("");
   const [perfil, setPerfil] = React.useState("aleatorio");
   const [versaoIg, setVersaoIg] = React.useState("");
   const [pais, setPais] = React.useState("BR");
+  const [pasta, setPasta] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -36,7 +42,9 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
     setPerfil("aleatorio");
     setVersaoIg(agent.capacidade.versoesIg[0] ?? "");
     setPais("BR");
+    setPasta(pastaInicial);
     setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a pasta inicial só vale ao abrir.
   }, [agent]);
 
   const linhasCodigo = React.useMemo(() => parseLinhasPortal(codigos), [codigos]);
@@ -50,7 +58,7 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agent) return;
-    const body = { agentId: agent.id, proxies, perfil, versaoIg, pais, codigos };
+    const body = { agentId: agent.id, proxies, perfil, versaoIg, pais, codigos, pasta };
     const parsed = parseLoteInput(body, versoes);
     if ("error" in parsed) {
       setError(parsed.error);
@@ -111,6 +119,7 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
               required
             />
           </div>
+          <PastaCampo pastas={pastas} value={pasta} onChange={setPasta} hint="As contas do lote entram nessa pasta (dá para trocar depois no card)." />
           <Textarea
             label="Códigos do hstock"
             rows={Math.min(8, Math.max(3, quantidade))}

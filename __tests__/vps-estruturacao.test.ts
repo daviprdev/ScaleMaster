@@ -50,7 +50,9 @@ describe("Estruturar: etapas expandidas por alvo na criação do job", () => {
   it("interruptores tiram as etapas deles; bio vazia não vira etapa", () => {
     const alvos = parseAlvos(ALVOS).alvos;
     const k = (d: Parameters<typeof expandirEtapas>[0]) => expandirEtapas(d).map((e) => e.key);
-    expect(k({ alvos, bio: "", fazerPerfil: true, fazerOauth: false, fazerStory: false })).toEqual(["rede", "abrir", "instagram", "sessao", "foto", "fechar"]);
+    // Foto de perfil saiu do Estruturar (12/11): sem a foto no job, não há etapa "foto".
+    expect(k({ alvos, bio: "", fazerPerfil: true, fazerOauth: false, fazerStory: false })).toEqual(["rede", "abrir", "instagram", "sessao", "fechar"]);
+    expect(k({ alvos, bio: "", fotoPerfil: "a.jpg", fazerPerfil: true, fazerOauth: false, fazerStory: false })).toEqual(["rede", "abrir", "instagram", "sessao", "foto", "fechar"]);
     expect(k({ alvos, bio: "x", fazerPerfil: false, fazerOauth: false, fazerStory: true })).toEqual(["rede", "abrir", "instagram", "sessao", "story", "destacar", "fechar"]);
     expect(k({ alvos: alvos.slice(0, 1), bio: "", fazerPerfil: false, fazerOauth: true, fazerStory: false })).toEqual([
       "rede", "abrir", "instagram", "sessao", "profissional", "perfil-1", "destaque-1", "link-1", "conectar-1", "consentir-1", "confirmar-1", "fechar",
@@ -59,7 +61,7 @@ describe("Estruturar: etapas expandidas por alvo na criação do job", () => {
 
   it("10 alvos cabem no andamento do agente (70 etapas) e o card lê o array do job", () => {
     const alvos = Array.from({ length: ALVOS_MAX }, (_, i) => ({ perfil: `p${i}`, destaque: "D", link: "https://exemplo.com/" }));
-    const plano = expandirEtapas({ alvos, bio: "b", fazerPerfil: true, fazerOauth: true, fazerStory: true });
+    const plano = expandirEtapas({ alvos, bio: "b", fotoPerfil: "a.jpg", fazerPerfil: true, fazerOauth: true, fazerStory: true });
     expect(plano).toHaveLength(10 + 6 * ALVOS_MAX);
     const steps = parseJobSteps(plano.map((p) => ({ key: p.key, status: "done", message: null })));
     expect(steps).toHaveLength(plano.length);
@@ -127,10 +129,9 @@ describe("Estruturar: validação do diálogo (a mesma do servidor)", () => {
     expect("value" in agora && agora.value.agendarHoras).toBe(0);
   });
 
-  it("validação por campo: sem foto de perfil, sem foto do story, sem perfil e sem nome do destaque bloqueiam, cada um com a sua mensagem", () => {
+  it("validação por campo: sem foto do story, sem perfil e sem nome do destaque bloqueiam (a foto de perfil é da criação), cada um com a sua mensagem", () => {
     expect(errosPorCampo(BASE, MIDIAS)).toEqual({});
     expect(errosPorCampo({ ...BASE, fotoPerfil: "", fotoStory: "", perfil: "", nomeDestaque: "" }, MIDIAS)).toEqual({
-      fotoPerfil: "Escolha a foto de perfil.",
       fotoStory: "Escolha a foto do story.",
       perfil: "Informe o perfil com o destaque.",
       nomeDestaque: "Informe o nome do destaque (o texto embaixo da capa).",

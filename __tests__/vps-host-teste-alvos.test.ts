@@ -43,7 +43,6 @@ describe("Diálogo Estruturar: erro por campo", () => {
   it("perfil vazio, foto ausente e bio acima de 150 dão cada um a sua mensagem, todos de uma vez", () => {
     const erros = errosPorCampo({ ...BASE, perfil: "", fotoPerfil: "", fotoStory: "sumiu.png", bio: "x".repeat(151) }, MIDIAS);
     expect(erros).toEqual({
-      fotoPerfil: "Escolha a foto de perfil.",
       fotoStory: 'A foto do story "sumiu.png" não está em /opt/scalemaster/midias.',
       bio: "A bio passa de 150 caracteres (151).",
       perfil: "Informe o perfil com o destaque.",

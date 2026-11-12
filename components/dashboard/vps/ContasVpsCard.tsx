@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, Circle, Contact, Copy, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Shield, ShieldAlert, ShieldCheck, Trash2, UserPlus, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, Contact, Copy, Folder, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Shield, ShieldAlert, ShieldCheck, Trash2, UserPlus, XCircle } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Input, ProgressBar, type BadgeTone } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ALERTA_ROBO, type JobStatus } from "@/lib/emulador/jobs";
@@ -36,10 +36,12 @@ interface ContasVpsCardProps {
   /** Abre o diálogo Estruturar da conta. */
   onEstruturar: (job: VpsJob) => void;
   onEstrutura: (estrutura: VpsJob, action: EstruturaAction) => void;
+  /** Mover a conta de pasta; sem ele (SQL das pastas não aplicado) o botão some. */
+  onPasta?: (job: VpsJob) => void;
 }
 
 /** Uma linha por conta da VPS: índice do container, @, etapa atual com barra, Continuar, Remover, Pausar proxy e avisos. */
-export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onEdit, estruturas, onEstruturar, onEstrutura }: ContasVpsCardProps) {
+export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onEdit, estruturas, onEstruturar, onEstrutura, onPasta }: ContasVpsCardProps) {
   return (
     <Card
       title="Contas da VPS"
@@ -63,6 +65,7 @@ export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onE
               onAction={onAction}
               onReply={onReply}
               onEdit={onEdit}
+              onPasta={onPasta}
               isolamento={isolamentoDe(job, devices.get(job.id))}
               doLote={jobs.filter((j) => (job.loteId ? j.loteId === job.loteId : j.id === job.id) && !ehDescartada(j)).map((j) => isolamentoDe(j, devices.get(j.id)))}
               estrutura={estruturas.get(job.id)}
@@ -85,6 +88,7 @@ interface JobRowProps {
   onAction: ContasVpsCardProps["onAction"];
   onReply: ContasVpsCardProps["onReply"];
   onEdit: ContasVpsCardProps["onEdit"];
+  onPasta: ContasVpsCardProps["onPasta"];
   isolamento: Isolamento;
   /** Isolamento de todas as contas vivas do mesmo lote (esta incluída). */
   doLote: readonly Isolamento[];
@@ -140,7 +144,7 @@ function IsolamentoBox({ isolamento, doLote }: { isolamento: Isolamento; doLote:
   );
 }
 
-function JobRow({ job, device, busy, now, onAction, onReply, onEdit, isolamento, doLote, estrutura, estruturaBusy, onEstruturar, onEstrutura }: JobRowProps) {
+function JobRow({ job, device, busy, now, onAction, onReply, onEdit, onPasta, isolamento, doLote, estrutura, estruturaBusy, onEstruturar, onEstrutura }: JobRowProps) {
   const [aberto, setAberto] = React.useState(false);
   const [dados, setDados] = React.useState(false);
   const badge = STATUS_BADGE[job.status];
@@ -169,6 +173,12 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, isolamento,
           <p className="text-xs text-ink-3">
             {device ? `${device.model} · ${device.serial}` : "sem device"} · {job.versaoIg ? `IG ${job.versaoIg}` : ""} · {timeAgo(job.updatedAt, now)}
           </p>
+          {onPasta && (
+            <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-ink-3">
+              <Folder size={12} />
+              {job.pasta ?? "Sem pasta"}
+            </p>
+          )}
         </div>
         <Badge tone={job.prompt ? "warning" : pausada ? "warning" : descartada ? "danger" : badge.tone} dot>
           {job.prompt ? "Esperando você" : pausada ? "Pausada (proxy)" : descartada ? badgeDescartada : badge.label}
@@ -193,6 +203,11 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, isolamento,
           {job.status === "done" && !estruturaAtiva && (
             <Button size="sm" icon={<Layers size={14} />} disabled={busy} onClick={() => onEstruturar(job)}>
               Estruturar
+            </Button>
+          )}
+          {onPasta && !descartada && (
+            <Button variant="secondary" size="sm" icon={<Folder size={14} />} disabled={busy} onClick={() => onPasta(job)}>
+              Pasta
             </Button>
           )}
           {job.status !== "running" && !descartada && (

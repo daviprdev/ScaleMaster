@@ -47,6 +47,8 @@ interface JobRow {
   acoes?: unknown;
   conta_id?: string | null;
   agendado_para?: string | null;
+  /** Só com supabase/vps_pastas.sql aplicado. */
+  pasta?: string | null;
 }
 
 interface DeviceRow {
@@ -149,6 +151,7 @@ export function toVpsJob(row: JobRow): VpsJob {
     versaoIg: row.versao_ig,
     proxyHost: row.kind === "estruturacao" ? null : proxyHostDe(row.input_enc),
     ip: row.kind === "estruturacao" ? null : (redeDe(row.input_enc)?.ip ?? null),
+    pasta: row.pasta ?? null,
     ...(row.kind === "estruturacao" ? { plano: parsePlano(row.acoes), contaId: row.conta_id ?? null, agendadoPara: row.agendado_para ?? null } : {}),
   };
 }
@@ -199,11 +202,13 @@ export async function loadVps(admin: SupabaseClient, userId: string): Promise<Vp
   const agentIds = agents.map((a) => a.id);
   const lerJobs = (colunas: string) =>
     admin.from("emulator_jobs").select(colunas).eq("user_id", userId).in("agent_id", agentIds).order("created_at", { ascending: false }).limit(400);
-  const [jobsCompletos, devicesRes] = await Promise.all([
-    lerJobs(`${JOB_COLUMNS}, input_enc, ${ESTRUTURA_COLUMNS}`),
+  const [comPastas, devicesRes] = await Promise.all([
+    lerJobs(`${JOB_COLUMNS}, input_enc, ${ESTRUTURA_COLUMNS}, pasta`),
     admin.from("vps_devices").select(DEVICE_COLUMNS).eq("user_id", userId).order("created_at", { ascending: false }).limit(300),
   ]);
-  // Sem o SQL do Estruturar as colunas novas não existem: lê de novo só com as antigas.
+  // Sem o SQL das pastas (supabase/vps_pastas.sql) lê sem a coluna; sem o do Estruturar, só com as antigas.
+  const pastasAvailable = !isMissingSchemaError(comPastas.error);
+  const jobsCompletos = pastasAvailable ? comPastas : await lerJobs(`${JOB_COLUMNS}, input_enc, ${ESTRUTURA_COLUMNS}`);
   const estruturaAvailable = !isMissingSchemaError(jobsCompletos.error);
   const jobsRes = estruturaAvailable ? jobsCompletos : await lerJobs(`${JOB_COLUMNS}, input_enc`);
   if (isMissingSchemaError(jobsRes.error)) return { available: true, jobsAvailable: false, agents, jobs: [], devices: [] };
@@ -217,6 +222,7 @@ export async function loadVps(admin: SupabaseClient, userId: string): Promise<Vp
     jobs: ((jobsRes.data ?? []) as unknown as JobRow[]).map(toVpsJob),
     devices: ((devicesRes.data ?? []) as unknown as DeviceRow[]).map(toDevice),
     estruturaAvailable,
+    pastasAvailable,
     // Lida agora (não do retrato do agente): é a mesma conta do bloqueio no envio do lote.
     ramHost: ramDoHost(Math.max(1, ...agents.map((a) => a.capacidade.maxLigadas))),
   };

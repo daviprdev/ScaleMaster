@@ -100,6 +100,8 @@ export interface VpsJob extends Omit<EmulatorJob, "kind"> {
   contaId?: string | null;
   /** Só estruturacao: quando sai da fila; null = agora. */
   agendadoPara?: string | null;
+  /** Pasta da conta (supabase/vps_pastas.sql); null = sem pasta. */
+  pasta?: string | null;
 }
 
 export interface VpsResponse {
@@ -112,6 +114,8 @@ export interface VpsResponse {
   devices: VpsDevice[];
   /** false = supabase/vps_estruturacao.sql ainda não aplicado (o botão Estruturar avisa). */
   estruturaAvailable?: boolean;
+  /** false = supabase/vps_pastas.sql ainda não aplicado (pastas avisam). */
+  pastasAvailable?: boolean;
   /** RAM do host lida na hora pelo servidor (null = não deu para ler). */
   ramHost?: RamHost | null;
 }

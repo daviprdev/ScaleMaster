@@ -11,6 +11,7 @@ import { proxyChaveDe, proxyHostDe, redeDe } from "@/lib/vps/load";
 import { ramDoHost } from "@/lib/vps/ram";
 import { colisaoDeIdentidade, novoDevice, proximaRede, proximosIndices } from "@/lib/vps/device";
 import { gerarPessoa } from "@/lib/vps/pessoa";
+import { FALTA_SQL_PASTAS, normalizarPasta } from "@/lib/vps/pastas";
 import type { VpsContaInput } from "@/lib/vps/types";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +56,8 @@ export async function POST(req: NextRequest) {
   const parsed = parseLoteInput(body, capacidade.versoesIg);
   if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
   const lote = parsed.value;
+  // Pasta escolhida ou criada no diálogo; vazia = sem pasta (a coluna nem vai no insert: funciona sem o SQL das pastas).
+  const pasta = normalizarPasta((body as Record<string, unknown>).pasta);
 
   const { data: ativos, error: ativosErr } = await admin
     .from("emulator_jobs")
@@ -163,10 +166,11 @@ export async function POST(req: NextRequest) {
         versao_ig: lote.versaoIg,
         input_enc: encrypt(JSON.stringify(input)),
         created_at: now,
+        ...(pasta ? { pasta } : {}),
       })
       .select("id")
       .single();
-    if (isMissingSchemaError(error)) return NextResponse.json({ error: SQL_FALTA, criados }, { status: 503 });
+    if (isMissingSchemaError(error)) return NextResponse.json({ error: pasta ? FALTA_SQL_PASTAS : SQL_FALTA, criados }, { status: 503 });
     if (error) return NextResponse.json({ error: error.message, criados }, { status: 500 });
     criados.push(job.id);
 

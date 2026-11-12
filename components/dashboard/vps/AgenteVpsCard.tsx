@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, HardDriveDownload, Plus, Power, PowerOff, Server, Unplug } from "lucide-react";
+import { Check, Copy, HardDriveDownload, Layers, Plus, Power, PowerOff, Server, Unplug } from "lucide-react";
 import { Badge, Banner, Button, Card, Dialog, EmptyState, ProgressBar, type BadgeTone } from "@/components/ui";
 import type { EmulatorInstance, InstanceState } from "@/lib/emulador/types";
 import { timeAgo } from "@/lib/emulador/view";
@@ -28,6 +28,8 @@ interface AgenteVpsCardProps {
   sending: ReadonlySet<string>;
   onCommand: (agent: VpsAgent, index: number, action: "launch" | "shutdown") => void;
   onLote: (agent: VpsAgent) => void;
+  /** "Estruturar pasta": abre o Estruturar para todas as contas criadas de uma pasta. */
+  onEstruturarPasta?: (agent: VpsAgent) => void;
   onRebuild: (agent: VpsAgent) => void;
   onDisconnect: (agent: VpsAgent) => void;
   rebuilding: boolean;
@@ -36,7 +38,7 @@ interface AgenteVpsCardProps {
 }
 
 /** Uma VPS conectada: online/offline, capacidade, RAM usada, Rebuild imagem e os containers dela. */
-export function AgenteVpsCard({ agent, now, linked, queued, alerts, sending, onCommand, onLote, onRebuild, onDisconnect, rebuilding, ramHost = null }: AgenteVpsCardProps) {
+export function AgenteVpsCard({ agent, now, linked, queued, alerts, sending, onCommand, onLote, onEstruturarPasta, onRebuild, onDisconnect, rebuilding, ramHost = null }: AgenteVpsCardProps) {
   const cap = agent.capacidade;
   const neverSeen = !agent.lastSeenAt;
   // RAM: a leitura do servidor na hora; sem ela, o retrato do agente.
@@ -64,6 +66,11 @@ export function AgenteVpsCard({ agent, now, linked, queued, alerts, sending, onC
           <Button size="sm" icon={<Plus size={14} />} disabled={neverSeen || !!bloqueio} title={bloqueio ?? undefined} onClick={() => onLote(agent)}>
             Enviar lote
           </Button>
+          {onEstruturarPasta && (
+            <Button size="sm" icon={<Layers size={14} />} disabled={neverSeen} onClick={() => onEstruturarPasta(agent)}>
+              Estruturar pasta
+            </Button>
+          )}
           <Button variant="secondary" size="sm" icon={<HardDriveDownload size={14} />} loading={rebuilding} disabled={!agent.online} onClick={() => onRebuild(agent)}>
             Rebuild imagem
           </Button>

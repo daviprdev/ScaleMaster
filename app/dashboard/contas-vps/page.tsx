@@ -2,11 +2,13 @@
 
 import * as React from "react";
 import { mascaraData } from "@/lib/emulador/view";
-import { Plus, Server } from "lucide-react";
-import { Banner, Button, ConfirmDialog, Dialog, EmptyState, Input, PageHeader, Select, Skeleton } from "@/components/ui";
+import { Folder, Plus, Server } from "lucide-react";
+import { Banner, Button, ChipToggle, ConfirmDialog, Dialog, EmptyState, Input, PageHeader, Select, Skeleton } from "@/components/ui";
 import { AgenteVpsCard, ConectarVpsDialog } from "@/components/dashboard/vps/AgenteVpsCard";
 import { ContasVpsCard, type EstruturaAction, type JobAction } from "@/components/dashboard/vps/ContasVpsCard";
-import { EstruturarDialog } from "@/components/dashboard/vps/EstruturarDialog";
+import { EstruturarDialog, type PastaOpcao } from "@/components/dashboard/vps/EstruturarDialog";
+import { PastaCampo } from "@/components/dashboard/vps/PastaCampo";
+import { SEM_PASTA, elegiveisDaPasta, filtrarPorPasta, pastasDasContas } from "@/lib/vps/pastas";
 import { LoteDialog } from "@/components/dashboard/vps/LoteDialog";
 import { ProgressoLotePanel } from "@/components/dashboard/vps/ProgressoLotePanel";
 import { parseLinhaPortal, parseProxy } from "@/lib/vps/input";
@@ -41,6 +43,12 @@ export default function ContasVpsPage() {
   const [editing, setEditing] = React.useState<VpsJob | null>(null);
   const [refazendo, setRefazendo] = React.useState<VpsJob | null>(null);
   const [estruturando, setEstruturando] = React.useState<VpsJob | null>(null);
+  /** "Estruturar pasta" aberto para esta VPS. */
+  const [estruturarPasta, setEstruturarPasta] = React.useState<VpsAgent | null>(null);
+  /** Conta sendo movida de pasta. */
+  const [movendo, setMovendo] = React.useState<VpsJob | null>(null);
+  /** Filtro da lista: "" = todas, SEM_PASTA = sem pasta, nome = a pasta. */
+  const [filtroPasta, setFiltroPasta] = React.useState("");
   const [jobBusy, setJobBusy] = React.useState<ReadonlySet<string>>(new Set());
   const [sending, setSending] = React.useState<ReadonlySet<string>>(new Set());
   const [rebuilding, setRebuilding] = React.useState<ReadonlySet<string>>(new Set());
@@ -168,6 +176,35 @@ export default function ContasVpsPage() {
 
   const devices = React.useMemo(() => new Map((data?.devices ?? []).map((d) => [d.jobId, d])), [data]);
   const now = Date.now();
+  const pastasOn = data?.pastasAvailable === true;
+  const pastas = React.useMemo(() => pastasDasContas(data?.jobs ?? []), [data]);
+  const nomesPastas = React.useMemo(() => pastas.map((p) => p.nome), [pastas]);
+  const contasTodas = React.useMemo(() => (data?.jobs ?? []).filter((j) => j.kind === "nova-conta"), [data]);
+  const semPasta = contasTodas.filter((j) => !j.pasta).length;
+  // Filtro que sumiu (pasta esvaziada): volta para Todas.
+  React.useEffect(() => {
+    if (filtroPasta && filtroPasta !== SEM_PASTA && !nomesPastas.includes(filtroPasta)) setFiltroPasta("");
+  }, [filtroPasta, nomesPastas]);
+
+  /** Estruturação mais nova de cada conta, de todas as VPSs. */
+  const estruturasDe = React.useMemo(() => {
+    const m = new Map<string, VpsJob>();
+    for (const j of data?.jobs ?? []) if (j.kind === "estruturacao" && j.contaId && !m.has(j.contaId)) m.set(j.contaId, j);
+    return m;
+  }, [data]);
+
+  /** Opções do "Estruturar pasta" de uma VPS: cada pasta (e Sem pasta) com quantas contas entram. */
+  const opcoesDaPasta = (agent: VpsAgent): PastaOpcao[] => {
+    const daVps = contasTodas.filter((j) => j.agentId === agent.id);
+    const nomes = [...new Set(daVps.map((j) => j.pasta ?? null))];
+    return nomes
+      .sort((a, b) => (a === null ? 1 : b === null ? -1 : a.localeCompare(b, "pt-BR")))
+      .map((nome) => ({
+        value: nome ?? SEM_PASTA,
+        label: nome ?? "Sem pasta",
+        elegiveis: elegiveisDaPasta(daVps, nome, (id) => estruturasDe.get(id)).elegiveis.length,
+      }));
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -234,10 +271,36 @@ export default function ContasVpsPage() {
             </Banner>
           )}
           {data.jobsAvailable && <ProgressoLotePanel jobs={data.jobs} />}
+          {data.jobsAvailable && !pastasOn && (
+            <Banner tone="warning">
+              Para as pastas falta aplicar o SQL <span className="font-mono">supabase/vps_pastas.sql</span> no Supabase (SQL Editor).
+            </Banner>
+          )}
+          {data.jobsAvailable && pastasOn && contasTodas.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2" role="listbox" aria-label="Filtrar por pasta">
+              <Folder size={14} className="text-ink-3" />
+              <ChipToggle selected={filtroPasta === ""} onChange={() => setFiltroPasta("")} count={contasTodas.length}>
+                Todas
+              </ChipToggle>
+              {pastas.map((p) => (
+                <ChipToggle key={p.nome} selected={filtroPasta === p.nome} onChange={() => setFiltroPasta(p.nome)} count={p.contas}>
+                  {p.nome}
+                </ChipToggle>
+              ))}
+              {semPasta > 0 && (
+                <ChipToggle selected={filtroPasta === SEM_PASTA} onChange={() => setFiltroPasta(SEM_PASTA)} count={semPasta}>
+                  Sem pasta
+                </ChipToggle>
+              )}
+            </div>
+          )}
           {data.agents.map((agent) => {
             const jobs = data.jobs.filter((j) => j.agentId === agent.id);
             // Estruturação não é linha própria: a mais nova de cada conta vira a segunda barra do card dela.
-            const contas = jobs.filter((j) => j.kind !== "estruturacao");
+            const contas = filtrarPorPasta(
+              jobs.filter((j) => j.kind !== "estruturacao"),
+              pastasOn ? filtroPasta : ""
+            );
             const estruturas = new Map<string, VpsJob>();
             for (const j of jobs) if (j.kind === "estruturacao" && j.contaId && !estruturas.has(j.contaId)) estruturas.set(j.contaId, j);
             return (
@@ -251,6 +314,7 @@ export default function ContasVpsPage() {
                   sending={sending}
                   onCommand={(a, index, action) => void sendCommand(a, index, action)}
                   onLote={setLoteFor}
+                  onEstruturarPasta={pastasOn && data.estruturaAvailable !== false ? setEstruturarPasta : undefined}
                   onRebuild={(a) => void rebuild(a)}
                   onDisconnect={setDisconnecting}
                   rebuilding={rebuilding.has(agent.id)}
@@ -270,6 +334,7 @@ export default function ContasVpsPage() {
                     onAction={(job, action) => (action === "remover" ? setRemoving(job) : action === "refazer" ? setRefazendo(job) : void jobRequest(job, action))}
                     onReply={(job, resposta) => void jobRequest(job, "responder", resposta)}
                     onEdit={setEditing}
+                    onPasta={pastasOn ? setMovendo : undefined}
                   />
                 )}
               </React.Fragment>
@@ -280,6 +345,8 @@ export default function ContasVpsPage() {
 
       <LoteDialog
         agent={loteFor}
+        pastas={pastasOn ? nomesPastas : []}
+        pastaInicial={filtroPasta && filtroPasta !== SEM_PASTA ? filtroPasta : ""}
         onClose={() => setLoteFor(null)}
         onSaved={(avisos) => {
           setAvisos(avisos);
@@ -289,6 +356,16 @@ export default function ContasVpsPage() {
       <EditarContaDialog job={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />
       <RefazerContaDialog job={refazendo} onClose={() => setRefazendo(null)} onSaved={() => void load()} />
       <EstruturarDialog job={estruturando} onClose={() => setEstruturando(null)} onSaved={() => void load()} />
+      <EstruturarDialog
+        job={null}
+        pastaDe={estruturarPasta ? { agent: estruturarPasta, opcoes: opcoesDaPasta(estruturarPasta), inicial: filtroPasta } : null}
+        onClose={() => setEstruturarPasta(null)}
+        onSaved={(resumo) => {
+          setAvisos(resumo ?? []);
+          void load();
+        }}
+      />
+      <MoverPastaDialog job={movendo} pastas={nomesPastas} onClose={() => setMovendo(null)} onSaved={() => void load()} />
       <ConectarVpsDialog open={connectOpen} onClose={() => setConnectOpen(false)} onCreated={() => void load()} />
 
       <ConfirmDialog
@@ -313,6 +390,64 @@ export default function ContasVpsPage() {
         confirmLabel="Desconectar"
       />
     </div>
+  );
+}
+
+/** Mover a conta de pasta (ou tirar de qualquer pasta); só muda a etiqueta, nada na VPS. */
+function MoverPastaDialog({ job, pastas, onClose, onSaved }: { job: VpsJob | null; pastas: ReadonlyArray<string>; onClose: () => void; onSaved: () => void }) {
+  const [pasta, setPasta] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!job) return;
+    setPasta(job.pasta ?? "");
+    setError(null);
+  }, [job]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!job) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/vps/contas/${encodeURIComponent(job.id)}/pasta`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pasta }),
+      });
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(body?.error ?? "Não foi possível mover de pasta.");
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={!!job}
+      onClose={onClose}
+      title={`Pasta de ${job?.label ? `@${job.label}` : "a conta"}`}
+      description="Só organiza a lista e o Estruturar pasta: nada muda na VPS."
+      className="max-w-md"
+    >
+      <form className="flex flex-col gap-4" onSubmit={(e) => void submit(e)}>
+        {error && <Banner tone="danger">{error}</Banner>}
+        <PastaCampo pastas={pastas} value={pasta} onChange={setPasta} />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" loading={saving}>
+            Salvar
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 
