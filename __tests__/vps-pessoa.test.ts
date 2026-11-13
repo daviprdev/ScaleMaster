@@ -19,7 +19,8 @@ import { variarUsuario as variarUsuarioAgente } from "../agente-vps/lib/usuario.
 import { parseLoteInput } from "../lib/vps/input";
 import { parseJobUpdates, ALERTA_ROBO, ALERTA_USUARIO, ehDescarte } from "../lib/emulador/jobs";
 import { ehDescartada, proxiesEmUso } from "../lib/vps/jobs";
-import { ALERTA_USUARIO as USUARIO_AGENTE, TENTATIVAS_USUARIO, deveDescartar } from "../agente-vps/fluxos/cadastro.mjs";
+import { ALERTA_USUARIO as USUARIO_AGENTE, CAPTCHA_IMAGEM, TENTATIVAS_USUARIO, deveDescartar, ehTelaCodigo } from "../agente-vps/fluxos/cadastro.mjs";
+import { temTexto } from "../agente-vps/fluxos/tela.mjs";
 
 /** Gerador determinístico (LCG) para os testes serem repetíveis. */
 function rngDe(semente: number): () => number {
@@ -242,5 +243,20 @@ describe("Descarte: captcha e @ recusado", () => {
     const [semExtras] = parseJobUpdates([{ id: "11111111-1111-4111-8111-111111111111", status: "running", steps: [], usuario: "Inválido!", descartada: "sim" }]);
     expect(semExtras.usuario).toBeUndefined();
     expect(semExtras.descartada).toBeUndefined();
+  });
+});
+
+describe("Cadastro: captcha de imagem não é o código do e-mail", () => {
+  const no = (texto: string) => ({ texto, descricao: texto, id: "", clicavel: false });
+  // Tela real do ig-38 (diana, 13/11) depois dos termos.
+  const captcha = ["Confirm you're human", "Can't read this text? Hear this code or Get a new code", "Hear this code", "Get a new code", "Enter the code from the image", "Next"].map(no);
+  const codigoEmail = ["Enter the confirmation code", "To confirm your account, enter the 6-digit code we sent to x@y.com.", "Next"].map(no);
+  it("captcha \"Confirm you're human\" cai na verificação (descarte), não na espera do OTP", () => {
+    expect(temTexto(captcha, CAPTCHA_IMAGEM)).toBe(true);
+    expect(ehTelaCodigo(captcha)).toBe(false);
+  });
+  it("a tela do código do e-mail continua sendo código", () => {
+    expect(temTexto(codigoEmail, CAPTCHA_IMAGEM)).toBe(false);
+    expect(ehTelaCodigo(codigoEmail)).toBe(true);
   });
 });

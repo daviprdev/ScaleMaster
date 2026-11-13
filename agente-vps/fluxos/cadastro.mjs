@@ -84,7 +84,15 @@ function ehTelaEmail(nos) {
   return !ehTelaCodigo(nos) && temTexto(nos, ["Qual é o teu e-mail", "What's your email", "Qual é o seu email", "Qual é o seu e-mail", "Qual é seu email", "Qual é seu e-mail"]);
 }
 
-function ehTelaCodigo(nos) {
+/** Captcha de imagem ("Confirm you're human" → "Enter the code from the image", diana 13/11): não é o código do e-mail. */
+export const CAPTCHA_IMAGEM = [
+  "Confirma que és uma pessoa", "Confirm you're a person", "Confirm that you're a person", "Confirme que você é uma pessoa",
+  "Confirm you're human", "Confirm that you're human", "Confirme que você é humano", "Confirma que és humano",
+  "code from the image", "código da imagem", "Hear this code", "Ouvir este código",
+];
+
+export function ehTelaCodigo(nos) {
+  if (temTexto(nos, CAPTCHA_IMAGEM)) return false;
   return temTexto(nos, ["código de confirmação", "confirmation code", "Introduz o código", "Insira o código", "Enter the code", "Digite o código", "Insira o código que enviamos"]);
 }
 
@@ -219,8 +227,7 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
       // que ele não resolve vira pedido manual; esgotou, encerra com o aviso em vermelho
       // (ALERTA_CAPTCHA), como no MuMu. Antes do "codigo" ("Enter the code…").
       nome: "verificacao-pessoa",
-      teste: (nos) =>
-        temTexto(nos, ["Confirma que és uma pessoa", "Confirm you're a person", "Confirm that you're a person", "Confirme que você é uma pessoa"]),
+      teste: (nos) => temTexto(nos, CAPTCHA_IMAGEM),
       agir: async (nos) => {
         // decisão (08/11): captcha é terminal — nada de Capsolver (lib/captcha.mjs fica dormente); a conta é
         // descartada em nova-conta.mjs (container e volume apagados) e a aba mostra o aviso em vermelho.
