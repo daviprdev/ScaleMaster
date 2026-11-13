@@ -1,6 +1,7 @@
 import * as imapLib from "../lib/imap.mjs";
 import * as mailtmLib from "../lib/mailtm.mjs";
 import * as portalLib from "../lib/portal.mjs";
+import { esperar } from "../lib/processo.mjs";
 
 /**
  * A caixa de e-mail da conta, por provedor (input.provedorEmail):
@@ -135,16 +136,21 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
         return sessao?.email ?? null;
       },
       async endereco() {
-        try {
-          const s = await abrir();
-          vistos = portal.mensagensVistas ? await Promise.resolve(portal.mensagensVistas(s)).catch(() => null) : null;
-          return s.email;
-        } catch (e) {
-          // Código já gasto: não há endereço possível com ele — para o job (container fica) e o card pede código novo.
-          if (e.codigoVencido) throw erroCodigoVencido(e.message);
-          log(`portal falhou ao abrir a sessão: ${e.message}`);
-          return null;
+        // O portal às vezes passa de 15 s (4 contas abrindo juntas na KVM 8, emanuelle 13/11): tenta 3 vezes antes de
+        // perguntar o endereço na aba.
+        for (let tentativa = 1; tentativa <= 3; tentativa++) {
+          try {
+            const s = await abrir();
+            vistos = portal.mensagensVistas ? await Promise.resolve(portal.mensagensVistas(s)).catch(() => null) : null;
+            return s.email;
+          } catch (e) {
+            // Código já gasto: não há endereço possível com ele — para o job (container fica) e o card pede código novo.
+            if (e.codigoVencido) throw erroCodigoVencido(e.message);
+            log(`portal falhou ao abrir a sessão (tentativa ${tentativa}/3): ${e.message}`);
+            if (tentativa < 3) await esperar(5000 * tentativa);
+          }
         }
+        return null;
       },
       async esperarCodigo({ timeoutMs, sinal = null } = {}) {
         try {

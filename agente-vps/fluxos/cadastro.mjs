@@ -249,6 +249,28 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
       },
     },
     {
+      // "Add a mobile number" (opcional, com Skip no topo) depois dos termos. O Skip às vezes não pega logo
+      // (tela ainda carregando) e o "pular" genérico desistia na 4ª tentativa; brenda e lorena, 13/11.
+      // Aqui: toca no Skip e espera a tela trocar, até 6 vezes, dentro de uma volta só do percorrer.
+      nome: "adicionar-celular",
+      teste: (nos) =>
+        temTexto(nos, ["Add a mobile number", "Adicionar um número de celular", "Adicione um número de celular", "Adicionar número de celular", "Adiciona um número de telemóvel"]) &&
+        (acharId(nos, `${INSTAGRAM}:id/action_bar_action_text`) ?? botao(nos, ["Skip", "Pular", "Ignorar", "Agora não", "Not now"])),
+      agir: async (nos, pular) => {
+        const aindaAqui = (n) => temTexto(n, ["Add a mobile number", "Adicionar um número de celular", "Adicione um número de celular", "Adicionar número de celular", "Adiciona um número de telemóvel"]);
+        for (let tentativa = 1; tentativa <= 6; tentativa++) {
+          await esperar(1500);
+          await d.tocar(pular.x, pular.y);
+          for (let i = 0; i < 5; i++) {
+            await esperar(1500);
+            const depois = await d.tela().catch(() => []);
+            if (depois.length > 0 && !aindaAqui(depois)) return;
+          }
+          log(`"Add a mobile number": Skip ainda não passou (tentativa ${tentativa}/6)`);
+        }
+      },
+    },
+    {
       nome: "codigo",
       teste: (nos) => ehTelaCodigo(nos),
       agir: async (nos) => {
