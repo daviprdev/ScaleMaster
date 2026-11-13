@@ -223,8 +223,10 @@ describe("Portal: caixa de e-mail no cadastro (fluxos/caixa.mjs)", () => {
       verificarPortal: vi.fn(async () => true),
     };
     const logs: string[] = [];
-    const caixa = criarCaixa(inputPortal, { portal, log: (m: string) => logs.push(m) });
+    const caixa = criarCaixa(inputPortal, { portal, log: (m: string) => logs.push(m), esperaPortalMs: 0 });
     expect(await caixa.endereco()).toBeNull();
+    // Três tentativas de abrir a sessão antes de devolver null (portal lento com 4 contas juntas, 13/11).
+    expect(portal.abrir).toHaveBeenCalledTimes(3);
     expect(await caixa.esperarCodigo({})).toBeNull();
     expect(logs.some((l) => l.includes("HTTP 503"))).toBe(true);
     await caixa.fechar();

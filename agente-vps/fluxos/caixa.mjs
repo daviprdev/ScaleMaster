@@ -105,7 +105,7 @@ export async function conferirCaixa(input, { portal = portalLib, imap = imapLib,
  * @param {any} input
  * @param {{ log?: (m: string) => void, portal?: any, imap?: any, mailtm?: any, aoResgatar?: (p: { resgatadoEm: string, expiraEm: string }) => void }} [deps]
  */
-export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = imapLib, mailtm = mailtmLib, aoResgatar = () => {} } = {}) {
+export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = imapLib, mailtm = mailtmLib, aoResgatar = () => {}, esperaPortalMs = 5000 } = {}) {
   const p = provedorDe(input);
   const conta = input?.conta ?? {};
   const cred = input?.imap ?? {};
@@ -147,7 +147,7 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
             // Código já gasto: não há endereço possível com ele — para o job (container fica) e o card pede código novo.
             if (e.codigoVencido) throw erroCodigoVencido(e.message);
             log(`portal falhou ao abrir a sessão (tentativa ${tentativa}/3): ${e.message}`);
-            if (tentativa < 3) await esperar(5000 * tentativa);
+            if (tentativa < 3) await esperar(esperaPortalMs * tentativa);
           }
         }
         return null;
