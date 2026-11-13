@@ -3,7 +3,7 @@
 import * as React from "react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Pencil, Circle, Contact, Copy, Folder, FolderOpen, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Shield, ShieldAlert, ShieldCheck, Trash2, UserPlus, XCircle } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Input, ProgressBar, Segmented, type BadgeTone } from "@/components/ui";
-import { SEM_PASTA, ehPastaFixa, gruposDePasta, type AbaContas } from "@/lib/vps/pastas";
+import { PASTA_RODANDO, SEM_PASTA, ehPastaFixa, gruposDePasta, type AbaContas } from "@/lib/vps/pastas";
 import { cn } from "@/lib/utils";
 import { ALERTA_ROBO, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
@@ -62,7 +62,8 @@ export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onE
     if (aberta !== null && !pasta) setAberta(null);
   }, [aberta, pasta]);
   React.useEffect(() => {
-    onPastaAberta?.(pasta ? pasta.chave : null);
+    // RODANDO é só da tela: não vira pasta do Enviar lote nem do Estruturar pasta.
+    onPastaAberta?.(pasta && pasta.chave !== PASTA_RODANDO ? pasta.chave : null);
   }, [pasta, onPastaAberta]);
 
   const lista = pastasOn ? (pasta?.contas ?? []) : jobs;

@@ -21,6 +21,14 @@ export const FALTA_SQL_PASTAS = "Falta aplicar o SQL supabase/vps_pastas.sql no 
 export const PASTA_CRIADAS = "CRIADAS";
 export const PASTA_FALHAS = "FALHAS";
 export const PASTAS_FIXAS: readonly string[] = [PASTA_CRIADAS, PASTA_FALHAS];
+/**
+ * RODANDO (13/11) não existe no banco: é a pasta da tela onde ficam as contas
+ * na fila ou sendo criadas, qualquer que seja a coluna `pasta`. Ao terminar,
+ * o sync grava CRIADAS ou FALHAS e a conta sai dela.
+ */
+export const PASTA_RODANDO = "RODANDO";
+const ORDEM_FIXAS: readonly string[] = [PASTA_RODANDO, PASTA_CRIADAS, PASTA_FALHAS];
+const emAndamento = (status: string) => status === "queued" || status === "running";
 
 /** Pasta de destino de uma conta que acabou de terminar o cadastro; null = ainda rodando. */
 export function pastaAoTerminar(status: string): string | null {
@@ -29,10 +37,10 @@ export function pastaAoTerminar(status: string): string | null {
   return null;
 }
 
-/** CRIADAS e FALHAS (qualquer caixa) não se renomeiam. */
+/** RODANDO, CRIADAS e FALHAS (qualquer caixa) não se renomeiam. */
 export function ehPastaFixa(nome: string | null | undefined): boolean {
   const n = String(nome ?? "").trim().toUpperCase();
-  return PASTAS_FIXAS.includes(n);
+  return ORDEM_FIXAS.includes(n);
 }
 
 /** Nome da pasta como vai para o banco: sem espaços sobrando, até 40 caracteres; vazio = null (sem pasta). */
@@ -40,7 +48,8 @@ export function normalizarPasta(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const nome = raw.replace(/\s+/g, " ").trim();
   if (!nome || nome === SEM_PASTA) return null;
-  // "criadas"/"Falhas" digitado à mão cai na pasta fixa, não numa pasta nova com outra caixa.
+  // "criadas"/"Falhas" digitado à mão cai na pasta fixa, não numa pasta nova com outra caixa; RODANDO não é destino.
+  if (nome.toUpperCase() === PASTA_RODANDO) return null;
   const fixa = PASTAS_FIXAS.find((p) => p === nome.toUpperCase());
   if (fixa) return fixa;
   return [...nome].slice(0, PASTA_MAX).join("");
@@ -86,12 +95,13 @@ export function gruposDePasta<T extends { id: string; kind: string; status: stri
   for (const c of contas) {
     if (c.kind !== "nova-conta") continue;
     const aba: AbaContas = prontidaoDaConta(estruturaDe(c.id)) || conectadaNoSaas(c) ? "estruturadas" : "criadas";
-    const chave = c.pasta || SEM_PASTA;
+    // Na fila ou sendo criada: fica na RODANDO até terminar (aí o sync põe em CRIADAS ou FALHAS).
+    const chave = aba === "criadas" && emAndamento(c.status) ? PASTA_RODANDO : c.pasta || SEM_PASTA;
     abas[aba].set(chave, [...(abas[aba].get(chave) ?? []), c]);
   }
-  // Na aba Criadas as pastas fixas aparecem sempre, primeiro (CRIADAS, FALHAS), mesmo vazias.
-  for (const p of PASTAS_FIXAS) if (!abas.criadas.has(p)) abas.criadas.set(p, []);
-  const ordem = (a: string) => (PASTAS_FIXAS.includes(a) ? PASTAS_FIXAS.indexOf(a) : a === SEM_PASTA ? 99 : 2);
+  // Na aba Criadas as pastas fixas aparecem sempre, primeiro (RODANDO, CRIADAS, FALHAS), mesmo vazias.
+  for (const p of ORDEM_FIXAS) if (!abas.criadas.has(p)) abas.criadas.set(p, []);
+  const ordem = (a: string) => (ORDEM_FIXAS.includes(a) ? ORDEM_FIXAS.indexOf(a) : a === SEM_PASTA ? 99 : ORDEM_FIXAS.length);
   const ordenar = (m: Map<string, T[]>, aba: AbaContas): Array<GrupoDePasta<T>> =>
     [...m.entries()]
       .sort(([a], [b]) => ordem(a) - ordem(b) || a.localeCompare(b, "pt-BR"))

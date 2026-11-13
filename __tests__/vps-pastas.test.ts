@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PASTA_CRIADAS, PASTA_FALHAS, PASTA_MAX, SEM_PASTA, ehPastaFixa, elegiveisDaPasta, filtrarPorPasta, gruposDePasta, normalizarPasta, pastaAoTerminar, pastasDasContas } from "../lib/vps/pastas";
+import { PASTA_CRIADAS, PASTA_FALHAS, PASTA_RODANDO, PASTA_MAX, SEM_PASTA, ehPastaFixa, elegiveisDaPasta, filtrarPorPasta, gruposDePasta, normalizarPasta, pastaAoTerminar, pastasDasContas } from "../lib/vps/pastas";
 import { errosPorCampo, expandirEtapas, parseEstrutura } from "../lib/vps/estruturacao";
 
 const conta = (id: string, extra: Partial<{ status: string; pasta: string | null; label: string; kind: string }> = {}) => ({
@@ -100,12 +100,13 @@ describe("Abas Criadas/Estruturadas com as pastas", () => {
       ["Novembro", ["a"], ["1 pronta para postar"]],
     ]);
     expect(g.criadas.map((p) => [p.nome, p.contas.map((c) => c.id), p.resumo])).toEqual([
+      ["RODANDO", ["c"], ["1 criando"]],
       ["CRIADAS", [], []],
       ["FALHAS", [], []],
-      ["Novembro", ["b", "c"], ["1 criando", "1 para estruturar"]],
+      ["Novembro", ["b"], ["1 para estruturar"]],
       ["Sem pasta", ["d"], ["1 para estruturar"]],
     ]);
-    expect(g.criadas[3].chave).toBe(SEM_PASTA);
+    expect(g.criadas[4].chave).toBe(SEM_PASTA);
   });
 });
 
@@ -131,7 +132,7 @@ describe("Conectada no SaaS conta como estruturada", () => {
     const contas = [conta("josianecavalcanti85432", { pasta: "PRONTAS" }), conta("outra", { pasta: "PRONTAS" })];
     const g = gruposDePasta(contas, () => null, new Set(["josianecavalcanti85432"]));
     expect(g.estruturadas.map((p) => [p.nome, p.contas.map((c) => c.id), p.resumo])).toEqual([["PRONTAS", ["josianecavalcanti85432"], ["1 pronta para postar"]]]);
-    expect(g.criadas.map((p) => p.contas.map((c) => c.id))).toEqual([[], [], ["outra"]]);
+    expect(g.criadas.map((p) => p.contas.map((c) => c.id))).toEqual([[], [], [], ["outra"]]);
     expect(resumoDasContas(contas, new Set(["josianecavalcanti85432"])).prontas).toBe(1);
   });
 });
@@ -151,9 +152,22 @@ describe("Pastas fixas CRIADAS e FALHAS", () => {
     expect(normalizarPasta("Falhas")).toBe(PASTA_FALHAS);
   });
   it("aparecem primeiro na aba Criadas; Estruturar pasta CRIADAS só pega as concluídas", () => {
-    const contas = [conta("ok", { pasta: PASTA_CRIADAS }), conta("ruim", { pasta: PASTA_FALHAS, status: "error" }), conta("z", { pasta: "Antiga" })];
+    const contas = [
+      conta("ok", { pasta: PASTA_CRIADAS }),
+      conta("ruim", { pasta: PASTA_FALHAS, status: "error" }),
+      conta("z", { pasta: "Antiga" }),
+      conta("criando", { pasta: PASTA_CRIADAS, status: "running" }),
+      conta("fila", { pasta: "Novembro", status: "queued" }),
+    ];
     const g = gruposDePasta(contas, () => null);
-    expect(g.criadas.map((p) => p.nome)).toEqual(["CRIADAS", "FALHAS", "Antiga"]);
+    expect(g.criadas.map((p) => [p.nome, p.contas.map((c) => c.id)])).toEqual([
+      [PASTA_RODANDO, ["criando", "fila"]],
+      ["CRIADAS", ["ok"]],
+      ["FALHAS", ["ruim"]],
+      ["Antiga", ["z"]],
+    ]);
+    expect(ehPastaFixa("rodando")).toBe(true);
+    expect(normalizarPasta("Rodando")).toBeNull();
     expect(elegiveisDaPasta(contas, PASTA_CRIADAS, () => null).elegiveis.map((c) => c.id)).toEqual(["ok"]);
   });
 });
