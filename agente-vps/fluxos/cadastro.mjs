@@ -500,9 +500,10 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
     },
     {
       // Outra abertura do Instagram novo (vista em 01/11): "Aderir ao Instagram" → Começar.
+      // pt-BR (elaine, 13/11): "Participe do Instagram" / "Compartilhe seus interesses…" → Começar.
       nome: "abertura",
       teste: (nos) =>
-        temTexto(nos, ["Aderir ao Instagram", "Join Instagram", "Entrar no Instagram", "Junte-se ao Instagram"]) &&
+        temTexto(nos, ["Aderir ao Instagram", "Join Instagram", "Entrar no Instagram", "Junte-se ao Instagram", "Participe do Instagram"]) &&
         botao(nos, ["Começar", "Get started", "Comece agora"]),
       agir: async (nos, alvo) => tocarNo(d, alvo, 4000),
     },

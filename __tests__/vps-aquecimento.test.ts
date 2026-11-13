@@ -75,15 +75,24 @@ describe("Código do portal vencido", () => {
     expect(portal.abrir).not.toHaveBeenCalled();
   });
 
-  it("resgatado há mais de 20 min: CODIGO_VENCIDO pelo relógio, sem reuso e sem tocar o portal", async () => {
-    const portal = portalBase();
+  it("resgatado há mais de 20 min: o /status decide, não o relógio (sem OTP e reativável = segue; com OTP = vencido)", async () => {
     const antigo = { ...input, portalResgatadoEm: new Date(Date.now() - 25 * 60_000).toISOString() };
-    await expect(conferirCaixa(antigo, { portal })).rejects.toMatchObject({ message: CODIGO_VENCIDO, semPrefixo: true, manterContainer: true });
-    expect(portal.statusDoCodigo).not.toHaveBeenCalled();
-    expect(portal.abrir).not.toHaveBeenCalled();
+    const reativavel = portalBase();
+    reativavel.statusDoCodigo = vi.fn(async () => ({ acabou: true, temOtp: false, podeRenovar: true }));
+    expect(await conferirCaixa(antigo, { portal: reativavel })).toContain("portal acessível");
+    expect(reativavel.abrir).not.toHaveBeenCalled();
+    const gasto = portalBase();
+    gasto.statusDoCodigo = vi.fn(async () => ({ acabou: true, temOtp: true, podeRenovar: false }));
+    await expect(conferirCaixa(antigo, { portal: gasto })).rejects.toMatchObject({ message: CODIGO_VENCIDO, semPrefixo: true, manterContainer: true });
+    const semReativar = portalBase();
+    semReativar.statusDoCodigo = vi.fn(async () => ({ acabou: true, temOtp: false, podeRenovar: false }));
+    await expect(conferirCaixa(antigo, { portal: semReativar })).rejects.toThrow(CODIGO_VENCIDO);
+    const foraDoAr = portalBase();
+    foraDoAr.statusDoCodigo = vi.fn(async () => { throw new Error("HTTP 502"); });
+    expect(await conferirCaixa(antigo, { portal: foraDoAr })).toContain("portal acessível");
   });
 
-  it("resgatado há pouco: consulta o /status; OTP já recebido ou sessão encerrada = vencido; ativa = segue", async () => {
+  it("resgatado há pouco: consulta o /status; OTP já recebido = vencido; ativa = segue", async () => {
     const recente = { ...input, portalResgatadoEm: new Date(Date.now() - 5 * 60_000).toISOString(), portalExpiraEm: new Date(Date.now() + 15 * 60_000).toISOString() };
     const comOtp = portalBase();
     comOtp.statusDoCodigo = vi.fn(async () => ({ acabou: true, temOtp: true }));

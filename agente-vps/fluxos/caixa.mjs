@@ -31,21 +31,24 @@ function erroCodigoVencido(motivo) {
 }
 
 /**
- * Código já resgatado antes (input.portalResgatadoEm) e vencido pelo relógio
- * (20 min) ou pelo /status (sessão acabou / OTP recebido). Código nunca
- * resgatado não é tocado: null.
+ * Código já resgatado antes (input.portalResgatadoEm): quem decide é o /status
+ * do portal, não o relógio (13/11). Sessão que acabou SEM OTP e pode reativar
+ * não está vencida — o abrir() reativa (mesmo código, e-mail novo), igual a
+ * colar o código de novo no link. Vencido = OTP já recebido (o "New Mail" do
+ * portal só aceita código novo) ou sessão acabada sem reativação. /status fora
+ * do ar: segue (o abrir() decide). Código nunca resgatado não é tocado: null.
  * @param {any} input
  * @param {any} [portal]
  */
 export async function codigoVencido(input, portal = portalLib) {
   const resgatadoEm = Date.parse(input?.portalResgatadoEm ?? "");
   if (!Number.isFinite(resgatadoEm)) return null;
-  const expiraEm = Date.parse(input?.portalExpiraEm ?? "") || resgatadoEm + SESSAO_PORTAL_MS;
-  if (Date.now() >= expiraEm) return `sessão vencida em ${new Date(expiraEm).toISOString()}`;
   const link = input?.portalLink ?? input?.conta?.email;
   const codigo = input?.portalCodigo ?? input?.imap?.senha;
   const status = await portal.statusDoCodigo(link, codigo).catch(() => null);
-  if (status?.acabou || status?.temOtp) return status.temOtp ? "sessão já recebeu OTP" : "sessão encerrada no portal";
+  if (!status) return null;
+  if (status.temOtp) return "sessão já recebeu OTP (o portal só dá e-mail novo com código novo)";
+  if (status.acabou && !status.podeRenovar) return "sessão encerrada no portal sem reativação";
   return null;
 }
 
