@@ -110,3 +110,50 @@ export function salvarMidia(raiz: string, nome: string, bytes: Uint8Array): { pa
   writeFileSync(path.join(raiz, final), bytes, { flag: "wx", mode: 0o644 });
   return { path: final };
 }
+
+/**
+ * Pastas de mídia (13/11): subpastas de primeiro nível de /opt/scalemaster/midias
+ * (a "perfil" é a das fotos de perfil da criação de conta). O diálogo Mídias
+ * cria e enche as pastas; o Estruturar escolhe a pasta e depois a foto pela miniatura.
+ */
+export const PASTA_MIDIA_MAX = 40;
+
+/** Nome de pasta de mídia: um nível só, sem acento, só [a-z0-9_-], até 40. null = vazio/inválido. */
+export function nomePastaMidia(raw: unknown): string | null {
+  const nome = String(raw ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^[-_]+|[-_]+$/g, "")
+    .slice(0, PASTA_MIDIA_MAX);
+  return nome || null;
+}
+
+export interface PastaMidia {
+  nome: string;
+  fotos: number;
+}
+
+/** Subpastas de primeiro nível (vazias também), em ordem alfabética, com quantas fotos cada uma tem. */
+export function pastasDeMidia(raiz: string, arquivos: ReadonlyArray<MidiaArquivo> = listarMidias(raiz)): PastaMidia[] {
+  let itens: import("node:fs").Dirent[] = [];
+  try {
+    itens = readdirSync(raiz, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return itens
+    .filter((i) => i.isDirectory() && !i.name.startsWith("."))
+    .map((i) => i.name)
+    .sort((a, b) => a.localeCompare(b, "pt-BR"))
+    .map((nome) => ({ nome, fotos: arquivos.filter((a) => a.path.startsWith(`${nome}/`)).length }));
+}
+
+/** Cria a pasta (nome já passado por nomePastaMidia). Já existir não é erro. */
+export function criarPastaMidia(raiz: string, nome: string): void {
+  const alvo = path.resolve(raiz, nome);
+  if (path.dirname(alvo) !== path.resolve(raiz)) throw new Error("Nome de pasta inválido.");
+  mkdirSync(alvo, { recursive: true });
+}

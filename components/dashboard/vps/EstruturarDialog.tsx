@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { Upload } from "lucide-react";
 import { Banner, Button, Dialog, Input, Select, Textarea } from "@/components/ui";
 import {
   AGENDAR_MAX_H,
@@ -9,7 +8,6 @@ import {
   BIO_MAX,
   DESTAQUE_MAX,
   LEGENDA_MAX,
-  MIDIA_MAX_BYTES,
   NOME_DESTAQUE_PADRAO,
   PERFIL_PADRAO,
   contarCaracteres,
@@ -19,6 +17,7 @@ import {
 } from "@/lib/vps/estruturacao";
 import type { VpsAgent, VpsJob } from "@/lib/vps/types";
 import { PastaCampo } from "./PastaCampo";
+import { MidiaPicker, useMidiasDaVps } from "./MidiaPicker";
 
 const CHAVE_DESTINO = "vps-pasta-destino-estruturar";
 
@@ -73,33 +72,26 @@ export function EstruturarDialog({ job, pastaDe = null, pastas = [], onClose, on
   const [pasta, setPasta] = React.useState("");
   /** "Ao concluir, mover para a pasta" ("" = não mover); lembra a última escolha neste navegador. */
   const [pastaDestino, setPastaDestino] = React.useState("");
-  const [midias, setMidias] = React.useState<string[] | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const [enviando, setEnviando] = React.useState<"fotoPerfil" | "fotoStory" | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const set = (campo: Campo, valor: string) => setForm((f) => ({ ...f, [campo]: valor }));
 
-  const lerMidias = React.useCallback(async () => {
-    const res = await fetch("/api/vps/midias", { cache: "no-store" });
-    const body = (await res.json().catch(() => null)) as { files?: Array<{ path: string }>; error?: string } | null;
-    if (!res.ok || !body?.files) throw new Error(body?.error ?? "Não foi possível ler a pasta de mídias.");
-    setMidias(body.files.map((f) => f.path));
-  }, []);
+  // Pastas e fotos de /opt/scalemaster/midias: a foto do story é escolhida pela miniatura (MidiaPicker).
+  const biblioteca = useMidiasDaVps(aberto);
+  const midias = biblioteca.arquivos;
 
   React.useEffect(() => {
     if (!aberto) return;
     setForm(VAZIO);
     setError(null);
-    setMidias(null);
     try {
       setPastaDestino(window.localStorage.getItem(CHAVE_DESTINO) ?? "");
     } catch {
       setPastaDestino("");
     }
     if (pastaDe) setPasta(pastaDe.inicial && pastaDe.opcoes.some((o) => o.value === pastaDe.inicial) ? pastaDe.inicial : (pastaDe.opcoes.find((o) => o.elegiveis > 0)?.value ?? ""));
-    lerMidias().catch((e: Error) => setError(e.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reabre o formulário só quando o diálogo abre.
-  }, [job, pastaDe?.agent.id, aberto, lerMidias]);
+  }, [job, pastaDe?.agent.id, aberto]);
   const opcaoPasta = pastaDe?.opcoes.find((o) => o.value === pasta) ?? null;
 
   const validado = React.useMemo(() => parseEstrutura(form, midias), [form, midias]);
@@ -107,27 +99,6 @@ export function EstruturarDialog({ job, pastaDe = null, pastas = [], onClose, on
   const etapas = "value" in validado ? expandirEtapas(validado.value).length : 0;
   const qtdErros = Object.keys(erros).length;
   const podeEnviar = qtdErros === 0 && "value" in validado && (!pastaDe || (opcaoPasta?.elegiveis ?? 0) > 0);
-
-  const enviarFoto = async (campo: "fotoPerfil" | "fotoStory", arquivo: File | undefined) => {
-    if (!arquivo) return;
-    if (arquivo.size > MIDIA_MAX_BYTES) return setError("A foto passa de 8 MB.");
-    setEnviando(campo);
-    setError(null);
-    try {
-      const corpo = new FormData();
-      corpo.append("arquivo", arquivo);
-      const res = await fetch("/api/vps/midias", { method: "POST", body: corpo });
-      const body = (await res.json().catch(() => null)) as { path?: string; error?: string } | null;
-      if (!res.ok || !body?.path) throw new Error(body?.error ?? "Não foi possível enviar a foto.");
-      await lerMidias();
-      // Enviou: já fica selecionada no campo.
-      set(campo, body.path);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setEnviando(null);
-    }
-  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,36 +136,6 @@ export function EstruturarDialog({ job, pastaDe = null, pastas = [], onClose, on
     }
   };
 
-  const opcoes = (midias ?? []).map((m) => ({ value: m, label: m }));
-  const seletor = (campo: "fotoPerfil" | "fotoStory", rotulo: string) => (
-    <div className="flex items-start gap-2">
-      <div className="min-w-0 flex-1">
-        <Select
-          label={rotulo}
-          value={form[campo]}
-          onChange={(e) => set(campo, e.target.value)}
-          placeholder={midias === null ? "lendo a pasta…" : opcoes.length === 0 ? "nenhuma foto na pasta" : "escolha a foto"}
-          options={opcoes}
-          error={erros[campo]}
-        />
-      </div>
-      <label className="mt-[26px] inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-line-control px-3 text-sm text-ink hover:bg-surface-hover">
-        <Upload size={14} />
-        {enviando === campo ? "Enviando…" : "Enviar"}
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="hidden"
-          disabled={enviando !== null}
-          onChange={(e) => {
-            void enviarFoto(campo, e.target.files?.[0]);
-            e.target.value = "";
-          }}
-        />
-      </label>
-    </div>
-  );
-
   return (
     <Dialog
       open={aberto}
@@ -217,7 +158,7 @@ export function EstruturarDialog({ job, pastaDe = null, pastas = [], onClose, on
               hint={`Entram as contas criadas da pasta que ainda não estão prontas; a VPS roda até ${pastaDe.agent.capacidade.maxCadastro} ao mesmo tempo e o resto espera na fila.`}
             />
           )}
-          {seletor("fotoStory", "Foto do story")}
+          <MidiaPicker midias={biblioteca} label="Foto do story" value={form.fotoStory} onChange={(p) => set("fotoStory", p)} error={erros.fotoStory ?? biblioteca.erro ?? undefined} />
           <PastaCampo
             label="Ao concluir, mover para a pasta"
             rotuloVazio="Não mover"

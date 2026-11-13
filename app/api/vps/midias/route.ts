@@ -2,7 +2,7 @@ import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { MIDIA_MAX_BYTES } from "@/lib/vps/estruturacao";
-import { listarMidias, pastaMidias, salvarMidia } from "@/lib/vps/midias";
+import { listarMidias, nomePastaMidia, pastaMidias, pastasDeMidia, salvarMidia } from "@/lib/vps/midias";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,11 +15,12 @@ async function usuario() {
   return user;
 }
 
-// GET — fotos de /opt/scalemaster/midias (a pasta que o agente da VPS usa), para os selects do Estruturar.
+// GET — fotos de /opt/scalemaster/midias (a pasta que o agente da VPS usa) e as pastas de primeiro nível (Mídias / Estruturar).
 export async function GET() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return NextResponse.json({ error: "Supabase não configurado" }, { status: 503 });
   if (!(await usuario())) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  return NextResponse.json({ root: pastaMidias(), files: listarMidias(pastaMidias()) });
+  const files = listarMidias(pastaMidias());
+  return NextResponse.json({ root: pastaMidias(), files, folders: pastasDeMidia(pastaMidias(), files) });
 }
 
 // POST — upload de uma foto (multipart, campo "arquivo"): até 8 MB, jpg/png/webp, nome sanitizado, sem sobrescrever.
@@ -35,8 +36,8 @@ export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
     arquivo = form.get("arquivo");
-    // pasta=perfil: foto de perfil da criação de conta (o agente sorteia só de midias/perfil/).
-    subpasta = form.get("pasta") === "perfil" ? "perfil" : "";
+    // pasta=perfil: foto de perfil da criação de conta (o agente sorteia só de midias/perfil/); outra = pasta do diálogo Mídias.
+    subpasta = nomePastaMidia(form.get("pasta")) ?? "";
   } catch {
     return NextResponse.json({ error: SEM_ARQUIVO }, { status: 400 });
   }

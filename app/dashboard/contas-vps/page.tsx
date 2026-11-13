@@ -8,6 +8,7 @@ import { AgenteVpsCard, ConectarVpsDialog } from "@/components/dashboard/vps/Age
 import { ContasVpsCard, type EstruturaAction, type JobAction } from "@/components/dashboard/vps/ContasVpsCard";
 import { EstruturarDialog, type PastaOpcao } from "@/components/dashboard/vps/EstruturarDialog";
 import { PastaCampo } from "@/components/dashboard/vps/PastaCampo";
+import { MidiaPicker, useMidiasDaVps } from "@/components/dashboard/vps/MidiaPicker";
 import { SEM_PASTA, elegiveisDaPasta, pastasDasContas } from "@/lib/vps/pastas";
 import { prontidaoDaConta } from "@/lib/vps/estruturacao";
 import { LoteDialog } from "@/components/dashboard/vps/LoteDialog";
@@ -48,6 +49,8 @@ export default function ContasVpsPage() {
   const [excluindoContainer, setExcluindoContainer] = React.useState<{ agent: VpsAgent; index: number; nome: string } | null>(null);
   /** "Estruturar pasta" aberto para esta VPS. */
   const [estruturarPasta, setEstruturarPasta] = React.useState<VpsAgent | null>(null);
+  /** Diálogo Mídias (pastas de fotos da VPS). */
+  const [midiasAberto, setMidiasAberto] = React.useState(false);
   /** Conta sendo movida de pasta. */
   const [movendo, setMovendo] = React.useState<VpsJob | null>(null);
   /** Pasta sendo renomeada (nome atual). */
@@ -307,6 +310,7 @@ export default function ContasVpsPage() {
                   onExcluir={(a, inst, conta) => (conta ? setRemoving(conta) : setExcluindoContainer({ agent: a, index: inst.index, nome: inst.name }))}
                   onLote={setLoteFor}
                   onEstruturarPasta={pastasOn && data.estruturaAvailable !== false ? setEstruturarPasta : undefined}
+                  onMidias={() => setMidiasAberto(true)}
                   onRebuild={(a) => void rebuild(a)}
                   onDisconnect={setDisconnecting}
                   rebuilding={rebuilding.has(agent.id)}
@@ -363,6 +367,7 @@ export default function ContasVpsPage() {
         }}
       />
       <RenomearPastaDialog pasta={renomeando} onClose={() => setRenomeando(null)} onSaved={() => void load()} />
+      <MidiasDialog open={midiasAberto} onClose={() => setMidiasAberto(false)} />
       <MoverPastaDialog job={movendo} pastas={nomesPastas} onClose={() => setMovendo(null)} onSaved={() => void load()} />
       <ConectarVpsDialog open={connectOpen} onClose={() => setConnectOpen(false)} onCreated={() => void load()} />
 
@@ -770,6 +775,22 @@ function EditarContaDialog({ job, onClose, onSaved }: { job: VpsJob | null; onCl
           </div>
         </form>
       )}
+    </Dialog>
+  );
+}
+
+/** "Mídias": as pastas de fotos que a VPS usa (perfil = fotos de perfil da criação; as outras, para o story do Estruturar). */
+function MidiasDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const biblioteca = useMidiasDaVps(open);
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Mídias"
+      description="Pastas de fotos da VPS. A pasta perfil é a das fotos de perfil da criação de conta; as outras ficam para escolher a foto do story no Estruturar."
+      className="max-w-3xl"
+    >
+      <MidiaPicker midias={biblioteca} error={biblioteca.erro ?? undefined} />
     </Dialog>
   );
 }
