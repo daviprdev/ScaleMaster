@@ -7,7 +7,7 @@ import type { DevicePerfil, ProvedorEmail, VpsContaDados } from "./types";
  */
 
 export const LOTE_MIN = 1;
-export const LOTE_MAX = 20;
+export const LOTE_MAX = 50; // decisão (13/11): era 20; o dono manda 50 por vez e a rede do lote tem 250 IPs
 
 const PERFIS: ReadonlySet<string> = new Set<DevicePerfil>(["aleatorio", "pixel7", "sm-a546e", "moto-g84"]);
 const USERNAME_RE = /^[A-Za-z0-9._]{1,30}$/;
