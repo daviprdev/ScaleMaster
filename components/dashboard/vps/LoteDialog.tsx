@@ -6,14 +6,9 @@ import { Banner, Button, Dialog, Input, Select, Textarea } from "@/components/ui
 import { MIDIA_MAX_BYTES } from "@/lib/vps/estruturacao";
 import { LOTE_MAX, parseLinhasPortal, parseLoteInput, parseProxies } from "@/lib/vps/input";
 import { DEVICE_PERFIS, type VpsAgent } from "@/lib/vps/types";
-import { PastaCampo } from "./PastaCampo";
 
 interface LoteDialogProps {
   agent: VpsAgent | null;
-  /** Pastas que já existem (para escolher; dá para criar uma nova no próprio campo). */
-  pastas: ReadonlyArray<string>;
-  /** Pasta que vem marcada (a do filtro da aba). */
-  pastaInicial?: string;
   onClose: () => void;
   /** Lote enviado (a lista recarrega); `avisos` = o que passou mas merece atenção (proxy com outro usuário). */
   onSaved: (avisos: string[]) => void;
@@ -25,13 +20,13 @@ interface LoteDialogProps {
  * nome, @, senha e nascimento são gerados no servidor (lib/vps/pessoa.ts). A
  * validação é a mesma do servidor (lib/vps/input.ts).
  */
-export function LoteDialog({ agent, pastas, pastaInicial = "", onClose, onSaved }: LoteDialogProps) {
+// decisão (13/11): sem campo Pasta — a conta fica em RODANDO enquanto cria e vai sozinha para CRIADAS ou FALHAS.
+export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
   const [proxies, setProxies] = React.useState("");
   const [codigos, setCodigos] = React.useState("");
   const [perfil, setPerfil] = React.useState("aleatorio");
   const [versaoIg, setVersaoIg] = React.useState("");
   const [pais, setPais] = React.useState("BR");
-  const [pasta, setPasta] = React.useState("");
   /** Fotos de perfil (midias/perfil/): a criação sorteia uma por conta. null = lendo. */
   const [fotosPerfil, setFotosPerfil] = React.useState<string[] | null>(null);
   const [enviandoFotos, setEnviandoFotos] = React.useState(false);
@@ -81,10 +76,9 @@ export function LoteDialog({ agent, pastas, pastaInicial = "", onClose, onSaved 
     setPerfil("aleatorio");
     setVersaoIg(agent.capacidade.versoesIg[0] ?? "");
     setPais("BR");
-    setPasta(pastaInicial);
     setError(null);
     void lerFotosPerfil();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- a pasta inicial só vale ao abrir.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reabre o formulário só quando troca de VPS.
   }, [agent]);
 
   const linhasCodigo = React.useMemo(() => parseLinhasPortal(codigos), [codigos]);
@@ -98,7 +92,7 @@ export function LoteDialog({ agent, pastas, pastaInicial = "", onClose, onSaved 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agent) return;
-    const body = { agentId: agent.id, proxies, perfil, versaoIg, pais, codigos, pasta };
+    const body = { agentId: agent.id, proxies, perfil, versaoIg, pais, codigos };
     const parsed = parseLoteInput(body, versoes);
     if ("error" in parsed) {
       setError(parsed.error);
@@ -159,7 +153,6 @@ export function LoteDialog({ agent, pastas, pastaInicial = "", onClose, onSaved 
               required
             />
           </div>
-          <PastaCampo pastas={pastas} value={pasta} onChange={setPasta} hint="As contas do lote entram nessa pasta (dá para trocar depois no card)." />
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line p-3">
             <div className="min-w-0">
               <p className="text-sm font-medium text-ink">Fotos de perfil</p>

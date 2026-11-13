@@ -345,8 +345,6 @@ export default function ContasVpsPage() {
 
       <LoteDialog
         agent={loteFor}
-        pastas={pastasOn ? nomesPastas : []}
-        pastaInicial={filtroPasta && filtroPasta !== SEM_PASTA ? filtroPasta : ""}
         onClose={() => setLoteFor(null)}
         onSaved={(avisos) => {
           setAvisos(avisos);
