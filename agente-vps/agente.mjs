@@ -43,9 +43,10 @@ import { Semaforo, capacidade, criarWatchdog, limparOrfaos, limparOrfaosAntigos,
 import { TAREFAS } from "./tarefas/index.mjs";
 import { versoesDisponiveis } from "./fluxos/apk.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
+import { semPerguntar } from "./fluxos/dono.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.9.13";
+const VERSAO = "1.9.14";
 const AGENT_KIND = "vps";
 /** "Instância" -1 = a VPS em si: só a automação rebuild-imagem roda nela (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
@@ -281,6 +282,9 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
     return aparelho;
   };
   const perguntar = async (tipo, texto, { sinal } = {}) => {
+    // decisão (13/11): na VPS ninguém responde na aba — o que seria pergunta vira falha em vermelho e o
+    // container desliga (não segura vaga, fila nem proxy). Só o teste local (sem semáforos) ainda pergunta.
+    if (semaforos) throw new Error(semPerguntar(texto));
     prompt = { tipo, texto };
     enviar("running");
     try {

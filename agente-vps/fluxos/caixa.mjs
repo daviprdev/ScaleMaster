@@ -18,14 +18,14 @@ import { esperar } from "../lib/processo.mjs";
  */
 
 export const PROVEDORES = ["portal", "mailtm", "imap", "manual"];
-/** Código do portal já resgatado com sessão vencida (ou OTP já recebido): a conta para, o container fica, o card pede código novo. Igual a lib/emulador/jobs.ts. */
+/** Código do portal já resgatado com sessão vencida (ou OTP já recebido): a conta para, o container desliga, o card pede código novo. Igual a lib/emulador/jobs.ts. */
 export const CODIGO_VENCIDO = "Código do portal vencido: edite a conta com um código novo";
 export const SESSAO_PORTAL_MS = 20 * 60_000;
 
 function erroCodigoVencido(motivo) {
   const e = new Error(CODIGO_VENCIDO);
   e.semPrefixo = true;
-  e.manterContainer = true;
+  // decisão (13/11): container desliga também aqui (não segura proxy esperando código novo); o Continuar liga de novo.
   e.motivo = motivo;
   return e;
 }
@@ -165,6 +165,7 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
           return otp;
         } catch (e) {
           log(`portal não trouxe o OTP: ${e.message}`);
+          this.ultimoErro = e.message;
           return null;
         }
       },

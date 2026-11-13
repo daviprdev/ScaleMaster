@@ -260,3 +260,12 @@ describe("Cadastro: captcha de imagem não é o código do e-mail", () => {
     expect(ehTelaCodigo(codigoEmail)).toBe(true);
   });
 });
+
+describe("Agente da VPS não pergunta na aba", () => {
+  it("o texto da pergunta vira o motivo da falha, sem o 'Resolva na instância…'", async () => {
+    const { semPerguntar } = await import("../agente-vps/fluxos/dono.mjs");
+    expect(semPerguntar('Tela que eu ainda não conheço: A | B. Resolva na instância e clique em "Já resolvi, continuar".')).toBe("Tela que eu ainda não conheço: A | B.");
+    expect(semPerguntar("O portal caiu.")).toBe("O portal caiu.");
+    expect(semPerguntar("")).toBe("Parou esperando resposta.");
+  });
+});

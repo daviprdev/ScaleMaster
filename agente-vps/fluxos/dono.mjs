@@ -80,3 +80,8 @@ export function criarAjuda({ d, perguntar, log }) {
 
   return { perguntarVigiando, manual, terminarAMao };
 }
+
+/** Texto da pergunta virado motivo da falha: sem o "Resolva na instância…" do fim. */
+export function semPerguntar(texto) {
+  return String(texto ?? "Parou esperando resposta.").replace(/s*(Resolva|Termine) .*$/s, "").trim() || "Parou esperando resposta.";
+}

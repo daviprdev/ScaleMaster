@@ -134,7 +134,8 @@ export class CookieJar {
 }
 
 /** Uma requisição com node:https (sem seguir redirect: quem chama decide). */
-export function requisicao(url, { method = "GET", headers = {}, body = null, jar = null, timeoutMs = 15_000 } = {}) {
+// decisão (13/11): 30 s por requisição — com 6 contas o portal passa de 15 s com frequência.
+export function requisicao(url, { method = "GET", headers = {}, body = null, jar = null, timeoutMs = 30_000 } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const fazer = u.protocol === "http:" ? httpRequest : httpsRequest;
@@ -388,8 +389,8 @@ export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, 
     } catch (e) {
       if (/acabou sem o OTP|inválido|removido|interrompida/.test(e.message)) throw e;
       erros += 1;
-      if (erros >= 5) throw e;
-      log(`portal: ${e.message} (tentando de novo)`);
+      // Portal lento não encerra a espera: segue consultando até a sessão acabar (13/11: 8 contas desistiram em 90 s).
+      if (erros === 1 || erros % 5 === 0) log(`portal: ${e.message} (tentando de novo, ${erros}ª falha seguida)`);
     }
     await esperar(intervaloMs);
   }

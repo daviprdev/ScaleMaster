@@ -317,6 +317,14 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
           }
           if (!codigo && mail.provedor !== "manual") log(`código não veio da caixa (${mail.provedor}): perguntando na aba`);
         }
+        // decisão (13/11): sem código da caixa a conta para com o motivo (vermelho no card) — nada de pedir na aba.
+        if (!codigo && mail.provedor !== "manual") {
+          throw new Error(
+            recusado
+              ? `O Instagram recusou o código do e-mail (${enderecoAtual()}).`
+              : `O código do Instagram não chegou na caixa (${mail.provedor})${mail.ultimoErro ? `: ${mail.ultimoErro}` : ""}.`
+          );
+        }
         if (!codigo) {
           codigo = await perguntarVigiando(
             "codigo",
@@ -356,6 +364,7 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
         if (!campo) throw new Error("Não achei o campo do e-mail.");
         // No portal a sessão de 20 min abre aqui, na hora de digitar; a caixa devolve null se o portal falhou.
         let endereco = await mail.endereco();
+        if (!endereco && mail.provedor === "portal") throw new Error("O portal não abriu a sessão do e-mail em 3 tentativas.");
         if (!endereco) {
           endereco = await perguntarVigiando(
             "codigo",
@@ -496,6 +505,14 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
     {
       nome: "login",
       teste: (nos) => botao(nos, ["Criar conta nova", "Create new account", "Criar nova conta"]),
+      agir: async (nos, alvo) => tocarNo(d, alvo, 4000),
+    },
+    {
+      // "Do you already have an Instagram account?" (nicole, 13/11) no meio do cadastro → Continue creating account.
+      nome: "ja-tem-conta",
+      teste: (nos) =>
+        temTexto(nos, ["already have an Instagram account", "já tem uma conta do Instagram", "já tens uma conta do Instagram"]) &&
+        botao(nos, ["Continue creating account", "Continuar criando conta", "Continuar a criar conta", "Continuar criando a conta"]),
       agir: async (nos, alvo) => tocarNo(d, alvo, 4000),
     },
     {

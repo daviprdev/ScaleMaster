@@ -83,7 +83,7 @@ describe("Código do portal vencido", () => {
     expect(reativavel.abrir).not.toHaveBeenCalled();
     const gasto = portalBase();
     gasto.statusDoCodigo = vi.fn(async () => ({ acabou: true, temOtp: true, podeRenovar: false }));
-    await expect(conferirCaixa(antigo, { portal: gasto })).rejects.toMatchObject({ message: CODIGO_VENCIDO, semPrefixo: true, manterContainer: true });
+    await expect(conferirCaixa(antigo, { portal: gasto })).rejects.toMatchObject({ message: CODIGO_VENCIDO, semPrefixo: true });
     const semReativar = portalBase();
     semReativar.statusDoCodigo = vi.fn(async () => ({ acabou: true, temOtp: false, podeRenovar: false }));
     await expect(conferirCaixa(antigo, { portal: semReativar })).rejects.toThrow(CODIGO_VENCIDO);
@@ -117,7 +117,7 @@ describe("Código do portal vencido", () => {
     expect(Date.parse(resgates[0].expiraEm)).toBe(new Date(fimEm).getTime());
   });
 
-  it("código já gasto ao abrir a sessão: endereco() lança CODIGO_VENCIDO (container fica, card pede outro)", async () => {
+  it("código já gasto ao abrir a sessão: endereco() lança CODIGO_VENCIDO (container desliga, card pede outro)", async () => {
     const portal = portalBase();
     portal.abrir = vi.fn(async () => {
       const e = new Error("o código SU****AY já foi usado (sessão encerrada com OTP recebido)") as Error & { codigoVencido?: boolean };
@@ -125,7 +125,9 @@ describe("Código do portal vencido", () => {
       throw e;
     });
     const caixa = criarCaixa(input, { portal });
-    await expect(caixa.endereco()).rejects.toMatchObject({ message: CODIGO_VENCIDO, manterContainer: true });
+    const erro = await caixa.endereco().catch((e) => e);
+    expect(erro).toMatchObject({ message: CODIGO_VENCIDO, semPrefixo: true });
+    expect(erro.manterContainer).toBeUndefined();
   });
 
   it("o andamento leva as horas do resgate para o servidor (parseJobUpdates)", () => {
