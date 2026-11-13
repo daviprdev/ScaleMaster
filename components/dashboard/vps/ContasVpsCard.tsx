@@ -3,7 +3,7 @@
 import * as React from "react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Pencil, Circle, Contact, Copy, Folder, FolderOpen, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Shield, ShieldAlert, ShieldCheck, Trash2, UserPlus, XCircle } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Input, ProgressBar, Segmented, type BadgeTone } from "@/components/ui";
-import { SEM_PASTA, gruposDePasta, type AbaContas } from "@/lib/vps/pastas";
+import { SEM_PASTA, ehPastaFixa, gruposDePasta, type AbaContas } from "@/lib/vps/pastas";
 import { cn } from "@/lib/utils";
 import { ALERTA_ROBO, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
@@ -128,7 +128,7 @@ export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onE
                   {g.resumo.length > 0 && <span className="mt-1 block text-xs text-ink-2">{g.resumo.join(" · ")}</span>}
                 </span>
               </button>
-              {onRenomearPasta && g.chave !== SEM_PASTA && (
+              {onRenomearPasta && g.chave !== SEM_PASTA && !ehPastaFixa(g.chave) && (
                 <button
                   type="button"
                   onClick={() => onRenomearPasta(g.chave)}

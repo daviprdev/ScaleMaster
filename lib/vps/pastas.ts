@@ -13,11 +13,36 @@ export const PASTA_MAX = 40;
 export const SEM_PASTA = "__sem_pasta__";
 export const FALTA_SQL_PASTAS = "Falta aplicar o SQL supabase/vps_pastas.sql no Supabase (SQL Editor).";
 
+/**
+ * Pastas fixas (13/11): a conta que termina o cadastro vai sozinha para
+ * CRIADAS (concluída) ou FALHAS (terminou com erro, inclusive pausa de proxy e
+ * agente que parou no meio). Aparecem sempre e não se renomeiam.
+ */
+export const PASTA_CRIADAS = "CRIADAS";
+export const PASTA_FALHAS = "FALHAS";
+export const PASTAS_FIXAS: readonly string[] = [PASTA_CRIADAS, PASTA_FALHAS];
+
+/** Pasta de destino de uma conta que acabou de terminar o cadastro; null = ainda rodando. */
+export function pastaAoTerminar(status: string): string | null {
+  if (status === "done") return PASTA_CRIADAS;
+  if (status === "error") return PASTA_FALHAS;
+  return null;
+}
+
+/** CRIADAS e FALHAS (qualquer caixa) não se renomeiam. */
+export function ehPastaFixa(nome: string | null | undefined): boolean {
+  const n = String(nome ?? "").trim().toUpperCase();
+  return PASTAS_FIXAS.includes(n);
+}
+
 /** Nome da pasta como vai para o banco: sem espaços sobrando, até 40 caracteres; vazio = null (sem pasta). */
 export function normalizarPasta(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const nome = raw.replace(/\s+/g, " ").trim();
   if (!nome || nome === SEM_PASTA) return null;
+  // "criadas"/"Falhas" digitado à mão cai na pasta fixa, não numa pasta nova com outra caixa.
+  const fixa = PASTAS_FIXAS.find((p) => p === nome.toUpperCase());
+  if (fixa) return fixa;
   return [...nome].slice(0, PASTA_MAX).join("");
 }
 
@@ -29,6 +54,7 @@ interface ContaComPasta {
 /** Pastas que existem (alguma conta nelas), em ordem alfabética, com o número de contas. */
 export function pastasDasContas(contas: ReadonlyArray<ContaComPasta>): Array<{ nome: string; contas: number }> {
   const conta = new Map<string, number>();
+  for (const p of PASTAS_FIXAS) conta.set(p, 0);
   for (const c of contas) if (c.kind === "nova-conta" && c.pasta) conta.set(c.pasta, (conta.get(c.pasta) ?? 0) + 1);
   return [...conta.entries()].sort(([a], [b]) => a.localeCompare(b, "pt-BR")).map(([nome, n]) => ({ nome, contas: n }));
 }
@@ -63,9 +89,12 @@ export function gruposDePasta<T extends { id: string; kind: string; status: stri
     const chave = c.pasta || SEM_PASTA;
     abas[aba].set(chave, [...(abas[aba].get(chave) ?? []), c]);
   }
+  // Na aba Criadas as pastas fixas aparecem sempre, primeiro (CRIADAS, FALHAS), mesmo vazias.
+  for (const p of PASTAS_FIXAS) if (!abas.criadas.has(p)) abas.criadas.set(p, []);
+  const ordem = (a: string) => (PASTAS_FIXAS.includes(a) ? PASTAS_FIXAS.indexOf(a) : a === SEM_PASTA ? 99 : 2);
   const ordenar = (m: Map<string, T[]>, aba: AbaContas): Array<GrupoDePasta<T>> =>
     [...m.entries()]
-      .sort(([a], [b]) => (a === SEM_PASTA ? 1 : b === SEM_PASTA ? -1 : a.localeCompare(b, "pt-BR")))
+      .sort(([a], [b]) => ordem(a) - ordem(b) || a.localeCompare(b, "pt-BR"))
       .map(([chave, lista]) => ({ chave, nome: chave === SEM_PASTA ? "Sem pasta" : chave, contas: lista, resumo: resumoDaPasta(lista, aba, estruturaDe, conectadaNoSaas) }));
   return { criadas: ordenar(abas.criadas, "criadas"), estruturadas: ordenar(abas.estruturadas, "estruturadas") };
 }

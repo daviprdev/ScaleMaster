@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
-import { FALTA_SQL_PASTAS, normalizarPasta } from "@/lib/vps/pastas";
+import { FALTA_SQL_PASTAS, ehPastaFixa, normalizarPasta } from "@/lib/vps/pastas";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
   const para = normalizarPasta(body?.para);
   if (!de) return NextResponse.json({ error: "Pasta não informada." }, { status: 400 });
   if (!para) return NextResponse.json({ error: "Informe o nome novo da pasta." }, { status: 400 });
+  if (ehPastaFixa(de)) return NextResponse.json({ error: "CRIADAS e FALHAS são pastas fixas e não podem ser renomeadas." }, { status: 400 });
   if (de === para) return NextResponse.json({ pasta: para, contas: 0 });
 
   const { data, error } = await getSupabaseAdmin().from("emulator_jobs").update({ pasta: para }).eq("user_id", user.id).eq("pasta", de).select("id, kind");

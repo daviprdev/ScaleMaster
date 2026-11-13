@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
   try {
     // runningJobs ausente = agente anterior à fila Nova conta: não recebe conta.
     const runningJobs = Array.isArray(body.runningJobs) ? new Set(parseRunning(body.runningJobs)) : null;
-    jobSync = await syncJobs(admin, agent.id, parseJobUpdates(body.jobUpdates), runningJobs, now, maxConcurrent);
+    jobSync = await syncJobs(admin, agent.id, parseJobUpdates(body.jobUpdates), runningJobs, now, maxConcurrent, agentKind === "vps");
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

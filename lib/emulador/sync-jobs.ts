@@ -4,6 +4,7 @@ import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import type { AtividadeInput } from "./atividade";
 import { ehDescarte, parseJobSteps, renameNomeStep, type JobStep, type JobUpdate, type NovaContaInput } from "./jobs";
 import { parseCriada } from "./payload";
+import { pastaAoTerminar } from "@/lib/vps/pastas";
 
 /** O que o agente recebe para rodar uma conta (input já aberto: só vai pelo sync autenticado). */
 export interface ClaimedJob {
@@ -58,8 +59,11 @@ export async function syncJobs(
   stillRunning: ReadonlySet<string> | null,
   now: string,
   // Vagas simultâneas: 2 no MuMu; na VPS, o maxCadastro que o agente informou.
-  maxConcurrent: number = MAX_CONCURRENT_JOBS_PER_AGENT
+  maxConcurrent: number = MAX_CONCURRENT_JOBS_PER_AGENT,
+  // Contas VPS: a conta que termina o cadastro vai para CRIADAS ou FALHAS.
+  pastasFixas = false
 ): Promise<SyncJobsResult> {
+  const terminadas: Array<{ id: string; status: string }> = [];
   for (const u of updates) {
     const patch: Record<string, unknown> = { steps: u.steps, status: u.status, error: u.error, updated_at: now };
     if (u.instanceIndex !== undefined) patch.instance_index = u.instanceIndex;
@@ -78,6 +82,7 @@ export async function syncJobs(
     // parseCriada). Tudo UPDATE puro: job do MuMu não tem linha em vps_devices (nada acontece) e qualquer
     // erro — tabela/coluna ausente inclusive — é só logado, o sync nunca falha por isso.
     await atualizarDeviceVps(admin, u);
+    if (u.status !== "running") terminadas.push({ id: u.id, status: u.status });
   }
 
   const { data: runningData, error: runningErr } = await admin
@@ -109,7 +114,9 @@ export async function syncJobs(
       .in("id", orphans)
       .eq("status", "running");
     if (error) throw new Error(error.message);
+    for (const id of orphans) terminadas.push({ id, status: "error" });
   }
+  if (pastasFixas) await moverAoTerminar(admin, agentId, terminadas, now);
 
   if (!stillRunning) return { jobs: [], replies };
   const runningCount = running.filter((r) => stillRunning.has(r.id)).length;
@@ -173,6 +180,27 @@ export async function syncJobs(
 }
 
 /** UPDATEs em vps_devices e na pausa do job ligados ao andamento; erro engolido com log. */
+/**
+ * Pastas fixas (13/11): conta (nova-conta) que terminou NESTE sync vai para
+ * CRIADAS ou FALHAS. O `finished_at = now` garante que só a transição desta
+ * rodada move (mover à mão depois fica). Estruturação não muda de pasta aqui.
+ */
+async function moverAoTerminar(admin: SupabaseClient, agentId: string, terminadas: ReadonlyArray<{ id: string; status: string }>, now: string): Promise<void> {
+  for (const t of terminadas) {
+    const pasta = pastaAoTerminar(t.status);
+    if (!pasta) continue;
+    const { error } = await admin
+      .from("emulator_jobs")
+      .update({ pasta })
+      .eq("id", t.id)
+      .eq("agent_id", agentId)
+      .eq("kind", "nova-conta")
+      .eq("status", t.status)
+      .eq("finished_at", now);
+    if (error && !isMissingSchemaError(error)) console.warn(`[emulador/sync] pasta ao terminar (${t.id}): ${error.message}`);
+  }
+}
+
 async function atualizarDeviceVps(admin: SupabaseClient, u: JobUpdate): Promise<void> {
   const avisar = (o: string, error: { message?: string } | null) => {
     if (error) console.warn(`[emulador/sync] ${o} não gravado (${u.id}): ${error.message ?? "erro"}`);
