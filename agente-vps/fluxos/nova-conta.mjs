@@ -366,8 +366,13 @@ export const NOVA_CONTA = [
     chave: "fechar",
     rotulo: "Desligar o container",
     sempre: true,
-    async rodar({ mumu, estado, dispositivo }) {
+    async rodar({ mumu, estado, dispositivo, log }) {
       await pararInstagram(await dispositivo());
+      // decisão (13/11): o docker stop (~40 s) roda fora da vaga; a próxima conta da fila já começa.
+      if (mumu.fecharDepois) {
+        mumu.fecharDepois(container(estado), { log });
+        return "Instagram parado; container desligando fora da vaga";
+      }
       await mumu.fechar(container(estado));
       return "Instagram parado e container desligado";
     },

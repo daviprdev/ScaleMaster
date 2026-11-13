@@ -96,13 +96,13 @@ export const MEMORIA = "2048m";
 
 /**
  * CPUs de cada container: as vCPUs do host divididas pelos containers que
- * podem ficar de pé ao mesmo tempo, no mínimo 1. Neste host (2 vCPU,
- * maxLigadas 1) = 2.
+ * podem ficar de pé ao mesmo tempo, com uma casa decimal (para baixo), no
+ * mínimo 1. KVM 8 (8 vCPU, maxLigadas 6) = 1.3; host de 2 vCPU = 2.
  */
 export function cpusPorContainer(vcpu, maxLigadas) {
   const v = Number.isFinite(vcpu) && vcpu > 0 ? Math.floor(vcpu) : 1;
   const l = Number.isFinite(maxLigadas) && maxLigadas > 0 ? Math.floor(maxLigadas) : 1;
-  return String(Math.max(1, Math.floor(v / l)));
+  return String(Math.max(1, Math.floor((v * 10) / l) / 10));
 }
 
 /** Cota desta máquina agora (vCPU e maxLigadas do supervisor). */
@@ -229,6 +229,8 @@ export class Android {
     this.manager = "docker";
     /** Containers cujo Android já terminou de ligar (evita um adb por sync). */
     this.prontos = new Set();
+    /** Desligamentos em andamento fora da vaga (fecharDepois): índice → promessa. abrir/prepararInstancia esperam por ela. */
+    this.desligando = new Map();
     /** MAC lido do docker inspect de container sem MAC no retrato: jobId → mac, mandado no próximo sync. */
     this.macsAprendidos = new Map();
   }
@@ -537,7 +539,24 @@ export class Android {
   }
 
   /** Liga: recria o container se alguma prop de boot mudou, docker start, sidecar (bloqueado ou proxy) e adb. */
+  /**
+   * Desliga sem segurar quem chamou (13/11): o `docker stop -t 30` leva ~40 s
+   * (o Android não sai no SIGTERM) e prendia a vaga do job. O fim da conta não
+   * espera; quem for ligar o mesmo container espera este desligamento acabar.
+   */
+  fecharDepois(index, { log = () => {} } = {}) {
+    const anterior = this.desligando.get(index);
+    if (anterior) return anterior;
+    const p = this.fechar(index)
+      .then(() => log(`${nomeDe(index)} desligado`))
+      .catch((e) => log(`${nomeDe(index)}: desligar falhou: ${e.message}`))
+      .finally(() => this.desligando.delete(index));
+    this.desligando.set(index, p);
+    return p;
+  }
+
   async abrir(index) {
+    await this.desligando.get(index);
     const spec = lerSpec(index);
     if (!spec) throw new Error(`O container #${index} não existe.`);
     const nome = nomeDe(index);
@@ -653,6 +672,7 @@ export class Android {
 
   /** Liga o container (se preciso) e espera o Android ficar pronto com adb. */
   async prepararInstancia(index, { timeoutMs = 180_000, log = () => {} } = {}) {
+    await this.desligando.get(index);
     let atual = await this.instancia(index);
     if (atual.state === "off") {
       log(`ligando ${nomeDe(index)}`);

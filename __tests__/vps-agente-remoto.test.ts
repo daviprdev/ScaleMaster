@@ -76,7 +76,7 @@ describe("RAM: a do host do agente", () => {
   it("o agente lê MemAvailable e manda na capacidade; o app decide o lote por ela", () => {
     expect(ramDisponivelMb("MemTotal:  32000000 kB\nMemAvailable:   20480000 kB\n")).toBe(20000);
     expect(ramDisponivelMb("sem nada")).toBeNull();
-    expect(capacidade({ arch: "x86_64", vcpu: 8, totalMb: 32000, livreMb: 1000, disponivelMb: 20000 })).toMatchObject({ ramDisponivelMb: 20000, maxLigadas: 4 });
+    expect(capacidade({ arch: "x86_64", vcpu: 8, totalMb: 32000, livreMb: 1000, disponivelMb: 20000 })).toMatchObject({ ramDisponivelMb: 20000, maxLigadas: 6, maxCadastro: 6 });
     const cap = parseCapacidade({ maxLigadas: 4, maxCadastro: 4, vcpu: 8, ramTotalMb: 32000, ramDisponivelMb: 20000 });
     expect(cap.ramDisponivelMb).toBe(20000);
     expect(ramDoAgente(cap)).toMatchObject({ livreMb: 20000, totalMb: 32000, bloqueio: null });

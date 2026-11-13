@@ -177,8 +177,13 @@ const FIXAS = {
   fechar: {
     rotulo: "Desligar o container",
     sempre: true,
-    async rodar({ mumu, estado, dispositivo }) {
+    async rodar({ mumu, estado, dispositivo, log }) {
       await pararInstagram(await dispositivo()).catch(() => {});
+      // decisão (13/11): o docker stop (~40 s) roda fora da vaga, igual ao fim da criação de conta.
+      if (mumu.fecharDepois) {
+        mumu.fecharDepois(container(estado), { log });
+        return "Instagram parado; container desligando fora da vaga (nada apagado)";
+      }
       await mumu.fechar(container(estado));
       return "Instagram parado e container desligado (nada apagado)";
     },

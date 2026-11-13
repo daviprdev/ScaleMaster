@@ -138,9 +138,9 @@ describe("Contas VPS: capacidade e identidade", () => {
   it("supervisor: capacidade por arquitetura; semáforo respeita a vaga", async () => {
     // maxLigadas = clamp(vCPU/2, 1, 8) e maxCadastro = clamp(vCPU/2, 1, 4): nada vem da RAM nem da arquitetura.
     expect(capacidade({ arch: "x86_64", vcpu: 2, totalMb: 7935, livreMb: 1145 })).toMatchObject({ arch: "x86_64", maxLigadas: 1, maxCadastro: 1, ramTotalMb: 7935, ramUsadaMb: 6790 });
-    expect(capacidade({ arch: "x64", vcpu: 8, totalMb: 2000, livreMb: 500 })).toMatchObject({ maxLigadas: 4, maxCadastro: 4 });
+    expect(capacidade({ arch: "x64", vcpu: 8, totalMb: 2000, livreMb: 500 })).toMatchObject({ maxLigadas: 6, maxCadastro: 6 });
     expect(capacidade({ arch: "x86_64", vcpu: 1, totalMb: 65536, livreMb: 60000 })).toMatchObject({ maxLigadas: 1, maxCadastro: 1 });
-    expect(capacidade({ arch: "aarch64", vcpu: 8, totalMb: 32768, livreMb: 30000 })).toMatchObject({ arch: "arm64", maxLigadas: 4, maxCadastro: 4 });
+    expect(capacidade({ arch: "aarch64", vcpu: 8, totalMb: 32768, livreMb: 30000 })).toMatchObject({ arch: "arm64", maxLigadas: 6, maxCadastro: 6 });
     expect(capacidade({ arch: "arm64", vcpu: 2, totalMb: 4096, livreMb: 1000 })).toMatchObject({ maxLigadas: 1, maxCadastro: 1 });
     const c = capacidade();
     expect(c.maxLigadas).toBeGreaterThanOrEqual(1);

@@ -22,13 +22,14 @@ import { enderecoDe } from "../agente-vps/lib/rede.mjs";
 import { capacidade, containerDoCgroup, lerPs } from "../agente-vps/lib/supervisor.mjs";
 
 describe("Cota por container", () => {
-  it("--cpus = max(1, floor(vCPU / maxLigadas)); neste host (2 vCPU, maxLigadas 1) = 2", () => {
+  it("--cpus = max(1, vCPU / maxLigadas com uma casa); 2 vCPU = 2, KVM 8 (6 ligadas) = 1.3", () => {
     expect(cpusPorContainer(2, 1)).toBe("2");
     expect(cpusPorContainer(4, 2)).toBe("2");
     expect(cpusPorContainer(8, 4)).toBe("2");
     expect(cpusPorContainer(16, 8)).toBe("2");
     expect(cpusPorContainer(6, 3)).toBe("2");
-    expect(cpusPorContainer(5, 2)).toBe("2");
+    expect(cpusPorContainer(5, 2)).toBe("2.5");
+    expect(cpusPorContainer(8, 6)).toBe("1.3");
     expect(cpusPorContainer(3, 1)).toBe("3");
     expect(cpusPorContainer(1, 1)).toBe("1");
     expect(cpusPorContainer(2, 4)).toBe("1");
@@ -36,7 +37,7 @@ describe("Cota por container", () => {
     // Com a capacidade real calculada pelo supervisor para cada tamanho de host.
     for (const vcpu of [1, 2, 3, 4, 8, 16, 32]) {
       const cap = capacidade({ arch: "x86_64", vcpu, totalMb: 8000, livreMb: 4000 });
-      expect(cotaAtual(cap).cpus, `${vcpu} vCPU`).toBe(String(Math.max(1, Math.floor(vcpu / cap.maxLigadas))));
+      expect(cotaAtual(cap).cpus, `${vcpu} vCPU`).toBe(String(Math.max(1, Math.floor((vcpu * 10) / cap.maxLigadas) / 10)));
     }
     expect(cotaAtual(capacidade({ arch: "x86_64", vcpu: 2, totalMb: 8126, livreMb: 1497 }))).toEqual({ cpus: "2", memoria: "2048m" });
   });

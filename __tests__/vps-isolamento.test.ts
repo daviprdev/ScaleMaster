@@ -8,9 +8,9 @@ import { argsDaRede, colisao, enderecoDe, ipDe, ipNaRede as ipNaRedeAgente, rede
 import { capacidade, limitesPorVcpu } from "../agente-vps/lib/supervisor.mjs";
 
 describe("Concorrência: limites por vCPU", () => {
-  it("maxLigadas = clamp(floor(vCPU/2), 1, 8) e maxCadastro = clamp(floor(vCPU/2), 1, 4), nunca acima de maxLigadas", () => {
+  it("maxLigadas = clamp(floor(vCPU×3/4), 1, 8) e maxCadastro = clamp(floor(vCPU×3/4), 1, 6), nunca acima de maxLigadas", () => {
     const esperado: Array<[number, number, number]> = [
-      [1, 1, 1], [2, 1, 1], [3, 1, 1], [4, 2, 2], [5, 2, 2], [6, 3, 3], [8, 4, 4], [10, 5, 4], [12, 6, 4], [16, 8, 4], [32, 8, 4], [96, 8, 4],
+      [1, 1, 1], [2, 1, 1], [3, 2, 2], [4, 3, 3], [5, 3, 3], [6, 4, 4], [8, 6, 6], [10, 7, 6], [12, 8, 6], [16, 8, 6], [32, 8, 6], [96, 8, 6],
     ];
     for (const [vcpu, maxLigadas, maxCadastro] of esperado) {
       expect(limitesPorVcpu(vcpu), `${vcpu} vCPU`).toEqual({ maxLigadas, maxCadastro });
@@ -24,7 +24,7 @@ describe("Concorrência: limites por vCPU", () => {
 
   it("os dois limites e as vCPUs vão em capacity; o servidor não aceita maxCadastro acima de maxLigadas", () => {
     const enviado = capacidade({ arch: "x86_64", vcpu: 8, totalMb: 16000, livreMb: 8000 });
-    expect(parseCapacidade({ ...enviado, ligadas: 2, versoesIg: [] })).toMatchObject({ maxLigadas: 4, maxCadastro: 4, vcpu: 8, ligadas: 2 });
+    expect(parseCapacidade({ ...enviado, ligadas: 2, versoesIg: [] })).toMatchObject({ maxLigadas: 6, maxCadastro: 6, vcpu: 8, ligadas: 2 });
     expect(parseCapacidade({ maxLigadas: 1, maxCadastro: 4, vcpu: 2 })).toMatchObject({ maxLigadas: 1, maxCadastro: 1 });
   });
 

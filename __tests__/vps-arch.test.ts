@@ -68,9 +68,9 @@ describe("Contas VPS: arquitetura do host", () => {
 
   it("capacidade: vCPU/2 nas duas arquiteturas (1 a 8 ligadas, 1 a 4 jobs), sem olhar a RAM", () => {
     expect(capacidade({ arch: "x86_64", vcpu: 2, totalMb: 7935, livreMb: 1145 })).toMatchObject({ arch: "x86_64", maxLigadas: 1, maxCadastro: 1 });
-    expect(capacidade({ arch: "x64", vcpu: 4, totalMb: 1024, livreMb: 100 })).toMatchObject({ maxLigadas: 2, maxCadastro: 2 });
-    expect(capacidade({ arch: "x86_64", vcpu: 16, totalMb: 131072, livreMb: 100000 })).toMatchObject({ maxLigadas: 8, maxCadastro: 4 });
-    expect(capacidade({ arch: "aarch64", vcpu: 8, totalMb: 32768, livreMb: 30000 })).toMatchObject({ arch: "arm64", maxLigadas: 4, maxCadastro: 4 });
+    expect(capacidade({ arch: "x64", vcpu: 4, totalMb: 1024, livreMb: 100 })).toMatchObject({ maxLigadas: 3, maxCadastro: 3 });
+    expect(capacidade({ arch: "x86_64", vcpu: 16, totalMb: 131072, livreMb: 100000 })).toMatchObject({ maxLigadas: 8, maxCadastro: 6 });
+    expect(capacidade({ arch: "aarch64", vcpu: 8, totalMb: 32768, livreMb: 30000 })).toMatchObject({ arch: "arm64", maxLigadas: 6, maxCadastro: 6 });
     expect(capacidade({ arch: "arm64", vcpu: 2, totalMb: 1000, livreMb: 500 })).toMatchObject({ maxLigadas: 1, maxCadastro: 1 });
   });
 });

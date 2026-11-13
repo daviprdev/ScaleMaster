@@ -7,8 +7,9 @@ import { rodar, trecho } from "./processo.mjs";
  * mesmo tempo), um watchdog por conta e a limpeza de órfãos no boot.
  *
  * Concorrência pela CPU da máquina (igual em x86_64 e arm64):
- *   maxLigadas  = clamp(floor(vCPU / 2), 1, 8)   containers de pé ao mesmo tempo
- *   maxCadastro = clamp(floor(vCPU / 2), 1, 4)   jobs rodando ao mesmo tempo, nunca acima de maxLigadas
+ *   maxLigadas  = clamp(floor(vCPU × 3/4), 1, 8)   containers de pé ao mesmo tempo
+ *   maxCadastro = clamp(floor(vCPU × 3/4), 1, 6)   jobs rodando ao mesmo tempo, nunca acima de maxLigadas
+ * (13/11: era vCPU ÷ 2 com teto 4; a KVM 8 ficava 95% ociosa com 4 contas → 6.)
  * Cada container roda com --cpus 1 e --memory 1536m (lib/android.mjs); com
  * menos de 4 vCPU é um por vez e a aba avisa "host pequeno".
  *
@@ -19,15 +20,15 @@ import { rodar, trecho } from "./processo.mjs";
 
 export const MB_POR_CONTAINER = 1536;
 export const MAX_LIGADAS = 8;
-export const MAX_CADASTRO = 4;
+export const MAX_CADASTRO = 6;
 
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 
 /** Os dois limites a partir das vCPUs: maxCadastro nunca passa de maxLigadas. */
 export function limitesPorVcpu(vcpu) {
-  const metade = Math.floor((Number.isFinite(vcpu) && vcpu > 0 ? vcpu : 1) / 2);
-  const maxLigadas = clamp(metade, 1, MAX_LIGADAS);
-  return { maxLigadas, maxCadastro: Math.min(clamp(metade, 1, MAX_CADASTRO), maxLigadas) };
+  const tresQuartos = Math.floor(((Number.isFinite(vcpu) && vcpu > 0 ? vcpu : 1) * 3) / 4);
+  const maxLigadas = clamp(tresQuartos, 1, MAX_LIGADAS);
+  return { maxLigadas, maxCadastro: Math.min(clamp(tresQuartos, 1, MAX_CADASTRO), maxLigadas) };
 }
 /** Conta sem progresso de etapa por mais que isso é morta pelo watchdog (o cadastro em si tem limite próprio de 45 min). */
 export const TRAVADO_MS = 60 * 60_000;
