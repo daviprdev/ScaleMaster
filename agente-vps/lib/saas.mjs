@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -75,5 +75,44 @@ export async function sincronizarMidias(raiz, { log = () => {}, fetcher = fetch 
     baixadas += 1;
   }
   if (baixadas) log(`fotos: ${baixadas} baixada(s) do SaaS para ${raiz}`);
+  // Foto apagada no site (Mídias → Excluir, 14/11) sai daqui também: senão o sorteio da foto de perfil
+  // continuaria usando a cópia local. Só fotos (jpg/png/webp) — o resto da pasta não é do SaaS.
+  const doSite = new Set((Array.isArray(files) ? files : []).map((f) => relativoSeguro(f?.path)).filter(Boolean));
+  let apagadas = 0;
+  // Resposta sem a lista (formato inesperado) não apaga nada.
+  for (const rel of Array.isArray(files) ? fotosLocais(raiz) : []) {
+    if (doSite.has(rel)) continue;
+    try {
+      unlinkSync(path.join(raiz, rel));
+      apagadas += 1;
+    } catch {
+      /* já sumiu */
+    }
+  }
+  if (apagadas) log(`fotos: ${apagadas} apagada(s) aqui porque saíram do SaaS`);
   return baixadas;
+}
+
+const FOTO_RE = /.(jpe?g|png|webp)$/i;
+
+/** Fotos (jpg/png/webp) da pasta de mídias desta máquina, caminho relativo com "/" (até 3 níveis). */
+function fotosLocais(raiz) {
+  const fotos = [];
+  const visitar = (rel, nivel) => {
+    if (nivel > 3) return;
+    let itens = [];
+    try {
+      itens = readdirSync(path.join(raiz, rel), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const item of itens) {
+      if (item.name.startsWith(".")) continue;
+      const filho = rel ? `${rel}/${item.name}` : item.name;
+      if (item.isDirectory()) visitar(filho, nivel + 1);
+      else if (item.isFile() && FOTO_RE.test(item.name)) fotos.push(filho);
+    }
+  };
+  visitar("", 0);
+  return fotos;
 }

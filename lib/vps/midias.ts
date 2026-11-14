@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { MIDIA_EXTENSOES, MIDIA_MAX_BYTES } from "./estruturacao";
 
@@ -134,6 +134,48 @@ export function nomePastaMidia(raw: unknown): string | null {
 export interface PastaMidia {
   nome: string;
   fotos: number;
+  /** Nome mostrado na tela ("Foto Perfil", "Stories"). */
+  rotulo?: string;
+}
+
+/**
+ * Só duas pastas fixas (14/11): "Foto Perfil" (pasta perfil/, de onde a criação
+ * de conta sorteia a foto) e "Stories" (pasta stories/, fotos do story do
+ * Estruturar). Não se cria nem se renomeia pasta pela tela.
+ */
+export const PASTAS_MIDIA_FIXAS: ReadonlyArray<{ nome: string; rotulo: string }> = [
+  { nome: "perfil", rotulo: "Foto Perfil" },
+  { nome: "stories", rotulo: "Stories" },
+];
+
+/** Pasta de upload aceita: "perfil" ou "stories"; qualquer outra coisa = null. */
+export function pastaMidiaFixa(raw: unknown): string | null {
+  const nome = String(raw ?? "").trim().toLowerCase();
+  return PASTAS_MIDIA_FIXAS.some((p) => p.nome === nome) ? nome : null;
+}
+
+/** As duas pastas fixas (criadas se faltarem), com quantas fotos cada uma tem. */
+export function pastasFixasDeMidia(raiz: string, arquivos: ReadonlyArray<MidiaArquivo> = listarMidias(raiz)): PastaMidia[] {
+  return PASTAS_MIDIA_FIXAS.map((p) => {
+    try {
+      criarPastaMidia(raiz, p.nome);
+    } catch {
+      /* pasta de mídias fora do ar: só lista */
+    }
+    return { nome: p.nome, rotulo: p.rotulo, fotos: arquivos.filter((a) => a.path.startsWith(`${p.nome}/`)).length };
+  });
+}
+
+/**
+ * Apaga uma foto da pasta de mídias. Só o que está na listagem (nada de
+ * caminho montado à mão). O agente apaga a cópia dele no próximo sync de fotos.
+ */
+export function apagarMidia(raiz: string, rel: string): { ok: true } | { error: string } {
+  if (!listarMidias(raiz).some((m) => m.path === rel)) return { error: "Foto não encontrada." };
+  const alvo = path.resolve(raiz, rel);
+  if (!alvo.startsWith(path.resolve(raiz) + path.sep)) return { error: "Caminho inválido." };
+  unlinkSync(alvo);
+  return { ok: true };
 }
 
 /** Subpastas de primeiro nível (vazias também), em ordem alfabética, com quantas fotos cada uma tem. */

@@ -785,7 +785,7 @@ function MidiasDialog({ open, onClose }: { open: boolean; onClose: () => void })
       open={open}
       onClose={onClose}
       title="Mídias"
-      description="Pastas de fotos da VPS. A pasta perfil é a das fotos de perfil da criação de conta; as outras ficam para escolher a foto do story no Estruturar."
+      description="Foto Perfil: cada conta criada recebe uma foto sorteada daqui. Stories: as fotos para escolher no Estruturar. A lixeira em cada foto exclui."
       className="max-w-3xl"
     >
       <MidiaPicker midias={biblioteca} error={biblioteca.erro ?? undefined} />

@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from "node:
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { criarPastaMidia, listarMidias, nomePastaMidia, pastasDeMidia, salvarMidia } from "../lib/vps/midias";
+import { apagarMidia, criarPastaMidia, listarMidias, nomePastaMidia, pastaMidiaFixa, pastasDeMidia, pastasFixasDeMidia, salvarMidia } from "../lib/vps/midias";
 
 const JPG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]);
 let raiz = "";
@@ -49,5 +49,37 @@ describe("Pastas de mídia (Mídias / Estruturar)", () => {
     expect(existsSync(path.join(raiz, "stories"))).toBe(true);
     expect(() => criarPastaMidia(raiz, "../fora")).toThrow("inválido");
     expect(() => criarPastaMidia(raiz, "a/b")).toThrow("inválido");
+  });
+});
+
+describe("Mídias: só Foto Perfil e Stories, com exclusão", () => {
+  it("upload só aceita as duas pastas fixas", () => {
+    expect(pastaMidiaFixa("perfil")).toBe("perfil");
+    expect(pastaMidiaFixa(" Stories ")).toBe("stories");
+    expect(pastaMidiaFixa("outra")).toBeNull();
+    expect(pastaMidiaFixa("")).toBeNull();
+    expect(pastaMidiaFixa(undefined)).toBeNull();
+  });
+
+  it("as duas pastas existem sempre (criadas se faltarem), com o rótulo e a contagem", () => {
+    raiz = mkdtempSync(path.join(os.tmpdir(), "midias-"));
+    salvarMidia(path.join(raiz, "perfil"), "a.jpg", JPG);
+    expect(pastasFixasDeMidia(raiz)).toEqual([
+      { nome: "perfil", rotulo: "Foto Perfil", fotos: 1 },
+      { nome: "stories", rotulo: "Stories", fotos: 0 },
+    ]);
+    expect(existsSync(path.join(raiz, "stories"))).toBe(true);
+  });
+
+  it("excluir apaga só foto listada; caminho montado à mão é recusado", () => {
+    raiz = mkdtempSync(path.join(os.tmpdir(), "midias-"));
+    salvarMidia(path.join(raiz, "stories"), "cta.png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]));
+    writeFileSync(path.join(raiz, "segredo.txt"), "x");
+    expect(apagarMidia(raiz, "stories/cta.png")).toEqual({ ok: true });
+    expect(existsSync(path.join(raiz, "stories", "cta.png"))).toBe(false);
+    expect(apagarMidia(raiz, "stories/cta.png")).toEqual({ error: "Foto não encontrada." });
+    expect(apagarMidia(raiz, "segredo.txt")).toEqual({ error: "Foto não encontrada." });
+    expect(apagarMidia(raiz, "../fora.jpg")).toEqual({ error: "Foto não encontrada." });
+    expect(existsSync(path.join(raiz, "segredo.txt"))).toBe(true);
   });
 });

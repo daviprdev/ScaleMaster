@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -44,6 +44,14 @@ describe("Fotos: o agente baixa do app o que falta", () => {
     expect(baixadas).toBe(1);
     expect(pedidos).toEqual(["https://scalemaster.tech/api/emulador/agente/midias", "https://scalemaster.tech/api/emulador/agente/midias/arquivo?path=perfil%2Fnova.jpg"]);
     expect([...readFileSync(path.join(raiz, "perfil", "nova.jpg"))]).toEqual([1, 2, 3, 4]);
+    // Foto que saiu do site (Mídias → Excluir) é apagada aqui; arquivo que não é foto fica.
+    writeFileSync(path.join(raiz, "perfil", "apagada.jpg"), "x");
+    writeFileSync(path.join(raiz, "perfil", "notas.txt"), "x");
+    await sincronizarMidias(raiz, { fetcher: fetcher as unknown as typeof fetch });
+    expect(existsSync(path.join(raiz, "perfil", "apagada.jpg"))).toBe(false);
+    expect(existsSync(path.join(raiz, "perfil", "nova.jpg"))).toBe(true);
+    expect(existsSync(path.join(raiz, "perfil", "igual.jpg"))).toBe(true);
+    expect(existsSync(path.join(raiz, "perfil", "notas.txt"))).toBe(true);
     expect(relativoSeguro("a/../b")).toBeNull();
     expect(relativoSeguro("a\\b")).toBeNull();
     expect(relativoSeguro("story/cta.png")).toBe("story/cta.png");
