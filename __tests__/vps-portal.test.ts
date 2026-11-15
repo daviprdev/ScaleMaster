@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { codigoPortalValido, linkPortalValido, parseConta, parseLinhaPortal, parseLinhasPortal, parseLoteInput, PORTAL_PADRAO } from "../lib/vps/input";
-import { extrairEmail, extrairOtp, lerStatus, mascarar, urlSessao, codigoValido } from "../agente-vps/lib/portal.mjs";
+import { extrairEmail, extrairOtp, lerStatus, mascarar, urlSessao, codigoValido, erroRenovar } from "../agente-vps/lib/portal.mjs";
 import { conferirCaixa, criarCaixa, descricaoCaixa, provedorDe } from "../agente-vps/fluxos/caixa.mjs";
 import { ROTULOS_EMAIL } from "../lib/vps/provedores";
 import { PROVEDORES_EMAIL } from "../lib/vps/types";
@@ -268,5 +268,14 @@ describe("Agente: abrir app pela atividade LAUNCHER (o monkey do redroid aborta)
     expect(resolverAtividade("com.x.app/com.x.app.ui.Main", "com.x.app")).toBe("com.x.app/com.x.app.ui.Main");
     expect(resolverAtividade("No activity found", "com.x.app")).toBeNull();
     expect(resolverAtividade("", "com.x.app")).toBeNull();
+  });
+});
+
+describe("Portal: Reactivate recusado", () => {
+  it("limite de reativações vira código vencido (sem 6 tentativas)", () => {
+    expect(erroRenovar("reactivation_limit_reached").codigoVencido).toBe(true);
+    expect(erroRenovar("already_used").codigoVencido).toBe(true);
+    expect(erroRenovar("HTTP 502").codigoVencido).toBeUndefined();
+    expect(erroRenovar("sem resposta").message).toContain("o portal não renovou a sessão");
   });
 });

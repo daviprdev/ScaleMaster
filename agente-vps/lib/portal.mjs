@@ -218,7 +218,17 @@ async function renovarHttp(sessao) {
   } catch {
     /* sem JSON */
   }
-  if (r.status !== 200 || !resposta?.ok) throw new Error(`o portal não renovou a sessão: ${resposta?.error ?? `HTTP ${r.status}`}`);
+  if (r.status !== 200 || !resposta?.ok) throw erroRenovar(resposta?.error ?? `HTTP ${r.status}`);
+}
+
+/**
+ * decisão (15/11): "reactivation_limit_reached" = o código gastou as reativações; insistir só segura o aparelho
+ * (luana, fabiana, sofia: 6 tentativas, 7 min). Vira código vencido na hora (o card pede código novo).
+ */
+export function erroRenovar(motivo) {
+  const e = new Error(`o portal não renovou a sessão: ${motivo}`);
+  if (/limit|already_used|removed/i.test(String(motivo))) e.codigoVencido = true;
+  return e;
 }
 
 const http = {
@@ -374,7 +384,7 @@ const browser = {
       },
       { url: `${sessao.url}/reactivate`, lease: atual.lease }
     );
-    if (!j?.ok) throw new Error(`o portal não renovou a sessão: ${j?.error ?? "sem resposta"}`);
+    if (!j?.ok) throw erroRenovar(j?.error ?? "sem resposta");
   },
   async fechar(sessao) {
     await sessao?.contexto?.close().catch(() => {});
