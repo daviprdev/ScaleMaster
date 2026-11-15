@@ -21,6 +21,10 @@ export const PROVEDORES = ["portal", "mailtm", "imap", "manual"];
 /** Código do portal já resgatado com sessão vencida (ou OTP já recebido): a conta para, o container desliga, o card pede código novo. Igual a lib/emulador/jobs.ts. */
 export const CODIGO_VENCIDO = "Código do portal vencido: edite a conta com um código novo";
 export const SESSAO_PORTAL_MS = 20 * 60_000;
+/** Tentativas contra o portal fora do ar (esperas de 10, 20, 30, 40, 50 s com esperaPortalMs = 5 s). */
+export const TENTATIVAS_PORTAL = 6;
+/** Sem o código do Instagram nesse tempo, o agente faz o Reactivate (e-mail novo) e troca o e-mail no Instagram. */
+export const OTP_ANTES_DE_REATIVAR_MS = 6 * 60_000;
 
 function erroCodigoVencido(motivo) {
   const e = new Error(CODIGO_VENCIDO);
@@ -88,14 +92,14 @@ export async function conferirCaixa(input, { portal = portalLib, imap = imapLib,
     // Código já resgatado numa rodada anterior: nunca se reusa um vencido — para aqui e o card pede outro.
     const vencido = await codigoVencido(input, portal);
     if (vencido) throw erroCodigoVencido(vencido);
-    // Queda de segundos do portal (HTTP 502, elaine 15/11) não para a conta: 4 tentativas. Só GET, o código não é gasto.
+    // Queda do portal (HTTP 502/500, 15/11) não para a conta: 6 tentativas com espera crescente. Só GET, o código não é gasto.
     for (let tentativa = 1; ; tentativa++) {
       try {
         await portal.verificarPortal(link);
         break;
       } catch (e) {
-        if (tentativa >= 4) throw e;
-        await esperar(esperaPortalMs * tentativa);
+        if (tentativa >= TENTATIVAS_PORTAL) throw e;
+        await esperar(esperaPortalMs * 2 * tentativa);
       }
     }
     return `portal acessível (código ${portal.mascarar(codigo)}${input?.portalResgatadoEm ? ", sessão ainda válida" : ""}); a sessão abre na hora do cadastro`;
@@ -148,9 +152,9 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
         return sessao?.email ?? null;
       },
       async endereco() {
-        // O portal às vezes passa de 15 s (4 contas abrindo juntas na KVM 8, emanuelle 13/11): tenta 3 vezes antes de
-        // perguntar o endereço na aba.
-        for (let tentativa = 1; tentativa <= 3; tentativa++) {
+        // O portal cai por minutos (502/500 das 03:49 às 04:20 de 15/11, 30 falhas seguidas): 6 tentativas com espera
+        // crescente (~3 min no total) antes de desistir.
+        for (let tentativa = 1; tentativa <= TENTATIVAS_PORTAL; tentativa++) {
           try {
             const s = await abrir();
             vistos = portal.mensagensVistas ? await Promise.resolve(portal.mensagensVistas(s)).catch(() => null) : null;
@@ -158,11 +162,19 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
           } catch (e) {
             // Código já gasto: não há endereço possível com ele — para o job (container fica) e o card pede código novo.
             if (e.codigoVencido) throw erroCodigoVencido(e.message);
-            log(`portal falhou ao abrir a sessão (tentativa ${tentativa}/3): ${e.message}`);
-            if (tentativa < 3) await esperar(esperaPortalMs * tentativa);
+            log(`portal falhou ao abrir a sessão (tentativa ${tentativa}/${TENTATIVAS_PORTAL}): ${e.message}`);
+            if (tentativa < TENTATIVAS_PORTAL) await esperar(esperaPortalMs * 2 * tentativa);
           }
         }
         return null;
+      },
+      /** Reactivate do portal (o botão da página): mesma compra, e-mail novo. Para quando o código do Instagram não chega. */
+      async novoEndereco() {
+        const s = await abrir();
+        await portal.renovar(s);
+        vistos = portal.mensagensVistas ? await Promise.resolve(portal.mensagensVistas(s)).catch(() => null) : null;
+        log(`portal: Reactivate feito, e-mail novo ${s.email}`);
+        return s.email;
       },
       async esperarCodigo({ timeoutMs, sinal = null } = {}) {
         try {

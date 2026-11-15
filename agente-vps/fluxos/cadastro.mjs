@@ -1,7 +1,7 @@
 import { esperar } from "../lib/processo.mjs";
 import { variarUsuario } from "../lib/usuario.mjs";
 import { INSTAGRAM } from "./apk.mjs";
-import { criarCaixa } from "./caixa.mjs";
+import { criarCaixa, OTP_ANTES_DE_REATIVAR_MS } from "./caixa.mjs";
 import { criarAjuda, resumoTela, salvarTela } from "./dono.mjs";
 import { acharId, acharTexto, preencher, temTexto, tocarNo } from "./tela.mjs";
 
@@ -301,7 +301,7 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
           })();
           try {
             codigo = await Promise.race([
-              mail.esperarCodigo({ desde, sinal: controle.signal }),
+              mail.esperarCodigo({ desde, sinal: controle.signal, ...(mail.novoEndereco ? { timeoutMs: OTP_ANTES_DE_REATIVAR_MS } : {}) }),
               new Promise((resolve) => controle.signal.addEventListener("abort", () => resolve(null), { once: true })),
             ]).catch((e) => {
               log(`caixa (${mail.provedor}) falhou: ${e.message}`);
@@ -314,6 +314,22 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
           if (saiu) {
             log("a tela do código já passou: seguindo");
             return;
+          }
+          // Portal: o código não chegou em 6 min — faz o Reactivate (e-mail novo), volta para a tela do e-mail no
+          // Instagram e cola o novo (o passo a passo do dono, 15/11). Até 2 trocas por conta.
+          if (!codigo && mail.novoEndereco && (estado.trocasEmail ?? 0) < 2) {
+            estado.trocasEmail = (estado.trocasEmail ?? 0) + 1;
+            const novo = await mail.novoEndereco().catch((e) => {
+              log(`Reactivate do portal falhou: ${e.message}`);
+              return null;
+            });
+            if (novo) {
+              log(`o código não chegou: e-mail novo pelo Reactivate (${estado.trocasEmail}/2), voltando para a tela do e-mail`);
+              estado.codigosImap = 0;
+              await d.tecla("KEYCODE_BACK");
+              await esperar(3000);
+              return;
+            }
           }
           if (!codigo && mail.provedor !== "manual") log(`código não veio da caixa (${mail.provedor}): perguntando na aba`);
         }

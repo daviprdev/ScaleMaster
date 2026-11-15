@@ -402,7 +402,7 @@ export async function mensagensVistas(sessao) {
  * `sinal` (AbortSignal) interrompe a espera: quem chama viu que a tela do código já passou.
  * @param {{ log?: (m: string) => void, intervaloMs?: number, ignorar?: Set<string>|null, descartar?: Set<string>|null, esperaNovoMs?: number, sinal?: AbortSignal|null }} [opts]
  */
-export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 3000, ignorar = null, descartar = null, esperaNovoMs = 60_000, sinal = null } = {}) {
+export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 5000, ignorar = null, descartar = null, esperaNovoMs = 60_000, sinal = null } = {}) {
   const via = caminho(sessao);
   const inicio = Date.now();
   const limite = inicio + timeoutMs;
