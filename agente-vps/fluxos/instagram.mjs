@@ -534,7 +534,12 @@ export async function irPara(ctx, aba, { porMudanca = false, abas = false } = {}
     if (abas && !temBarra(nos) && doInstagram(nos) && noProprioPerfil(nos)) {
       log("perfil do deep link sem a barra de abas: trazendo a tela principal");
       await d.shell(...comandoTelaPrincipal()).catch(() => "");
-      await esperar(2500);
+      // decisão (15/11): espera a tela principal ficar na frente (até 12 s) antes de tocar na aba — com 6
+      // aparelhos ligados ela passava dos 2,5 s fixos, o toque caía no perfil do deep link e as 8 tentativas
+      // acabavam ("Não achei a aba perfil", luana/priscila/valentina).
+      const ate = Date.now() + 12_000;
+      while (Date.now() < ate && !/InstagramMainActivity/.test(await atividadeNoTopo(d))) await esperar(500);
+      await esperar(1000);
       if (ABA_XY[aba]) await d.tocar(...ABA_XY[aba]);
       await esperar(2500);
       continue;
