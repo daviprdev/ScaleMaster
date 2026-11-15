@@ -164,6 +164,7 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
       async endereco() {
         // O portal cai por minutos (502/500 das 03:49 às 04:20 de 15/11, 30 falhas seguidas): 6 tentativas com espera
         // crescente (~3 min no total) antes de desistir.
+        this.ultimoErro = null;
         for (let tentativa = 1; tentativa <= TENTATIVAS_PORTAL; tentativa++) {
           try {
             const s = await abrir();
@@ -175,6 +176,10 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
             log(`portal falhou ao abrir a sessão (tentativa ${tentativa}/${TENTATIVAS_PORTAL}): ${e.message}`);
             if (e.portalFora) {
               this.ultimoErro = e.message;
+              return null;
+            }
+            if (e.reativacaoLimitada) {
+              this.ultimoErro = "o portal limitou as reativações deste código por agora (o código continua valendo: use Continuar mais tarde, não compre outro)";
               return null;
             }
             if (tentativa < TENTATIVAS_PORTAL) await esperar(esperaPortalMs * 2 * tentativa);

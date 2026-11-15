@@ -427,7 +427,7 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
           // No portal a sessão de 20 min abre aqui, na hora de digitar; a caixa devolve null se o portal falhou.
           endereco = await mail.endereco();
         }
-        if (!endereco && mail.provedor === "portal") throw new Error("O portal não abriu a sessão do e-mail (6 tentativas).");
+        if (!endereco && mail.provedor === "portal") throw new Error(mail.ultimoErro ? `O portal não abriu a sessão do e-mail: ${mail.ultimoErro}.` : "O portal não abriu a sessão do e-mail (6 tentativas).");
         if (!endereco) {
           endereco = await perguntarVigiando(
             "codigo",

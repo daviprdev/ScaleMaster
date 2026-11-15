@@ -222,14 +222,18 @@ async function renovarHttp(sessao) {
 }
 
 /**
- * decisão (15/11): "reactivation_limit_reached" = o código gastou as reativações; insistir só segura o aparelho
- * (luana, fabiana, sofia: 6 tentativas, 7 min). Vira código vencido na hora (o card pede código novo).
+ * decisão (15/11): "reactivation_limit_reached" é limite TEMPORÁRIO do portal (luana: recusado às 16:27, às 16:45
+ * o /status já dava can_reactivate=true). O código continua valendo: não é vencido. Marca reativacaoLimitada para
+ * a caixa parar de insistir (6 tentativas seguravam o aparelho 7 min) e a conta parar com o motivo; Continuar depois.
+ * already_used/removed = código gasto de verdade.
  * @param {string} motivo
- * @returns {Error & { codigoVencido?: boolean }}
+ * @returns {Error & { codigoVencido?: boolean, reativacaoLimitada?: boolean }}
  */
 export function erroRenovar(motivo) {
+  /** @type {Error & { codigoVencido?: boolean, reativacaoLimitada?: boolean }} */
   const e = new Error(`o portal não renovou a sessão: ${motivo}`);
-  if (/limit|already_used|removed/i.test(String(motivo))) e.codigoVencido = true;
+  if (/already_used|removed/i.test(String(motivo))) e.codigoVencido = true;
+  else if (/limit/i.test(String(motivo))) e.reativacaoLimitada = true;
   return e;
 }
 

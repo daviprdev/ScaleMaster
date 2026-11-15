@@ -272,8 +272,9 @@ describe("Agente: abrir app pela atividade LAUNCHER (o monkey do redroid aborta)
 });
 
 describe("Portal: Reactivate recusado", () => {
-  it("limite de reativações vira código vencido (sem 6 tentativas)", () => {
-    expect(erroRenovar("reactivation_limit_reached").codigoVencido).toBe(true);
+  it("limite de reativações é temporário (não vence o código); already_used vence", () => {
+    expect(erroRenovar("reactivation_limit_reached").codigoVencido).toBeUndefined();
+    expect(erroRenovar("reactivation_limit_reached").reativacaoLimitada).toBe(true);
     expect(erroRenovar("already_used").codigoVencido).toBe(true);
     expect(erroRenovar("HTTP 502").codigoVencido).toBeUndefined();
     expect(erroRenovar("sem resposta").message).toContain("o portal não renovou a sessão");
@@ -317,5 +318,16 @@ describe("Portal fora do ar: o código não se perde", () => {
     const caixa = criarCaixa(inputPortal, { portal, log: () => {} }) as unknown as { esperarCodigo: (o: object) => Promise<string | null>; portalFora: boolean };
     expect(await caixa.esperarCodigo({})).toBeNull();
     expect(caixa.portalFora).toBe(true);
+  });
+});
+
+describe("Portal: reativação limitada", () => {
+  it("endereco() para na hora, sem 6 tentativas, e diz que o código continua valendo", async () => {
+    const limitada = Object.assign(new Error("o portal não renovou a sessão: reactivation_limit_reached"), { reativacaoLimitada: true });
+    const portal = { mascarar, codigoValido, abrir: vi.fn(async () => { throw limitada; }), esperarOtp: vi.fn(), fechar: vi.fn(async () => {}), verificarPortal: vi.fn(), esperarPortalNoAr: vi.fn(async () => true) };
+    const caixa = criarCaixa({ provedorEmail: "portal", conta: { email: LINK, nome: "Maria" }, imap: { senha: "SUDXHRAY" } }, { portal, log: () => {}, esperaPortalMs: 0 }) as unknown as { endereco: () => Promise<string | null>; ultimoErro: string };
+    expect(await caixa.endereco()).toBeNull();
+    expect(portal.abrir).toHaveBeenCalledTimes(1);
+    expect(caixa.ultimoErro).toContain("continua valendo");
   });
 });
