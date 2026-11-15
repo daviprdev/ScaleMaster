@@ -533,7 +533,25 @@ export async function tocarLinkDoDestaque(ctx, { link = "", destaque = "", perfi
       nos = await d.tela().catch(() => []);
     }
     if (nos.length > 0) ultima = nos;
-    if (nos.length > 0 && noPerfil(nos) && !noVisualizador(nos)) await reabrirDestaque(d, nos, destaque, log);
+    if (nos.length > 0 && noPerfil(nos) && !noVisualizador(nos)) {
+      await reabrirDestaque(d, nos, destaque, log);
+      // decisão (15/11): depois de reabrir, nada de tocar às cegas na posição antiga — com o story ainda
+      // carregando, o toque no meio é "próximo" e fecha o destaque (priscila: 4 tentativas perdidas assim).
+      // Lê a tela e só segue com o story aberto e o sticker visível, na posição de agora.
+      let fresco = null;
+      for (let leitura = 0; leitura < 3 && !fresco; leitura++) {
+        const agora = await d.tela().catch(() => []);
+        if (agora.length > 0) ultima = agora;
+        if (paginaAberta(agora)) return descreverPagina(agora);
+        if (noVisualizador(agora)) fresco = stickerDeLink(agora, host);
+        else if (noPerfil(agora)) break;
+      }
+      if (!fresco) {
+        log(`story reaberto sem o sticker de link na tela (tentativa ${tentativa}/5)`);
+        continue;
+      }
+      sticker = fresco;
+    }
 
     if (!sticker) {
       const pausada = await lerComPausa(d);
