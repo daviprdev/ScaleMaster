@@ -307,7 +307,10 @@ export async function subirSidecar(container, proxy) {
     await esperar(1000);
     const st = await rodar("docker", ["inspect", "--format", "{{.State.Running}} {{.RestartCount}} {{.State.ExitCode}}", nomeSidecar(container)], { timeoutMs: 20_000 });
     const [running, restarts, exitCode] = trecho(st.stdout).split(" ");
-    const logs = await rodar("docker", ["logs", "--tail", "20", nomeSidecar(container)], { timeoutMs: 20_000 });
+    // Log inteiro: o sidecar é recriado acima (só tem a subida de agora) e o gost registra cada conexão do
+    // Android — com o aparelho já ligado, o "sidecar pronto" saía das últimas 20 linhas em segundos e a
+    // espera estourava com a proxy funcionando (15/11: 10 estruturações paradas nisso).
+    const logs = await rodar("docker", ["logs", nomeSidecar(container)], { timeoutMs: 20_000 });
     const saida = `${logs.stdout ?? ""}\n${logs.stderr ?? ""}`;
     if (running !== "true" || Number(restarts) > 0) {
       await pararSidecar(container);
