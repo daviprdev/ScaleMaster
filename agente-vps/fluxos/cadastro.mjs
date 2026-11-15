@@ -378,9 +378,20 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
         }
         const campo = campoPor(nos, ["E-mail", "Email"]);
         if (!campo) throw new Error("Não achei o campo do e-mail.");
-        // No portal a sessão de 20 min abre aqui, na hora de digitar; a caixa devolve null se o portal falhou.
-        let endereco = await mail.endereco();
-        if (!endereco && mail.provedor === "portal") throw new Error("O portal não abriu a sessão do e-mail em 3 tentativas.");
+        // O Instagram recusou o endereço ("A entrada Email é inválida", cecilia 15/11, e-mail vindo do Reactivate):
+        // pede outro ao portal (Reactivate de novo) e digita, até 2 vezes por conta.
+        const invalido = temTexto(nos, ["Email é inválida", "e-mail é inválido", "email é inválido", "Enter a valid email", "valid email address", "Introduz um email válido"]);
+        let endereco = null;
+        if (invalido) {
+          if (!mail.novoEndereco || (estado.trocasEmail ?? 0) >= 2) throw new Error(`O Instagram recusou o e-mail ${mail.email ?? "da conta"} (inválido) e não há outro.`);
+          estado.trocasEmail = (estado.trocasEmail ?? 0) + 1;
+          log(`o Instagram recusou o e-mail: pedindo outro ao portal (Reactivate ${estado.trocasEmail}/2)`);
+          endereco = await mail.novoEndereco();
+        } else {
+          // No portal a sessão de 20 min abre aqui, na hora de digitar; a caixa devolve null se o portal falhou.
+          endereco = await mail.endereco();
+        }
+        if (!endereco && mail.provedor === "portal") throw new Error("O portal não abriu a sessão do e-mail (6 tentativas).");
         if (!endereco) {
           endereco = await perguntarVigiando(
             "codigo",
