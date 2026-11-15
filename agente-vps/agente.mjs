@@ -46,7 +46,7 @@ import { pararInstagram } from "./fluxos/instagram.mjs";
 import { semPerguntar } from "./fluxos/dono.mjs";
 import { FLUXOS } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.9.16";
+const VERSAO = "1.9.17";
 const AGENT_KIND = "vps";
 /** "Instância" -1 = a VPS em si: só a automação rebuild-imagem roda nela (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
@@ -353,16 +353,12 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
         step.message = String(e.message).slice(0, 300);
         logJob(`${etapa.rotulo} falhou: ${e.message}`);
         await fotografar(etapa.chave);
-        // Etapa independente (`segue`): a falha fica registrada e o job vai para a próxima.
-        if (etapa.segue) {
-          falhas.add(etapa.chave);
-          watchdog.bater();
-          enviar("running");
-          continue;
+        // decisão (15/11): qualquer etapa que falha encerra o job — nada de seguir para as próximas (`segue` não vale
+        // mais). O aparelho desliga fora da vaga, para a próxima conta da fila começar na hora. Descartada já foi apagada.
+        if (estado.instanceIndex !== null && !estado.descartada && !e.manterContainer) {
+          if (driver.fecharDepois) driver.fecharDepois(estado.instanceIndex, { log: logJob });
+          else await driver.fechar(estado.instanceIndex).catch(() => {});
         }
-        // Conta parada = container desligado (sem Instagram aberto por aí); proxy morta também. Descartada já foi
-        // apagada; código do portal vencido mantém o container ligado (e.manterContainer) à espera do código novo.
-        if (estado.instanceIndex !== null && !estado.descartada && !e.manterContainer) await driver.fechar(estado.instanceIndex).catch(() => {});
         return enviar("error", e.semPrefixo ? e.message : `${etapa.rotulo}: ${e.message}`);
       }
     }

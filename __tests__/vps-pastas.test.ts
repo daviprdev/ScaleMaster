@@ -171,3 +171,19 @@ describe("Pastas fixas CRIADAS e FALHAS", () => {
     expect(elegiveisDaPasta(contas, PASTA_CRIADAS, () => null).elegiveis.map((c) => c.id)).toEqual(["ok"]);
   });
 });
+
+describe("Painel da estruturação", () => {
+  it("rodada = estruturações pendentes e as criadas junto; sem pendente, nada", async () => {
+    const { rodadaDeEstruturacao, rotulosDaEstruturacao, diferencasDeLog, retratar } = await import("../lib/vps/painel");
+    const base = Date.parse("2026-11-15T00:30:00Z");
+    const job = (id: string, status: string, minutos: number, kind = "estruturacao") =>
+      ({ id, kind, status, label: id, createdAt: new Date(base + minutos * 60_000).toISOString(), steps: [], error: null, prompt: null, plano: [{ key: "bio", label: "Preencher a bio" }] }) as never;
+    expect(rodadaDeEstruturacao([job("a", "done", 0), job("b", "error", 1)])).toBeNull();
+    const rodada = rodadaDeEstruturacao([job("velha", "done", -30), job("a", "done", 0), job("b", "running", 1), job("c", "queued", 1), job("conta", "running", 1, "nova-conta")]);
+    expect(rodada?.map((j: { id: string }) => j.id)).toEqual(["a", "b", "c"]);
+    expect(rotulosDaEstruturacao(rodada ?? []).get("bio")).toBe("Preencher a bio");
+    const antes = retratar([job("b", "running", 1)]);
+    const linhas = diferencasDeLog(antes, [job("b", "done", 1)], new Date(), new Map(), "Estruturação concluída");
+    expect(linhas.map((l: { mensagem: string }) => l.mensagem)).toContain("Estruturação concluída");
+  });
+});

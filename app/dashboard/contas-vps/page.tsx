@@ -13,6 +13,7 @@ import { SEM_PASTA, elegiveisDaPasta, pastasDasContas } from "@/lib/vps/pastas";
 import { prontidaoDaConta } from "@/lib/vps/estruturacao";
 import { LoteDialog } from "@/components/dashboard/vps/LoteDialog";
 import { ProgressoLotePanel } from "@/components/dashboard/vps/ProgressoLotePanel";
+import { ProgressoEstruturacaoPanel } from "@/components/dashboard/vps/ProgressoEstruturacaoPanel";
 import { parseLinhaPortal, parseProxy } from "@/lib/vps/input";
 import { ROTULOS_EMAIL } from "@/lib/vps/provedores";
 import { busyInstances, instanceAlerts, linkedJobs } from "@/lib/vps/jobs";
@@ -276,6 +277,7 @@ export default function ContasVpsPage() {
             </Banner>
           )}
           {data.jobsAvailable && <ProgressoLotePanel jobs={data.jobs} conectadasSaas={conectadasSaas} />}
+          {data.jobsAvailable && <ProgressoEstruturacaoPanel jobs={data.jobs} />}
           {data.jobsAvailable && !pastasOn && (
             <Banner tone="warning">
               Para as pastas falta aplicar o SQL <span className="font-mono">supabase/vps_pastas.sql</span> no Supabase (SQL Editor).

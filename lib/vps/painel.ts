@@ -116,7 +116,13 @@ function hora(agora: Date): string {
  * registra o estado atual que interessa: etapa rodando, erro e pedido.
  * `rotulos` = chave da etapa → rótulo (VPS_FLUXO).
  */
-export function diferencasDeLog(antes: Retrato | null, jobs: readonly VpsJob[], agora: Date, rotulos: ReadonlyMap<string, string>): LinhaLog[] {
+export function diferencasDeLog(
+  antes: Retrato | null,
+  jobs: readonly VpsJob[],
+  agora: Date,
+  rotulos: ReadonlyMap<string, string>,
+  concluido = "Conta criada"
+): LinhaLog[] {
   const linhas: LinhaLog[] = [];
   const h = hora(agora);
   let n = 0;
@@ -137,7 +143,7 @@ export function diferencasDeLog(antes: Retrato | null, jobs: readonly VpsJob[], 
     if (job.error && job.error !== (prev?.error ?? null)) linha(job, "conta", rotuloAlerta(job.error) ?? job.error, true);
     const pedido = job.prompt?.texto ?? null;
     if (pedido && pedido !== (prev?.prompt ?? null)) linha(job, "esperando você", pedido, false);
-    if (job.status === "done" && prev && prev.status !== "done") linha(job, "conta", "Conta criada", false);
+    if (job.status === "done" && prev && prev.status !== "done") linha(job, "conta", concluido, false);
   }
   return linhas;
 }
@@ -147,4 +153,24 @@ export function acrescentarLog(atual: readonly LinhaLog[], novas: readonly Linha
   if (novas.length === 0) return atual as LinhaLog[];
   const juntas = [...atual, ...novas];
   return juntas.length > LOG_MAX ? juntas.slice(juntas.length - LOG_MAX) : juntas;
+}
+
+/**
+ * Rodada atual de estruturação (15/11): as estruturações na fila ou rodando e
+ * as que começaram junto com elas (criadas até 2 min antes da mais antiga
+ * pendente — o "Estruturar pasta" cria todas de uma vez). null = nenhuma pendente.
+ */
+export function rodadaDeEstruturacao(jobs: readonly VpsJob[]): VpsJob[] | null {
+  const estruturas = jobs.filter((j) => j.kind === "estruturacao");
+  const pendentes = estruturas.filter((j) => j.status === "queued" || j.status === "running");
+  if (pendentes.length === 0) return null;
+  const inicio = Math.min(...pendentes.map((j) => Date.parse(j.createdAt))) - 2 * 60_000;
+  return estruturas.filter((j) => Date.parse(j.createdAt) >= inicio).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
+
+/** Rótulos das etapas da estruturação (chave → rótulo), tirados do plano de cada job. */
+export function rotulosDaEstruturacao(jobs: readonly VpsJob[]): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const j of jobs) for (const p of j.plano ?? []) if (!m.has(p.key)) m.set(p.key, p.label);
+  return m;
 }

@@ -192,8 +192,27 @@ export async function voltarAoPerfil(ctx) {
 }
 
 /** Telas que podem aparecer em qualquer ponto: avisos que param tudo, pedidos ao dono e pop-ups. */
+// "Ocorreu um erro. | Continuar em inglês (EUA) | Tentar novamente" (pacote de idioma pela proxy, eduarda 15/11):
+// tenta de novo 2 vezes e depois segue em inglês.
+const errosIdioma = new WeakMap();
+
 function telasGerais({ d, ajuda }) {
   return [
+    {
+      nome: "erro-idioma",
+      teste: (nos) =>
+        temTexto(nos, ["Ocorreu um erro", "Something went wrong", "An error occurred"]) &&
+        (acharTexto(nos, ["Tentar novamente", "Try again", "Retry"], { exato: true }) ?? acharTexto(nos, ["Continuar em inglês", "Continue in English"])),
+      agir: async (nos) => {
+        const vezes = (errosIdioma.get(d) ?? 0) + 1;
+        errosIdioma.set(d, vezes);
+        const alvo =
+          vezes <= 2
+            ? (acharTexto(nos, ["Tentar novamente", "Try again", "Retry"], { exato: true }) ?? acharTexto(nos, ["Continuar em inglês", "Continue in English"]))
+            : (acharTexto(nos, ["Continuar em inglês", "Continue in English"]) ?? acharTexto(nos, ["Tentar novamente", "Try again", "Retry"], { exato: true }));
+        await tocarNo(d, alvo, 6000);
+      },
+    },
     {
       nome: "suspensa",
       teste: (nos) =>
@@ -1092,6 +1111,20 @@ export async function postarStory(ctx, { link, texto }) {
           const ok = botao(atual, CONCLUIR);
           if (!ok) return;
           await toque(d, atual, ok);
+          estado.sticker = true;
+        },
+      },
+      {
+        // Endereço já no campo e o Concluir não pegou (joyce, 15/11: "Adicionar link | Concluir | URL | https://…"): toca de novo.
+        nome: "link-concluir",
+        teste: (nos) =>
+          temTexto(nos, ["Adicionar link", "Add link", "Adicionar ligação", "Add a link"]) &&
+          (estado.sticker || nos.some((n) => /EditText/.test(n.classe) && n.texto && link && n.texto.includes(link.replace(/^https?:\/\//i, "").slice(0, 12)))) &&
+          botao(nos, CONCLUIR),
+        agir: async (nos, ok) => {
+          estado.concluirLink = (estado.concluirLink ?? 0) + 1;
+          if (estado.concluirLink > 3) throw new Error("toquei em Concluir no link do story 3 vezes e a tela não saiu");
+          await toque(d, nos, ok);
           estado.sticker = true;
         },
       },
