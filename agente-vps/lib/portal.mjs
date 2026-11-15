@@ -202,6 +202,16 @@ const http = {
     if (![200, 302, 303].includes(post.status)) throw new Error(`o portal respondeu HTTP ${post.status} ao resgatar`);
     let pagina = await requisicao(url, { jar });
     if (pagina.status === 404) throw new Error("código de resgate inválido");
+    // Sessão vencida: a inbox responde 410 (Gone), mas o /status do código continua de pé com o lease — devolve a
+    // sessão como está e o abrir() decide (reativa se venceu sem OTP; código gasto se recebeu). debora/milena, 15/11.
+    if (pagina.status === 410) {
+      const vencida = { modo: "http", url, jar, codigo: String(codigo).toUpperCase(), fimEm: null, email: null };
+      const j = await statusHttp(vencida);
+      const lido = lerStatus(j);
+      vencida.email = lido.email;
+      vencida.fimEm = Date.now() + (lido.restanteMs ?? 0);
+      return { sessao: vencida, status: j };
+    }
     if (pagina.status !== 200) throw new Error(`a inbox do portal devolveu HTTP ${pagina.status}`);
     // Código nunca usado: a página é "Redeem code X is ready. Start the session to receive OTPs." com um
     // <form method='post'> vazio (visto em 08/11 com o 2º código). O POST começa os 20 min e abre a inbox.
