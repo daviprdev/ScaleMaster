@@ -75,7 +75,7 @@ export function descricaoCaixa(input) {
  * @param {any} input
  * @param {{ portal?: any, imap?: any, mailtm?: any }} [deps] módulos injetáveis (testes)
  */
-export async function conferirCaixa(input, { portal = portalLib, imap = imapLib, mailtm = mailtmLib } = {}) {
+export async function conferirCaixa(input, { portal = portalLib, imap = imapLib, mailtm = mailtmLib, esperaPortalMs = 5000 } = {}) {
   const p = provedorDe(input);
   const conta = input?.conta ?? {};
   const cred = input?.imap ?? {};
@@ -88,7 +88,16 @@ export async function conferirCaixa(input, { portal = portalLib, imap = imapLib,
     // Código já resgatado numa rodada anterior: nunca se reusa um vencido — para aqui e o card pede outro.
     const vencido = await codigoVencido(input, portal);
     if (vencido) throw erroCodigoVencido(vencido);
-    await portal.verificarPortal(link);
+    // Queda de segundos do portal (HTTP 502, elaine 15/11) não para a conta: 4 tentativas. Só GET, o código não é gasto.
+    for (let tentativa = 1; ; tentativa++) {
+      try {
+        await portal.verificarPortal(link);
+        break;
+      } catch (e) {
+        if (tentativa >= 4) throw e;
+        await esperar(esperaPortalMs * tentativa);
+      }
+    }
     return `portal acessível (código ${portal.mascarar(codigo)}${input?.portalResgatadoEm ? ", sessão ainda válida" : ""}); a sessão abre na hora do cadastro`;
   }
   if (p === "mailtm") {
