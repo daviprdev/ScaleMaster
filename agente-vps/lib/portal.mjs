@@ -133,9 +133,38 @@ export class CookieJar {
   }
 }
 
-/** Uma requisição com node:https (sem seguir redirect: quem chama decide). */
+/**
+ * decisão (15/11): no máximo 2 requisições ao portal ao mesmo tempo, somando todos os aparelhos. Com 6 contas
+ * consultando juntas o portal passava de 30 s e devolvia 502 em série — o próprio agente piorava a lentidão.
+ */
+const PORTAL_EM_PARALELO = 2;
+let portalEmCurso = 0;
+const portalFila = [];
+function vagaNoPortal() {
+  if (portalEmCurso < PORTAL_EM_PARALELO) {
+    portalEmCurso += 1;
+    return Promise.resolve();
+  }
+  return new Promise((ok) => portalFila.push(ok));
+}
+function soltarPortal() {
+  const proximo = portalFila.shift();
+  if (proximo) proximo();
+  else portalEmCurso -= 1;
+}
+
+/** Uma requisição com node:https (sem seguir redirect: quem chama decide), na fila de 2 por vez. */
 // decisão (13/11): 30 s por requisição — com 6 contas o portal passa de 15 s com frequência.
-export function requisicao(url, { method = "GET", headers = {}, body = null, jar = null, timeoutMs = 30_000 } = {}) {
+export async function requisicao(url, opcoes = {}) {
+  await vagaNoPortal();
+  try {
+    return await requisicaoDireta(url, opcoes);
+  } finally {
+    soltarPortal();
+  }
+}
+
+function requisicaoDireta(url, { method = "GET", headers = {}, body = null, jar = null, timeoutMs = 30_000 } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const fazer = u.protocol === "http:" ? httpRequest : httpsRequest;
@@ -402,7 +431,7 @@ export async function mensagensVistas(sessao) {
  * `sinal` (AbortSignal) interrompe a espera: quem chama viu que a tela do código já passou.
  * @param {{ log?: (m: string) => void, intervaloMs?: number, ignorar?: Set<string>|null, descartar?: Set<string>|null, esperaNovoMs?: number, sinal?: AbortSignal|null }} [opts]
  */
-export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 5000, ignorar = null, descartar = null, esperaNovoMs = 60_000, sinal = null } = {}) {
+export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 8000, ignorar = null, descartar = null, esperaNovoMs = 60_000, sinal = null } = {}) {
   const via = caminho(sessao);
   const inicio = Date.now();
   const limite = inicio + timeoutMs;

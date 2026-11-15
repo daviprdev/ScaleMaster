@@ -353,6 +353,12 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
               await irParaAlterarEmail(d, log);
               return;
             }
+            // Reactivate falhou (portal fora do ar): não encerra — volta a esperar o código na sessão atual e tenta o
+            // Reactivate de novo depois (15/11: 11 contas paradas assim com a sessão ainda valendo ~14 min).
+            if (estado.codigosImap < 2) {
+              log("Reactivate falhou: seguindo à espera do código na sessão atual");
+              return;
+            }
           }
           if (!codigo && mail.provedor !== "manual") log(`código não veio da caixa (${mail.provedor}): perguntando na aba`);
         }
@@ -409,7 +415,11 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
           if (!mail.novoEndereco || (estado.trocasEmail ?? 0) >= 2) throw new Error(`O Instagram recusou o e-mail ${mail.email ?? "da conta"} (inválido) e não há outro.`);
           estado.trocasEmail = (estado.trocasEmail ?? 0) + 1;
           log(`o Instagram recusou o e-mail: pedindo outro ao portal (Reactivate ${estado.trocasEmail}/2)`);
-          endereco = await mail.novoEndereco();
+          endereco = await mail.novoEndereco().catch((e) => {
+            log(`Reactivate do portal falhou: ${e.message}; usando o e-mail da sessão atual`);
+            return null;
+          });
+          if (!endereco) endereco = await mail.endereco();
         } else {
           // No portal a sessão de 20 min abre aqui, na hora de digitar; a caixa devolve null se o portal falhou.
           endereco = await mail.endereco();
