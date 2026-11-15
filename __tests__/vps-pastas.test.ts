@@ -101,12 +101,13 @@ describe("Abas Criadas/Estruturadas com as pastas", () => {
     ]);
     expect(g.criadas.map((p) => [p.nome, p.contas.map((c) => c.id), p.resumo])).toEqual([
       ["RODANDO", ["c"], ["1 criando"]],
+      ["ESTRUTURANDO", [], []],
       ["CRIADAS", [], []],
       ["FALHAS", [], []],
       ["Novembro", ["b"], ["1 para estruturar"]],
       ["Sem pasta", ["d"], ["1 para estruturar"]],
     ]);
-    expect(g.criadas[4].chave).toBe(SEM_PASTA);
+    expect(g.criadas[5].chave).toBe(SEM_PASTA);
   });
 });
 
@@ -132,7 +133,7 @@ describe("Conectada no SaaS conta como estruturada", () => {
     const contas = [conta("josianecavalcanti85432", { pasta: "PRONTAS" }), conta("outra", { pasta: "PRONTAS" })];
     const g = gruposDePasta(contas, () => null, new Set(["josianecavalcanti85432"]));
     expect(g.estruturadas.map((p) => [p.nome, p.contas.map((c) => c.id), p.resumo])).toEqual([["PRONTAS", ["josianecavalcanti85432"], ["1 pronta para postar"]]]);
-    expect(g.criadas.map((p) => p.contas.map((c) => c.id))).toEqual([[], [], [], ["outra"]]);
+    expect(g.criadas.map((p) => p.contas.map((c) => c.id))).toEqual([[], [], [], [], ["outra"]]);
     expect(resumoDasContas(contas, new Set(["josianecavalcanti85432"])).prontas).toBe(1);
   });
 });
@@ -162,6 +163,7 @@ describe("Pastas fixas CRIADAS e FALHAS", () => {
     const g = gruposDePasta(contas, () => null);
     expect(g.criadas.map((p) => [p.nome, p.contas.map((c) => c.id)])).toEqual([
       [PASTA_RODANDO, ["criando", "fila"]],
+      ["ESTRUTURANDO", []],
       ["CRIADAS", ["ok"]],
       ["FALHAS", ["ruim"]],
       ["Antiga", ["z"]],
@@ -185,5 +187,22 @@ describe("Painel da estruturação", () => {
     const antes = retratar([job("b", "running", 1)]);
     const linhas = diferencasDeLog(antes, [job("b", "done", 1)], new Date(), new Map(), "Estruturação concluída");
     expect(linhas.map((l: { mensagem: string }) => l.mensagem)).toContain("Estruturação concluída");
+  });
+});
+
+describe("Pasta ESTRUTURANDO", () => {
+  it("conta criada com estruturação na fila ou rodando fica em ESTRUTURANDO; terminada volta à pasta dela", async () => {
+    const { PASTA_ESTRUTURANDO } = await import("../lib/vps/pastas");
+    const contas = [conta("est", { pasta: PASTA_CRIADAS }), conta("fila", { pasta: PASTA_CRIADAS }), conta("falhou", { pasta: PASTA_FALHAS }), conta("parada", { pasta: PASTA_CRIADAS })];
+    const est: Record<string, { status: string; steps: [] }> = { est: { status: "running", steps: [] }, fila: { status: "queued", steps: [] }, falhou: { status: "error", steps: [] } };
+    const g = gruposDePasta(contas, (id) => est[id]);
+    expect(g.criadas.map((p) => [p.nome, p.contas.map((c) => c.id)])).toEqual([
+      [PASTA_RODANDO, []],
+      [PASTA_ESTRUTURANDO, ["est", "fila"]],
+      ["CRIADAS", ["parada"]],
+      ["FALHAS", ["falhou"]],
+    ]);
+    expect(ehPastaFixa("estruturando")).toBe(true);
+    expect(normalizarPasta("Estruturando")).toBeNull();
   });
 });

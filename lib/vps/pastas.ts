@@ -27,7 +27,13 @@ export const PASTAS_FIXAS: readonly string[] = [PASTA_CRIADAS, PASTA_FALHAS];
  * o sync grava CRIADAS ou FALHAS e a conta sai dela.
  */
 export const PASTA_RODANDO = "RODANDO";
-const ORDEM_FIXAS: readonly string[] = [PASTA_RODANDO, PASTA_CRIADAS, PASTA_FALHAS];
+/**
+ * ESTRUTURANDO (15/11) também é só da tela: conta criada com estruturação na
+ * fila ou rodando. Ao terminar: conectada = some da VPS (apagarConectadas),
+ * erro = FALHAS, concluída sem estar no SaaS = CRIADAS (moverAoTerminar no sync).
+ */
+export const PASTA_ESTRUTURANDO = "ESTRUTURANDO";
+const ORDEM_FIXAS: readonly string[] = [PASTA_RODANDO, PASTA_ESTRUTURANDO, PASTA_CRIADAS, PASTA_FALHAS];
 const emAndamento = (status: string) => status === "queued" || status === "running";
 
 /** Pasta de destino de uma conta que acabou de terminar o cadastro; null = ainda rodando. */
@@ -49,7 +55,7 @@ export function normalizarPasta(raw: unknown): string | null {
   const nome = raw.replace(/\s+/g, " ").trim();
   if (!nome || nome === SEM_PASTA) return null;
   // "criadas"/"Falhas" digitado à mão cai na pasta fixa, não numa pasta nova com outra caixa; RODANDO não é destino.
-  if (nome.toUpperCase() === PASTA_RODANDO) return null;
+  if (nome.toUpperCase() === PASTA_RODANDO || nome.toUpperCase() === PASTA_ESTRUTURANDO) return null;
   const fixa = PASTAS_FIXAS.find((p) => p === nome.toUpperCase());
   if (fixa) return fixa;
   return [...nome].slice(0, PASTA_MAX).join("");
@@ -96,7 +102,13 @@ export function gruposDePasta<T extends { id: string; kind: string; status: stri
     if (c.kind !== "nova-conta") continue;
     const aba: AbaContas = prontidaoDaConta(estruturaDe(c.id)) || conectadaNoSaas(c) ? "estruturadas" : "criadas";
     // Na fila ou sendo criada: fica na RODANDO até terminar (aí o sync põe em CRIADAS ou FALHAS).
-    const chave = aba === "criadas" && emAndamento(c.status) ? PASTA_RODANDO : c.pasta || SEM_PASTA;
+    const estrutura = estruturaDe(c.id);
+    const chave =
+      aba === "criadas" && emAndamento(c.status)
+        ? PASTA_RODANDO
+        : aba === "criadas" && estrutura && emAndamento(estrutura.status)
+          ? PASTA_ESTRUTURANDO
+          : c.pasta || SEM_PASTA;
     abas[aba].set(chave, [...(abas[aba].get(chave) ?? []), c]);
   }
   // Na aba Criadas as pastas fixas aparecem sempre, primeiro (RODANDO, CRIADAS, FALHAS), mesmo vazias.

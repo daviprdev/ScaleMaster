@@ -198,6 +198,22 @@ async function moverAoTerminar(admin: SupabaseClient, agentId: string, terminada
       .eq("status", t.status)
       .eq("finished_at", now);
     if (error && !isMissingSchemaError(error)) console.warn(`[emulador/sync] pasta ao terminar (${t.id}): ${error.message}`);
+    // Estruturação que terminou neste sync (15/11): erro = a conta vai para FALHAS; concluída = CRIADAS (se estiver
+    // conectada no SaaS, o apagarConectadas tira a conta da VPS logo depois). A pasta da própria estruturação é o
+    // destino do "Ao concluir, mover" e não muda aqui.
+    const { data: estr } = await admin
+      .from("emulator_jobs")
+      .select("conta_id")
+      .eq("id", t.id)
+      .eq("agent_id", agentId)
+      .eq("kind", "estruturacao")
+      .eq("status", t.status)
+      .eq("finished_at", now)
+      .maybeSingle();
+    if (estr?.conta_id) {
+      const { error: contaErr } = await admin.from("emulator_jobs").update({ pasta }).eq("id", estr.conta_id).eq("kind", "nova-conta");
+      if (contaErr && !isMissingSchemaError(contaErr)) console.warn(`[emulador/sync] pasta da conta ao terminar a estruturação (${t.id}): ${contaErr.message}`);
+    }
   }
 }
 
