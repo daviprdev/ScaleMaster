@@ -224,6 +224,8 @@ async function renovarHttp(sessao) {
 /**
  * decisão (15/11): "reactivation_limit_reached" = o código gastou as reativações; insistir só segura o aparelho
  * (luana, fabiana, sofia: 6 tentativas, 7 min). Vira código vencido na hora (o card pede código novo).
+ * @param {string} motivo
+ * @returns {Error & { codigoVencido?: boolean }}
  */
 export function erroRenovar(motivo) {
   const e = new Error(`o portal não renovou a sessão: ${motivo}`);
@@ -441,17 +443,25 @@ export async function mensagensVistas(sessao) {
  * `sinal` (AbortSignal) interrompe a espera: quem chama viu que a tela do código já passou.
  * @param {{ log?: (m: string) => void, intervaloMs?: number, ignorar?: Set<string>|null, descartar?: Set<string>|null, esperaNovoMs?: number, sinal?: AbortSignal|null }} [opts]
  */
-export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 8000, ignorar = null, descartar = null, esperaNovoMs = 60_000, sinal = null } = {}) {
+export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, intervaloMs = 8000, ignorar = null, descartar = null, esperaNovoMs = 60_000, sinal = null, maxForaMs = PORTAL_FORA_MAX_MS } = {}) {
   const via = caminho(sessao);
   const inicio = Date.now();
-  const limite = inicio + timeoutMs;
+  // decisão (15/11): tempo com o portal fora do ar não conta no prazo — o OTP chega na caixa mesmo com o site
+  // caído e só some se ninguém ler (05:48: 6 códigos perdidos assim, o agente desistiu em 6 min com o portal em 502).
+  // O prazo cresce o quanto o portal ficou sem responder, até maxForaMs a mais.
+  let limite = inicio + timeoutMs;
+  const teto = inicio + timeoutMs + maxForaMs;
   let erros = 0;
+  let fora = false;
   const valido = (otp) => otp && !(descartar && descartar.has(String(otp)));
   while (Date.now() < limite) {
     if (sinal?.aborted) throw new Error("espera do OTP interrompida: a tela do código já passou");
+    const t0 = Date.now();
     try {
       const j = await via.status(sessao);
+      if (erros >= 3) log(`portal voltou depois de ${erros} falhas seguidas`);
       erros = 0;
+      fora = false;
       const novo = extrairOtp(j, ignorar);
       if (valido(novo)) return novo;
       if (Date.now() - inicio >= esperaNovoMs) {
@@ -465,12 +475,52 @@ export async function esperarOtp(sessao, timeoutMs = 900_000, { log = () => {}, 
     } catch (e) {
       if (/acabou sem o OTP|inválido|removido|interrompida/.test(e.message)) throw e;
       erros += 1;
+      fora = true;
+      limite = Math.min(teto, limite + (Date.now() - t0) + intervaloMs);
       // Portal lento não encerra a espera: segue consultando até a sessão acabar (13/11: 8 contas desistiram em 90 s).
-      if (erros === 1 || erros % 5 === 0) log(`portal: ${e.message} (tentando de novo, ${erros}ª falha seguida)`);
+      if (erros === 1 || erros % 5 === 0) log(`portal: ${e.message} (tentando de novo, ${erros}ª falha seguida; o prazo do OTP espera o portal voltar)`);
     }
     await esperar(intervaloMs);
   }
+  if (fora) {
+    const e = new Error(`o portal ficou fora do ar e a caixa não pôde ser lida (${Math.round((Date.now() - inicio) / 60_000)} min esperando)`);
+    e.portalFora = true;
+    throw e;
+  }
   throw new Error(`o OTP não chegou no portal em ${Math.round(timeoutMs / 60_000)} min`);
+}
+
+/** Quanto o agente espera o portal voltar (fora do ar) antes de desistir da caixa. 15/11: quedas de 7 a 31 min. */
+export const PORTAL_FORA_MAX_MS = 40 * 60_000;
+
+/** O portal responde (GET na raiz, sem gastar nada). */
+export async function portalNoAr(link) {
+  try {
+    await verificarPortal(link);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Espera o portal voltar antes de qualquer POST (resgate ou Reactivate): POST com o portal em 502/timeout pode
+ * valer pela metade no servidor e gastar uma reativação (luana, fabiana, sofia: reactivation_limit_reached).
+ * Devolve false se passou de `maxMs` ainda fora.
+ * @param {string} link
+ * @param {{ maxMs?: number, intervaloMs?: number, log?: (m: string) => void, noAr?: (link: string) => Promise<boolean> }} [opts]
+ */
+export async function esperarPortalNoAr(link, { maxMs = PORTAL_FORA_MAX_MS, intervaloMs = 20_000, log = () => {}, noAr = portalNoAr } = {}) {
+  const inicio = Date.now();
+  let avisou = false;
+  while (!(await noAr(link))) {
+    if (Date.now() - inicio >= maxMs) return false;
+    if (!avisou) log("portal fora do ar: esperando ele voltar antes de resgatar/reativar (o código não é gasto)");
+    avisou = true;
+    await esperar(intervaloMs);
+  }
+  if (avisou) log(`portal voltou (${Math.round((Date.now() - inicio) / 1000)} s fora)`);
+  return true;
 }
 
 /** Sessão nova para o mesmo código (endereço novo). Devolve o e-mail novo. */

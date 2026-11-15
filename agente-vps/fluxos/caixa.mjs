@@ -135,10 +135,20 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
     let vistos = null;
     // Códigos já digitados nesta caixa: o Instagram não aceita o mesmo duas vezes.
     const tentados = new Set();
+    // Antes de qualquer POST (resgate/Reactivate) o portal tem que estar no ar: POST em 502 pode valer pela metade e
+    // gastar reativação. Fora do ar por mais de 40 min = erro com portalFora (o código não foi gasto aqui).
+    const portalNoAr = async () => {
+      if (!portal.esperarPortalNoAr) return;
+      if (await portal.esperarPortalNoAr(link, { log })) return;
+      const e = new Error("o portal do hstock ficou fora do ar por mais de 40 min");
+      e.portalFora = true;
+      throw e;
+    };
     const abrir = async () => {
       if (sessao && sessao.fimEm && sessao.fimEm - Date.now() > 60_000) return sessao;
       await Promise.resolve(portal.fechar(sessao)).catch(() => {});
       sessao = null;
+      await portalNoAr();
       const aberta = await portal.abrir(link, codigo, { log });
       sessao = aberta.sessao;
       // Hora do resgate e do fim da sessão: o servidor guarda no input_enc para a etapa email não reusar código vencido.
@@ -163,6 +173,10 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
             // Código já gasto: não há endereço possível com ele — para o job (container fica) e o card pede código novo.
             if (e.codigoVencido) throw erroCodigoVencido(e.message);
             log(`portal falhou ao abrir a sessão (tentativa ${tentativa}/${TENTATIVAS_PORTAL}): ${e.message}`);
+            if (e.portalFora) {
+              this.ultimoErro = e.message;
+              return null;
+            }
             if (tentativa < TENTATIVAS_PORTAL) await esperar(esperaPortalMs * 2 * tentativa);
           }
         }
@@ -171,12 +185,14 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
       /** Reactivate do portal (o botão da página): mesma compra, e-mail novo. Para quando o código do Instagram não chega. */
       async novoEndereco() {
         const s = await abrir();
+        await portalNoAr();
         await portal.renovar(s);
         vistos = portal.mensagensVistas ? await Promise.resolve(portal.mensagensVistas(s)).catch(() => null) : null;
         log(`portal: Reactivate feito, e-mail novo ${s.email}`);
         return s.email;
       },
       async esperarCodigo({ timeoutMs, sinal = null } = {}) {
+        this.portalFora = false;
         try {
           const s = await abrir();
           const restante = s.fimEm ? Math.max(30_000, s.fimEm - Date.now()) : 900_000;
@@ -187,6 +203,7 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
         } catch (e) {
           log(`portal não trouxe o OTP: ${e.message}`);
           this.ultimoErro = e.message;
+          this.portalFora = !!e.portalFora;
           return null;
         }
       },

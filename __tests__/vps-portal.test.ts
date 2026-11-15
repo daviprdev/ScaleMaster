@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { codigoPortalValido, linkPortalValido, parseConta, parseLinhaPortal, parseLinhasPortal, parseLoteInput, PORTAL_PADRAO } from "../lib/vps/input";
-import { extrairEmail, extrairOtp, lerStatus, mascarar, urlSessao, codigoValido, erroRenovar } from "../agente-vps/lib/portal.mjs";
+import { extrairEmail, extrairOtp, lerStatus, mascarar, urlSessao, codigoValido, erroRenovar, esperarPortalNoAr } from "../agente-vps/lib/portal.mjs";
 import { conferirCaixa, criarCaixa, descricaoCaixa, provedorDe } from "../agente-vps/fluxos/caixa.mjs";
 import { ROTULOS_EMAIL } from "../lib/vps/provedores";
 import { PROVEDORES_EMAIL } from "../lib/vps/types";
@@ -277,5 +277,45 @@ describe("Portal: Reactivate recusado", () => {
     expect(erroRenovar("already_used").codigoVencido).toBe(true);
     expect(erroRenovar("HTTP 502").codigoVencido).toBeUndefined();
     expect(erroRenovar("sem resposta").message).toContain("o portal não renovou a sessão");
+  });
+});
+
+describe("Portal fora do ar: o código não se perde", () => {
+  const inputPortal = { provedorEmail: "portal", conta: { email: LINK, nome: "Maria" }, imap: { senha: "SUDXHRAY" } };
+  it("esperarPortalNoAr espera o portal voltar e desiste no teto", async () => {
+    let chamadas = 0;
+    const logs: string[] = [];
+    expect(await esperarPortalNoAr("x", { intervaloMs: 0, log: (m: string) => logs.push(m), noAr: async () => ++chamadas >= 3 })).toBe(true);
+    expect(chamadas).toBe(3);
+    expect(logs.some((l) => l.includes("portal voltou"))).toBe(true);
+    expect(await esperarPortalNoAr("x", { intervaloMs: 0, maxMs: 0, noAr: async () => false })).toBe(false);
+  });
+
+  it("nenhum POST com o portal fora: endereco() devolve null sem chamar abrir e sem 6 tentativas", async () => {
+    const portal = {
+      mascarar,
+      codigoValido,
+      abrir: vi.fn(),
+      renovar: vi.fn(),
+      esperarOtp: vi.fn(),
+      fechar: vi.fn(async () => {}),
+      verificarPortal: vi.fn(),
+      esperarPortalNoAr: vi.fn(async () => false),
+    };
+    const caixa = criarCaixa(inputPortal, { portal, log: () => {}, esperaPortalMs: 0 });
+    expect(await caixa.endereco()).toBeNull();
+    expect(portal.abrir).not.toHaveBeenCalled();
+    expect(portal.esperarPortalNoAr).toHaveBeenCalledTimes(1);
+    await expect(caixa.novoEndereco!()).rejects.toThrow(/fora do ar/);
+    expect(portal.renovar).not.toHaveBeenCalled();
+  });
+
+  it("esperarOtp que acaba com o portal fora marca portalFora (o cadastro não faz Reactivate)", async () => {
+    const sessao = { modo: "http", email: "x@gmail.com", fimEm: Date.now() + 10 * 60_000 };
+    const fora = Object.assign(new Error("o portal ficou fora do ar"), { portalFora: true });
+    const portal = { mascarar, codigoValido, abrir: vi.fn(async () => ({ sessao, email: sessao.email })), esperarOtp: vi.fn(async () => { throw fora; }), fechar: vi.fn(async () => {}), verificarPortal: vi.fn(), esperarPortalNoAr: vi.fn(async () => true) };
+    const caixa = criarCaixa(inputPortal, { portal, log: () => {} }) as unknown as { esperarCodigo: (o: object) => Promise<string | null>; portalFora: boolean };
+    expect(await caixa.esperarCodigo({})).toBeNull();
+    expect(caixa.portalFora).toBe(true);
   });
 });

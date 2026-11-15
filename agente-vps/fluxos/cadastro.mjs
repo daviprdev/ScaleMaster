@@ -341,6 +341,9 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
           }
           // Portal: o código não chegou em 6 min — faz o Reactivate (e-mail novo), volta para a tela do e-mail no
           // Instagram e cola o novo (o passo a passo do dono, 15/11). Até 2 trocas por conta.
+          // Portal fora do ar (já esperou até 40 min ele voltar): Reactivate não ajuda e o OTP pode estar na caixa —
+          // a conta para com o motivo, sem gastar reativação.
+          if (!codigo && mail.portalFora) throw new Error(`O portal do hstock ficou fora do ar e o código não pôde ser lido: ${mail.ultimoErro ?? "sem resposta"}.`);
           if (!codigo && mail.novoEndereco && (estado.trocasEmail ?? 0) < 2) {
             estado.trocasEmail = (estado.trocasEmail ?? 0) + 1;
             const novo = await mail.novoEndereco().catch((e) => {
