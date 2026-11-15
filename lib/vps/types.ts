@@ -221,4 +221,6 @@ export interface VpsContaInput {
   /** `senha` é a senha do e-mail; em `portal`, o código de resgate. host/porta só em imap. */
   imap: { host: string; porta: number; usuario: string; senha: string };
   device: VpsDeviceSpec;
+  /** Foto de perfil desta conta (midias/perfil/…), sorteada entre as marcadas no lote. Ausente (contas antigas) = o agente sorteia da pasta. */
+  fotoPerfil?: string;
 }

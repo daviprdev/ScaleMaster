@@ -64,6 +64,11 @@ interface MidiaPickerProps {
   error?: string;
   /** Pasta que abre primeiro quando nada está escolhido (Estruturar = stories). */
   pastaInicial?: string;
+  /** Pastas que aparecem (padrão: as duas). Uma só = já abre nela, sem "← Pastas" (Lote = perfil, Estruturar = stories). */
+  pastas?: ReadonlyArray<string>;
+  /** Várias fotos marcadas (Enviar lote): clicar marca/desmarca. */
+  selecionadas?: ReadonlyArray<string>;
+  onSelecionar?: (paths: string[]) => void;
 }
 
 /**
@@ -72,9 +77,14 @@ interface MidiaPickerProps {
  * lixeira em cada foto. Com `onChange`, clicar numa miniatura escolhe a foto
  * (Estruturar); sem, é só para organizar (diálogo Mídias).
  */
-export function MidiaPicker({ midias, value = "", onChange, label, error, pastaInicial }: MidiaPickerProps) {
+export function MidiaPicker({ midias, value = "", onChange, label, error, pastaInicial, pastas, selecionadas, onSelecionar }: MidiaPickerProps) {
   const { arquivos, recarregar } = midias;
-  const [aberta, setAberta] = React.useState<string | null>(value ? pastaDoArquivo(value) : (pastaInicial ?? null));
+  const visiveis = PASTAS_FIXAS.filter((p) => !pastas || pastas.includes(p.nome));
+  const unica = visiveis.length === 1 ? visiveis[0].nome : null;
+  const [aberta, setAberta] = React.useState<string | null>(unica ?? (value ? pastaDoArquivo(value) : (pastaInicial ?? null)));
+  const varias = !!onSelecionar;
+  const marcadas = selecionadas ?? [];
+  const alternar = (p: string) => onSelecionar?.(marcadas.includes(p) ? marcadas.filter((x) => x !== p) : [...marcadas, p]);
   const [ocupado, setOcupado] = React.useState(false);
   const [aviso, setAviso] = React.useState<string | null>(null);
   /** Foto esperando confirmação para excluir. */
@@ -83,10 +93,10 @@ export function MidiaPicker({ midias, value = "", onChange, label, error, pastaI
 
   // Foto escolhida de fora (reabriu o diálogo): abre a pasta dela.
   React.useEffect(() => {
-    if (value) setAberta(pastaDoArquivo(value));
-  }, [value]);
+    if (value && !unica) setAberta(pastaDoArquivo(value));
+  }, [value, unica]);
 
-  const cartoes = PASTAS_FIXAS.map((p) => ({ ...p, fotos: (arquivos ?? []).filter((a) => pastaDoArquivo(a) === p.nome).length }));
+  const cartoes = visiveis.map((p) => ({ ...p, fotos: (arquivos ?? []).filter((a) => pastaDoArquivo(a) === p.nome).length }));
   const fotosDaPasta = aberta === null ? [] : (arquivos ?? []).filter((p) => pastaDoArquivo(p) === aberta);
 
   const enviar = async (lista: FileList | null) => {
@@ -94,6 +104,7 @@ export function MidiaPicker({ midias, value = "", onChange, label, error, pastaI
     setOcupado(true);
     setAviso(null);
     let ultima: string | null = null;
+    const enviadas: string[] = [];
     try {
       for (const arquivo of Array.from(lista)) {
         if (arquivo.size > MIDIA_MAX_BYTES) throw new Error(`"${arquivo.name}" passa de 8 MB.`);
@@ -104,14 +115,16 @@ export function MidiaPicker({ midias, value = "", onChange, label, error, pastaI
         const body = (await res.json().catch(() => null)) as { path?: string; error?: string } | null;
         if (!res.ok || !body?.path) throw new Error(body?.error ?? `Não foi possível enviar "${arquivo.name}".`);
         ultima = body.path;
+        enviadas.push(body.path);
       }
     } catch (e) {
       setAviso((e as Error).message);
     } finally {
       await recarregar();
       setOcupado(false);
-      // Enviou uma só no modo seletor: já fica escolhida.
+      // Enviou uma só no modo seletor: já fica escolhida. Com várias marcadas, as enviadas entram marcadas.
       if (onChange && ultima && lista.length === 1) onChange(ultima);
+      if (onSelecionar && enviadas.length) onSelecionar([...marcadas, ...enviadas.filter((p) => !marcadas.includes(p))]);
     }
   };
 
@@ -123,8 +136,9 @@ export function MidiaPicker({ midias, value = "", onChange, label, error, pastaI
       const res = await fetch(`/api/vps/midias?path=${encodeURIComponent(excluir)}`, { method: "DELETE" });
       const body = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) throw new Error(body?.error ?? "Não foi possível excluir a foto.");
-      // A foto escolhida sumiu: o campo volta a ficar vazio.
+      // A foto escolhida sumiu: o campo volta a ficar vazio (e sai das marcadas).
       if (onChange && excluir === value) onChange("");
+      if (onSelecionar && marcadas.includes(excluir)) onSelecionar(marcadas.filter((x) => x !== excluir));
       await recarregar();
     } catch (e) {
       setAviso((e as Error).message);
@@ -159,9 +173,11 @@ export function MidiaPicker({ midias, value = "", onChange, label, error, pastaI
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="ghost" size="sm" icon={<ArrowLeft size={14} />} onClick={() => setAberta(null)}>
-              Pastas
-            </Button>
+            {!unica && (
+              <Button type="button" variant="ghost" size="sm" icon={<ArrowLeft size={14} />} onClick={() => setAberta(null)}>
+                Pastas
+              </Button>
+            )}
             <span className="inline-flex items-center gap-1.5 text-sm font-medium text-ink">
               <Folder size={15} className="text-accent" />
               {rotuloDaPasta(aberta)}
@@ -195,7 +211,13 @@ export function MidiaPicker({ midias, value = "", onChange, label, error, pastaI
           ) : (
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
               {fotosDaPasta.map((p) => (
-                <Miniatura key={p} path={p} escolhida={p === value} onEscolher={onChange ? () => onChange(p) : undefined} onExcluir={() => setExcluir(p)} />
+                <Miniatura
+                  key={p}
+                  path={p}
+                  escolhida={varias ? marcadas.includes(p) : p === value}
+                  onEscolher={varias ? () => alternar(p) : onChange ? () => onChange(p) : undefined}
+                  onExcluir={() => setExcluir(p)}
+                />
               ))}
             </div>
           )}

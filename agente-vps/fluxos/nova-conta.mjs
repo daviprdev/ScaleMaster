@@ -1,10 +1,10 @@
-import { chmodSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { limparAlerta, marcarAlerta } from "../lib/alertas.mjs";
 import { conferirAbiNoAparelho } from "../lib/android.mjs";
 import { aplicarNoAparelho, conferir, gerar as gerarDevice } from "../lib/fingerprint.mjs";
 import { fotoUnicaNaGaleria } from "../lib/galeria.mjs";
-import { pastaDeMidias, sortearFoto } from "../lib/midias.mjs";
+import { pastaDeMidias, resolverMidia, sortearFoto } from "../lib/midias.mjs";
 import { garantirTeclado } from "../lib/teclado.mjs";
 import { esperar, rodar } from "../lib/processo.mjs";
 import { ProxyMorta, provarBloqueio, subirSidecar, validar, validarNoNetns } from "../lib/rede.mjs";
@@ -344,7 +344,18 @@ export const NOVA_CONTA = [
       await abrirInstagram(c);
       const feitos = [];
       const raiz = await pastaDeMidias();
-      const foto = raiz ? sortearFoto(raiz) : null;
+      // Foto sorteada no lote entre as marcadas na pasta Foto Perfil (14/11); conta antiga ou foto apagada: sorteia da pasta.
+      let foto = null;
+      if (raiz && input?.fotoPerfil) {
+        try {
+          foto = resolverMidia(raiz, input.fotoPerfil);
+          if (!existsSync(foto)) throw new Error("não está nesta VPS");
+        } catch (e) {
+          log(`foto de perfil ${input.fotoPerfil}: ${e.message}; sorteando outra da pasta`);
+          foto = null;
+        }
+      }
+      if (!foto && raiz) foto = sortearFoto(raiz);
       if (foto) {
         await fotoUnicaNaGaleria(d, foto, { pasta: "/sdcard/DCIM/ScaleMaster", log });
         feitos.push(await trocarFoto(c));

@@ -361,3 +361,23 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
 
   return { value: { agentId, quantidade, proxies: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: false, avisos: proxies.avisos } };
 }
+
+/** Fotos de perfil do lote (14/11): no mínimo 2, marcadas na pasta Foto Perfil; cada conta recebe uma delas, sorteada. */
+export const FOTOS_PERFIL_MIN = 2;
+
+/**
+ * Valida as fotos marcadas no "Enviar lote": caminhos de midias/perfil/, sem
+ * repetir, pelo menos FOTOS_PERFIL_MIN. `existentes` = o que está na pasta
+ * (servidor); null = não confere a existência (navegador antes de ler a pasta).
+ */
+export function parseFotosPerfil(raw: unknown, existentes: ReadonlyArray<string> | null): { value: string[] } | { error: string } {
+  const lista = Array.isArray(raw) ? raw.filter((p): p is string => typeof p === "string" && p.length > 0 && p.length <= 200) : [];
+  const unicas = [...new Set(lista)];
+  if (unicas.some((p) => !p.startsWith("perfil/") || p.includes("..") || p.includes("\\"))) return { error: "As fotos de perfil têm que ser da pasta Foto Perfil." };
+  if (existentes) {
+    const faltando = unicas.find((p) => !existentes.includes(p));
+    if (faltando) return { error: `A foto "${faltando.slice("perfil/".length)}" não está mais na pasta Foto Perfil.` };
+  }
+  if (unicas.length < FOTOS_PERFIL_MIN) return { error: `Marque no mínimo ${FOTOS_PERFIL_MIN} fotos de perfil (pasta Foto Perfil).` };
+  return { value: unicas };
+}

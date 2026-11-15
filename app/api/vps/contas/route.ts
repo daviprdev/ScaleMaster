@@ -5,7 +5,8 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseInstances } from "@/lib/emulador/payload";
-import { parseLoteInput } from "@/lib/vps/input";
+import { parseFotosPerfil, parseLoteInput } from "@/lib/vps/input";
+import { listarMidias, pastaMidias } from "@/lib/vps/midias";
 import { chaveProxy, decidirRam, hostPortaDaChave, parseCapacidade, proxiesEmUso } from "@/lib/vps/jobs";
 import { proxyChaveDe, proxyHostDe, redeDe } from "@/lib/vps/load";
 import { ramDoAgente } from "@/lib/vps/ram";
@@ -56,6 +57,9 @@ export async function POST(req: NextRequest) {
   const parsed = parseLoteInput(body, capacidade.versoesIg);
   if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
   const lote = parsed.value;
+  // Fotos de perfil marcadas no lote (mínimo 2, da pasta Foto Perfil): cada conta recebe uma, sorteada.
+  const fotos = parseFotosPerfil((body as Record<string, unknown>).fotosPerfil, listarMidias(pastaMidias()).map((m) => m.path));
+  if ("error" in fotos) return NextResponse.json({ error: fotos.error }, { status: 400 });
   // Pasta escolhida ou criada no diálogo; vazia = sem pasta (a coluna nem vai no insert: funciona sem o SQL das pastas).
   const pasta = normalizarPasta((body as Record<string, unknown>).pasta);
 
@@ -153,6 +157,7 @@ export async function POST(req: NextRequest) {
       conta: { email: conta.email, senha: conta.senhaIg, nome: conta.nome, usuario: conta.usuario, nascimento: conta.nascimento },
       imap: { host: conta.imapHost, porta: conta.imapPorta, usuario: conta.email, senha: conta.senhaEmail },
       device,
+      fotoPerfil: fotos.value[Math.floor(Math.random() * fotos.value.length)],
     };
     const { data: job, error } = await admin
       .from("emulator_jobs")

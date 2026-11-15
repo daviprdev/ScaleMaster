@@ -83,3 +83,21 @@ describe("Mídias: só Foto Perfil e Stories, com exclusão", () => {
     expect(existsSync(path.join(raiz, "segredo.txt"))).toBe(true);
   });
 });
+
+describe("Enviar lote: fotos de perfil marcadas", () => {
+  it("no mínimo 2, todas da pasta Foto Perfil e ainda existentes; repetida conta uma vez", async () => {
+    const { FOTOS_PERFIL_MIN, parseFotosPerfil } = await import("../lib/vps/input");
+    const pasta = ["perfil/a.jpg", "perfil/b.jpg", "perfil/c.jpg", "stories/s.png"];
+    expect(FOTOS_PERFIL_MIN).toBe(2);
+    expect(parseFotosPerfil(["perfil/a.jpg", "perfil/b.jpg"], pasta)).toEqual({ value: ["perfil/a.jpg", "perfil/b.jpg"] });
+    expect(parseFotosPerfil(["perfil/a.jpg", "perfil/a.jpg"], pasta)).toMatchObject({ error: expect.stringContaining("no mínimo 2") });
+    expect(parseFotosPerfil(["perfil/a.jpg"], pasta)).toMatchObject({ error: expect.stringContaining("no mínimo 2") });
+    expect(parseFotosPerfil([], pasta)).toMatchObject({ error: expect.stringContaining("no mínimo 2") });
+    expect(parseFotosPerfil(undefined, pasta)).toMatchObject({ error: expect.stringContaining("no mínimo 2") });
+    expect(parseFotosPerfil(["perfil/a.jpg", "stories/s.png"], pasta)).toMatchObject({ error: expect.stringContaining("pasta Foto Perfil") });
+    expect(parseFotosPerfil(["perfil/a.jpg", "perfil/../x.jpg"], pasta)).toMatchObject({ error: expect.stringContaining("pasta Foto Perfil") });
+    expect(parseFotosPerfil(["perfil/a.jpg", "perfil/sumiu.jpg"], pasta)).toMatchObject({ error: expect.stringContaining("sumiu.jpg") });
+    // No navegador, antes de ler a pasta, não confere a existência.
+    expect(parseFotosPerfil(["perfil/a.jpg", "perfil/sumiu.jpg"], null)).toEqual({ value: ["perfil/a.jpg", "perfil/sumiu.jpg"] });
+  });
+});

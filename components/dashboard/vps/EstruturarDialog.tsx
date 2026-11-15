@@ -158,7 +158,7 @@ export function EstruturarDialog({ job, pastaDe = null, pastas = [], onClose, on
               hint={`Entram as contas criadas da pasta que ainda não estão prontas; a VPS roda até ${pastaDe.agent.capacidade.maxCadastro} ao mesmo tempo e o resto espera na fila.`}
             />
           )}
-          <MidiaPicker midias={biblioteca} label="Foto do story" pastaInicial="stories" value={form.fotoStory} onChange={(p) => set("fotoStory", p)} error={erros.fotoStory ?? biblioteca.erro ?? undefined} />
+          <MidiaPicker midias={biblioteca} label="Foto do story (pasta Stories)" pastas={["stories"]} value={form.fotoStory} onChange={(p) => set("fotoStory", p)} error={erros.fotoStory ?? biblioteca.erro ?? undefined} />
           <PastaCampo
             label="Ao concluir, mover para a pasta"
             rotuloVazio="Não mover"
