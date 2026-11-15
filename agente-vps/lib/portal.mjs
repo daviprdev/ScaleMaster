@@ -222,18 +222,18 @@ async function renovarHttp(sessao) {
 }
 
 /**
- * decisão (15/11): "reactivation_limit_reached" é limite TEMPORÁRIO do portal (luana: recusado às 16:27, às 16:45
- * o /status já dava can_reactivate=true). O código continua valendo: não é vencido. Marca reativacaoLimitada para
- * a caixa parar de insistir (6 tentativas seguravam o aparelho 7 min) e a conta parar com o motivo; Continuar depois.
- * already_used/removed = código gasto de verdade.
+ * decisão (15/11): "reactivation_limit_reached" = o código já usou a ÚNICA reativação que o hstock dá (texto da
+ * própria página: "You have already reactivated this Portal Code once. Please contact the admin for help."). O
+ * can_reactivate do /status continua true mesmo assim — não serve para saber. É código gasto para o agente: para na
+ * hora (6 tentativas seguravam o aparelho 7 min) e o card pede código novo (ou o admin do hstock libera).
  * @param {string} motivo
  * @returns {Error & { codigoVencido?: boolean, reativacaoLimitada?: boolean }}
  */
 export function erroRenovar(motivo) {
   /** @type {Error & { codigoVencido?: boolean, reativacaoLimitada?: boolean }} */
-  const e = new Error(`o portal não renovou a sessão: ${motivo}`);
-  if (/already_used|removed/i.test(String(motivo))) e.codigoVencido = true;
-  else if (/limit/i.test(String(motivo))) e.reativacaoLimitada = true;
+  const limite = /limit/i.test(String(motivo));
+  const e = new Error(limite ? "o código já usou a única reativação do portal (só o admin do hstock libera outra)" : `o portal não renovou a sessão: ${motivo}`);
+  if (limite || /already_used|removed|not_reactivatable|otp_already|mail_already/i.test(String(motivo))) e.codigoVencido = true;
   return e;
 }
 

@@ -5,6 +5,9 @@ import { criarCaixa, OTP_ANTES_DE_REATIVAR_MS } from "./caixa.mjs";
 import { criarAjuda, resumoTela, salvarTela } from "./dono.mjs";
 import { acharId, acharTexto, preencher, temTexto, tocarNo } from "./tela.mjs";
 
+/** O hstock dá UMA reativação por código ("You have already reactivated this Portal Code once"): uma troca de e-mail por conta. */
+const TROCAS_EMAIL_MAX = 1;
+
 /**
  * Cria a conta no Instagram com o e-mail, já com a proxy ligada. Cópia
  * adaptada de agente-mumu/fluxos/cadastro.mjs para a VPS: o código de
@@ -344,14 +347,14 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
           // Portal fora do ar (já esperou até 40 min ele voltar): Reactivate não ajuda e o OTP pode estar na caixa —
           // a conta para com o motivo, sem gastar reativação.
           if (!codigo && mail.portalFora) throw new Error(`O portal do hstock ficou fora do ar e o código não pôde ser lido: ${mail.ultimoErro ?? "sem resposta"}.`);
-          if (!codigo && mail.novoEndereco && (estado.trocasEmail ?? 0) < 2) {
+          if (!codigo && mail.novoEndereco && (estado.trocasEmail ?? 0) < TROCAS_EMAIL_MAX) {
             estado.trocasEmail = (estado.trocasEmail ?? 0) + 1;
             const novo = await mail.novoEndereco().catch((e) => {
               log(`Reactivate do portal falhou: ${e.message}`);
               return null;
             });
             if (novo) {
-              log(`o código não chegou: e-mail novo pelo Reactivate (${estado.trocasEmail}/2), voltando para a tela do e-mail`);
+              log(`o código não chegou: e-mail novo pelo Reactivate (${estado.trocasEmail}/${TROCAS_EMAIL_MAX}), voltando para a tela do e-mail`);
               estado.codigosImap = 0;
               await irParaAlterarEmail(d, log);
               return;
@@ -415,9 +418,9 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
         const invalido = temTexto(nos, ["Email é inválida", "e-mail é inválido", "email é inválido", "Enter a valid email", "valid email address", "Introduz um email válido"]);
         let endereco = null;
         if (invalido) {
-          if (!mail.novoEndereco || (estado.trocasEmail ?? 0) >= 2) throw new Error(`O Instagram recusou o e-mail ${mail.email ?? "da conta"} (inválido) e não há outro.`);
+          if (!mail.novoEndereco || (estado.trocasEmail ?? 0) >= TROCAS_EMAIL_MAX) throw new Error(`O Instagram recusou o e-mail ${mail.email ?? "da conta"} (inválido) e não há outro.`);
           estado.trocasEmail = (estado.trocasEmail ?? 0) + 1;
-          log(`o Instagram recusou o e-mail: pedindo outro ao portal (Reactivate ${estado.trocasEmail}/2)`);
+          log(`o Instagram recusou o e-mail: pedindo outro ao portal (Reactivate ${estado.trocasEmail}/${TROCAS_EMAIL_MAX})`);
           endereco = await mail.novoEndereco().catch((e) => {
             log(`Reactivate do portal falhou: ${e.message}; usando o e-mail da sessão atual`);
             return null;

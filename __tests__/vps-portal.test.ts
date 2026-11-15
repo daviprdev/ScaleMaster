@@ -272,9 +272,9 @@ describe("Agente: abrir app pela atividade LAUNCHER (o monkey do redroid aborta)
 });
 
 describe("Portal: Reactivate recusado", () => {
-  it("limite de reativações é temporário (não vence o código); already_used vence", () => {
-    expect(erroRenovar("reactivation_limit_reached").codigoVencido).toBeUndefined();
-    expect(erroRenovar("reactivation_limit_reached").reativacaoLimitada).toBe(true);
+  it("limite de reativações (o hstock dá uma só) e already_used vencem o código", () => {
+    expect(erroRenovar("reactivation_limit_reached").codigoVencido).toBe(true);
+    expect(erroRenovar("reactivation_limit_reached").message).toContain("única reativação");
     expect(erroRenovar("already_used").codigoVencido).toBe(true);
     expect(erroRenovar("HTTP 502").codigoVencido).toBeUndefined();
     expect(erroRenovar("sem resposta").message).toContain("o portal não renovou a sessão");
@@ -322,12 +322,11 @@ describe("Portal fora do ar: o código não se perde", () => {
 });
 
 describe("Portal: reativação limitada", () => {
-  it("endereco() para na hora, sem 6 tentativas, e diz que o código continua valendo", async () => {
-    const limitada = Object.assign(new Error("o portal não renovou a sessão: reactivation_limit_reached"), { reativacaoLimitada: true });
+  it("endereco() para na hora com Código do portal vencido, sem 6 tentativas", async () => {
+    const limitada = erroRenovar("reactivation_limit_reached");
     const portal = { mascarar, codigoValido, abrir: vi.fn(async () => { throw limitada; }), esperarOtp: vi.fn(), fechar: vi.fn(async () => {}), verificarPortal: vi.fn(), esperarPortalNoAr: vi.fn(async () => true) };
-    const caixa = criarCaixa({ provedorEmail: "portal", conta: { email: LINK, nome: "Maria" }, imap: { senha: "SUDXHRAY" } }, { portal, log: () => {}, esperaPortalMs: 0 }) as unknown as { endereco: () => Promise<string | null>; ultimoErro: string };
-    expect(await caixa.endereco()).toBeNull();
+    const caixa = criarCaixa({ provedorEmail: "portal", conta: { email: LINK, nome: "Maria" }, imap: { senha: "SUDXHRAY" } }, { portal, log: () => {}, esperaPortalMs: 0 });
+    await expect(caixa.endereco()).rejects.toThrow(/Código do portal vencido/);
     expect(portal.abrir).toHaveBeenCalledTimes(1);
-    expect(caixa.ultimoErro).toContain("continua valendo");
   });
 });

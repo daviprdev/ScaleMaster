@@ -178,10 +178,6 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
               this.ultimoErro = e.message;
               return null;
             }
-            if (e.reativacaoLimitada) {
-              this.ultimoErro = "o portal limitou as reativações deste código por agora (o código continua valendo: use Continuar mais tarde, não compre outro)";
-              return null;
-            }
             if (tentativa < TENTATIVAS_PORTAL) await esperar(esperaPortalMs * 2 * tentativa);
           }
         }
