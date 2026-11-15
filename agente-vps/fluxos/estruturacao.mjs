@@ -89,6 +89,11 @@ const FIXAS = {
     sempre: true,
     async rodar({ mumu, estado, input, log }) {
       const i = container(estado);
+      // Proxy atual da conta (trocada em Editar) vem no input: grava no aparelho antes de subir o sidecar.
+      if (input?.proxy && input.proxy !== mumu.proxyDe(i)) {
+        await mumu.definirProxy(i, input.proxy);
+        log("proxy da conta trocada: gravada no aparelho");
+      }
       const proxy = mumu.proxyDe(i);
       if (!proxy) throw new ProxyMorta("o container não tem proxy gravada");
       const pais = mumu.deviceDe(i)?.pais ?? input?.pais ?? null;

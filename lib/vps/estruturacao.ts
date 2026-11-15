@@ -71,6 +71,8 @@ export interface EstruturaInput extends EstruturaDados {
   /** @ e senha da conta (login pelo Chrome quando a página abre sem sessão). */
   conta: { usuario: string; senha: string };
   pais: string;
+  /** Proxy atual da conta (15/11): o agente grava no aparelho antes de subir o sidecar. Ausente (jobs antigos) = a do aparelho. */
+  proxy?: string;
 }
 
 const PERFIL_RE = /^[a-z0-9._]{1,30}$/;

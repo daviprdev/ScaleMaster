@@ -144,7 +144,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const { data, error } = await admin.from("emulator_jobs").update(patch).eq("id", id).eq("status", "done").select("id");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!data?.length) return NextResponse.json({ error: "A conta mudou enquanto você editava. Abra de novo." }, { status: 409 });
-    return NextResponse.json({ ok: true });
+    // Proxy nova numa conta já criada (15/11): vai também para as estruturações dela que não estão rodando, e a que
+    // parou em PROXY_MORTA volta sozinha para a fila (Editar basta, sem Continuar).
+    const requeue = proxyMudou ? await levarProxyParaEstruturacoes(admin, id, next.proxy) : 0;
+    return NextResponse.json({ ok: true, ...(requeue ? { estruturacaoNaFila: true } : {}) });
   }
 
   const steps = parseJobSteps(job.steps);
@@ -197,4 +200,37 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
   const r = await removerContaVps(admin, { id, userId: user.id, agentId: job.agent_id as string, steps: job.steps, input });
   if ("erro" in r) return NextResponse.json({ error: r.erro }, { status: r.status });
   return NextResponse.json({ ok: true });
+}
+
+/** Troca a proxy no input das estruturações paradas ou na fila da conta; a que parou por proxy morta volta para a fila. Devolve quantas voltaram. */
+async function levarProxyParaEstruturacoes(admin: ReturnType<typeof getSupabaseAdmin>, contaId: string, proxy: string): Promise<number> {
+  const { data: estruturas } = await admin
+    .from("emulator_jobs")
+    .select("id, status, error, steps, input_enc")
+    .eq("conta_id", contaId)
+    .eq("kind", "estruturacao")
+    .in("status", ["queued", "error"]);
+  let voltaram = 0;
+  for (const e of (estruturas ?? []) as Array<{ id: string; status: string; error: string | null; steps: unknown; input_enc: string }>) {
+    let entrada: Record<string, unknown>;
+    try {
+      entrada = JSON.parse(decrypt(e.input_enc)) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const patchE: Record<string, unknown> = { input_enc: encrypt(JSON.stringify({ ...entrada, proxy })), updated_at: new Date().toISOString() };
+    if (e.status === "error" && /^PROXY_MORTA|sidecar/i.test(e.error ?? "")) {
+      Object.assign(patchE, {
+        status: "queued",
+        error: null,
+        prompt: null,
+        reply: null,
+        finished_at: null,
+        steps: parseJobSteps(e.steps).filter((s) => s.status === "done" && s.key !== "fechar"),
+      });
+      voltaram += 1;
+    }
+    await admin.from("emulator_jobs").update(patchE).eq("id", e.id).in("status", ["queued", "error"]);
+  }
+  return voltaram;
 }

@@ -56,6 +56,7 @@ export async function criarEstruturacao(
     plano,
     conta: { usuario: input.conta.usuario, senha: input.conta.senha },
     pais: input.pais,
+    proxy: input.proxy,
   };
   const { data: job, error } = await admin
     .from("emulator_jobs")
