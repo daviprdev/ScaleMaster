@@ -5,7 +5,7 @@ import { apagarVolume, conferirQuota, copiarVolume, prune } from "./disco.mjs";
 import { aplicarProps, propsDe } from "./fingerprint.mjs";
 import { esperar, rodar, trecho } from "./processo.mjs";
 import { capacidade } from "./supervisor.mjs";
-import { IMAGEM_SIDECAR, colisao, enderecoDe, enderecosVivos, garantirBridge, garantirRede, nomeSidecar, pararSidecar, soltarRede, subirSidecar } from "./rede.mjs";
+import { IMAGEM_SIDECAR, colisao, enderecoDe, enderecosVivos, garantirBridge, garantirRede, nomeSidecar, pararSidecar, redeSumiu, soltarRede, subirSidecar } from "./rede.mjs";
 
 /**
  * Driver dos containers redroid. Mesma superfície da classe MuMu de
@@ -581,7 +581,18 @@ export class Android {
     }
     // Cota atual (CPU por maxLigadas, 2048 MB) também nos containers criados antes dela.
     await rodar("docker", argsDaCota(nome), { timeoutMs: 60_000 });
-    await docker(["start", nome], 120_000);
+    try {
+      await docker(["start", nome], 120_000);
+    } catch (e) {
+      if (!redeSumiu(e.message)) throw e;
+      // A rede do lote foi apagada com o container desligado: recria a rede e o container com o mesmo retrato
+      // (IP, MAC, props, hostname) por cima do mesmo volume — os dados e a sessão do Instagram ficam.
+      await docker(["rm", "-f", nome], 120_000);
+      await pararSidecar(nome);
+      await this.criarContainer(spec);
+      await rodar("docker", argsDaCota(nome), { timeoutMs: 60_000 });
+      await docker(["start", nome], 120_000);
+    }
     this.prontos.delete(index);
     // Retrato sem MAC (container antigo ou reconstruído): lê do inspect agora que está ligado e guarda.
     if (!spec.device?.mac) await this.aprenderMac(index, spec).catch(() => {});

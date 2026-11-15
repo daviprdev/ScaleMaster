@@ -146,11 +146,21 @@ async function criarRede(rede) {
   if (r.codigo !== 0 && !redeJaExiste(r.stderr)) throw new Error(`docker network create ${rede.nome}: ${trecho(r.stderr)}`);
 }
 
-/** Apaga a bridge de um lote quando o último container dele sai (com container dentro o Docker recusa: fica). */
+/**
+ * Apaga a bridge de um lote quando o último container dele sai. O Docker só recusa o rm com container
+ * LIGADO na rede: com os outros do lote desligados ele apagava e eles ficavam apontando para uma rede que
+ * não existe ("failed to set up container networking: network … not found", ig-55, 15/11). Agora só apaga
+ * sem nenhum container (ligado ou não) nela.
+ */
 export async function soltarRede(rede) {
   if (rede.indice === 0) return;
+  const r = await rodar("docker", ["ps", "-a", "--filter", `network=${rede.nome}`, "--format", "{{.Names}}"], { timeoutMs: 30_000 });
+  if (r.codigo !== 0 || String(r.stdout).trim()) return;
   await rodar("docker", ["network", "rm", rede.nome], { timeoutMs: 30_000 });
 }
+
+/** O docker start falhou porque a rede do container foi apagada? */
+export const redeSumiu = (mensagem) => /network [0-9a-f]{12,} not found|failed to set up container networking/i.test(String(mensagem ?? ""));
 
 /** Cria a bridge de sempre (instalar.sh também faz; aqui garante no boot do agente). */
 export async function garantirBridge() {
