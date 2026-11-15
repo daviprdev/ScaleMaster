@@ -4,7 +4,8 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt, encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseJobSteps } from "@/lib/emulador/jobs";
-import { isOnline, parseCriada } from "@/lib/emulador/payload";
+import { isOnline } from "@/lib/emulador/payload";
+import { removerContaVps } from "@/lib/vps/remover-conta";
 import { parseConta, parseProxy } from "@/lib/vps/input";
 import { stepsAfterProxyChange } from "@/lib/vps/jobs";
 import type { VpsContaInput } from "@/lib/vps/types";
@@ -185,36 +186,15 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "A estruturação dessa conta está rodando agora. Espere terminar." }, { status: 409 });
   }
 
-  const steps = parseJobSteps(job.steps);
-  const nome = steps.find((s) => s.key === "nome")?.message;
-  const criado = steps.some((s) => s.key === "copiar" && s.status === "done");
+  const criado = parseJobSteps(job.steps).some((s) => s.key === "copiar" && s.status === "done");
   if (criado) {
     // Com a VPS offline o comando expiraria em 2 min e o container ficaria órfão sem botão para apagar.
     const { data: agent } = await admin.from("emulator_agents").select("last_seen_at").eq("id", job.agent_id).maybeSingle();
     if (!isOnline(agent?.last_seen_at as string | null)) {
       return NextResponse.json({ error: "A VPS está offline. Com o agente rodando, tente de novo para apagar o container junto." }, { status: 409 });
     }
-    // Nome e índice saem de vps_devices; criada = docker_created (string crua do inspect, gravada na etapa copiar).
-    // Sem a coluna (SQL não aplicado), lê só o container e o agente confere pelo inspect.
-    let { data: device } = await admin.from("vps_devices").select("container, docker_created").eq("job_id", id).eq("user_id", user.id).maybeSingle();
-    if (!device) ({ data: device } = await admin.from("vps_devices").select("container").eq("job_id", id).eq("user_id", user.id).maybeSingle());
-    const container = (device?.container as string | undefined) ?? input.device.container;
-    const index = Number(/^ig-(\d+)$/.exec(container)?.[1] ?? input.device.index);
-    const criada = parseCriada((device as { docker_created?: unknown } | null)?.docker_created);
-    const { error: cmdErr } = await admin.from("emulator_commands").insert({
-      user_id: user.id,
-      agent_id: job.agent_id,
-      instance_index: index,
-      action: "delete",
-      // conta = id da conta: o agente apaga o container que tem a label dela, mesmo com o Created do banco defasado.
-      params: { nome: nome ?? container, ...(criada ? { criada } : {}), container, volume: input.device.volume, conta: id },
-    });
-    if (cmdErr) return NextResponse.json({ error: cmdErr.message }, { status: 500 });
   }
-
-  await admin.from("vps_devices").delete().eq("job_id", id).eq("user_id", user.id);
-  const { data, error } = await admin.from("emulator_jobs").delete().eq("id", id).eq("user_id", user.id).neq("status", "running").select("id");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!data?.length) return NextResponse.json({ error: "Conta não encontrada ou rodando agora." }, { status: 409 });
+  const r = await removerContaVps(admin, { id, userId: user.id, agentId: job.agent_id as string, steps: job.steps, input });
+  if ("erro" in r) return NextResponse.json({ error: r.erro }, { status: r.status });
   return NextResponse.json({ ok: true });
 }

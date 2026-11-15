@@ -44,9 +44,9 @@ import { TAREFAS } from "./tarefas/index.mjs";
 import { versoesDisponiveis } from "./fluxos/apk.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { semPerguntar } from "./fluxos/dono.mjs";
-import { FLUXOS } from "./fluxos/nova-conta.mjs";
+import { FLUXOS, PASTA_SESSOES } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.9.20";
+const VERSAO = "1.9.21";
 const AGENT_KIND = "vps";
 /** "Instância" -1 = a VPS em si: só a automação rebuild-imagem roda nela (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
@@ -192,6 +192,14 @@ async function executar(driver, comando) {
     const criada = typeof comando.params?.criada === "string" ? comando.params.criada : undefined;
     await driver.excluir(index, { log: (m) => log(`[excluir ig-${index}] ${m}`), nome: atual.name, criada, conta });
     limparAlerta(atual.criada);
+    // Conta apagada (Remover ou conectada no SaaS): a sessão exportada dela vai junto.
+    if (conta && /^[0-9a-f-]{36}$/.test(conta)) {
+      const sessao = path.join(PASTA_SESSOES, `${conta}.tgz`);
+      if (existsSync(sessao)) {
+        unlinkSync(sessao);
+        log(`sessão ${conta.slice(0, 8)} apagada`);
+      }
+    }
     log(`Container ig-${index} (${atual.name}) apagado, com o volume.`);
     return null;
   }
