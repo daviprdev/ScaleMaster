@@ -91,6 +91,30 @@ export const CAPTCHA_IMAGEM = [
   "code from the image", "código da imagem", "Hear this code", "Ouvir este código",
 ];
 
+/**
+ * Da tela do código para a do e-mail (cecilia, 15/11): "Não recebi o código" abre o sheet com "Reenviar código de
+ * confirmação | Alterar email | Confirmar pelo número de celular"; "Alterar email" leva para "Qual é seu email?". O BACK
+ * do Android não sai dessa tela. Sem os botões, cai no BACK.
+ */
+async function irParaAlterarEmail(d, log = () => {}) {
+  let nos = await d.tela().catch(() => []);
+  const naoRecebi = acharTexto(nos, ["Não recebi o código", "I didn't get the code", "Didn't get the code", "Não recebeste o código"]);
+  if (naoRecebi) {
+    await tocarNo(d, naoRecebi, 2500);
+    nos = await d.tela().catch(() => []);
+  }
+  const alterar = acharTexto(nos, ["Alterar email", "Alterar e-mail", "Change email", "Change email address", "Alterar endereço de email"]);
+  if (alterar) {
+    await tocarNo(d, alterar, 3000);
+    log("tela do código: Não recebi o código → Alterar email");
+    return true;
+  }
+  log("tela do código sem \"Alterar email\": voltando com o BACK");
+  await d.tecla("KEYCODE_BACK");
+  await esperar(3000);
+  return false;
+}
+
 export function ehTelaCodigo(nos) {
   if (temTexto(nos, CAPTCHA_IMAGEM)) return false;
   return temTexto(nos, ["código de confirmação", "confirmation code", "Introduz o código", "Insira o código", "Enter the code", "Digite o código", "Insira o código que enviamos"]);
@@ -326,8 +350,7 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
             if (novo) {
               log(`o código não chegou: e-mail novo pelo Reactivate (${estado.trocasEmail}/2), voltando para a tela do e-mail`);
               estado.codigosImap = 0;
-              await d.tecla("KEYCODE_BACK");
-              await esperar(3000);
+              await irParaAlterarEmail(d, log);
               return;
             }
           }
