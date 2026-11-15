@@ -159,7 +159,11 @@ export function requisicao(url, { method = "GET", headers = {}, body = null, jar
 
 async function statusHttp(sessao) {
   const r = await requisicao(`${sessao.url}/status`, { jar: sessao.jar, headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" } });
-  if (r.status === 404 || r.status === 410) throw new Error("código de resgate inválido ou removido");
+  if (r.status === 404 || r.status === 410) {
+    const e = new Error("código de resgate inválido ou removido (o portal marcou como usado)");
+    e.codigoVencido = true;
+    throw e;
+  }
   if (r.status !== 200) throw new Error(`status do portal devolveu HTTP ${r.status}`);
   let j;
   try {
@@ -192,7 +196,30 @@ const http = {
   async abrir(link, codigo) {
     const jar = new CookieJar();
     const url = urlSessao(link, codigo);
-    // Resgate pelo form (POST code=…): 302 para /OTP/<CÓDIGO>; o GET direto também vale para sessão já aberta.
+    // decisão (15/11): consulta o /status ANTES do formulário. Código com sessão já existente não é reenviado pelo
+    // form: num código vencido o reenvio marca como usado ("already_used", HTTP 410) e mata a reativação (debora,
+    // milena, dandara). Sessão existente: devolve como está e o abrir() reativa (vencida sem OTP) ou usa (ativa).
+    const antes = await requisicao(`${url}/status`, { jar, headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" } }).catch(() => null);
+    if (antes && (antes.status === 404 || antes.status === 410) && /already_used|removed/i.test(antes.body)) {
+      const e = new Error("código de resgate já usado ou removido no portal");
+      e.codigoVencido = true;
+      throw e;
+    }
+    if (antes?.status === 200) {
+      let j = null;
+      try {
+        j = JSON.parse(antes.body);
+      } catch {
+        j = null;
+      }
+      const estado = String(j?.status ?? "").toLowerCase();
+      const lido = j?.ok && ["active", "expired", "done"].includes(estado) ? lerStatus(j) : null;
+      if (lido?.email) {
+        const existente = { modo: "http", url, jar, codigo: String(codigo).toUpperCase(), fimEm: Date.now() + (lido.restanteMs ?? 0), email: lido.email };
+        return { sessao: existente, status: j };
+      }
+    }
+    // Código nunca resgatado: resgate pelo form (POST code=…): 302 para /OTP/<CÓDIGO>.
     const post = await requisicao(link, {
       method: "POST",
       jar,
