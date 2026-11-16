@@ -48,6 +48,7 @@ export function rotuloEstadoProxy(estado: string): string {
     morta: "morta",
     lenta: "lenta",
     credencial: "usuário/senha",
+    "tipo-errado": "tipo errado",
     recusada: "host/porta",
     "em-uso": "em uso",
     limitada: "limitada (429)",

@@ -86,6 +86,8 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
   const [resumo, setResumo] = React.useState<string | null>(null);
   const [testando, setTestando] = React.useState(false);
   const [teste, setTeste] = React.useState<TesteProxyLinha[] | null>(null);
+  /** Explicação do servidor quando nenhuma passou (tipo da porta errado, sufixo recusado pelo provedor). */
+  const [diagnostico, setDiagnostico] = React.useState<string | null>(null);
   const [queimadas, setQueimadas] = React.useState(0);
   const [removerUsadas, setRemoverUsadas] = React.useState(true);
 
@@ -135,11 +137,13 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
     const novo: TipoProxy = v === "http" ? "http" : "socks5";
     setTipo(novo);
     setTeste(null);
+    setDiagnostico(null);
     gravarPreferencia(CHAVE_TIPO, novo);
   };
   const mudarSufixo = (v: string) => {
     setSufixo(v);
     setTeste(null);
+    setDiagnostico(null);
     gravarPreferencia(CHAVE_SUFIXO, v);
   };
 
@@ -147,15 +151,17 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
     setTestando(true);
     setError(null);
     setTeste(null);
+    setDiagnostico(null);
     try {
       const res = await fetch("/api/vps/proxies/testar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ proxies, tipo, sufixo, quantidade: quantidade || undefined }),
       });
-      const data = (await res.json().catch(() => null)) as { error?: string; resultados?: TesteProxyLinha[] } | null;
+      const data = (await res.json().catch(() => null)) as { error?: string; resultados?: TesteProxyLinha[]; diagnostico?: string | null } | null;
       if (!res.ok || !data?.resultados) throw new Error(data?.error ?? "Não deu para testar as proxies agora.");
       setTeste(data.resultados);
+      setDiagnostico(data.diagnostico ?? null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -360,8 +366,9 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
               Testar todas
             </Button>
           </div>
+          {diagnostico && <Banner tone="warning">{diagnostico}</Banner>}
           {teste && (
-            <div className="rounded-lg border border-line p-3 text-xs">
+            <div className="max-h-72 overflow-y-auto rounded-lg border border-line p-3 text-xs">
               <p className="font-medium text-ink-2">
                 Teste: {teste.filter((t) => t.entra).length} de {teste.length} entram no lote
                 {teste.some((t) => !t.entra) ? ` · ${teste.filter((t) => !t.entra).length} ficam fora` : ""}

@@ -37,6 +37,8 @@ export function classificarTentativa({ codigo, http, connect = 0, stderr = "" })
   if (http === 407 || connect === 407) return { estado: "credencial", detalhe: "HTTP 407" };
   // SOCKS5 (curl 97 = erro no handshake da proxy): usuário/senha recusados = credencial; o resto, sem resposta útil.
   if (codigo === 97 && /user was rejected|authentication|auth/i.test(String(stderr))) return { estado: "credencial", detalhe: `SOCKS5: ${linha(stderr)}` };
+  // Porta HTTP com SOCKS5 escolhido: o curl não reconhece a resposta como SOCKS5.
+  if (codigo === 97 && /invalid (version|socks)|not.*socks|unexpected/i.test(String(stderr))) return { estado: "tipo", detalhe: `a porta não fala SOCKS5: ${linha(stderr)}` };
   if (codigo === 97) return { estado: "morta", detalhe: `curl 97: ${linha(stderr)}` };
   if (http === 429) return { estado: "limitada", detalhe: "HTTP 429" };
   if (codigo === 0 && (http === 204 || http === 200)) return { estado: "ok", detalhe: `HTTP ${http}` };
@@ -84,8 +86,9 @@ export async function testarProxy(proxy, { log = () => {}, executar = rodar, pau
       return { estado, motivo: estado === "lenta" ? `respondeu em ${(r.ms / 1000).toFixed(1)} s (lenta, acima de ${LENTA_MS / 1000} s)` : `respondeu em ${(r.ms / 1000).toFixed(1)} s`, ms: r.ms, tentativas: tentativa };
     }
     if (c.estado === "limitada") return { estado: "limitada", motivo: MOTIVO.limitada, ms: r.ms, tentativas: tentativa };
-    // 407 é definitivo: repetir não muda a senha.
+    // 407 é definitivo: repetir não muda a senha. Protocolo errado também.
     if (c.estado === "credencial") return { estado: "credencial", motivo: MOTIVO.credencial, ms: r.ms, tentativas: tentativa };
+    if (c.estado === "tipo") return { estado: "tipo-errado", motivo: "a porta não fala SOCKS5 (troque o tipo da proxy para HTTP ou use a porta SOCKS5)", ms: r.ms, tentativas: tentativa };
     ultimo = c;
     if (tentativa < total) {
       log(`proxy: tentativa ${tentativa}/${total} falhou (${c.detalhe}), de novo em ${pausaMs / 1000} s`);

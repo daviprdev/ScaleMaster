@@ -13,7 +13,7 @@ import {
   sessoesDoLote,
   tipoDaUrl,
 } from "../lib/vps/input";
-import { AVISO_ROTACAO_DETECTADA, entraNoLote, pedirPelaProxy, testarSessao, type ResultadoProxy } from "../lib/vps/testar-proxy";
+import { AVISO_ROTACAO_DETECTADA, classificarTentativa, diagnosticar, entraNoLote, pedirPelaProxy, testarProxy, testarSessao, type ResultadoProxy } from "../lib/vps/testar-proxy";
 import { classificarTentativa as classificarCurl } from "../agente-vps/lib/teste-proxy.mjs";
 import { chaveGeo, lerProxy, urlDoGost } from "../agente-vps/lib/rede.mjs";
 import { estadoIsolamento } from "../lib/vps/jobs";
@@ -202,5 +202,57 @@ describe("SOCKS5 de verdade: handshake com usuário/senha e nome resolvido pela 
   it("senha errada: SOCKS_AUTH (credencial)", async () => {
     const r = await pedirPelaProxy(`socks5h://cliente1-session-a1b2c3d4:errada@127.0.0.1:${portaSocks}`, "http://www.gstatic.com/generate_204", 5000);
     expect(r).toMatchObject({ erro: "SOCKS_AUTH" });
+  });
+});
+
+describe("Diagnóstico quando nada passa (16/11: 50 sessões da gmproxys com usuário/senha)", () => {
+  const credencial: ResultadoProxy = { estado: "credencial", motivo: "x", ms: 100, tentativas: 1 };
+  const tipoErrado: ResultadoProxy = { estado: "tipo-errado", motivo: "x", ms: 100, tentativas: 1 };
+  const base = { url: "socks5h://cliente1:senha@sv1.gmproxys.com:823", tipo: "socks5" as const, usuario: "cliente1" };
+
+  it("sufixo recusado e base sem sufixo viva: diz que o formato de sessão não é o do provedor", async () => {
+    const testar = vi.fn(async () => ({ estado: "viva", motivo: "ok", ms: 500, tentativas: 1 }) as ResultadoProxy);
+    const d = await diagnosticar([credencial, credencial], base, SUFIXO_PADRAO, testar);
+    expect(d).toContain("esse formato de sessão não é o dele");
+    expect((testar.mock.calls[0] as unknown[])[0]).toBe(base.url);
+  });
+  it("base também recusada: confere a credencial", async () => {
+    expect(await diagnosticar([credencial], base, SUFIXO_PADRAO, async () => credencial)).toContain("Mesmo sem o sufixo");
+  });
+  it("porta que não fala SOCKS5 e responde como HTTP: troque o Tipo para HTTP (gmproxys 824)", async () => {
+    const testar = vi.fn(async () => credencial);
+    const d = await diagnosticar([tipoErrado, tipoErrado], base, SUFIXO_PADRAO, testar);
+    expect(d).toContain("não fala SOCKS5");
+    expect(d).toContain("824");
+    expect(String((testar.mock.calls[0] as unknown[])[0])).toMatch(/^http:\/\/cliente1:senha@sv1\.gmproxys\.com:823/);
+  });
+  it("alguma passou: sem diagnóstico", async () => {
+    expect(await diagnosticar([credencial, { estado: "viva", motivo: "", ms: 1, tentativas: 1 }], base, SUFIXO_PADRAO)).toBeNull();
+  });
+  it("curl 97 com resposta que não é SOCKS5 = tipo errado no agente", () => {
+    expect(classificarCurl({ codigo: 97, http: 0, stderr: "curl: (97) Received invalid version in initial SOCKS5 response." }).estado).toBe("tipo");
+  });
+});
+
+describe("SOCKS5 numa porta HTTP de verdade", () => {
+  let portaHttp: net.Server;
+  let porta = 0;
+  beforeAll(async () => {
+    // Imita uma porta de proxy HTTP: a qualquer byte responde 400 em HTTP.
+    portaHttp = net.createServer((c) => {
+      c.once("data", () => c.end("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n"));
+      c.on("error", () => {});
+    });
+    await new Promise<void>((r) => portaHttp.listen(0, "127.0.0.1", () => r()));
+    porta = (portaHttp.address() as net.AddressInfo).port;
+  });
+  afterAll(() => portaHttp?.close());
+  it("handshake SOCKS5 recebe HTTP: NAO_SOCKS → tipo errado (antes saía como usuário/senha)", async () => {
+    const r = await pedirPelaProxy(`socks5h://u:p@127.0.0.1:${porta}`, "http://www.gstatic.com/generate_204", 5000);
+    expect(r).toMatchObject({ erro: "NAO_SOCKS" });
+    expect(classificarTentativa(r)).toBe("tipo");
+    const t = await testarProxy(`socks5h://u:p@127.0.0.1:${porta}`, { pausa: async () => {} });
+    expect(t.estado).toBe("tipo-errado");
+    expect(t.tentativas).toBe(1);
   });
 });

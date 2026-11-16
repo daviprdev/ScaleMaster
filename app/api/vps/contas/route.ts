@@ -6,7 +6,7 @@ import { encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseInstances } from "@/lib/emulador/payload";
 import { AVISO_ROTACAO, parseFotosPerfil, parseLoteInput, parseProxies, type ProxyLida } from "@/lib/vps/input";
-import { entraNoLote, testarProxies, type ResultadoProxy } from "@/lib/vps/testar-proxy";
+import { diagnosticar, entraNoLote, testarProxies, type ResultadoProxy } from "@/lib/vps/testar-proxy";
 import { listarMidias, pastaMidias } from "@/lib/vps/midias";
 import { chaveProxy, decidirRam, hostPortaDaChave, parseCapacidade, proxiesEmUso } from "@/lib/vps/jobs";
 import { proxyChaveDe, proxyHostDe, redeDe } from "@/lib/vps/load";
@@ -124,7 +124,9 @@ export async function POST(req: NextRequest) {
       if (escolhidas.length < lote.quantidade) escolhidas.push({ p, linha });
     });
     if (escolhidas.length === 0) {
-      return NextResponse.json({ error: "Nenhuma proxy passou no teste: nada foi enviado. Veja o motivo de cada uma abaixo.", problemas }, { status: 409 });
+      const base = parseProxies(body && typeof body === "object" ? (body as Record<string, unknown>).proxies : "", { tipo: lote.tipo, dedupe: false });
+      const diagnostico = "value" in base && base.value[0] ? await diagnosticar(resultados, base.value[0], lote.sufixo).catch(() => null) : null;
+      return NextResponse.json({ error: `Nenhuma proxy passou no teste: nada foi enviado.${diagnostico ? ` ${diagnostico}` : " Veja o motivo de cada uma abaixo."}`, problemas }, { status: 409 });
     }
     proxiesDoLote = escolhidas.map((e) => e.p);
     linhasUsadas = escolhidas.map((e) => e.linha);

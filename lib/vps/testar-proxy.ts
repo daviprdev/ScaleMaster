@@ -26,7 +26,7 @@ export const TESTE_PAUSA_MS = 5_000;
 export const LENTA_MS = 6_000;
 export const AVISO_ROTACAO_DETECTADA = "rotação detectada, sessão não fixa";
 
-export type EstadoProxy = "viva" | "lenta" | "limitada" | "credencial" | "recusada" | "morta";
+export type EstadoProxy = "viva" | "lenta" | "limitada" | "credencial" | "recusada" | "morta" | "tipo-errado";
 
 export interface ResultadoProxy {
   estado: EstadoProxy;
@@ -46,7 +46,7 @@ export interface ResultadoProxy {
 /** Resultado cru de UMA requisição: resposta HTTP (status, corpo) ou erro de rede (code). */
 export type Tentativa = { status: number; ms: number; corpo?: string } | { erro: string; ms: number };
 
-type Classe = "ok" | "credencial" | "limitada" | "recusada" | "morta" | "outro";
+type Classe = "ok" | "credencial" | "limitada" | "recusada" | "morta" | "outro" | "tipo";
 
 const RECUSADA = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EHOSTUNREACH", "ENETUNREACH"]);
 
@@ -59,12 +59,15 @@ export function classificarTentativa(t: Tentativa): Classe {
     return "outro";
   }
   if (t.erro === "SOCKS_AUTH") return "credencial";
+  // A porta respondeu outro protocolo ao handshake SOCKS5 (porta HTTP com o tipo SOCKS5 escolhido).
+  if (t.erro === "NAO_SOCKS") return "tipo";
   if (RECUSADA.has(t.erro)) return "recusada";
   return "morta";
 }
 
 export const MOTIVO: Record<Exclude<EstadoProxy, "viva" | "lenta">, string> = {
-  credencial: "a proxy recusou o usuário/senha (HTTP 407 / SOCKS5)",
+  credencial: "a proxy recusou o usuário/senha",
+  "tipo-errado": "a porta não fala SOCKS5 (respondeu outro protocolo): escolha HTTP ou use a porta SOCKS5 do provedor",
   recusada: "conexão recusada ou host inexistente (host/porta errados)",
   morta: "a proxy não respondeu",
   limitada: "o site de teste limitou a proxy (HTTP 429), não é culpa dela",
@@ -134,7 +137,9 @@ export async function tunelSocks5(p: ProxyAlvo, host: string, porta: number): Pr
   const comAuth = !!p.usuario;
   socket.write(Buffer.from(comAuth ? [5, 1, 2] : [5, 1, 0]));
   const metodo = await lerBytes(socket, 2, buffer);
-  if (metodo[0] !== 5 || metodo[1] === 0xff) throw Object.assign(new Error("SOCKS_AUTH"), { code: comAuth ? "SOCKS_AUTH" : "SOCKS_METODO" });
+  // Primeiro byte ≠ 5: quem respondeu não é um servidor SOCKS5 (ex.: "HTTP/1.1 400" de uma porta HTTP).
+  if (metodo[0] !== 5) throw Object.assign(new Error("NAO_SOCKS"), { code: "NAO_SOCKS" });
+  if (metodo[1] === 0xff) throw Object.assign(new Error("SOCKS_AUTH"), { code: comAuth ? "SOCKS_AUTH" : "SOCKS_METODO" });
   if (metodo[1] === 2) {
     const u = Buffer.from(p.usuario);
     const s = Buffer.from(p.senha);
@@ -272,8 +277,9 @@ export async function testarProxy(
       return { estado: lenta ? "lenta" : "viva", motivo: `respondeu em ${(t.ms / 1000).toFixed(1)} s${lenta ? ` (lenta, acima de ${LENTA_MS / 1000} s)` : ""}`, ms: t.ms, tentativas: n };
     }
     if (c === "limitada") return { estado: "limitada", motivo: MOTIVO.limitada, ms: t.ms, tentativas: n };
-    // 407 / SOCKS5 recusando a senha é definitivo: repetir não muda a senha.
-    if (c === "credencial") return { estado: "credencial", motivo: MOTIVO.credencial, ms: t.ms, tentativas: n };
+    // 407 / SOCKS5 recusando a senha é definitivo: repetir não muda a senha. Protocolo errado também.
+    if (c === "credencial") return { estado: "credencial", motivo: `${MOTIVO.credencial} (${"status" in t ? "HTTP 407" : "SOCKS5"})`, ms: t.ms, tentativas: n };
+    if (c === "tipo") return { estado: "tipo-errado", motivo: MOTIVO["tipo-errado"], ms: t.ms, tentativas: n };
     ultima = t;
     ultimaClasse = c;
     if (n < total) await pausa(pausaMs);
@@ -313,7 +319,7 @@ export async function testarSessao(
   { testar = testarProxy, saida = lerSaida, ip = lerIp }: { testar?: (url: string) => Promise<ResultadoProxy>; saida?: (url: string) => ReturnType<typeof lerSaida>; ip?: (url: string) => Promise<string | null> } = {}
 ): Promise<ResultadoProxy> {
   const vida = await testar(proxyUrl);
-  if (vida.estado === "credencial" || vida.estado === "recusada" || vida.estado === "morta") return { ...vida, ip: null, pais: null, rotacao: false, aviso: null };
+  if (vida.estado === "credencial" || vida.estado === "recusada" || vida.estado === "morta" || vida.estado === "tipo-errado") return { ...vida, ip: null, pais: null, rotacao: false, aviso: null };
   const geo = await saida(proxyUrl).catch(() => null);
   const ip1 = geo && "ip" in geo ? geo.ip : await ip(proxyUrl).catch(() => null);
   const pais = geo && "pais" in geo ? geo.pais || null : null;
@@ -321,6 +327,35 @@ export async function testarSessao(
   const rotacao = !!(ip1 && ip2 && ip1 !== ip2);
   const avisos = [geo && "limitado" in geo ? "geo limitado (429): país não lido" : null, rotacao ? `${AVISO_ROTACAO_DETECTADA} (${ip1} → ${ip2})` : null].filter(Boolean);
   return { ...vida, ip: ip1, pais, rotacao, aviso: avisos.length ? avisos.join(" · ") : null };
+}
+
+/**
+ * Quando nada passou, explica o porquê com um teste a mais (16/11: 50 sessões da gmproxys deram "usuário/senha"
+ * sem dizer se o problema era o sufixo ou a porta). Tipo errado: testa a base no outro tipo. Credencial com sufixo:
+ * testa a credencial base SEM o sufixo — viva = o provedor não aceita esse formato de sessão. null = sem diagnóstico.
+ */
+export async function diagnosticar(
+  resultados: readonly ResultadoProxy[],
+  base: { url: string; tipo: "http" | "socks5"; usuario: string },
+  sufixo: string,
+  testar: (url: string) => Promise<ResultadoProxy> = testarProxy
+): Promise<string | null> {
+  if (resultados.length === 0 || resultados.some((r) => entraNoLote(r.estado))) return null;
+  const u = new URL(base.url);
+  if (resultados.every((r) => r.estado === "tipo-errado")) {
+    const comoHttp = await testar(`http://${u.username}:${u.password}@${u.host}`);
+    const ok = entraNoLote(comoHttp.estado) || comoHttp.estado === "credencial";
+    return `A porta ${u.port} não fala SOCKS5${ok ? " — ela responde como proxy HTTP: troque o Tipo para HTTP ou use a porta SOCKS5 do provedor (na gmproxys, a porta ao lado: 824)" : ": troque o Tipo para HTTP ou use a porta SOCKS5 do provedor"}.`;
+  }
+  if (sufixo && resultados.every((r) => r.estado === "credencial")) {
+    const semSufixo = await testar(base.url);
+    if (entraNoLote(semSufixo.estado) || semSufixo.estado === "lenta") {
+      return `A credencial base funciona sem o sufixo, mas o provedor recusa o usuário com "${sufixo.split("{sessao}").join("…")}": esse formato de sessão não é o dele. Peça ao provedor o formato de sessão fixa (o que vai no fim do usuário) e troque o sufixo, mantendo {sessao}; ou apague o sufixo (rotação: as contas trocam de IP).`;
+    }
+    if (semSufixo.estado === "credencial") return "Mesmo sem o sufixo a proxy recusa o usuário/senha: confira a credencial base (usuário, senha e se o seu IP precisa ser liberado no painel do provedor).";
+    if (semSufixo.estado === "tipo-errado") return `A porta ${u.port} não fala SOCKS5: troque o Tipo para HTTP ou use a porta SOCKS5 do provedor.`;
+  }
+  return null;
 }
 
 /** Testa várias de uma vez (até `paralelo` ao mesmo tempo), na ordem da lista. */

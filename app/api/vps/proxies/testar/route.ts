@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { AVISO_ROTACAO, LOTE_MAX, derivarProxy, parseProxies, parseSufixo, parseTipoProxy, sessoesDoLote, type ProxyLida } from "@/lib/vps/input";
-import { entraNoLote, testarProxies } from "@/lib/vps/testar-proxy";
+import { diagnosticar, entraNoLote, testarProxies } from "@/lib/vps/testar-proxy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -42,8 +42,11 @@ export async function POST(req: NextRequest) {
   if (alvos.length > MAX_LINHAS) return NextResponse.json({ error: `No máximo ${MAX_LINHAS} proxies por teste.` }, { status: 400 });
 
   const resultados = await testarProxies(alvos.map((p) => p.url));
+  // Nada passou: um teste a mais diz se é o tipo da porta ou o formato do sufixo de sessão.
+  const diagnostico = await diagnosticar(resultados, lidas.value[0], sufixo.value).catch(() => null);
   return NextResponse.json({
     modoSessao: !!sufixo.value,
+    diagnostico,
     aviso: sufixo.value ? null : AVISO_ROTACAO,
     resultados: alvos.map((p, i) => ({
       n: i + 1,
