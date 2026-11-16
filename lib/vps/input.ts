@@ -267,6 +267,8 @@ export interface LoteInput {
   agentId: string;
   quantidade: number;
   proxies: ProxyLida[];
+  /** Todas as proxies coladas, na ordem (16/11: o teste de vida escolhe as vivas entre elas; as excedentes cobrem as mortas). */
+  proxiesTodas: ProxyLida[];
   perfil: DevicePerfil;
   versaoIg: string;
   /** País padrão das proxies (ISO-2), para as linhas sem o 5º campo. */
@@ -332,7 +334,7 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
     const usadas = proxies.value.slice(0, quantidade);
     // Avisos só das linhas que entram no lote.
     const avisos = parseProxies(usadas.map((p) => p.url)) as { avisos?: string[] };
-    return { value: { agentId, quantidade, proxies: usadas, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: true, avisos: avisos.avisos ?? [] } };
+    return { value: { agentId, quantidade, proxies: usadas, proxiesTodas: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: true, avisos: avisos.avisos ?? [] } };
   }
 
   const quantidade = typeof body.quantidade === "number" ? body.quantidade : Number(field(body.quantidade, 3));
@@ -359,7 +361,7 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
     contas.push(c.value);
   }
 
-  return { value: { agentId, quantidade, proxies: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: false, avisos: proxies.avisos } };
+  return { value: { agentId, quantidade, proxies: proxies.value, proxiesTodas: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: false, avisos: proxies.avisos } };
 }
 
 /** Fotos de perfil do lote (14/11): no mínimo 2, marcadas na pasta Foto Perfil; cada conta recebe uma delas, sorteada. */

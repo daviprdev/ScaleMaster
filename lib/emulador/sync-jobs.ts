@@ -232,16 +232,18 @@ async function atualizarDeviceVps(admin: SupabaseClient, u: JobUpdate): Promise<
     } else if (u.status === "done") {
       avisar("vps_devices.status", (await admin.from("vps_devices").update({ status: "ativo" }).eq("job_id", u.id)).error);
     }
-    // Código do portal resgatado: fica no input para a etapa email saber se a sessão venceu (CODIGO_VENCIDO, sem reuso).
+    // Código do portal resgatado: hora, fim da janela e endereço ficam no input (retomada sem tocar no portal; CODIGO_VENCIDO, sem reuso).
     if (u.portal) {
       const { data: row, error } = await admin.from("emulator_jobs").select("input_enc").eq("id", u.id).maybeSingle();
       avisar("input_enc (ler portal)", error);
       if (row?.input_enc) {
         try {
-          const input = JSON.parse(decrypt(row.input_enc as string)) as { portalResgatadoEm?: string; portalExpiraEm?: string };
-          if (input.portalResgatadoEm !== u.portal.resgatadoEm || input.portalExpiraEm !== u.portal.expiraEm) {
+          const input = JSON.parse(decrypt(row.input_enc as string)) as { portalResgatadoEm?: string; portalExpiraEm?: string; portalEmail?: string };
+          const email = u.portal.email ?? input.portalEmail;
+          if (input.portalResgatadoEm !== u.portal.resgatadoEm || input.portalExpiraEm !== u.portal.expiraEm || input.portalEmail !== email) {
             input.portalResgatadoEm = u.portal.resgatadoEm;
             input.portalExpiraEm = u.portal.expiraEm;
+            if (email) input.portalEmail = email;
             avisar("input_enc (portal)", (await admin.from("emulator_jobs").update({ input_enc: encrypt(JSON.stringify(input)) }).eq("id", u.id)).error);
           }
         } catch (e) {

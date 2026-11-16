@@ -340,9 +340,31 @@ export async function proxyAtiva(container) {
   return trecho(r.stdout) === "true proxy";
 }
 
-/** País e IP de saída de uma proxy, vista da VPS (curl -x), em até 15 s. */
-export async function geoDaProxy(proxy, { timeoutMs = 15_000 } = {}) {
-  const r = await rodar(
+/** Geo por host:porta (16/11): o ip-api limita (429) e várias contas da mesma proxy consultavam de novo. */
+const GEO_CACHE = new Map();
+export const GEO_CACHE_MS = 6 * 3600_000;
+
+/** host:porta de uma URL de proxy (chave do cache; sem credencial). */
+export function chaveGeo(proxy) {
+  try {
+    const u = new URL(String(proxy));
+    return `${u.hostname.toLowerCase()}:${u.port}`;
+  } catch {
+    return String(proxy).replace(/^.*@/, "");
+  }
+}
+
+/** Geo limitado (HTTP 429): não é defeito da proxy — a etapa segue sem derrubar a conta. */
+export class GeoLimitado extends Error {
+  constructor() {
+    super("o endpoint de geo limitou (HTTP 429)");
+    this.geoLimitado = true;
+  }
+}
+
+/** País e IP de saída de uma proxy, vista da VPS (curl -x), em até 15 s. Só a etapa geo usa (nunca decide vida). */
+export async function geoDaProxy(proxy, { timeoutMs = 15_000, executar = rodar } = {}) {
+  const r = await executar(
     "curl",
     ["-sS", "-m", String(Math.ceil(timeoutMs / 1000)), "-x", proxy, "-w", "\n%{http_code}", "http://ip-api.com/json/?fields=status,countryCode,timezone,query"],
     { timeoutMs: timeoutMs + 5000 }
@@ -351,6 +373,7 @@ export async function geoDaProxy(proxy, { timeoutMs = 15_000 } = {}) {
   const linhas = saida.split("\n");
   const http = Number(linhas.pop());
   const corpo = linhas.join("\n");
+  if (http === 429) throw new GeoLimitado();
   if (r.codigo !== 0 || http !== 200) throw new Error(`a proxy não respondeu (${trecho(r.stderr) || `HTTP ${http || 0}`})`);
   let dados;
   try {
@@ -374,12 +397,36 @@ export class ProxyMorta extends Error {
   }
 }
 
-export async function validar(proxy, paisEsperado) {
-  let geo;
-  try {
-    geo = await geoDaProxy(proxy);
-  } catch (e) {
-    throw new ProxyMorta(e.message);
+/**
+ * Etapa geo: país da proxy (endpoint de geo, só aqui), com cache por host:porta. A vida da proxy já foi provada
+ * antes da primeira etapa (lib/teste-proxy.mjs), então: 429 não derruba (usa o cache ou segue sem conferir o
+ * país, com aviso); outra falha tenta de novo em 5 s antes do ProxyMorta; país diferente = ProxyMorta.
+ * Devolve { pais, ip, timezone, aviso? }.
+ */
+export async function validar(proxy, paisEsperado, { executar = rodar, pausa = esperar, log = () => {}, agora = Date.now } = {}) {
+  const chave = chaveGeo(proxy);
+  const guardado = GEO_CACHE.get(chave);
+  let geo = guardado && agora() - guardado.em < GEO_CACHE_MS ? guardado.geo : null;
+  if (!geo) {
+    for (let tentativa = 1; tentativa <= 2 && !geo; tentativa++) {
+      try {
+        geo = await geoDaProxy(proxy, { executar });
+        GEO_CACHE.set(chave, { geo, em: agora() });
+      } catch (e) {
+        if (e.geoLimitado) {
+          // decisão (16/11): 429 é do ip-api, não da proxy. Sem cache, segue sem conferir o país.
+          if (guardado) {
+            geo = guardado.geo;
+            break;
+          }
+          log(`geo: ${e.message}; país não conferido, a proxy já passou no teste de vida`);
+          return { pais: String(paisEsperado ?? "").toUpperCase(), ip: "", timezone: "", aviso: "geo limitado (429): país não conferido" };
+        }
+        if (tentativa === 2) throw new ProxyMorta(e.message);
+        log(`geo: ${e.message}; de novo em 5 s`);
+        await pausa(5000);
+      }
+    }
   }
   if (paisEsperado && geo.pais !== String(paisEsperado).toUpperCase()) {
     throw new ProxyMorta(`a proxy sai por ${geo.pais}, a conta é ${String(paisEsperado).toUpperCase()}`);
@@ -387,31 +434,45 @@ export async function validar(proxy, paisEsperado) {
   return geo;
 }
 
-/** Do lado de dentro do netns: a proxy funciona pelo redsocks (e só por ele). */
-export async function validarNoNetns(container, paisEsperado) {
-  const r = await rodar(
-    "docker",
-    ["exec", nomeSidecar(container), "curl", "-sS", "-m", "15", "-w", "\n%{http_code}", "http://ip-api.com/json/?fields=status,countryCode,query"],
-    { timeoutMs: 25_000 }
-  );
-  const linhas = String(r.stdout ?? "").trim().split("\n");
-  const http = Number(linhas.pop());
-  if (r.codigo !== 0 || http !== 200) throw new ProxyMorta(`dentro do container a proxy não respondeu (${trecho(r.stderr) || `HTTP ${http || 0}`})`);
-  let dados;
-  try {
-    dados = JSON.parse(linhas.join("\n"));
-  } catch {
-    throw new ProxyMorta("resposta de geo ilegível dentro do container");
+/** Só para os testes: zera o cache de geo. */
+export function limparCacheGeo() {
+  GEO_CACHE.clear();
+}
+
+/** IP/país de saída que a etapa geo já leu para esta proxy (cache), para os logs. */
+export function geoConhecido(proxy) {
+  return GEO_CACHE.get(chaveGeo(proxy))?.geo ?? null;
+}
+
+const URL_VIDA = "http://www.gstatic.com/generate_204";
+
+/**
+ * Do lado de dentro do netns: a proxy funciona pelo redsocks (e só por ele). Vida pelo generate_204 (sem endpoint
+ * de geo: o país é da etapa geo), 25 s por tentativa, mais 2 com 5 s de pausa; ProxyMorta só depois das três.
+ * Devolve { pais, ip } do cache de geo quando a proxy é conhecida (senão vazios).
+ */
+export async function validarNoNetns(container, paisEsperado, { proxy = null, executar = rodar, pausa = esperar, log = () => {} } = {}) {
+  let ultimo = "";
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    const r = await executar("docker", ["exec", nomeSidecar(container), "curl", "-sS", "-o", "/dev/null", "-m", "25", "-w", "%{http_code}", URL_VIDA], { timeoutMs: 35_000 });
+    const http = Number(String(r.stdout ?? "").trim());
+    if (r.codigo === 0 && (http === 204 || http === 200)) {
+      const geo = proxy ? geoConhecido(proxy) : null;
+      return { pais: geo?.pais ?? String(paisEsperado ?? "").toUpperCase(), ip: geo?.ip ?? "" };
+    }
+    ultimo = trecho(r.stderr) || `HTTP ${http || 0}`;
+    if (tentativa < 3) {
+      log(`proxy dentro do container: tentativa ${tentativa}/3 falhou (${ultimo}), de novo em 5 s`);
+      await pausa(5000);
+    }
   }
-  const pais = String(dados.countryCode ?? "").toUpperCase();
-  if (paisEsperado && pais !== String(paisEsperado).toUpperCase()) throw new ProxyMorta(`dentro do container a saída é ${pais}`);
-  return { pais, ip: String(dados.query ?? "") };
+  throw new ProxyMorta(`dentro do container a proxy não respondeu em 3 tentativas (${ultimo})`);
 }
 
 /** Prova do kill switch: com o sidecar de pé em modo bloqueado, nada sai (o curl precisa falhar). */
 export async function provarBloqueio(container) {
   const vivo = await rodar("docker", ["inspect", "--format", "{{.State.Running}}", nomeSidecar(container)], { timeoutMs: 20_000 });
   if (trecho(vivo.stdout) !== "true") return false;
-  const r = await rodar("docker", ["exec", nomeSidecar(container), "curl", "-sS", "-m", "8", "-o", "/dev/null", "http://ip-api.com/"], { timeoutMs: 15_000 });
+  const r = await rodar("docker", ["exec", nomeSidecar(container), "curl", "-sS", "-m", "8", "-o", "/dev/null", URL_VIDA], { timeoutMs: 15_000 });
   return r.codigo !== 0;
 }

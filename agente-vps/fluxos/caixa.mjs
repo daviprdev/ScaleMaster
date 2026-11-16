@@ -25,6 +25,21 @@ export const SESSAO_PORTAL_MS = 20 * 60_000;
 export const TENTATIVAS_PORTAL = 6;
 /** Sem o código do Instagram nesse tempo, o agente faz o Reactivate (e-mail novo) e troca o e-mail no Instagram. */
 export const OTP_ANTES_DE_REATIVAR_MS = 6 * 60_000;
+/** Janela mínima para usar a sessão do portal num cadastro (digitar o e-mail e receber o código). */
+export const JANELA_MINIMA_MS = 4 * 60_000;
+
+/**
+ * Sessão gravada na conta (input.portalEmail + portalExpiraEm, gravados no resgate) que ainda vale pelo menos
+ * JANELA_MINIMA_MS: a retomada usa sem tocar no portal. null = não há ou está curta/vencida.
+ * @param {any} input
+ * @param {number} [agora]
+ */
+export function janelaGravada(input, agora = Date.now()) {
+  const email = typeof input?.portalEmail === "string" && input.portalEmail.includes("@") ? input.portalEmail : null;
+  const fimEm = Date.parse(input?.portalExpiraEm ?? "");
+  if (!email || !Number.isFinite(fimEm) || fimEm - agora < JANELA_MINIMA_MS) return null;
+  return { email, fimEm };
+}
 
 function erroCodigoVencido(motivo) {
   const e = new Error(CODIGO_VENCIDO);
@@ -89,6 +104,9 @@ export async function conferirCaixa(input, { portal = portalLib, imap = imapLib,
     const codigo = input?.portalCodigo ?? cred.senha;
     if (!link || !codigo) throw new Error("Essa conta veio sem o link do portal ou sem o código de resgate.");
     if (!portal.codigoValido(codigo)) throw new Error("Código de resgate fora do formato (6 a 12 letras/números).");
+    // Retomada dentro da janela gravada: nada de /status nem form — a sessão ainda vale e o código não foi queimado.
+    const guardada = janelaGravada(input);
+    if (guardada) return `sessão do portal em uso até ${new Date(guardada.fimEm).toISOString().slice(11, 16)} UTC (gravada no resgate); retoma sem tocar no portal`;
     // Código já resgatado numa rodada anterior: nunca se reusa um vencido — para aqui e o card pede outro.
     const vencido = await codigoVencido(input, portal);
     if (vencido) throw erroCodigoVencido(vencido);
@@ -117,9 +135,9 @@ export async function conferirCaixa(input, { portal = portalLib, imap = imapLib,
 /**
  * A caixa viva durante o cadastro (fluxos/cadastro.mjs). `log` recebe só texto sem segredo.
  * @param {any} input
- * `aoResgatar({ resgatadoEm, expiraEm })` avisa quando o código do portal foi resgatado (vai para o input_enc).
+ * `aoResgatar({ resgatadoEm, expiraEm, email })` avisa a cada sessão nova do portal (resgate ou Reactivate): vai para o input_enc.
  * @param {any} input
- * @param {{ log?: (m: string) => void, portal?: any, imap?: any, mailtm?: any, aoResgatar?: (p: { resgatadoEm: string, expiraEm: string }) => void }} [deps]
+ * @param {{ log?: (m: string) => void, portal?: any, imap?: any, mailtm?: any, aoResgatar?: (p: { resgatadoEm: string, expiraEm: string, email: string|null }) => void, esperaPortalMs?: number }} [deps]
  */
 export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = imapLib, mailtm = mailtmLib, aoResgatar = () => {}, esperaPortalMs = 5000 } = {}) {
   const p = provedorDe(input);
@@ -144,17 +162,48 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
       e.portalFora = true;
       throw e;
     };
+    // Resgate desta conta (o primeiro, gravado no input_enc pelo servidor): nunca muda depois, nem com Reactivate.
+    let resgatadoEm = input?.portalResgatadoEm ?? null;
+    /** Endereço e fim da janela vão para a conta (input_enc) a cada sessão nova: a retomada usa sem tocar no portal. */
+    const gravar = (s) => {
+      const agora = Date.now();
+      resgatadoEm = resgatadoEm ?? new Date(agora).toISOString();
+      aoResgatar({ resgatadoEm, expiraEm: new Date(s.fimEm ?? agora + SESSAO_PORTAL_MS).toISOString(), email: s.email ?? null });
+    };
     const abrir = async () => {
       if (sessao && sessao.fimEm && sessao.fimEm - Date.now() > 60_000) return sessao;
+      // Retomada dentro da janela (16/11): endereço e fim gravados na conta — nenhuma requisição ao portal aqui.
+      const guardada = !sessao ? janelaGravada(input) : null;
+      if (guardada && portal.sessaoGuardada) {
+        sessao = portal.sessaoGuardada(link, codigo, guardada);
+        log(`portal: retomando a sessão gravada (${Math.round((guardada.fimEm - Date.now()) / 60_000)} min de janela), sem tocar no portal`);
+        return sessao;
+      }
       await Promise.resolve(portal.fechar(sessao)).catch(() => {});
       sessao = null;
       await portalNoAr();
-      const aberta = await portal.abrir(link, codigo, { log });
+      // Código já resgatado nunca vai de novo pelo formulário (o reenvio marca como usado): só o /status decide.
+      const aberta = await portal.abrir(link, codigo, { log, semResgate: !!resgatadoEm });
       sessao = aberta.sessao;
-      // Hora do resgate e do fim da sessão: o servidor guarda no input_enc para a etapa email não reusar código vencido.
-      const agora = Date.now();
-      aoResgatar({ resgatadoEm: new Date(agora).toISOString(), expiraEm: new Date(sessao.fimEm ?? agora + SESSAO_PORTAL_MS).toISOString() });
+      gravar(sessao);
       return sessao;
+    };
+    /**
+     * Antes de digitar o endereço: janela com menos de JANELA_MINIMA_MS = Reactivate (janela nova de 20 min). Sem
+     * reativação sobrando, o código não serve para um cadastro inteiro: CODIGO_VENCIDO (o card pede código novo).
+     */
+    const garantirJanela = async (s) => {
+      if (!s.fimEm || s.fimEm - Date.now() >= JANELA_MINIMA_MS) return s;
+      log(`portal: faltam ${Math.max(0, Math.round((s.fimEm - Date.now()) / 1000))} s de janela (menos de ${JANELA_MINIMA_MS / 60_000} min): Reactivate antes de usar`);
+      await portalNoAr();
+      try {
+        await portal.renovar(s);
+      } catch (e) {
+        if (e.codigoVencido) throw erroCodigoVencido(`janela com menos de ${JANELA_MINIMA_MS / 60_000} min e ${e.message}`);
+        throw e;
+      }
+      gravar(s);
+      return s;
     };
     return {
       provedor: p,
@@ -167,10 +216,11 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
         this.ultimoErro = null;
         for (let tentativa = 1; tentativa <= TENTATIVAS_PORTAL; tentativa++) {
           try {
-            const s = await abrir();
+            const s = await garantirJanela(await abrir());
             vistos = portal.mensagensVistas ? await Promise.resolve(portal.mensagensVistas(s)).catch(() => null) : null;
             return s.email;
           } catch (e) {
+            if (e.message === CODIGO_VENCIDO) throw e;
             // Código já gasto: não há endereço possível com ele — para o job (container fica) e o card pede código novo.
             if (e.codigoVencido) throw erroCodigoVencido(e.message);
             log(`portal falhou ao abrir a sessão (tentativa ${tentativa}/${TENTATIVAS_PORTAL}): ${e.message}`);
@@ -188,6 +238,7 @@ export function criarCaixa(input, { log = () => {}, portal = portalLib, imap = i
         const s = await abrir();
         await portalNoAr();
         await portal.renovar(s);
+        gravar(s);
         vistos = portal.mensagensVistas ? await Promise.resolve(portal.mensagensVistas(s)).catch(() => null) : null;
         log(`portal: Reactivate feito, e-mail novo ${s.email}`);
         return s.email;

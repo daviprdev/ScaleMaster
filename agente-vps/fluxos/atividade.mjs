@@ -135,9 +135,9 @@ export async function ligarProxy(mumu, index, log) {
   if (!proxy) throw new Error("Esse container não tem proxy gravada. Edite a conta e informe uma.");
   const nome = `ig-${index}`;
   await subirSidecar(nome, proxy);
-  const geo = await validarNoNetns(nome, mumu.deviceDe(index)?.pais ?? null);
-  log(`proxy de pé (${geo.ip}, ${geo.pais})`);
-  return `conectado (${geo.ip}, ${geo.pais})`;
+  const geo = await validarNoNetns(nome, mumu.deviceDe(index)?.pais ?? null, { proxy, log });
+  log(`proxy de pé (${geo.ip || "responde"}, ${geo.pais})`);
+  return `conectado (${geo.ip || "pela proxy"}, ${geo.pais})`;
 }
 
 /**

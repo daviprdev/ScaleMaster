@@ -18,7 +18,7 @@
  *   node agente.mjs excluir <n>         apaga o container n, com o volume (teste local)
  *   node agente.mjs tarefa <nome> <n>   roda uma automação no container n (teste local)
  *   node agente.mjs nova-conta [json]   roda Criar conta a partir da base (teste local)
- *   node agente.mjs proxy <url> [pais]  valida uma proxy pelo endpoint de geo (teste local)
+ *   node agente.mjs proxy <url> [pais]  teste de vida (generate_204) e país da proxy (teste local)
  *   node agente.mjs capacidade          mostra maxLigadas/maxCadastro desta máquina
  *
  * Sem dependências: só Node 18+. Segurança: o servidor só escolhe entre
@@ -38,7 +38,8 @@ import { PASTA_PADRAO, listarMidias, pastaDeMidias } from "./lib/midias.mjs";
 import { definirSaas, enviarPrint, sincronizarMidias } from "./lib/saas.mjs";
 import { limparPrintsAntigos, salvarPrint } from "./lib/prints.mjs";
 import { esperar } from "./lib/processo.mjs";
-import { validar } from "./lib/rede.mjs";
+import { ProxyMorta, validar } from "./lib/rede.mjs";
+import { proxyUsavel, testarProxy } from "./lib/teste-proxy.mjs";
 import { Semaforo, capacidade, criarWatchdog, limparOrfaos, limparOrfaosAntigos, maioresConsumidores } from "./lib/supervisor.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
 import { versoesDisponiveis } from "./fluxos/apk.mjs";
@@ -46,7 +47,7 @@ import { pararInstagram } from "./fluxos/instagram.mjs";
 import { semPerguntar } from "./fluxos/dono.mjs";
 import { FLUXOS, PASTA_SESSOES } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.9.34";
+const VERSAO = "1.9.35";
 const AGENT_KIND = "vps";
 /** "Instância" -1 = a VPS em si: só a automação rebuild-imagem roda nela (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
@@ -275,6 +276,21 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
   // Vagas do supervisor: uma de cadastro para o job inteiro e uma de "ligado" enquanto o container está de pé.
   const soltarCadastro = semaforos ? await semaforos.cadastro.pegar() : () => {};
   const soltarLigada = semaforos ? await semaforos.ligadas.pegar() : () => {};
+
+  // Teste de vida da proxy ANTES de qualquer etapa (16/11): direto do host, generate_204, 25 s + 2 tentativas com
+  // 5 s. PROXY_MORTA só depois das três; nada liga, nada resgata código do portal antes de passar.
+  const proxyDoJob = job.input?.proxy ?? (Number.isInteger(job.instanceIndex) ? driver.proxyDe?.(job.instanceIndex) : null);
+  if (proxyDoJob && (job.kind === "nova-conta" || job.kind === "estruturacao")) {
+    const teste = await testarProxy(proxyDoJob, { log: logJob });
+    if (!proxyUsavel(teste.estado)) {
+      logJob(`teste da proxy: ${teste.motivo}`);
+      soltarLigada();
+      soltarCadastro();
+      return enviar("error", new ProxyMorta(teste.motivo).message);
+    }
+    logJob(`teste da proxy: ${teste.estado} (${teste.motivo})`);
+  }
+
   const watchdog = criarWatchdog(() => {
     logJob("travou: sem progresso há 1 h, desligando o container");
     if (estado.instanceIndex !== null) driver.fechar(estado.instanceIndex).catch(() => {});
@@ -625,6 +641,9 @@ async function main(args) {
   }
   if (cmd === "capacidade") return console.log(JSON.stringify({ ...capacidade(), imagem: IMAGEM, versoesIg: versoesDisponiveis() }, null, 2));
   if (cmd === "proxy") {
+    const teste = await testarProxy(args[1], { log: console.log });
+    console.log(`teste de vida: ${teste.estado} (${teste.motivo})`);
+    if (!proxyUsavel(teste.estado)) return;
     const geo = await validar(args[1], args[2]);
     return console.log(`proxy ok: ${geo.ip} (${geo.pais}, ${geo.timezone})`);
   }

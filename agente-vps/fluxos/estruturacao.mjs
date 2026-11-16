@@ -98,11 +98,13 @@ const FIXAS = {
       if (!proxy) throw new ProxyMorta("o container não tem proxy gravada");
       const pais = mumu.deviceDe(i)?.pais ?? input?.pais ?? null;
       // Primeiro de fora (sem ligar nada): proxy morta encerra aqui, sem mexer na conta.
-      await validar(proxy, pais);
+      // A vida da proxy já foi testada antes da primeira etapa; aqui só o país (geo com cache, 429 não derruba).
+      const conferido = await validar(proxy, pais, { log });
+      if (conferido.aviso) log(conferido.aviso);
       await mumu.prepararInstancia(i, { log });
       await subirSidecar(`ig-${i}`, proxy);
-      const geo = await validarNoNetns(`ig-${i}`, pais);
-      return `proxy de pé · saída ${geo.ip} (${geo.pais})`;
+      const geo = await validarNoNetns(`ig-${i}`, pais, { proxy, log });
+      return `proxy de pé · saída ${geo.ip || "pela proxy"} (${geo.pais})`;
     },
   },
   abrir: {

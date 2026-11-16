@@ -238,7 +238,7 @@ export function erroRenovar(motivo) {
 }
 
 const http = {
-  async abrir(link, codigo) {
+  async abrir(link, codigo, { semResgate = false } = {}) {
     const jar = new CookieJar();
     const url = urlSessao(link, codigo);
     // decisão (15/11): consulta o /status ANTES do formulário. Código com sessão já existente não é reenviado pelo
@@ -263,6 +263,14 @@ const http = {
         const existente = { modo: "http", url, jar, codigo: String(codigo).toUpperCase(), fimEm: Date.now() + (lido.restanteMs ?? 0), email: lido.email };
         return { sessao: existente, status: j };
       }
+    }
+    // decisão (16/11): código que esta conta já resgatou nunca volta ao formulário (o reenvio marca como usado e mata
+    // a reativação). /status fora do ar = erro passageiro (a caixa tenta de novo); de pé sem sessão = vencido.
+    if (semResgate) {
+      if (antes?.status !== 200) throw new Error(`o /status do portal não respondeu (${antes ? `HTTP ${antes.status}` : "sem resposta"}); código já resgatado não vai de novo pelo formulário`);
+      const e = new Error("o portal não mostra a sessão deste código já resgatado");
+      e.codigoVencido = true;
+      throw e;
     }
     // Código nunca resgatado: resgate pelo form (POST code=…): 302 para /OTP/<CÓDIGO>.
     const post = await requisicao(link, {
@@ -410,10 +418,11 @@ function caminho(sessaoOuModo) {
  * renovada na hora (mesmo código, endereço novo); vencida com OTP recebido ou
  * sem renovação = código gasto.
  */
-export async function abrir(link, codigo, { modo = modoPortal(), log = () => {} } = {}) {
+export async function abrir(link, codigo, { modo = modoPortal(), log = () => {}, semResgate = false } = {}) {
   if (!codigoValido(codigo)) throw new Error("código de resgate fora do formato (6 a 12 letras/números)");
-  const via = caminho(modo);
-  const { sessao, status } = await via.abrir(link, codigo, { log });
+  // Código já resgatado: sempre pelo caminho http, que consulta o /status antes e nunca reenvia o formulário.
+  const via = semResgate ? http : caminho(modo);
+  const { sessao, status } = await via.abrir(link, codigo, { log, semResgate });
   let lido = lerStatus(status);
   if (lido.acabou) {
     if (lido.temOtp || !lido.podeRenovar) {
@@ -428,6 +437,17 @@ export async function abrir(link, codigo, { modo = modoPortal(), log = () => {} 
   }
   log(`portal: sessão aberta para ${mascarar(codigo)} (${Math.round((lido.restanteMs ?? SESSAO_MS) / 60_000)} min)`);
   return { sessao, email: sessao.email };
+}
+
+/**
+ * Sessão montada com o endereço e o fim gravados na conta (retomada dentro da janela): nenhuma requisição aqui.
+ * O OTP é lido depois pelo /status, como numa sessão aberta agora.
+ * @param {string} link
+ * @param {string} codigo
+ * @param {{ email: string, fimEm: number }} gravada
+ */
+export function sessaoGuardada(link, codigo, { email, fimEm }) {
+  return { modo: "http", url: urlSessao(link, codigo), jar: new CookieJar(), codigo: String(codigo).toUpperCase(), fimEm, email: String(email).toLowerCase() };
 }
 
 /** Ids das mensagens já na caixa (para ignorar OTPs de uma tentativa anterior). */

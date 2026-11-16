@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { camposDoPortal } from "@/lib/vps/codigo-portal";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt, encrypt } from "@/lib/encrypt";
@@ -129,6 +130,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     next.provedorEmail = v.provedorEmail;
     next.conta = { email: v.email, senha: v.senhaIg, nome: v.nome, usuario: v.usuario, nascimento: v.nascimento };
     next.imap = { host: v.imapHost, porta: v.imapPorta, usuario: v.email, senha: v.senhaEmail };
+    Object.assign(next, camposDoPortal(input, v));
+    for (const k of ["portalLink", "portalCodigo", "portalResgatadoEm", "portalExpiraEm", "portalEmail"] as const) if (next[k] === undefined) delete next[k];
   }
   const contaMudou =
     JSON.stringify(next.conta) !== JSON.stringify(input.conta) ||

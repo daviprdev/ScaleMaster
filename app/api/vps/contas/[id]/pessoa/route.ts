@@ -7,6 +7,7 @@ import { mascararSenha } from "@/lib/vps/pessoa";
 import { parsePlano, resultadoPorAlvo, resumoDosAlvos, type EstruturaInput } from "@/lib/vps/estruturacao";
 import { parseJobSteps } from "@/lib/emulador/jobs";
 import type { VpsContaInput } from "@/lib/vps/types";
+import { estadoDoCodigo, mascararCodigo } from "@/lib/vps/codigo-portal";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -69,8 +70,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       alvos: (dados.alvos ?? []).map((a, i) => ({ ...a, ...(resultados.find((r) => r.n === i + 1) ?? { resultado: "pendente", mensagem: null }) })),
     };
   }
+  const estadoCodigo = estadoDoCodigo(input);
   return NextResponse.json({
     estruturacao,
+    codigoPortal: estadoCodigo ? { ...estadoCodigo, mascarado: mascararCodigo(input.portalCodigo ?? input.imap?.senha) } : null,
     nome: input.conta.nome,
     usuario: input.conta.usuario,
     nascimento: input.conta.nascimento,

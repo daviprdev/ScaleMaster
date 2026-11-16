@@ -71,7 +71,8 @@ describe("Códigos do hstock: fonte única do lote", () => {
       codigoValido,
       abrir: async (link: string, codigo: string) => {
         chamadas.push([link, codigo]);
-        return { sessao: { modo: "http", email: "x@gmail.com", fimEm: Date.now() + 60_000 }, email: "x@gmail.com" };
+        // Janela cheia (19 min): com menos de 4 min a caixa faria o Reactivate antes de usar (16/11).
+        return { sessao: { modo: "http", email: "x@gmail.com", fimEm: Date.now() + 19 * 60_000 }, email: "x@gmail.com" };
       },
       esperarOtp: async () => "123456",
       fechar: async () => {},
@@ -94,7 +95,7 @@ describe("LoteDialog: nenhum campo de e-mail por conta", () => {
     expect(fonte).not.toMatch(/<fieldset/);
     expect(fonte).toMatch(/label="Códigos do hstock"/);
     expect(fonte).toMatch(/label=\{`Proxies/);
-    expect(fonte).toMatch(/Enviar \{quantidade/);
+    expect(fonte).toMatch(/Testar e enviar \$\{quantidade/);
     expect(fonte).toMatch(/proxies para \$\{quantidade\} contas/);
     expect(fonte).toMatch(/gerados automaticamente/);
   });

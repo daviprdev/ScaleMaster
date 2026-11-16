@@ -12,6 +12,7 @@ import { progressoEstrutura, prontidaoDaConta, resultadoPorAlvo, resumoDosAlvos,
 import { VPS_FLUXO, ehAlertaVps, ehDescartada, ehProxyMorta, estadoIsolamento, progresso, type Isolamento } from "@/lib/vps/jobs";
 import { rotuloAlerta } from "@/lib/vps/painel";
 import type { VpsDevice, VpsJob } from "@/lib/vps/types";
+import type { EstadoCodigo } from "@/lib/vps/codigo-portal";
 
 const STATUS_BADGE: Record<JobStatus, { tone: BadgeTone; label: string }> = {
   queued: { tone: "neutral", label: "Na fila" },
@@ -538,6 +539,8 @@ interface InformacoesAlvo {
 }
 
 interface Informacoes {
+  /** Código do hstock (só contas do portal): mascarado e o estado (livre / em uso até / janela encerrada). */
+  codigoPortal: (EstadoCodigo & { mascarado: string }) | null;
   nome: string;
   usuario: string;
   nascimento: string;
@@ -612,6 +615,8 @@ function InformacoesBox({ jobId }: { jobId: string }) {
     ["Senha", info.senhaMascarada, info.senha, "senha"],
   ];
   const est = info.estruturacao;
+  const cp = info.codigoPortal;
+  const hora = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—");
   return (
     <div className="mt-3 flex flex-col gap-3 rounded-lg border border-line bg-surface-raised p-3 text-xs">
       <p className="font-medium text-ink-2">Informações</p>
@@ -633,6 +638,20 @@ function InformacoesBox({ jobId }: { jobId: string }) {
           </div>
         ))}
       </dl>
+      {cp && (
+        <div className="min-w-0">
+          <p className="text-ink-3">Código do hstock</p>
+          <p className={cn("text-ink", cp.estado === "em-uso" && "text-success")}>
+            <span className="font-mono">{cp.mascarado}</span>
+            {" · "}
+            {cp.estado === "livre"
+              ? "não usado ainda (o agente resgata na tela do e-mail)"
+              : cp.estado === "em-uso"
+                ? `em uso até ${hora(cp.ate)}${cp.email ? ` · ${cp.email}` : ""} — pausa não queima, retoma na mesma janela`
+                : `janela encerrada às ${hora(cp.ate)} — ao retomar o agente confere o portal (reativa se ainda der)`}
+          </p>
+        </div>
+      )}
       {est ? (
         <div className="flex flex-col gap-2 border-t border-line pt-3">
           <div className="grid gap-2 sm:grid-cols-2">

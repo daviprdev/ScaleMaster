@@ -5,7 +5,8 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseInstances } from "@/lib/emulador/payload";
-import { parseFotosPerfil, parseLoteInput } from "@/lib/vps/input";
+import { parseFotosPerfil, parseLoteInput, parseProxies, type ProxyLida } from "@/lib/vps/input";
+import { entraNoLote, testarProxies } from "@/lib/vps/testar-proxy";
 import { listarMidias, pastaMidias } from "@/lib/vps/midias";
 import { chaveProxy, decidirRam, hostPortaDaChave, parseCapacidade, proxiesEmUso } from "@/lib/vps/jobs";
 import { proxyChaveDe, proxyHostDe, redeDe } from "@/lib/vps/load";
@@ -20,7 +21,7 @@ export const runtime = "nodejs";
 
 const SQL_FALTA = "Falta aplicar o SQL supabase/vps_contas.sql no Supabase.";
 
-// POST — envia um lote (1 a 20 contas) para a VPS: uma proxy e um device por
+// POST — envia um lote (1 a 50 contas) para a VPS: uma proxy e um device por
 // conta, todas com o mesmo lote_id. Cada conta vira um emulator_jobs
 // (input_enc com proxy, conta, IMAP e a identidade do aparelho) e uma linha em
 // vps_devices. Respeita a capacidade que a VPS informou (maxLigadas).
@@ -81,17 +82,6 @@ export async function POST(req: NextRequest) {
   const decisaoRam = decidirRam(ram?.bloqueio ?? null, capacidade.hostTeste);
   if (decisaoRam.bloqueio) return NextResponse.json({ error: decisaoRam.bloqueio, ramLivreMb: ram?.livreMb ?? null }, { status: 409 });
 
-  // Índices reservados acima de tudo o que a VPS já tem (containers, contas, devices).
-  const { data: devicesAntigos } = await admin.from("vps_devices").select("container, mac").eq("user_id", user.id);
-  const ocupados: number[] = [
-    ...parseInstances(agent.instances).map((i) => i.index),
-    ...ativosLista.map((j) => j.instance_index ?? 0),
-    ...((devicesAntigos ?? []) as Array<{ container: string }>).map((d) => Number(/^ig-(\d+)$/.exec(d.container)?.[1] ?? 0)),
-  ];
-  const { data: todosJobs } = await admin.from("emulator_jobs").select("instance_index").eq("agent_id", agent.id).not("instance_index", "is", null);
-  for (const j of (todosJobs ?? []) as Array<{ instance_index: number }>) ocupados.push(j.instance_index);
-  const indices = proximosIndices(ocupados, lote.quantidade);
-
   // Proxy em uso por conta viva desta VPS não entra de novo; conta descartada libera a dela.
   const { data: existentes } = await admin.from("emulator_jobs").select("id, status, error, label, input_enc").eq("agent_id", agent.id);
   // Dedupe contra as contas vivas por host:porta:usuário (bloqueia); mesma host:porta com outro usuário só avisa.
@@ -103,8 +93,40 @@ export async function POST(req: NextRequest) {
   }));
   const emUso = proxiesEmUso(vivos);
   const hostsEmUso = proxiesEmUso(vivos.map((v) => ({ ...v, proxyHost: v.proxyHost ? hostPortaDaChave(v.proxyHost) : null })));
-  const avisos = [...(decisaoRam.aviso ? [decisaoRam.aviso] : []), ...lote.avisos];
-  for (const p of lote.proxies) {
+  // Teste de vida na importação (16/11, formulário de códigos): todas as proxies coladas, direto deste servidor
+  // (generate_204, 25 s + 2 tentativas). Só viva/limitada entram; morta, lenta, credencial, recusada e em uso ficam
+  // numa lista à parte com o motivo e as excedentes cobrem as que caíram. API antiga (conta[]) segue sem teste.
+  const problemas: Array<{ linha: number; hostPorta: string; estado: string; motivo: string }> = [];
+  let proxiesDoLote: ProxyLida[] = lote.proxies;
+  let linhasUsadas: number[] = lote.proxies.map((_, i) => i + 1);
+  if (lote.gerarPessoa) {
+    const resultados = await testarProxies(lote.proxiesTodas.map((p) => p.url));
+    const escolhidas: Array<{ p: ProxyLida; linha: number }> = [];
+    lote.proxiesTodas.forEach((p, i) => {
+      const hostPorta = `${p.host}:${p.porta}`;
+      const dono = emUso.get(chaveProxy(p));
+      if (dono) {
+        problemas.push({ linha: i + 1, hostPorta, estado: "em-uso", motivo: `já está em uso pela conta @${dono}` });
+        return;
+      }
+      const r = resultados[i];
+      if (!entraNoLote(r.estado)) {
+        problemas.push({ linha: i + 1, hostPorta, estado: r.estado, motivo: r.motivo });
+        return;
+      }
+      if (escolhidas.length < lote.quantidade) escolhidas.push({ p, linha: i + 1 });
+    });
+    if (escolhidas.length === 0) {
+      return NextResponse.json({ error: "Nenhuma proxy passou no teste: nada foi enviado. Veja o motivo de cada uma abaixo.", problemas }, { status: 409 });
+    }
+    proxiesDoLote = escolhidas.map((e) => e.p);
+    linhasUsadas = escolhidas.map((e) => e.linha);
+  }
+  const quantidade = Math.min(proxiesDoLote.length, lote.quantidade);
+  const contasDoLote = lote.contas.slice(0, quantidade);
+  const avisosProxy = lote.gerarPessoa ? ((parseProxies(proxiesDoLote.map((p) => p.url)) as { avisos?: string[] }).avisos ?? []) : lote.avisos;
+  const avisos = [...(decisaoRam.aviso ? [decisaoRam.aviso] : []), ...avisosProxy];
+  for (const p of proxiesDoLote) {
     const chave = chaveProxy(p);
     const hp = `${p.host}:${p.porta}`;
     if (emUso.has(chave)) {
@@ -112,6 +134,17 @@ export async function POST(req: NextRequest) {
     }
     if (hostsEmUso.has(hp)) avisos.push(`A proxy ${hp} já é usada pela conta @${hostsEmUso.get(hp)} com outro usuário: segue.`);
   }
+
+  // Índices reservados acima de tudo o que a VPS já tem (containers, contas, devices).
+  const { data: devicesAntigos } = await admin.from("vps_devices").select("container, mac").eq("user_id", user.id);
+  const ocupados: number[] = [
+    ...parseInstances(agent.instances).map((i) => i.index),
+    ...ativosLista.map((j) => j.instance_index ?? 0),
+    ...((devicesAntigos ?? []) as Array<{ container: string }>).map((d) => Number(/^ig-(\d+)$/.exec(d.container)?.[1] ?? 0)),
+  ];
+  const { data: todosJobs } = await admin.from("emulator_jobs").select("instance_index").eq("agent_id", agent.id).not("instance_index", "is", null);
+  for (const j of (todosJobs ?? []) as Array<{ instance_index: number }>) ocupados.push(j.instance_index);
+  const indices = proximosIndices(ocupados, quantidade);
 
   // Nome, @, senha e nascimento gerados aqui (lib/vps/pessoa.ts); o @ não repete nenhum já gravado nem outro do lote.
   const { data: labels } = await admin.from("emulator_jobs").select("label").eq("user_id", user.id);
@@ -130,7 +163,7 @@ export async function POST(req: NextRequest) {
     ...((devicesAntigos ?? []) as Array<{ container: string; mac: string | null }>).map((d) => ({ mac: d.mac, container: d.container })),
     ...redesExistentes.map((r) => ({ ip: r.ip, container: r.container })),
   ];
-  const devices = lote.proxies.slice(0, lote.quantidade).map((proxy, i) => novoDevice(lote.perfil, proxy.pais ?? lote.pais, indices[i], redeDoLote));
+  const devices = proxiesDoLote.slice(0, quantidade).map((proxy, i) => novoDevice(lote.perfil, proxy.pais ?? lote.pais, indices[i], redeDoLote));
   for (const device of devices) {
     const batida = colisaoDeIdentidade(device, identidades);
     if (batida) return NextResponse.json({ error: `Isolamento: ${batida}. Nada foi enviado; tente de novo.` }, { status: 409 });
@@ -140,11 +173,11 @@ export async function POST(req: NextRequest) {
   const loteId = randomUUID();
   const now = new Date().toISOString();
   const criados: string[] = [];
-  for (let i = 0; i < lote.quantidade; i++) {
-    const bruta = lote.contas[i];
+  for (let i = 0; i < quantidade; i++) {
+    const bruta = contasDoLote[i];
     const pessoa = lote.gerarPessoa ? gerarPessoa({ usados }) : null;
     const conta = pessoa ? { ...bruta, senhaIg: pessoa.senha, nome: pessoa.nome, usuario: pessoa.usuario, nascimento: pessoa.nascimento } : bruta;
-    const proxy = lote.proxies[i];
+    const proxy = proxiesDoLote[i];
     const device = devices[i];
     const input: VpsContaInput = {
       proxy: proxy.url,
@@ -202,5 +235,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ loteId, ids: criados, avisos });
+  // enviadas = as primeiras N linhas de código; linhasUsadas = linhas da caixa de proxies que entraram (o diálogo tira da lista).
+  return NextResponse.json({ loteId, ids: criados, avisos, problemas, enviadas: quantidade, codigosSobrando: lote.quantidade - quantidade, linhasUsadas });
 }

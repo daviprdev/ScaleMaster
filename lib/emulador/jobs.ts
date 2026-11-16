@@ -232,8 +232,8 @@ export interface JobUpdate {
   usuario?: string;
   /** Contas VPS: o agente já apagou container e volume (captcha / @ recusado 5 vezes). */
   descartada?: boolean;
-  /** Contas VPS: quando o código do portal foi resgatado e quando a sessão vence (vai para input_enc). */
-  portal?: { resgatadoEm: string; expiraEm: string };
+  /** Contas VPS: quando o código do portal foi resgatado, quando a sessão vence e o endereço dela (vai para input_enc). */
+  portal?: PortalAndamento;
 }
 
 const USUARIO_IG_RE = /^[a-z][a-z0-9._]{0,29}$/;
@@ -247,12 +247,23 @@ function dataIso(valor: unknown): string | null {
 /** Teto de contas simultâneas que um agente pode reportar num sync (= maxCadastro máximo da VPS em lib/vps/jobs.ts). */
 export const MAX_JOB_UPDATES = 50;
 
-function portalDe(raw: unknown): { resgatadoEm: string; expiraEm: string } | null {
+export interface PortalAndamento {
+  resgatadoEm: string;
+  expiraEm: string;
+  /** Endereço da sessão (16/11): a retomada dentro da janela usa sem tocar no portal. */
+  email?: string;
+}
+
+const EMAIL_RE = /^[^s@]{1,64}@[^s@]{1,190}$/;
+
+export function portalDe(raw: unknown): PortalAndamento | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const resgatadoEm = dataIso(r.resgatadoEm);
   const expiraEm = dataIso(r.expiraEm);
-  return resgatadoEm && expiraEm ? { resgatadoEm, expiraEm } : null;
+  if (!resgatadoEm || !expiraEm) return null;
+  const email = typeof r.email === "string" && EMAIL_RE.test(r.email.trim()) ? r.email.trim().toLowerCase() : null;
+  return email ? { resgatadoEm, expiraEm, email } : { resgatadoEm, expiraEm };
 }
 
 /** Andamento que o agente manda no sync, uma entrada por conta que mudou. */
@@ -274,7 +285,7 @@ export function parseJobUpdates(raw: unknown): JobUpdate[] {
       prompt: r.prompt === undefined ? undefined : r.status === "running" ? parseJobPrompt(r.prompt) : null,
       ...(typeof r.usuario === "string" && USUARIO_IG_RE.test(r.usuario) ? { usuario: r.usuario } : {}),
       ...(r.descartada === true ? { descartada: true } : {}),
-      ...(portalDe(r.portal) ? { portal: portalDe(r.portal) as { resgatadoEm: string; expiraEm: string } } : {}),
+      ...(portalDe(r.portal) ? { portal: portalDe(r.portal) as PortalAndamento } : {}),
     });
   }
   return out;

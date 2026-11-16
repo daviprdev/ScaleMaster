@@ -210,6 +210,8 @@ export interface VpsContaInput {
   /** Quando o agente resgatou o código (só na hora de digitar o e-mail) e quando a sessão de 20 min vence. Ausentes = código intocado. */
   portalResgatadoEm?: string;
   portalExpiraEm?: string;
+  /** Endereço da sessão do portal (gravado no resgate e a cada Reactivate): a retomada dentro da janela usa sem tocar no portal. */
+  portalEmail?: string;
   conta: {
     /** Endereço; em `portal`, o link do painel. */
     email: string;

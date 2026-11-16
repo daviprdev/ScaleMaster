@@ -181,8 +181,9 @@ export const NOVA_CONTA = [
     rotulo: "Validar a proxy e o país",
     async rodar({ mumu, input, estado, log }) {
       if (!input?.proxy) throw new Error("Essa conta veio sem proxy.");
-      const geo = await validar(input.proxy, input.pais);
+      const geo = await validar(input.proxy, input.pais, { log });
       await mumu.definirProxy(container(estado), input.proxy);
+      if (geo.aviso) return geo.aviso;
       log(`proxy ok: ${geo.ip} (${geo.pais})`);
       return `${geo.ip} (${geo.pais})`;
     },
@@ -247,9 +248,9 @@ export const NOVA_CONTA = [
       await mumu.prepararInstancia(container(estado), { log });
       await mumu.definirProxy(container(estado), input.proxy);
       await subirSidecar(nome, input.proxy);
-      const geo = await validarNoNetns(nome, input.pais);
-      log(`proxy no container: ${geo.ip} (${geo.pais})`);
-      return `redsocks de pé · saída ${geo.ip} (${geo.pais})`;
+      const geo = await validarNoNetns(nome, input.pais, { proxy: input.proxy, log });
+      log(`proxy no container: ${geo.ip || "responde"} (${geo.pais})`);
+      return `redsocks de pé · saída ${geo.ip || "pela proxy"} (${geo.pais})`;
     },
   },
   {
