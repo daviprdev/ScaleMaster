@@ -355,10 +355,9 @@ export default function ContasVpsPage() {
       />
       <EditarContaDialog job={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />
       <RefazerContaDialog job={refazendo} onClose={() => setRefazendo(null)} onSaved={() => void load()} />
-      <EstruturarDialog job={estruturando} pastas={pastasOn ? nomesPastas : []} onClose={() => setEstruturando(null)} onSaved={() => void load()} />
+      <EstruturarDialog job={estruturando} onClose={() => setEstruturando(null)} onSaved={() => void load()} />
       <EstruturarDialog
         job={null}
-        pastas={pastasOn ? nomesPastas : []}
         pastaDe={estruturarPasta ? { agent: estruturarPasta, opcoes: opcoesDaPasta(estruturarPasta), inicial: filtroPasta } : null}
         onClose={() => setEstruturarPasta(null)}
         onSaved={(resumo) => {

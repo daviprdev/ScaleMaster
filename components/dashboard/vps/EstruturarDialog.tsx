@@ -16,10 +16,7 @@ import {
   parseEstrutura,
 } from "@/lib/vps/estruturacao";
 import type { VpsAgent, VpsJob } from "@/lib/vps/types";
-import { PastaCampo } from "./PastaCampo";
 import { MidiaPicker, useMidiasDaVps } from "./MidiaPicker";
-
-const CHAVE_DESTINO = "vps-pasta-destino-estruturar";
 
 /** Uma opção do seletor de pasta do "Estruturar pasta". */
 export interface PastaOpcao {
@@ -35,8 +32,6 @@ interface EstruturarDialogProps {
   job: VpsJob | null;
   /** "Estruturar pasta": a VPS e as pastas com quantas contas entram; null = fechado (ou modo conta). */
   pastaDe?: { agent: VpsAgent; opcoes: ReadonlyArray<PastaOpcao>; inicial?: string } | null;
-  /** Pastas que existem (para o "Ao concluir, mover para a pasta"); vazio = o campo não aparece. */
-  pastas?: ReadonlyArray<string>;
   onClose: () => void;
   /** `avisos`: resumo do Estruturar pasta (criadas e puladas). */
   onSaved: (avisos?: string[]) => void;
@@ -66,12 +61,12 @@ const contador = (valor: string, max: number) => `${contarCaracteres(valor)}/${m
  * a legenda do destaque e a agenda. Cada campo mostra o seu erro; a validação é
  * a do servidor (lib/vps/estruturacao.ts).
  */
-export function EstruturarDialog({ job, pastaDe = null, pastas = [], onClose, onSaved }: EstruturarDialogProps) {
+// decisão (16/11): sem "Ao concluir, mover para a pasta" — concluída e conectada no SaaS a conta é apagada da VPS
+// (lib/vps/remover-conta.ts) e com erro vai sozinha para FALHAS; não há destino a escolher.
+export function EstruturarDialog({ job, pastaDe = null, onClose, onSaved }: EstruturarDialogProps) {
   const aberto = !!job || !!pastaDe;
   const [form, setForm] = React.useState(VAZIO);
   const [pasta, setPasta] = React.useState("");
-  /** "Ao concluir, mover para a pasta" ("" = não mover); lembra a última escolha neste navegador. */
-  const [pastaDestino, setPastaDestino] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const set = (campo: Campo, valor: string) => setForm((f) => ({ ...f, [campo]: valor }));
@@ -84,11 +79,6 @@ export function EstruturarDialog({ job, pastaDe = null, pastas = [], onClose, on
     if (!aberto) return;
     setForm(VAZIO);
     setError(null);
-    try {
-      setPastaDestino(window.localStorage.getItem(CHAVE_DESTINO) ?? "");
-    } catch {
-      setPastaDestino("");
-    }
     if (pastaDe) setPasta(pastaDe.inicial && pastaDe.opcoes.some((o) => o.value === pastaDe.inicial) ? pastaDe.inicial : (pastaDe.opcoes.find((o) => o.elegiveis > 0)?.value ?? ""));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reabre o formulário só quando o diálogo abre.
   }, [job, pastaDe?.agent.id, aberto]);
@@ -111,15 +101,10 @@ export function EstruturarDialog({ job, pastaDe = null, pastas = [], onClose, on
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pastaDe ? { ...form, agentId: pastaDe.agent.id, pasta, pastaDestino } : { ...form, pastaDestino }),
+        body: JSON.stringify(pastaDe ? { ...form, agentId: pastaDe.agent.id, pasta } : form),
       });
       const body = (await res.json().catch(() => null)) as { error?: string; criadas?: Array<{ label: string | null }>; puladas?: Array<{ label: string; motivo: string }> } | null;
       if (!res.ok) throw new Error(body?.error ?? "Não foi possível estruturar. Tente de novo.");
-      try {
-        window.localStorage.setItem(CHAVE_DESTINO, pastaDestino);
-      } catch {
-        /* sem storage */
-      }
       if (pastaDe) {
         const criadas = body?.criadas?.length ?? 0;
         const puladas = body?.puladas ?? [];
@@ -159,14 +144,6 @@ export function EstruturarDialog({ job, pastaDe = null, pastas = [], onClose, on
             />
           )}
           <MidiaPicker midias={biblioteca} label="Foto do story (pasta Stories)" pastas={["stories"]} value={form.fotoStory} onChange={(p) => set("fotoStory", p)} error={erros.fotoStory ?? biblioteca.erro ?? undefined} />
-          <PastaCampo
-            label="Ao concluir, mover para a pasta"
-            rotuloVazio="Não mover"
-            pastas={pastas}
-            value={pastaDestino}
-            onChange={setPastaDestino}
-            hint="Quando a estruturação terminar com a conta conectada no SaaS, ela vai sozinha para essa pasta (aba Estruturadas)."
-          />
           <Textarea
             label={`Bio (${contador(form.bio, BIO_MAX)})`}
             rows={2}
