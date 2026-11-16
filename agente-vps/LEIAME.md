@@ -82,7 +82,7 @@ Mesmas chaves de `VPS_FLUXO` em `lib/vps/jobs.ts`; o Continuar retoma da etapa q
 
 1. **copiar** — volume novo a partir de `scalemaster-base` (4 GB de cota; `lib/disco.mjs`), retrato em `/opt/scalemaster/vps/instancias/ig-N.json`, container `ig-N` criado parado.
 2. **ids** / **fingerprint** — Android ID, serial, MAC, modelo, fabricante, fingerprint, fuso e idioma do perfil que o servidor gerou (`lib/fingerprint.mjs`). Modelo/fingerprint entram por `build.prop` montados por cima dos da imagem; serial pela cmdline (`androidboot.serialno`); MAC pelo Docker; Android ID/fuso/idioma por adb no boot. Divergência no `getprop` depois do boot = falha.
-0. **teste de vida** (antes de qualquer etapa, `lib/teste-proxy.mjs`) — `curl -x proxy http://www.gstatic.com/generate_204` (fallback robots.txt do Instagram), 25 s + 2 tentativas com 5 s. 407/recusada/timeout persistente → `PROXY_MORTA`, a conta fica pausada até trocar a proxy (sem fallback ao IP da VPS).
+0. **teste de vida** (antes de qualquer etapa, `lib/teste-proxy.mjs`) (`http://` ou `socks5h://`; SOCKS5 com usuário recusado = curl 97 = credencial) — `curl -x proxy http://www.gstatic.com/generate_204` (fallback robots.txt do Instagram), 25 s + 2 tentativas com 5 s. 407/recusada/timeout persistente → `PROXY_MORTA`, a conta fica pausada até trocar a proxy (sem fallback ao IP da VPS).
 3. **geo** — `curl -x proxy` no endpoint de geo, só para o país (cache por host:porta; 429 não derruba). País diferente → `PROXY_MORTA`.
 4. **nome**, **abrir** — liga o container com o sidecar em modo **bloqueado** (nada sai) e prova o kill switch.
 5. **instagram** — `adb install` do APK pinado (sem Aurora, sem internet).

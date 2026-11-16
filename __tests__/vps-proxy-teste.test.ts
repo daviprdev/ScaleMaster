@@ -119,13 +119,15 @@ describe("Agente: geo só na etapa geo, com cache e sem derrubar por 429", () =>
     const r = await validar(PROXY, "BR", { executar, pausa: semPausa });
     expect(r.aviso).toContain("429");
   });
-  it("cache por host:porta: a 2ª conta da mesma proxy não consulta o geo de novo", async () => {
+  it("cache por host:porta:usuário: a mesma credencial não consulta de novo; outra sessão do gateway consulta", async () => {
     const executar = vi.fn(async () => geoOk);
     await validar(PROXY, "BR", { executar, pausa: semPausa });
-    const outra = PROXY.replace("user:pass", "outro:senha");
-    const r = await validar(outra, "BR", { executar, pausa: semPausa });
+    const r = await validar(PROXY, "BR", { executar, pausa: semPausa });
     expect(r.ip).toBe("1.2.3.4");
     expect(executar).toHaveBeenCalledTimes(1);
+    // 16/11: cada usuário derivado (sessão) sai por outro IP — não pode herdar o geo de outra sessão.
+    await validar(PROXY.replace("user:pass", "user-session-a1b2c3d4:pass"), "BR", { executar, pausa: semPausa });
+    expect(executar).toHaveBeenCalledTimes(2);
   });
   it("429 com cache: usa o cache; país diferente continua sendo ProxyMorta", async () => {
     const executar = vi.fn(async () => geoOk);

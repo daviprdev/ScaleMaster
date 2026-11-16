@@ -5,8 +5,8 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseInstances } from "@/lib/emulador/payload";
-import { parseFotosPerfil, parseLoteInput, parseProxies, type ProxyLida } from "@/lib/vps/input";
-import { entraNoLote, testarProxies } from "@/lib/vps/testar-proxy";
+import { AVISO_ROTACAO, parseFotosPerfil, parseLoteInput, parseProxies, type ProxyLida } from "@/lib/vps/input";
+import { entraNoLote, testarProxies, type ResultadoProxy } from "@/lib/vps/testar-proxy";
 import { listarMidias, pastaMidias } from "@/lib/vps/midias";
 import { chaveProxy, decidirRam, hostPortaDaChave, parseCapacidade, proxiesEmUso } from "@/lib/vps/jobs";
 import { proxyChaveDe, proxyHostDe, redeDe } from "@/lib/vps/load";
@@ -96,25 +96,32 @@ export async function POST(req: NextRequest) {
   // Teste de vida na importação (16/11, formulário de códigos): todas as proxies coladas, direto deste servidor
   // (generate_204, 25 s + 2 tentativas). Só viva/limitada entram; morta, lenta, credencial, recusada e em uso ficam
   // numa lista à parte com o motivo e as excedentes cobrem as que caíram. API antiga (conta[]) segue sem teste.
-  const problemas: Array<{ linha: number; hostPorta: string; estado: string; motivo: string }> = [];
+  // Com sufixo de sessão (16/11) as candidatas são credenciais derivadas (uma sessão exclusiva por conta, mais
+  // reservas): `linha` é a linha base da caixa e `sessao` o id; a caixa de proxies não perde linha nenhuma.
+  const problemas: Array<{ linha: number; hostPorta: string; estado: string; motivo: string; sessao?: string }> = [];
   let proxiesDoLote: ProxyLida[] = lote.proxies;
   let linhasUsadas: number[] = lote.proxies.map((_, i) => i + 1);
+  const testeDe = new Map<string, ResultadoProxy>();
   if (lote.gerarPessoa) {
     const resultados = await testarProxies(lote.proxiesTodas.map((p) => p.url));
     const escolhidas: Array<{ p: ProxyLida; linha: number }> = [];
     lote.proxiesTodas.forEach((p, i) => {
       const hostPorta = `${p.host}:${p.porta}`;
+      const linha = lote.sufixo ? (p.linhaBase ?? 1) : i + 1;
+      const sessao = p.sessao ? { sessao: p.sessao } : {};
       const dono = emUso.get(chaveProxy(p));
       if (dono) {
-        problemas.push({ linha: i + 1, hostPorta, estado: "em-uso", motivo: `já está em uso pela conta @${dono}` });
+        problemas.push({ linha, hostPorta, estado: "em-uso", motivo: `já está em uso pela conta @${dono}`, ...sessao });
         return;
       }
       const r = resultados[i];
+      testeDe.set(p.url, r);
       if (!entraNoLote(r.estado)) {
-        problemas.push({ linha: i + 1, hostPorta, estado: r.estado, motivo: r.motivo });
+        // Reserva que morreu sem ser necessária não vira problema: só as sessões que ocupariam uma conta.
+        if (!lote.sufixo || escolhidas.length < lote.quantidade) problemas.push({ linha, hostPorta, estado: r.estado, motivo: r.motivo, ...sessao });
         return;
       }
-      if (escolhidas.length < lote.quantidade) escolhidas.push({ p, linha: i + 1 });
+      if (escolhidas.length < lote.quantidade) escolhidas.push({ p, linha });
     });
     if (escolhidas.length === 0) {
       return NextResponse.json({ error: "Nenhuma proxy passou no teste: nada foi enviado. Veja o motivo de cada uma abaixo.", problemas }, { status: 409 });
@@ -124,7 +131,13 @@ export async function POST(req: NextRequest) {
   }
   const quantidade = Math.min(proxiesDoLote.length, lote.quantidade);
   const contasDoLote = lote.contas.slice(0, quantidade);
-  const avisosProxy = lote.gerarPessoa ? ((parseProxies(proxiesDoLote.map((p) => p.url)) as { avisos?: string[] }).avisos ?? []) : lote.avisos;
+  const avisosProxy = lote.gerarPessoa
+    ? [
+        ...(lote.sufixo ? [] : [AVISO_ROTACAO]),
+        ...((parseProxies(proxiesDoLote.map((p) => p.url)) as { avisos?: string[] }).avisos ?? []),
+        ...proxiesDoLote.filter((p) => testeDe.get(p.url)?.rotacao).map((p) => `Sessão ${p.sessao ?? `${p.host}:${p.porta}`}: ${testeDe.get(p.url)?.aviso ?? "rotação detectada, sessão não fixa"}.`),
+      ]
+    : lote.avisos;
   const avisos = [...(decisaoRam.aviso ? [decisaoRam.aviso] : []), ...avisosProxy];
   for (const p of proxiesDoLote) {
     const chave = chaveProxy(p);
@@ -191,6 +204,19 @@ export async function POST(req: NextRequest) {
       imap: { host: conta.imapHost, porta: conta.imapPorta, usuario: conta.email, senha: conta.senhaEmail },
       device,
       fotoPerfil: fotos.value[Math.floor(Math.random() * fotos.value.length)],
+      // Sessão exclusiva desta conta (já no usuário da proxy) e o IP/país de saída do teste (bloco Isolamento).
+      ...(proxy.sessao
+        ? {
+            sessao: {
+              id: proxy.sessao,
+              sufixo: lote.sufixo,
+              ip: testeDe.get(proxy.url)?.ip ?? null,
+              pais: testeDe.get(proxy.url)?.pais ?? null,
+              rotacao: !!testeDe.get(proxy.url)?.rotacao,
+              testadaEm: now,
+            },
+          }
+        : {}),
     };
     const { data: job, error } = await admin
       .from("emulator_jobs")
@@ -236,5 +262,7 @@ export async function POST(req: NextRequest) {
   }
 
   // enviadas = as primeiras N linhas de código; linhasUsadas = linhas da caixa de proxies que entraram (o diálogo tira da lista).
-  return NextResponse.json({ loteId, ids: criados, avisos, problemas, enviadas: quantidade, codigosSobrando: lote.quantidade - quantidade, linhasUsadas });
+  // modoSessao: a caixa de proxies (credenciais base) fica como está; saem as sessões usadas (queimadas).
+  const sessoesUsadas = proxiesDoLote.slice(0, quantidade).map((p) => p.sessao).filter((x): x is string => !!x);
+  return NextResponse.json({ loteId, ids: criados, avisos, problemas, enviadas: quantidade, codigosSobrando: lote.quantidade - quantidade, linhasUsadas, modoSessao: !!lote.sufixo, sessoesUsadas });
 }

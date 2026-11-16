@@ -50,7 +50,7 @@ describe("Códigos do hstock: fonte única do lote", () => {
 
   it("quantidade derivada das linhas válidas; proxies a menos bloqueia com a contagem; a mais são ignoradas", () => {
     const codigos = `${LINK} | AAAAAA\n${LINK} | BBBBBB\n${LINK} | CCCCCC\n${LINK} | DDDDDD`;
-    expect(parseLoteInput({ ...base, codigos, proxies: proxies(2) })).toEqual({ error: "2 proxies para 4 contas: cole uma proxy por conta." });
+    expect(parseLoteInput({ ...base, codigos, proxies: proxies(2) })).toEqual({ error: "2 proxies para 4 contas: cole uma proxy por conta (ou use o sufixo de sessão)." });
     const ok = parseLoteInput({ ...base, codigos, proxies: proxies(6) });
     expect(ok).toHaveProperty("value");
     if ("value" in ok) {
@@ -94,7 +94,9 @@ describe("LoteDialog: nenhum campo de e-mail por conta", () => {
     expect(fonte).not.toMatch(/Senha do Instagram|Nome completo|Nascimento|Usuário \(opcional\)|Host IMAP|Porta IMAP/);
     expect(fonte).not.toMatch(/<fieldset/);
     expect(fonte).toMatch(/label="Códigos do hstock"/);
-    expect(fonte).toMatch(/label=\{`Proxies/);
+    // 16/11: com sufixo de sessão o campo vira "Credencial base da proxy"; sem sufixo, "Proxies (n/q)".
+    expect(fonte).toMatch(/`Proxies \(\$\{proxiesCount\}/);
+    expect(fonte).toMatch(/Credencial base da proxy/);
     expect(fonte).toMatch(/Testar e enviar \$\{quantidade/);
     expect(fonte).toMatch(/proxies para \$\{quantidade\} contas/);
     expect(fonte).toMatch(/gerados automaticamente/);

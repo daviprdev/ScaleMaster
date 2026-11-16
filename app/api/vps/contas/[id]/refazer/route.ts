@@ -5,7 +5,7 @@ import { decrypt, encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { ehDescarte } from "@/lib/emulador/jobs";
 import { parseInstances } from "@/lib/emulador/payload";
-import { parseLinhaPortal, parseProxy } from "@/lib/vps/input";
+import { parseLinhaPortal, parseProxy, parseTipoProxy } from "@/lib/vps/input";
 import { chaveProxy, proxiesEmUso } from "@/lib/vps/jobs";
 import { proxyChaveDe, proxyHostDe } from "@/lib/vps/load";
 import { novoDevice, proximosIndices } from "@/lib/vps/device";
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   } catch {
     return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
   }
-  const proxy = parseProxy(typeof body.proxy === "string" ? body.proxy : "");
+  const proxy = parseProxy(typeof body.proxy === "string" ? body.proxy : "", parseTipoProxy(body.tipo));
   if (!proxy) return NextResponse.json({ error: "Proxy no formato host:porta:usuário:senha." }, { status: 400 });
   const codigo = parseLinhaPortal(typeof body.codigo === "string" ? body.codigo : "");
   if (!codigo) return NextResponse.json({ error: 'Código do hstock no formato "link | código".' }, { status: 400 });

@@ -212,13 +212,22 @@ interface JobRowProps {
 
 /** IP (identidade da conta), MAC, modelo, serial e Android ID (vps_devices) de uma conta. */
 function isolamentoDe(job: VpsJob, device: VpsDevice | undefined): Isolamento {
-  return { ip: job.ip ?? null, mac: device?.mac ?? null, modelo: device?.model ?? null, serial: device?.serial ?? null, androidId: device?.androidId ?? null };
+  return {
+    ip: job.ip ?? null,
+    mac: device?.mac ?? null,
+    modelo: device?.model ?? null,
+    serial: device?.serial ?? null,
+    androidId: device?.androidId ?? null,
+    sessao: job.sessao ?? null,
+    ipSaida: job.ipSaida ?? null,
+    rotacao: !!job.rotacao,
+  };
 }
 
 const ESCUDO = {
   unico: { cor: "text-success", Icone: ShieldCheck, texto: "únicos no lote" },
   repetido: { cor: "text-danger", Icone: ShieldAlert, texto: "valor repetido no lote" },
-  neutro: { cor: "text-ink-3", Icone: Shield, texto: "MAC ou outro valor ainda desconhecido" },
+  neutro: { cor: "text-ink-3", Icone: Shield, texto: "MAC, IP de saída ou outro valor ainda desconhecido" },
 } as const;
 
 /**
@@ -227,9 +236,11 @@ const ESCUDO = {
  * vermelho quando algum repete, neutro (cinza) quando falta algum — container
  * antigo sem MAC conhecido não conta como único.
  */
-function IsolamentoBox({ isolamento, doLote }: { isolamento: Isolamento; doLote: readonly Isolamento[] }) {
+function IsolamentoBox({ isolamento, doLote, queimada }: { isolamento: Isolamento; doLote: readonly Isolamento[]; queimada: boolean }) {
   const escudo = ESCUDO[estadoIsolamento(isolamento, doLote)];
   const itens: Array<[string, string | null]> = [
+    ["Sessão", isolamento.sessao ? `${isolamento.sessao}${queimada ? " · queimada" : ""}` : null],
+    ["IP de saída", isolamento.ipSaida ? `${isolamento.ipSaida}${isolamento.rotacao ? " · rotação" : ""}` : null],
     ["IP", isolamento.ip],
     ["MAC", isolamento.mac],
     ["Modelo", isolamento.modelo],
@@ -240,9 +251,9 @@ function IsolamentoBox({ isolamento, doLote }: { isolamento: Isolamento; doLote:
     <div className="mt-3 rounded-lg border border-line p-3">
       <p className={cn("flex items-center gap-1.5 text-xs font-medium", escudo.cor)}>
         <escudo.Icone size={14} className="shrink-0" />
-        Isolamento · {escudo.texto}
+        Isolamento · {isolamento.rotacao ? "rotação detectada, sessão não fixa" : escudo.texto}
       </p>
-      <dl className="mt-2 grid gap-x-4 gap-y-1.5 text-xs sm:grid-cols-5">
+      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-4 lg:grid-cols-7">
         {itens.map(([rotulo, valor]) => (
           <div key={rotulo} className="min-w-0">
             <dt className="text-ink-3">{rotulo}</dt>
@@ -362,7 +373,7 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, onPasta, no
 
       {job.status === "running" && job.prompt && <PromptBox job={job} busy={busy} onReply={onReply} />}
 
-      {!descartada && <IsolamentoBox isolamento={isolamento} doLote={doLote} />}
+      {!descartada && <IsolamentoBox isolamento={isolamento} doLote={doLote} queimada={job.status === "done" || job.status === "error"} />}
 
       {dados && <InformacoesBox jobId={job.id} />}
 

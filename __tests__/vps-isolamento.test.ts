@@ -194,10 +194,14 @@ describe("Isolamento: um /24 por lote, IP e MAC únicos", () => {
     expect("value" in ok && ok.value).toHaveLength(2);
   });
 
-  it("bloco Isolamento: verde só com IP, MAC, serial e Android ID presentes e únicos no lote", () => {
+  it("bloco Isolamento: verde só com IP, MAC, serial, Android ID e IP de saída presentes e únicos no lote", () => {
     const conta = (n: number, extra: Partial<Isolamento> = {}): Isolamento => ({
-      ip: `10.77.3.${n}`, mac: `3c:00:00:00:00:0${n}`, modelo: "Pixel 7", serial: `SERIAL${n}`, androidId: `aid${n}`, ...extra,
+      ip: `10.77.3.${n}`, mac: `3c:00:00:00:00:0${n}`, modelo: "Pixel 7", serial: `SERIAL${n}`, androidId: `aid${n}`, ipSaida: `177.1.1.${n}`, ...extra,
     });
+    // 16/11: o IP de saída do teste também tem que diferir dos outros do lote; sem ele, neutro.
+    const mesmoIpSaida = [conta(2), conta(3, { ipSaida: "177.1.1.2" })];
+    expect(isolamentoUnico(mesmoIpSaida[1], mesmoIpSaida)).toBe(false);
+    expect(isolamentoUnico(conta(2, { ipSaida: null }), [conta(2, { ipSaida: null })])).toBe(false);
     const lote = [conta(2), conta(3), conta(4)];
     // Modelo igual nas três não tira o verde: são 3 perfis reais de aparelho.
     expect(lote.every((c) => isolamentoUnico(c, lote))).toBe(true);

@@ -185,7 +185,8 @@ describe("Contas VPS: capacidade e identidade", () => {
     expect(ipDe(1)).toBe("10.77.0.3");
     expect(ipDe(252)).toBe("10.77.0.254");
     expect(() => ipDe(253)).toThrow();
-    expect(lerProxy("http://u%40x:p@proxy.com:3128")).toEqual({ host: "proxy.com", porta: 3128, usuario: "u@x", senha: "p" });
+    expect(lerProxy("http://u%40x:p@proxy.com:3128")).toEqual({ tipo: "http", host: "proxy.com", porta: 3128, usuario: "u@x", senha: "p" });
+    expect(lerProxy("socks5h://u:p@gw.com:1080")).toMatchObject({ tipo: "socks5", host: "gw.com", porta: 1080 });
     expect(() => lerProxy("http://proxy.com")).toThrow();
   });
 });

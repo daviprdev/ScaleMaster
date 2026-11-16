@@ -86,6 +86,17 @@ export interface VpsDevice {
 }
 
 /** Conta da fila da VPS: o job comum mais lote, pausa e versão do IG. */
+export interface VpsSessaoProxy {
+  id: string;
+  /** Sufixo usado na derivação (ex.: -session-{sessao}). */
+  sufixo: string;
+  ip: string | null;
+  pais: string | null;
+  /** Duas leituras no teste deram IPs diferentes (a sessão não segurou o IP). */
+  rotacao: boolean;
+  testadaEm: string;
+}
+
 export interface VpsJob extends Omit<EmulatorJob, "kind"> {
   /** estruturacao = Estruturar desta aba (lib/vps/estruturacao.ts): segunda linha do card da conta. */
   kind: EmulatorJob["kind"] | "estruturacao";
@@ -104,6 +115,13 @@ export interface VpsJob extends Omit<EmulatorJob, "kind"> {
   agendadoPara?: string | null;
   /** Pasta da conta (supabase/vps_pastas.sql); null = sem pasta. */
   pasta?: string | null;
+  /** Sessão fixa da proxy (id 8 hex), IP de saída lido no teste e se a sessão rotacionou; null = sem sessão/sem teste. */
+  sessao?: string | null;
+  ipSaida?: string | null;
+  paisSaida?: string | null;
+  rotacao?: boolean;
+  /** Tipo da proxy da conta. */
+  tipoProxy?: "http" | "socks5";
 }
 
 export interface VpsResponse {
@@ -212,6 +230,11 @@ export interface VpsContaInput {
   portalExpiraEm?: string;
   /** Endereço da sessão do portal (gravado no resgate e a cada Reactivate): a retomada dentro da janela usa sem tocar no portal. */
   portalEmail?: string;
+  /**
+   * Sessão fixa da proxy (16/11): 8 hex exclusivos da conta, já aplicados ao usuário de `proxy`, e o IP/país de
+   * saída lidos no teste da importação (bloco Isolamento). Ausente = proxy sem sessão (uma linha por conta).
+   */
+  sessao?: VpsSessaoProxy;
   conta: {
     /** Endereço; em `portal`, o link do painel. */
     email: string;

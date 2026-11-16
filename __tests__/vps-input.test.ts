@@ -24,7 +24,11 @@ describe("Contas VPS: proxies", () => {
       porta: 10114,
       usuario: "usuario1",
       pais: null,
+      tipo: "http",
     });
+    // SOCKS5 (16/11): o tipo vira socks5h:// na URL (o DNS sai pela proxy); o esquema da linha manda no tipo.
+    expect(parseProxy("sv2.exemplo.com:10114:usuario1:senha1", "socks5")?.url).toBe("socks5h://usuario1:senha1@sv2.exemplo.com:10114");
+    expect(parseProxy("socks5://u:p@proxy.exemplo.com:1080")).toMatchObject({ tipo: "socks5", url: "socks5h://u:p@proxy.exemplo.com:1080" });
     expect(parseProxy("1.2.3.4:8080:u:p:us")?.pais).toBe("US");
     expect(parseProxy("http://u:p@proxy.exemplo.com:3128")?.url).toBe("http://u:p@proxy.exemplo.com:3128");
     expect(parseProxy("u:p@proxy.exemplo.com:3128")?.host).toBe("proxy.exemplo.com");
@@ -49,7 +53,7 @@ describe("Contas VPS: proxies", () => {
     expect(parseProxies("a.com:1:u:p\na.com:1:x:y")).toHaveProperty("avisos", [
       "A proxy a.com:1 aparece nas linhas 1, 2 com usuários diferentes: segue, cada linha conta como uma proxy.",
     ]);
-    expect(parseProxies("a.com:1:u:p\nruim")).toEqual({ error: "Proxy da linha 2 no formato host:porta:usuário:senha." });
+    expect(parseProxies("a.com:1:u:p\nruim")).toEqual({ error: "Proxy da linha 2 no formato host:porta:usuário:senha ou usuário:senha@host:porta." });
   });
 });
 

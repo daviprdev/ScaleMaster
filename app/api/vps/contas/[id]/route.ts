@@ -7,7 +7,7 @@ import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseJobSteps } from "@/lib/emulador/jobs";
 import { isOnline } from "@/lib/emulador/payload";
 import { removerContaVps } from "@/lib/vps/remover-conta";
-import { parseConta, parseProxy } from "@/lib/vps/input";
+import { parseConta, parseProxy, parseTipoProxy, tipoDaUrl } from "@/lib/vps/input";
 import { stepsAfterProxyChange } from "@/lib/vps/jobs";
 import type { VpsContaInput } from "@/lib/vps/types";
 
@@ -99,11 +99,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   let proxyMudou = false;
   const proxyRaw = typeof body.proxy === "string" ? body.proxy.trim() : "";
   if (proxyRaw) {
-    const p = parseProxy(proxyRaw);
+    // Linha sem esquema herda o tipo da proxy atual da conta (SOCKS5 continua SOCKS5); socks5:// ou http:// manda.
+    const p = parseProxy(proxyRaw, parseTipoProxy(body.tipo, tipoDaUrl(input.proxy)));
     if (!p) return NextResponse.json({ error: "Proxy no formato host:porta:usuário:senha." }, { status: 400 });
     next.proxy = p.url;
     if (p.pais) next.pais = p.pais;
     proxyMudou = p.url !== input.proxy;
+    // Proxy trocada à mão: a sessão e o IP do teste eram da anterior.
+    if (proxyMudou) delete next.sessao;
   }
   if (body.conta && typeof body.conta === "object") {
     const c = body.conta as Record<string, unknown>;

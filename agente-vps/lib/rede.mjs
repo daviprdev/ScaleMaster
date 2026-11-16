@@ -110,8 +110,17 @@ export async function enderecosVivos() {
 /** http://usuario:senha@host:porta → partes. */
 export function lerProxy(url) {
   const u = new URL(url);
-  if (!/^https?:$/.test(u.protocol) || !u.hostname || !u.port) throw new Error("Proxy sem host ou porta.");
-  return { host: u.hostname, porta: Number(u.port), usuario: decodeURIComponent(u.username), senha: decodeURIComponent(u.password) };
+  // 16/11: SOCKS5 gravado como socks5h:// (o curl resolve o nome pela proxy); http(s):// = proxy HTTP.
+  const socks = /^socks5h?:$/.test(u.protocol);
+  if ((!socks && !/^https?:$/.test(u.protocol)) || !u.hostname || !u.port) throw new Error("Proxy sem host ou porta.");
+  return { tipo: socks ? "socks5" : "http", host: u.hostname, porta: Number(u.port), usuario: decodeURIComponent(u.username), senha: decodeURIComponent(u.password) };
+}
+
+/** URL que o gost usa para encaminhar (IP já resolvido): socks5:// ou http://, credencial escapada. */
+export function urlDoGost(p, ip) {
+  const auth = p.usuario ? `${encodeURIComponent(p.usuario)}:${encodeURIComponent(p.senha)}@` : "";
+  // O gost 3 encaminha SOCKS5 com o endereço de destino original; o DNS do Android já sai pelo unbound → proxy.
+  return `${p.tipo === "socks5" ? "socks5" : "http"}://${auth}${ip}:${p.porta}`;
 }
 
 /** Argumentos do docker network create da rede de um lote. */
@@ -296,8 +305,7 @@ export async function subirSidecar(container, proxy) {
     const p = lerProxy(proxy);
     const ip = /^\d+\.\d+\.\d+\.\d+$/.test(p.host) ? p.host : (await lookup(p.host, { family: 4 })).address;
     // URL da proxy já com o IP (o netns não resolve nada fora do unbound) e credenciais escapadas para o gost.
-    const auth = p.usuario ? `${encodeURIComponent(p.usuario)}:${encodeURIComponent(p.senha)}@` : "";
-    env.push("-e", `PROXY_IP=${ip}`, "-e", `PROXY_PORT=${p.porta}`, "-e", `PROXY_URL=http://${auth}${ip}:${p.porta}`);
+    env.push("-e", `PROXY_IP=${ip}`, "-e", `PROXY_PORT=${p.porta}`, "-e", `PROXY_URL=${urlDoGost(p, ip)}`);
   }
   const r = await rodar(
     "docker",
@@ -344,11 +352,14 @@ export async function proxyAtiva(container) {
 const GEO_CACHE = new Map();
 export const GEO_CACHE_MS = 6 * 3600_000;
 
-/** host:porta de uma URL de proxy (chave do cache; sem credencial). */
+/**
+ * Chave do cache de geo: host:porta:usuário. O usuário entra porque, com sessão fixa (16/11), cada usuário derivado
+ * do mesmo gateway sai por um IP diferente; sem sessão, as contas da mesma host:porta e mesmo usuário compartilham.
+ */
 export function chaveGeo(proxy) {
   try {
     const u = new URL(String(proxy));
-    return `${u.hostname.toLowerCase()}:${u.port}`;
+    return `${u.hostname.toLowerCase()}:${u.port}:${decodeURIComponent(u.username)}`;
   } catch {
     return String(proxy).replace(/^.*@/, "");
   }

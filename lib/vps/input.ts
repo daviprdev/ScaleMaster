@@ -90,15 +90,99 @@ export function portaValida(porta: string | number): boolean {
   return Number.isInteger(n) && n >= 1 && n <= 65535;
 }
 
+export type TipoProxy = "http" | "socks5";
+
 export interface ProxyLida {
-  /** http://usuario:senha@host:porta */
+  /** http://usuario:senha@host:porta ou socks5h://usuario:senha@host:porta (socks5h: o DNS sai pela proxy). */
   url: string;
   host: string;
   porta: number;
-  /** Usuário da proxy (entra na chave de dedupe host:porta:usuário). */
+  /** Usuário da proxy (entra na chave de dedupe host:porta:usuário) — com sessão, o usuário DERIVADO. */
   usuario: string;
   /** País (ISO-2) quando a linha trouxe um 5º campo; senão null (vale o do lote). */
   pais: string | null;
+  tipo: TipoProxy;
+  /** Sessão fixa (8 hex) quando o lote usa sufixo de sessão. */
+  sessao?: string;
+  /** Linha da caixa de proxies (1…n) de onde a credencial base veio. */
+  linhaBase?: number;
+}
+
+/** Esquema da URL por tipo: SOCKS5 vai como socks5h (curl resolve o nome pela proxy). */
+export function esquemaDoTipo(tipo: TipoProxy): "http" | "socks5h" {
+  return tipo === "socks5" ? "socks5h" : "http";
+}
+
+/** Tipo de uma URL de proxy gravada (socks5/socks5h = socks5; o resto = http). */
+export function tipoDaUrl(url: string | null | undefined): TipoProxy {
+  return /^socks5h?:\/\//i.test(String(url ?? "")) ? "socks5" : "http";
+}
+
+export function parseTipoProxy(raw: unknown, padrao: TipoProxy = "http"): TipoProxy {
+  return raw === "socks5" || raw === "http" ? raw : padrao;
+}
+
+/** Sessão fixa (16/11): o sufixo vai no usuário base; {sessao} vira 8 hex únicos por conta. */
+export const SUFIXO_PADRAO = "-session-{sessao}";
+export const SESSAO_RE = /^[0-9a-f]{8}$/;
+export const AVISO_ROTACAO = "Sem sufixo de sessão: rotação — as contas vão trocar de IP.";
+
+/** 8 caracteres hexadecimais aleatórios (crypto do navegador ou do Node). */
+export function novaSessao(): string {
+  const b = new Uint8Array(4);
+  globalThis.crypto.getRandomValues(b);
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+/** Sufixo de sessão: vazio (sem sessão) ou com {sessao}, ASCII sem espaço, ":" nem "@", até 60 caracteres. */
+export function parseSufixo(raw: unknown): { value: string } | { error: string } {
+  const sufixo = typeof raw === "string" ? raw.trim() : "";
+  if (!sufixo) return { value: "" };
+  if (sufixo.length > 60 || !/^[\x21-\x7E]+$/.test(sufixo) || /[:@/]/.test(sufixo)) return { error: "Sufixo de sessão sem espaço, \":\", \"@\" nem \"/\" (até 60 caracteres)." };
+  if (!sufixo.includes("{sessao}")) return { error: "O sufixo de sessão precisa ter {sessao} (ex.: -session-{sessao})." };
+  return { value: sufixo };
+}
+
+/** Usuário base + sufixo com a sessão no lugar de {sessao}. */
+export function derivarUsuario(base: string, sufixo: string, sessao: string): string {
+  return sufixo ? `${base}${sufixo.split("{sessao}").join(sessao)}` : base;
+}
+
+/** Proxy da conta: a base com o usuário derivado (mesmo host, porta, senha e tipo). */
+export function derivarProxy(base: ProxyLida, sufixo: string, sessao: string): ProxyLida {
+  const u = new URL(base.url);
+  const usuario = derivarUsuario(base.usuario, sufixo, sessao);
+  const senha = decodeURIComponent(u.password);
+  const url = `${esquemaDoTipo(base.tipo)}://${encodeURIComponent(usuario)}:${encodeURIComponent(senha)}@${base.host}:${base.porta}`;
+  return { ...base, url, usuario, sessao };
+}
+
+/**
+ * Sessões do lote: as que vieram do "Testar todas" (válidas, sem repetir) e
+ * novas até `quantidade`. Nunca repete dentro do lote.
+ */
+export function sessoesDoLote(quantidade: number, dadas: unknown, gerar: () => string = novaSessao): string[] {
+  const out: string[] = [];
+  const vistas = new Set<string>();
+  for (const s of Array.isArray(dadas) ? dadas : []) {
+    if (out.length >= quantidade) break;
+    if (typeof s === "string" && SESSAO_RE.test(s) && !vistas.has(s)) {
+      vistas.add(s);
+      out.push(s);
+    }
+  }
+  while (out.length < quantidade) {
+    const s = gerar();
+    if (!SESSAO_RE.test(s) || vistas.has(s)) continue;
+    vistas.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+/** Sessões de reserva (cobrem as que morrerem no teste da importação): 20% do lote, de 2 a 10. */
+export function reservasDeSessao(quantidade: number): number {
+  return Math.min(10, Math.max(2, Math.ceil(quantidade * 0.2)));
 }
 
 /**
@@ -106,15 +190,15 @@ export interface ProxyLida {
  * fim), ou usuário:senha@host:porta, ou a URL http://usuário:senha@host:porta.
  * null = inválida.
  */
-export function parseProxy(raw: string): ProxyLida | null {
+export function parseProxy(raw: string, tipoPadrao: TipoProxy = "http"): ProxyLida | null {
   const linha = raw.trim().replace(/[,;]\s*$/, "");
   if (!linha || linha.length > 300 || !ASCII_RE.test(linha)) return null;
 
-  const montar = (host: string, porta: string, usuario: string, senha: string, pais: string | null): ProxyLida | null => {
+  const montar = (host: string, porta: string, usuario: string, senha: string, pais: string | null, tipo: TipoProxy = tipoPadrao): ProxyLida | null => {
     if (!hostValido(host) || !portaValida(porta) || !usuario || !senha) return null;
     if (pais !== null && !PAIS_RE.test(pais)) return null;
-    const url = `http://${encodeURIComponent(usuario)}:${encodeURIComponent(senha)}@${host.toLowerCase()}:${Number(porta)}`;
-    return { url, host: host.toLowerCase(), porta: Number(porta), usuario, pais };
+    const url = `${esquemaDoTipo(tipo)}://${encodeURIComponent(usuario)}:${encodeURIComponent(senha)}@${host.toLowerCase()}:${Number(porta)}`;
+    return { url, host: host.toLowerCase(), porta: Number(porta), usuario, pais, tipo };
   };
 
   if (linha.includes("://")) {
@@ -129,8 +213,10 @@ export function parseProxy(raw: string): ProxyLida | null {
     } catch {
       return null;
     }
+    // O esquema da linha manda no tipo (socks5://, socks5h://, http://).
+    if (/^socks5h?:$/.test(u.protocol)) return montar(u.hostname, u.port, usuario, senha, null, "socks5");
     if (!/^https?:$/.test(u.protocol)) return null;
-    return montar(u.hostname, u.port, usuario, senha, null);
+    return montar(u.hostname, u.port, usuario, senha, null, "http");
   }
 
   if (linha.includes("@")) {
@@ -155,7 +241,7 @@ export function parseProxy(raw: string): ProxyLida | null {
  * host:porta:usuário: o mesmo usuário na mesma host:porta bloqueia; a mesma
  * host:porta com usuários diferentes (gateway rotativo) só gera aviso.
  */
-export function parseProxies(raw: unknown): { value: ProxyLida[]; avisos: string[] } | { error: string } {
+export function parseProxies(raw: unknown, { tipo = "http", dedupe = true }: { tipo?: TipoProxy; dedupe?: boolean } = {}): { value: ProxyLida[]; avisos: string[] } | { error: string } {
   const linhas = (Array.isArray(raw) ? raw.map((l) => (typeof l === "string" ? l : "")) : typeof raw === "string" ? raw.split(/\r?\n/) : [])
     .map((l) => l.trim())
     .filter(Boolean);
@@ -163,11 +249,13 @@ export function parseProxies(raw: unknown): { value: ProxyLida[]; avisos: string
   const vistas = new Map<string, number>();
   const porHost = new Map<string, number[]>();
   for (const [i, linha] of linhas.entries()) {
-    const p = parseProxy(linha);
-    if (!p) return { error: `Proxy da linha ${i + 1} no formato host:porta:usuário:senha.` };
+    const lida = parseProxy(linha, tipo);
+    if (!lida) return { error: `Proxy da linha ${i + 1} no formato host:porta:usuário:senha ou usuário:senha@host:porta.` };
+    const p: ProxyLida = { ...lida, linhaBase: i + 1 };
     const chave = chaveProxy(p);
     const antes = vistas.get(chave);
-    if (antes !== undefined) {
+    // Com sufixo de sessão a linha é só a credencial BASE: a mesma base em duas linhas não colide (o dedupe é na derivada).
+    if (antes !== undefined && dedupe) {
       return { error: `A proxy ${p.host}:${p.porta} com o usuário ${p.usuario} aparece nas linhas ${antes + 1} e ${i + 1}: cada conta precisa da sua.` };
     }
     vistas.set(chave, i);
@@ -281,8 +369,12 @@ export interface LoteInput {
   contas: VpsContaDados[];
   /** true = o servidor gera nome, @, senha e nascimento. */
   gerarPessoa: boolean;
-  /** Avisos que não bloqueiam (mesma host:porta com usuários diferentes). */
+  /** Avisos que não bloqueiam (mesma host:porta com usuários diferentes; sem sufixo = rotação). */
   avisos: string[];
+  /** Tipo das proxies do lote (SOCKS5 vai como socks5h). */
+  tipo: TipoProxy;
+  /** Sufixo de sessão ("" = sem sessão fixa: cada linha é a proxy de uma conta). */
+  sufixo: string;
 }
 
 /**
@@ -290,8 +382,11 @@ export interface LoteInput {
  * aceita qualquer versão bem formada, a VPS avisa se não tiver).
  *
  * Formulário novo: `codigos` = linhas do hstock ("link | código", uma por
- * conta); a quantidade é o número de linhas e as proxies têm de ser pelo menos
- * tantas (as excedentes são ignoradas, na ordem). API antiga: `quantidade` +
+ * conta); a quantidade é o número de linhas. `tipo` = socks5 | http. Com
+ * `sufixo` (ex.: -session-{sessao}) as linhas de proxy são credenciais base e
+ * cada conta ganha uma sessão exclusiva (`sessoes` do "Testar todas" ou
+ * novas); sem sufixo as proxies têm de ser pelo menos tantas quanto as contas
+ * (as excedentes cobrem as mortas, na ordem). API antiga: `quantidade` +
  * `conta[]` completas, proxies em número igual.
  */
 export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): { value: LoteInput } | { error: string } {
@@ -309,7 +404,12 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
   const pais = (field(body.pais, 10) || "BR").toUpperCase();
   if (!PAIS_RE.test(pais)) return { error: "País da proxy em duas letras (ex.: BR)." };
 
-  const proxies = parseProxies(body.proxies);
+  const tipo = parseTipoProxy(body.tipo);
+  const sufixoLido = parseSufixo(body.sufixo);
+  if ("error" in sufixoLido) return sufixoLido;
+  const sufixo = sufixoLido.value;
+  // Com sufixo cada linha é uma credencial BASE (pode repetir): o dedupe vale para a credencial derivada.
+  const proxies = parseProxies(body.proxies, { tipo, dedupe: !sufixo });
   if ("error" in proxies) return proxies;
 
   const codigosBrutos = typeof body.codigos === "string" ? body.codigos : Array.isArray(body.codigos) ? body.codigos.map((l) => (typeof l === "string" ? l : "")).join(String.fromCharCode(10)) : null;
@@ -318,8 +418,9 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
     const quantidade = linhas.length;
     if (quantidade < LOTE_MIN) return { error: "Cole ao menos uma linha do hstock (link | código)." };
     if (quantidade > LOTE_MAX) return { error: `No máximo ${LOTE_MAX} contas por envio (${quantidade} linhas).` };
-    if (proxies.value.length < quantidade) {
-      return { error: `${proxies.value.length} proxies para ${quantidade} contas: cole uma proxy por conta.` };
+    if (sufixo && proxies.value.length === 0) return { error: "Cole a credencial base da proxy (host:porta:usuário:senha ou usuário:senha@host:porta)." };
+    if (!sufixo && proxies.value.length < quantidade) {
+      return { error: `${proxies.value.length} proxies para ${quantidade} contas: cole uma proxy por conta (ou use o sufixo de sessão).` };
     }
     const contas: VpsContaDados[] = [];
     const vistos = new Set<string>();
@@ -331,10 +432,17 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
       vistos.add(chave);
       contas.push({ provedorEmail: "portal", email: lida.link, senhaEmail: lida.codigo, imapHost: "", imapPorta: 0, senhaIg: "", nome: "", usuario: "", nascimento: "" });
     }
+    if (sufixo) {
+      // Sessão fixa: uma sessão exclusiva por conta (as do "Testar todas" primeiro) sobre as bases em rodízio, e
+      // reservas para cobrir as que morrerem no teste da importação.
+      const sessoes = sessoesDoLote(quantidade + reservasDeSessao(quantidade), body.sessoes);
+      const candidatas = sessoes.map((sessao, i) => derivarProxy(proxies.value[i % proxies.value.length], sufixo, sessao));
+      return { value: { agentId, quantidade, proxies: candidatas.slice(0, quantidade), proxiesTodas: candidatas, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: true, avisos: [], tipo, sufixo } };
+    }
     const usadas = proxies.value.slice(0, quantidade);
     // Avisos só das linhas que entram no lote.
     const avisos = parseProxies(usadas.map((p) => p.url)) as { avisos?: string[] };
-    return { value: { agentId, quantidade, proxies: usadas, proxiesTodas: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: true, avisos: avisos.avisos ?? [] } };
+    return { value: { agentId, quantidade, proxies: usadas, proxiesTodas: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: true, avisos: [AVISO_ROTACAO, ...(avisos.avisos ?? [])], tipo, sufixo } };
   }
 
   const quantidade = typeof body.quantidade === "number" ? body.quantidade : Number(field(body.quantidade, 3));
@@ -361,7 +469,7 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
     contas.push(c.value);
   }
 
-  return { value: { agentId, quantidade, proxies: proxies.value, proxiesTodas: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: false, avisos: proxies.avisos } };
+  return { value: { agentId, quantidade, proxies: proxies.value, proxiesTodas: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: false, avisos: proxies.avisos, tipo, sufixo: "" } };
 }
 
 /** Fotos de perfil do lote (14/11): no mínimo 2, marcadas na pasta Foto Perfil; cada conta recebe uma delas, sorteada. */

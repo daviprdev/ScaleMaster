@@ -216,6 +216,10 @@ export function hostPortaDaChave(chave: string): string {
 
 export interface Isolamento {
   ip: string | null;
+  /** Sessão fixa da proxy (16/11) e o IP de saída lido no teste da importação. */
+  sessao?: string | null;
+  ipSaida?: string | null;
+  rotacao?: boolean;
   mac: string | null;
   modelo: string | null;
   serial: string | null;
@@ -240,7 +244,10 @@ export function isolamentoUnico(conta: Isolamento, doLote: readonly Isolamento[]
  * que é único; "unico" (verde) quando os quatro existem e não repetem.
  */
 export function estadoIsolamento(conta: Isolamento, doLote: readonly Isolamento[]): "unico" | "repetido" | "neutro" {
-  const campos: Array<keyof Isolamento> = ["ip", "mac", "serial", "androidId"];
+  // decisão (16/11): o IP de saída do teste entra na conta — o escudo só fica verde quando ele também difere dos
+  // outros do lote. Sessão que rotacionou no teste não é fixa: repetido (vermelho).
+  if (conta.rotacao) return "repetido";
+  const campos = ["ip", "mac", "serial", "androidId", "ipSaida"] as const;
   let faltou = false;
   for (const campo of campos) {
     const valor = conta[campo]?.toLowerCase();

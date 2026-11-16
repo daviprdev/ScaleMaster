@@ -203,7 +203,7 @@ describe("Lote pelos códigos do hstock", () => {
 
   it("bloqueia com proxies faltando, linha inválida, código repetido ou nenhuma linha", () => {
     expect(parseLoteInput({ ...base, codigos, proxies: "a.com:1:u:p\nb.com:2:u:p" })).toEqual({
-      error: "2 proxies para 3 contas: cole uma proxy por conta.",
+      error: "2 proxies para 3 contas: cole uma proxy por conta (ou use o sufixo de sessão).",
     });
     expect(parseLoteInput({ ...base, codigos: "lixo sem formato", proxies: "a.com:1:u:p" })).toEqual({ error: 'Linha 1 dos códigos fora do formato "link | código".' });
     expect(parseLoteInput({ ...base, codigos: "https://hridoyhub.shop/OTP/ | AAAAAA\nhttps://hridoyhub.shop/OTP/ | AAAAAA", proxies: "a.com:1:u:p\nb.com:2:u:p" })).toEqual({

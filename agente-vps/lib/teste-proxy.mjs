@@ -1,7 +1,7 @@
 import { esperar, rodar } from "./processo.mjs";
 
 /**
- * Teste de vida da proxy (16/11), direto do host com `curl -x`, sem passar pelo
+ * Teste de vida da proxy (16/11), direto do host com `curl -x` (http:// ou socks5h://, o DNS sai pela proxy), sem passar pelo
  * redsocks. Endpoint neutro: http://www.gstatic.com/generate_204 (204, sem
  * corpo); se ele não der 204, https://www.instagram.com/robots.txt. Endpoint de
  * geo (ip-api, ipinfo) nunca decide se a proxy está viva — eles limitam (429)
@@ -35,6 +35,9 @@ export const MOTIVO = {
  */
 export function classificarTentativa({ codigo, http, connect = 0, stderr = "" }) {
   if (http === 407 || connect === 407) return { estado: "credencial", detalhe: "HTTP 407" };
+  // SOCKS5 (curl 97 = erro no handshake da proxy): usuário/senha recusados = credencial; o resto, sem resposta útil.
+  if (codigo === 97 && /user was rejected|authentication|auth/i.test(String(stderr))) return { estado: "credencial", detalhe: `SOCKS5: ${linha(stderr)}` };
+  if (codigo === 97) return { estado: "morta", detalhe: `curl 97: ${linha(stderr)}` };
   if (http === 429) return { estado: "limitada", detalhe: "HTTP 429" };
   if (codigo === 0 && (http === 204 || http === 200)) return { estado: "ok", detalhe: `HTTP ${http}` };
   // curl: 5 = proxy não resolve, 6 = host não resolve, 7 = conexão recusada.

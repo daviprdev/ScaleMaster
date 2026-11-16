@@ -119,6 +119,24 @@ export function proxyChaveDe(inputEnc: string | null | undefined): string | null
   }
 }
 
+/** Sessão fixa e IP/país de saída do teste da importação, e o tipo da proxy (input criptografado); null se não der para ler. */
+export function sessaoDe(inputEnc: string | null | undefined): { sessao: string | null; ipSaida: string | null; paisSaida: string | null; rotacao: boolean; tipoProxy: "http" | "socks5" } | null {
+  if (!inputEnc) return null;
+  try {
+    const input = JSON.parse(decrypt(inputEnc)) as { proxy?: unknown; sessao?: { id?: unknown; ip?: unknown; pais?: unknown; rotacao?: unknown } };
+    const s = input.sessao;
+    return {
+      sessao: typeof s?.id === "string" ? s.id : null,
+      ipSaida: typeof s?.ip === "string" ? s.ip : null,
+      paisSaida: typeof s?.pais === "string" ? s.pais : null,
+      rotacao: s?.rotacao === true,
+      tipoProxy: /^socks5h?:\/\//i.test(String(input.proxy ?? "")) ? "socks5" : "http",
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** IP e rede do container guardados na identidade da conta (input criptografado); null se não der para ler. */
 export function redeDe(inputEnc: string | null | undefined): { ip: string; rede: number; container: string } | null {
   if (!inputEnc) return null;
@@ -152,6 +170,7 @@ export function toVpsJob(row: JobRow): VpsJob {
     proxyHost: row.kind === "estruturacao" ? null : proxyHostDe(row.input_enc),
     ip: row.kind === "estruturacao" ? null : (redeDe(row.input_enc)?.ip ?? null),
     pasta: row.pasta ?? null,
+    ...(row.kind === "estruturacao" ? {} : (sessaoDe(row.input_enc) ?? {})),
     ...(row.kind === "estruturacao" ? { plano: parsePlano(row.acoes), contaId: row.conta_id ?? null, agendadoPara: row.agendado_para ?? null } : {}),
   };
 }
