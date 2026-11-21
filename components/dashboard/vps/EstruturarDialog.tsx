@@ -5,9 +5,11 @@ import { Banner, Button, Dialog, Input, Select, Textarea } from "@/components/ui
 import {
   AGENDAR_MAX_H,
   AGENDAR_PADRAO_H,
+  APP_GLOBAL,
   BIO_MAX,
   DESTAQUE_MAX,
   LEGENDA_MAX,
+  NOME_APP_GLOBAL,
   NOME_DESTAQUE_PADRAO,
   PERFIL_PADRAO,
   contarCaracteres,
@@ -43,6 +45,7 @@ const VAZIO = {
   bio: "",
   perfil: `@${PERFIL_PADRAO}`,
   nomeDestaque: NOME_DESTAQUE_PADRAO,
+  app: "",
   linkStory: "",
   legendaSticker: "",
   legendaDestaque: "",
@@ -50,6 +53,59 @@ const VAZIO = {
 };
 
 type Campo = keyof typeof VAZIO;
+
+// Última escolha de app fica no navegador (vale para o próximo Estruturar).
+const APP_SALVO = "vps-estruturar-app";
+
+function lerAppSalvo(): string {
+  try {
+    return window.localStorage.getItem(APP_SALVO) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function salvarApp(valor: string) {
+  try {
+    window.localStorage.setItem(APP_SALVO, valor);
+  } catch {
+    /* sem storage: só não lembra */
+  }
+}
+
+interface AppOpcao {
+  value: string;
+  label: string;
+}
+
+/**
+ * Apps em que a conta pode conectar: o global (.env) e os de Meus Apps, na
+ * mesma ordem da página /add/<token>/apps, onde o agente toca no escolhido.
+ */
+function useAppsDeConexao(aberto: boolean): { opcoes: AppOpcao[]; carregando: boolean; erro: string | null } {
+  const [estado, setEstado] = React.useState<{ opcoes: AppOpcao[]; carregando: boolean; erro: string | null }>({ opcoes: [], carregando: false, erro: null });
+  React.useEffect(() => {
+    if (!aberto) return;
+    let vivo = true;
+    setEstado((e) => ({ ...e, carregando: true, erro: null }));
+    fetch("/api/apps")
+      .then(async (res) => {
+        const body = (await res.json().catch(() => null)) as { apps?: Array<{ id: string; app_name: string; ig_app_id: string }>; error?: string } | null;
+        if (!res.ok) throw new Error(body?.error ?? "Não deu para ler Meus Apps.");
+        const global = process.env.NEXT_PUBLIC_META_CLIENT_ID;
+        const opcoes: AppOpcao[] = [
+          ...(global ? [{ value: APP_GLOBAL, label: `${NOME_APP_GLOBAL} · ${global}` }] : []),
+          ...(body?.apps ?? []).map((a) => ({ value: a.id, label: `${a.app_name} · ${a.ig_app_id}` })),
+        ];
+        if (vivo) setEstado({ opcoes, carregando: false, erro: null });
+      })
+      .catch((err: Error) => vivo && setEstado({ opcoes: [], carregando: false, erro: err.message }));
+    return () => {
+      vivo = false;
+    };
+  }, [aberto]);
+  return estado;
+}
 
 /** Contador por code point (emoji conta 1), no rótulo do campo. */
 const contador = (valor: string, max: number) => `${contarCaracteres(valor)}/${max}`;
@@ -74,6 +130,7 @@ export function EstruturarDialog({ job, pastaDe = null, onClose, onSaved }: Estr
   // Pastas e fotos de /opt/scalemaster/midias: a foto do story é escolhida pela miniatura (MidiaPicker).
   const biblioteca = useMidiasDaVps(aberto);
   const midias = biblioteca.arquivos;
+  const apps = useAppsDeConexao(aberto);
 
   React.useEffect(() => {
     if (!aberto) return;
@@ -82,6 +139,16 @@ export function EstruturarDialog({ job, pastaDe = null, onClose, onSaved }: Estr
     if (pastaDe) setPasta(pastaDe.inicial && pastaDe.opcoes.some((o) => o.value === pastaDe.inicial) ? pastaDe.inicial : (pastaDe.opcoes.find((o) => o.elegiveis > 0)?.value ?? ""));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reabre o formulário só quando o diálogo abre.
   }, [job, pastaDe?.agent.id, aberto]);
+
+  // Com a lista carregada: a última escolha, se ainda existe; senão o primeiro app.
+  React.useEffect(() => {
+    if (!aberto || apps.opcoes.length === 0) return;
+    setForm((f) => {
+      if (f.app && apps.opcoes.some((o) => o.value === f.app)) return f;
+      const salvo = lerAppSalvo();
+      return { ...f, app: apps.opcoes.some((o) => o.value === salvo) ? salvo : apps.opcoes[0].value };
+    });
+  }, [aberto, apps.opcoes]);
   const opcaoPasta = pastaDe?.opcoes.find((o) => o.value === pasta) ?? null;
 
   const validado = React.useMemo(() => parseEstrutura(form, midias), [form, midias]);
@@ -96,6 +163,7 @@ export function EstruturarDialog({ job, pastaDe = null, onClose, onSaved }: Estr
     if ("error" in validado) return setError(validado.error);
     setSaving(true);
     setError(null);
+    salvarApp(form.app);
     try {
       const url = pastaDe ? "/api/vps/pastas/estruturar" : `/api/vps/contas/${encodeURIComponent(job!.id)}/estruturar`;
       const res = await fetch(url, {
@@ -126,7 +194,7 @@ export function EstruturarDialog({ job, pastaDe = null, onClose, onSaved }: Estr
       open={aberto}
       onClose={onClose}
       title={pastaDe ? "Estruturar pasta" : `Estruturar ${job?.label ? `@${job.label}` : "a conta"}`}
-      description="A VPS sobe a proxy, abre o Instagram, troca a bio, muda para conta profissional, entra no perfil e no destaque configurados, toca no link, aceita as permissões, posta o story com o link, destaca e desliga o container."
+      description="A VPS sobe a proxy, abre o Instagram, troca a bio, muda para conta profissional, entra no perfil e no destaque configurados, toca no link, aceita o convite de testador do app escolhido, conecta por ele, posta o story com o link, destaca e desliga o container."
       className="flex max-h-[90vh] max-w-3xl flex-col overflow-hidden"
     >
       <form className="flex min-h-0 flex-1 flex-col gap-4" onSubmit={(e) => void submit(e)}>
@@ -170,6 +238,15 @@ export function EstruturarDialog({ job, pastaDe = null, onClose, onSaved }: Estr
               autoComplete="off"
             />
           </div>
+          <Select
+            label="App para conectar"
+            value={form.app}
+            onChange={(e) => set("app", e.target.value)}
+            placeholder={apps.carregando ? "carregando Meus Apps…" : apps.opcoes.length === 0 ? "nenhum app cadastrado" : "escolha o app"}
+            options={apps.opcoes}
+            error={apps.erro ?? erros.app}
+            hint="A conta aceita o convite de testador desse app e conecta por ele (o agente escolhe na página do link do destaque)."
+          />
           <Input
             label="Link do sticker do story"
             type="url"

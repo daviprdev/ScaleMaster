@@ -11,8 +11,8 @@ export const SESSAO_PERDIDA = "SESSAO_PERDIDA";
 export const SEM_NAVEGADOR = "SEM_NAVEGADOR";
 export const CONEXAO_OUTRA_CONTA = "CONEXAO_OUTRA_CONTA";
 
-const DO_ALVO_RE = /^(perfil|destaque|link|conectar|consentir|confirmar)-(\d+)$/;
-const ORDEM_DO_ALVO = ["perfil", "destaque", "link", "conectar", "consentir", "confirmar"];
+const DO_ALVO_RE = /^(perfil|destaque|link|convite|conectar|consentir|confirmar)-(\d+)$/;
+const ORDEM_DO_ALVO = ["perfil", "destaque", "link", "convite", "conectar", "consentir", "confirmar"];
 
 /** { tipo: "link", n: 2 } para "link-2"; null se a etapa não é de alvo. */
 export function etapaDoAlvo(chave) {

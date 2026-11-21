@@ -7,7 +7,7 @@ import { INSTAGRAM } from "./apk.mjs";
 import { salvarTela } from "./dono.mjs";
 import { garantirTeclado } from "../lib/teclado.mjs";
 import { conferirSessao, destacarStory, editarPerfil, garantirProxy, iniciarInstagram, pararInstagram, postarStory, trocarFoto } from "./instagram.mjs";
-import { abrirDestaque, abrirPerfilAlvo, conectar, confirmar, consentir, garantirPerfilAlvo, tocarLinkDoDestaque, tornarProfissional } from "./oauth.mjs";
+import { abrirDestaque, abrirPerfilAlvo, aceitarConvite, conectar, confirmar, consentir, garantirPerfilAlvo, tocarLinkDoDestaque, tornarProfissional } from "./oauth.mjs";
 
 /**
  * Estruturar uma conta da VPS (emulator_jobs.kind = 'estruturacao'). As etapas
@@ -18,7 +18,7 @@ import { abrirDestaque, abrirPerfilAlvo, conectar, confirmar, consentir, garanti
  *                                       SESSAO_PERDIDA; a conta fica como está, nada é descartado)
  *   foto, bio, story, destacar        — `segue`: a falha é registrada e a próxima etapa independente roda
  *   profissional                      — `segue`: falha = PROFISSIONAL_FALHOU e só as etapas de OAuth são bloqueadas
- *   perfil-N … confirmar-N (por alvo) — `segue`: falha em uma pula o resto do alvo N e vai para o alvo seguinte
+ *   perfil-N … confirmar-N (por alvo) — perfil, destaque, link, convite (só com app escolhido), conectar, consentir, confirmar; `segue`: falha em uma pula o resto do alvo N e vai para o alvo seguinte
  *   fechar                            — sempre: para o Instagram e desliga o container (não apaga)
  *
  * `pular(falhas)` devolve o motivo quando outra etapa que falhou bloqueia esta
@@ -206,7 +206,9 @@ const DO_ALVO = {
   // O destaque vai junto: o story dura ~5 s e, se acabar entre as etapas, o link reabre o destaque.
   // e o perfil: no Continuar a etapa pode começar fora do perfil do alvo.
   link: (ctx, c, alvo) => tocarLinkDoDestaque(c, { link: alvo.link, destaque: alvo.destaque, perfil: alvo.perfil }),
-  conectar: (ctx, c, alvo) => conectar(c, { link: alvo.link, conta: ctx.input?.conta }),
+  // Moda antiga (21/11): o convite de testador do app é aceito na página de escolha do app, antes do OAuth.
+  convite: (ctx, c, alvo) => aceitarConvite(c, { alvo }),
+  conectar: (ctx, c, alvo) => conectar(c, { link: alvo.link, conta: ctx.input?.conta, app: ctx.input?.app ?? null, alvo }),
   consentir: (ctx, c) => consentir(c, ctx.input?.conta?.usuario),
   confirmar: (ctx, c) => confirmar(c, ctx.input?.conta?.usuario),
 };

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { ChevronRight, Link2 } from "lucide-react";
+import { ChevronRight, Link2, UserCheck } from "lucide-react";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -28,14 +28,16 @@ export default async function AddChooseAppPage({
 
   const { data: apps } = await admin
     .from("user_meta_apps")
-    .select("id, app_name")
+    .select("id, app_name, ig_app_id")
     .eq("user_id", record.user_id)
     .order("created_at", { ascending: false });
 
   // Mesma ordem do modal do Magic Link: app global primeiro, depois Meus Apps.
+  // O ID do app do Instagram vai embaixo do nome: o agente da VPS acha o app escolhido por ele (lib/vps/estruturacao.ts).
+  const global = process.env.NEXT_PUBLIC_META_CLIENT_ID;
   const options = [
-    ...(process.env.NEXT_PUBLIC_META_CLIENT_ID ? [{ key: "global", name: "App global" }] : []),
-    ...(apps ?? []).map((app) => ({ key: app.id as string, name: app.app_name as string })),
+    ...(global ? [{ key: "global", name: "App global", igAppId: global }] : []),
+    ...(apps ?? []).map((app) => ({ key: app.id as string, name: app.app_name as string, igAppId: String(app.ig_app_id ?? "") })),
   ];
 
   return (
@@ -51,6 +53,17 @@ export default async function AddChooseAppPage({
           </div>
         </div>
 
+        {/* Moda antiga (sem app verificado): a conta aceita o convite de testador antes de conectar.
+            Vai pela rota /add/{token}/convite, que redireciona para a página da Meta no mesmo navegador. */}
+        <a
+          href={`/add/${token}/convite`}
+          className="w-full flex items-center gap-2.5 px-3.5 py-3 rounded-xl bg-[#00498D]/15 border border-[#00498D]/30 text-sm text-white/90 hover:bg-[#00498D]/25 transition-all"
+        >
+          <UserCheck size={14} className="text-[#BEB8BC] flex-shrink-0" />
+          <span>Aceitar convites de testador</span>
+          <ChevronRight size={14} className="text-white/30 ml-auto flex-shrink-0" />
+        </a>
+
         {options.length > 0 ? (
           <div className="space-y-2">
             {/* <a> e não <Link>: o prefetch do Link chamaria a rota que inicia o OAuth. */}
@@ -61,7 +74,10 @@ export default async function AddChooseAppPage({
                 className="w-full flex items-center gap-2.5 px-3.5 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white/80 hover:border-white/20 hover:bg-white/[0.06] transition-all"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-[#00498D]/50 flex-shrink-0" />
-                <span className="truncate">{option.name}</span>
+                <span className="min-w-0 flex flex-col">
+                  <span className="truncate">{option.name}</span>
+                  <span className="text-[11px] text-white/35">ID {option.igAppId}</span>
+                </span>
                 <ChevronRight size={14} className="text-white/30 ml-auto flex-shrink-0" />
               </a>
             ))}
@@ -73,7 +89,7 @@ export default async function AddChooseAppPage({
         )}
 
         <p className="text-white/25 text-[11px] leading-relaxed">
-          Depois de escolher, é só autorizar no Instagram com a conta que vai ser conectada.
+          Ainda não é testadora? Aceite o convite primeiro e volte para esta página. Depois de escolher o app, é só autorizar no Instagram com a conta que vai ser conectada.
         </p>
       </div>
     </div>

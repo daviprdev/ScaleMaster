@@ -36,7 +36,7 @@ describe("Estruturar: etapas expandidas por alvo na criação do job", () => {
     const chaves = expandirEtapas(parsed.value).map((e) => e.key);
     expect(chaves).toEqual([
       "rede", "abrir", "instagram", "sessao", "foto", "bio", "profissional",
-      "perfil-1", "destaque-1", "link-1", "conectar-1", "consentir-1", "confirmar-1",
+      "perfil-1", "destaque-1", "link-1", "convite-1", "conectar-1", "consentir-1", "confirmar-1",
       "story", "destacar", "fechar",
     ]);
     const rotulos = new Map(expandirEtapas(parsed.value).map((e) => [e.key, e.label]));
@@ -218,7 +218,7 @@ describe("Estruturar: regras de falha no agente", () => {
     const semLink = rodar(["link-1"]);
     expect(semLink.rodadas).not.toContain("conectar-1");
     expect(semLink.rodadas).toEqual(expect.arrayContaining(["perfil-2", "destaque-2", "link-2", "conectar-2", "consentir-2", "confirmar-2", "story"]));
-    expect(semLink.falhas).toEqual(["link-1", "conectar-1", "consentir-1", "confirmar-1"]);
+    expect(semLink.falhas).toEqual(["link-1", "convite-1", "conectar-1", "consentir-1", "confirmar-1"]);
   });
 });
 

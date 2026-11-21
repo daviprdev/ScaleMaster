@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decrypt, encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
-import { agendadoPara, expandirEtapas, type EstruturaDados, type EstruturaInput } from "./estruturacao";
+import { APP_GLOBAL, NOME_APP_GLOBAL, agendadoPara, expandirEtapas, type EstruturaApp, type EstruturaDados, type EstruturaInput } from "./estruturacao";
 import type { VpsContaInput } from "./types";
 
 /** Servidor: põe na fila da VPS a estruturação de uma conta criada (usado pelo Estruturar da conta e da pasta). */
@@ -19,6 +19,23 @@ export interface ContaRow {
 }
 
 export const CONTA_COLUNAS = "id, kind, status, label, agent_id, instance_index, input_enc";
+
+/**
+ * Nome e ID do app do Instagram a partir da escolha do diálogo: "global" = o
+ * app do .env; o resto = linha de Meus Apps do dono. É o que a página
+ * /add/<token>/apps mostra e onde o agente toca.
+ */
+export async function resolverApp(admin: SupabaseClient, userId: string, chave: string): Promise<EstruturaApp | { error: string; status: number }> {
+  if (chave === APP_GLOBAL) {
+    const igAppId = process.env.NEXT_PUBLIC_META_CLIENT_ID ?? "";
+    if (!igAppId) return { error: "O app global não está configurado (NEXT_PUBLIC_META_CLIENT_ID). Escolha um app de Meus Apps.", status: 400 };
+    return { chave, nome: NOME_APP_GLOBAL, igAppId };
+  }
+  const { data, error } = await admin.from("user_meta_apps").select("id, app_name, ig_app_id").eq("id", chave).eq("user_id", userId).maybeSingle();
+  if (error) return { error: error.message, status: 500 };
+  if (!data) return { error: "Esse app não está mais em Meus Apps. Escolha outro.", status: 404 };
+  return { chave, nome: String(data.app_name), igAppId: String(data.ig_app_id) };
+}
 
 export async function criarEstruturacao(
   admin: SupabaseClient,
@@ -49,6 +66,12 @@ export async function criarEstruturacao(
     .limit(1);
   if (ativaErr) return { error: ativaErr.message, status: 500 };
   if (ativa?.length) return { error: "Esse container já tem algo na fila ou rodando.", status: 409 };
+
+  if (dados.app && !dados.app.igAppId) {
+    const app = await resolverApp(admin, userId, dados.app.chave);
+    if ("error" in app) return app;
+    dados = { ...dados, app };
+  }
 
   const plano = expandirEtapas(dados);
   const entrada: EstruturaInput = {

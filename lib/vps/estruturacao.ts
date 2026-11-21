@@ -41,6 +41,23 @@ export interface EstruturaAlvo {
   link: string;
 }
 
+/** "global" = o app do .env (NEXT_PUBLIC_META_CLIENT_ID); o resto é o id de user_meta_apps. */
+export const APP_GLOBAL = "global";
+/** Nome do app do .env na página /add/<token>/apps. */
+export const NOME_APP_GLOBAL = "App global";
+
+/**
+ * App em que a conta conecta (21/11, depois que o app verificado caiu): escolhido
+ * no Estruturar; o agente toca nele na página /add/<token>/apps, que mostra o
+ * nome e, embaixo, o ID do app do Instagram.
+ */
+export interface EstruturaApp {
+  chave: string;
+  /** Preenchidos no servidor (lib/vps/estruturar-conta.ts), nunca pelo navegador. */
+  nome: string;
+  igAppId: string;
+}
+
 export interface EstruturaDados {
   /** Arquivo de /opt/scalemaster/midias (caminho relativo); "" = sem foto. */
   fotoPerfil: string;
@@ -58,6 +75,8 @@ export interface EstruturaDados {
   fazerStory: boolean;
   /** 0 = agora. */
   agendarHoras: number;
+  /** Jobs antigos: ausente (a página do link ia direto ao OAuth, sem convite). */
+  app?: EstruturaApp;
 }
 
 export interface PlanoEtapa {
@@ -76,6 +95,7 @@ export interface EstruturaInput extends EstruturaDados {
 }
 
 const PERFIL_RE = /^[a-z0-9._]{1,30}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function texto(valor: unknown): string {
   return typeof valor === "string" ? valor.trim() : "";
@@ -127,6 +147,7 @@ export type CampoEstrutura =
   | "bio"
   | "perfil"
   | "nomeDestaque"
+  | "app"
   | "linkStory"
   | "legendaSticker"
   | "legendaDestaque"
@@ -138,6 +159,7 @@ const ORDEM_DOS_ERROS: ReadonlyArray<CampoEstrutura> = [
   "bio",
   "perfil",
   "nomeDestaque",
+  "app",
   "linkStory",
   "legendaSticker",
   "legendaDestaque",
@@ -154,6 +176,7 @@ function lerEstrutura(raw: unknown) {
     // Campo ausente (API sem o campo) = o padrão; campo enviado vazio = vazio (bloqueia).
     perfil: (r.perfil === undefined ? PERFIL_PADRAO : texto(r.perfil)).replace(/^@/, "").toLowerCase(),
     nomeDestaque: r.nomeDestaque === undefined ? NOME_DESTAQUE_PADRAO : texto(r.nomeDestaque),
+    app: r.app === undefined ? APP_GLOBAL : texto(r.app),
     linkStory: texto(r.linkStory),
     legendaSticker: texto(r.legendaSticker),
     legendaDestaque: texto(r.legendaDestaque),
@@ -197,6 +220,9 @@ export function errosPorCampo(raw: unknown, midias: ReadonlyArray<string> | null
   else if (contarCaracteres(f.nomeDestaque) > DESTAQUE_MAX) marcar("nomeDestaque", `O nome do destaque passa de ${DESTAQUE_MAX} caracteres.`);
   else if (/[\r\n]/.test(f.nomeDestaque)) marcar("nomeDestaque", "O nome do destaque não pode ter quebra de linha.");
 
+  if (!f.app) marcar("app", "Escolha o app em que as contas vão conectar.");
+  else if (f.app !== APP_GLOBAL && !UUID_RE.test(f.app)) marcar("app", "App inválido: escolha de novo na lista.");
+
   if (!f.linkStory) marcar("linkStory", "Informe o link do sticker do story.");
   else if (!linkHttps(f.linkStory)) marcar("linkStory", "O link precisa começar com https://.");
 
@@ -233,15 +259,16 @@ export function parseEstrutura(raw: unknown, midias: ReadonlyArray<string> | nul
       fazerOauth: true,
       fazerStory: true,
       agendarHoras: Math.round(f.horas * 100) / 100,
+      app: { chave: f.app, nome: "", igAppId: "" },
     },
   };
 }
 
 /** Sufixos das etapas de cada alvo, na ordem. */
-export const ETAPAS_DO_ALVO: ReadonlyArray<string> = ["perfil", "destaque", "link", "conectar", "consentir", "confirmar"];
+export const ETAPAS_DO_ALVO: ReadonlyArray<string> = ["perfil", "destaque", "link", "convite", "conectar", "consentir", "confirmar"];
 
 /** Etapas do job, expandidas por alvo. A ordem é a de execução. */
-export function expandirEtapas(d: Pick<EstruturaDados, "alvos" | "bio" | "fazerPerfil" | "fazerOauth" | "fazerStory"> & { fotoPerfil?: string }): PlanoEtapa[] {
+export function expandirEtapas(d: Pick<EstruturaDados, "alvos" | "bio" | "fazerPerfil" | "fazerOauth" | "fazerStory" | "app"> & { fotoPerfil?: string }): PlanoEtapa[] {
   const plano: PlanoEtapa[] = [
     { key: "rede", label: "Validar a proxy e subir o sidecar" },
     { key: "abrir", label: "Ligar o container" },
@@ -261,7 +288,9 @@ export function expandirEtapas(d: Pick<EstruturaDados, "alvos" | "bio" | "fazerP
         { key: `perfil-${n}`, label: `Alvo ${n}: abrir o perfil @${alvo.perfil}` },
         { key: `destaque-${n}`, label: `Alvo ${n}: abrir o destaque "${alvo.destaque}"` },
         { key: `link-${n}`, label: `Alvo ${n}: tocar no link do destaque` },
-        { key: `conectar-${n}`, label: `Alvo ${n}: Conectar` },
+        // Com app escolhido (21/11): o convite de testador do app é aceito antes do OAuth (moda antiga, sem app verificado).
+        ...(d.app ? [{ key: `convite-${n}`, label: `Alvo ${n}: aceitar o convite de testador` }] : []),
+        { key: `conectar-${n}`, label: d.app?.nome ? `Alvo ${n}: Conectar pelo app "${d.app.nome}"` : `Alvo ${n}: Conectar` },
         { key: `consentir-${n}`, label: `Alvo ${n}: Permitir` },
         { key: `confirmar-${n}`, label: `Alvo ${n}: confirmar a conta conectada` }
       );

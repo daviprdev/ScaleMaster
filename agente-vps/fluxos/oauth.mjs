@@ -22,6 +22,18 @@ import { acharId, acharTexto, esperarMudar, preencher, preencherEsperando, temTe
  *   permissão (OAuth)       → "… está solicitando acesso a: <@>" → Permitir (@ diferente = CONEXAO_OUTRA_CONTA)
  *   login (sem sessão)      → campos de usuário e senha
  *   confirmação             → "Conta conectada!" → Fechar navegador (volta ao Instagram)
+ *
+ * moda antiga, sem app verificado (21/11; job com `app`): a página do link (Lovable, botão OAUTH) leva à
+ * escolha do app do SaaS (/add/<token>/apps):
+ *   escolha do app          → "Em qual app conectar?"; um botão por app com o nome e "ID <id do app do Instagram>"
+ *   convite (etapa convite) → "Aceitar convites de testador" → /add/<token>/convite → 307 →
+ *                             www.instagram.com/accounts/manage_access/ no mesmo navegador do Instagram (com sessão)
+ *   convites de testador    → aba "Convites de testador"/"Tester invites" → "Aceitar"/"Accept" em cada convite;
+ *                             sem convite = segue (já aceito); BACK volta à escolha do app
+ *   conectar                → toca no app escolhido (nome exato; senão pelo ID) → tela de permissão
+ *   link vencido            → "Link inválido ou expirado" (/add/error) = LINK_DO_DESTAQUE_INVALIDO
+ * A página da Meta ainda não foi lida neste host: tela que não bater fica em telas/ e o convite segue sem
+ * travar o job (o OAuth recusa conta que não é testadora, com a tela salva).
  */
 
 export const CHROME = "com.android.chrome";
@@ -653,13 +665,202 @@ export async function entrarEVoltar(ctx, { link, conta }) {
 
 const confirmada = (nos) => arrobaDaConfirmacao(textosDe(nos)).confirmado;
 
+// ── escolha do app e convite de testador (21/11) ─────────────────────────────
+
+/** O link do destaque leva a um link mágico vencido/sem app: a página do SaaS mostra o erro. */
+export const LINK_DO_DESTAQUE_INVALIDO = "LINK_DO_DESTAQUE_INVALIDO";
+/** O app escolhido no Estruturar não aparece na página de escolha (saiu de Meus Apps?). */
+export const APP_FORA_DA_PAGINA = "APP_FORA_DA_PAGINA";
+
+const ESCOLHA_DE_APP = ["Em qual app conectar?"];
+const BOTAO_CONVITE = ["Aceitar convites de testador"];
+const LINK_INVALIDO = ["Link inválido ou expirado", "Aplicativo não encontrado", "Nenhum app configurado"];
+const ABA_CONVITES = ["Convites de testador", "Convites para testador", "Convites de testadores", "Tester invites", "Tester Invites"];
+const ACEITAR = ["Aceitar", "Accept"];
+const SEM_CONVITE = ["Não há convites", "Nenhum convite", "Você não tem convites", "No tester invites", "no invitations", "You have no"];
+
+export const naEscolhaDeApp = (nos) => paginaAberta(nos) && temTexto(nos, ESCOLHA_DE_APP);
+export const linkInvalido = (nos) => paginaAberta(nos) && temTexto(nos, LINK_INVALIDO);
+
+/**
+ * Botão do app na página de escolha: o nome exato (o que o SaaS mostra);
+ * senão o nó com o ID do app do Instagram (a linha "ID …" embaixo do nome).
+ */
+export function opcaoDoApp(nos, app) {
+  const nome = String(app?.nome ?? "").trim().toLowerCase();
+  const id = String(app?.igAppId ?? "").trim();
+  if (nome) {
+    const exato = nos.find((n) => [n.texto, n.descricao].some((v) => v.trim().toLowerCase() === nome));
+    if (exato) return exato;
+  }
+  if (id) return nos.find((n) => `${n.texto} ${n.descricao}`.includes(id)) ?? null;
+  return null;
+}
+
+/** Botão "Aceitar" de um convite: só texto exato (o "Aceitar convites…" do SaaS e o "Aceitar e continuar" dos cookies não contam). */
+export function botaoAceitarConvite(nos) {
+  for (const t of ACEITAR) {
+    const no = nos.find((n) => igual(n, t) && ehBotao(n)) ?? nos.find((n) => igual(n, t));
+    if (no) return no;
+  }
+  return null;
+}
+
+/**
+ * Da página que o sticker abriu até a escolha do app: a página do Lovable tem
+ * o botão OAUTH (toca e espera); link vencido = LINK_DO_DESTAQUE_INVALIDO.
+ * Devolve { escolha: nos } ou { permissao: true } (link que vai direto ao OAuth).
+ */
+async function irParaEscolha(ctx) {
+  const { d, log = () => {} } = ctx;
+  for (let passo = 0; passo < 2; passo++) {
+    const achado = await aguardar(
+      d,
+      (nos) => {
+        if (linkInvalido(nos)) return { invalido: nos };
+        if (naEscolhaDeApp(nos)) return { escolha: nos };
+        if (botaoDePermissao(nos)) return { permissao: true };
+        if (paginaAberta(nos) && confirmada(nos)) return { permissao: true };
+        const botao = paginaAberta(nos) && acharBotao(nos, CONECTAR);
+        return botao ? { botao } : null;
+      },
+      { timeoutMs: 30_000, descricao: "a página de escolha do app (ou o botão OAUTH da página do link)" }
+    );
+    if (achado.invalido) {
+      salvarTela(achado.invalido, `estruturar: ${LINK_DO_DESTAQUE_INVALIDO}`);
+      throw new Error(
+        `${LINK_DO_DESTAQUE_INVALIDO}: a página do link do destaque leva a um link mágico vencido (${resumoTela(achado.invalido)}); aponte o botão para o link geral /add/<token>/apps do SaaS`
+      );
+    }
+    if (!achado.botao) return achado;
+    log("página do link: tocando no botão OAUTH");
+    await d.tocar(achado.botao.x, achado.botao.y);
+  }
+  throw new Error("o botão OAUTH da página do link não levou à escolha do app");
+}
+
+/** Página aberta no navegador; se o story/navegador fechou, reabre pelo destaque do alvo. */
+async function garantirPagina(ctx, alvo) {
+  const nos = await ctx.d.tela().catch(() => []);
+  if (paginaAberta(nos)) return;
+  if (!alvo) throw new Error("a página do link fechou e a etapa veio sem o alvo para reabrir");
+  ctx.log?.("página do link fechada: reabrindo pelo destaque");
+  await tocarLinkDoDestaque(ctx, { link: alvo.link, destaque: alvo.destaque, perfil: alvo.perfil });
+}
+
+/**
+ * Etapa convite: na escolha do app, "Aceitar convites de testador" abre a
+ * página da Meta (accounts/manage_access) no mesmo navegador; abre a aba de
+ * convites, toca em Aceitar em cada um e volta (BACK) à escolha do app. Sem
+ * convite ou tela desconhecida: segue (tela salva) — o OAuth é quem recusa
+ * conta que não é testadora.
+ */
+export async function aceitarConvite(ctx, { alvo = null } = {}) {
+  const { d, log = () => {} } = ctx;
+  await garantirPagina(ctx, alvo);
+  const inicio = await irParaEscolha(ctx);
+  if (inicio.permissao) return "a página do link foi direto ao Permitir (sem a escolha do app): nada a aceitar";
+  const botao = acharTexto(inicio.escolha, BOTAO_CONVITE);
+  if (!botao) {
+    salvarTela(inicio.escolha, "estruturar: escolha do app sem o botão de convites");
+    throw new Error("a página de escolha do app está sem o botão \"Aceitar convites de testador\" (site desatualizado?)");
+  }
+  await d.tocar(botao.x, botao.y);
+
+  const pagina = await aguardar(
+    d,
+    (nos) => {
+      if (!paginaAberta(nos) || naEscolhaDeApp(nos)) return null;
+      if (telaDeLogin(nos)) return { login: nos };
+      if (acharTexto(nos, ABA_CONVITES) || botaoAceitarConvite(nos) || temTexto(nos, SEM_CONVITE)) return { nos };
+      return null;
+    },
+    { timeoutMs: 30_000, descricao: "a página de convites de testador da Meta" }
+  ).catch((err) => ({ erro: err }));
+  if (pagina.erro || pagina.login) {
+    if (pagina.login) salvarTela(pagina.login, "estruturar: convites de testador pediram login");
+    await voltarParaEscolha(d, log);
+    return `não deu para abrir os convites de testador (${pagina.login ? "a página pediu login" : pagina.erro.message}); segue para o Conectar`;
+  }
+
+  let nos = pagina.nos;
+  const aba = acharTexto(nos, ABA_CONVITES);
+  if (aba) {
+    log("convites de testador: abrindo a aba");
+    await d.tocar(aba.x, aba.y);
+    nos = (await esperarMudar(d, nos, { timeoutMs: 8000 })) ?? (await d.tela().catch(() => nos));
+    await esperar(1500);
+    nos = await d.tela().catch(() => nos);
+  }
+
+  let aceitos = 0;
+  for (let i = 0; i < 10; i++) {
+    const cookies = acharBotao(nos, COOKIES);
+    if (cookies) {
+      await d.tocar(cookies.x, cookies.y);
+      nos = (await esperarMudar(d, nos, { timeoutMs: 5000 })) ?? nos;
+      continue;
+    }
+    const aceitar = botaoAceitarConvite(nos);
+    if (!aceitar) break;
+    await d.tocar(aceitar.x, aceitar.y);
+    aceitos++;
+    log(`convite de testador aceito (${aceitos})`);
+    await esperarMudar(d, nos, { timeoutMs: 8000 });
+    await esperar(1500);
+    nos = await d.tela().catch(() => []);
+  }
+
+  let resumo;
+  if (aceitos > 0) resumo = `${aceitos} convite${aceitos === 1 ? "" : "s"} de testador aceito${aceitos === 1 ? "" : "s"}`;
+  else if (temTexto(nos, SEM_CONVITE)) resumo = "nenhum convite pendente (já aceito?)";
+  else {
+    if (nos.length > 0) salvarTela(nos, "estruturar: convites de testador sem botão Aceitar");
+    resumo = `nenhum botão Aceitar na página de convites (na tela: ${resumoTela(nos) || "sem leitura"})`;
+  }
+  await voltarParaEscolha(d, log);
+  return resumo;
+}
+
+/** BACK até a escolha do app (até 3 vezes); se o navegador fechar, o Conectar reabre pelo destaque. */
+async function voltarParaEscolha(d, log) {
+  for (let i = 0; i < 3; i++) {
+    const nos = await d.tela().catch(() => []);
+    if (naEscolhaDeApp(nos) || !paginaAberta(nos)) return;
+    await d.tecla("KEYCODE_BACK");
+    await esperarMudar(d, nos, { timeoutMs: 6000 });
+  }
+  log("não voltei à escolha do app com o BACK: o Conectar reabre o link");
+}
+
+/** Na escolha do app, toca no app do job. Devolve false se a página foi direto ao OAuth. */
+async function escolherApp(ctx, { app, alvo }) {
+  const { d, log = () => {} } = ctx;
+  await garantirPagina(ctx, alvo);
+  const inicio = await irParaEscolha(ctx);
+  if (inicio.permissao) {
+    log("a página do link foi direto ao OAuth, sem a escolha do app: segue com o app do link");
+    return false;
+  }
+  const opcao = opcaoDoApp(inicio.escolha, app);
+  if (!opcao) {
+    salvarTela(inicio.escolha, `estruturar: ${APP_FORA_DA_PAGINA}`);
+    throw new Error(`${APP_FORA_DA_PAGINA}: o app "${app.nome}" (ID ${app.igAppId}) não está na página de escolha (na tela: ${resumoTela(inicio.escolha)})`);
+  }
+  log(`escolha do app: tocando em "${app.nome}"`);
+  await d.tocar(opcao.x, opcao.y);
+  return true;
+}
+
 /**
  * Toca no botão da página (OAUTH / Conectar) e espera a tela de permissão; se
  * a página já abriu no Permitir (ou já confirmou), não toca em nada; se pedir
  * login, entra e refaz.
  */
-export async function conectar(ctx, { link, conta }) {
+export async function conectar(ctx, { link, conta, app = null, alvo = null }) {
   const { d } = ctx;
+  // Job com app escolhido (21/11): passa pela escolha do app; o OAuth do app escolhido vem em seguida.
+  const escolheu = app ? await escolherApp(ctx, { app, alvo }) : false;
   const achado = await aguardar(
     d,
     (nos) => {
@@ -670,8 +871,9 @@ export async function conectar(ctx, { link, conta }) {
     },
     { timeoutMs: 30_000, descricao: "o botão da página (OAUTH/Conectar) ou a tela de permissão" }
   );
-  if (achado.permissao) return "tela de permissão aberta (a página foi direto)";
-  if (achado.confirmada) return "já estava autorizado";
+  const peloApp = escolheu ? ` pelo app "${app.nome}"` : "";
+  if (achado.permissao) return `tela de permissão aberta${peloApp || " (a página foi direto)"}`;
+  if (achado.confirmada) return `já estava autorizado${peloApp}`;
   const botao = achado.botao;
   await d.tocar(botao.x, botao.y);
   const depois = (descricao) =>
