@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getAutoCaption, AUTO_CAPTION_TYPES, type AutoCaptionType } from "@/lib/auto-captions";
 import { fetchAllRows } from "@/lib/video-history";
+import { isUserProxyFailure } from "@/lib/publish-retry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +60,12 @@ interface CampaignSummary extends RpcRow {
   total_likes?: number;
   total_comments?: number;
   total_reach?: number;
+  /** Posts pendentes cuja última tentativa falhou e voltou para retry. */
+  stuck_retry: number;
+  /** Desses, quantos falharam na conexão pela proxy do estoque ("Usar minhas proxies"). */
+  stuck_proxy: number;
+  /** Mensagem da falha mais recente entre os travados (para o aviso). */
+  stuck_error: string | null;
 }
 
 export async function GET(req: NextRequest) {
@@ -148,6 +155,9 @@ export async function GET(req: NextRequest) {
       pausedAt.has(row.campaign_id) ? "paused" : Number(row.pending) > 0 ? "running" : "completed"
     ) as CampaignSummary["campaign_status"],
     paused_at: pausedAt.get(row.campaign_id) ?? null,
+    stuck_retry: 0,
+    stuck_proxy: 0,
+    stuck_error: null,
     is_automation: automationIds.has(row.campaign_id),
     is_synced: syncedFolderNames.has(row.campaign_id),
     synced_folder_names: syncedFolderNames.get(row.campaign_id) ?? [],
@@ -170,6 +180,41 @@ export async function GET(req: NextRequest) {
       .limit(campaignIds.length * 2);
     const storyIds = new Set<string>((typedRows ?? []).map((r: { campaign_id: string }) => r.campaign_id));
     campaigns = campaigns.filter(c => storyIds.has(c.campaign_id));
+  }
+
+  // Posts travados em retry: pendentes com "[RETRY]" no erro (o cron grava isso a
+  // cada tentativa transitória que falha). Sem esse aviso a campanha só aparecia
+  // "Atrasada — publica em ≤1 min" enquanto as proxies do estoque recusavam tudo.
+  // Falha aqui não derruba a lista — só sai sem o aviso.
+  {
+    const activeIds = campaigns.filter(c => c.pending > 0).map(c => c.campaign_id);
+    if (activeIds.length > 0) {
+      const { data: retryRows, error: retryErr } = await (admin as any)
+        .from("scheduled_posts")
+        .select("campaign_id, error_message, use_proxy_pool, scheduled_at")
+        .eq("user_id", user.id)
+        .eq("status", "pending")
+        .in("campaign_id", activeIds)
+        .like("error_message", "[RETRY]%")
+        .order("scheduled_at", { ascending: false })
+        .limit(5000);
+      if (retryErr) console.error("[campaigns] leitura de posts travados falhou:", retryErr.message);
+      type RetryRow = { campaign_id: string; error_message: string | null; use_proxy_pool: boolean | null };
+      const byCampaign = new Map<string, { retry: number; proxy: number; error: string | null }>();
+      for (const r of (retryRows ?? []) as RetryRow[]) {
+        const s = byCampaign.get(r.campaign_id) ?? { retry: 0, proxy: 0, error: null };
+        s.retry++;
+        if (isUserProxyFailure(r.error_message, r.use_proxy_pool)) s.proxy++;
+        s.error ??= r.error_message;
+        byCampaign.set(r.campaign_id, s);
+      }
+      for (const c of campaigns) {
+        const s = byCampaign.get(c.campaign_id);
+        c.stuck_retry = s?.retry ?? 0;
+        c.stuck_proxy = s?.proxy ?? 0;
+        c.stuck_error = s?.error ?? null;
+      }
+    }
   }
 
   // Métricas de engagement por conta para cada campanha (views, likes, comments, reach)

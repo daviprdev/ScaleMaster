@@ -21,6 +21,7 @@ import {
 import { isAccountDeadError, markDeadAccounts, type DeadAccountCandidate } from "@/lib/account-health";
 import { requireCronAuth } from "@/lib/cron-auth";
 import { deferPausedPosts } from "@/lib/fila/pause";
+import { describePublishError, isUserProxyFailure, transientRetryAt } from "@/lib/publish-retry";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -39,7 +40,7 @@ const RUN_BUDGET_MS = 250_000;
 const MAX_ERROR_EXPIRED_RETRIES = 5;
 
 const DEAD_ACCOUNT_CANCEL_MSG =
-  "Conta caída (checkpoint/token inválido) — post não enviado. Resolva no Instagram e restaure a conta em Failover para voltar a postar.";
+  "Post não enviado: a conta está marcada com erro em Failover por uma falha anterior da Meta. Veja o erro lá e restaure a conta para voltar a postar.";
 
 interface AccountRow {
   id: string;
@@ -743,24 +744,19 @@ export async function GET(req: NextRequest) {
         `[publish-scheduled] ✓ @${account.username} → media_id: ${mediaId} | ${Math.round((Date.now() - runStart) / 1000)}s`
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = describePublishError(err);
 
       if (isTransientError(msg)) {
-        console.warn(`[publish-scheduled] ⏸ @${account.username} (${post.id}): transitório → retry. ${msg.slice(0, 100)}`);
-        // Rate-limit da Meta: empurra scheduled_at +2min com jitter 0–60s. Sem isso,
-        // o lote inteiro rate-limitado era re-tentado de uma vez a cada minuto,
-        // tomando rate-limit de novo em cascata. Erros de proxy/timeout mantêm o
-        // horário original (retry no próximo ciclo resolve blip de rede).
-        const isRateLimit = /too many actions|retry your request later|please retry/i.test(msg);
+        console.warn(`[publish-scheduled] ⏸ @${account.username} (${post.id}): transitório → retry. ${msg.slice(0, 160)}`);
+        // Todo retry transitório empurra scheduled_at (lib/publish-retry.ts).
+        // Antes, erro de proxy/rede mantinha o horário: 20 posts com proxy morta
+        // ocupavam o lote inteiro a cada minuto e travavam a fila atrás deles.
+        const viaUserProxy = isUserProxyFailure(msg, post.use_proxy_pool);
         const retryUpdate: Record<string, string> = {
           status: "pending",
-          error_message: `[RETRY] ${msg.slice(0, 300)}`,
+          error_message: `[RETRY]${viaUserProxy ? " [PROXY do estoque]" : ""} ${msg.slice(0, 300)}`,
+          scheduled_at: transientRetryAt(msg, Date.now()),
         };
-        if (isRateLimit) {
-          retryUpdate.scheduled_at = new Date(
-            Date.now() + 120_000 + Math.floor(Math.random() * 60_000)
-          ).toISOString();
-        }
         await admin
           .from("scheduled_posts")
           .update(retryUpdate)

@@ -899,12 +899,22 @@ export default function AccountsPage() {
         // active_stories_expiring_first_at no banco — fetchAccounts() reflete
         // direto, sem precisar de nenhum estado paralelo.
         await fetchAccounts();
-        setNotification({ type: "success", message: "Conta sincronizada com sucesso." });
+        // Verificação de publicação (só leitura) — mostra a resposta da Meta como veio.
+        let check: { can_publish: boolean; summary: string } | null = null;
+        try {
+          check = ((await res.json()) as { publish_check?: { can_publish: boolean; summary: string } | null }).publish_check ?? null;
+        } catch { /* sem body */ }
+        setNotification(
+          check
+            ? { type: check.can_publish ? "success" : "error", message: `Conta sincronizada. ${check.summary}` }
+            : { type: "success", message: "Conta sincronizada com sucesso." }
+        );
       } else {
         let errorMsg = "Falha ao sincronizar conta.";
         try {
-          const data = await res.json() as { error?: string };
+          const data = await res.json() as { error?: string; publish_check?: { summary: string } | null };
           if (data.error) errorMsg = data.error;
+          if (data.publish_check) errorMsg += ` · ${data.publish_check.summary}`;
         } catch { /* HTML de erro / sem body */ }
         setNotification({ type: "error", message: errorMsg });
         // Atualiza a lista mesmo no erro — o servidor pode ter marcado a conta como caída
@@ -1078,6 +1088,9 @@ export default function AccountsPage() {
     setBulkSyncProgress({ done: 0, total: ids.length });
     let done = 0;
     let succeeded = 0;
+    // Resultado da verificação de publicação por conta (só leitura na Meta).
+    const blocked: string[] = [];
+    let liberadas = 0;
     try {
       const results = await Promise.allSettled(
         ids.map((id) =>
@@ -1087,9 +1100,17 @@ export default function AccountsPage() {
             body: JSON.stringify({ accountId: id }),
             signal: AbortSignal.timeout(28_000),
           })
-            .then((res) => {
+            .then(async (res) => {
               done += 1;
               setBulkSyncProgress({ done, total: ids.length });
+              try {
+                const data = (await res.json()) as { publish_check?: { can_publish: boolean; summary: string } | null };
+                if (data.publish_check?.can_publish) liberadas++;
+                else if (data.publish_check) {
+                  const name = accounts.find((a) => a.id === id)?.username ?? id.slice(0, 8);
+                  blocked.push(`@${name}: ${data.publish_check.summary}`);
+                }
+              } catch { /* sem body */ }
               if (!res.ok) throw new Error(id);
             })
             .catch((err) => {
@@ -1105,10 +1126,14 @@ export default function AccountsPage() {
       await fetchAccounts();
       const failed = ids.length - succeeded;
       setNotification({
-        type: succeeded === 0 ? "error" : "success",
+        type: succeeded === 0 || blocked.length > 0 ? "error" : "success",
         message:
           `${succeeded} conta${succeeded !== 1 ? "s" : ""} sincronizada${succeeded !== 1 ? "s" : ""}` +
-          (failed > 0 ? `, ${failed} com erro.` : "."),
+          (failed > 0 ? `, ${failed} com erro.` : ".") +
+          (liberadas + blocked.length > 0
+            ? ` Publicação: ${liberadas} liberada${liberadas !== 1 ? "s" : ""}, ${blocked.length} não liberada${blocked.length !== 1 ? "s" : ""}.` +
+              (blocked.length > 0 ? ` ${blocked.slice(0, 5).join(" | ")}${blocked.length > 5 ? ` | e mais ${blocked.length - 5}` : ""}` : "")
+            : ""),
       });
       setSelectedIds(new Set());
       setSelectMode(false);
@@ -1116,7 +1141,7 @@ export default function AccountsPage() {
       setBulkSyncing(false);
       setBulkSyncProgress(null);
     }
-  }, [selectedIds, fetchAccounts]);
+  }, [selectedIds, fetchAccounts, accounts]);
 
   const handleBulkMove = useCallback(async (folderId: string | null) => {
     const ids = Array.from(selectedIds);

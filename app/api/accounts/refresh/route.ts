@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { fetch as undiciFetch } from "undici";
+import { summarizePublishCheck, type PublishCheck } from "@/lib/meta-publish-check";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -99,6 +100,25 @@ async function fetchMetaProfile(
   return { profile, lastPostAt, activeStoriesCount, activeStoriesExpiringFirstAt };
 }
 
+// Verificação de publicação (só leitura): tipo da conta + cota de publicação.
+// Falha de rede aqui não derruba o refresh — volta null e a tela segue sem ela.
+async function fetchPublishCheck(igId: string, token: string): Promise<PublishCheck | null> {
+  const t = `access_token=${encodeURIComponent(token)}`;
+  const readJson = async (url: string) => {
+    try {
+      return (await (await fetchMeta(url)).json()) as Record<string, any>;
+    } catch {
+      return null;
+    }
+  };
+  const [accountType, limit] = await Promise.all([
+    readJson(`${GRAPH}/${igId}?fields=account_type&${t}`),
+    readJson(`${GRAPH}/${igId}/content_publishing_limit?fields=quota_usage,config&${t}`),
+  ]);
+  if (!accountType && !limit) return null;
+  return summarizePublishCheck({ accountType, limit });
+}
+
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as { accountId?: string };
   const { accountId } = body;
@@ -136,6 +156,7 @@ export async function POST(req: NextRequest) {
   }
 
   let profileResult: Awaited<ReturnType<typeof fetchMetaProfile>>;
+  const publishCheckPromise = fetchPublishCheck(igId, token);
   try {
     profileResult = await fetchMetaProfile(igId, token);
   } catch (err) {
@@ -147,6 +168,10 @@ export async function POST(req: NextRequest) {
     );
   }
   const { profile, lastPostAt, activeStoriesCount, activeStoriesExpiringFirstAt } = profileResult;
+  const publishCheck = await publishCheckPromise;
+  if (publishCheck) {
+    console.log(`[accounts/refresh] @${(account as Record<string, unknown>).username} publicação: ${publishCheck.summary}`);
+  }
 
   if (profile.error) {
     const code = profile.error.code;
@@ -189,6 +214,7 @@ export async function POST(req: NextRequest) {
         error: profile.error.message,
         meta_code: code,
         health_status: isTokenBad ? "error" : "online",
+        publish_check: publishCheck,
       },
       { status: 400 }
     );
@@ -232,5 +258,6 @@ export async function POST(req: NextRequest) {
     stats: update,
     active_stories_count: activeStoriesCount,
     active_stories_expiring_first_at: activeStoriesExpiringFirstAt,
+    publish_check: publishCheck,
   });
 }

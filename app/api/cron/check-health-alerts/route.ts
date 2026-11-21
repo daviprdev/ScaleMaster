@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { sendPushNotification } from "@/lib/web-push";
 import { requireCronAuth } from "@/lib/cron-auth";
+import { buildPublishFailureAlert } from "@/lib/publish-failure-alert";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -39,6 +40,60 @@ async function wasRecentlyAlerted(admin: ReturnType<typeof getSupabaseAdmin>, us
     .limit(1)
     .maybeSingle();
   return data as { id: string; data: { alertType: string; accountIds?: string[] } } | null;
+}
+
+// Janela de falhas olhada a cada execução (o cron roda a cada 10 min).
+const FAILURE_WINDOW_MS = 3 * 60 * 60 * 1000;
+const FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000;
+
+/**
+ * Push "N postagens falharam" com o erro da Meta. Só reenvia quando existe
+ * falha com scheduled_at mais novo que o do último aviso, e no máximo a cada
+ * 30 min. Devolve quantas falhas foram avisadas (0 = nada enviado).
+ */
+async function alertPublishFailures(admin: ReturnType<typeof getSupabaseAdmin>, userId: string): Promise<number> {
+  const since = new Date(Date.now() - FAILURE_WINDOW_MS).toISOString();
+  const { data: rows, error } = await admin
+    .from("scheduled_posts")
+    .select("scheduled_at, error_message, instagram_accounts(username)")
+    .eq("user_id", userId)
+    .eq("status", "failed")
+    .gte("scheduled_at", since)
+    .order("scheduled_at", { ascending: false })
+    .limit(500);
+  if (error) {
+    console.warn(`[check-health-alerts] falhas de postagem de ${userId.slice(0, 8)}: ${error.message}`);
+    return 0;
+  }
+  type Row = { scheduled_at: string; error_message: string | null; instagram_accounts: { username: string } | null };
+  const failed = (rows ?? []) as unknown as Row[];
+  if (failed.length === 0) return 0;
+
+  const newest = failed[0].scheduled_at;
+  const last = await wasRecentlyAlerted(admin, userId, "publish_failures", 24 * 60 * 60 * 1000);
+  const lastData = last?.data as { lastFailedAt?: string } | undefined;
+  if (lastData?.lastFailedAt && new Date(newest) <= new Date(lastData.lastFailedAt)) return 0;
+  if (await wasRecentlyAlerted(admin, userId, "publish_failures", FAILURE_ALERT_COOLDOWN_MS)) return 0;
+
+  // Só as falhas novas desde o último aviso entram na contagem.
+  const fresh = lastData?.lastFailedAt
+    ? failed.filter((r) => new Date(r.scheduled_at) > new Date(lastData.lastFailedAt!))
+    : failed;
+  const alert = buildPublishFailureAlert(
+    fresh.map((r) => ({ error_message: r.error_message, username: r.instagram_accounts?.username ?? "?" }))
+  );
+  if (!alert) return 0;
+
+  await sendPushNotification({
+    targetType: "user",
+    targetUserId: userId,
+    type: "system",
+    title: alert.title,
+    body: alert.body,
+    url: "/dashboard/postar",
+    extraData: { alertType: "publish_failures", lastFailedAt: newest },
+  });
+  return fresh.length;
 }
 
 export async function GET(req: NextRequest) {
@@ -88,7 +143,7 @@ export async function GET(req: NextRequest) {
             targetType: "user",
             targetUserId: userId,
             type: "system",
-            title: `❌ ${errored.length} conta${errored.length > 1 ? "s" : ""} caída${errored.length > 1 ? "s" : ""} ❌`,
+            title: `⚠️ ${errored.length} conta${errored.length > 1 ? "s" : ""} com erro`,
             body: `${usernames}${suffix} com erro de publicação.`,
             url: "/dashboard/failover",
             extraData: { alertType: "account_health", accountIds: errored.map((a) => a.id) },
@@ -96,6 +151,14 @@ export async function GET(req: NextRequest) {
           results.push({ userId, alert: "account_health", count: errored.length });
         }
       }
+    }
+
+    // ── Falha de postagem ──
+    // Avisa o erro exato que a Meta devolveu, sem concluir nada sobre a conta:
+    // o usuário analisa. Reenvia só quando há falha mais nova que a do último aviso.
+    if (settings.account_alerts_enabled) {
+      const r = await alertPublishFailures(admin, userId);
+      if (r) results.push({ userId, alert: "publish_failures", count: r });
     }
   }
 

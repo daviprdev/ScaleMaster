@@ -420,7 +420,7 @@ export default function DashboardPage() {
 
         {/* Accounts down */}
         <Card
-          title="Contas Caídas"
+          title="Contas com Erro"
           description={loading ? undefined : `${stats?.accounts_down.total ?? 0} com erro agora`}
         >
           {loading ? (

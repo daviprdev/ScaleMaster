@@ -47,8 +47,11 @@ const DEAD_ACCOUNT_PATTERNS = [
   "this action is blocked",
   "has been blocked from",
   "your account has been disabled",
-  // Conta pessoal sem suporte à API de publicação:
-  "unsupported request - method type: post",
+  // "Unsupported request - method type: post" SAIU daqui (2026-11-21): a Meta
+  // devolve o mesmo texto para erro do app/permissão e instabilidade dela, não
+  // só para conta pessoal. Uma falha dessas marcava 10 contas vivas como caídas
+  // e cancelava a fila inteira delas. Agora o post falha com o erro exato e o
+  // usuário recebe o alerta "publish_failures" (check-health-alerts) para analisar.
 ];
 
 export function isAccountDeadError(msg: string): boolean {

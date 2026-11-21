@@ -108,6 +108,11 @@ interface Campaign {
   total_likes?: number;
   total_comments?: number;
   total_reach?: number;
+  /** Pendentes cuja última tentativa falhou e voltou para retry. */
+  stuck_retry?: number;
+  /** Desses, quantos falharam na conexão pela proxy do estoque. */
+  stuck_proxy?: number;
+  stuck_error?: string | null;
 }
 
 /** Vídeo da fila ideal — vem pronto no handoff do Raio-X da fila. */
@@ -1075,6 +1080,11 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
           const isOverdue    = isRunning && campaign.next_pending != null && new Date(campaign.next_pending) < new Date();
           const recentPub    = campaign.last_published_at && (Date.now() - new Date(campaign.last_published_at).getTime()) < 30 * 60_000;
           const errExpanded  = expandedError === campaign.campaign_id;
+          // Travada: há posts voltando para retry e a pausa não é a explicação.
+          const stuckProxy   = !isPaused ? (campaign.stuck_proxy ?? 0) : 0;
+          const stuckOther   = !isPaused ? (campaign.stuck_retry ?? 0) - stuckProxy : 0;
+          const isStuck      = stuckProxy > 0 || stuckOther > 0;
+          const stuckErrOpen = expandedError === `stuck:${campaign.campaign_id}`;
 
           // Dynamic status
           let statusLabel: string, statusCls: string, statusBorder: string, dotCls: string, dotPulse = false;
@@ -1082,6 +1092,10 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
             statusLabel = "Pausada"; statusCls = "bg-surface-raised text-ink-2"; statusBorder = "border-line-control"; dotCls = "bg-ink-3";
           } else if (!isRunning) {
             statusLabel = "Concluída"; statusCls = "bg-[#00498D]/10 text-[#00498D]"; statusBorder = "border-[#00498D]/20"; dotCls = "bg-[#00498D]";
+          } else if (stuckProxy > 0) {
+            statusLabel = "Proxy offline"; statusCls = "bg-danger-soft text-danger"; statusBorder = "border-danger/25"; dotCls = "bg-red-400"; dotPulse = true;
+          } else if (isStuck) {
+            statusLabel = "Travada"; statusCls = "bg-danger-soft text-danger"; statusBorder = "border-danger/25"; dotCls = "bg-red-400"; dotPulse = true;
           } else if (isOverdue) {
             statusLabel = "Atrasada"; statusCls = "bg-amber-500/10 text-amber-400"; statusBorder = "border-amber-500/20"; dotCls = "bg-amber-400"; dotPulse = true;
           } else if (recentPub) {
@@ -1090,7 +1104,9 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
             statusLabel = "Na Fila"; statusCls = "bg-[#85B9E9]/10 text-[#85B9E9]"; statusBorder = "border-[#85B9E9]/20"; dotCls = "bg-[#85B9E9]";
           }
 
-          const cardBorder = isOverdue
+          const cardBorder = isStuck
+            ? "border-red-500/25"
+            : isOverdue
             ? "border-amber-500/15"
             : hasFailed && isCompleted
               ? "border-red-500/15"
@@ -1130,6 +1146,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                     {statusLabel === "Na Fila"    && <Clock size={9} />}
                     {statusLabel === "Publicando" && <Loader2 size={9} className="animate-spin" />}
                     {statusLabel === "Atrasada"   && <AlertCircle size={9} />}
+                    {(statusLabel === "Proxy offline" || statusLabel === "Travada") && <AlertCircle size={9} />}
                     {statusLabel === "Pausada"    && <Pause size={9} />}
                     {statusLabel}
                   </span>
@@ -1293,8 +1310,40 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                 </div>
               </div>
 
+              {/* ── Stuck warning: posts voltando para retry (proxy morta, rede) ── */}
+              {isStuck && (
+                <div
+                  className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-danger-soft border border-danger/25 cursor-pointer"
+                  onClick={() => setExpandedError(stuckErrOpen ? null : `stuck:${campaign.campaign_id}`)}
+                >
+                  <AlertCircle size={13} className="text-danger shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    {stuckProxy > 0 ? (
+                      <>
+                        <p className="text-[11px] font-semibold text-danger">
+                          Proxies desconectadas — {stuckProxy} post{stuckProxy !== 1 ? "s" : ""} travado{stuckProxy !== 1 ? "s" : ""}
+                        </p>
+                        <p className="text-[10px] text-danger/80 leading-relaxed">
+                          As proxies do seu estoque não estão conectando e nada desta campanha sai enquanto isso.
+                          Troque as proxies no estoque ou desative &quot;Usar minhas proxies&quot;.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-[11px] font-semibold text-danger">
+                        {stuckOther} post{stuckOther !== 1 ? "s" : ""} travado{stuckOther !== 1 ? "s" : ""} — a última tentativa falhou e vai ser repetida
+                      </p>
+                    )}
+                    {campaign.stuck_error && (
+                      <p className={cn("text-[9px] text-danger/60 font-mono break-all", !stuckErrOpen && "line-clamp-1")}>
+                        {campaign.stuck_error}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* ── Overdue warning ── */}
-              {isOverdue && (
+              {isOverdue && !isStuck && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-warning-soft border border-warning/15">
                   <AlertCircle size={11} className="text-warning/80 shrink-0" />
                   <span className="text-[10px] text-warning/80">Post atrasado — o cron publicará na próxima execução (≤1 min)</span>
@@ -1327,6 +1376,9 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                 >
                   <AlertCircle size={11} className="text-red-400 shrink-0 mt-0.5" />
                   <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold text-red-400 mb-0.5">
+                      {campaign.failed} postage{campaign.failed !== 1 ? "ns falharam" : "m falhou"} — erro retornado pela Meta:
+                    </p>
                     <p className={cn("text-[10px] text-red-400/80 leading-relaxed break-all", !errExpanded && "line-clamp-1")}>
                       {campaign.last_error_message}
                     </p>
