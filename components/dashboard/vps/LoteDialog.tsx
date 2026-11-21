@@ -2,19 +2,8 @@
 
 import * as React from "react";
 import { Banner, Button, Checkbox, Dialog, Input, Select, Textarea } from "@/components/ui";
-import { rotuloEstadoProxy, sessoesRestantes, sobrasDoLote, type ProblemaProxy } from "@/lib/vps/lote-sobras";
-import {
-  AVISO_ROTACAO,
-  FOTOS_PERFIL_MIN,
-  LOTE_MAX,
-  SUFIXO_PADRAO,
-  parseFotosPerfil,
-  parseLinhasPortal,
-  parseLoteInput,
-  parseProxies,
-  parseSufixo,
-  type TipoProxy,
-} from "@/lib/vps/input";
+import { rotuloEstadoProxy, sobrasDoLote, type ProblemaProxy } from "@/lib/vps/lote-sobras";
+import { FOTOS_PERFIL_MIN, LOTE_MAX, parseFotosPerfil, parseLinhasPortal, parseLoteInput, parseProxies } from "@/lib/vps/input";
 import { DEVICE_PERFIS, type VpsAgent } from "@/lib/vps/types";
 import { MidiaPicker, useMidiasDaVps } from "./MidiaPicker";
 
@@ -25,7 +14,7 @@ interface LoteDialogProps {
   onSaved: (avisos: string[]) => void;
 }
 
-/** Linha do "Testar todas" (sem credencial: host:porta, sessão, estado, motivo, IP e país de saída). */
+/** Linha do "Testar proxies" (sem credencial: host:porta, estado, motivo, IP e país de saída). */
 interface TesteProxyLinha extends ProblemaProxy {
   n: number;
   ms: number | null;
@@ -37,8 +26,6 @@ interface TesteProxyLinha extends ProblemaProxy {
 }
 
 const CHAVE_REMOVER_USADAS = "vps-lote-remover-usadas";
-const CHAVE_TIPO = "vps-lote-tipo-proxy";
-const CHAVE_SUFIXO = "vps-lote-sufixo";
 
 function lerPreferencia(chave: string): string | null {
   try {
@@ -57,13 +44,13 @@ function gravarPreferencia(chave: string, valor: string) {
 }
 
 /**
- * "Enviar lote": códigos do hstock (uma linha por conta) e proxies. Tipo da
- * proxy (SOCKS5 padrão, HTTP) e sufixo de sessão (padrão -session-{sessao}):
- * com sufixo as linhas de proxy são credenciais BASE e cada conta ganha uma
- * sessão exclusiva de 8 hex no usuário (IP fixo por conta); sem sufixo, uma
- * proxy por conta e o aviso de rotação. Nome, @, senha e nascimento são gerados
- * no servidor (lib/vps/pessoa.ts); a validação é a mesma (lib/vps/input.ts).
+ * "Enviar lote": códigos do hstock (uma linha por conta) e proxies HTTP, uma
+ * por conta, na ordem (as excedentes cobrem as que morrerem no teste). Nome, @,
+ * senha e nascimento são gerados no servidor (lib/vps/pessoa.ts); a validação é
+ * a mesma (lib/vps/input.ts).
  */
+// decisão (21/11): voltou a ser uma proxy HTTP por linha, sem seletor de tipo nem sufixo de sessão (pedido do dono). O
+// servidor ainda aceita tipo/sufixo pela API; linha com socks5:// continua valendo como SOCKS5.
 // decisão (13/11): sem campo Pasta — a conta fica em RODANDO enquanto cria e vai sozinha para CRIADAS ou FALHAS.
 // decisão (16/11): o envio testa as proxies no servidor; só as vivas entram e as que ficaram fora aparecem numa
 // lista à parte com o motivo. O diálogo só fecha sozinho quando tudo entrou.
@@ -73,8 +60,6 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
   const [perfil, setPerfil] = React.useState("aleatorio");
   const [versaoIg, setVersaoIg] = React.useState("");
   const [pais, setPais] = React.useState("BR");
-  const [tipo, setTipo] = React.useState<TipoProxy>("socks5");
-  const [sufixo, setSufixo] = React.useState(SUFIXO_PADRAO);
   /** Fotos de perfil marcadas na pasta Foto Perfil (mínimo 2): cada conta recebe uma delas, sorteada no servidor. */
   const [fotosPerfil, setFotosPerfil] = React.useState<string[]>([]);
   const biblioteca = useMidiasDaVps(!!agent);
@@ -88,7 +73,6 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
   const [teste, setTeste] = React.useState<TesteProxyLinha[] | null>(null);
   /** Explicação do servidor quando nenhuma passou (tipo da porta errado, sufixo recusado pelo provedor). */
   const [diagnostico, setDiagnostico] = React.useState<string | null>(null);
-  const [queimadas, setQueimadas] = React.useState(0);
   const [removerUsadas, setRemoverUsadas] = React.useState(true);
 
   const versoes = agent?.capacidade.versoesIg ?? [];
@@ -105,49 +89,28 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
     setForaDoLote([]);
     setResumo(null);
     setTeste(null);
-    setQueimadas(0);
     setRemoverUsadas(lerPreferencia(CHAVE_REMOVER_USADAS) !== "0");
-    setTipo(lerPreferencia(CHAVE_TIPO) === "http" ? "http" : "socks5");
-    setSufixo(lerPreferencia(CHAVE_SUFIXO) ?? SUFIXO_PADRAO);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reabre o formulário só quando troca de VPS.
   }, [agent]);
 
-  const sufixoLido = React.useMemo(() => parseSufixo(sufixo), [sufixo]);
-  const comSessao = "value" in sufixoLido && !!sufixoLido.value;
   const linhasCodigo = React.useMemo(() => parseLinhasPortal(codigos), [codigos]);
   const quantidade = linhasCodigo.length;
   const codigosInvalidos = linhasCodigo.filter((l) => l === null).length;
-  const proxiesLidas = React.useMemo(() => parseProxies(proxies, { tipo, dedupe: !comSessao }), [proxies, tipo, comSessao]);
+  const proxiesLidas = React.useMemo(() => parseProxies(proxies), [proxies]);
   const proxiesCount = "value" in proxiesLidas ? proxiesLidas.value.length : 0;
-  // Com sessão basta uma credencial base; sem sessão, uma proxy por conta.
-  const faltamProxies = comSessao ? (proxiesCount === 0 ? 1 : 0) : Math.max(0, quantidade - proxiesCount);
+  const faltamProxies = Math.max(0, quantidade - proxiesCount);
   // Marcadas que ainda existem na pasta (foto excluída some da seleção).
   const fotosValidas = biblioteca.arquivos ? fotosPerfil.filter((p) => biblioteca.arquivos?.includes(p)) : fotosPerfil;
   const fotosOk = "value" in parseFotosPerfil(fotosValidas, biblioteca.arquivos);
   const podeEnviar =
-    !!versaoIg && quantidade >= 1 && quantidade <= LOTE_MAX && codigosInvalidos === 0 && !("error" in proxiesLidas) && !("error" in sufixoLido) && faltamProxies === 0 && fotosOk;
-  /** Sessões vivas do último "Testar todas", na ordem: o envio usa estas primeiro (mesmo usuário derivado). */
-  const sessoesTestadas = (teste ?? []).filter((t) => t.entra && t.sessao).map((t) => t.sessao as string);
+    !!versaoIg && quantidade >= 1 && quantidade <= LOTE_MAX && codigosInvalidos === 0 && !("error" in proxiesLidas) && faltamProxies === 0 && fotosOk;
 
   const alternarRemoverUsadas = (v: boolean) => {
     setRemoverUsadas(v);
     gravarPreferencia(CHAVE_REMOVER_USADAS, v ? "1" : "0");
   };
-  const mudarTipo = (v: string) => {
-    const novo: TipoProxy = v === "http" ? "http" : "socks5";
-    setTipo(novo);
-    setTeste(null);
-    setDiagnostico(null);
-    gravarPreferencia(CHAVE_TIPO, novo);
-  };
-  const mudarSufixo = (v: string) => {
-    setSufixo(v);
-    setTeste(null);
-    setDiagnostico(null);
-    gravarPreferencia(CHAVE_SUFIXO, v);
-  };
 
-  const testarTodas = async () => {
+  const testarProxies = async () => {
     setTestando(true);
     setError(null);
     setTeste(null);
@@ -156,7 +119,7 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
       const res = await fetch("/api/vps/proxies/testar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ proxies, tipo, sufixo, quantidade: quantidade || undefined }),
+        body: JSON.stringify({ proxies }),
       });
       const data = (await res.json().catch(() => null)) as { error?: string; resultados?: TesteProxyLinha[]; diagnostico?: string | null } | null;
       if (!res.ok || !data?.resultados) throw new Error(data?.error ?? "Não deu para testar as proxies agora.");
@@ -172,7 +135,7 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agent) return;
-    const body = { agentId: agent.id, proxies, tipo, sufixo, sessoes: sessoesTestadas, perfil, versaoIg, pais, codigos, fotosPerfil: fotosValidas };
+    const body = { agentId: agent.id, proxies, perfil, versaoIg, pais, codigos, fotosPerfil: fotosValidas };
     const fotos = parseFotosPerfil(fotosValidas, biblioteca.arquivos);
     if ("error" in fotos) {
       setError(fotos.error);
@@ -210,23 +173,21 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
       onSaved(Array.isArray(data?.avisos) ? data.avisos : []);
       const enviadas = data?.enviadas ?? quantidade;
       const sobrando = data?.codigosSobrando ?? 0;
-      const usadas = Array.isArray(data?.sessoesUsadas) ? data.sessoesUsadas : [];
       const sobras = sobrasDoLote(codigos, proxies, { enviadas, linhasUsadas: data?.linhasUsadas ?? [], problemas, modoSessao: !!data?.modoSessao }, removerUsadas);
       if (problemas.length === 0 && sobrando === 0) {
         if (removerUsadas) setProxies(sobras.proxies);
         onClose();
         return;
       }
-      // Sobrou algo: as caixas ficam só com o que não entrou; as sessões usadas saem da lista (queimadas).
+      // Sobrou algo: as caixas ficam só com o que não entrou e a lista à parte mostra o motivo de cada proxy fora.
       setCodigos(sobras.codigos);
       setProxies(sobras.proxies);
       setForaDoLote(problemas);
-      setTeste((t) => (t ? sessoesRestantes(t, usadas).filter((l) => !l.entra) : null));
-      setQueimadas((q) => q + usadas.length);
+      setTeste(null);
       setResumo(
         `${enviadas} conta${enviadas === 1 ? "" : "s"} enviada${enviadas === 1 ? "" : "s"}.` +
-          (problemas.length ? ` ${problemas.length} ${data?.modoSessao ? "sessão" : "proxy"}${problemas.length === 1 ? "" : data?.modoSessao ? "ões" : "s"} ficou fora (lista abaixo).` : "") +
-          (sobrando ? ` ${sobrando} código${sobrando === 1 ? "" : "s"} ficou na caixa por falta de proxy viva: envie de novo.` : "")
+          (problemas.length ? ` ${problemas.length} proxy${problemas.length === 1 ? "" : "s"} ficou fora (lista abaixo).` : "") +
+          (sobrando ? ` ${sobrando} código${sobrando === 1 ? "" : "s"} ficou na caixa por falta de proxy viva: cole mais proxies e envie de novo.` : "")
       );
     } catch (err) {
       setError((err as Error).message);
@@ -240,7 +201,7 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
       open={!!agent}
       onClose={onClose}
       title="Enviar lote"
-      description={`Até ${LOTE_MAX} contas por envio, um código do hstock por conta. Com sufixo de sessão cada conta ganha uma sessão exclusiva na mesma credencial (IP fixo por conta). Antes de enviar, cada sessão/proxy é testada (até 3 vezes, 25 s cada): só as vivas entram; as mortas ficam numa lista à parte com o motivo.`}
+      description={`Até ${LOTE_MAX} contas por envio: uma proxy HTTP fixa e um código do hstock por conta. Antes de enviar, cada proxy é testada (até 3 vezes, 25 s cada): só as vivas entram; mortas e lentas ficam numa lista à parte com o motivo, e proxies a mais cobrem as que caírem.`}
       className="flex max-h-[90vh] max-w-3xl flex-col overflow-hidden"
     >
       {/* Só o corpo rola: cabeçalho (do Dialog) e rodapé ficam sempre visíveis. */}
@@ -303,51 +264,18 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
             className="font-mono text-xs"
             required
           />
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Select
-              label="Tipo da proxy"
-              value={tipo}
-              onChange={(e) => mudarTipo(e.target.value)}
-              options={[
-                { value: "socks5", label: "SOCKS5 (padrão)" },
-                { value: "http", label: "HTTP" },
-              ]}
-              hint={tipo === "socks5" ? "O DNS sai pela proxy (socks5h)." : undefined}
-            />
-            <div className="sm:col-span-2">
-              <Input
-                label="Sufixo de sessão"
-                value={sufixo}
-                onChange={(e) => mudarSufixo(e.target.value)}
-                placeholder={SUFIXO_PADRAO}
-                hint={
-                  "error" in sufixoLido
-                    ? sufixoLido.error
-                    : comSessao
-                      ? "{sessao} vira 8 caracteres únicos por conta, no fim do usuário da proxy (IP fixo por conta)."
-                      : undefined
-                }
-                className="font-mono text-xs"
-              />
-              {!comSessao && !("error" in sufixoLido) && <p className="mt-1 text-xs text-warning">{AVISO_ROTACAO.replace("Sem sufixo de sessão: r", "R")}</p>}
-            </div>
-          </div>
           <Textarea
-            label={comSessao ? `Credencial base da proxy (${proxiesCount} linha${proxiesCount === 1 ? "" : "s"})` : `Proxies (${proxiesCount}/${quantidade || "—"})`}
-            rows={comSessao ? 2 : Math.min(8, Math.max(3, quantidade))}
-            placeholder={"host:porta:usuário:senha\nusuário:senha@host:porta"}
+            label={`Proxies (${proxiesCount}/${quantidade || "—"})`}
+            rows={Math.min(8, Math.max(3, quantidade))}
+            placeholder={"host:porta:usuário:senha\nhost:porta:usuário:senha:US"}
             hint={
               "error" in proxiesLidas
                 ? proxiesLidas.error
                 : faltamProxies > 0
-                  ? comSessao
-                    ? "Cole a credencial base (uma linha basta: cada conta ganha a sua sessão)."
-                    : `${proxiesCount} proxies para ${quantidade} contas: falta${faltamProxies === 1 ? "" : "m"} ${faltamProxies}.`
-                  : comSessao
-                    ? `Uma linha basta; com várias, as contas se revezam entre elas. O usuário vira usuário${(("value" in sufixoLido && sufixoLido.value) || "").replace("{sessao}", "a1b2c3d4")} na conta.`
-                    : proxiesLidas.avisos.length > 0
-                      ? `Aviso (não bloqueia): ${proxiesLidas.avisos.join(" ")}`
-                      : "Uma por linha, na ordem dos códigos. Opcional: o país no fim (:US). A mesma proxy com o mesmo usuário não pode repetir."
+                  ? `${proxiesCount} proxies para ${quantidade} contas: falta${faltamProxies === 1 ? "" : "m"} ${faltamProxies}.`
+                  : proxiesLidas.avisos.length > 0
+                    ? `Aviso (não bloqueia): ${proxiesLidas.avisos.join(" ")}`
+                    : "Uma por linha, na ordem dos códigos. Opcional: o país no fim (:US). A mesma proxy com o mesmo usuário não pode repetir."
             }
             value={proxies}
             onChange={(e) => setProxies(e.target.value)}
@@ -355,15 +283,9 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
             required
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
-            {!comSessao ? (
-              <Checkbox label="Remover da lista as proxies usadas depois do envio" checked={removerUsadas} onChange={(e) => alternarRemoverUsadas(e.target.checked)} />
-            ) : (
-              <p className="text-xs text-ink-3">
-                Sessões usadas saem da lista depois do envio (queimadas){queimadas ? ` · ${queimadas} queimada${queimadas === 1 ? "" : "s"} nesta janela` : ""}.
-              </p>
-            )}
-            <Button type="button" variant="secondary" size="sm" loading={testando} disabled={proxiesCount === 0 || "error" in proxiesLidas || "error" in sufixoLido || saving} onClick={() => void testarTodas()}>
-              Testar todas
+            <Checkbox label="Remover da lista as proxies usadas depois do envio" checked={removerUsadas} onChange={(e) => alternarRemoverUsadas(e.target.checked)} />
+            <Button type="button" variant="secondary" size="sm" loading={testando} disabled={proxiesCount === 0 || "error" in proxiesLidas || saving} onClick={() => void testarProxies()}>
+              Testar proxies
             </Button>
           </div>
           {diagnostico && <Banner tone="warning">{diagnostico}</Banner>}

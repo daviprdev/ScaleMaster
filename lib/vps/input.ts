@@ -442,7 +442,7 @@ export function parseLoteInput(raw: unknown, versoes: readonly string[] = []): {
     const usadas = proxies.value.slice(0, quantidade);
     // Avisos só das linhas que entram no lote.
     const avisos = parseProxies(usadas.map((p) => p.url)) as { avisos?: string[] };
-    return { value: { agentId, quantidade, proxies: usadas, proxiesTodas: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: true, avisos: [AVISO_ROTACAO, ...(avisos.avisos ?? [])], tipo, sufixo } };
+    return { value: { agentId, quantidade, proxies: usadas, proxiesTodas: proxies.value, perfil: perfil as DevicePerfil, versaoIg, pais, contas, gerarPessoa: true, avisos: avisos.avisos ?? [], tipo, sufixo } };
   }
 
   const quantidade = typeof body.quantidade === "number" ? body.quantidade : Number(field(body.quantidade, 3));

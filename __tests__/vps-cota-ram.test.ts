@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { AVISO_ROTACAO, parseLoteInput, parseProxies } from "../lib/vps/input";
+import { parseLoteInput, parseProxies } from "../lib/vps/input";
 import {
   RAM_ALERTA_MB,
   RAM_POR_CONTA_MB,
@@ -111,8 +111,7 @@ describe("Dedupe de proxy por host:porta:usuário", () => {
     const lote = parseLoteInput(corpo);
     if (!("value" in lote)) throw new Error(lote.error);
     expect(lote.value.proxies.map((p) => p.usuario)).toEqual(["u1", "u2"]);
-    // Sem sufixo de sessão (16/11) o lote leva também o aviso de rotação.
-    expect(lote.value.avisos).toEqual([AVISO_ROTACAO, "A proxy gw.com:10000 aparece nas linhas 1, 2 com usuários diferentes: segue, cada linha conta como uma proxy."]);
+    expect(lote.value.avisos).toEqual(["A proxy gw.com:10000 aparece nas linhas 1, 2 com usuários diferentes: segue, cada linha conta como uma proxy."]);
     expect(parseLoteInput({ ...corpo, proxies: "gw.com:10000:u1:p1\ngw.com:10000:u1:p2" })).toEqual({
       error: "A proxy gw.com:10000 com o usuário u1 aparece nas linhas 1 e 2: cada conta precisa da sua.",
     });

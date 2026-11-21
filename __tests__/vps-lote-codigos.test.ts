@@ -94,9 +94,9 @@ describe("LoteDialog: nenhum campo de e-mail por conta", () => {
     expect(fonte).not.toMatch(/Senha do Instagram|Nome completo|Nascimento|Usuário \(opcional\)|Host IMAP|Porta IMAP/);
     expect(fonte).not.toMatch(/<fieldset/);
     expect(fonte).toMatch(/label="Códigos do hstock"/);
-    // 16/11: com sufixo de sessão o campo vira "Credencial base da proxy"; sem sufixo, "Proxies (n/q)".
+    // 21/11: sem Tipo nem Sufixo de sessão no diálogo (uma proxy HTTP por linha, como antes).
     expect(fonte).toMatch(/`Proxies \(\$\{proxiesCount\}/);
-    expect(fonte).toMatch(/Credencial base da proxy/);
+    expect(fonte).not.toMatch(/Sufixo de sessão|Tipo da proxy|Credencial base/);
     expect(fonte).toMatch(/Testar e enviar \$\{quantidade/);
     expect(fonte).toMatch(/proxies para \$\{quantidade\} contas/);
     expect(fonte).toMatch(/gerados automaticamente/);

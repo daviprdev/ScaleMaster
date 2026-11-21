@@ -5,7 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import { parseInstances } from "@/lib/emulador/payload";
-import { AVISO_ROTACAO, parseFotosPerfil, parseLoteInput, parseProxies, type ProxyLida } from "@/lib/vps/input";
+import { parseFotosPerfil, parseLoteInput, parseProxies, type ProxyLida } from "@/lib/vps/input";
 import { diagnosticar, entraNoLote, testarProxies, type ResultadoProxy } from "@/lib/vps/testar-proxy";
 import { listarMidias, pastaMidias } from "@/lib/vps/midias";
 import { chaveProxy, decidirRam, hostPortaDaChave, parseCapacidade, proxiesEmUso } from "@/lib/vps/jobs";
@@ -135,7 +135,6 @@ export async function POST(req: NextRequest) {
   const contasDoLote = lote.contas.slice(0, quantidade);
   const avisosProxy = lote.gerarPessoa
     ? [
-        ...(lote.sufixo ? [] : [AVISO_ROTACAO]),
         ...((parseProxies(proxiesDoLote.map((p) => p.url)) as { avisos?: string[] }).avisos ?? []),
         ...proxiesDoLote.filter((p) => testeDe.get(p.url)?.rotacao).map((p) => `Sessão ${p.sessao ?? `${p.host}:${p.porta}`}: ${testeDe.get(p.url)?.aviso ?? "rotação detectada, sessão não fixa"}.`),
       ]

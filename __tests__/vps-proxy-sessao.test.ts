@@ -65,10 +65,10 @@ describe("Sessão fixa: unicidade no lote", () => {
     // A mesma base em duas linhas não bloqueia com sufixo (as contas se revezam).
     expect(parseLoteInput({ ...base, codigos: codigos(2), proxies: "gw.exemplo.com:7000:cliente1:senha\ngw.exemplo.com:7000:cliente1:senha", sufixo: SUFIXO_PADRAO })).toHaveProperty("value");
   });
-  it("sem sufixo: uma proxy por conta e o aviso amarelo de rotação", () => {
+  it("sem sufixo (padrão do Enviar lote desde 21/11): uma proxy HTTP por conta, sem aviso de rotação", () => {
     const r = parseLoteInput({ ...base, codigos: codigos(2), proxies: "a.com:1:u:p\nb.com:2:u:p", tipo: "http", sufixo: "" });
     if ("error" in r) throw new Error(r.error);
-    expect(r.value.avisos[0]).toBe(AVISO_ROTACAO);
+    expect(r.value.avisos).not.toContain(AVISO_ROTACAO);
     expect(r.value.proxies.every((p) => !p.sessao && p.url.startsWith("http://"))).toBe(true);
   });
 });

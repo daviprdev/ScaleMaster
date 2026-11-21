@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { AVISO_ROTACAO, LOTE_MAX, derivarProxy, parseProxies, parseSufixo, parseTipoProxy, sessoesDoLote, type ProxyLida } from "@/lib/vps/input";
+import { LOTE_MAX, derivarProxy, parseProxies, parseSufixo, parseTipoProxy, sessoesDoLote, type ProxyLida } from "@/lib/vps/input";
 import { diagnosticar, entraNoLote, testarProxies } from "@/lib/vps/testar-proxy";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +47,6 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     modoSessao: !!sufixo.value,
     diagnostico,
-    aviso: sufixo.value ? null : AVISO_ROTACAO,
     resultados: alvos.map((p, i) => ({
       n: i + 1,
       linha: p.linhaBase ?? i + 1,
