@@ -160,8 +160,8 @@ const FIXAS = {
     rotulo: "Aceitar o convite de testador",
     segue: true,
     async rodar(ctx) {
-      // decisão (21/11): antes do profissional, a pedido; o alvo 1 só serve de caminho se a página direta não abrir.
-      return aceitarConviteDaConta(await contexto(ctx), { alvo: ctx.input?.alvos?.[0] ?? null, app: ctx.input?.app ?? null });
+      // decisão (21/11): antes do profissional, a pedido; só por accounts/manage_access (Instagram, senão Chrome logado).
+      return aceitarConviteDaConta(await contexto(ctx), { conta: ctx.input?.conta ?? null, app: ctx.input?.app ?? null });
     },
   },
   profissional: {

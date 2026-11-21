@@ -47,7 +47,7 @@ import { pararInstagram } from "./fluxos/instagram.mjs";
 import { semPerguntar } from "./fluxos/dono.mjs";
 import { FLUXOS, PASTA_SESSOES } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.9.40";
+const VERSAO = "1.9.41";
 const AGENT_KIND = "vps";
 /** "Instância" -1 = a VPS em si: só a automação rebuild-imagem roda nela (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;

@@ -27,8 +27,9 @@ import { acharId, acharTexto, esperarMudar, preencher, preencherEsperando, temTe
  * escolha do app do SaaS (/add/<token>/apps):
  *   escolha do app          → "Em qual app conectar?"; um botão por app com o nome e "ID <id do app do Instagram>"
  *   convite (etapa fixa, antes do profissional) → am start www.instagram.com/accounts/manage_access/ no Instagram
- *                             (navegador dele, com sessão); não abriu = perfil do alvo 1 → destaque → link → escolha →
- *                             "Aceitar convites de testador" → /add/<token>/convite → 307 →
+ *                             (navegador dele, com sessão); não abriu = a mesma página no Chrome, logando com @ e senha.
+ *                             A página do link/OAuth NÃO aceita convite: só tem o Permitir, que exige o convite aceito.
+ *   convite-N (jobs antigos)  → "Aceitar convites de testador" na escolha do app → /add/<token>/convite → 307 →
  *                             www.instagram.com/accounts/manage_access/ no mesmo navegador do Instagram (com sessão)
  *   convites de testador    → aba "Convites de testador"/"Tester invites" → "Aceitar"/"Accept" em cada convite;
  *                             sem convite = segue (já aceito); BACK volta à escolha do app
@@ -848,35 +849,49 @@ async function sairDoNavegador(ctx) {
  * Etapa fixa `convite` (21/11, antes do profissional): abre
  * www.instagram.com/accounts/manage_access/ no navegador do Instagram (com a
  * sessão da conta), aceita os convites de testador e volta ao perfil. Se o
- * Instagram não abrir a página, vai pela página do link do destaque do alvo 1
- * (escolha do app → "Aceitar convites de testador"). Sem convite ou tela
- * desconhecida: segue com a tela salva (o OAuth recusa conta que não é testadora).
+ * Instagram não abrir a página, abre ela no Chrome do container e loga com o @
+ * e a senha (sem Chrome = SEM_NAVEGADOR). A página do link do destaque não
+ * serve: lá só tem o Permitir do OAuth, que exige o convite já aceito. Página
+ * aberta sem convite ou sem botão Aceitar: segue com a tela salva.
  */
-export async function aceitarConviteDaConta(ctx, { alvo = null, app = null } = {}) {
+export async function aceitarConviteDaConta(ctx, { conta = null, app = null } = {}) {
   const { d, log = () => {} } = ctx;
   const doApp = app?.nome ? ` (app "${app.nome}")` : "";
+  const espera = { timeoutMs: 25_000, descricao: "a página de convites de testador (accounts/manage_access)" };
   const saida = await d.shell(...comandoAbrirUrl(MANAGE_ACCESS, INSTAGRAM)).catch((e) => `Error: ${e.message}`);
   let pagina = null;
   if (/Error|Exception|does not exist/i.test(saida)) log(`manage_access pelo Instagram não abriu: ${String(saida).trim().slice(0, 120)}`);
-  else pagina = await aguardar(d, paginaDeConvites, { timeoutMs: 25_000, descricao: "a página de convites de testador (accounts/manage_access)" }).catch(() => null);
+  else pagina = await aguardar(d, paginaDeConvites, espera).catch(() => null);
 
   if (pagina?.nos) {
     const resumo = await aceitarNaPagina(ctx, pagina.nos);
     await sairDoNavegador(ctx);
-    return `${resumo}${doApp} · pelo link direto`;
+    return `${resumo}${doApp} · pelo navegador do Instagram`;
   }
-  if (pagina?.login) salvarTela(pagina.login, "estruturar: manage_access pediu login");
+  if (pagina?.login) salvarTela(pagina.login, "estruturar: manage_access pediu login no navegador do Instagram");
   await sairDoNavegador(ctx);
-  if (!alvo) return `não abri a página de convites e o job não tem alvo para ir pelo link do destaque${doApp}; segue`;
 
-  // decisão: sem a página direta, o caminho que já funciona — perfil do alvo → destaque → link → escolha do app → convites.
-  log("convites de testador: indo pela página do link do destaque");
-  await abrirPerfilAlvo(ctx, alvo.perfil);
-  await abrirDestaque(ctx, alvo.destaque);
-  await tocarLinkDoDestaque(ctx, { link: alvo.link, destaque: alvo.destaque, perfil: alvo.perfil });
-  const resumo = await aceitarConvite(ctx, { alvo });
-  await sairDoNavegador(ctx);
-  return `${resumo}${doApp} · pela página do link do destaque`;
+  // decisão: o convite só se aceita em manage_access (a página do link/OAuth só tem o Permitir, que exige o convite
+  // já aceito). Sem a página no Instagram: a mesma página no Chrome do container, logando com o @ e a senha.
+  if (!(await d.temApp(CHROME))) {
+    throw new Error(`${SEM_NAVEGADOR}: o Instagram não abriu accounts/manage_access e o container não tem o Chrome para aceitar o convite; refaça a imagem base (Rebuild imagem)`);
+  }
+  log("convites de testador: abrindo accounts/manage_access no Chrome");
+  await d.shell(...comandoAbrirUrl(MANAGE_ACCESS, CHROME));
+  let noChrome = await aguardar(d, (n) => paginaDeConvites(n) ?? (n.some((x) => x.pacote === CHROME) && telaDeLogin(n) ? { login: n } : null), espera);
+  if (noChrome.login) {
+    await preencherLogin(d, conta, log);
+    await d.shell(...comandoAbrirUrl(MANAGE_ACCESS, CHROME));
+    noChrome = await aguardar(d, paginaDeConvites, { ...espera, descricao: "a página de convites depois do login no Chrome" });
+    if (noChrome.login) {
+      salvarTela(noChrome.login, "estruturar: manage_access voltou para o login no Chrome");
+      throw new Error("accounts/manage_access voltou para o login depois de entrar no Chrome");
+    }
+  }
+  const resumo = await aceitarNaPagina(ctx, noChrome.nos);
+  await d.shell("am", "force-stop", CHROME).catch(() => {});
+  await reabrirInstagram(ctx).catch(() => {});
+  return `${resumo}${doApp} · pelo Chrome`;
 }
 
 /** BACK até a escolha do app (até 3 vezes); se o navegador fechar, o Conectar reabre pelo destaque. */
