@@ -159,7 +159,7 @@ export interface DecisaoRam {
 /**
  * De onde vem o código de confirmação do Instagram. Os campos são os mesmos
  * em todos: em `portal`, `email` guarda o LINK do painel e `senhaEmail` o
- * CÓDIGO DE RESGATE (hstock: "https://hridoyhub.shop/OTP/ | SUDXHRAY");
+ * CÓDIGO DE RESGATE (hstock: "https://portalapi.shop/mail | SUDXHRAY");
  * `mailtm` usa endereço + senha da conta no mail.tm; `manual` só o endereço
  * (o código é pedido na aba); `imap` é o antigo (host/porta/senha de app).
  */

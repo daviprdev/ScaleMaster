@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { codigoPortalValido, linkPortalValido, parseConta, parseLinhaPortal, parseLinhasPortal, parseLoteInput, PORTAL_PADRAO } from "../lib/vps/input";
-import { extrairEmail, extrairOtp, lerStatus, mascarar, urlSessao, codigoValido, erroRenovar, esperarPortalNoAr } from "../agente-vps/lib/portal.mjs";
+import { extrairEmail, extrairOtp, lerStatus, linkDoPortal, mascarar, urlSessao, codigoValido, erroRenovar, esperarPortalNoAr, PORTAL_PADRAO as PORTAL_PADRAO_AGENTE } from "../agente-vps/lib/portal.mjs";
 import { conferirCaixa, criarCaixa, descricaoCaixa, provedorDe } from "../agente-vps/fluxos/caixa.mjs";
 import { ROTULOS_EMAIL } from "../lib/vps/provedores";
 import { PROVEDORES_EMAIL } from "../lib/vps/types";
@@ -161,8 +161,15 @@ describe("Portal: parsers do painel (agente-vps/lib/portal.mjs)", () => {
     expect(s.restanteMs).toBe(610_000);
     expect(s.acabou).toBe(false);
     expect(lerStatus({ ...STATUS_SEM, time_up: true, remaining_sec: 0, status: "expired" }).acabou).toBe(true);
-    expect(urlSessao("https://hridoyhub.shop/OTP/", "sudxhray")).toBe("https://hridoyhub.shop/OTP/SUDXHRAY");
-    expect(urlSessao("https://hridoyhub.shop/OTP", "SUDXHRAY")).toBe("https://hridoyhub.shop/OTP/SUDXHRAY");
+    // 21/11: link novo do hstock (form em /mail, sessão em /mail/OTP/<código>); o domínio antigo vai para o novo.
+    expect(urlSessao("https://portalapi.shop/mail", "sudxhray")).toBe("https://portalapi.shop/mail/OTP/SUDXHRAY");
+    expect(urlSessao("https://portalapi.shop/mail/", "SUDXHRAY")).toBe("https://portalapi.shop/mail/OTP/SUDXHRAY");
+    expect(urlSessao("https://hridoyhub.shop/OTP/", "sudxhray")).toBe("https://portalapi.shop/mail/OTP/SUDXHRAY");
+    expect(urlSessao("https://hridoyhub.shop/OTP", "SUDXHRAY")).toBe("https://portalapi.shop/mail/OTP/SUDXHRAY");
+    expect(urlSessao("https://outro.portal.com/OTP/", "SUDXHRAY")).toBe("https://outro.portal.com/OTP/SUDXHRAY");
+    expect(linkDoPortal("https://hridoyhub.shop/OTP/")).toBe("https://portalapi.shop/mail");
+    expect(linkDoPortal("https://portalapi.shop/mail")).toBe("https://portalapi.shop/mail");
+    expect(PORTAL_PADRAO_AGENTE).toBe(PORTAL_PADRAO);
     expect(mascarar("SUDXHRAY")).toBe("SU****AY");
     expect(mascarar("ABC")).toBe("***");
   });

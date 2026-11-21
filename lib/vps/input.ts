@@ -21,7 +21,7 @@ const ASCII_RE = /^[\x20-\x7E]*$/;
 const PROVEDORES: ReadonlySet<string> = new Set<ProvedorEmail>(["portal", "mailtm", "imap", "manual"]);
 /** Código de resgate do portal (hstock): 6 a 12 letras/números. */
 const CODIGO_PORTAL_RE = /^[A-Za-z0-9]{6,12}$/;
-export const PORTAL_PADRAO = "https://hridoyhub.shop/OTP/";
+export const PORTAL_PADRAO = "https://portalapi.shop/mail";
 
 export function provedorEmailValido(valor: unknown): valor is ProvedorEmail {
   return typeof valor === "string" && PROVEDORES.has(valor);
@@ -43,7 +43,7 @@ export function codigoPortalValido(codigo: string): boolean {
 }
 
 /**
- * Uma linha do hstock: "https://hridoyhub.shop/OTP/ | SUDXHRAY" (também aceita
+ * Uma linha do hstock: "https://portalapi.shop/mail | SUDXHRAY" (também aceita
  * só o código, com o link padrão, ou "link codigo" separado por espaço). null =
  * não é uma linha do portal.
  */

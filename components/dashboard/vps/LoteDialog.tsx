@@ -251,7 +251,7 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
           <Textarea
             label="Códigos do hstock"
             rows={Math.min(8, Math.max(3, quantidade))}
-            placeholder={"https://hridoyhub.shop/OTP/ | SUDXHRAY\nhttps://hridoyhub.shop/OTP/ | OUTROCOD\nSOCODIGO (usa o link padrão)"}
+            placeholder={"https://portalapi.shop/mail | SUDXHRAY\nhttps://portalapi.shop/mail | OUTROCOD\nSOCODIGO (usa o link padrão)"}
             hint={
               codigosInvalidos > 0
                 ? `Linha ${linhasCodigo.findIndex((l) => l === null) + 1} fora do formato "link | código" (${codigosInvalidos} inválida${codigosInvalidos === 1 ? "" : "s"}).`

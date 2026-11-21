@@ -4,7 +4,7 @@ import { request as httpRequest } from "node:http";
 import { rodar, esperar } from "./processo.mjs";
 
 /**
- * Provedor "portal" (hstockplus → hridoyhub.shop/OTP): o dono compra códigos
+ * Provedor "portal" (hstockplus → portalapi.shop/mail, antes hridoyhub.shop/OTP): o dono compra códigos
  * de resgate e cada um abre uma sessão de 20 min com um @gmail.com; o OTP
  * aparece na própria página. Descoberta em 2026-11-08 (curl, sem Cloudflare,
  * sem cookie):
@@ -23,7 +23,22 @@ import { rodar, esperar } from "./processo.mjs";
  * por CDP a um Chromium isolado em container (scalemaster-portal-chrome).
  */
 
-export const PORTAL_PADRAO = "https://hridoyhub.shop/OTP/";
+/**
+ * 21/11: o hstock mudou o link para https://portalapi.shop/mail (mesmo fornecedor e mesma base: um código antigo
+ * aparece igual lá). O form fica em /mail e a sessão em /mail/OTP/<CÓDIGO> (no antigo: /OTP/ e /OTP/<CÓDIGO>).
+ */
+export const PORTAL_PADRAO = "https://portalapi.shop/mail";
+/** Domínio antigo do mesmo portal: contas com o link velho vão para o novo. */
+const PORTAL_ANTIGO_RE = /^(www\.)?hridoyhub\.shop$/i;
+
+/** Link que o agente usa: o do domínio antigo vira o novo; qualquer outro fica como veio. */
+export function linkDoPortal(link) {
+  try {
+    return PORTAL_ANTIGO_RE.test(new URL(link).hostname) ? PORTAL_PADRAO : link;
+  } catch {
+    return link;
+  }
+}
 export const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 export const SESSAO_MS = 20 * 60_000;
 const CODIGO_RE = /^[A-Za-z0-9]{6,12}$/;
@@ -50,8 +65,10 @@ export function codigoValido(codigo) {
 
 /** URL da sessão: <origem do link>/OTP/<CÓDIGO> (o link pode vir com ou sem barra final). */
 export function urlSessao(link, codigo) {
-  const base = new URL(link);
-  const caminho = base.pathname.replace(/\/+$/, "");
+  const base = new URL(linkDoPortal(link));
+  // A sessão fica sempre num segmento /OTP: /OTP/<código> no link antigo, /mail/OTP/<código> no novo.
+  let caminho = base.pathname.replace(/\/+$/, "");
+  if (!/\/OTP$/i.test(caminho)) caminho += "/OTP";
   return `${base.origin}${caminho}/${encodeURIComponent(String(codigo).toUpperCase())}`;
 }
 
@@ -238,7 +255,8 @@ export function erroRenovar(motivo) {
 }
 
 const http = {
-  async abrir(link, codigo, { semResgate = false } = {}) {
+  async abrir(linkBruto, codigo, { semResgate = false } = {}) {
+    const link = linkDoPortal(linkBruto);
     const jar = new CookieJar();
     const url = urlSessao(link, codigo);
     // decisão (15/11): consulta o /status ANTES do formulário. Código com sessão já existente não é reenviado pelo
@@ -362,7 +380,7 @@ const browser = {
     try {
       const pagina = await contexto.newPage();
       sessao.pagina = pagina;
-      await pagina.goto(link, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      await pagina.goto(linkDoPortal(link), { waitUntil: "domcontentloaded", timeout: 30_000 });
       await pagina.fill("input[name='code']", sessao.codigo, { timeout: 10_000 });
       await Promise.all([pagina.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => {}), pagina.click("button[type='submit']")]);
       if (!(await pagina.$("#email")) && precisaIniciar(await pagina.content())) {
@@ -581,8 +599,8 @@ export async function statusDoCodigo(link, codigo) {
 }
 
 /** Só confere que o link é o portal (form com input name=code), sem gastar código. */
-export async function verificarPortal(link) {
-  const r = await requisicao(link, { timeoutMs: 15_000 });
+export async function verificarPortal(linkBruto) {
+  const r = await requisicao(linkDoPortal(linkBruto), { timeoutMs: 15_000 });
   if (r.status !== 200) throw new Error(`o portal respondeu HTTP ${r.status}`);
   if (!/name=["']code["']/i.test(r.body)) throw new Error("o link não mostra o form de resgate (Cloudflare ou markup mudou)");
   return true;

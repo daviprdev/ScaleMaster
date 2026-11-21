@@ -67,7 +67,7 @@ Os campos são sempre os mesmos (`conta.email` + `imap.senha`); o provedor muda 
 
 | Provedor | `conta.email` | `imap.senha` | Como lê o código |
 | --- | --- | --- | --- |
-| `portal` (padrão da aba) | link do painel (`https://hridoyhub.shop/OTP/`) | código de resgate do hstock (6–12 letras/números) | `lib/portal.mjs`: `POST <link> code=…` → `/OTP/<CÓDIGO>` (endereço em `#email`), `/OTP/<CÓDIGO>/status` a cada 3 s (`mails[].otp`); sessão vencida sem OTP é renovada (`/reactivate`) |
+| `portal` (padrão da aba) | link do painel (`https://portalapi.shop/mail`) | código de resgate do hstock (6–12 letras/números) | `lib/portal.mjs`: `POST <link> code=…` → `/OTP/<CÓDIGO>` (endereço em `#email`), `/OTP/<CÓDIGO>/status` a cada 3 s (`mails[].otp`); sessão vencida sem OTP é renovada (`/reactivate`) |
 | `mailtm` | endereço no mail.tm | senha da conta | `lib/mailtm.mjs` (API pública, token + `/messages`) |
 | `imap` | endereço | senha (de app) | `lib/imap.mjs` (`imap.host`/`imap.porta`) |
 | `manual` | endereço | — | nada: o código é pedido na aba |

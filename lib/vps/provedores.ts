@@ -5,7 +5,7 @@ export const ROTULOS_EMAIL: Record<ProvedorEmail, { email: string; senha: string
   portal: {
     email: "Link do portal",
     senha: "Código de resgate",
-    placeholderEmail: "https://hridoyhub.shop/OTP/ | SUDXHRAY",
+    placeholderEmail: "https://portalapi.shop/mail | SUDXHRAY",
     dicaSenha: "O código do hstock. Colar \"link | código\" no campo do link separa sozinho.",
     descricao: "O painel abre uma sessão de 20 min com um @gmail.com e mostra o OTP; a VPS abre a sessão só na hora de digitar o e-mail no Instagram.",
   },

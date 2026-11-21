@@ -568,7 +568,7 @@ function RefazerContaDialog({ job, onClose, onSaved }: { job: VpsJob | null; onC
         <Input label="Proxy nova (HTTP)" placeholder="host:porta:usuário:senha" hint="Opcional: o país no fim (:US)." value={proxy} onChange={(e) => setProxy(e.target.value)} autoComplete="off" required />
         <Input
           label="Código do hstock"
-          placeholder="https://hridoyhub.shop/OTP/ | SUDXHRAY"
+          placeholder="https://portalapi.shop/mail | SUDXHRAY"
           hint="Linha inteira, no formato link | código."
           value={codigo}
           onChange={(e) => setCodigo(e.target.value)}
