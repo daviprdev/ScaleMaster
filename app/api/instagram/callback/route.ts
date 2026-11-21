@@ -331,6 +331,10 @@ async function upsertAccount(
         access_token: null,
         fb_page_id: null,
         health_status: "online",
+        // decisão: reconectar por outro app (troca de app) mantém a linha — pasta,
+        // fila, proxy e histórico de views (account_id) — e passa a conta para o app novo.
+        meta_app_id: metaAppId,
+        connected_at: now,
       })
       .eq("id", existing.id);
 
