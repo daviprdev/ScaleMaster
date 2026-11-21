@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { APP_GLOBAL, errosPorCampo, expandirEtapas, parseEstrutura, resultadoPorAlvo } from "../lib/vps/estruturacao";
 import { etapaDoAlvo, motivoParaPular } from "../agente-vps/lib/estrutura.mjs";
 import { ESTRUTURACAO } from "../agente-vps/fluxos/estruturacao.mjs";
-import { botaoAceitarConvite, linkInvalido, naEscolhaDeApp, opcaoDoApp } from "../agente-vps/fluxos/oauth.mjs";
+import { botaoAceitarConvite, linkInvalido, naEscolhaDeApp, opcaoDoApp, paginaDeConvites } from "../agente-vps/fluxos/oauth.mjs";
 
 /** Estruturar com o app escolhido (21/11): convite de testador antes do OAuth, moda antiga. */
 const BASE = {
@@ -32,23 +32,28 @@ describe("Estruturar: escolha do app", () => {
     expect(errosPorCampo({ ...BASE, app: APP_GLOBAL }, MIDIAS).app).toBeUndefined();
   });
 
-  it("com app: convite-N entre link-N e conectar-N, e o Conectar leva o nome do app", () => {
+  it("com app: convite fixo logo antes do profissional, alvo sem convite-N, e o Conectar leva o nome do app", () => {
     const r = parseEstrutura({ ...BASE, app: UUID }, MIDIAS);
     if (!("value" in r)) throw new Error(r.error);
     const plano = expandirEtapas({ ...r.value, app: { chave: UUID, nome: "APP Scale (PRINCIPAL)", igAppId: "29415721201449674" } });
     const chaves = plano.map((p) => p.key);
-    expect(chaves.slice(chaves.indexOf("link-1"), chaves.indexOf("confirmar-1") + 1)).toEqual(["link-1", "convite-1", "conectar-1", "consentir-1", "confirmar-1"]);
+    expect(chaves.indexOf("convite")).toBe(chaves.indexOf("profissional") - 1);
+    expect(chaves.indexOf("convite")).toBeGreaterThan(chaves.indexOf("sessao"));
+    expect(plano.find((p) => p.key === "convite")?.label).toBe('Aceitar o convite de testador do app "APP Scale (PRINCIPAL)"');
+    expect(chaves.slice(chaves.indexOf("link-1"), chaves.indexOf("confirmar-1") + 1)).toEqual(["link-1", "conectar-1", "consentir-1", "confirmar-1"]);
     expect(plano.find((p) => p.key === "conectar-1")?.label).toBe('Alvo 1: Conectar pelo app "APP Scale (PRINCIPAL)"');
     // Sem app (jobs antigos): sem convite.
-    expect(expandirEtapas({ ...r.value, app: undefined }).map((p) => p.key)).not.toContain("convite-1");
-    // O agente conhece a etapa e a falha do convite pula o resto do alvo.
+    expect(expandirEtapas({ ...r.value, app: undefined }).map((p) => p.key)).not.toContain("convite");
+    // Jobs criados com convite-N continuam rodando: o agente conhece a etapa e a falha dela pula o resto do alvo.
     expect(etapaDoAlvo("convite-1")).toEqual({ tipo: "convite", n: 1 });
     expect(motivoParaPular("conectar-1", new Set(["convite-1"]))).toBe("pulada: convite-1 falhou");
     expect(motivoParaPular("convite-1", new Set(["link-1"]))).toBe("pulada: link-1 falhou");
     const fluxo = ESTRUTURACAO({ ...r.value, plano }) as Array<{ chave: string }>;
     expect(fluxo.map((e) => e.chave)).toEqual(chaves);
-    // Card: convite concluído e confirmar concluído = conectado.
-    const steps = ["perfil-1", "destaque-1", "link-1", "convite-1", "conectar-1", "consentir-1", "confirmar-1"].map((key) => ({ key, status: "done" }));
+    // O agente monta o convite como etapa fixa (sem alvo).
+    expect(fluxo.find((e) => e.chave === "convite")).toBeTruthy();
+    // Card: confirmar concluído = conectado.
+    const steps = ["convite", "perfil-1", "destaque-1", "link-1", "conectar-1", "consentir-1", "confirmar-1"].map((key) => ({ key, status: "done" }));
     expect(resultadoPorAlvo(plano, steps)[0].resultado).toBe("conectado");
   });
 });
@@ -85,5 +90,16 @@ describe("Agente: página de escolha do app e convites de testador", () => {
   it("link mágico vencido (página de erro do SaaS) é reconhecido", () => {
     expect(linkInvalido([webview, web({ texto: "Link inválido ou expirado" }), web({ texto: "Este link não existe mais." })])).toBe(true);
     expect(linkInvalido(escolha)).toBe(false);
+  });
+});
+
+describe("Agente: página direta de convites (accounts/manage_access)", () => {
+  it("reconhece a página da Meta, o login e não confunde com a escolha do app", () => {
+    expect(paginaDeConvites([webview, web({ texto: "Apps e sites" }), web({ texto: "Convites de testador", clicavel: true })])).toHaveProperty("nos");
+    expect(paginaDeConvites([webview, web({ texto: "Convites de testador" }), web({ texto: "Aceitar", clicavel: true })])).toHaveProperty("nos");
+    const login = [webview, web({ classe: "android.widget.EditText" }), web({ classe: "android.widget.EditText" }), web({ texto: "Senha" }), web({ texto: "Entrar", clicavel: true })];
+    expect(paginaDeConvites(login)).toHaveProperty("login");
+    expect(paginaDeConvites([webview, web({ texto: "Em qual app conectar?" }), web({ texto: "Aceitar convites de testador", clicavel: true })])).toBeNull();
+    expect(paginaDeConvites([web({ texto: "Apps e sites" }), web({ texto: "Convites de testador" })])).toBeNull();
   });
 });

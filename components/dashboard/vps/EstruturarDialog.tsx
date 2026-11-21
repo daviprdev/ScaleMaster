@@ -194,7 +194,7 @@ export function EstruturarDialog({ job, pastaDe = null, onClose, onSaved }: Estr
       open={aberto}
       onClose={onClose}
       title={pastaDe ? "Estruturar pasta" : `Estruturar ${job?.label ? `@${job.label}` : "a conta"}`}
-      description="A VPS sobe a proxy, abre o Instagram, troca a bio, muda para conta profissional, entra no perfil e no destaque configurados, toca no link, aceita o convite de testador do app escolhido, conecta por ele, posta o story com o link, destaca e desliga o container."
+      description="A VPS sobe a proxy, abre o Instagram, troca a bio, aceita o convite de testador do app escolhido, muda para conta profissional, entra no perfil e no destaque configurados, toca no link, conecta pelo app escolhido, posta o story com o link, destaca e desliga o container."
       className="flex max-h-[90vh] max-w-3xl flex-col overflow-hidden"
     >
       <form className="flex min-h-0 flex-1 flex-col gap-4" onSubmit={(e) => void submit(e)}>
@@ -245,7 +245,7 @@ export function EstruturarDialog({ job, pastaDe = null, onClose, onSaved }: Estr
             placeholder={apps.carregando ? "carregando Meus Apps…" : apps.opcoes.length === 0 ? "nenhum app cadastrado" : "escolha o app"}
             options={apps.opcoes}
             error={apps.erro ?? erros.app}
-            hint="A conta aceita o convite de testador desse app e conecta por ele (o agente escolhe na página do link do destaque)."
+            hint="A conta aceita o convite de testador desse app antes de virar profissional e conecta por ele (o agente escolhe o app na página do link do destaque)."
           />
           <Input
             label="Link do sticker do story"

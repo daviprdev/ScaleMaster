@@ -2,7 +2,7 @@ import { esperar } from "../lib/processo.mjs";
 import { CONEXAO_OUTRA_CONTA, PROFISSIONAL_FALHOU, SEM_NAVEGADOR, arrobaDaConfirmacao, arrobaDaPermissao, conferirConexao, hostDoLink } from "../lib/estrutura.mjs";
 import { INSTAGRAM } from "./apk.mjs";
 import { resumoTela, salvarTela } from "./dono.mjs";
-import { SEGUINTE, xDoMetaVerified, atividadeNoTopo, botaoDoPerfil, comandoDeepLink, irPara, noProprioPerfil, percorrer, temBarra } from "./instagram.mjs";
+import { SEGUINTE, xDoMetaVerified, atividadeNoTopo, botaoDoPerfil, comandoDeepLink, irPara, noProprioPerfil, percorrer, reabrirInstagram, temBarra } from "./instagram.mjs";
 import { acharId, acharTexto, esperarMudar, preencher, preencherEsperando, temTexto } from "./tela.mjs";
 
 /**
@@ -26,7 +26,9 @@ import { acharId, acharTexto, esperarMudar, preencher, preencherEsperando, temTe
  * moda antiga, sem app verificado (21/11; job com `app`): a página do link (Lovable, botão OAUTH) leva à
  * escolha do app do SaaS (/add/<token>/apps):
  *   escolha do app          → "Em qual app conectar?"; um botão por app com o nome e "ID <id do app do Instagram>"
- *   convite (etapa convite) → "Aceitar convites de testador" → /add/<token>/convite → 307 →
+ *   convite (etapa fixa, antes do profissional) → am start www.instagram.com/accounts/manage_access/ no Instagram
+ *                             (navegador dele, com sessão); não abriu = perfil do alvo 1 → destaque → link → escolha →
+ *                             "Aceitar convites de testador" → /add/<token>/convite → 307 →
  *                             www.instagram.com/accounts/manage_access/ no mesmo navegador do Instagram (com sessão)
  *   convites de testador    → aba "Convites de testador"/"Tester invites" → "Aceitar"/"Accept" em cada convite;
  *                             sem convite = segue (já aceito); BACK volta à escolha do app
@@ -678,6 +680,8 @@ const LINK_INVALIDO = ["Link inválido ou expirado", "Aplicativo não encontrado
 const ABA_CONVITES = ["Convites de testador", "Convites para testador", "Convites de testadores", "Tester invites", "Tester Invites"];
 const ACEITAR = ["Aceitar", "Accept"];
 const SEM_CONVITE = ["Não há convites", "Nenhum convite", "Você não tem convites", "No tester invites", "no invitations", "You have no"];
+const PAGINA_APPS = ["Apps e sites", "Apps and websites", "Aplicativos e sites"];
+const MANAGE_ACCESS = "https://www.instagram.com/accounts/manage_access/";
 
 export const naEscolhaDeApp = (nos) => paginaAberta(nos) && temTexto(nos, ESCOLHA_DE_APP);
 export const linkInvalido = (nos) => paginaAberta(nos) && temTexto(nos, LINK_INVALIDO);
@@ -767,23 +771,29 @@ export async function aceitarConvite(ctx, { alvo = null } = {}) {
   }
   await d.tocar(botao.x, botao.y);
 
-  const pagina = await aguardar(
-    d,
-    (nos) => {
-      if (!paginaAberta(nos) || naEscolhaDeApp(nos)) return null;
-      if (telaDeLogin(nos)) return { login: nos };
-      if (acharTexto(nos, ABA_CONVITES) || botaoAceitarConvite(nos) || temTexto(nos, SEM_CONVITE)) return { nos };
-      return null;
-    },
-    { timeoutMs: 30_000, descricao: "a página de convites de testador da Meta" }
-  ).catch((err) => ({ erro: err }));
+  const pagina = await aguardar(d, paginaDeConvites, { timeoutMs: 30_000, descricao: "a página de convites de testador da Meta" }).catch((err) => ({ erro: err }));
   if (pagina.erro || pagina.login) {
     if (pagina.login) salvarTela(pagina.login, "estruturar: convites de testador pediram login");
     await voltarParaEscolha(d, log);
     return `não deu para abrir os convites de testador (${pagina.login ? "a página pediu login" : pagina.erro.message}); segue para o Conectar`;
   }
+  const resumo = await aceitarNaPagina(ctx, pagina.nos);
+  await voltarParaEscolha(d, log);
+  return resumo;
+}
 
-  let nos = pagina.nos;
+/** Página de convites da Meta (accounts/manage_access) na frente: { nos }, { login } ou null. */
+export function paginaDeConvites(nos) {
+  if (!paginaAberta(nos) || naEscolhaDeApp(nos)) return null;
+  if (telaDeLogin(nos)) return { login: nos };
+  if (acharTexto(nos, ABA_CONVITES) || botaoAceitarConvite(nos) || temTexto(nos, SEM_CONVITE) || temTexto(nos, PAGINA_APPS)) return { nos };
+  return null;
+}
+
+/** Na página de convites: abre a aba de convites e toca em Aceitar em cada um (até 10). Devolve o resumo. */
+async function aceitarNaPagina(ctx, inicial) {
+  const { d, log = () => {} } = ctx;
+  let nos = inicial;
   const aba = acharTexto(nos, ABA_CONVITES);
   if (aba) {
     log("convites de testador: abrindo a aba");
@@ -818,8 +828,55 @@ export async function aceitarConvite(ctx, { alvo = null } = {}) {
     if (nos.length > 0) salvarTela(nos, "estruturar: convites de testador sem botão Aceitar");
     resumo = `nenhum botão Aceitar na página de convites (na tela: ${resumoTela(nos) || "sem leitura"})`;
   }
-  await voltarParaEscolha(d, log);
   return resumo;
+}
+
+/** Fecha o navegador do Instagram (X; senão BACK até 3 vezes) e volta ao perfil da própria conta. */
+async function sairDoNavegador(ctx) {
+  const { d } = ctx;
+  await fecharNavegador(d).catch(() => false);
+  for (let i = 0; i < 3; i++) {
+    const nos = await d.tela().catch(() => []);
+    if (!paginaAberta(nos)) break;
+    await d.tecla("KEYCODE_BACK");
+    await esperarMudar(d, nos, { timeoutMs: 6000 });
+  }
+  await reabrirInstagram(ctx).catch(() => {});
+}
+
+/**
+ * Etapa fixa `convite` (21/11, antes do profissional): abre
+ * www.instagram.com/accounts/manage_access/ no navegador do Instagram (com a
+ * sessão da conta), aceita os convites de testador e volta ao perfil. Se o
+ * Instagram não abrir a página, vai pela página do link do destaque do alvo 1
+ * (escolha do app → "Aceitar convites de testador"). Sem convite ou tela
+ * desconhecida: segue com a tela salva (o OAuth recusa conta que não é testadora).
+ */
+export async function aceitarConviteDaConta(ctx, { alvo = null, app = null } = {}) {
+  const { d, log = () => {} } = ctx;
+  const doApp = app?.nome ? ` (app "${app.nome}")` : "";
+  const saida = await d.shell(...comandoAbrirUrl(MANAGE_ACCESS, INSTAGRAM)).catch((e) => `Error: ${e.message}`);
+  let pagina = null;
+  if (/Error|Exception|does not exist/i.test(saida)) log(`manage_access pelo Instagram não abriu: ${String(saida).trim().slice(0, 120)}`);
+  else pagina = await aguardar(d, paginaDeConvites, { timeoutMs: 25_000, descricao: "a página de convites de testador (accounts/manage_access)" }).catch(() => null);
+
+  if (pagina?.nos) {
+    const resumo = await aceitarNaPagina(ctx, pagina.nos);
+    await sairDoNavegador(ctx);
+    return `${resumo}${doApp} · pelo link direto`;
+  }
+  if (pagina?.login) salvarTela(pagina.login, "estruturar: manage_access pediu login");
+  await sairDoNavegador(ctx);
+  if (!alvo) return `não abri a página de convites e o job não tem alvo para ir pelo link do destaque${doApp}; segue`;
+
+  // decisão: sem a página direta, o caminho que já funciona — perfil do alvo → destaque → link → escolha do app → convites.
+  log("convites de testador: indo pela página do link do destaque");
+  await abrirPerfilAlvo(ctx, alvo.perfil);
+  await abrirDestaque(ctx, alvo.destaque);
+  await tocarLinkDoDestaque(ctx, { link: alvo.link, destaque: alvo.destaque, perfil: alvo.perfil });
+  const resumo = await aceitarConvite(ctx, { alvo });
+  await sairDoNavegador(ctx);
+  return `${resumo}${doApp} · pela página do link do destaque`;
 }
 
 /** BACK até a escolha do app (até 3 vezes); se o navegador fechar, o Conectar reabre pelo destaque. */

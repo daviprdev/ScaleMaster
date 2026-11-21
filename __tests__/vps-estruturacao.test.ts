@@ -35,8 +35,8 @@ describe("Estruturar: etapas expandidas por alvo na criação do job", () => {
     if (!("value" in parsed)) throw new Error(parsed.error);
     const chaves = expandirEtapas(parsed.value).map((e) => e.key);
     expect(chaves).toEqual([
-      "rede", "abrir", "instagram", "sessao", "foto", "bio", "profissional",
-      "perfil-1", "destaque-1", "link-1", "convite-1", "conectar-1", "consentir-1", "confirmar-1",
+      "rede", "abrir", "instagram", "sessao", "foto", "bio", "convite", "profissional",
+      "perfil-1", "destaque-1", "link-1", "conectar-1", "consentir-1", "confirmar-1",
       "story", "destacar", "fechar",
     ]);
     const rotulos = new Map(expandirEtapas(parsed.value).map((e) => [e.key, e.label]));
@@ -214,11 +214,11 @@ describe("Estruturar: regras de falha no agente", () => {
       }
       return { rodadas, falhas: [...falhas] };
     };
-    expect(rodar(["profissional"]).rodadas).toEqual(["rede", "abrir", "instagram", "sessao", "foto", "bio", "profissional", "story", "destacar", "fechar"]);
+    expect(rodar(["profissional"]).rodadas).toEqual(["rede", "abrir", "instagram", "sessao", "foto", "bio", "convite", "profissional", "story", "destacar", "fechar"]);
     const semLink = rodar(["link-1"]);
     expect(semLink.rodadas).not.toContain("conectar-1");
     expect(semLink.rodadas).toEqual(expect.arrayContaining(["perfil-2", "destaque-2", "link-2", "conectar-2", "consentir-2", "confirmar-2", "story"]));
-    expect(semLink.falhas).toEqual(["link-1", "convite-1", "conectar-1", "consentir-1", "confirmar-1"]);
+    expect(semLink.falhas).toEqual(["link-1", "conectar-1", "consentir-1", "confirmar-1"]);
   });
 });
 

@@ -265,6 +265,7 @@ export function parseEstrutura(raw: unknown, midias: ReadonlyArray<string> | nul
 }
 
 /** Sufixos das etapas de cada alvo, na ordem. */
+// "convite" fica para os jobs criados com convite-N; desde 21/11 o convite é a etapa fixa antes do profissional.
 export const ETAPAS_DO_ALVO: ReadonlyArray<string> = ["perfil", "destaque", "link", "convite", "conectar", "consentir", "confirmar"];
 
 /** Etapas do job, expandidas por alvo. A ordem é a de execução. */
@@ -281,6 +282,8 @@ export function expandirEtapas(d: Pick<EstruturaDados, "alvos" | "bio" | "fazerP
     if (d.bio) plano.push({ key: "bio", label: "Preencher a bio" });
   }
   if (d.fazerOauth) {
+    // Com app escolhido (21/11, moda antiga sem app verificado): o convite de testador é aceito antes de virar profissional.
+    if (d.app) plano.push({ key: "convite", label: d.app.nome ? `Aceitar o convite de testador do app "${d.app.nome}"` : "Aceitar o convite de testador" });
     plano.push({ key: "profissional", label: "Mudar para conta profissional (Criador)" });
     d.alvos.forEach((alvo, i) => {
       const n = i + 1;
@@ -288,8 +291,6 @@ export function expandirEtapas(d: Pick<EstruturaDados, "alvos" | "bio" | "fazerP
         { key: `perfil-${n}`, label: `Alvo ${n}: abrir o perfil @${alvo.perfil}` },
         { key: `destaque-${n}`, label: `Alvo ${n}: abrir o destaque "${alvo.destaque}"` },
         { key: `link-${n}`, label: `Alvo ${n}: tocar no link do destaque` },
-        // Com app escolhido (21/11): o convite de testador do app é aceito antes do OAuth (moda antiga, sem app verificado).
-        ...(d.app ? [{ key: `convite-${n}`, label: `Alvo ${n}: aceitar o convite de testador` }] : []),
         { key: `conectar-${n}`, label: d.app?.nome ? `Alvo ${n}: Conectar pelo app "${d.app.nome}"` : `Alvo ${n}: Conectar` },
         { key: `consentir-${n}`, label: `Alvo ${n}: Permitir` },
         { key: `confirmar-${n}`, label: `Alvo ${n}: confirmar a conta conectada` }
