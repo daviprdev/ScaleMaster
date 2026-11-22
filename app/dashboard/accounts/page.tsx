@@ -1108,7 +1108,7 @@ export default function AccountsPage() {
                 if (data.publish_check?.can_publish) liberadas++;
                 else if (data.publish_check) {
                   const name = accounts.find((a) => a.id === id)?.username ?? id.slice(0, 8);
-                  blocked.push(`@${name}: ${data.publish_check.summary}`);
+                  blocked.push(`@${name}`);
                 }
               } catch { /* sem body */ }
               if (!res.ok) throw new Error(id);
@@ -1130,10 +1130,9 @@ export default function AccountsPage() {
         message:
           `${succeeded} conta${succeeded !== 1 ? "s" : ""} sincronizada${succeeded !== 1 ? "s" : ""}` +
           (failed > 0 ? `, ${failed} com erro.` : ".") +
-          (liberadas + blocked.length > 0
-            ? ` Publicação: ${liberadas} liberada${liberadas !== 1 ? "s" : ""}, ${blocked.length} não liberada${blocked.length !== 1 ? "s" : ""}.` +
-              (blocked.length > 0 ? ` ${blocked.slice(0, 5).join(" | ")}${blocked.length > 5 ? ` | e mais ${blocked.length - 5}` : ""}` : "")
-            : ""),
+          (blocked.length > 0
+            ? ` Suspensas: ${blocked.slice(0, 5).join(", ")}${blocked.length > 5 ? ` e mais ${blocked.length - 5}` : ""}.`
+            : liberadas > 0 ? ` ${liberadas} normal${liberadas !== 1 ? "is" : ""}.` : ""),
       });
       setSelectedIds(new Set());
       setSelectMode(false);
