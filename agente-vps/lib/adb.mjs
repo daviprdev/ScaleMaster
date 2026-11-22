@@ -112,10 +112,31 @@ export class Dispositivo {
     for (let tentativa = 0; tentativa < 20; tentativa++) {
       if (tentativa > 0) await esperar(3000);
       const r = await rodar(this.adb, ["connect", this.serial], { timeoutMs: 20_000 });
-      if (/connected/i.test(String(r.stdout)) && !/cannot|failed/i.test(String(r.stdout))) return;
+      if (/connected/i.test(String(r.stdout)) && !/cannot|failed/i.test(String(r.stdout))) {
+        await this.detectarRoot();
+        return;
+      }
       ultima = trecho(r.stdout || r.stderr);
     }
     throw new Error(`adb não conectou em ${this.serial}: ${ultima}`);
+  }
+
+  /**
+   * Perfil com ro.secure=1 / ro.debuggable=0 (22/11): o adbd sobe como shell e recusa `adb root`. Aí todo
+   * shell() vai por `su 0` (o /system/xbin/su do redroid aceita o uid shell), igual ao adbd root de antes.
+   * Container antigo (adbd root) fica sem prefixo. Uma leitura de `id -u` por conexão.
+   */
+  async detectarRoot() {
+    if (this.prefixo !== undefined) return;
+    const uid = await rodar(this.adb, ["-s", this.serial, "shell", "id", "-u"], { timeoutMs: 20_000 });
+    if (uid.codigo !== 0) return;
+    if (String(uid.stdout).trim() === "0") {
+      this.prefixo = [];
+      return;
+    }
+    const su = await rodar(this.adb, ["-s", this.serial, "shell", "su", "0", "id", "-u"], { timeoutMs: 20_000 });
+    if (su.codigo === 0 && String(su.stdout).trim() === "0") this.prefixo = ["su", "0"];
+    else throw new Error(`adbd sem root em ${this.serial} e su indisponível: ${trecho(su.stdout || su.stderr)}`);
   }
 
   async desconectar() {
@@ -124,7 +145,14 @@ export class Dispositivo {
 
   /** adbd como root (o redroid permite): precisa para settings e para ler /data. */
   async root() {
+    // Build de produção (ro.debuggable=0): adb root é recusado; o root vem do su 0 que detectarRoot() já ligou.
+    if (this.prefixo?.length) return;
     const r = await rodar(this.adb, ["-s", this.serial, "root"], { timeoutMs: 30_000 });
+    if (/production builds/i.test(String(r.stdout + r.stderr))) {
+      this.prefixo = undefined;
+      await this.detectarRoot();
+      return;
+    }
     if (/cannot|failed/i.test(String(r.stdout + r.stderr))) throw new Error(`adb root falhou: ${trecho(r.stdout || r.stderr)}`);
     // O adbd reinicia como root e a conexão cai por um instante.
     await esperar(2000);
@@ -139,7 +167,7 @@ export class Dispositivo {
 
   async shell(...args) {
     if (!Dispositivo.SO_LEITURA.has(String(args[0]))) this.telaGuardada_ = null;
-    const r = await rodar(this.adb, ["-s", this.serial, "shell", ...args], { timeoutMs: 60_000 });
+    const r = await rodar(this.adb, ["-s", this.serial, "shell", ...(this.prefixo ?? []), ...args], { timeoutMs: 60_000 });
     if (r.codigo !== 0) throw new Error(`adb shell ${args[0]} falhou: ${trecho(r.stderr || r.stdout)}`);
     return String(r.stdout);
   }

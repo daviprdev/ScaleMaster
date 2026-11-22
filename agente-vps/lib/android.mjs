@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { Dispositivo, PORTA_BASE, serialDe } from "./adb.mjs";
 import { apagarVolume, conferirQuota, copiarVolume, prune } from "./disco.mjs";
@@ -221,6 +222,23 @@ async function docker(args, timeoutMs = 60_000) {
   return String(r.stdout);
 }
 
+/** Chave pública do adb deste host (a do servidor adb que o agente usa); gera com start-server se faltar. */
+export async function chaveAdbDoHost(adb = "adb", pasta = process.env.ANDROID_USER_HOME || path.join(os.homedir(), ".android")) {
+  const arquivo = path.join(pasta, "adbkey.pub");
+  if (!existsSync(arquivo)) await rodar(adb, ["start-server"], { timeoutMs: 20_000 });
+  if (!existsSync(arquivo)) throw new Error(`Sem ${arquivo}: o adb da VPS não gerou a chave (rode adb start-server).`);
+  return arquivo;
+}
+
+/**
+ * ro.adb.secure=1 (perfil de aparelho, 22/11): o adbd só aceita chave autorizada. A chave do host vai em
+ * /data/misc/adb/adb_keys do volume antes do boot (docker cp no container criado); sem ela = "device unauthorized".
+ */
+async function autorizarAdb(nome, adb) {
+  const chave = await chaveAdbDoHost(adb ?? "adb");
+  await docker(["cp", chave, `${nome}:/data/misc/adb/adb_keys`], 30_000);
+}
+
 /** Estado do container pelo Docker: "running", "exited", "created" ou null (não existe). */
 async function estadoDocker(nome) {
   return (await inspecionar(nome))?.status ?? null;
@@ -408,6 +426,7 @@ export class Android {
     await garantirRede(rede);
     const props = this.gerarProps(spec);
     await docker(argsDoContainer(spec, { props, rede, ip }), 120_000);
+    await autorizarAdb(nome, this.adb);
     spec.recriar = false;
     // O retrato guarda o Created vivo: o abrir() recria o container e o excluir confere por ele (ig-4, 08/11: ficou defasado).
     const viva = (await inspecionar(nomeDe(spec.index)))?.criada;
