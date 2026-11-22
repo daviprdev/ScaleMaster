@@ -169,7 +169,7 @@ describe("Contas VPS: capacidade e identidade", () => {
     expect(new Set(devices.map((d) => d.mac)).size).toBe(10);
     expect(new Set(devices.map((d) => d.container)).size).toBe(10);
     for (const d of devices) {
-      expect(d.fingerprint).toMatch(new RegExp(`^${d.brand}/${d.product}/${d.device}:13/${d.buildId.replace(/\./g, "\\.")}/\\d{7}:user/release-keys$`));
+      expect(d.fingerprint).toMatch(new RegExp(`^${d.brand}/${d.product}/${d.device}:${d.versao}/${d.buildId.replace(/\./g, "\\.")}/\\d{7}:user/release-keys$`));
       expect(d.timezone).toBe("America/Sao_Paulo");
       expect(d.locale).toBe("pt-BR");
       expect(d.androidId).toMatch(/^[0-9a-f]{16}$/);

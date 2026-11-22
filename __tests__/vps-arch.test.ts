@@ -102,6 +102,7 @@ describe("Contas VPS: APK por arquitetura", () => {
   });
 
   it("instalarInstagram em x86_64 usa install-multiple e exige primaryCpuAbi=x86_64", async () => {
+    // decisão: libnb check tem setTimeout(6000) ×2 neste teste; timeout estendido para acomodar.
     const chamadas: string[] = [];
     let abiDepois = "x86_64";
     const d = {
@@ -125,5 +126,5 @@ describe("Contas VPS: APK por arquitetura", () => {
     chamadas.length = 0;
     await expect(instalarInstagram(d, "2.0.0", () => {}, { arch: "x86_64", pasta: APKS })).rejects.toThrow(/sha256/);
     expect(chamadas).toEqual([]);
-  });
+  }, 20_000);
 });
