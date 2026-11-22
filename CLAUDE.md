@@ -227,6 +227,12 @@ Tabelas: `supabase/emulador_agente.sql`, `supabase/emulador_contas.sql`, `supaba
 - Etapas em `lib/vps/jobs.ts` (`VPS_FLUXO`) = `agente-vps/fluxos/nova-conta.mjs`. Identidade em `lib/vps/device.ts` e `vps_devices`; `PROXY_MORTA` pausa a conta; e-mail por IMAP (`lib/imap.mjs`); captcha por Capsolver (`CAPSOLVER_KEY` em `/opt/scalemaster/agente-vps/.env`); sessões em `/opt/scalemaster/sessoes/`.
 - Instalação: `scripts/vps/instalar.sh`; base: `scripts/vps/golden.sh`; calibração: `scripts/vps/calibrar.mjs`; detalhes em `agente-vps/LEIAME.md`.
 
+## Extensão Scale Master Story (extensao-story/)
+
+- Extensão Chrome MV3 para os perfis do AdsPower (21/11): story com adesivo de link (texto, cor, tamanho, posição arrastada) e fixação no destaque, pela sessão do Instagram do próprio perfil (`www.instagram.com`, sem token). Nome, logo e tokens do SaaS.
+- Arte 1080×1920 desenhada no canvas com o adesivo; `tap_models` `story_link` marca a área clicável (`instagram.js`): `rupload_igphoto` → `validate_reel_url` → `media/configure_to_story` (fallback `web/create/configure_to_story` avisa se o link não voltar) → destaque pelo nome normalizado (`highlights_tray` + `edit_reel`, senão `create_reel`).
+- Empacotar: `scripts\empacotar-extensao-story.ps1` → `dist\scalemaster-story-<versão>.zip` (AdsPower: Extensões → Enviar). Ícones/fonte: `node scripts/extensao-story-icones.mjs`. Detalhes em `extensao-story/LEIAME.md`.
+
 ## Worker Legado RPA (Desativado)
 
 O worker RPA Python (`/opt/worker-rpa`) foi desativado durante a migração. Onboarding agora é via API oficial Meta + python-server. Arquivos históricos podem existir mas NÃO são executados em produção.

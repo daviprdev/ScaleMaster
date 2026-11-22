@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scale Master Story</title>
+  <link rel="stylesheet" href="painel.css">
+</head>
+<body>
+  <div class="fundo" id="fundo"></div>
+
+  <main class="janela" role="dialog" aria-modal="true" aria-labelledby="titulo">
+    <header class="topo">
+      <div class="marca">
+        <img src="icones/128.png" alt="" width="34" height="34">
+        <div class="marca-texto">
+          <strong>Scale Master</strong>
+          <span>Story com link</span>
+        </div>
+      </div>
+      <div class="conta" id="conta"><span class="ponto"></span><span id="conta-texto">Lendo a conta…</span></div>
+      <button class="fechar" id="fechar" type="button" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+
+    <div class="corpo">
+      <section class="arte">
+        <div class="rotulo">
+          <span><i class="traco"></i>Arte do story</span>
+          <span class="dim">9:16 · 1080 × 1920</span>
+        </div>
+
+        <div class="palco" id="palco">
+          <div class="soltar" id="soltar">
+            <div class="mais" aria-hidden="true">+</div>
+            <h2>Solte a foto<br>aqui.</h2>
+            <p>Ela vira um story 9:16 com o seu link colado.</p>
+            <button class="primario" id="escolher" type="button">Escolher do computador</button>
+            <small>JPG, PNG ou WEBP · até 20 MB</small>
+          </div>
+          <canvas id="previa" width="1080" height="1920" hidden></canvas>
+          <div class="dica-arrastar" id="dica-arrastar" hidden>Arraste o adesivo para posicionar</div>
+        </div>
+
+        <button class="trocar" id="trocar" type="button">
+          <span class="trocar-icone" aria-hidden="true">+</span>
+          <span><strong>Trocar a foto</strong><small>A arte é refeita na hora.</small></span>
+        </button>
+
+        <div class="publicar">
+          <button class="primario grande" id="publicar" type="button" disabled>Publicar agora</button>
+          <ol class="log" id="log" aria-live="polite"></ol>
+        </div>
+      </section>
+
+      <section class="ajustes">
+        <div class="eyebrow"><i class="traco"></i>Ajustes</div>
+        <h1 id="titulo">Monte o adesivo.</h1>
+        <p class="sub">O que você mudar aqui aparece na arte ao lado, na hora.</p>
+
+        <nav class="abas" role="tablist">
+          <button role="tab" data-aba="foto" type="button">Foto</button>
+          <button role="tab" data-aba="link" type="button" aria-selected="true">Link</button>
+          <button role="tab" data-aba="destaque" type="button">Destaque</button>
+          <button role="tab" data-aba="ajuda" type="button">Ajuda</button>
+        </nav>
+
+        <div class="painel-aba" data-painel="foto" hidden>
+          <label class="campo">
+            <span>Enquadramento</span>
+            <div class="segmento" id="enquadramento">
+              <button type="button" data-valor="preencher">Preencher</button>
+              <button type="button" data-valor="inteira">Foto inteira</button>
+            </div>
+          </label>
+          <p class="nota">Preencher corta as sobras para ocupar a tela toda. Foto inteira mostra a imagem sem cortar, com o fundo desfocado.</p>
+          <label class="campo">
+            <span>Posição da foto <em id="pos-foto-valor">50%</em></span>
+            <input type="range" id="pos-foto" min="0" max="100" value="50">
+          </label>
+          <p class="nota">Move a foto no corte (vertical em foto deitada, horizontal em foto em pé). Só vale em Preencher.</p>
+        </div>
+
+        <div class="painel-aba" data-painel="link">
+          <label class="campo">
+            <span>Para onde o link leva</span>
+            <input type="url" id="url" placeholder="https://" spellcheck="false" autocomplete="off">
+            <em class="erro" id="url-erro" hidden></em>
+          </label>
+          <label class="campo">
+            <span>Texto escrito no adesivo <em id="texto-conta">0/40</em></span>
+            <input type="text" id="texto" maxlength="40" autocomplete="off">
+          </label>
+          <label class="campo">
+            <span>Cor do adesivo</span>
+            <select id="cor">
+              <option value="branco-azul">Branco e azul</option>
+              <option value="branco-preto">Branco e preto</option>
+              <option value="azul-branco">Azul e branco</option>
+              <option value="preto-branco">Preto e branco</option>
+              <option value="vidro">Vidro</option>
+            </select>
+          </label>
+          <label class="campo">
+            <span>Tamanho do adesivo <em id="tamanho-valor">100</em></span>
+            <div class="faixa"><small>Pequeno</small><input type="range" id="tamanho" min="40" max="130" value="100"><small>Grande</small></div>
+          </label>
+          <div class="linha-acoes">
+            <button type="button" class="secundario" id="centralizar">Centralizar adesivo</button>
+          </div>
+          <p class="nota destaque-nota">Arraste o adesivo na arte para escolher onde ele fica. A área clicável do link é exatamente o adesivo.</p>
+        </div>
+
+        <div class="painel-aba" data-painel="destaque" hidden>
+          <label class="checar">
+            <input type="checkbox" id="destaque-ativo">
+            <span>Fixar num destaque depois de publicar</span>
+          </label>
+          <label class="campo">
+            <span>Nome do destaque</span>
+            <input type="text" id="destaque-nome" maxlength="30" autocomplete="off">
+          </label>
+          <div class="campo">
+            <span>Se o perfil já tem um destaque com esse nome</span>
+            <div class="segmento" id="destaque-modo">
+              <button type="button" data-valor="juntar">Juntar a ele</button>
+              <button type="button" data-valor="novo">Criar outro</button>
+            </div>
+          </div>
+          <p class="nota destaque-nota">O story vai ao ar primeiro; depois ele é fixado. O nome é comparado sem acento, emoji e maiúsculas. Se o destaque falhar, o story continua publicado e o erro aparece no registro.</p>
+        </div>
+
+        <div class="painel-aba ajuda" data-painel="ajuda" hidden>
+          <ol>
+            <li>Abra o perfil do AdsPower já logado na conta do Instagram.</li>
+            <li>Clique no ícone da Scale Master (canto de cima à direita da página, ou na barra de extensões).</li>
+            <li>Solte a foto. Em <b>Link</b>, cole o endereço e escreva o texto do adesivo.</li>
+            <li>Arraste o adesivo na arte até onde quiser.</li>
+            <li>Em <b>Destaque</b>, deixe marcado e escreva o nome.</li>
+            <li>Clique em <b>Publicar agora</b> e acompanhe o registro abaixo do botão.</li>
+          </ol>
+          <p class="nota">Link, texto, cor, tamanho, posição e destaque ficam salvos neste perfil para o próximo story.</p>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <input type="file" id="arquivo" accept="image/jpeg,image/png,image/webp" hidden>
+  <script src="painel.js"></script>
+</body>
+</html>

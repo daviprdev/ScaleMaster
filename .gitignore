@@ -55,3 +55,6 @@ agente-vps/agente.pid
 agente-vps/telas/*
 !agente-vps/telas/.gitkeep
 agente-vps/alertas.json
+
+# Pacotes gerados (extensão Scale Master Story)
+/dist/
