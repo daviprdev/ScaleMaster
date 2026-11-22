@@ -104,6 +104,15 @@ export async function POST(req: NextRequest) {
   const testeDe = new Map<string, ResultadoProxy>();
   if (lote.gerarPessoa) {
     const resultados = await testarProxies(lote.proxiesTodas.map((p) => p.url));
+    // IPs de saída dos candidatos vivos — consultados contra proxy_ip_uso (últimos 7 dias).
+    const ipsVivos = [...new Set(lote.proxiesTodas.flatMap((p, i) => (entraNoLote(resultados[i].estado) && resultados[i].ip ? [resultados[i].ip as string] : [])))];
+    const ipUsadoEm = new Map<string, string>();
+    if (ipsVivos.length) {
+      const { data: ipsJaUsados } = await admin.from("proxy_ip_uso").select("ip_saida, criado_at").in("ip_saida", ipsVivos).gte("criado_at", new Date(Date.now() - 7 * 86400000).toISOString()).order("criado_at", { ascending: false });
+      for (const row of (ipsJaUsados ?? []) as Array<{ ip_saida: string; criado_at: string }>) {
+        if (!ipUsadoEm.has(row.ip_saida)) ipUsadoEm.set(row.ip_saida, row.criado_at.slice(0, 10));
+      }
+    }
     const escolhidas: Array<{ p: ProxyLida; linha: number }> = [];
     lote.proxiesTodas.forEach((p, i) => {
       const hostPorta = `${p.host}:${p.porta}`;
@@ -121,6 +130,12 @@ export async function POST(req: NextRequest) {
         if (!lote.sufixo || escolhidas.length < lote.quantidade) problemas.push({ linha, hostPorta, estado: r.estado, motivo: r.motivo, ...sessao });
         return;
       }
+      const ipSaida = r.ip ?? null;
+      const dataUso = ipSaida ? ipUsadoEm.get(ipSaida) : undefined;
+      if (dataUso) {
+        if (!lote.sufixo || escolhidas.length < lote.quantidade) problemas.push({ linha, hostPorta, estado: "ip-repetido", motivo: `IP de saída já usado em ${dataUso}`, ...sessao });
+        return;
+      }
       if (escolhidas.length < lote.quantidade) escolhidas.push({ p, linha });
     });
     if (escolhidas.length === 0) {
@@ -130,6 +145,15 @@ export async function POST(req: NextRequest) {
     }
     proxiesDoLote = escolhidas.map((e) => e.p);
     linhasUsadas = escolhidas.map((e) => e.linha);
+    // Bloquear lote quando dois IPs de saída forem iguais (mesma sessão no batch).
+    const ipsDoBatch = new Map<string, string>();
+    for (const { p } of escolhidas) {
+      const ip = testeDe.get(p.url)?.ip;
+      if (!ip) continue;
+      const anterior = ipsDoBatch.get(ip);
+      if (anterior) return NextResponse.json({ error: `Duas contas com o mesmo IP de saída (${ip}): ${anterior} e ${p.host}:${p.porta}.`, problemas }, { status: 409 });
+      ipsDoBatch.set(ip, `${p.host}:${p.porta}`);
+    }
   }
   const quantidade = Math.min(proxiesDoLote.length, lote.quantidade);
   const contasDoLote = lote.contas.slice(0, quantidade);
@@ -259,6 +283,18 @@ export async function POST(req: NextRequest) {
       criados.pop();
       if (isMissingSchemaError(devErr)) return NextResponse.json({ error: SQL_FALTA, criados }, { status: 503 });
       return NextResponse.json({ error: devErr.message, criados }, { status: 500 });
+    }
+  }
+
+  // Gravar IP de saída de cada proxy do lote em proxy_ip_uso (formulário novo com teste de vida).
+  if (lote.gerarPessoa) {
+    const registrosIp = proxiesDoLote.slice(0, quantidade).flatMap((p) => {
+      const ip = testeDe.get(p.url)?.ip;
+      return ip ? [{ host: p.host, porta: p.porta, ip_saida: ip, user_id: user.id, criado_at: now }] : [];
+    });
+    if (registrosIp.length) {
+      const { error: ipErr } = await admin.from("proxy_ip_uso").insert(registrosIp);
+      if (ipErr && !isMissingSchemaError(ipErr)) console.error("proxy_ip_uso insert:", ipErr.message);
     }
   }
 

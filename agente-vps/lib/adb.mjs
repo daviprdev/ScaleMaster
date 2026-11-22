@@ -198,9 +198,9 @@ export class Dispositivo {
     if (r.codigo !== 0 || !/Success/i.test(String(r.stdout))) throw new Error(`adb install falhou: ${trecho(r.stderr || r.stdout)}`);
   }
 
-  /** Instala um APK dividido (base + splits) de uma vez: adb install-multiple [-i instalador] -r -g. */
-  async instalarMultiplos(caminhos, { instalador = null } = {}) {
-    const r = await rodar(this.adb, ["-s", this.serial, "install-multiple", ...(instalador ? ["-i", instalador] : []), "-r", "-g", ...caminhos], { timeoutMs: 10 * 60_000 });
+  /** Instala um APK dividido (base + splits) de uma vez: adb install-multiple [-i instalador] [--abi abi] -r -g. */
+  async instalarMultiplos(caminhos, { instalador = null, abi = null } = {}) {
+    const r = await rodar(this.adb, ["-s", this.serial, "install-multiple", ...(instalador ? ["-i", instalador] : []), ...(abi ? ["--abi", abi] : []), "-r", "-g", ...caminhos], { timeoutMs: 10 * 60_000 });
     if (r.codigo !== 0 || !/Success/i.test(String(r.stdout))) throw new Error(`adb install-multiple falhou: ${trecho(r.stderr || r.stdout)}`);
   }
 

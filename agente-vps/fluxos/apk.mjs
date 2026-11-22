@@ -131,7 +131,20 @@ export async function instalarInstagram(d, versao, log, { arch = process.arch, p
     const hashes = conferirSha256(arquivos);
     log(`sha256 ok: ${hashes.map((h) => `${path.basename(h.arquivo)} ${h.sha256.slice(0, 12)}…`).join(", ")}`);
     if (atual && abiAtual !== abi) await d.shell("pm", "uninstall", INSTAGRAM).catch(() => {});
-    await d.instalarMultiplos(arquivos, { instalador });
+    await d.instalarMultiplos(arquivos, { instalador, abi: "x86_64" });
+    // Verifica crash libnb.so: inicia, aguarda 6 s, lê logcat de crash.
+    await d.shell("am", "start", "-n", `${INSTAGRAM}/com.instagram.android.activity.MainTabActivity`).catch(() => {});
+    await new Promise((r) => setTimeout(r, 6000));
+    const crashLog = await d.shell("logcat", "-d", "-t", "200", "-b", "crash").catch(() => "");
+    await d.shell("am", "force-stop", INSTAGRAM).catch(() => {});
+    if (String(crashLog).includes("libnb.so")) {
+      log("libnb.so detectado: revertendo abilist e reinstalando sem --abi");
+      for (const prop of ["ro.product.cpu.abilist", "ro.product.cpu.abilist64", "ro.product.cpu.abilist32"]) {
+        await d.shell("setprop", prop, "").catch(() => {});
+      }
+      await d.shell("pm", "uninstall", INSTAGRAM).catch(() => {});
+      await d.instalarMultiplos(arquivos, { instalador });
+    }
   } else {
     await d.instalar(caminhoApk(versao, pasta), { instalador });
   }
