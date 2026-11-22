@@ -108,6 +108,23 @@ describe("Isolamento: docker run", () => {
     expect(args).toContain("scalemaster.conta=0b0e6a52-6d0a-4f0e-9a51-3c1f6d2a9b11");
   });
 
+  it("entrypoint /init com o hardware, a tela e o dpi do perfil (ro.hardware sai do androidboot.hardware)", () => {
+    const { rede, ip } = enderecoDe(spec.device, spec.index);
+    const perfil = { ...spec, device: { ...spec.device, hardware: "qcom", resolucao: "1080x2400", dpi: 405 } };
+    const args: string[] = argsDoContainer(perfil, { props: "/opt/scalemaster/vps/props/ig-7", rede, ip, cota: { cpus: "2", memoria: "2048m" } });
+    const imagem = args.indexOf("--entrypoint");
+    expect(args[imagem + 1]).toBe("/init");
+    expect(args.slice(imagem + 3, imagem + 5)).toEqual(["qemu=1", "androidboot.hardware=qcom"]);
+    expect(args).toEqual(expect.arrayContaining(["androidboot.redroid_width=1080", "androidboot.redroid_height=2400", "androidboot.redroid_dpi=405", "androidboot.verifiedbootstate=green"]));
+    // O servidor gera a identidade com o mesmo perfil do agente: hardware, tela e um dos 8 builds.
+    const moto = novoDevice("moto-g84", "BR", 9);
+    expect(moto).toMatchObject({ hardware: "qcom", board: "bangkk", platform: "holi", resolucao: "1080x2400", dpi: 405 });
+    expect(moto.fingerprint).toContain(`/${moto.buildId}/`);
+    expect(moto.buildId).toMatch(/^T1TBS33\.78-/);
+    // Sem hardware no perfil (identidade antiga): o mesmo da imagem.
+    expect(argsDoContainer(spec, { props: "/x", rede, ip, cota: { cpus: "2", memoria: "2048m" } })).toContain("androidboot.hardware=redroid");
+  });
+
   it("hostname só com letras, números e hífen", () => {
     expect(hostnameDe("Pixel 7")).toBe("Pixel-7");
     expect(hostnameDe("SM-A546E")).toBe("SM-A546E");

@@ -200,6 +200,12 @@ export interface VpsDeviceSpec {
   buildId: string;
   resolucao: string;
   dpi: number;
+  /** Perfil de 22/11 (identidades antigas não têm: o agente cai no device/redroid). */
+  board?: string;
+  hardware?: string;
+  platform?: string;
+  buildHost?: string;
+  buildUser?: string;
   timezone: string;
   locale: string;
   pais: string;

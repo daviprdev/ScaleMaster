@@ -106,6 +106,8 @@ export function propsDe(device) {
     "ro.product.board": device.board ?? device.device,
     "ro.board.platform": device.platform ?? device.device,
     "ro.hardware": device.hardware ?? device.device,
+    // O hwcomposer do redroid (hwcomposer.redroid.so) era achado pelo ro.hardware; com o hardware do perfil fica fixado aqui.
+    "ro.hardware.hwcomposer": "redroid",
     "ro.build.host": device.buildHost ?? "localhost",
     "ro.build.user": device.buildUser ?? "android-build",
     "ro.debuggable": "0",

@@ -14,7 +14,16 @@ interface PerfilReal {
   brand: string;
   device: string;
   product: string;
-  buildId: string;
+  /** Builds reais do Android 13 do aparelho; cada conta sorteia um (igual a agente-vps/lib/fingerprint.mjs). */
+  buildIds: readonly string[];
+  board: string;
+  /** Vai em androidboot.hardware (ro.hardware) e no build.prop. */
+  hardware: string;
+  platform: string;
+  resolucao: string;
+  dpi: number;
+  buildHost: string;
+  buildUser: string;
   /** Prefixo do serial (Pixel: 12 hex; Samsung: R5C…; Moto: ZY…). */
   serial: () => string;
 }
@@ -32,7 +41,14 @@ export const PERFIS_REAIS: ReadonlyArray<PerfilReal> = [
     brand: "google",
     device: "panther",
     product: "panther",
-    buildId: "TQ3A.230901.001",
+    board: "panther",
+    hardware: "panther",
+    platform: "gs201",
+    resolucao: "1080x2400",
+    dpi: 420,
+    buildHost: "abfarm-release-rbe-64-0002",
+    buildUser: "android-build",
+    buildIds: ["TQ3A.230901.001", "TQ3A.230805.001", "TQ2A.230505.002", "TQ3A.230705.001", "TQ1A.230205.002", "TQ3A.230605.010", "TQ2A.230405.003", "TQ3A.230805.002"],
     serial: () => sortearDe(HEX, 12),
   },
   {
@@ -42,7 +58,14 @@ export const PERFIS_REAIS: ReadonlyArray<PerfilReal> = [
     brand: "samsung",
     device: "a54x",
     product: "a54xnsxx",
-    buildId: "TP1A.220624.014",
+    board: "s5e8835",
+    hardware: "s5e8835",
+    platform: "exynos1380",
+    resolucao: "1080x2340",
+    dpi: 450,
+    buildHost: "SWDD6822",
+    buildUser: "dpi",
+    buildIds: ["TP1A.220624.014", "TP1A.220624.021", "TP1A.220624.018", "TP1A.220624.024", "TP1A.220624.011", "TP1A.220624.027", "TP1A.220624.016", "TP1A.220624.030"],
     serial: () => `R5CW${sortearDe(ALNUM, 7)}`,
   },
   {
@@ -52,7 +75,14 @@ export const PERFIS_REAIS: ReadonlyArray<PerfilReal> = [
     brand: "motorola",
     device: "bangkk",
     product: "bangkk_g",
-    buildId: "T1TBS33.78-62-7",
+    board: "bangkk",
+    hardware: "qcom",
+    platform: "holi",
+    resolucao: "1080x2400",
+    dpi: 405,
+    buildHost: "ilclbld35",
+    buildUser: "hudsoncm",
+    buildIds: ["T1TBS33.78-62-7", "T1TBS33.78-62-5", "T1TBS33.78-54-2", "T1TBS33.78-62-9", "T1TBS33.78-45-1", "T1TBS33.78-62-11", "T1TBS33.78-68-3", "T1TBS33.78-62-14"],
     serial: () => `ZY${sortearDe(ALNUM, 10)}`,
   },
 ];
@@ -149,6 +179,7 @@ export function ipDoDevice(device: Pick<VpsDeviceSpec, "index" | "rede" | "ip">)
   return device.ip || ipNaRede(device.rede ?? 0, device.index);
 }
 
+/** Tela de identidade antiga (antes de 22/11 o perfil não trazia tela; o agente cai nisto sem resolucao/dpi). */
 export const RESOLUCAO = "1080x1920";
 export const DPI = 420;
 
@@ -163,7 +194,8 @@ export const DPI = 420;
 export function novoDevice(perfil: DevicePerfil, pais: string, index: number, rede = 0): VpsDeviceSpec {
   const real = perfil === "aleatorio" ? PERFIS_REAIS[randomInt(PERFIS_REAIS.length)] : PERFIS_REAIS.find((p) => p.key === perfil) ?? PERFIS_REAIS[0];
   const { timezone, locale } = geoDoPais(pais);
-  const fingerprint = `${real.brand}/${real.product}/${real.device}:13/${real.buildId}/${incremental()}:user/release-keys`;
+  const buildId = real.buildIds[randomInt(real.buildIds.length)];
+  const fingerprint = `${real.brand}/${real.product}/${real.device}:13/${buildId}/${incremental()}:user/release-keys`;
   return {
     androidId: gerarAndroidId(),
     serial: real.serial(),
@@ -174,10 +206,15 @@ export function novoDevice(perfil: DevicePerfil, pais: string, index: number, re
     brand: real.brand,
     device: real.device,
     product: real.product,
+    board: real.board,
+    hardware: real.hardware,
+    platform: real.platform,
+    buildHost: real.buildHost,
+    buildUser: real.buildUser,
     fingerprint,
-    buildId: real.buildId,
-    resolucao: RESOLUCAO,
-    dpi: DPI,
+    buildId,
+    resolucao: real.resolucao,
+    dpi: real.dpi,
     timezone,
     locale,
     pais: pais.toUpperCase(),
