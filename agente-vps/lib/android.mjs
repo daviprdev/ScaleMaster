@@ -154,7 +154,7 @@ export function argsDoContainer(spec, { props, rede, ip, cota = cotaAtual() }) {
   // decisão: além do -e, o mesmo androidboot.selinux vai na cmdline, que é de onde o redroid lê os androidboot.*.
   // A imagem traz ENTRYPOINT ["/init","qemu=1","androidboot.hardware=redroid"] e o init grava ro.hardware dali antes do
   // build.prop (ro.* = primeiro valor vale). Com --entrypoint o androidboot.hardware vem do perfil; qemu=1 fica.
-  args.push("--entrypoint", "/init", IMAGEM, "qemu=1", `androidboot.hardware=${spec.device.hardware ?? "redroid"}`, ...ARGS_REDROID, ...argsDaTela(spec.device), `androidboot.redroid_net_dns1=${ip}`, "androidboot.selinux=permissive", "androidboot.verifiedbootstate=green", "androidboot.flash.locked=1", "androidboot.veritymode=enforcing", `androidboot.serialno=${spec.device.serial}`);
+  args.push("--entrypoint", "/init", IMAGEM, "qemu=1", `androidboot.hardware=${spec.device.hardware ?? "redroid"}`, ...ARGS_REDROID, ...argsDaTela(spec.device), `androidboot.redroid_net_dns1=${ip}`, "androidboot.selinux=permissive", "androidboot.verifiedbootstate=green", "androidboot.flash.locked=1", "androidboot.veritymode=enforcing", `androidboot.serialno=${spec.device.serial}`, `androidboot.bootloader=${spec.device.bootloader ?? spec.device.buildId}`);
   return args;
 }
 /** Props que só entram no boot (build.prop / cmdline): mudar uma delas recria o container. */

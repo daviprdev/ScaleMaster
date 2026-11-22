@@ -24,6 +24,7 @@ interface PerfilReal {
   dpi: number;
   buildHost: string;
   buildUser: string;
+  versao: number;
   /** Prefixo do serial (Pixel: 12 hex; Samsung: R5C…; Moto: ZY…). */
   serial: () => string;
 }
@@ -48,6 +49,7 @@ export const PERFIS_REAIS: ReadonlyArray<PerfilReal> = [
     dpi: 420,
     buildHost: "abfarm-release-rbe-64-0002",
     buildUser: "android-build",
+    versao: 13,
     buildIds: ["TQ3A.230901.001", "TQ3A.230805.001", "TQ2A.230505.002", "TQ3A.230705.001", "TQ1A.230205.002", "TQ3A.230605.010", "TQ2A.230405.003", "TQ3A.230805.002"],
     serial: () => sortearDe(HEX, 12),
   },
@@ -65,6 +67,7 @@ export const PERFIS_REAIS: ReadonlyArray<PerfilReal> = [
     dpi: 450,
     buildHost: "SWDD6822",
     buildUser: "dpi",
+    versao: 13,
     buildIds: ["TP1A.220624.014", "TP1A.220624.021", "TP1A.220624.018", "TP1A.220624.024", "TP1A.220624.011", "TP1A.220624.027", "TP1A.220624.016", "TP1A.220624.030"],
     serial: () => `R5CW${sortearDe(ALNUM, 7)}`,
   },
@@ -82,9 +85,19 @@ export const PERFIS_REAIS: ReadonlyArray<PerfilReal> = [
     dpi: 405,
     buildHost: "ilclbld35",
     buildUser: "hudsoncm",
+    versao: 13,
     buildIds: ["T1TBS33.78-62-7", "T1TBS33.78-62-5", "T1TBS33.78-54-2", "T1TBS33.78-62-9", "T1TBS33.78-45-1", "T1TBS33.78-62-11", "T1TBS33.78-68-3", "T1TBS33.78-62-14"],
     serial: () => `ZY${sortearDe(ALNUM, 10)}`,
   },
+  { key: "pixel6a", model: "Pixel 6a", manufacturer: "Google", brand: "google", device: "bluejay", product: "bluejay", board: "bluejay", hardware: "bluejay", platform: "gs101", resolucao: "1080x2400", dpi: 420, buildHost: "abfarm-release-rbe-64-0002", buildUser: "android-build", versao: 13, buildIds: ["TQ3A.230901.001", "TQ3A.230805.001", "TQ2A.230505.002", "TQ3A.230705.001", "TQ1A.230205.002", "TQ3A.230605.010", "TQ2A.230405.003", "TQ3A.230805.002"], serial: () => sortearDe(HEX, 12) },
+  { key: "pixel8", model: "Pixel 8", manufacturer: "Google", brand: "google", device: "shiba", product: "shiba", board: "shiba", hardware: "shiba", platform: "zuma", resolucao: "1080x2400", dpi: 420, buildHost: "abfarm-release-rbe-64-0002", buildUser: "android-build", versao: 14, buildIds: ["UQ1A.240205.002", "UQ1A.240105.004", "UP1A.231105.003", "UQ1A.240205.004", "UQ1A.231205.015", "UP1A.231105.001", "UQ1A.240205.007", "UQ1A.240305.002"], serial: () => sortearDe(HEX, 12) },
+  { key: "sm-a346e", model: "SM-A346E", manufacturer: "samsung", brand: "samsung", device: "a34x", product: "a34xnsxx", board: "mt6877", hardware: "mt6877", platform: "mt6877", resolucao: "1080x2340", dpi: 450, buildHost: "SWDD6822", buildUser: "dpi", versao: 13, buildIds: ["TP1A.220624.014", "TP1A.220624.021", "TP1A.220624.018", "TP1A.220624.024", "TP1A.220624.011", "TP1A.220624.027", "TP1A.220624.016", "TP1A.220624.030"], serial: () => `R5CW${sortearDe(ALNUM, 7)}` },
+  { key: "sm-a155m", model: "SM-A155M", manufacturer: "samsung", brand: "samsung", device: "a15x", product: "a15xnsxx", board: "mt6789", hardware: "mt6789", platform: "mt6789", resolucao: "1080x2340", dpi: 450, buildHost: "SWDD6822", buildUser: "dpi", versao: 14, buildIds: ["UP1A.231005.007", "UP1A.231005.011", "UP1A.231005.014", "UP1A.231005.019", "UP1A.231005.022", "UP1A.231005.026", "UP1A.231005.031", "UP1A.231005.035"], serial: () => `R5CW${sortearDe(ALNUM, 7)}` },
+  { key: "moto-g54", model: "moto g54 5G", manufacturer: "motorola", brand: "motorola", device: "devonf", product: "devonf_g", board: "mt6855", hardware: "mt6855", platform: "mt6855", resolucao: "1080x2400", dpi: 405, buildHost: "ilclbld35", buildUser: "hudsoncm", versao: 13, buildIds: ["T1TBS33.78-62-7", "T1TBS33.78-62-5", "T1TBS33.78-54-2", "T1TBS33.78-62-9", "T1TBS33.78-45-1", "T1TBS33.78-62-11", "T1TBS33.78-68-3", "T1TBS33.78-62-14"], serial: () => `ZY${sortearDe(ALNUM, 10)}` },
+  { key: "moto-e14", model: "moto e14", manufacturer: "motorola", brand: "motorola", device: "milanf", product: "milanf_g", board: "mt6769", hardware: "mt6769", platform: "mt6769", resolucao: "720x1600", dpi: 270, buildHost: "ilclbld35", buildUser: "hudsoncm", versao: 14, buildIds: ["U1TBS34.33-42-3", "U1TBS34.33-42-5", "U1TBS34.33-38-2", "U1TBS34.33-42-8", "U1TBS34.33-45-1", "U1TBS34.33-42-11", "U1TBS34.33-48-2", "U1TBS34.33-42-14"], serial: () => `ZY${sortearDe(ALNUM, 10)}` },
+  { key: "redmi-note-12", model: "Redmi Note 12", manufacturer: "Xiaomi", brand: "Redmi", device: "tapas", product: "tapas_global", board: "holi", hardware: "qcom", platform: "holi", resolucao: "1080x2400", dpi: 395, buildHost: "c5-xm-build-06", buildUser: "builder", versao: 13, buildIds: ["TKQ1.221114.001", "TKQ1.221013.002", "TKQ1.221114.005", "TKQ1.221013.007", "TKQ1.221114.009", "TKQ1.221013.011", "TKQ1.221114.013", "TKQ1.221013.016"], serial: () => sortearDe(ALNUM, 9) },
+  { key: "sm-g990e", model: "SM-G990E", manufacturer: "samsung", brand: "samsung", device: "r9q", product: "r9qnsxx", board: "r9q", hardware: "qcom", platform: "lahaina", resolucao: "1080x2340", dpi: 450, buildHost: "SWDD6822", buildUser: "dpi", versao: 13, buildIds: ["TP1A.220624.014", "TP1A.220624.021", "TP1A.220624.018", "TP1A.220624.024", "TP1A.220624.011", "TP1A.220624.027", "TP1A.220624.016", "TP1A.220624.030"], serial: () => `R5CW${sortearDe(ALNUM, 7)}` },
+  { key: "moto-g73", model: "moto g73 5G", manufacturer: "motorola", brand: "motorola", device: "devon", product: "devon_g", board: "mt6833", hardware: "mt6833", platform: "mt6833", resolucao: "1080x2400", dpi: 405, buildHost: "ilclbld35", buildUser: "hudsoncm", versao: 13, buildIds: ["T1TBS33.78-62-7", "T1TBS33.78-62-5", "T1TBS33.78-54-2", "T1TBS33.78-62-9", "T1TBS33.78-45-1", "T1TBS33.78-62-11", "T1TBS33.78-68-3", "T1TBS33.78-62-14"], serial: () => `ZY${sortearDe(ALNUM, 10)}` },
 ];
 
 /** Fuso e idioma pelo país da proxy (ISO-2). Fora da lista: en-US / UTC. */
@@ -195,7 +208,8 @@ export function novoDevice(perfil: DevicePerfil, pais: string, index: number, re
   const real = perfil === "aleatorio" ? PERFIS_REAIS[randomInt(PERFIS_REAIS.length)] : PERFIS_REAIS.find((p) => p.key === perfil) ?? PERFIS_REAIS[0];
   const { timezone, locale } = geoDoPais(pais);
   const buildId = real.buildIds[randomInt(real.buildIds.length)];
-  const fingerprint = `${real.brand}/${real.product}/${real.device}:13/${buildId}/${incremental()}:user/release-keys`;
+  const fingerprint = `${real.brand}/${real.product}/${real.device}:${real.versao}/${buildId}/${incremental()}:user/release-keys`;
+  const patch = new Date(Date.now() - randomInt(30, 120) * 86400000).toISOString().slice(0, 10);
   return {
     androidId: gerarAndroidId(),
     serial: real.serial(),
@@ -213,6 +227,9 @@ export function novoDevice(perfil: DevicePerfil, pais: string, index: number, re
     buildUser: real.buildUser,
     fingerprint,
     buildId,
+    versao: real.versao,
+    securityPatch: patch,
+    bootloader: buildId,
     resolucao: real.resolucao,
     dpi: real.dpi,
     timezone,

@@ -11,13 +11,22 @@ import type { PlanoEtapa } from "./estruturacao";
 export type AgentKind = "mumu" | "vps";
 
 /** Perfis de aparelho que o lote pode pedir (fingerprint coerente com Android 13). */
-export type DevicePerfil = "aleatorio" | "pixel7" | "sm-a546e" | "moto-g84";
+export type DevicePerfil = "aleatorio" | "pixel7" | "sm-a546e" | "moto-g84" | "pixel6a" | "pixel8" | "sm-a346e" | "sm-a155m" | "moto-g54" | "moto-e14" | "redmi-note-12" | "sm-g990e" | "moto-g73";
 
 export const DEVICE_PERFIS: ReadonlyArray<{ key: DevicePerfil; label: string }> = [
   { key: "aleatorio", label: "Aleatório" },
   { key: "pixel7", label: "Google Pixel 7" },
+  { key: "pixel6a", label: "Google Pixel 6a" },
+  { key: "pixel8", label: "Google Pixel 8" },
   { key: "sm-a546e", label: "Samsung Galaxy A54 (SM-A546E)" },
+  { key: "sm-a346e", label: "Samsung Galaxy A34 (SM-A346E)" },
+  { key: "sm-a155m", label: "Samsung Galaxy A15 (SM-A155M)" },
+  { key: "sm-g990e", label: "Samsung Galaxy S21 FE (SM-G990E)" },
   { key: "moto-g84", label: "Motorola Moto G84" },
+  { key: "moto-g54", label: "Motorola Moto G54 5G" },
+  { key: "moto-e14", label: "Motorola Moto E14" },
+  { key: "moto-g73", label: "Motorola Moto G73 5G" },
+  { key: "redmi-note-12", label: "Xiaomi Redmi Note 12" },
 ];
 
 /** O que a VPS informa no sync (emulator_agents.capacidade). */
@@ -198,6 +207,9 @@ export interface VpsDeviceSpec {
   product: string;
   fingerprint: string;
   buildId: string;
+  versao: number;
+  securityPatch: string;
+  bootloader: string;
   resolucao: string;
   dpi: number;
   /** Perfil de 22/11 (identidades antigas não têm: o agente cai no device/redroid). */
