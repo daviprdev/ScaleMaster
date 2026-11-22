@@ -122,12 +122,14 @@ export class Dispositivo {
   }
 
   /**
-   * Perfil com ro.secure=1 / ro.debuggable=0 (22/11): o adbd sobe como shell e recusa `adb root`. Aí todo
-   * shell() vai por `su 0` (o /system/xbin/su do redroid aceita o uid shell), igual ao adbd root de antes.
-   * Container antigo (adbd root) fica sem prefixo. Uma leitura de `id -u` por conexão.
+   * Perfil com ro.secure=1 / ro.debuggable=0 (22/11): o adbd sobe como shell, recusa `adb root` e tira
+   * CAP_SETUID/CAP_SETGID do bounding set (o su falha com "setgid failed"). Aí todo shell() vai por
+   * `docker exec ig-N sh -c` (root com todas as capabilities, igual ao adbd root de antes); se o su
+   * funcionar (imagem que não derruba as capabilities), vai por `su 0`. Container antigo (adbd root) fica
+   * como estava. Uma leitura de `id -u` por conexão.
    */
   async detectarRoot() {
-    if (this.prefixo !== undefined) return;
+    if (this.prefixo !== undefined || this.container) return;
     const uid = await rodar(this.adb, ["-s", this.serial, "shell", "id", "-u"], { timeoutMs: 20_000 });
     if (uid.codigo !== 0) return;
     if (String(uid.stdout).trim() === "0") {
@@ -135,8 +137,17 @@ export class Dispositivo {
       return;
     }
     const su = await rodar(this.adb, ["-s", this.serial, "shell", "su", "0", "id", "-u"], { timeoutMs: 20_000 });
-    if (su.codigo === 0 && String(su.stdout).trim() === "0") this.prefixo = ["su", "0"];
-    else throw new Error(`adbd sem root em ${this.serial} e su indisponível: ${trecho(su.stdout || su.stderr)}`);
+    if (su.codigo === 0 && String(su.stdout).trim() === "0") {
+      this.prefixo = ["su", "0"];
+      return;
+    }
+    const nome = this.index === null ? null : `ig-${this.index}`;
+    const exec = nome ? await rodar("docker", ["exec", nome, "id", "-u"], { timeoutMs: 20_000 }) : null;
+    if (exec?.codigo === 0 && String(exec.stdout).trim() === "0") {
+      this.container = nome;
+      return;
+    }
+    throw new Error(`adbd sem root em ${this.serial}: su (${trecho(su.stdout || su.stderr)}) e docker exec ${nome ?? "?"} (${trecho(exec?.stderr || exec?.stdout || "sem índice")}) falharam`);
   }
 
   async desconectar() {
@@ -145,8 +156,8 @@ export class Dispositivo {
 
   /** adbd como root (o redroid permite): precisa para settings e para ler /data. */
   async root() {
-    // Build de produção (ro.debuggable=0): adb root é recusado; o root vem do su 0 que detectarRoot() já ligou.
-    if (this.prefixo?.length) return;
+    // Build de produção (ro.debuggable=0): adb root é recusado; o root vem do su 0 / docker exec que detectarRoot() já ligou.
+    if (this.prefixo?.length || this.container) return;
     const r = await rodar(this.adb, ["-s", this.serial, "root"], { timeoutMs: 30_000 });
     if (/production builds/i.test(String(r.stdout + r.stderr))) {
       this.prefixo = undefined;
@@ -167,7 +178,10 @@ export class Dispositivo {
 
   async shell(...args) {
     if (!Dispositivo.SO_LEITURA.has(String(args[0]))) this.telaGuardada_ = null;
-    const r = await rodar(this.adb, ["-s", this.serial, "shell", ...(this.prefixo ?? []), ...args], { timeoutMs: 60_000 });
+    // docker exec: mesma linha que o adb shell mandaria (argumentos juntados por espaço, o sh do Android interpreta).
+    const r = this.container
+      ? await rodar("docker", ["exec", this.container, "sh", "-c", args.map(String).join(" ")], { timeoutMs: 60_000 })
+      : await rodar(this.adb, ["-s", this.serial, "shell", ...(this.prefixo ?? []), ...args], { timeoutMs: 60_000 });
     if (r.codigo !== 0) throw new Error(`adb shell ${args[0]} falhou: ${trecho(r.stderr || r.stdout)}`);
     return String(r.stdout);
   }
