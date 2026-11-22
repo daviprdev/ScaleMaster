@@ -1,21 +1,21 @@
 // Scale Master Story — chamadas ao Instagram, rodando dentro de www.instagram.com.
 // Usa a sessão do próprio perfil (cookies do AdsPower): mesma origem, sem token.
 //
-// Fluxo:
-//   1. rupload_igphoto/fb_uploader_<id>          → sobe a arte 1080×1920 (adesivo já desenhado nela)
-//   2. api/v1/media/validate_reel_url/            → o Instagram confere o link (falha não para)
-//   3. api/v1/media/configure_to_story/           → publica com tap_models (área clicável do link)
-//   4. api/v1/highlights/<uid>/highlights_tray/   → acha o destaque pelo nome (sem acento/emoji/caixa)
-//      api/v1/highlights/highlight:<pk>/edit_reel/ → junta o story ao destaque existente
-//      api/v1/highlights/create_reel/             → ou cria um destaque novo com ele de capa
-//
-// O adesivo no app também é desenhado na mídia; o tap_model só marca onde tocar.
+// Fluxo (1.0.1, conferido em 22/11 — a 1.0.0 mandava a foto pelo www e o configure dava 500):
+//   1. i.instagram.com/rupload_igphoto/fb_uploader_<id>   → foto 1080×1920 com o adesivo desenhado
+//      (sai do service worker: background.js, "sm-upload")
+//   2. www /api/v1/media/configure_to_story/              → upload_id + configure_mode=1 +
+//      story_link_stickers [{x,y,width,height,rotation,link_type:"web",url}] (centro e tamanho em fração da tela)
+//   3. www /api/v1/highlights/<uid>/highlights_tray/      → acha o destaque pelo nome (sem acento/emoji/caixa)
+//      www /api/v1/highlights/highlight:<pk>/edit_reel/   → junta o story ao destaque existente
+//      www /api/v1/highlights/create_reel/                → ou cria um destaque novo com o story de capa
+// O adesivo é desenhado na foto; story_link_stickers só marca onde tocar.
+// (/api/v1/media/validate_reel_url/ e /api/v1/web/create/configure_to_story/ dão 404 pelo www.)
 
 (() => {
   const BASE = "https://www.instagram.com";
   const APP_ID = "936619743392459"; // app web do Instagram
   const ASBD_ID = "129477";
-  const RECORTE_CAPA = [0.0, 0.21830457, 1.0, 0.78094524];
 
   class ErroIG extends Error {
     constructor(status, dados, texto) {
@@ -25,15 +25,22 @@
     }
   }
 
+  function textoDoHtml(texto) {
+    const titulo = /<title[^>]*>([^<]*)<\/title>/i.exec(String(texto || ""))?.[1];
+    return titulo ? titulo.replace(/&bull;/g, "·").replace(/&amp;/g, "&").trim() : "";
+  }
+
   function mensagemDeErro(status, dados, texto) {
-    const m = (dados && (dados.feedback_message || dados.message)) || "";
+    const m = (dados && (dados.feedback_message || dados.message || dados.error_type)) || "";
     if (dados?.message === "login_required" || status === 401) return "Sessão do Instagram caiu neste perfil: entre de novo.";
     if (dados?.message === "checkpoint_required" || dados?.checkpoint_url) return "O Instagram pediu verificação (checkpoint) nesta conta.";
     if (dados?.message === "feedback_required" || dados?.spam) return `Ação bloqueada pelo Instagram: ${dados.feedback_message || dados.feedback_title || m}`;
     if (status === 429) return "Muitas requisições seguidas (429): espere alguns minutos.";
     if (m) return `HTTP ${status}: ${m}`;
-    const curto = String(texto || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
-    return `HTTP ${status}${curto ? `: ${curto}` : ""}`;
+    const titulo = textoDoHtml(texto);
+    if (titulo) return `HTTP ${status}: ${titulo}`;
+    const curto = String(texto || "").replace(/\s+/g, " ").trim().slice(0, 160);
+    return `HTTP ${status}${curto && !curto.startsWith("<") ? `: ${curto}` : ""}`;
   }
 
   function lerCookie(nome) {
@@ -41,16 +48,8 @@
     return par ? decodeURIComponent(par.slice(nome.length + 1)) : "";
   }
 
-  function versaoAjax() {
-    const html = document.documentElement.innerHTML;
-    const m = html.match(/"rollout_hash":"([^"]+)"/) || html.match(/"server_revision":(\d+)/) || html.match(/"client_revision":(\d+)/);
-    return m ? m[1] : "";
-  }
-
-  let ajax = null;
   function cabecalhos(extra = {}) {
-    if (ajax === null) ajax = versaoAjax();
-    const h = {
+    return {
       "X-CSRFToken": lerCookie("csrftoken"),
       "X-IG-App-ID": APP_ID,
       "X-ASBD-ID": ASBD_ID,
@@ -58,17 +57,13 @@
       "X-IG-WWW-Claim": sessionStorage.getItem("www-claim-v2") || "0",
       ...extra,
     };
-    if (ajax) h["X-Instagram-AJAX"] = ajax;
-    return h;
   }
 
-  async function chamar(caminho, { metodo = "GET", form, corpo, headers } = {}) {
+  async function chamar(caminho, { metodo = "GET", form, headers } = {}) {
     const opcoes = { method: metodo, credentials: "include", headers: cabecalhos(headers) };
     if (form) {
       opcoes.body = new URLSearchParams(form);
       opcoes.headers["Content-Type"] = "application/x-www-form-urlencoded";
-    } else if (corpo) {
-      opcoes.body = corpo;
     }
     const r = await fetch(BASE + caminho, opcoes);
     const claim = r.headers.get("x-ig-set-www-claim");
@@ -83,6 +78,7 @@
   }
 
   const esperar = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  const erroDeConta = (e) => /Sessão|checkpoint|bloqueada|429/.test(String(e?.message));
 
   function normalizar(t) {
     return String(t || "")
@@ -96,7 +92,7 @@
     const uid = lerCookie("ds_user_id");
     const csrf = lerCookie("csrftoken");
     if (!uid || !csrf) throw new Error("Nenhuma conta logada no Instagram neste perfil.");
-    return uid;
+    return { uid, csrf };
   }
 
   async function contaAtual() {
@@ -106,69 +102,29 @@
     return { username: u.username || "", nome: u.full_name || "", foto: u.profile_pic_url || "" };
   }
 
-  async function subirFoto(bytes, largura, altura) {
-    const uploadId = String(Date.now());
-    const nome = `fb_uploader_${uploadId}`;
-    await chamar(`/rupload_igphoto/${nome}`, {
-      metodo: "POST",
-      corpo: new Blob([bytes], { type: "image/jpeg" }),
-      headers: {
-        "Content-Type": "image/jpeg",
-        "X-Entity-Name": nome,
-        "X-Entity-Length": String(bytes.byteLength),
-        "X-Entity-Type": "image/jpeg",
-        Offset: "0",
-        "X-Instagram-Rupload-Params": JSON.stringify({
-          media_type: 1,
-          upload_id: uploadId,
-          upload_media_height: altura,
-          upload_media_width: largura,
-        }),
-      },
-    });
-    return uploadId;
+  async function subirFoto(pedido, csrf) {
+    const r = await chrome.runtime.sendMessage({ tipo: "sm-upload", imagem: pedido.imagem, largura: pedido.largura, altura: pedido.altura, csrf });
+    if (!r?.ok) throw new Error(r?.erro || "O service worker da extensão não respondeu ao envio da foto.");
+    return r.uploadId;
   }
 
-  function camposDoStory(uploadId, uid, largura, altura, link) {
-    const agora = Math.floor(Date.now() / 1000);
-    const campos = {
-      upload_id: uploadId,
-      source_type: "4",
-      configure_mode: "1",
-      caption: "",
-      creation_surface: "camera",
-      capture_type: "normal",
-      media_folder: "Camera",
-      original_media_type: "photo",
-      client_shared_at: String(agora - 5),
-      client_timestamp: String(agora),
-      timezone_offset: String(-new Date().getTimezoneOffset() * 60),
-      extra: JSON.stringify({ source_width: largura, source_height: altura }),
-      edits: JSON.stringify({ crop_original_size: [largura, altura], crop_center: [0, 0], crop_zoom: 1 }),
-      static_models: "[]",
-      _uid: uid,
-    };
+  async function configurar(uploadId, link, avisar) {
+    const form = { upload_id: uploadId, configure_mode: "1" };
     if (link) {
-      campos.story_sticker_ids = "link_sticker_default";
-      campos.tap_models = JSON.stringify([
-        {
-          x: link.x,
-          y: link.y,
-          z: 0,
-          width: link.width,
-          height: link.height,
-          rotation: 0,
-          type: "story_link",
-          is_sticker: true,
-          selected_index: 0,
-          tap_state: 0,
-          link_type: "web",
-          url: link.url,
-          tap_state_str_id: "link_sticker_default",
-        },
+      form.story_link_stickers = JSON.stringify([
+        { x: link.x, y: link.y, width: link.width, height: link.height, rotation: 0, link_type: "web", url: link.url },
       ]);
     }
-    return campos;
+    // decisão: o Instagram às vezes ainda está processando a foto (500/202) — 4 tentativas com espera crescente.
+    for (let tentativa = 1; ; tentativa++) {
+      try {
+        return await chamar("/api/v1/media/configure_to_story/", { metodo: "POST", form });
+      } catch (e) {
+        if (erroDeConta(e) || tentativa >= 4) throw e;
+        avisar(`Instagram ainda processando a foto (${e.message}); nova tentativa ${tentativa + 1}/4 em ${tentativa * 3} s…`);
+        await esperar(tentativa * 3000);
+      }
+    }
   }
 
   function temLink(media, url) {
@@ -181,131 +137,103 @@
     }
   }
 
-  async function configurar(campos, avisar) {
-    // decisão: o Instagram às vezes ainda está processando a foto — tenta de novo algumas vezes.
-    for (let tentativa = 1; ; tentativa++) {
-      try {
-        return { dados: await chamar("/api/v1/media/configure_to_story/", { metodo: "POST", form: campos }), via: "media" };
-      } catch (e) {
-        const msg = String(e.message || "");
-        const processando = e.status === 202 || /transcode|not finished|processing/i.test(msg);
-        if (processando && tentativa < 5) {
-          avisar(`Instagram processando a foto, tentando de novo (${tentativa}/4)…`);
-          await esperar(2500);
-          continue;
-        }
-        const sessaoRuim = /Sessão|checkpoint|bloqueada|429/.test(msg);
-        if (sessaoRuim || tentativa > 1) throw e;
-        // decisão: caminho do app recusado → tenta o caminho da versão web; o link é conferido depois.
-        avisar(`Caminho do app recusou (${msg}); tentando pelo caminho web…`);
-        return { dados: await chamar("/api/v1/web/create/configure_to_story/", { metodo: "POST", form: campos }), via: "web" };
-      }
-    }
-  }
-
   async function bandejaDeDestaques(uid) {
     const d = await chamar(`/api/v1/highlights/${uid}/highlights_tray/`);
     return (d.tray || []).map((h) => ({ id: String(h.id || ""), titulo: h.title || "" }));
   }
 
-  async function juntarAoDestaque(destaqueId, titulo, mediaIds) {
-    const pk = destaqueId.replace(/^highlight:/, "");
-    const d = await chamar(`/api/v1/highlights/highlight:${pk}/edit_reel/`, {
+  function camposDeSessao(s) {
+    return { _csrftoken: s.csrf, _uid: s.uid, _uuid: crypto.randomUUID() };
+  }
+
+  async function juntarAoDestaque(s, destaque, pk) {
+    const id = destaque.id.replace(/^highlight:/, "");
+    const d = await chamar(`/api/v1/highlights/highlight:${id}/edit_reel/`, {
       metodo: "POST",
       form: {
+        ...camposDeSessao(s),
         source: "story_viewer",
-        title: titulo,
-        added_media_ids: JSON.stringify(mediaIds),
+        title: destaque.titulo,
+        added_media_ids: JSON.stringify([pk]),
         removed_media_ids: "[]",
       },
     });
-    return d.reel?.id || `highlight:${pk}`;
+    return d.reel?.id || `highlight:${id}`;
   }
 
-  async function criarDestaque(titulo, mediaIds) {
+  async function criarDestaque(s, titulo, pk, source) {
     const d = await chamar("/api/v1/highlights/create_reel/", {
       metodo: "POST",
       form: {
-        source: "self_profile",
+        ...camposDeSessao(s),
+        source,
         creation_id: String(Date.now()),
         title: titulo,
-        media_ids: JSON.stringify(mediaIds),
-        cover: JSON.stringify({ media_id: mediaIds[0], crop_rect: JSON.stringify(RECORTE_CAPA) }),
+        cover: JSON.stringify({ media_id: pk }),
+        media_ids: JSON.stringify([pk]),
       },
     });
     return d.reel?.id || "";
   }
 
-  async function destacar(uid, media, destaque, avisar) {
-    const titulo = destaque.titulo.trim();
-    const formatos = [[media.id], [String(media.pk)]]; // decisão: id "pk_uid" primeiro, pk puro se recusar.
+  async function destacar(s, pk, destaque, avisar) {
+    const titulo = destaque.titulo.trim().slice(0, 30);
     let existente = null;
     if (destaque.modo !== "novo") {
       try {
-        const bandeja = await bandejaDeDestaques(uid);
+        const bandeja = await bandejaDeDestaques(s.uid);
         existente = bandeja.find((h) => normalizar(h.titulo) === normalizar(titulo)) || null;
         avisar(existente ? `Destaque "${existente.titulo}" encontrado no perfil.` : `Nenhum destaque "${titulo}" no perfil: criando um novo.`);
       } catch (e) {
+        if (erroDeConta(e)) throw e;
         avisar(`Não li os destaques do perfil (${e.message}); criando um novo.`);
       }
     }
     let ultimoErro = null;
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
-      for (const ids of formatos) {
-        try {
-          if (existente) {
-            const id = await juntarAoDestaque(existente.id, existente.titulo, ids);
-            return { acao: "juntado", id, titulo: existente.titulo };
+      try {
+        if (existente) return { acao: "juntado", id: await juntarAoDestaque(s, existente, pk), titulo: existente.titulo };
+        // decisão: "self_profile" primeiro; o Instagram aceita "story_viewer_profile" quando recusa o outro.
+        for (const source of ["self_profile", "story_viewer_profile"]) {
+          try {
+            return { acao: "criado", id: await criarDestaque(s, titulo, pk, source), titulo };
+          } catch (e) {
+            ultimoErro = e;
+            if (erroDeConta(e)) throw e;
           }
-          const id = await criarDestaque(titulo, ids);
-          return { acao: "criado", id, titulo };
-        } catch (e) {
-          ultimoErro = e;
-          if (/Sessão|checkpoint|bloqueada/.test(String(e.message))) throw e;
         }
+      } catch (e) {
+        ultimoErro = e;
+        if (erroDeConta(e)) throw e;
       }
-      avisar(`Destaque ainda não aceitou o story (${ultimoErro?.message}); nova tentativa em ${tentativa * 4} s…`);
-      await esperar(tentativa * 4000);
+      if (tentativa < 3) {
+        avisar(`Destaque ainda não aceitou o story (${ultimoErro?.message}); nova tentativa em ${tentativa * 4} s…`);
+        await esperar(tentativa * 4000);
+      }
     }
     throw ultimoErro || new Error("Destaque recusado.");
   }
 
-  function base64ParaBytes(b64) {
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return bytes;
-  }
-
   // pedido: { imagem (base64 JPEG), largura, altura, link: {url,x,y,width,height} | null, destaque: {titulo, modo} | null }
   async function publicarStory(pedido, avisar = () => {}) {
-    const uid = sessao();
-    const bytes = base64ParaBytes(pedido.imagem);
+    const s = sessao();
 
-    avisar("Enviando a arte para o Instagram…");
-    const uploadId = await subirFoto(bytes, pedido.largura, pedido.altura);
-
-    if (pedido.link) {
-      try {
-        await chamar("/api/v1/media/validate_reel_url/", { metodo: "POST", form: { url: pedido.link.url, _uid: uid } });
-      } catch (e) {
-        if (/Sessão|checkpoint|bloqueada/.test(String(e.message))) throw e;
-        avisar(`Validação do link respondeu: ${e.message} (seguindo).`);
-      }
-    }
+    avisar("Enviando a foto para o Instagram…");
+    const uploadId = await subirFoto(pedido, s.csrf);
+    await esperar(2000);
 
     avisar("Publicando o story com o adesivo de link…");
-    const { dados, via } = await configurar(camposDoStory(uploadId, uid, pedido.largura, pedido.altura, pedido.link), avisar);
+    const dados = await configurar(uploadId, pedido.link, avisar);
     const media = dados.media;
-    if (!media?.id) throw new Error("O Instagram não devolveu o story publicado.");
-    const linkOk = pedido.link ? temLink(media, pedido.link.url) : true;
-    const resultado = { mediaId: media.id, pk: String(media.pk || ""), via, linkOk, destaque: null };
+    const pk = String(media?.pk || String(media?.id || "").split("_")[0] || "");
+    if (!/^\d+$/.test(pk)) throw new Error("O Instagram respondeu sem o ID do story. Confira o perfil antes de publicar de novo.");
+    const resultado = { mediaId: String(media.id || pk), pk, linkOk: pedido.link ? temLink(media, pedido.link.url) : true, destaque: null };
 
     if (pedido.destaque?.titulo?.trim()) {
       avisar("Story no ar. Esperando o Instagram liberar para o destaque…");
-      await esperar(3000);
+      await esperar(4000);
       try {
-        resultado.destaque = await destacar(uid, media, pedido.destaque, avisar);
+        resultado.destaque = await destacar(s, pk, pedido.destaque, avisar);
       } catch (e) {
         resultado.destaque = { erro: e.message };
       }

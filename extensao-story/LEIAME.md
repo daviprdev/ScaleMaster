@@ -15,10 +15,11 @@ Os ajustes ficam salvos no perfil (`chrome.storage.local`); a foto não.
 
 ## Como publica (`instagram.js`)
 
-1. `POST /rupload_igphoto/fb_uploader_<id>` — arte JPEG 1080×1920 com o adesivo desenhado.
-2. `POST /api/v1/media/validate_reel_url/` — conferência do link (falha só avisa).
-3. `POST /api/v1/media/configure_to_story/` com `tap_models` (`story_link`, `link_sticker_default`, x/y/largura/altura do adesivo em fração da tela). Se recusar, tenta `/api/v1/web/create/configure_to_story/` e avisa quando a resposta não traz o link.
-4. Destaque: `GET /api/v1/highlights/<uid>/highlights_tray/` acha pelo nome normalizado (sem acento, emoji, caixa) → `POST /api/v1/highlights/highlight:<pk>/edit_reel/`; senão `POST /api/v1/highlights/create_reel/` com o story de capa. 3 tentativas, id `pk_uid` e depois `pk`.
+1. `POST https://i.instagram.com/rupload_igphoto/fb_uploader_<id>` (service worker, `background.js`) — arte JPEG 1080×1920 com o adesivo desenhado. Pelo `www` o upload responde ok, mas o configure seguinte dá HTTP 500 (1.0.0, 22/11).
+2. `POST /api/v1/media/configure_to_story/` (da página) com `upload_id`, `configure_mode=1` e `story_link_stickers` `[{x, y, width, height, rotation, link_type: "web", url}]` (centro e tamanho do adesivo em fração da tela). 500 = foto ainda processando: 4 tentativas.
+3. Destaque: `GET /api/v1/highlights/<uid>/highlights_tray/` acha pelo nome normalizado (sem acento, emoji, caixa) → `POST /api/v1/highlights/highlight:<pk>/edit_reel/`; senão `POST /api/v1/highlights/create_reel/` (`source` `self_profile`, depois `story_viewer_profile`; `cover` e `media_ids` com o pk numérico). 3 tentativas.
+
+`/api/v1/media/validate_reel_url/` e `/api/v1/web/create/configure_to_story/` dão 404 pelo `www`.
 
 ## Arquivos
 

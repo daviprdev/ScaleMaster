@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Scale Master Story",
   "short_name": "SM Story",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Story com adesivo de link, legenda no adesivo e destaque — Scale Master.",
   "icons": {
     "16": "icones/16.png",
@@ -22,7 +22,7 @@
     "service_worker": "background.js"
   },
   "permissions": ["storage"],
-  "host_permissions": ["https://www.instagram.com/*"],
+  "host_permissions": ["https://www.instagram.com/*", "https://i.instagram.com/*"],
   "content_scripts": [
     {
       "matches": ["https://www.instagram.com/*"],

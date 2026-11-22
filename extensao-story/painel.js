@@ -480,7 +480,7 @@ async function publicar() {
       "ok",
       conta?.username ? { href: `https://www.instagram.com/stories/${conta.username}/`, texto: "Abrir o story" } : null,
     );
-    if (!r.linkOk) logar(`O Instagram publicou, mas a resposta não trouxe o adesivo de link (caminho ${r.via}). Abra o story e confira o toque no adesivo.`, "aviso");
+    if (!r.linkOk) logar("O Instagram publicou, mas a resposta não trouxe o adesivo de link. Abra o story e confira o toque no adesivo.", "aviso");
     if (r.destaque?.erro) logar(`Destaque falhou: ${r.destaque.erro} O story continua publicado.`, "erro");
     else if (r.destaque) logar(r.destaque.acao === "criado" ? `Destaque "${r.destaque.titulo}" criado com o story.` : `Story juntado ao destaque "${r.destaque.titulo}".`, "ok");
   } catch (e) {

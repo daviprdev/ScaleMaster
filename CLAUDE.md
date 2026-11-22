@@ -230,7 +230,7 @@ Tabelas: `supabase/emulador_agente.sql`, `supabase/emulador_contas.sql`, `supaba
 ## Extensão Scale Master Story (extensao-story/)
 
 - Extensão Chrome MV3 para os perfis do AdsPower (21/11): story com adesivo de link (texto, cor, tamanho, posição arrastada) e fixação no destaque, pela sessão do Instagram do próprio perfil (`www.instagram.com`, sem token). Nome, logo e tokens do SaaS.
-- Arte 1080×1920 desenhada no canvas com o adesivo; `tap_models` `story_link` marca a área clicável (`instagram.js`): `rupload_igphoto` → `validate_reel_url` → `media/configure_to_story` (fallback `web/create/configure_to_story` avisa se o link não voltar) → destaque pelo nome normalizado (`highlights_tray` + `edit_reel`, senão `create_reel`).
+- Arte 1080×1920 desenhada no canvas com o adesivo (`instagram.js`, 1.0.1): foto em `i.instagram.com/rupload_igphoto` pelo service worker (pelo `www` o configure seguinte dá 500) → `www /api/v1/media/configure_to_story/` com `upload_id`, `configure_mode=1` e `story_link_stickers` (área clicável) → destaque pelo nome normalizado (`highlights_tray` + `edit_reel`, senão `create_reel` com o pk numérico). `validate_reel_url` e `web/create/configure_to_story` dão 404 pelo `www`.
 - Empacotar: `scripts\empacotar-extensao-story.ps1` → `dist\scalemaster-story-<versão>.zip` (AdsPower: Extensões → Enviar). Ícones/fonte: `node scripts/extensao-story-icones.mjs`. Detalhes em `extensao-story/LEIAME.md`.
 
 ## Worker Legado RPA (Desativado)
