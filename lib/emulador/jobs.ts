@@ -58,6 +58,16 @@ export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telef
 export const ALERTA_CAPTCHA = "Conta ERRO CRIAÇÃO, verificar captcha";
 /** Contas VPS: captcha/verificação de humano — a conta é descartada (container e volume apagados) e a aba mostra isto em vermelho. */
 export const ALERTA_ROBO = "Confirme que você não é um robô";
+/**
+ * Contas VPS (22/11): captcha/verificação de humano no cadastro = desafio pendente. Container, proxy e sessão
+ * ficam, o agente libera a vaga, vps_devices.desafio = true e o card mostra o aviso com Responder (= Continuar).
+ * Não conta como falha: vai para as suspensas. Igual a agente-vps/fluxos/cadastro.mjs.
+ */
+export const ALERTA_DESAFIO = "Desafio pendente";
+
+export function ehDesafio(error: string | null | undefined): boolean {
+  return error === ALERTA_DESAFIO;
+}
 /** Contas VPS: o Instagram recusou 5 @ seguidos — a conta é descartada. */
 export const ALERTA_USUARIO = "Usuário recusado pelo Instagram 5 vezes";
 /** Contas VPS: o código do portal já foi resgatado e a sessão venceu (ou já recebeu OTP): a conta para, o container fica, e o card pede código novo (Editar). */
@@ -232,6 +242,8 @@ export interface JobUpdate {
   usuario?: string;
   /** Contas VPS: o agente já apagou container e volume (captcha / @ recusado 5 vezes). */
   descartada?: boolean;
+  /** Contas VPS: captcha no cadastro — desafio pendente (container, proxy e sessão mantidos). */
+  desafio?: boolean;
   /** Contas VPS: quando o código do portal foi resgatado, quando a sessão vence e o endereço dela (vai para input_enc). */
   portal?: PortalAndamento;
 }
@@ -285,6 +297,7 @@ export function parseJobUpdates(raw: unknown): JobUpdate[] {
       prompt: r.prompt === undefined ? undefined : r.status === "running" ? parseJobPrompt(r.prompt) : null,
       ...(typeof r.usuario === "string" && USUARIO_IG_RE.test(r.usuario) ? { usuario: r.usuario } : {}),
       ...(r.descartada === true ? { descartada: true } : {}),
+      ...(r.desafio === true && r.status === "error" ? { desafio: true } : {}),
       ...(portalDe(r.portal) ? { portal: portalDe(r.portal) as PortalAndamento } : {}),
     });
   }

@@ -2,15 +2,16 @@ import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { limparAlerta, marcarAlerta } from "../lib/alertas.mjs";
 import { conferirAbiNoAparelho } from "../lib/android.mjs";
+import { bateria } from "../lib/bateria.mjs";
 import { aplicarNoAparelho, conferir, gerar as gerarDevice } from "../lib/fingerprint.mjs";
 import { fotoUnicaNaGaleria } from "../lib/galeria.mjs";
 import { pastaDeMidias, resolverMidia, sortearFoto } from "../lib/midias.mjs";
 import { garantirTeclado } from "../lib/teclado.mjs";
 import { esperar, rodar } from "../lib/processo.mjs";
 import { ProxyMorta, provarBloqueio, subirSidecar, validar, validarNoNetns } from "../lib/rede.mjs";
-import { INSTAGRAM, instalarInstagram } from "./apk.mjs";
+import { INSTAGRAM, instaladorDe, instalarInstagram } from "./apk.mjs";
 import { AQUECIMENTO, ATIVIDADE, ligarProxy } from "./atividade.mjs";
-import { ContaTravada, cadastrarInstagram, deveDescartar } from "./cadastro.mjs";
+import { ALERTA_DESAFIO, ContaTravada, cadastrarInstagram, deveDescartar } from "./cadastro.mjs";
 import { conferirCaixa, criarCaixa, provedorDe } from "./caixa.mjs";
 import { criarAjuda } from "./dono.mjs";
 import { ESTRUTURACAO } from "./estruturacao.mjs";
@@ -30,7 +31,7 @@ import { abrirInstagram, editarPerfil, pararInstagram, proxyLigada, trocarFoto }
  * local) a identidade é gerada aqui.
  */
 
-export { ALERTA_CAPTCHA, ALERTA_ROBO, ALERTA_TELEFONE, ALERTA_USUARIO, deveDescartar } from "./cadastro.mjs";
+export { ALERTA_CAPTCHA, ALERTA_DESAFIO, ALERTA_ROBO, ALERTA_TELEFONE, ALERTA_USUARIO, deveDescartar } from "./cadastro.mjs";
 export { CODIGO_VENCIDO } from "./caixa.mjs";
 // decisão: SCALEMASTER_SESSOES_DIR só existe para os testes não escreverem em /opt.
 export const PASTA_SESSOES = process.env.SCALEMASTER_SESSOES_DIR || "/opt/scalemaster/sessoes";
@@ -204,6 +205,7 @@ export const NOVA_CONTA = [
       // Sem proxy gravada o sidecar sobe bloqueado; se já tem (Continuar), sobe com ela.
       await mumu.prepararInstancia(container(estado), { log });
       const d = await dispositivo();
+      log(`bateria: ${await bateria(d)}%`);
       const device = deviceDe(input, estado);
       await aplicarNoAparelho(d, device);
       // Reforço do androidboot.selinux=permissive do container (o tar da sessão precisa).
@@ -225,10 +227,17 @@ export const NOVA_CONTA = [
   {
     chave: "instagram",
     rotulo: "Instalar o Instagram (APK pinado)",
-    async rodar({ dispositivo, input, log }) {
+    async rodar({ dispositivo, input, estado, log }) {
       if (!input?.versaoIg) throw new Error("Essa conta veio sem a versão do Instagram.");
       const d = await dispositivo();
-      const instalado = await instalarInstagram(d, input.versaoIg, log);
+      // adb install -i com.android.vending -r: o pacote fica com a Play Store como instalador.
+      const instalado = await instalarInstagram(d, input.versaoIg, log, { instalador: "com.android.vending" });
+      const modelo = deviceDe(input, estado).model;
+      // Aspas simples: o adb junta os argumentos numa linha só e "moto g84 5G" viraria três.
+      await d.shell("settings", "put", "global", "device_name", `'${String(modelo).replace(/'/g, "")}'`);
+      const instalador = await instaladorDe(d);
+      log(`installerPackageName=${instalador || "(vazio)"} · device_name=${modelo}`);
+      if (!instalador) throw new Error("INSTALADOR_NULO: o Instagram ficou sem installerPackageName depois do adb install -i com.android.vending.");
       // Teclado ADB junto com o Instagram: acento e emoji por broadcast (lib/teclado.mjs); sem ele, input text.
       const teclado = await garantirTeclado(d, log).catch((e) => {
         log(`teclado ADB: ${e.message}`);
@@ -285,6 +294,7 @@ export const NOVA_CONTA = [
       const { criada } = await mumu.instancia(container(estado));
       limparAlerta(criada);
       const d = await dispositivo();
+      log(`bateria: ${await bateria(d)}%`);
       // Continuar com o container religado: o sidecar sobe com a proxy gravada, mas confere antes de abrir o Instagram.
       if (!(await proxyLigada(d))) log(`proxy: ${await ligarProxy(mumu, container(estado), log)}`);
       // O resgate do código do portal acontece só na tela do e-mail; a hora vai no andamento para o input_enc.
@@ -310,6 +320,18 @@ export const NOVA_CONTA = [
         });
       } catch (e) {
         if (!(e instanceof ContaTravada)) throw e;
+        if (e.alerta === ALERTA_DESAFIO) {
+          // Captcha = desafio pendente: nada é apagado (container, volume com a sessão e proxy ficam). O job
+          // termina sem a falha das outras etapas e a vaga é liberada para a próxima conta da fila.
+          // decisão: o container desliga junto (fecharDepois no agente) para não segurar RAM; Responder religa e retoma o cadastro.
+          log(`desafio pendente: ${e.message} Container, proxy e sessão mantidos.`);
+          await pararInstagram(await dispositivo()).catch(() => {});
+          estado.desafio = true;
+          const desafio = new Error(ALERTA_DESAFIO);
+          desafio.semPrefixo = true;
+          desafio.desafio = true;
+          throw desafio;
+        }
         if (deveDescartar(e.alerta)) {
           // decisão (08/11): captcha ou @ recusado 5 vezes = conta descartada: container, sidecar e volume
           // apagados aqui mesmo (libera RAM, disco e a proxy); o servidor marca vps_devices como descartada.

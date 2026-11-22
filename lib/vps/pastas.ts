@@ -1,3 +1,4 @@
+import { ehDesafio } from "@/lib/emulador/jobs";
 import { prontidaoDaConta, type PlanoEtapa } from "./estruturacao";
 
 /**
@@ -20,7 +21,9 @@ export const FALTA_SQL_PASTAS = "Falta aplicar o SQL supabase/vps_pastas.sql no 
  */
 export const PASTA_CRIADAS = "CRIADAS";
 export const PASTA_FALHAS = "FALHAS";
-export const PASTAS_FIXAS: readonly string[] = [PASTA_CRIADAS, PASTA_FALHAS];
+/** SUSPENSAS (22/11): conta que parou em desafio pendente (captcha no cadastro); não conta como falha. */
+export const PASTA_SUSPENSAS = "SUSPENSAS";
+export const PASTAS_FIXAS: readonly string[] = [PASTA_CRIADAS, PASTA_FALHAS, PASTA_SUSPENSAS];
 /**
  * RODANDO (13/11) não existe no banco: é a pasta da tela onde ficam as contas
  * na fila ou sendo criadas, qualquer que seja a coluna `pasta`. Ao terminar,
@@ -33,12 +36,18 @@ export const PASTA_RODANDO = "RODANDO";
  * erro = FALHAS, concluída sem estar no SaaS = CRIADAS (moverAoTerminar no sync).
  */
 export const PASTA_ESTRUTURANDO = "ESTRUTURANDO";
-const ORDEM_FIXAS: readonly string[] = [PASTA_RODANDO, PASTA_ESTRUTURANDO, PASTA_CRIADAS, PASTA_FALHAS];
+const ORDEM_FIXAS: readonly string[] = [PASTA_RODANDO, PASTA_ESTRUTURANDO, PASTA_CRIADAS, PASTA_FALHAS, PASTA_SUSPENSAS];
 const emAndamento = (status: string) => status === "queued" || status === "running";
 
+/** Conta (nova-conta) parada em desafio pendente: suspensa, fora das falhas. */
+export function ehSuspensa(c: { status: string; error?: string | null }): boolean {
+  return c.status === "error" && ehDesafio(c.error);
+}
+
 /** Pasta de destino de uma conta que acabou de terminar o cadastro; null = ainda rodando. */
-export function pastaAoTerminar(status: string): string | null {
+export function pastaAoTerminar(status: string, error?: string | null): string | null {
   if (status === "done") return PASTA_CRIADAS;
+  if (status === "error" && ehDesafio(error)) return PASTA_SUSPENSAS;
   if (status === "error") return PASTA_FALHAS;
   return null;
 }
@@ -121,7 +130,7 @@ export function gruposDePasta<T extends { id: string; kind: string; status: stri
   return { criadas: ordenar(abas.criadas, "criadas"), estruturadas: ordenar(abas.estruturadas, "estruturadas") };
 }
 
-function resumoDaPasta<T extends { id: string; status: string; pausa?: string | null }>(
+function resumoDaPasta<T extends { id: string; status: string; pausa?: string | null; error?: string | null }>(
   contas: ReadonlyArray<T>,
   aba: AbaContas,
   estruturaDe: (contaId: string) => EstruturaDaConta | null | undefined,
@@ -137,9 +146,11 @@ function resumoDaPasta<T extends { id: string; status: string; pausa?: string | 
   let falha = 0;
   let paraEstruturar = 0;
   let estruturando = 0;
+  let suspensas = 0;
   for (const c of contas) {
     const e = estruturaDe(c.id);
     if (c.status === "queued" || c.status === "running") criando += 1;
+    else if (ehSuspensa(c)) suspensas += 1;
     else if (c.status === "error") falha += 1;
     else if (e && (e.status === "queued" || e.status === "running")) estruturando += 1;
     else if (e && e.status === "error") falha += 1;
@@ -150,21 +161,24 @@ function resumoDaPasta<T extends { id: string; status: string; pausa?: string | 
     estruturando ? `${estruturando} estruturando` : "",
     paraEstruturar ? `${paraEstruturar} para estruturar` : "",
     falha ? `${falha} com falha` : "",
+    suspensas ? `${suspensas} suspensa${suspensas === 1 ? "" : "s"}` : "",
   ].filter(Boolean);
 }
 
 /** Linha de resumo da aba quando não há rodada de criação: totais das contas (não as estruturações). */
-export function resumoDasContas<T extends { id: string; kind: string; status: string; label?: string | null; contaId?: string | null } & Partial<EstruturaDaConta>>(
+export function resumoDasContas<T extends { id: string; kind: string; status: string; label?: string | null; contaId?: string | null; error?: string | null } & Partial<EstruturaDaConta>>(
   jobs: ReadonlyArray<T>,
   noSaas: ReadonlySet<string> = new Set()
-): { total: number; criadas: number; prontas: number; criando: number; falhas: number } {
+): { total: number; criadas: number; prontas: number; criando: number; falhas: number; suspensas: number } {
   const estrutura = new Map<string, T>();
   for (const j of jobs) if (j.kind === "estruturacao" && j.contaId && !estrutura.has(j.contaId)) estrutura.set(j.contaId, j);
-  const r = { total: 0, criadas: 0, prontas: 0, criando: 0, falhas: 0 };
+  const r = { total: 0, criadas: 0, prontas: 0, criando: 0, falhas: 0, suspensas: 0 };
   for (const c of jobs) {
     if (c.kind !== "nova-conta") continue;
     r.total += 1;
     if (c.status === "done") r.criadas += 1;
+    // Desafio pendente (captcha no cadastro) sai das falhas e vai para as suspensas.
+    else if (ehSuspensa(c)) r.suspensas += 1;
     else if (c.status === "error") r.falhas += 1;
     else r.criando += 1;
     const e = estrutura.get(c.id);

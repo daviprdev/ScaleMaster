@@ -150,15 +150,15 @@ export class Dispositivo {
     return String(r.stdout).includes("package:");
   }
 
-  /** Instala um APK do disco da VPS (adb install -r; -g já concede as permissões). */
-  async instalar(caminho) {
-    const r = await rodar(this.adb, ["-s", this.serial, "install", "-r", "-g", caminho], { timeoutMs: 10 * 60_000 });
+  /** Instala um APK do disco da VPS (adb install [-i instalador] -r; -g já concede as permissões). */
+  async instalar(caminho, { instalador = null } = {}) {
+    const r = await rodar(this.adb, ["-s", this.serial, "install", ...(instalador ? ["-i", instalador] : []), "-r", "-g", caminho], { timeoutMs: 10 * 60_000 });
     if (r.codigo !== 0 || !/Success/i.test(String(r.stdout))) throw new Error(`adb install falhou: ${trecho(r.stderr || r.stdout)}`);
   }
 
-  /** Instala um APK dividido (base + splits) de uma vez: adb install-multiple -r -g. */
-  async instalarMultiplos(caminhos) {
-    const r = await rodar(this.adb, ["-s", this.serial, "install-multiple", "-r", "-g", ...caminhos], { timeoutMs: 10 * 60_000 });
+  /** Instala um APK dividido (base + splits) de uma vez: adb install-multiple [-i instalador] -r -g. */
+  async instalarMultiplos(caminhos, { instalador = null } = {}) {
+    const r = await rodar(this.adb, ["-s", this.serial, "install-multiple", ...(instalador ? ["-i", instalador] : []), "-r", "-g", ...caminhos], { timeoutMs: 10 * 60_000 });
     if (r.codigo !== 0 || !/Success/i.test(String(r.stdout))) throw new Error(`adb install-multiple falhou: ${trecho(r.stderr || r.stdout)}`);
   }
 

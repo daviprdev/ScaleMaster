@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { decrypt, encrypt } from "@/lib/encrypt";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
 import type { AtividadeInput } from "./atividade";
-import { ehDescarte, parseJobSteps, renameNomeStep, type JobStep, type JobUpdate, type NovaContaInput } from "./jobs";
+import { ehDescarte, ehDesafio, parseJobSteps, renameNomeStep, type JobStep, type JobUpdate, type NovaContaInput } from "./jobs";
 import { parseCriada } from "./payload";
 import { pastaAoTerminar } from "@/lib/vps/pastas";
 
@@ -63,7 +63,7 @@ export async function syncJobs(
   // Contas VPS: a conta que termina o cadastro vai para CRIADAS ou FALHAS.
   pastasFixas = false
 ): Promise<SyncJobsResult> {
-  const terminadas: Array<{ id: string; status: string }> = [];
+  const terminadas: Array<{ id: string; status: string; error?: string | null }> = [];
   for (const u of updates) {
     const patch: Record<string, unknown> = { steps: u.steps, status: u.status, error: u.error, updated_at: now };
     if (u.instanceIndex !== undefined) patch.instance_index = u.instanceIndex;
@@ -82,7 +82,7 @@ export async function syncJobs(
     // parseCriada). Tudo UPDATE puro: job do MuMu não tem linha em vps_devices (nada acontece) e qualquer
     // erro — tabela/coluna ausente inclusive — é só logado, o sync nunca falha por isso.
     await atualizarDeviceVps(admin, u);
-    if (u.status !== "running") terminadas.push({ id: u.id, status: u.status });
+    if (u.status !== "running") terminadas.push({ id: u.id, status: u.status, error: u.error });
   }
 
   const { data: runningData, error: runningErr } = await admin
@@ -185,9 +185,9 @@ export async function syncJobs(
  * CRIADAS ou FALHAS. O `finished_at = now` garante que só a transição desta
  * rodada move (mover à mão depois fica). Estruturação não muda de pasta aqui.
  */
-async function moverAoTerminar(admin: SupabaseClient, agentId: string, terminadas: ReadonlyArray<{ id: string; status: string }>, now: string): Promise<void> {
+async function moverAoTerminar(admin: SupabaseClient, agentId: string, terminadas: ReadonlyArray<{ id: string; status: string; error?: string | null }>, now: string): Promise<void> {
   for (const t of terminadas) {
-    const pasta = pastaAoTerminar(t.status);
+    const pasta = pastaAoTerminar(t.status, t.error);
     if (!pasta) continue;
     const { error } = await admin
       .from("emulator_jobs")
@@ -226,6 +226,9 @@ async function atualizarDeviceVps(admin: SupabaseClient, u: JobUpdate): Promise<
       // Só a conta pausa; a estruturação com proxy morta fica parada com o erro e volta pelo Continuar.
       avisar("pausa", (await admin.from("emulator_jobs").update({ pausa: "proxy" }).eq("id", u.id).eq("kind", "nova-conta")).error);
       avisar("vps_devices.status", (await admin.from("vps_devices").update({ status: "proxy-morta" }).eq("job_id", u.id)).error);
+    } else if (u.status === "error" && (u.desafio || ehDesafio(u.error))) {
+      // Captcha no cadastro (22/11): desafio pendente. Container, proxy e sessão ficam; o Responder do card limpa o flag.
+      avisar("vps_devices.desafio", (await admin.from("vps_devices").update({ desafio: true }).eq("job_id", u.id)).error);
     } else if (u.status === "error" && (u.descartada || ehDescarte(u.error))) {
       // Captcha ou @ recusado 5 vezes: o agente já apagou container e volume; a proxy fica livre (proxiesEmUso ignora descartadas).
       avisar("vps_devices.status", (await admin.from("vps_devices").update({ status: "descartada" }).eq("job_id", u.id)).error);

@@ -40,14 +40,14 @@ import { limparPrintsAntigos, salvarPrint } from "./lib/prints.mjs";
 import { esperar } from "./lib/processo.mjs";
 import { ProxyMorta, validar } from "./lib/rede.mjs";
 import { proxyUsavel, testarProxy } from "./lib/teste-proxy.mjs";
-import { Semaforo, capacidade, criarWatchdog, limparOrfaos, limparOrfaosAntigos, maioresConsumidores } from "./lib/supervisor.mjs";
+import { IntervaloEntreContas, Semaforo, capacidade, criarWatchdog, limparOrfaos, limparOrfaosAntigos, maioresConsumidores } from "./lib/supervisor.mjs";
 import { TAREFAS } from "./tarefas/index.mjs";
 import { versoesDisponiveis } from "./fluxos/apk.mjs";
 import { pararInstagram } from "./fluxos/instagram.mjs";
 import { semPerguntar } from "./fluxos/dono.mjs";
 import { FLUXOS, PASTA_SESSOES } from "./fluxos/nova-conta.mjs";
 
-const VERSAO = "1.9.42";
+const VERSAO = "1.9.43";
 const AGENT_KIND = "vps";
 /** "Instância" -1 = a VPS em si: só a automação rebuild-imagem roda nela (igual a lib/emulador/payload.ts). */
 const PC_INDEX = -1;
@@ -259,6 +259,7 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
       // Contas VPS: @ aceito depois de recusa e conta descartada (container já apagado pelo próprio fluxo).
       ...(estado.usuario ? { usuario: estado.usuario } : {}),
       ...(estado.descartada ? { descartada: true } : {}),
+      ...(estado.desafio ? { desafio: true } : {}),
       ...(estado.portal ? { portal: estado.portal } : {}),
     });
 
@@ -275,6 +276,8 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
 
   // Vagas do supervisor: uma de cadastro para o job inteiro e uma de "ligado" enquanto o container está de pé.
   const soltarCadastro = semaforos ? await semaforos.cadastro.pegar() : () => {};
+  // Contas do lote começam com 180–300 s entre uma e outra (estruturação não entra na fila do intervalo).
+  if (semaforos?.intervalo && job.kind === "nova-conta") await semaforos.intervalo.aguardar(logJob);
   const soltarLigada = semaforos ? await semaforos.ligadas.pegar() : () => {};
 
   // Teste de vida da proxy ANTES de qualquer etapa (16/11): direto do host, generate_204, 25 s + 2 tentativas com
@@ -375,7 +378,8 @@ async function rodarJob(driver, job, reportar, aguardarResposta, semaforos = nul
       } catch (e) {
         step.status = "error";
         step.message = String(e.message).slice(0, 300);
-        logJob(`${etapa.rotulo} falhou: ${e.message}`);
+        // Desafio pendente (captcha no cadastro): não é falha — a vaga sai no finally e a fila segue.
+        logJob(e.desafio ? `${etapa.rotulo}: desafio pendente, vaga liberada` : `${etapa.rotulo} falhou: ${e.message}`);
         await fotografar(etapa.chave);
         // decisão (15/11): qualquer etapa que falha encerra o job — nada de seguir para as próximas (`segue` não vale
         // mais). O aparelho desliga fora da vaga, para a próxima conta da fila começar na hora. Descartada já foi apagada.
@@ -436,7 +440,7 @@ async function rodarAgente() {
     });
 
   const cap = capacidade();
-  const semaforos = { ligadas: new Semaforo(cap.maxLigadas), cadastro: new Semaforo(cap.maxCadastro) };
+  const semaforos = { ligadas: new Semaforo(cap.maxLigadas), cadastro: new Semaforo(cap.maxCadastro), intervalo: new IntervaloEntreContas() };
   let driver = null;
   let versaoDocker = null;
   let erroLocalizar = null;

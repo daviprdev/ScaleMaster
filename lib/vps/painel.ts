@@ -1,4 +1,4 @@
-import { ALERTA_ROBO, type JobStatus } from "@/lib/emulador/jobs";
+import { ALERTA_ROBO, ehDesafio, type JobStatus } from "@/lib/emulador/jobs";
 import type { VpsJob } from "./types";
 
 /**
@@ -35,12 +35,15 @@ export function loteAtual(jobs: readonly VpsJob[]): LoteAtivo | null {
   return { loteId, jobs: doLote };
 }
 
-export type Contadores = Record<JobStatus, number>;
+export type Contadores = Record<JobStatus, number> & { suspensas: number };
 
-/** Na fila / Rodando / Criadas / Falhas do lote. */
+/** Na fila / Rodando / Criadas / Falhas / Suspensas do lote. Desafio pendente (captcha) é suspensa, não falha. */
 export function contadoresDoLote(jobs: readonly VpsJob[]): Contadores {
-  const c: Contadores = { queued: 0, running: 0, done: 0, error: 0 };
-  for (const j of jobs) c[j.status] += 1;
+  const c: Contadores = { queued: 0, running: 0, done: 0, error: 0, suspensas: 0 };
+  for (const j of jobs) {
+    if (ehDesafio(j.status === "error" ? j.error : null)) c.suspensas += 1;
+    else c[j.status] += 1;
+  }
   return c;
 }
 
@@ -138,9 +141,10 @@ export function diferencasDeLog(
       const rotulo = rotulos.get(s.key) ?? s.key;
       if (s.status === "running") linha(job, rotulo, "…", false);
       else if (s.status === "done") linha(job, rotulo, `ok${s.message ? ` · ${s.message}` : ""}`, false);
-      else if (s.status === "error") linha(job, rotulo, s.message ?? "falhou", true);
+      // Desafio pendente não é falha: a linha sai sem o vermelho.
+      else if (s.status === "error") linha(job, rotulo, s.message ?? "falhou", !ehDesafio(s.message));
     }
-    if (job.error && job.error !== (prev?.error ?? null)) linha(job, "conta", rotuloAlerta(job.error) ?? job.error, true);
+    if (job.error && job.error !== (prev?.error ?? null)) linha(job, "conta", rotuloAlerta(job.error) ?? job.error, !ehDesafio(job.error));
     const pedido = job.prompt?.texto ?? null;
     if (pedido && pedido !== (prev?.prompt ?? null)) linha(job, "esperando você", pedido, false);
     if (job.status === "done" && prev && prev.status !== "done") linha(job, "conta", concluido, false);

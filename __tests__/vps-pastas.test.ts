@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PASTA_CRIADAS, PASTA_FALHAS, PASTA_RODANDO, PASTA_MAX, SEM_PASTA, ehPastaFixa, elegiveisDaPasta, filtrarPorPasta, gruposDePasta, normalizarPasta, pastaAoTerminar, pastasDasContas } from "../lib/vps/pastas";
 import { errosPorCampo, expandirEtapas, parseEstrutura } from "../lib/vps/estruturacao";
 
-const conta = (id: string, extra: Partial<{ status: string; pasta: string | null; label: string; kind: string }> = {}) => ({
+const conta = (id: string, extra: Partial<{ status: string; pasta: string | null; label: string; kind: string; error: string | null }> = {}) => ({
   id,
   kind: "nova-conta",
   status: "done",
@@ -34,6 +34,7 @@ describe("Pastas: nome, lista e filtro", () => {
       { nome: "CRIADAS", contas: 0 },
       { nome: "FALHAS", contas: 0 },
       { nome: "Novembro", contas: 2 },
+      { nome: "SUSPENSAS", contas: 0 },
     ]);
     expect(filtrarPorPasta(jobs, "").length).toBe(5);
     expect(filtrarPorPasta(jobs, SEM_PASTA).map((j) => j.id)).toEqual(["d"]);
@@ -104,10 +105,11 @@ describe("Abas Criadas/Estruturadas com as pastas", () => {
       ["ESTRUTURANDO", [], []],
       ["CRIADAS", [], []],
       ["FALHAS", [], []],
+      ["SUSPENSAS", [], []],
       ["Novembro", ["b"], ["1 para estruturar"]],
       ["Sem pasta", ["d"], ["1 para estruturar"]],
     ]);
-    expect(g.criadas[5].chave).toBe(SEM_PASTA);
+    expect(g.criadas[6].chave).toBe(SEM_PASTA);
   });
 });
 
@@ -123,7 +125,7 @@ describe("Linha de resumo sem rodada de criação", () => {
       { id: "e1", kind: "estruturacao", status: "done", label: "a", contaId: "a", plano, steps: plano.map((p) => ({ key: p.key, status: "done" })) },
       { id: "e2", kind: "estruturacao", status: "error", label: "b", contaId: "b", plano, steps: plano.map((p) => ({ key: p.key, status: p.key === "link-1" ? "error" : "done", message: "x" })) },
     ];
-    expect(resumoDasContas(jobs)).toEqual({ total: 4, criadas: 2, prontas: 1, criando: 1, falhas: 1 });
+    expect(resumoDasContas(jobs)).toEqual({ total: 4, criadas: 2, prontas: 1, criando: 1, falhas: 1, suspensas: 0 });
   });
 });
 
@@ -133,7 +135,7 @@ describe("Conectada no SaaS conta como estruturada", () => {
     const contas = [conta("josianecavalcanti85432", { pasta: "PRONTAS" }), conta("outra", { pasta: "PRONTAS" })];
     const g = gruposDePasta(contas, () => null, new Set(["josianecavalcanti85432"]));
     expect(g.estruturadas.map((p) => [p.nome, p.contas.map((c) => c.id), p.resumo])).toEqual([["PRONTAS", ["josianecavalcanti85432"], ["1 pronta para postar"]]]);
-    expect(g.criadas.map((p) => p.contas.map((c) => c.id))).toEqual([[], [], [], [], ["outra"]]);
+    expect(g.criadas.map((p) => p.contas.map((c) => c.id))).toEqual([[], [], [], [], [], ["outra"]]);
     expect(resumoDasContas(contas, new Set(["josianecavalcanti85432"])).prontas).toBe(1);
   });
 });
@@ -144,6 +146,17 @@ describe("Pastas fixas CRIADAS e FALHAS", () => {
     expect(pastaAoTerminar("error")).toBe(PASTA_FALHAS);
     expect(pastaAoTerminar("running")).toBeNull();
     expect(pastaAoTerminar("queued")).toBeNull();
+  });
+  it("desafio pendente (captcha) vai para SUSPENSAS e conta como suspensa, não como falha", async () => {
+    const { PASTA_SUSPENSAS, resumoDasContas } = await import("../lib/vps/pastas");
+    expect(pastaAoTerminar("error", "Desafio pendente")).toBe(PASTA_SUSPENSAS);
+    expect(pastaAoTerminar("error", "outro erro")).toBe(PASTA_FALHAS);
+    expect(ehPastaFixa("suspensas")).toBe(true);
+    const contas = [conta("cap", { pasta: PASTA_SUSPENSAS, status: "error", error: "Desafio pendente" }), conta("ruim", { pasta: PASTA_FALHAS, status: "error" })];
+    expect(resumoDasContas(contas)).toEqual({ total: 2, criadas: 0, prontas: 0, criando: 0, falhas: 1, suspensas: 1 });
+    const g = gruposDePasta(contas, () => null);
+    expect(g.criadas.find((p) => p.nome === "SUSPENSAS")?.resumo).toEqual(["1 suspensa"]);
+    expect(g.criadas.find((p) => p.nome === "FALHAS")?.resumo).toEqual(["1 com falha"]);
   });
   it("não se renomeiam e o nome digitado em outra caixa cai na pasta fixa", () => {
     expect(ehPastaFixa("CRIADAS")).toBe(true);
@@ -166,6 +179,7 @@ describe("Pastas fixas CRIADAS e FALHAS", () => {
       ["ESTRUTURANDO", []],
       ["CRIADAS", ["ok"]],
       ["FALHAS", ["ruim"]],
+      ["SUSPENSAS", []],
       ["Antiga", ["z"]],
     ]);
     expect(ehPastaFixa("rodando")).toBe(true);
@@ -201,6 +215,7 @@ describe("Pasta ESTRUTURANDO", () => {
       [PASTA_ESTRUTURANDO, ["est", "fila"]],
       ["CRIADAS", ["parada"]],
       ["FALHAS", ["falhou"]],
+      ["SUSPENSAS", []],
     ]);
     expect(ehPastaFixa("estruturando")).toBe(true);
     expect(normalizarPasta("Estruturando")).toBeNull();

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Pencil, Circle, Contact, Copy, Folder, FolderOpen, Layers, Loader2, PauseCircle, RefreshCw, RotateCw, Send, Shield, ShieldAlert, ShieldCheck, Trash2, UserPlus, XCircle } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Input, ProgressBar, Segmented, type BadgeTone } from "@/components/ui";
-import { PASTA_ESTRUTURANDO, PASTA_RODANDO, SEM_PASTA, ehPastaFixa, gruposDePasta, type AbaContas } from "@/lib/vps/pastas";
+import { PASTA_ESTRUTURANDO, PASTA_RODANDO, SEM_PASTA, ehPastaFixa, ehSuspensa, gruposDePasta, type AbaContas } from "@/lib/vps/pastas";
 import { cn } from "@/lib/utils";
 import { ALERTA_ROBO, type JobStatus } from "@/lib/emulador/jobs";
 import { timeAgo } from "@/lib/emulador/view";
@@ -275,6 +275,8 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, onPasta, no
   const prog = progresso(job);
   // Avisos de fim de conta (telefone, captcha, proxy morta) em vermelho; o captcha ganha o rótulo próprio.
   const alerta = ehAlertaVps(job.error) || ehProxyMorta(job.error) ? rotuloAlerta(job.error) : null;
+  // Desafio pendente (captcha no cadastro): container, proxy e sessão mantidos; Responder volta a conta para a fila.
+  const desafio = ehSuspensa(job);
   const pausada = job.pausa === "proxy";
   // Descartada (captcha ou @ recusado 5 vezes): container e volume já apagados; sem Continuar, só Tentar de novo.
   const descartada = ehDescartada(job);
@@ -299,8 +301,8 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, onPasta, no
           </p>
 
         </div>
-        <Badge tone={job.prompt ? "warning" : pausada ? "warning" : descartada ? "danger" : badge.tone} dot>
-          {job.prompt ? "Esperando você" : pausada ? "Pausada (proxy)" : descartada ? badgeDescartada : badge.label}
+        <Badge tone={job.prompt || pausada || desafio ? "warning" : descartada ? "danger" : badge.tone} dot>
+          {job.prompt ? "Esperando você" : pausada ? "Pausada (proxy)" : desafio ? "Suspensa · desafio" : descartada ? badgeDescartada : badge.label}
         </Badge>
         {prontidao && (
           <Badge tone="success">
@@ -314,7 +316,7 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, onPasta, no
               Tentar de novo
             </Button>
           )}
-          {job.status === "error" && !pausada && !descartada && (
+          {job.status === "error" && !pausada && !descartada && !desafio && (
             <Button size="sm" icon={<RotateCw size={14} />} loading={busy} onClick={() => onAction(job, "continuar")}>
               Continuar
             </Button>
@@ -363,6 +365,20 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, onPasta, no
           {prog.label} · {prog.pct}% {aberto ? "▲" : "▼"}
         </button>
       </div>
+
+      {desafio && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-warning-soft p-3" data-testid="desafio-pendente">
+          <p className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-ink">
+            <AlertTriangle size={14} className="shrink-0 text-warning" />
+            <span>
+              <span className="font-semibold">Desafio pendente.</span> O Instagram pediu um captcha no cadastro. Container, proxy e sessão estão guardados.
+            </span>
+          </p>
+          <Button size="sm" icon={<Send size={14} />} loading={busy} onClick={() => onAction(job, "continuar")}>
+            Responder
+          </Button>
+        </div>
+      )}
 
       {alerta && (
         <p className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-danger">

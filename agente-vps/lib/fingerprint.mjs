@@ -15,9 +15,9 @@ const sortearDe = (alfabeto, n) => Array.from({ length: n }, () => alfabeto[rand
 
 /** Perfis reais com Android 13 (iguais aos de lib/vps/device.ts). */
 export const PERFIS = [
-  { key: "pixel7", model: "Pixel 7", manufacturer: "Google", brand: "google", device: "panther", product: "panther", buildId: "TQ3A.230901.001", serial: () => sortearDe(HEX, 12) },
-  { key: "sm-a546e", model: "SM-A546E", manufacturer: "samsung", brand: "samsung", device: "a54x", product: "a54xnsxx", buildId: "TP1A.220624.014", serial: () => `R5CW${sortearDe(ALNUM, 7)}` },
-  { key: "moto-g84", model: "moto g84 5G", manufacturer: "motorola", brand: "motorola", device: "bangkk", product: "bangkk_g", buildId: "T1TBS33.78-62-7", serial: () => `ZY${sortearDe(ALNUM, 10)}` },
+  { key: "pixel7", model: "Pixel 7", manufacturer: "Google", brand: "google", device: "panther", product: "panther", board: "panther", hardware: "panther", platform: "gs201", resolucao: "1080x2400", dpi: 420, buildHost: "abfarm-release-rbe-64-0002", buildUser: "android-build", buildIds: ["TQ3A.230901.001", "TQ3A.230805.001", "TQ2A.230505.002", "TQ3A.230705.001", "TQ1A.230205.002", "TQ3A.230605.010", "TQ2A.230405.003", "TQ3A.230805.002"], serial: () => sortearDe(HEX, 12) },
+  { key: "sm-a546e", model: "SM-A546E", manufacturer: "samsung", brand: "samsung", device: "a54x", product: "a54xnsxx", board: "s5e8835", hardware: "s5e8835", platform: "exynos1380", resolucao: "1080x2340", dpi: 450, buildHost: "SWDD6822", buildUser: "dpi", buildIds: ["TP1A.220624.014", "TP1A.220624.021", "TP1A.220624.018", "TP1A.220624.024", "TP1A.220624.011", "TP1A.220624.027", "TP1A.220624.016", "TP1A.220624.030"], serial: () => `R5CW${sortearDe(ALNUM, 7)}` },
+  { key: "moto-g84", model: "moto g84 5G", manufacturer: "motorola", brand: "motorola", device: "bangkk", product: "bangkk_g", board: "bangkk", hardware: "qcom", platform: "holi", resolucao: "1080x2400", dpi: 405, buildHost: "ilclbld35", buildUser: "hudsoncm", buildIds: ["T1TBS33.78-62-7", "T1TBS33.78-62-5", "T1TBS33.78-54-2", "T1TBS33.78-62-9", "T1TBS33.78-45-1", "T1TBS33.78-62-11", "T1TBS33.78-68-3", "T1TBS33.78-62-14"], serial: () => `ZY${sortearDe(ALNUM, 10)}` },
 ];
 
 export const GEO_POR_PAIS = {
@@ -44,6 +44,7 @@ export function gerar({ perfil = "aleatorio", pais = "BR", index = 1 } = {}) {
   const real = perfil === "aleatorio" ? PERFIS[randomInt(PERFIS.length)] : PERFIS.find((p) => p.key === perfil) ?? PERFIS[0];
   const { timezone, locale } = geoDoPais(pais);
   const incremental = String(randomInt(1_000_000, 9_999_999));
+  const buildId = real.buildIds[randomInt(real.buildIds.length)];
   return {
     androidId: gerarAndroidId(),
     serial: real.serial(),
@@ -54,10 +55,16 @@ export function gerar({ perfil = "aleatorio", pais = "BR", index = 1 } = {}) {
     brand: real.brand,
     device: real.device,
     product: real.product,
-    fingerprint: `${real.brand}/${real.product}/${real.device}:13/${real.buildId}/${incremental}:user/release-keys`,
-    buildId: real.buildId,
-    resolucao: "1080x1920",
-    dpi: 420,
+    // decisão: board/hardware/platform/build host e user vão na identidade para o propsDe usar.
+    board: real.board,
+    hardware: real.hardware,
+    platform: real.platform,
+    buildHost: real.buildHost,
+    buildUser: real.buildUser,
+    fingerprint: `${real.brand}/${real.product}/${real.device}:13/${buildId}/${incremental}:user/release-keys`,
+    buildId,
+    resolucao: real.resolucao,
+    dpi: real.dpi,
     timezone,
     locale,
     pais: String(pais).toUpperCase(),
@@ -96,6 +103,21 @@ export function propsDe(device) {
     "ro.build.flavor": `${device.product}-user`,
     "ro.build.product": device.product,
     "ro.build.characteristics": "default",
+    "ro.product.board": device.board ?? device.device,
+    "ro.board.platform": device.platform ?? device.device,
+    "ro.hardware": device.hardware ?? device.device,
+    "ro.build.host": device.buildHost ?? "localhost",
+    "ro.build.user": device.buildUser ?? "android-build",
+    "ro.debuggable": "0",
+    "ro.secure": "1",
+    "ro.adb.secure": "1",
+    "ro.serialno": device.serial,
+    "ro.boot.serialno": device.serial,
+    "ro.kernel.qemu": "",
+    "ro.boot.qemu": "",
+    "ro.boot.verifiedbootstate": "green",
+    "ro.boot.flash.locked": "1",
+    "ro.boot.veritymode": "enforcing",
   };
   for (const parte of ["system", "vendor", "product", "odm", "system_ext"]) {
     base[`ro.product.${parte}.model`] = device.model;
@@ -141,6 +163,11 @@ export function conferencias(device) {
     ["ro.product.model", device.model],
     ["ro.product.manufacturer", device.manufacturer],
     ["ro.build.fingerprint", device.fingerprint],
+    ["ro.product.board", device.board ?? device.device],
+    ["ro.board.platform", device.platform ?? device.device],
+    ["ro.debuggable", "0"],
+    ["ro.build.tags", "release-keys"],
+    // decisão: ro.serialno já estava na lista; fica uma entrada só.
     ["ro.serialno", device.serial],
     ["persist.sys.timezone", device.timezone],
     ["persist.sys.locale", device.locale],

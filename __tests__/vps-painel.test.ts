@@ -32,8 +32,16 @@ const job = (extra: Partial<VpsJob>): VpsJob => ({
 describe("Painel da rodada: contadores e lote ativo", () => {
   it("conta queued, running, done e error do lote", () => {
     const jobs = [job({ status: "queued" }), job({ status: "running" }), job({ status: "running" }), job({ status: "done" }), job({ status: "error" })];
-    expect(contadoresDoLote(jobs)).toEqual({ queued: 1, running: 2, done: 1, error: 1 });
-    expect(contadoresDoLote([])).toEqual({ queued: 0, running: 0, done: 0, error: 0 });
+    expect(contadoresDoLote(jobs)).toEqual({ queued: 1, running: 2, done: 1, error: 1, suspensas: 0 });
+    expect(contadoresDoLote([])).toEqual({ queued: 0, running: 0, done: 0, error: 0, suspensas: 0 });
+  });
+
+  it("desafio pendente (captcha) conta como suspensa, não como falha, e o log não sai em vermelho", () => {
+    const desafio = job({ status: "error", error: "Desafio pendente", steps: [{ key: "cadastro", status: "error", message: "Desafio pendente" }] });
+    expect(contadoresDoLote([job({ status: "error" }), desafio])).toEqual({ queued: 0, running: 0, done: 0, error: 1, suspensas: 1 });
+    const linhas = diferencasDeLog(retratar([job({ id: desafio.id, status: "running" })]), [desafio], new Date(), new Map());
+    expect(linhas.length).toBeGreaterThan(0);
+    expect(linhas.every((l) => !l.erro)).toBe(true);
   });
 
   it("rodada atual = lote mais recente com conta na fila ou rodando, com todas as contas dele", () => {

@@ -32,6 +32,11 @@ export const ALERTA_TELEFONE = "Conta ERRO CRIAÇÃO, verificar com numero telef
 export const ALERTA_CAPTCHA = "Conta ERRO CRIAÇÃO, verificar captcha";
 /** Captcha/verificação de humano: a conta é descartada (container e volume apagados) e a aba mostra isto em vermelho (pedido do dono, 08/11). */
 export const ALERTA_ROBO = "Confirme que você não é um robô";
+/**
+ * Captcha/verificação de humano no cadastro (22/11): desafio pendente — container, proxy e sessão ficam,
+ * a vaga é liberada e o card mostra "desafio pendente" com Responder. Igual a lib/emulador/jobs.ts.
+ */
+export const ALERTA_DESAFIO = "Desafio pendente";
 /** O Instagram recusou 5 @ seguidos: conta descartada. */
 export const ALERTA_USUARIO = "Usuário recusado pelo Instagram 5 vezes";
 /** Avisos que descartam a conta (apagar container e volume, sem Continuar). Iguais a lib/emulador/jobs.ts. */
@@ -256,10 +261,9 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
       nome: "verificacao-pessoa",
       teste: (nos) => temTexto(nos, CAPTCHA_IMAGEM),
       agir: async (nos) => {
-        // decisão (08/11): captcha é terminal — nada de Capsolver (lib/captcha.mjs fica dormente); a conta é
-        // descartada em nova-conta.mjs (container e volume apagados) e a aba mostra o aviso em vermelho.
-        salvarTela(nos, "captcha: conta descartada");
-        throw new ContaTravada(ALERTA_ROBO, `O Instagram pediu um captcha (${resumoTela(nos)}).`);
+        // 22/11: captcha = desafio pendente (nova-conta.mjs mantém container, proxy e sessão e libera a vaga).
+        salvarTela(nos, "captcha: desafio pendente");
+        throw new ContaTravada(ALERTA_DESAFIO, `O Instagram pediu um captcha (${resumoTela(nos)}).`);
       },
     },
     {
@@ -267,8 +271,8 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
       teste: (nos) =>
         temTexto(nos, ["Confirma que és tu", "Confirm it's you", "Confirme que é você", "reCAPTCHA", "não és um robô", "not a robot", "Ajuda-nos a confirmar", "Help us confirm", "suspendemos", "suspended"]),
       agir: (nos) => {
-        salvarTela(nos, "verificação de humano/checkpoint");
-        throw new ContaTravada(ALERTA_ROBO, `O Instagram pediu uma verificação (${resumoTela(nos)}).`);
+        salvarTela(nos, "verificação de humano/checkpoint: desafio pendente");
+        throw new ContaTravada(ALERTA_DESAFIO, `O Instagram pediu uma verificação (${resumoTela(nos)}).`);
       },
     },
     {

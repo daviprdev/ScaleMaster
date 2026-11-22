@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import { rodar, trecho } from "./processo.mjs";
@@ -94,6 +95,37 @@ export class Semaforo {
       if (this.usadas < this.max) conceder();
       else this.fila.push(conceder);
     });
+  }
+}
+
+/** Intervalo entre o início de duas contas do lote: sorteado de 180 a 300 s a cada conta. */
+export const INTERVALO_CONTAS_MIN_MS = 180_000;
+export const INTERVALO_CONTAS_MAX_MS = 300_000;
+
+/**
+ * Fila de início das contas: a primeira sai na hora; cada uma seguinte espera o
+ * intervalo sorteado depois do início da anterior. `aguardar(log)` resolve na vez da conta.
+ */
+export class IntervaloEntreContas {
+  constructor({ minMs = INTERVALO_CONTAS_MIN_MS, maxMs = INTERVALO_CONTAS_MAX_MS, agora = () => Date.now(), dormir = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+    Object.assign(this, { minMs, maxMs, agora, dormir });
+    this.proximoEm = 0;
+    this.cadeia = Promise.resolve();
+  }
+
+  aguardar(log = () => {}) {
+    const vez = this.cadeia.then(async () => {
+      const falta = this.proximoEm - this.agora();
+      if (falta > 0) {
+        log(`intervalo entre contas: esperando ${Math.round(falta / 1000)} s`);
+        await this.dormir(falta);
+      }
+      const intervalo = this.minMs + randomInt(this.maxMs - this.minMs + 1);
+      this.proximoEm = this.agora() + intervalo;
+      log(`intervalo entre contas: começando agora; a próxima conta do lote espera ${Math.round(intervalo / 1000)} s`);
+    });
+    this.cadeia = vez.catch(() => {});
+    return vez;
   }
 }
 

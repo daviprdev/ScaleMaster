@@ -59,6 +59,7 @@ export function ProgressoLotePanel({ jobs, conectadasSaas }: { jobs: readonly Vp
       `${total.criadas} criada${total.criadas === 1 ? "" : "s"}`,
       total.criando ? `${total.criando} na fila` : "",
       total.falhas ? `${total.falhas} com falha` : "",
+      total.suspensas ? `${total.suspensas} suspensa${total.suspensas === 1 ? "" : "s"}` : "",
     ].filter(Boolean);
     return (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-line bg-surface px-4 py-3 text-sm" data-testid="painel-progresso">
@@ -86,11 +87,12 @@ export function ProgressoLotePanel({ jobs, conectadasSaas }: { jobs: readonly Vp
             : "Nenhuma conta sendo criada agora. Os números voltam a andar quando uma rodada começar."
         }
       >
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <StatTile label="Na fila" value={String(c.queued)} hint="Esperando vaga de cadastro" />
           <StatTile label="Rodando" value={String(c.running)} hint="Container ligado, etapa em andamento" />
           <StatTile label="Criadas" value={String(c.done)} hint="Cadastro, aquecimento e sessão prontos" />
           <StatTile label="Falhas" value={String(c.error)} tone="negative" hint="Pararam: Continuar retoma da etapa" />
+          <StatTile label="Suspensas" value={String(c.suspensas)} hint="Desafio pendente: Responder retoma o cadastro" />
         </div>
         <div className="mt-4">
           <p className="text-[13px] font-medium text-ink-2">Proxies da rodada</p>

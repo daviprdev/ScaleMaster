@@ -126,6 +126,12 @@ export function hostnameDe(modelo) {
   return nome || "android";
 }
 
+/** Tela e densidade do perfil. */
+function argsDaTela(device) {
+  const [w, h] = String(device.resolucao ?? "1080x1920").split("x");
+  return [`androidboot.redroid_width=${w}`, `androidboot.redroid_height=${h}`, `androidboot.redroid_dpi=${device.dpi ?? 420}`];
+}
+
 /**
  * Argumentos do docker create de uma conta. `props` = pasta com os build.prop
  * dela; `rede`/`ip` = enderecoDe(spec.device, spec.index).
@@ -145,7 +151,7 @@ export function argsDoContainer(spec, { props, rede, ip, cota = cotaAtual() }) {
   ];
   for (const p of PARTICOES) args.push("-v", `${path.join(props, `${p.nome}.prop`)}:${p.destino}:ro`);
   // decisão: além do -e, o mesmo androidboot.selinux vai na cmdline, que é de onde o redroid lê os androidboot.*.
-  args.push(IMAGEM, ...ARGS_REDROID, `androidboot.redroid_net_dns1=${ip}`, "androidboot.selinux=permissive", `androidboot.serialno=${spec.device.serial}`);
+  args.push(IMAGEM, ...ARGS_REDROID, ...argsDaTela(spec.device), `androidboot.redroid_net_dns1=${ip}`, "androidboot.selinux=permissive", "androidboot.verifiedbootstate=green", "androidboot.flash.locked=1", "androidboot.veritymode=enforcing", `androidboot.serialno=${spec.device.serial}`);
   return args;
 }
 /** Props que só entram no boot (build.prop / cmdline): mudar uma delas recria o container. */
@@ -161,9 +167,6 @@ const PARTICOES = [
 
 const ARGS_REDROID = [
   "androidboot.redroid_gpu_mode=guest",
-  "androidboot.redroid_width=1080",
-  "androidboot.redroid_height=1920",
-  "androidboot.redroid_dpi=420",
   "androidboot.redroid_fps=30",
   // decisão: kernel sem ashmem (Ubuntu 26.04 / 7.0): o redroid usa memfd, igual ao teste-ig que já roda nesta VPS.
   "androidboot.use_memfd=true",

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { isMissingSchemaError } from "@/lib/queue-insights/load";
-import { ehDescarte } from "@/lib/emulador/jobs";
+import { ehDescarte, ehDesafio } from "@/lib/emulador/jobs";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -49,5 +49,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data?.length) return NextResponse.json({ error: "Só dá para continuar uma conta que parou com erro." }, { status: 409 });
+  // Responder do desafio pendente (22/11): a conta volta à fila e o flag do device sai (sem a coluna, só loga).
+  if (ehDesafio(atual.error as string | null)) {
+    const { error: devErr } = await admin.from("vps_devices").update({ desafio: false }).eq("job_id", id);
+    if (devErr) console.warn(`[vps/continuar] vps_devices.desafio não limpo (${id}): ${devErr.message}`);
+  }
   return NextResponse.json({ ok: true });
 }

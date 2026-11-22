@@ -100,6 +100,13 @@ export async function versaoInstalada(d) {
   return /versionName=([^\s]+)/.exec(saida)?.[1] ?? "?";
 }
 
+/** Instalador gravado no pacote (installerPackageName do dumpsys package); "" quando vem null ou vazio. */
+export async function instaladorDe(d, pacote = INSTAGRAM) {
+  const saida = await d.shell("dumpsys", "package", pacote).catch(() => "");
+  const valor = /installerPackageName=(\S*)/.exec(saida)?.[1] ?? "";
+  return valor === "null" ? "" : valor;
+}
+
 /**
  * Instala (ou reinstala, se a versão pinada ou a ABI for outra) e devolve a
  * mensagem da etapa. Em x86_64: sha256 dos dois arquivos conferido, install-multiple,
@@ -107,23 +114,26 @@ export async function versaoInstalada(d) {
  * @param {{ temApp: Function, shell: Function, abiPrimaria: Function, instalar: Function, instalarMultiplos: Function }} d
  * @param {string} versao
  * @param {(m: string) => void} log
- * @param {{ arch?: string, pasta?: string }} [opcoes]
+ * @param {{ arch?: string, pasta?: string, instalador?: string | null }} [opcoes]
  */
-export async function instalarInstagram(d, versao, log, { arch = process.arch, pasta = PASTA_APKS } = {}) {
+export async function instalarInstagram(d, versao, log, { arch = process.arch, pasta = PASTA_APKS, instalador = null } = {}) {
   const a = archDe(arch);
   const abi = abiEsperada(a);
   const atual = await versaoInstalada(d);
   const abiAtual = atual ? await d.abiPrimaria(INSTAGRAM) : null;
-  if (atual && atual.startsWith(String(versao)) && abiAtual === abi) return `já estava instalado (${atual}, ${abi})`;
-  if (atual) log(`Instagram ${atual} (${abiAtual || "?"}) instalado: trocando pelo ${versao} ${abi}`);
+  // decisão: a base (golden.sh) traz o Instagram sem instalador; com outro instalador pedido, reinstala por cima (-r mantém os dados).
+  const instaladorAtual = atual && instalador ? await instaladorDe(d) : null;
+  const instaladorOk = !instalador || instaladorAtual === instalador;
+  if (atual && atual.startsWith(String(versao)) && abiAtual === abi && instaladorOk) return `já estava instalado (${atual}, ${abi})`;
+  if (atual) log(`Instagram ${atual} (${abiAtual || "?"}, instalador ${instaladorAtual || "nulo"}) instalado: trocando pelo ${versao} ${abi}${instalador ? ` com -i ${instalador}` : ""}`);
   if (a === "x86_64") {
     const arquivos = arquivosX86(versao, pasta);
     const hashes = conferirSha256(arquivos);
     log(`sha256 ok: ${hashes.map((h) => `${path.basename(h.arquivo)} ${h.sha256.slice(0, 12)}…`).join(", ")}`);
     if (atual && abiAtual !== abi) await d.shell("pm", "uninstall", INSTAGRAM).catch(() => {});
-    await d.instalarMultiplos(arquivos);
+    await d.instalarMultiplos(arquivos, { instalador });
   } else {
-    await d.instalar(caminhoApk(versao, pasta));
+    await d.instalar(caminhoApk(versao, pasta), { instalador });
   }
   const depois = await versaoInstalada(d);
   if (!depois) throw new Error("O Instagram não apareceu instalado depois do adb install.");
