@@ -559,6 +559,17 @@ async function rodarCadastro({ d, conta, perguntar, log, mail, enderecoAtual, es
       },
     },
     {
+      // "What's your gender?" depois do @ (ig-242, 22/11): sempre Female → Next.
+      nome: "genero",
+      teste: (nos) => temTexto(nos, ["What's your gender", "Qual é o seu gênero", "Qual é o seu género", "Qual é o teu género", "Qual é seu gênero"]),
+      agir: async (nos) => {
+        const opcao = acharTexto(nos, ["Female", "Feminino", "Mulher"], { exato: true, clicavel: true }) ?? acharTexto(nos, ["Female", "Feminino", "Mulher"], { exato: true });
+        if (!opcao) throw new Error("Não achei a opção Female na tela de gênero.");
+        await tocarNo(d, opcao, 1200);
+        await seguinte(d, await d.tela());
+      },
+    },
+    {
       nome: "termos",
       teste: (nos) =>
         temTexto(nos, ["termos e políticas", "terms and policies", "Termos e Políticas", "termos e as políticas"]) &&
