@@ -121,14 +121,19 @@ export async function exportarSessao(d, jobId, log = () => {}, pasta = PASTA_SES
     const tamanho = Number((await d.shell(...su, "stat", "-c", "%s", remoto)).trim());
     if (!Number.isFinite(tamanho) || tamanho <= 0) throw new Error(`tar da sessão saiu com ${Number.isFinite(tamanho) ? tamanho : "?"} byte(s)`);
     log(`sessão: ${Math.round(tamanho / 1024)} KB (${SESSAO_PASTAS.join(", ")}, sem cache)`);
+    let resultado;
     try {
       await d.puxar(remoto, local);
       chmodSync(local, 0o600);
+      resultado = `${path.basename(local)} exportado (${Math.round(tamanho / 1024)} KB)`;
     } catch (e) {
       log(`sessão não exportada: ${e.message}`);
-      return "sessão não exportada";
+      resultado = "sessão não exportada";
     }
-    return `${path.basename(local)} exportado (${Math.round(tamanho / 1024)} KB)`;
+    // Restaura SELinux enforcing só depois do pull: o tar precisa do permissivo, o pull não.
+    await d.shell(...su, "setenforce", "1").catch(() => {});
+    await d.shell(...su, "setprop", "ro.boot.selinux", "enforcing").catch(() => {});
+    return resultado;
   } finally {
     await d.shell("rm", "-f", remoto).catch(() => {});
   }
