@@ -23,7 +23,7 @@ import { requireCronAuth } from "@/lib/cron-auth";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const GRAPH = "https://graph.instagram.com/v21.0";
+import { graphBase } from "@/lib/meta-graph";
 const STALE_MINUTES = 5; // painel quase ao vivo — o cron roda a cada 1 min e só pega contas paradas há mais de 5 min (ritmo natural ~14 contas/min, sem burst)
 const STALE_MS = STALE_MINUTES * 60 * 1000;
 
@@ -91,7 +91,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
 
   const fetchProfile = async (token: string) => {
     const url =
-      `${GRAPH}/${acc.ig_business_account_id}` +
+      `${graphBase(token)}/${acc.ig_business_account_id}` +
       `?fields=followers_count,media_count,name,profile_picture_url` +
       `&access_token=${encodeURIComponent(token)}`;
     try {
@@ -153,7 +153,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       Date.now() - new Date(acc.connected_at).getTime() < NEW_ACCOUNT_AGE_MS;
     if (!isNewAccount) try {
       const mediaRes = await httpFetch(
-        `${GRAPH}/${acc.ig_business_account_id}/media?fields=timestamp&limit=1&access_token=${encodeURIComponent(activeToken)}`,
+        `${graphBase(activeToken)}/${acc.ig_business_account_id}/media?fields=timestamp&limit=1&access_token=${encodeURIComponent(activeToken)}`,
         { signal: AbortSignal.timeout(10_000) }
       );
       const mediaData = (await mediaRes.json()) as { data?: Array<{ timestamp: string }> };

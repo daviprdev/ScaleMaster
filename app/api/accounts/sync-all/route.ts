@@ -3,11 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { refreshMetaToken } from "@/lib/meta-refresh";
 import { httpFetch } from "@/lib/http";
+import { graphBase } from "@/lib/meta-graph";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const GRAPH = "https://graph.instagram.com/v21.0";
 // 6 HORAS (2026-07-17, era 5 min). O sync de perfil é só métrica de painel
 // (seguidores/posts mudam devagar) — a detecção de conta caída agora é PASSIVA,
 // feita pelo pipeline de postagem (lib/account-health.ts nos crons process-loops/
@@ -105,7 +105,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
 
   const fetchProfile = async (token: string) => {
     const profileUrl =
-      `${GRAPH}/${acc.ig_business_account_id}` +
+      `${graphBase(token)}/${acc.ig_business_account_id}` +
       `?fields=followers_count,media_count,name,profile_picture_url` +
       `&access_token=${encodeURIComponent(token)}`;
     try {
@@ -223,7 +223,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
     let lastPostAt: string | null = null;
     if (force) try {
       const mediaUrl =
-        `${GRAPH}/${acc.ig_business_account_id}/media` +
+        `${graphBase(activeToken)}/${acc.ig_business_account_id}/media` +
         `?fields=timestamp&limit=1` +
         `&access_token=${encodeURIComponent(activeToken)}`;
       const mediaRes = await httpFetch(mediaUrl, { signal: AbortSignal.timeout(15_000) });
@@ -241,7 +241,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
     let activeStoriesExpiringFirstAt: string | null = null;
     try {
       const storiesUrl =
-        `${GRAPH}/${acc.ig_business_account_id}/stories` +
+        `${graphBase(activeToken)}/${acc.ig_business_account_id}/stories` +
         `?fields=id,timestamp` +
         `&access_token=${encodeURIComponent(activeToken)}`;
       const storiesRes = await httpFetch(storiesUrl, { signal: AbortSignal.timeout(15_000) });

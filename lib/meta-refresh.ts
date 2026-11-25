@@ -1,5 +1,6 @@
 // Renovação de token é chamada oficial da Meta: conexão direta, sem proxy.
 import { httpFetch } from "./http";
+import { isUnifiedToken, UNIFIED_TOKEN_EXPIRES_AT } from "./meta-graph";
 
 const GRAPH_FB = "https://graph.facebook.com/v19.0";
 const GRAPH_IG = "https://graph.instagram.com";
@@ -25,6 +26,9 @@ export async function refreshMetaToken(
   fbPageId?: string | null,
   appCredentials?: { clientId: string; clientSecret: string } | null
 ): Promise<TokenRefreshResult> {
+  if (!fbPageId && isUnifiedToken(currentToken)) {
+    return { token: currentToken, expiresAt: UNIFIED_TOKEN_EXPIRES_AT };
+  }
   return fbPageId
     ? refreshFacebookToken(currentToken, appCredentials)
     : refreshInstagramToken(currentToken);

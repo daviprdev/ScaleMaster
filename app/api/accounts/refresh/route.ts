@@ -3,11 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { httpFetch } from "@/lib/http";
 import { summarizePublishCheck, type PublishCheck } from "@/lib/meta-publish-check";
+import { graphBase } from "@/lib/meta-graph";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
-
-const GRAPH = "https://graph.instagram.com/v21.0";
 
 // OAuth / permission error codes → token is dead, mark account as error
 // Apenas tokens genuinamente mortos: 190 = token inválido/expirado, 102/104 = session inválida.
@@ -49,7 +48,7 @@ async function fetchMetaProfile(
   token: string,
 ): Promise<{ profile: GraphProfile; lastPostAt: string | null; activeStoriesCount: number; activeStoriesExpiringFirstAt: string | null }> {
   const profileUrl =
-    `${GRAPH}/${igId}` +
+    `${graphBase(token)}/${igId}` +
     `?fields=followers_count,media_count,name,profile_picture_url,username` +
     `&access_token=${encodeURIComponent(token)}`;
 
@@ -67,7 +66,7 @@ async function fetchMetaProfile(
     // Last post timestamp
     (async () => {
       const mediaUrl =
-        `${GRAPH}/${igId}/media` +
+        `${graphBase(token)}/${igId}/media` +
         `?fields=timestamp&limit=1` +
         `&access_token=${encodeURIComponent(token)}`;
       const mediaRes = await fetchMeta(mediaUrl);
@@ -79,7 +78,7 @@ async function fetchMetaProfile(
     // permite atualizar o badge de stories na tela sem chamada adicional à Meta).
     (async () => {
       const storiesUrl =
-        `${GRAPH}/${igId}/stories` +
+        `${graphBase(token)}/${igId}/stories` +
         `?fields=id,timestamp` +
         `&access_token=${encodeURIComponent(token)}`;
       const storiesRes = await fetchMeta(storiesUrl);
@@ -112,8 +111,8 @@ async function fetchPublishCheck(igId: string, token: string): Promise<PublishCh
     }
   };
   const [accountType, limit] = await Promise.all([
-    readJson(`${GRAPH}/${igId}?fields=account_type&${t}`),
-    readJson(`${GRAPH}/${igId}/content_publishing_limit?fields=quota_usage,config&${t}`),
+    readJson(`${graphBase(token)}/${igId}?fields=account_type&${t}`),
+    readJson(`${graphBase(token)}/${igId}/content_publishing_limit?fields=quota_usage,config&${t}`),
   ]);
   if (!accountType && !limit) return null;
   return summarizePublishCheck({ accountType, limit });

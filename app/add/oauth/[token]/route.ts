@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { decrypt } from "@/lib/encrypt";
+import { montarUrlOAuth } from "@/lib/meta-oauth-url";
 import { getAppUrl, getInstagramRedirectUri } from "@/lib/app-url";
 import { signMagicUserCookie, signOAuthState } from "@/lib/oauth-cookie";
 
@@ -43,11 +43,13 @@ export async function GET(
 
   // Resolve clientId do app
   let clientId: string;
+  let configId: string | null = null;
 
   if (appId) {
+    // select("*"): config_id pode não existir antes de supabase/user_meta_apps_unified.sql.
     const { data: app } = await admin
       .from("user_meta_apps")
-      .select("ig_app_id, ig_app_secret")
+      .select("*")
       .eq("id", appId)
       .eq("user_id", userId)
       .single();
@@ -56,8 +58,10 @@ export async function GET(
       return NextResponse.redirect(`${APP_URL}/add/error?reason=app_not_found`);
     }
     clientId = app.ig_app_id;
+    configId = app.config_id ?? null;
   } else {
     clientId = process.env.NEXT_PUBLIC_META_CLIENT_ID ?? "";
+    configId = process.env.META_CONFIG_ID || null;
     if (!clientId) {
       return NextResponse.redirect(`${APP_URL}/add/error?reason=no_app_configured`);
     }
@@ -65,13 +69,7 @@ export async function GET(
 
   // Gera state CSRF assinado e com prazo (lib/oauth-cookie.ts) e monta URL OAuth
   const state = signOAuthState();
-  const oauthUrl =
-    "https://www.instagram.com/oauth/authorize" +
-    "?client_id=" + clientId +
-    "&redirect_uri=" + encodeURIComponent(REDIRECT_URI) +
-    "&scope=instagram_business_basic,instagram_business_content_publish,instagram_business_manage_comments,instagram_business_manage_insights" +
-    "&response_type=code" +
-    "&state=" + state;
+  const oauthUrl = montarUrlOAuth({ clientId, configId, redirectUri: REDIRECT_URI, state });
 
   const response = NextResponse.redirect(oauthUrl);
 

@@ -1,6 +1,3 @@
-// Tokens gerados via Instagram Login funcionam com graph.instagram.com
-const GRAPH_API = "https://graph.instagram.com/v21.0";
-
 // Chamadas à Graph API oficial saem server-to-server, direto (no Cloudflare
 // Workers não há proxy; o `dispatcher` é aceito e ignorado por lib/http).
 // httpFetch em vez do fetch global do Next.js: o patch de cache do Next
@@ -11,6 +8,7 @@ import { httpFetch, type Dispatcher } from "./http";
 // este arquivo isolado com `tsc`, fora do resolver de paths do Next.
 import { validateInstagramCaption, InvalidCaptionError } from "./reel-captions";
 import { vpsPublishDispatcher } from "./vps-publish-proxy";
+import { graphBase } from "./meta-graph";
 
 /**
  * Sanitização de TRANSPORTE — e nada além disso.
@@ -146,7 +144,7 @@ async function createMediaContainer(
     signal: AbortSignal.timeout(45_000),
   };
   if (dispatcher) fetchOpts.dispatcher = dispatcher;
-  const res = await httpFetch(`${GRAPH_API}/${igAccountId}/media`, fetchOpts as any);
+  const res = await httpFetch(`${graphBase(token)}/${igAccountId}/media`, fetchOpts as any);
 
   // Lê como texto antes de parsear — captura warnings/messages ocultas que a Meta
   // inclui no body mesmo com 200 OK (ex: campo ignorado, scope insuficiente).
@@ -178,7 +176,7 @@ async function pollContainerStatus(
     const pollOpts: Record<string, unknown> = { signal: AbortSignal.timeout(45_000) };
     if (dispatcher) pollOpts.dispatcher = dispatcher;
     const res = await httpFetch(
-      `${GRAPH_API}/${creationId}?fields=status_code&access_token=${encodeURIComponent(token)}`,
+      `${graphBase(token)}/${creationId}?fields=status_code&access_token=${encodeURIComponent(token)}`,
       pollOpts as any
     );
     const data = (await res.json()) as {
@@ -212,7 +210,7 @@ async function publishContainer(
     signal: AbortSignal.timeout(45_000),
   };
   if (dispatcher) pubOpts.dispatcher = dispatcher;
-  const res = await httpFetch(`${GRAPH_API}/${igAccountId}/media_publish`, pubOpts as any);
+  const res = await httpFetch(`${graphBase(token)}/${igAccountId}/media_publish`, pubOpts as any);
   const data = (await res.json()) as { id?: string; error?: { message: string } };
   if (!res.ok || !data.id) {
     throw new Error(data.error?.message ?? "Falha ao publicar o container de mídia.");
@@ -250,7 +248,7 @@ export async function updatePostCaption(
     signal: AbortSignal.timeout(45_000),
   };
   if (dispatcher) capOpts.dispatcher = dispatcher;
-  const res = await httpFetch(`${GRAPH_API}/${mediaId}`, capOpts as any);
+  const res = await httpFetch(`${graphBase(token)}/${mediaId}`, capOpts as any);
   const rawText = await res.text();
   if (!res.ok) {
     console.warn(`[meta] caption update falhou media=${mediaId} http=${res.status}`);
@@ -292,7 +290,7 @@ export async function pollContainerStatusOnce(
   const pollOnceOpts: Record<string, unknown> = { signal: AbortSignal.timeout(45_000) };
   if (dispatcher) pollOnceOpts.dispatcher = dispatcher;
   const res = await httpFetch(
-    `${GRAPH_API}/${creationId}?fields=status_code&access_token=${encodeURIComponent(token)}`,
+    `${graphBase(token)}/${creationId}?fields=status_code&access_token=${encodeURIComponent(token)}`,
     pollOnceOpts as any
   );
   const data = (await res.json()) as {

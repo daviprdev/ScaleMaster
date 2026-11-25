@@ -13,8 +13,7 @@
 
 // Insights é endpoint oficial da Meta: conexão direta, sem proxy.
 import { httpFetch } from "./http";
-
-const GRAPH_API = "https://graph.instagram.com/v21.0";
+import { graphBase } from "@/lib/meta-graph";
 
 export interface PostInsights {
   likes: number | null;
@@ -63,7 +62,7 @@ export async function fetchPostInsights(
   };
 
   const ins = await getJson(
-    `${GRAPH_API}/${mediaId}/insights?metric=${METRICS[kind]}&period=lifetime&access_token=${encodeURIComponent(token)}`
+    `${graphBase(token)}/${mediaId}/insights?metric=${METRICS[kind]}&period=lifetime&access_token=${encodeURIComponent(token)}`
   );
 
   if (ins.ok) {
@@ -96,7 +95,7 @@ export async function fetchPostInsights(
   if (kind === "reel" && !out.rateLimited && (out.likes === null || out.comments === null)) {
     try {
       const basic = await getJson(
-        `${GRAPH_API}/${mediaId}?fields=like_count,comments_count&access_token=${encodeURIComponent(token)}`
+        `${graphBase(token)}/${mediaId}?fields=like_count,comments_count&access_token=${encodeURIComponent(token)}`
       );
       if (basic.ok) {
         if (out.likes === null && typeof basic.data.like_count === "number") out.likes = basic.data.like_count;
