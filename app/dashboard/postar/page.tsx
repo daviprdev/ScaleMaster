@@ -7,17 +7,15 @@ import {
   Users, Film, CalendarDays, Send, FolderOpen, X, Check,
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Clock,
   Shuffle, Zap, List, Library, Save, BookMarked, BarChart2,
-  RefreshCw, ChevronDown, Sparkles, Pencil, SlidersHorizontal, LayoutGrid,
-  ShieldCheck, Pause, Play, Repeat,
+  RefreshCw, ChevronDown, Sparkles, Pencil, LayoutGrid,
+  Pause, Play, Repeat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toDatetimeLocalValue } from "@/lib/datetime-local";
 import { createClient } from "@/lib/supabase/client";
 import { takeHandoff, type IdealQueueHandoff } from "@/lib/queue-insights/handoff";
-import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
 import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
-import { ProxyPoolToggle } from "@/components/dashboard/ProxyPoolToggle";
 import { queueTitle, useAccountQueues } from "@/components/dashboard/fila/useAccountQueues";
 import { VideoThumb } from "@/components/ui/video-thumb";
 import {
@@ -1612,14 +1610,9 @@ export default function PostarPage() {
   const [captions, setCaptions] = useState<string[]>(["", ""]);
   const [autoCaptionEnabled, setAutoCaptionEnabled] = useState(false);
 
-  // Processamento do video (opt-in) - padrao: arquivo original, zero FFmpeg
-  const [videoProcessingMode, setVideoProcessingMode] = useState<VideoProcessingMode>("original");
-
   // Onde o Reel aparece no perfil (share_to_feed da Meta). Padrão: Reels + grade.
   const [shareToFeed, setShareToFeed] = useState(true);
 
-  // Proxy do estoque para publicação (opt-in) — padrão: desligado (fluxo atual).
-  const [useProxyPool, setUseProxyPool] = useState(false);
   // "custom" preserva o comportamento histórico desta aba (pool digitado
   // ou legenda automática). Só muda se o usuário escolher outro modo.
   const [captionMode, setCaptionMode] = useState<CaptionMode>("custom");
@@ -1721,9 +1714,7 @@ export default function PostarPage() {
     setAutoCaptionEnabled(!!d.autoCaptionType);
     setStripHashtags(!!d.stripHashtags);
     setStripMentions(!!d.stripMentions);
-    setVideoProcessingMode(d.videoProcessingMode === "clean_metadata" ? "clean_metadata" : "original");
     setShareToFeed(d.shareToFeed !== false);
-    setUseProxyPool(d.useProxyPool === true);
     setBurstMode(false);
     setSyncFolders(false);
   }, [accounts]);
@@ -1850,13 +1841,11 @@ export default function PostarPage() {
           account_stagger_seconds: accountStaggerSeconds,
           burst_mode: burstMode,
           sync_folder_ids: syncFolders && !idealVideos ? fullySelectedFolders.map(g => g.id) : [],
-          video_processing_mode: videoProcessingMode,
           share_to_feed: shareToFeed,
           caption_mode: captionMode,
           caption_strip_hashtags: stripHashtags,
           caption_strip_mentions: stripMentions,
           priority_strategy: priorityStrategy,
-          use_proxy_pool: useProxyPool,
           ...(idealVideos ? { video_ids: idealVideos.map(v => v.id) } : {}),
         }),
       });
@@ -2620,24 +2609,6 @@ export default function PostarPage() {
             <SectionCard>
               <SectionLabel Icon={LayoutGrid}>Exibição do Reel</SectionLabel>
               <ReelPlacementSelector value={shareToFeed} onChange={setShareToFeed} />
-            </SectionCard>
-
-            {/* 6. Processamento do video */}
-            <SectionCard>
-              <SectionLabel Icon={SlidersHorizontal}>Processamento do vídeo</SectionLabel>
-              <VideoProcessingSelector
-                value={videoProcessingMode}
-                onChange={setVideoProcessingMode}
-              />
-            </SectionCard>
-
-            {/* 7. Proxy do estoque (opt-in) */}
-            <SectionCard>
-              <SectionLabel Icon={ShieldCheck}>Rota de publicação</SectionLabel>
-              <ProxyPoolToggle
-                value={useProxyPool}
-                onChange={setUseProxyPool}
-              />
             </SectionCard>
 
             {/* Error */}

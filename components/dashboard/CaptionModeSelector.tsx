@@ -3,7 +3,7 @@
 /**
  * CaptionModeSelector — de onde sai o texto da publicação.
  *
- * Mesmo padrão visual de ReelPlacementSelector e VideoProcessingSelector.
+ * Mesmo padrão visual de ReelPlacementSelector.
  *
  * O modo NÃO é apenas estado do React: é persistido na configuração
  * (`loops.caption_mode`, `distribute_campaigns.caption_mode`) e o texto

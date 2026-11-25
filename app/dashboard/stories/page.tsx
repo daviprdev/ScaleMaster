@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
-import { ProxyPoolToggle } from "@/components/dashboard/ProxyPoolToggle";
 import { VideoThumb } from "@/components/ui/video-thumb";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -532,8 +531,6 @@ function ImportTemplateModal({
           source_account_id: imported.source_account_id,
           account_ids: targetAccountIds,
           interval_minutes: intervalMinutes,
-          // Stories não oferecem limpeza de metadados: sempre o arquivo original.
-          video_processing_mode: "original",
         }),
       });
       const data = await res.json() as { success?: boolean; error?: string };
@@ -656,7 +653,6 @@ export default function StoriesPage() {
 
   // Publish
   const [publishing, setPublishing] = useState(false);
-  const [useProxyPool, setUseProxyPool] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
   // Link direto divulgado junto do Story (URL externa; a API não anexa sticker).
   const [storyLinkUrl, setStoryLinkUrl] = useState("");
@@ -910,9 +906,6 @@ export default function StoriesPage() {
           account_ids: selectedAccountIds,
           media_url: media.url,
           media_type: media.media_type,
-          // Stories não oferecem limpeza de metadados: sempre o arquivo original.
-          video_processing_mode: "original",
-          use_proxy_pool: useProxyPool,
           story_link_url: storyLinkUrl.trim() || null,
         }),
       });
@@ -1145,10 +1138,6 @@ export default function StoriesPage() {
               className="w-full px-3 py-2 rounded-lg bg-surface-raised border border-line text-sm text-ink placeholder:text-ink-3 focus:border-[#85B9E9]/40 focus:outline-none transition-colors"
             />
             <p className="mt-1 text-[10px] text-ink-3">URL externa anexada ao Story como sticker de link.</p>
-          </SectionCard>
-
-          <SectionCard>
-            <ProxyPoolToggle value={useProxyPool} onChange={setUseProxyPool} disabled={publishing} />
           </SectionCard>
 
           {/* Nota */}

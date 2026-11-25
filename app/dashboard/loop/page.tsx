@@ -9,14 +9,12 @@ import {
   Loader2, AlertCircle, ChevronDown, Info, Film, AlertTriangle,
   BarChart2, Heart, MessageCircle, Eye, Crown, TrendingUp, ChevronUp,
   Save, Library, BookMarked, Shuffle, CheckCircle2,
-  ZoomIn, Waves, Droplets, Shield, ShieldCheck, Sparkles, SlidersHorizontal, LayoutGrid, FileText,
+  ZoomIn, Waves, Droplets, Shield, Sparkles, LayoutGrid, FileText,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import { VideoProcessingSelector, type VideoProcessingMode } from "@/components/dashboard/VideoProcessingSelector";
 import { ReelPlacementSelector } from "@/components/dashboard/ReelPlacementSelector";
 import { CaptionModeSelector } from "@/components/dashboard/CaptionModeSelector";
-import { ProxyPoolToggle } from "@/components/dashboard/ProxyPoolToggle";
 import { queueTitle, useAccountQueues } from "@/components/dashboard/fila/useAccountQueues";
 import type { AccountQueueRef } from "@/lib/fila/account-queues";
 import type { CaptionMode } from "@/lib/reel-captions";
@@ -79,10 +77,8 @@ interface Loop {
   effect_text_enabled?:  boolean | null;
   effect_text_pool?:     string[] | null;
   effect_text_position?: string | null;
-  video_processing_mode?: string | null;
   share_to_feed?: boolean | null;
   caption_mode?: string | null;
-  use_proxy_pool?: boolean | null;
   caption_strip_hashtags?: boolean | null;
   caption_strip_mentions?: boolean | null;
   status: "active" | "paused";
@@ -120,8 +116,6 @@ interface FormData {
   autoCaptionEnabled: boolean;
   autoCaptionType: string;
   accountStaggerSeconds: number | null;
-  videoProcessingMode: VideoProcessingMode;
-  useProxyPool: boolean;
   shareToFeed: boolean;
   captionMode: CaptionMode;
   captionStripHashtags: boolean;
@@ -168,8 +162,6 @@ const DEFAULT_FORM: FormData = {
   autoCaptionEnabled: false,
   autoCaptionType: AUTO_CAPTION_TYPE_VALUE,
   accountStaggerSeconds: null,
-  videoProcessingMode: "original",
-  useProxyPool: false,
   shareToFeed: true,
   // "custom" = pool digitado/automático = comportamento histórico do Loop.
   captionMode: "custom",
@@ -1487,9 +1479,6 @@ function LoopFormModal({
         autoCaptionEnabled: editingLoop.auto_caption_enabled ?? false,
         autoCaptionType: editingLoop.auto_caption_type ?? AUTO_CAPTION_TYPE_VALUE,
         accountStaggerSeconds: (editingLoop as any).account_stagger_seconds ?? null,
-        videoProcessingMode:
-          editingLoop.video_processing_mode === "clean_metadata" ? "clean_metadata" : "original",
-        useProxyPool: editingLoop.use_proxy_pool === true,
         // Loop antigo sem escolha persistida (null) abre marcado como
         // "Reels + grade", mas só passa a enviar o parâmetro quando salvo.
         shareToFeed: editingLoop.share_to_feed !== false,
@@ -1965,30 +1954,12 @@ function LoopFormModal({
             </p>
           </div>
 
-          {/* Processamento do vídeo (limpeza — conceito separado dos efeitos) */}
-          <div>
-            <SectionLabel icon={SlidersHorizontal} label="Processamento do vídeo" />
-            <VideoProcessingSelector
-              value={form.videoProcessingMode}
-              onChange={v => update("videoProcessingMode", v)}
-            />
-          </div>
-
-          {/* Proxy do estoque (opt-in) */}
-          <div>
-            <SectionLabel icon={ShieldCheck} label="Rota de publicação" />
-            <ProxyPoolToggle
-              value={form.useProxyPool}
-              onChange={v => update("useProxyPool", v)}
-            />
-          </div>
-
           {/* Efeitos criativos — pipeline próprio, re-encodam por definição */}
           <div>
             <SectionLabel icon={Contrast} label="Efeitos Criativos" />
             <p className="text-[11px] text-ink-3 -mt-2 mb-3">
-              Alteram a imagem/áudio e por isso re-encodam o vídeo. Independentes do
-              processamento acima; sem nenhum efeito ativo, nenhum re-encode acontece.
+              Alteram a imagem/áudio e por isso re-encodam o vídeo. Sem nenhum efeito
+              ativo, nenhum re-encode acontece.
             </p>
             <div className="space-y-2.5">
               <div className="flex items-center justify-between p-3.5 rounded-xl border border-line bg-surface-raised">
@@ -2195,8 +2166,6 @@ export default function LoopPage() {
       auto_caption_enabled: form.autoCaptionEnabled,
       auto_caption_type: form.autoCaptionEnabled ? form.autoCaptionType : null,
       account_stagger_seconds: form.accountStaggerSeconds,
-      video_processing_mode: form.videoProcessingMode,
-      use_proxy_pool: form.useProxyPool,
       share_to_feed: form.shareToFeed,
       caption_mode: form.captionMode,
       caption_strip_hashtags: form.captionStripHashtags,
