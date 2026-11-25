@@ -653,7 +653,7 @@ export function AccountCard({
           />
           {typeof views === "number" && (
             <div
-              className="flex shrink-0 items-center whitespace-nowrap text-[11px] font-semibold text-emerald-400"
+              className="flex shrink-0 items-center whitespace-nowrap text-[11px] font-semibold text-green-400"
               title={`${views.toLocaleString("pt-BR")} views no total`}
             >
               <Eye size={11} className="mr-0.5" />{formatViews(views)}
