@@ -43,7 +43,7 @@ curl.exe -sf https://scalemaster.tech/api/health   # {"status":"ok"}
 
 - Exige `npx wrangler login` feito no PC (OAuth do dono). `wrangler whoami` confere.
 - Um `wrangler dev` esquecido trava a pasta `.open-next` (EPERM no build): matar os processos com `scalemaster-cf`/o caminho do checkout na linha de comando.
-- Segredos: `npx wrangler secret put NOME` (ou `secret bulk arquivo.json`); `NEXT_PUBLIC_*` também entram no **build** (o `.env.production` local, fora do git, precisa ter os públicos).
+- Segredos: `npx wrangler secret put NOME` (ou `secret bulk arquivo.json`). O `.env.production` local (fora do git) usado no build deve ter **só `NEXT_PUBLIC_*`**: o OpenNext embute no Worker tudo o que estiver nele (`.open-next/cloudflare/next-env.mjs`), segredos e `PYTHON_SERVER_URL` inclusive.
 
 ### Rollback
 
