@@ -30,14 +30,14 @@ const OPTIONS: OptionSpec[] = [
     badge: "RECOM.",
     description: "Exibe o Reel na grade/feed do perfil e também na aba Reels.",
     Icon: LayoutGrid,
-    accent: "var(--matrix)",
+    accent: "var(--primary)",
   },
   {
     value: false,
     title: "Somente Reels",
     description: "Exibe o conteúdo apenas na aba Reels do perfil.",
     Icon: Clapperboard,
-    accent: "var(--electric)",
+    accent: "var(--primary-2)",
   },
 ];
 
@@ -55,7 +55,7 @@ export function ReelPlacementSelector({
   return (
     <div className={className}>
       {!compact && (
-        <p className="text-[11px] text-white/35 mb-3">
+        <p className="text-[11px] text-ink-3 mb-3">
           Escolha onde o Reel ficará visível no Instagram.
         </p>
       )}
@@ -104,12 +104,12 @@ export function ReelPlacementSelector({
                     <opt.Icon
                       size={12}
                       style={{ color: selected ? opt.accent : undefined }}
-                      className={selected ? undefined : "text-white/35"}
+                      className={selected ? undefined : "text-ink-3"}
                     />
                     <span
                       className={cn(
                         "text-sm font-medium",
-                        selected ? "text-white" : "text-white/70"
+                        selected ? "text-white" : "text-ink-2"
                       )}
                     >
                       {opt.title}
@@ -127,7 +127,7 @@ export function ReelPlacementSelector({
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 text-[10px] leading-relaxed text-white/40">
+                  <p className="mt-1 text-[10px] leading-relaxed text-ink-3">
                     {opt.description}
                   </p>
                 </div>

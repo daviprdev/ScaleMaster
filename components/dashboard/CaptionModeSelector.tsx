@@ -28,14 +28,14 @@ const OPTIONS: OptionSpec[] = [
     title: "Original",
     description: "Usa a legenda capturada junto do Reel.",
     Icon: FileText,
-    accent: "var(--matrix)",
+    accent: "var(--primary)",
   },
   {
     value: "custom",
     title: "Personalizada",
     description: "Use sua própria legenda.",
     Icon: PenLine,
-    accent: "var(--electric)",
+    accent: "var(--primary-2)",
   },
   {
     value: "none",
@@ -115,18 +115,18 @@ export function CaptionModeSelector({
                     <opt.Icon
                       size={12}
                       style={{ color: selected ? opt.accent : undefined }}
-                      className={selected ? undefined : "text-white/35"}
+                      className={selected ? undefined : "text-ink-3"}
                     />
                     <span
                       className={cn(
                         "text-sm font-medium",
-                        selected ? "text-white" : "text-white/70"
+                        selected ? "text-white" : "text-ink-2"
                       )}
                     >
                       {opt.title}
                     </span>
                   </div>
-                  <p className="mt-1 text-[11px] leading-snug text-white/35">
+                  <p className="mt-1 text-[11px] leading-snug text-ink-3">
                     {opt.description}
                   </p>
                 </div>
@@ -139,15 +139,15 @@ export function CaptionModeSelector({
       {value === "original" && (
         <div className="mt-3 space-y-3">
           {originalHint && (
-            <div className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl bg-amber-500/[0.05] border border-amber-500/15">
-              <AlertTriangle size={13} className="text-amber-400/70 mt-0.5 flex-shrink-0" />
-              <div className="text-[11px] text-white/45 leading-relaxed">{originalHint}</div>
+            <div className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl bg-warning-soft border border-warning/15">
+              <AlertTriangle size={13} className="text-warning/70 mt-0.5 flex-shrink-0" />
+              <div className="text-[11px] text-ink-3 leading-relaxed">{originalHint}</div>
             </div>
           )}
 
           {showStripToggles && (
             <div className="space-y-2">
-              <p className="text-[10px] uppercase tracking-widest text-white/25 font-semibold">
+              <p className="text-[10px] uppercase tracking-widest text-ink-3 font-semibold">
                 Ajustes na legenda original
               </p>
               <StripToggle
@@ -162,7 +162,7 @@ export function CaptionModeSelector({
                 checked={stripMentions}
                 onChange={onStripMentionsChange}
               />
-              <p className="text-[10px] text-white/25 leading-relaxed">
+              <p className="text-[10px] text-ink-3 leading-relaxed">
                 Desligados, a legenda vai exatamente como estava no Reel original.
               </p>
             </div>
@@ -191,7 +191,7 @@ function StripToggle({
       className={cn(
         "w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all",
         checked
-          ? "bg-[#85B9E9]/[0.06] border-[#85B9E9]/25"
+          ? "bg-info-soft border-primary-2/25"
           : "bg-white/[0.02] border-white/[0.06] hover:border-white/15",
         !onChange && "opacity-40 cursor-not-allowed"
       )}
@@ -199,14 +199,14 @@ function StripToggle({
       <span
         className={cn(
           "mt-0.5 w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border transition-all",
-          checked ? "bg-[#85B9E9] border-[#85B9E9]" : "border-white/20"
+          checked ? "bg-primary-2 border-primary-2" : "border-white/20"
         )}
       >
         {checked && <Check size={11} className="text-black" strokeWidth={3} />}
       </span>
       <span className="min-w-0">
-        <span className="block text-xs font-medium text-white/80">{label}</span>
-        <span className="block text-[10px] text-white/35 leading-snug mt-0.5">{hint}</span>
+        <span className="block text-xs font-medium text-ink">{label}</span>
+        <span className="block text-[10px] text-ink-3 leading-snug mt-0.5">{hint}</span>
       </span>
     </button>
   );
@@ -230,20 +230,20 @@ export function OriginalCaptionText({
 }) {
   if (caption === null || caption === undefined) {
     return (
-      <p className={cn("text-[11px] text-white/25 italic", className)}>
+      <p className={cn("text-[11px] text-ink-3 italic", className)}>
         Legenda original indisponível.
       </p>
     );
   }
   if (caption === "") {
     return (
-      <p className={cn("text-[11px] text-white/25 italic", className)}>
+      <p className={cn("text-[11px] text-ink-3 italic", className)}>
         Este Reel não tinha legenda.
       </p>
     );
   }
   return (
-    <p className={cn("text-[11px] text-white/60 whitespace-pre-wrap break-words", className)}>
+    <p className={cn("text-[11px] text-ink-2 whitespace-pre-wrap break-words", className)}>
       {caption}
     </p>
   );

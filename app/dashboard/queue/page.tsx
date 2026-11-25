@@ -99,7 +99,7 @@ function AccountAvatar({ username, size = "sm" }: { username: string; size?: "sm
   return (
     <div
       className={cn(
-        "rounded-full bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center font-bold text-white flex-shrink-0",
+        "rounded-full bg-gradient-primary flex items-center justify-center font-bold text-white flex-shrink-0",
         size === "sm" ? "w-7 h-7 text-[10px]" : "w-9 h-9 text-xs"
       )}
     >
@@ -121,34 +121,34 @@ function MetricCard({
   color: "blue" | "green" | "cyan" | "amber" | "red";
   icon: React.ElementType;
 }) {
-  const palette = {
-    blue:  { ring: "border-blue-500/20",    glow: "from-blue-500/10",    num: "text-blue-400",    ic: "text-blue-400/50"    },
-    green: { ring: "border-emerald-500/20", glow: "from-emerald-500/10", num: "text-emerald-400", ic: "text-emerald-400/50" },
-    cyan:  { ring: "border-[#85B9E9]/20",    glow: "from-[#85B9E9]/10",    num: "text-[#85B9E9]",    ic: "text-[#85B9E9]/50"    },
-    amber: { ring: "border-amber-500/20",   glow: "from-amber-500/10",   num: "text-amber-400",   ic: "text-amber-400/50"   },
-    red:   { ring: "border-red-500/20",     glow: "from-red-500/10",     num: "text-red-400",     ic: "text-red-400/50"     },
+  const bg = {
+    blue:  "var(--gradient-primary)",
+    green: "linear-gradient(135deg,#2fd39a,#168a70)",
+    cyan:  "linear-gradient(160deg,#3fd0ff,#2f7bff)",
+    amber: "linear-gradient(160deg,#ffc35c,#ff8a4c)",
+    red:   "linear-gradient(160deg,#ff7a92,#d6455f)",
   }[color];
 
   return (
-    <div className={cn("glass-card p-4 border relative overflow-hidden", palette.ring)}>
-      <div className={cn("absolute inset-0 bg-gradient-to-br to-transparent opacity-60", palette.glow)} />
-      <div className="relative flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <Icon size={14} className={palette.ic} />
-          <span className={cn("text-2xl font-bold tabular-nums tracking-tight", palette.num)}>
-            {value}
-          </span>
-        </div>
-        <div>
-          <p className="text-xs text-ink-2 font-medium">{label}</p>
-          <p className="text-[10px] text-ink-3 mt-0.5">{sublabel}</p>
-        </div>
+    <div className="glass-card flex flex-col gap-3 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+          style={{ background: bg }}
+        >
+          <Icon size={16} />
+        </span>
+        <span className="text-[26px] font-semibold leading-8 tabular-nums tracking-[-0.02em] text-ink">
+          {value}
+        </span>
+      </div>
+      <div>
+        <p className="text-[13px] text-ink-2 font-medium">{label}</p>
+        <p className="text-xs text-ink-3 mt-0.5">{sublabel}</p>
       </div>
     </div>
   );
 }
-
-// ── Diagnostic Panel ──────────────────────────────────────────
 
 function DiagPanel({ diag }: { diag: DiagResult }) {
   const sp = diag.scheduled_posts;
@@ -156,12 +156,12 @@ function DiagPanel({ diag }: { diag: DiagResult }) {
     <div className="space-y-3 text-xs font-mono">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {[
-          { label: "Pending total",      value: sp.pending_total,    color: "text-[#85B9E9]"    },
-          { label: "Elegíveis agora",    value: sp.eligible_now,     color: "text-emerald-400" },
-          { label: "Data futura",        value: sp.future_dated,     color: "text-amber-400"   },
-          { label: "Em publicação",      value: sp.stuck_publishing, color: "text-blue-400"    },
-          { label: "Containers pendentes", value: diag.pending_containers, color: "text-[#85B9E9]" },
-          { label: "Falhas acumuladas",  value: sp.failed,           color: "text-red-400"     },
+          { label: "Pending total",      value: sp.pending_total,    color: "text-link"    },
+          { label: "Elegíveis agora",    value: sp.eligible_now,     color: "text-success" },
+          { label: "Data futura",        value: sp.future_dated,     color: "text-warning"   },
+          { label: "Em publicação",      value: sp.stuck_publishing, color: "text-link"    },
+          { label: "Containers pendentes", value: diag.pending_containers, color: "text-link" },
+          { label: "Falhas acumuladas",  value: sp.failed,           color: "text-danger"     },
         ].map(row => (
           <div key={row.label} className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-surface-raised border border-line">
             <span className="text-ink-3">{row.label}</span>
@@ -171,27 +171,27 @@ function DiagPanel({ diag }: { diag: DiagResult }) {
       </div>
 
       {sp.future_dated > 0 && (
-        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-500/[0.06] border border-amber-500/20">
-          <Info size={12} className="text-amber-400 flex-shrink-0 mt-0.5" />
-          <p className="text-amber-300/80 leading-relaxed">
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-warning-soft border border-warning/20">
+          <Info size={12} className="text-warning flex-shrink-0 mt-0.5" />
+          <p className="text-warning/80 leading-relaxed">
             <strong>{sp.future_dated}</strong> post(s) agendados para datas futuras — o cron não os publica até o horário chegar. Isso é normal se você agendou uma campanha.
           </p>
         </div>
       )}
 
       {sp.eligible_now === 0 && sp.pending_total > 0 && sp.future_dated > 0 && (
-        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-blue-500/[0.06] border border-blue-500/20">
-          <Clock size={12} className="text-blue-400 flex-shrink-0 mt-0.5" />
-          <p className="text-blue-300/80 leading-relaxed">
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-info-soft border border-primary/20">
+          <Clock size={12} className="text-link flex-shrink-0 mt-0.5" />
+          <p className="text-link/80 leading-relaxed">
             Todos os posts pendentes estão aguardando horário. Nenhum está vencido agora.
           </p>
         </div>
       )}
 
       {sp.eligible_now > 0 && (
-        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-500/[0.06] border border-red-500/20">
-          <AlertTriangle size={12} className="text-red-400 flex-shrink-0 mt-0.5" />
-          <p className="text-red-300/80 leading-relaxed">
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-danger-soft border border-danger/20">
+          <AlertTriangle size={12} className="text-danger flex-shrink-0 mt-0.5" />
+          <p className="text-danger/80 leading-relaxed">
             <strong>{sp.eligible_now}</strong> post(s) vencido(s) — horário passou mas ainda não foram publicados. Clique em &quot;Forçar Processamento&quot; para tentar agora.
           </p>
         </div>
@@ -201,8 +201,8 @@ function DiagPanel({ diag }: { diag: DiagResult }) {
         <div className="space-y-1.5">
           <p className="text-ink-3 text-[10px] uppercase tracking-wider px-1">Últimas falhas</p>
           {diag.recent_failures.map(f => (
-            <div key={f.id} className="px-2.5 py-2 rounded-lg bg-red-500/[0.05] border border-red-500/10">
-              <p className="text-red-300/70 break-all">{f.error_message ?? "Erro desconhecido"}</p>
+            <div key={f.id} className="px-2.5 py-2 rounded-lg bg-danger-soft border border-danger/10">
+              <p className="text-danger/70 break-all">{f.error_message ?? "Erro desconhecido"}</p>
               <p className="text-ink-3 text-[10px] mt-0.5">
                 {new Date(f.scheduled_at).toLocaleString("pt-BR")}
               </p>
@@ -242,15 +242,15 @@ function ForceRunPanel({ result }: { result: ForceRunResult }) {
       <div className="px-3 py-2.5 rounded-lg bg-surface-raised border border-line space-y-1">
         <p className="text-ink-2 text-[10px] uppercase tracking-wider mb-2">Postagens agendadas</p>
         {sched.error ? (
-          <p className="text-red-400">{sched.error}</p>
+          <p className="text-danger">{sched.error}</p>
         ) : (
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            <span className="text-ink-3">Publicados</span><span className="text-emerald-400 font-bold">{sched.published ?? 0}</span>
-            <span className="text-ink-3">Elegíveis</span><span className="text-[#85B9E9] font-bold">{sched.queue_eligible ?? 0}</span>
-            <span className="text-ink-3">Data futura</span><span className="text-amber-400 font-bold">{sched.queue_future ?? 0}</span>
-            <span className="text-ink-3">Falhas (execução)</span><span className="text-red-400 font-bold">{sched.failed ?? 0}</span>
+            <span className="text-ink-3">Publicados</span><span className="text-success font-bold">{sched.published ?? 0}</span>
+            <span className="text-ink-3">Elegíveis</span><span className="text-link font-bold">{sched.queue_eligible ?? 0}</span>
+            <span className="text-ink-3">Data futura</span><span className="text-warning font-bold">{sched.queue_future ?? 0}</span>
+            <span className="text-ink-3">Falhas (execução)</span><span className="text-danger font-bold">{sched.failed ?? 0}</span>
             <span className="text-ink-3">Desbloqueados</span><span className="text-ink-2">{sched.unblocked ?? 0}</span>
-            <span className="text-ink-3">Total falhas DB</span><span className="text-red-400/60">{sched.queue_failed_total ?? 0}</span>
+            <span className="text-ink-3">Total falhas DB</span><span className="text-danger/60">{sched.queue_failed_total ?? 0}</span>
           </div>
         )}
       </div>
@@ -259,13 +259,13 @@ function ForceRunPanel({ result }: { result: ForceRunResult }) {
       <div className="px-3 py-2.5 rounded-lg bg-surface-raised border border-line space-y-1">
         <p className="text-ink-2 text-[10px] uppercase tracking-wider mb-2">Containers de loop</p>
         {pending.error ? (
-          <p className="text-red-400">{pending.error}</p>
+          <p className="text-danger">{pending.error}</p>
         ) : (
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            <span className="text-ink-3">Publicados</span><span className="text-emerald-400 font-bold">{pending.published ?? 0}</span>
-            <span className="text-ink-3">Processando</span><span className="text-amber-400 font-bold">{pending.in_progress ?? 0}</span>
+            <span className="text-ink-3">Publicados</span><span className="text-success font-bold">{pending.published ?? 0}</span>
+            <span className="text-ink-3">Processando</span><span className="text-warning font-bold">{pending.in_progress ?? 0}</span>
             <span className="text-ink-3">Expirados</span><span className="text-ink-3">{pending.expired ?? 0}</span>
-            <span className="text-ink-3">Erros</span><span className="text-red-400 font-bold">{pending.errors ?? 0}</span>
+            <span className="text-ink-3">Erros</span><span className="text-danger font-bold">{pending.errors ?? 0}</span>
           </div>
         )}
       </div>
@@ -274,12 +274,12 @@ function ForceRunPanel({ result }: { result: ForceRunResult }) {
       <div className="px-3 py-2.5 rounded-lg bg-surface-raised border border-line space-y-1">
         <p className="text-ink-2 text-[10px] uppercase tracking-wider mb-2">Motor de loops</p>
         {loops.error ? (
-          <p className="text-red-400">{loops.error}</p>
+          <p className="text-danger">{loops.error}</p>
         ) : (
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            <span className="text-ink-3">Processados</span><span className="text-emerald-400 font-bold">{loops.processed ?? 0}</span>
+            <span className="text-ink-3">Processados</span><span className="text-success font-bold">{loops.processed ?? 0}</span>
             <span className="text-ink-3">Pulados</span><span className="text-ink-3">{loops.skipped ?? 0}</span>
-            <span className="text-ink-3">Erros</span><span className="text-red-400 font-bold">{loops.errors ?? 0}</span>
+            <span className="text-ink-3">Erros</span><span className="text-danger font-bold">{loops.errors ?? 0}</span>
           </div>
         )}
       </div>
@@ -384,7 +384,7 @@ export default function QueuePage() {
   if (loading && !stats) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 size={24} className="animate-spin text-[#85B9E9]" />
+        <Loader2 size={24} className="animate-spin text-link" />
       </div>
     );
   }
@@ -401,8 +401,8 @@ export default function QueuePage() {
           <h1 className="page-title">Status da Fila</h1>
           <div className="flex items-center gap-2 mt-1">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-60" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-success" />
             </span>
             <p className="text-xs text-ink-3">
               {updatedAt ? `Atualizado às ${updatedAt}` : "Carregando..."}
@@ -425,7 +425,7 @@ export default function QueuePage() {
           <button
             onClick={fetchDiag}
             disabled={diagLoading}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-blue-500/20 bg-blue-500/[0.05] text-xs text-blue-400/70 hover:text-blue-300 hover:border-blue-500/40 transition-all disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-primary/20 bg-info-soft text-xs text-link/70 hover:text-link hover:border-primary/40 transition-all disabled:opacity-50"
           >
             {diagLoading ? <Loader2 size={12} className="animate-spin" /> : <Terminal size={12} />}
             Diagnóstico
@@ -434,7 +434,7 @@ export default function QueuePage() {
           <button
             onClick={handleForceRun}
             disabled={forceLoading}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-brand-blue/30 bg-brand-blue/[0.07] text-xs text-brand-blue hover:bg-brand-blue/[0.12] hover:border-brand-blue/50 transition-all disabled:opacity-50 font-semibold"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-primary/30 bg-primary/[0.07] text-xs text-link hover:bg-primary/[0.12] hover:border-primary/50 transition-all disabled:opacity-50 font-semibold"
           >
             {forceLoading ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
             Forçar Processamento
@@ -449,12 +449,12 @@ export default function QueuePage() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="glass-card p-5 border border-blue-500/15"
+            className="glass-card p-5 border border-primary/15"
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-blue-500/15 flex items-center justify-center">
-                  <Terminal size={14} className="text-blue-400" />
+                <div className="w-7 h-7 rounded-xl bg-info-soft flex items-center justify-center">
+                  <Terminal size={14} className="text-link" />
                 </div>
                 <div>
                   <h2 className="text-sm font-semibold text-ink">Diagnóstico da Fila</h2>
@@ -475,7 +475,7 @@ export default function QueuePage() {
                 Consultando banco de dados...
               </div>
             ) : diagError ? (
-              <p className="text-xs text-red-400/80">{diagError}</p>
+              <p className="text-xs text-danger/80">{diagError}</p>
             ) : diagResult ? (
               <DiagPanel diag={diagResult} />
             ) : null}
@@ -490,12 +490,12 @@ export default function QueuePage() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="glass-card p-5 border border-brand-blue/20"
+            className="glass-card p-5 border border-primary/20"
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-brand-blue/10 flex items-center justify-center">
-                  <Play size={14} className="text-brand-blue" />
+                <div className="w-7 h-7 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Play size={14} className="text-link" />
                 </div>
                 <div>
                   <h2 className="text-sm font-semibold text-ink">Resultado do Processamento</h2>
@@ -512,11 +512,11 @@ export default function QueuePage() {
 
             {forceLoading ? (
               <div className="flex items-center gap-2 text-ink-3 text-xs">
-                <Loader2 size={14} className="animate-spin text-brand-blue" />
+                <Loader2 size={14} className="animate-spin text-link" />
                 Processando fila... aguarde até 55s
               </div>
             ) : diagError ? (
-              <p className="text-xs text-red-400/80">{diagError}</p>
+              <p className="text-xs text-danger/80">{diagError}</p>
             ) : forceResult ? (
               <ForceRunPanel result={forceResult} />
             ) : null}
@@ -536,15 +536,15 @@ export default function QueuePage() {
       {/* ── Recently Posted ─────────────────────────────────── */}
       <div className="glass-card p-5">
         <div className="flex items-center gap-2 mb-5">
-          <div className="w-7 h-7 rounded-xl bg-emerald-500/15 flex items-center justify-center">
-            <CheckCircle2 size={14} className="text-emerald-400" />
+          <div className="w-7 h-7 rounded-xl bg-success-soft flex items-center justify-center">
+            <CheckCircle2 size={14} className="text-success" />
           </div>
           <div>
             <h2 className="text-sm font-semibold text-ink">Postados recentemente</h2>
             <p className="text-[10px] text-ink-3">última 1 hora · máx. 25</p>
           </div>
           {(stats?.recent_posts.length ?? 0) > 0 && (
-            <span className="ml-auto px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] text-emerald-400 tabular-nums">
+            <span className="ml-auto px-2 py-0.5 rounded-full bg-success-soft border border-success/20 text-[10px] text-success tabular-nums">
               {stats!.recent_posts.length}
             </span>
           )}
@@ -567,7 +567,7 @@ export default function QueuePage() {
                   transition={{ delay: i * 0.025, duration: 0.2 }}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-surface-hover transition-colors group"
                 >
-                  <CheckCircle2 size={13} className="text-emerald-400 flex-shrink-0" />
+                  <CheckCircle2 size={13} className="text-success flex-shrink-0" />
                   <AccountAvatar username={post.account_username} size="sm" />
                   <div className="flex-1 min-w-0">
                     <span className="text-sm text-ink font-medium">
@@ -600,17 +600,17 @@ export default function QueuePage() {
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
-            className="glass-card p-5 border border-amber-500/15"
+            className="glass-card p-5 border border-warning/15"
           >
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-7 h-7 rounded-xl bg-amber-500/15 flex items-center justify-center">
-                <AlertTriangle size={14} className="text-amber-400" />
+              <div className="w-7 h-7 rounded-xl bg-warning-soft flex items-center justify-center">
+                <AlertTriangle size={14} className="text-warning" />
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-ink">Contas fora da fila</h2>
                 <p className="text-[10px] text-ink-3">sem postagens agendadas ou loop ativo</p>
               </div>
-              <span className="ml-auto px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-400 tabular-nums">
+              <span className="ml-auto px-2 py-0.5 rounded-full bg-warning-soft border border-warning/20 text-[10px] text-warning tabular-nums">
                 {stats!.idle_accounts.length}
               </span>
             </div>
@@ -618,7 +618,7 @@ export default function QueuePage() {
               {stats!.idle_accounts.map(acc => (
                 <div
                   key={acc.id}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/[0.04] border border-amber-500/10"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-warning-soft border border-warning/10"
                 >
                   <AccountAvatar username={acc.username} size="sm" />
                   <div>
@@ -639,7 +639,7 @@ export default function QueuePage() {
         {(stats?.per_account.length ?? 0) > 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             <div className="flex items-center gap-2 mb-3">
-              <Users size={14} className="text-[#85B9E9]" />
+              <Users size={14} className="text-link" />
               <h2 className="text-sm font-semibold text-ink-2">Gerenciamento por conta</h2>
               <span className="text-[10px] text-ink-3 ml-1">ativas nas últimas 24h</span>
             </div>
@@ -665,9 +665,9 @@ export default function QueuePage() {
                       )}
                     </div>
                     {acc.has_active_loop && (
-                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#00498D]/15 border border-[#00498D]/25 flex-shrink-0">
-                        <Radio size={9} className="text-[#85B9E9] animate-pulse" />
-                        <span className="text-[10px] text-[#AFBDD0] font-medium">Loop</span>
+                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-info-soft border border-primary/25 flex-shrink-0">
+                        <Radio size={9} className="text-link animate-pulse" />
+                        <span className="text-[10px] text-link font-medium">Loop</span>
                       </div>
                     )}
                   </div>
@@ -677,7 +677,7 @@ export default function QueuePage() {
                     <div className="text-center p-2.5 rounded-xl bg-surface-raised border border-line">
                       <p className={cn(
                         "text-lg font-bold tabular-nums leading-tight",
-                        acc.pending > 0 ? "text-[#85B9E9]" : "text-ink-3"
+                        acc.pending > 0 ? "text-link" : "text-ink-3"
                       )}>
                         {acc.pending}
                       </p>
@@ -686,7 +686,7 @@ export default function QueuePage() {
                     <div className="text-center p-2.5 rounded-xl bg-surface-raised border border-line">
                       <p className={cn(
                         "text-lg font-bold tabular-nums leading-tight",
-                        acc.posted_24h > 0 ? "text-emerald-400" : "text-ink-3"
+                        acc.posted_24h > 0 ? "text-success" : "text-ink-3"
                       )}>
                         {acc.posted_24h}
                       </p>
@@ -695,7 +695,7 @@ export default function QueuePage() {
                     <div className="text-center p-2.5 rounded-xl bg-surface-raised border border-line">
                       <p className={cn(
                         "text-lg font-bold tabular-nums leading-tight",
-                        acc.errors_24h > 0 ? "text-red-400" : "text-ink-3"
+                        acc.errors_24h > 0 ? "text-danger" : "text-ink-3"
                       )}>
                         {acc.errors_24h}
                       </p>
@@ -707,7 +707,7 @@ export default function QueuePage() {
                   <button
                     disabled
                     title="Funcionalidade em breve"
-                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-red-500/10 text-red-500/30 text-xs cursor-not-allowed select-none"
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-danger/10 text-danger/30 text-xs cursor-not-allowed select-none"
                   >
                     <Ban size={10} />
                     Cancelar fila

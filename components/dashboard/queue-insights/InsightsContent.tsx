@@ -127,7 +127,7 @@ function Card({ labelledBy, children }: { labelledBy: string; children: React.Re
   return (
     <section
       aria-labelledby={labelledBy}
-      className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-3.5 sm:p-5"
+      className="glass-card flex flex-col gap-4 p-3.5 sm:p-5"
     >
       {children}
     </section>
