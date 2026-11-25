@@ -56,13 +56,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-dvh flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden" style={{ background: "var(--background)" }}>
-      <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none" />
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 right-1/4 w-[500px] h-[400px] rounded-full blur-[100px]" style={{ background: "rgba(0,73,141,0.12)" }} />
-        <div className="absolute bottom-0 left-1/4 w-[400px] h-[300px] rounded-full blur-[80px]" style={{ background: "rgba(133,185,233,0.06)" }} />
-      </div>
-
+    <div className="min-h-dvh flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden">
       <div className="relative z-10 w-full max-w-md">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -82,14 +76,14 @@ export default function RegisterPage() {
         >
           <div className="mb-6">
             <h1 className="text-2xl font-bold mb-1">Criar conta grátis</h1>
-            <p className="text-white/40 text-sm">14 dias grátis. Sem cartão de crédito.</p>
+            <p className="text-ink-3 text-sm">14 dias grátis. Sem cartão de crédito.</p>
           </div>
 
           {error && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
+              className="mb-4 px-4 py-3 rounded-xl bg-danger-soft border border-danger/20 text-danger text-sm"
             >
               {error}
             </motion.div>
@@ -97,9 +91,9 @@ export default function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-sm text-white/60 mb-1.5 block">Nome completo</label>
+              <label className="text-sm text-ink-2 mb-1.5 block">Nome completo</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
                 <input
                   type="text"
                   placeholder="Seu nome"
@@ -112,9 +106,9 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="text-sm text-white/60 mb-1.5 block">E-mail</label>
+              <label className="text-sm text-ink-2 mb-1.5 block">E-mail</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
                 <input
                   type="email"
                   placeholder="seu@email.com"
@@ -127,9 +121,9 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="text-sm text-white/60 mb-1.5 block">Senha</label>
+              <label className="text-sm text-ink-2 mb-1.5 block">Senha</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
                 <input
                   type={showPassword ? "text" : "password"}
                   placeholder="Crie uma senha forte"
@@ -141,7 +135,7 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-3 hover:text-ink-2 transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -157,10 +151,10 @@ export default function RegisterPage() {
                     const passed = req.test(password);
                     return (
                       <div key={i} className="flex items-center gap-2">
-                        <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center transition-colors ${passed ? "bg-emerald-500" : "bg-white/10"}`}>
-                          {passed && <Check className="w-2 h-2 text-white" />}
+                        <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center transition-colors ${passed ? "bg-success" : "bg-white/10"}`}>
+                          {passed && <Check className="w-2 h-2 text-ink" />}
                         </div>
-                        <span className={`text-xs transition-colors ${passed ? "text-emerald-400" : "text-white/30"}`}>
+                        <span className={`text-xs transition-colors ${passed ? "text-success" : "text-ink-3"}`}>
                           {req.label}
                         </span>
                       </div>
@@ -170,11 +164,11 @@ export default function RegisterPage() {
               )}
             </div>
 
-            <p className="text-xs text-white/30 leading-relaxed">
+            <p className="text-xs text-ink-3 leading-relaxed">
               Ao criar sua conta, você concorda com nossos{" "}
-              <a href="#" className="text-[#85B9E9] hover:underline">Termos de Serviço</a>{" "}
+              <a href="#" className="text-link hover:underline">Termos de Serviço</a>{" "}
               e{" "}
-              <a href="#" className="text-[#85B9E9] hover:underline">Política de Privacidade</a>.
+              <a href="#" className="text-link hover:underline">Política de Privacidade</a>.
             </p>
 
             <motion.button
@@ -191,9 +185,9 @@ export default function RegisterPage() {
             </motion.button>
           </form>
 
-          <p className="text-center text-sm text-white/40 mt-6">
+          <p className="text-center text-sm text-ink-3 mt-6">
             Já tem uma conta?{" "}
-            <Link href="/auth/login" className="text-[#85B9E9] hover:text-[#AFBDD0] font-medium transition-colors">
+            <Link href="/auth/login" className="text-link hover:text-primary-2 font-medium transition-colors">
               Entrar agora
             </Link>
           </p>

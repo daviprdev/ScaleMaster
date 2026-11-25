@@ -80,13 +80,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-dvh flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden" style={{ background: "var(--background)" }}>
-      <div className="fixed inset-0 grid-bg opacity-30 pointer-events-none" />
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full blur-[100px]" style={{ background: "rgba(0,73,141,0.12)" }} />
-        <div className="absolute bottom-0 right-1/4 w-[300px] h-[300px] rounded-full blur-[80px]" style={{ background: "rgba(133,185,233,0.06)" }} />
-      </div>
-
+    <div className="min-h-dvh flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden">
       <div className="relative z-10 w-full max-w-md">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -107,14 +101,14 @@ export default function LoginPage() {
         >
           <div className="mb-6">
             <h1 className="text-2xl font-bold mb-1">Bem-vindo de volta</h1>
-            <p className="text-white/40 text-sm">Entre na sua conta para continuar</p>
+            <p className="text-ink-3 text-sm">Entre na sua conta para continuar</p>
           </div>
 
           {error && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
+              className="mb-4 px-4 py-3 rounded-xl bg-danger-soft border border-danger/20 text-danger text-sm"
             >
               {error}
             </motion.div>
@@ -122,9 +116,9 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-sm text-white/60 mb-1.5 block">E-mail ou nome de usuário</label>
+              <label className="text-sm text-ink-2 mb-1.5 block">E-mail ou nome de usuário</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
                 <input
                   type="text"
                   placeholder="seu@email.com ou usuario"
@@ -139,13 +133,13 @@ export default function LoginPage() {
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-sm text-white/60">Senha</label>
-                <Link href="/auth/forgot-password" className="text-xs text-[#85B9E9] hover:text-[#AFBDD0] transition-colors">
+                <label className="text-sm text-ink-2">Senha</label>
+                <Link href="/auth/forgot-password" className="text-xs text-link hover:text-primary-2 transition-colors">
                   Esqueceu a senha?
                 </Link>
               </div>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-3" />
                 <input
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
@@ -157,7 +151,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-3 hover:text-ink-2 transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -180,7 +174,7 @@ export default function LoginPage() {
 
           <div className="flex items-center gap-3 my-6">
             <div className="flex-1 h-px bg-white/10" />
-            <span className="text-xs text-white/30">ou</span>
+            <span className="text-xs text-ink-3">ou</span>
             <div className="flex-1 h-px bg-white/10" />
           </div>
 
@@ -203,9 +197,9 @@ export default function LoginPage() {
             Continuar com Google
           </button>
 
-          <p className="text-center text-sm text-white/40 mt-6">
+          <p className="text-center text-sm text-ink-3 mt-6">
             Não tem uma conta?{" "}
-            <Link href="/auth/register" className="text-[#85B9E9] hover:text-[#AFBDD0] font-medium transition-colors">
+            <Link href="/auth/register" className="text-link hover:text-primary-2 font-medium transition-colors">
               Criar gratuitamente
             </Link>
           </p>

@@ -73,14 +73,7 @@ export default function PendingPage() {
   }
 
   return (
-    <div className="min-h-dvh  flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden">
-      {/* Background */}
-      <div className="fixed inset-0 grid-bg opacity-20 pointer-events-none" />
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-amber-600/8 rounded-full blur-[120px]" />
-        <div className="absolute bottom-0 right-1/4 w-[300px] h-[300px] rounded-full blur-[80px]" style={{ background: "rgba(0,73,141,0.06)" }} />
-      </div>
-
+    <div className="min-h-dvh flex items-center justify-center p-6 pt-safe pb-safe relative overflow-hidden">
       <div className="relative z-10 w-full max-w-md">
         {/* Logo */}
         <motion.div
@@ -90,8 +83,8 @@ export default function PendingPage() {
           className="flex justify-center mb-8"
         >
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.4)]">
-              <Zap className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
+              <Zap className="w-5 h-5 text-ink" />
             </div>
             <span className="text-2xl font-bold gradient-text">
               Scale Master
@@ -109,39 +102,39 @@ export default function PendingPage() {
           {/* Icon */}
           <div className="flex justify-center mb-6">
             <div className="relative">
-              <div className="w-20 h-20 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                <Clock className="w-9 h-9 text-amber-400" />
+              <div className="w-20 h-20 rounded-full bg-warning-soft border border-warning/20 flex items-center justify-center">
+                <Clock className="w-9 h-9 text-warning" />
               </div>
               <motion.div
                 animate={{ scale: [1, 1.3, 1], opacity: [0.4, 0, 0.4] }}
                 transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute inset-0 rounded-full border border-amber-400/30"
+                className="absolute inset-0 rounded-full border border-warning/30"
               />
             </div>
           </div>
 
           {/* Title */}
-          <h1 className="text-2xl font-bold text-white mb-2 text-center">
+          <h1 className="text-2xl font-bold text-ink mb-2 text-center">
             Conta em análise
           </h1>
-          <p className="text-white/50 text-sm leading-relaxed mb-2 text-center">
+          <p className="text-ink-3 text-sm leading-relaxed mb-2 text-center">
             Seu acesso está aguardando a aprovação de um administrador.
           </p>
           {email && (
-            <p className="text-xs text-white/25 mb-5 truncate text-center">
+            <p className="text-xs text-ink-3 mb-5 truncate text-center">
               {email}
             </p>
           )}
 
           {/* Status badge */}
           <div className="flex justify-center mb-6">
-            <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/10 px-4 py-2">
+            <div className="inline-flex items-center gap-2 rounded-full border border-warning/25 bg-warning-soft px-4 py-2">
               <motion.div
                 animate={{ opacity: [1, 0.3, 1] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
-                className="w-2 h-2 rounded-full bg-amber-400"
+                className="w-2 h-2 rounded-full bg-warning"
               />
-              <span className="text-xs font-medium text-amber-300">
+              <span className="text-xs font-medium text-warning">
                 Aguardando aprovação
               </span>
             </div>
@@ -161,18 +154,18 @@ export default function PendingPage() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  className="flex flex-col items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] px-4 py-5 text-center"
+                  className="flex flex-col items-center gap-2 rounded-xl border border-success/20 bg-success-soft px-4 py-5 text-center"
                 >
-                  <CheckCircle2 className="w-7 h-7 text-emerald-400" />
-                  <p className="text-sm font-semibold text-emerald-300">
+                  <CheckCircle2 className="w-7 h-7 text-success" />
+                  <p className="text-sm font-semibold text-success">
                     Mensagem enviada com sucesso!
                   </p>
-                  <p className="text-xs text-white/35 leading-relaxed">
+                  <p className="text-xs text-ink-3 leading-relaxed">
                     O admin vai ler quando ele terminar o café. Aguarde a aprovação. ☕
                   </p>
                   <button
                     onClick={() => setMessageSent(false)}
-                    className="mt-1 text-[11px] text-white/25 hover:text-white/50 underline underline-offset-2 transition-colors"
+                    className="mt-1 text-[11px] text-ink-3 hover:text-ink-3 underline underline-offset-2 transition-colors"
                   >
                     Editar mensagem
                   </button>
@@ -185,7 +178,7 @@ export default function PendingPage() {
                   exit={{ opacity: 0, scale: 0.95 }}
                   className="space-y-3"
                 >
-                  <label className="block text-[10px] font-semibold text-white/35 uppercase tracking-widest">
+                  <label className="block text-[10px] font-semibold text-ink-3 uppercase tracking-widest">
                     Mensagem para o Admin (opcional)
                   </label>
                   <textarea
@@ -193,17 +186,17 @@ export default function PendingPage() {
                     onChange={(e) => setMessageText(e.target.value.slice(0, 500))}
                     placeholder="Manda a real: por que o todo-poderoso Admin (que provavelmente está tomando café agora) deveria liberar seu acesso? (Vale apelo emocional, promessa de PIX ou só dizer o que você faz mesmo...) 👀☕"
                     rows={4}
-                    className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/80 placeholder:text-white/20 text-sm px-4 py-3 resize-none outline-none focus:border-[#00498D]/40 focus:bg-white/[0.06] transition-all leading-relaxed"
+                    className="w-full rounded-xl bg-white/[0.04] border border-white/[0.08] text-ink placeholder:text-ink-3 text-sm px-4 py-3 resize-none outline-none focus:border-primary/40 focus:bg-white/[0.06] transition-all leading-relaxed"
                   />
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-white/20">
+                    <span className="text-[10px] text-ink-3">
                       {messageText.length}/500
                     </span>
                     <motion.button
                       onClick={sendMessage}
                       disabled={!messageText.trim() || sending}
                       whileTap={{ scale: 0.97 }}
-                      className="flex items-center gap-2 rounded-xl bg-[#00498D]/20 border border-[#00498D]/25 text-[#AFBDD0] text-xs font-medium px-4 py-2 hover:bg-[#00498D]/30 hover:border-[#00498D]/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="flex items-center gap-2 rounded-xl bg-info-soft border border-primary/25 text-link text-xs font-medium px-4 py-2 hover:border-primary/40 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {sending ? (
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -221,7 +214,7 @@ export default function PendingPage() {
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -4 }}
-                        className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
+                        className="flex items-center gap-2 text-xs text-danger bg-danger-soft border border-danger/20 rounded-lg px-3 py-2"
                       >
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                         {messageError}
@@ -251,7 +244,7 @@ export default function PendingPage() {
 
             <button
               onClick={handleLogout}
-              className="btn-ghost w-full flex items-center justify-center gap-2 text-sm text-white/40 hover:text-white/70"
+              className="btn-ghost w-full flex items-center justify-center gap-2 text-sm text-ink-3 hover:text-ink-2"
             >
               <LogOut className="w-4 h-4" />
               Sair da conta
@@ -259,7 +252,7 @@ export default function PendingPage() {
           </div>
         </motion.div>
 
-        <p className="text-center text-xs text-white/20 mt-6">
+        <p className="text-center text-xs text-ink-3 mt-6">
           Assim que aprovado, você terá acesso imediato ao painel.
         </p>
       </div>

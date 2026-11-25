@@ -1,10 +1,10 @@
 export default function AddSuccessPage() {
   return (
-    <div className="min-h-dvh bg-black flex items-center justify-center p-4 pt-safe pb-safe">
+    <div className="min-h-dvh flex items-center justify-center p-4 pt-safe pb-safe">
       <div className="glass-card rounded-2xl p-8 max-w-sm w-full text-center space-y-4">
-        <div className="w-16 h-16 rounded-full bg-[#00498D]/10 border border-[#00498D]/30 flex items-center justify-center mx-auto">
+        <div className="w-16 h-16 rounded-full bg-success-soft border border-success/30 flex items-center justify-center mx-auto">
           <svg
-            className="w-8 h-8 text-[#00498D]"
+            className="w-8 h-8 text-success"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -12,8 +12,8 @@ export default function AddSuccessPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h1 className="text-white font-bold text-xl">Conta conectada!</h1>
-        <p className="text-white/50 text-sm leading-relaxed">
+        <h1 className="text-ink font-bold text-xl">Conta conectada!</h1>
+        <p className="text-ink-3 text-sm leading-relaxed">
           Sua conta do Instagram foi vinculada com sucesso. Você já pode fechar esta aba.
         </p>
       </div>

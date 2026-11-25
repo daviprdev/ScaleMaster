@@ -62,20 +62,20 @@ function ErrorContent() {
   const Icon = mapped.Icon;
 
   return (
-    <div className="min-h-screen bg-[#050507] text-white flex items-center justify-center p-6">
-      <div className="max-w-md w-full glass rounded-2xl border border-white/10 shadow-2xl p-8 space-y-6">
+    <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="max-w-md w-full glass rounded-2xl p-8 space-y-6">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center flex-shrink-0">
-            <Icon size={24} className="text-red-400" />
+          <div className="w-12 h-12 rounded-xl bg-danger-soft border border-danger/20 flex items-center justify-center flex-shrink-0">
+            <Icon size={24} className="text-danger" />
           </div>
           <div>
             <h1 className="text-lg font-semibold leading-tight">{mapped.title}</h1>
-            <p className="text-white/50 text-sm mt-1.5 leading-relaxed">{mapped.message}</p>
+            <p className="text-ink-3 text-sm mt-1.5 leading-relaxed">{mapped.message}</p>
           </div>
         </div>
 
         {detail && (
-          <div className="px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white/40 text-xs font-mono break-all">
+          <div className="px-3.5 py-2.5 rounded-xl bg-surface border border-line text-ink-3 text-xs font-mono break-all">
             {detail}
           </div>
         )}
@@ -83,7 +83,7 @@ function ErrorContent() {
         <div className="pt-2">
           <Link
             href="/"
-            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm font-medium text-white/70 hover:bg-white/[0.07] hover:text-white transition-all"
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm font-medium text-ink-2 hover:bg-white/[0.07] hover:text-ink transition-all"
           >
             <ArrowLeft size={14} />
             Voltar para o ScaleMaster
@@ -98,7 +98,7 @@ export default function AddErrorPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#050507] flex items-center justify-center">
+        <div className="min-h-screen bg-bg flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
         </div>
       }
