@@ -169,7 +169,7 @@ export function CommandPalette() {
       {/* Panel */}
       <div
         className={cn(
-          "relative w-full max-w-[560px] rounded-xl border border-line bg-surface-raised shadow-pop",
+          "glass relative w-full max-w-[560px]",
           "animate-in fade-in zoom-in-95 duration-200 ease-out"
         )}
         role="dialog"

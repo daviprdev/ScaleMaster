@@ -19,7 +19,7 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
         )}
         {...props}
       >
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-hover text-ink-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-info-soft text-link">
           {icon}
         </div>
         <div className="flex flex-col gap-1">
@@ -27,7 +27,7 @@ export const EmptyState = React.forwardRef<HTMLDivElement, EmptyStateProps>(
             {title}
           </h3>
           {description && (
-            <p className="max-w-xs text-sm text-ink-2">{description}</p>
+            <p className="max-w-xs text-sm text-ink-3">{description}</p>
           )}
         </div>
         {action && <div className="mt-2">{action}</div>}

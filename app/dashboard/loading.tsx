@@ -25,7 +25,7 @@ export default function DashboardLoading() {
         {Array.from({ length: 4 }).map((_, i) => (
           <div
             key={i}
-            className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-5"
+            className="glass-card flex flex-col gap-3 p-5"
           >
             <Skeleton width="100px" height="14px" />
             <Skeleton width="80px" height="28px" />
@@ -36,11 +36,11 @@ export default function DashboardLoading() {
 
       {/* Content cards skeleton */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="col-span-2 flex flex-col gap-4 rounded-xl border border-line bg-surface p-5">
+        <div className="glass-card col-span-2 flex flex-col gap-4 p-5">
           <Skeleton width="180px" height="18px" />
           <Skeleton width="100%" height="200px" radius="var(--radius-md)" />
         </div>
-        <div className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-5">
+        <div className="glass-card flex flex-col gap-4 p-5">
           <Skeleton width="140px" height="18px" />
           <div className="flex flex-col gap-3">
             {Array.from({ length: 4 }).map((_, i) => (

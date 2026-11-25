@@ -190,6 +190,15 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.10);
     border-radius: var(--radius-lg);
   }
+  [data-theme="light"] .glass-tile {
+    background: var(--surface-hover);
+    border-color: var(--line);
+  }
+  [data-theme="light"] .gradient-text {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
 
   /* Subtle border accent (was .brand-border) */
   .brand-border {
@@ -313,17 +322,23 @@ body {
   .input-glass {
     @apply w-full px-4 py-2.5 text-sm;
     border-radius: var(--radius-md);
-    background: var(--surface);
-    border: 1px solid var(--line-control);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.10);
     color: var(--ink);
     outline: none;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
   }
   .input-glass::placeholder { color: var(--ink-3); }
+  .input-glass:hover { border-color: var(--line-control); }
   .input-glass:focus {
     border-color: var(--focus);
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
+    background: rgba(255, 255, 255, 0.07);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 25%, transparent);
+  }
+  .input-glass option { background: var(--surface-raised); color: var(--ink); }
+  [data-theme="light"] .input-glass {
+    background: #ffffff;
+    border-color: var(--line-control);
   }
 
   /* Range slider */
@@ -352,6 +367,18 @@ body {
   .grid-bg {
     /* intentionally empty — grid overlay removed in v2 */
   }
+}
+
+/* ── Tema claro: brancos translúcidos do escuro viram cinza da linha ── */
+[data-theme="light"] [class^="bg-white/"],
+[data-theme="light"] [class*=" bg-white/"] {
+  background-color: rgba(10, 18, 32, 0.04);
+}
+[data-theme="light"] [class^="border-white/"],
+[data-theme="light"] [class*=" border-white/"],
+[data-theme="light"] [class*=" border-t-white/"],
+[data-theme="light"] [class*=" border-b-white/"] {
+  border-color: var(--line);
 }
 
 /* ── Horizon effect (only for hero/auth screens) ─────────── */

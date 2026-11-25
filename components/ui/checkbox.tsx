@@ -34,7 +34,7 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           >
             <Check
               size={12}
-              className="absolute inset-0 m-auto text-white opacity-0 peer-checked:opacity-100"
+              className="absolute inset-0 m-auto text-ink opacity-0 peer-checked:opacity-100"
               strokeWidth={3}
             />
           </div>

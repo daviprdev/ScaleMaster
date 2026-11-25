@@ -64,7 +64,7 @@ export const StatTile = React.forwardRef<HTMLDivElement, StatTileProps>(
           <div className="flex min-w-0 items-center gap-2.5">
             {icon && (
               <span
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
                 style={{ background: iconBg ?? "var(--gradient-primary)" }}
               >
                 {icon}
