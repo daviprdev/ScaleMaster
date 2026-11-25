@@ -8,24 +8,24 @@ const SUPPORT_ACTIONS = [
     title: "Contato por e-mail",
     description: "Visualize e responda tickets de suporte enviados pelos usuários.",
     badge: "Em breve",
-    color: "text-[#85B9E9]",
-    border: "border-[#85B9E9]/20",
+    color: "text-link",
+    border: "border-primary-2/20",
   },
   {
     icon: MessageSquare,
     title: "Mensagens diretas",
     description: "Canal de mensagens internas entre admins e usuários da plataforma.",
     badge: "Em breve",
-    color: "text-[#00498D]",
-    border: "border-[#00498D]/20",
+    color: "text-link",
+    border: "border-primary/20",
   },
   {
     icon: AlertTriangle,
     title: "Reportes e denúncias",
     description: "Análise de conteúdo reportado ou contas sinalizadas para revisão.",
     badge: "Em breve",
-    color: "text-amber-400",
-    border: "border-amber-500/20",
+    color: "text-warning",
+    border: "border-warning/20",
   },
 ];
 
@@ -50,24 +50,24 @@ export default function AdminSupportPage() {
               <div className={color}>
                 <Icon className="w-5 h-5" />
               </div>
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-white/30 border border-white/10 rounded-full px-2 py-0.5">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-ink-3 border border-white/10 rounded-full px-2 py-0.5">
                 {badge}
               </span>
             </div>
             <div>
-              <p className="text-sm font-semibold text-white/80">{title}</p>
-              <p className="text-xs text-white/40 mt-1 leading-relaxed">{description}</p>
+              <p className="text-sm font-semibold text-ink">{title}</p>
+              <p className="text-xs text-ink-3 mt-1 leading-relaxed">{description}</p>
             </div>
           </div>
         ))}
       </div>
 
       {/* Empty state */}
-      <div className="glass-card rounded-2xl flex flex-col items-center justify-center gap-4 py-20 text-white/30">
+      <div className="glass-card rounded-2xl flex flex-col items-center justify-center gap-4 py-20 text-ink-3">
         <Headphones className="w-10 h-10" />
         <div className="text-center">
-          <p className="text-sm font-medium text-white/40">Módulo de suporte em desenvolvimento</p>
-          <p className="text-xs mt-1 text-white/20">
+          <p className="text-sm font-medium text-ink-3">Módulo de suporte em desenvolvimento</p>
+          <p className="text-xs mt-1 text-ink-3">
             Tickets, mensagens e reportes estarão disponíveis em breve.
           </p>
         </div>

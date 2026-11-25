@@ -26,19 +26,19 @@ interface LogEntry {
 }
 
 const ACTION_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  user_registered:      { label: "Usuário cadastrado",       icon: UserPlus,   color: "text-[#85B9E9] bg-[#85B9E9]/10 border-[#85B9E9]/20" },
-  user_approved:        { label: "Usuário aprovado",         icon: UserCheck,  color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-  user_rejected:        { label: "Usuário reprovado",        icon: UserX,      color: "text-red-400 bg-red-500/10 border-red-500/20" },
-  user_banned:          { label: "Usuário banido",           icon: ShieldBan,  color: "text-red-400 bg-red-500/10 border-red-500/20" },
-  account_connected:    { label: "Conta conectada",          icon: Instagram,  color: "text-[#00498D] bg-[#00498D]/10 border-[#00498D]/20" },
-  account_revoked:      { label: "Conta revogada",           icon: Trash2,     color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
-  impersonation_started:{ label: "Impersonação iniciada",    icon: Eye,        color: "text-purple-400 bg-purple-500/10 border-purple-500/20" },};
+  user_registered:      { label: "Usuário cadastrado",       icon: UserPlus,   color: "text-link bg-info-soft border-primary-2/20" },
+  user_approved:        { label: "Usuário aprovado",         icon: UserCheck,  color: "text-success bg-success-soft border-success/20" },
+  user_rejected:        { label: "Usuário reprovado",        icon: UserX,      color: "text-danger bg-danger-soft border-danger/20" },
+  user_banned:          { label: "Usuário banido",           icon: ShieldBan,  color: "text-danger bg-danger-soft border-danger/20" },
+  account_connected:    { label: "Conta conectada",          icon: Instagram,  color: "text-link bg-info-soft border-primary/20" },
+  account_revoked:      { label: "Conta revogada",           icon: Trash2,     color: "text-warning bg-warning-soft border-warning/20" },
+  impersonation_started:{ label: "Impersonação iniciada",    icon: Eye,        color: "text-link bg-info-soft border-primary/20" },};
 
 function getActionMeta(action: string) {
   return ACTION_META[action] ?? {
     label: action.replace(/_/g, " "),
     icon: Activity,
-    color: "text-white/40 bg-white/5 border-white/10",
+    color: "text-ink-3 bg-white/5 border-white/10",
   };
 }
 
@@ -76,24 +76,24 @@ export default function AdminLogsPage() {
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center py-20 text-white/40 gap-2">
-          <Loader2 className="w-5 h-5 animate-spin text-[#00498D]" />
+        <div className="flex items-center justify-center py-20 text-ink-3 gap-2">
+          <Loader2 className="w-5 h-5 animate-spin text-link" />
           <span className="text-sm">Carregando logs…</span>
         </div>
       )}
 
       {error && (
-        <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-400">
+        <div className="flex items-center gap-3 rounded-2xl border border-danger/20 bg-danger-soft px-4 py-3 text-sm text-danger">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
         </div>
       )}
 
       {!loading && !error && logs.length === 0 && (
-        <div className="glass-card rounded-2xl flex flex-col items-center justify-center gap-3 py-16 text-white/30">
+        <div className="glass-card rounded-2xl flex flex-col items-center justify-center gap-3 py-16 text-ink-3">
           <Activity className="w-8 h-8" />
           <p className="text-sm">Nenhuma ação registrada ainda</p>
-          <p className="text-xs text-white/20">As ações aparecerão aqui conforme ocorrerem</p>
+          <p className="text-xs text-ink-3">As ações aparecerão aqui conforme ocorrerem</p>
         </div>
       )}
 
@@ -125,22 +125,22 @@ export default function AdminLogsPage() {
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-white/90">{meta.label}</span>
+                      <span className="text-sm font-medium text-ink">{meta.label}</span>
                       {log.target_email && (
-                        <span className="text-xs text-white/45 truncate">
+                        <span className="text-xs text-ink-3 truncate">
                           → {log.target_email}
                         </span>
                       )}
                     </div>
                     {log.actor_email && (
-                      <p className="text-xs text-white/30 mt-0.5">
+                      <p className="text-xs text-ink-3 mt-0.5">
                         por {log.actor_email}
                       </p>
                     )}
                   </div>
 
                   {/* Timestamp */}
-                  <span className="text-xs text-white/25 shrink-0 mt-0.5 tabular-nums">
+                  <span className="text-xs text-ink-3 shrink-0 mt-0.5 tabular-nums">
                     {formatDate(log.created_at)}
                   </span>
                 </motion.div>

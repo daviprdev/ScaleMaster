@@ -40,15 +40,15 @@ interface AdminUser {
 }
 
 const ROLE_BADGE: Record<AdminUser["role"], string> = {
-  admin: "bg-[#00498D]/10 text-[#00498D] border-[#00498D]/25",
-  user: "bg-white/5 text-white/50 border-white/10",
-  banned: "bg-red-500/20 text-red-400 border-red-500/30",
+  admin: "bg-info-soft text-link border-primary/25",
+  user: "bg-white/5 text-ink-3 border-white/10",
+  banned: "bg-danger/20 text-danger border-danger/30",
 };
 
 const STATUS_BADGE: Record<AdminUser["account_status"], string> = {
-  pending: "bg-amber-500/20 text-amber-300 border-amber-500/30",
-  approved: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
-  banned: "bg-red-500/20 text-red-400 border-red-500/30",
+  pending: "bg-warning/20 text-warning border-warning/30",
+  approved: "bg-success-soft text-success border-success/20",
+  banned: "bg-danger/20 text-danger border-danger/30",
 };
 
 const STATUS_LABEL: Record<AdminUser["account_status"], string> = {
@@ -220,7 +220,7 @@ export default function AdminUsersPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm"
             onClick={() => setAccountsModal(null)}
           >
             <motion.div
@@ -234,17 +234,17 @@ export default function AdminUsersPage() {
               {/* Header */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-[#85B9E9]/10 border border-[#85B9E9]/20 flex items-center justify-center flex-shrink-0">
-                    <Instagram size={16} className="text-[#85B9E9]" />
+                  <div className="w-9 h-9 rounded-xl bg-info-soft border border-primary-2/20 flex items-center justify-center flex-shrink-0">
+                    <Instagram size={16} className="text-link" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-sm font-semibold text-white">Contas Conectadas</h3>
-                    <p className="text-xs text-white/40 truncate">{accountsModal.email}</p>
+                    <h3 className="text-sm font-semibold text-ink">Contas Conectadas</h3>
+                    <p className="text-xs text-ink-3 truncate">{accountsModal.email}</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setAccountsModal(null)}
-                  className="w-7 h-7 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors flex-shrink-0"
+                  className="w-7 h-7 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center text-ink-3 hover:text-ink hover:bg-white/10 transition-colors flex-shrink-0"
                 >
                   <X size={13} />
                 </button>
@@ -252,7 +252,7 @@ export default function AdminUsersPage() {
 
               {/* Accounts list */}
               {accountsModal.accounts.length === 0 ? (
-                <p className="text-sm text-white/30 text-center py-6">
+                <p className="text-sm text-ink-3 text-center py-6">
                   Nenhuma conta conectada
                 </p>
               ) : (
@@ -263,29 +263,29 @@ export default function AdminUsersPage() {
                       className={cn(
                         "flex items-center gap-3 px-3 py-2.5 rounded-xl border",
                         acc.is_active
-                          ? "bg-[#85B9E9]/[0.05] border-[#85B9E9]/15"
+                          ? "bg-info-soft border-primary-2/15"
                           : "bg-white/[0.03] border-white/[0.07]"
                       )}
                     >
                       <div className={cn(
                         "w-7 h-7 rounded-full border flex items-center justify-center flex-shrink-0",
                         acc.is_active
-                          ? "bg-pink-500/10 border-pink-500/20"
+                          ? "bg-danger-soft border-danger/20"
                           : "bg-white/5 border-white/10"
                       )}>
-                        <Instagram size={13} className={acc.is_active ? "text-pink-400" : "text-white/30"} />
+                        <Instagram size={13} className={acc.is_active ? "text-danger" : "text-ink-3"} />
                       </div>
                       <span className={cn(
                         "text-sm font-medium flex-1",
-                        acc.is_active ? "text-white/85" : "text-white/35"
+                        acc.is_active ? "text-ink" : "text-ink-3"
                       )}>
                         @{acc.username}
                       </span>
                       <span className={cn(
                         "text-[10px] font-medium rounded-full border px-2 py-0.5 flex-shrink-0",
                         acc.is_active
-                          ? "text-[#85B9E9] border-[#85B9E9]/20 bg-[#85B9E9]/10"
-                          : "text-white/30 border-white/10 bg-white/5"
+                          ? "text-link border-primary-2/20 bg-info-soft"
+                          : "text-ink-3 border-white/10 bg-white/5"
                       )}>
                         {acc.is_active ? "Ativa" : "Inativa"}
                       </span>
@@ -295,7 +295,7 @@ export default function AdminUsersPage() {
               )}
 
               {/* Footer count */}
-              <p className="text-xs text-white/25 text-right pt-1 border-t border-white/[0.06]">
+              <p className="text-xs text-ink-3 text-right pt-1 border-t border-white/[0.06]">
                 {accountsModal.accounts.length} {accountsModal.accounts.length === 1 ? "conta" : "contas"} no total
               </p>
             </motion.div>
@@ -313,31 +313,31 @@ export default function AdminUsersPage() {
         </div>
         <div className="flex items-center gap-3">
           {pendingCount > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/30 bg-warning-soft px-3 py-1 text-xs font-medium text-warning">
               <Clock className="w-3 h-3" />
               {pendingCount} aguardando aprovação
             </span>
           )}
           {!loading && (
-            <span className="text-sm text-white/30">{users.length} registros</span>
+            <span className="text-sm text-ink-3">{users.length} registros</span>
           )}
         </div>
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center py-20 text-white/40 gap-2">
-          <Loader2 className="w-5 h-5 animate-spin text-[#00498D]" />
+        <div className="flex items-center justify-center py-20 text-ink-3 gap-2">
+          <Loader2 className="w-5 h-5 animate-spin text-link" />
           <span className="text-sm">Carregando usuários…</span>
         </div>
       )}
 
       {error && (
-        <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-400">
+        <div className="flex items-center gap-3 rounded-2xl border border-danger/20 bg-danger-soft px-4 py-3 text-sm text-danger">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
           <button
             onClick={() => setError(null)}
-            className="ml-auto text-red-400/60 hover:text-red-400"
+            className="ml-auto text-danger/60 hover:text-danger"
           >
             ✕
           </button>
@@ -348,7 +348,7 @@ export default function AdminUsersPage() {
         <div className="glass-card rounded-2xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/[0.07] text-white/35 text-left">
+              <tr className="border-b border-white/[0.06] bg-white/[0.04] text-ink-3 text-left">
                 <th className="px-4 py-3.5 font-medium text-xs uppercase tracking-wider">Email</th>
                 <th className="px-4 py-3.5 font-medium text-xs uppercase tracking-wider">Criado em</th>
                 <th className="px-4 py-3.5 font-medium text-xs uppercase tracking-wider">Status</th>
@@ -357,7 +357,7 @@ export default function AdminUsersPage() {
                 <th className="px-4 py-3.5 font-medium text-xs uppercase tracking-wider text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/[0.04]">
+            <tbody className="divide-y divide-white/[0.06]">
               {users.map((u) => {
                 const isSelf = u.id === currentUserId;
                 const isActioning = actioning === u.id;
@@ -372,22 +372,22 @@ export default function AdminUsersPage() {
                     className={cn(
                       "transition-colors",
                       isPendingApproval
-                        ? "bg-amber-500/[0.04] hover:bg-amber-500/[0.07] border-l-2 border-l-amber-500/40"
-                        : "hover:bg-white/[0.02]"
+                        ? "bg-warning-soft hover:bg-warning-soft border-l-2 border-l-warning/40"
+                        : "hover:bg-white/[0.04]"
                     )}
                   >
                     {/* Email */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-white/90 font-medium">{u.email}</span>
+                        <span className="text-ink font-medium">{u.email}</span>
                         {isPendingApproval && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300 font-medium">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft border border-warning/20 px-1.5 py-0.5 text-[10px] text-warning font-medium">
                             <Clock className="w-2.5 h-2.5" />
                             Novo
                           </span>
                         )}
                         {isPendingApproval && u.pending_message && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-500/20 px-1.5 py-0.5 text-[10px] text-blue-300 font-medium">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-info-soft border border-primary/20 px-1.5 py-0.5 text-[10px] text-link font-medium">
                             <MessageSquare className="w-2.5 h-2.5" />
                             mensagem
                           </span>
@@ -395,8 +395,8 @@ export default function AdminUsersPage() {
                       </div>
                       {isPendingApproval && u.pending_message && (
                         <div className="mt-1.5 flex items-start gap-1.5 max-w-xs">
-                          <MessageSquare className="w-3 h-3 text-blue-400/60 shrink-0 mt-0.5" />
-                          <p className="text-[11px] text-white/45 leading-relaxed italic">
+                          <MessageSquare className="w-3 h-3 text-link/60 shrink-0 mt-0.5" />
+                          <p className="text-[11px] text-ink-3 leading-relaxed italic">
                             &ldquo;{u.pending_message}&rdquo;
                           </p>
                         </div>
@@ -404,7 +404,7 @@ export default function AdminUsersPage() {
                     </td>
 
                     {/* Created at */}
-                    <td className="px-4 py-3 text-white/40 text-xs">
+                    <td className="px-4 py-3 text-ink-3 text-xs">
                       {formatDate(u.created_at)}
                     </td>
 
@@ -435,11 +435,11 @@ export default function AdminUsersPage() {
                     {/* Accounts */}
                     <td className="px-4 py-3">
                       {u.accounts.length === 0 ? (
-                        <span className="text-white/20 text-xs">0 contas</span>
+                        <span className="text-ink-3 text-xs">0 contas</span>
                       ) : (
                         <button
                           onClick={() => setAccountsModal(u)}
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-[#85B9E9]/20 bg-[#85B9E9]/[0.07] px-3 py-1.5 text-xs font-medium text-[#85B9E9] hover:bg-[#85B9E9]/15 transition-all"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-primary-2/20 bg-info-soft px-3 py-1.5 text-xs font-medium text-link hover:bg-info-soft transition-all"
                         >
                           <Instagram className="w-3 h-3" />
                           Ver {u.accounts.length} {u.accounts.length === 1 ? "conta" : "contas"}
@@ -450,17 +450,17 @@ export default function AdminUsersPage() {
                     {/* Actions */}
                     <td className="px-4 py-3">
                       {isSelf ? (
-                        <span className="text-white/20 text-xs text-right block">—</span>
+                        <span className="text-ink-3 text-xs text-right block">—</span>
                       ) : (
                         <div className="flex items-center justify-end gap-2 flex-wrap">
                           {(isPending || isRejectPending || isRevokeAccessPending) && (
-                            <span className="text-xs text-amber-400/80 mr-1">
+                            <span className="text-xs text-warning/80 mr-1">
                               Confirmar?
                             </span>
                           )}
 
                           {isActioning ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-[#00498D]/60" />
+                            <Loader2 className="w-4 h-4 animate-spin text-link/60" />
                           ) : (
                             <>
                               {/* Approve / Reject buttons — only for pending users */}
@@ -468,7 +468,7 @@ export default function AdminUsersPage() {
                                 <>
                                   <button
                                     onClick={() => approveUser(u.id)}
-                                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-300 hover:bg-emerald-500/25 transition-all font-medium"
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-success/30 bg-success-soft px-3 py-1.5 text-xs text-success hover:bg-success/25 transition-all font-medium"
                                   >
                                     <CheckCircle2 className="w-3.5 h-3.5" />
                                     Aprovar
@@ -485,8 +485,8 @@ export default function AdminUsersPage() {
                                     className={cn(
                                       "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all font-medium",
                                       isRejectPending
-                                        ? "border-red-400/40 bg-red-400/20 text-red-300"
-                                        : "border-red-500/30 bg-red-500/15 text-red-300 hover:bg-red-500/25"
+                                        ? "border-danger/40 bg-danger/20 text-danger"
+                                        : "border-danger/30 bg-danger-soft text-danger hover:bg-danger/25"
                                     )}
                                   >
                                     <XCircle className="w-3.5 h-3.5" />
@@ -505,8 +505,8 @@ export default function AdminUsersPage() {
                                       className={cn(
                                         "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all",
                                         isPending && pending?.role === "user"
-                                          ? "border-emerald-400/40 bg-emerald-400/20 text-emerald-300"
-                                          : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                                          ? "border-success/40 bg-success/20 text-success"
+                                          : "border-success/20 bg-success-soft text-success hover:bg-success/20"
                                       )}
                                     >
                                       <ShieldCheck className="w-3.5 h-3.5" />
@@ -521,8 +521,8 @@ export default function AdminUsersPage() {
                                       className={cn(
                                         "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all",
                                         isPending && pending?.role === "admin"
-                                          ? "border-[#00498D]/30 bg-[#00498D]/10 text-[#00498D]"
-                                          : "border-[#00498D]/15 bg-[#00498D]/[0.06] text-[#00498D]/80 hover:bg-[#00498D]/10"
+                                          ? "border-primary/30 bg-info-soft text-link"
+                                          : "border-primary/15 bg-info-soft text-link/80 hover:bg-info-soft"
                                       )}
                                     >
                                       <Crown className="w-3.5 h-3.5" />
@@ -537,8 +537,8 @@ export default function AdminUsersPage() {
                                       className={cn(
                                         "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all",
                                         isPending && pending?.role === "user"
-                                          ? "border-amber-400/40 bg-amber-400/20 text-amber-300"
-                                          : "border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                                          ? "border-warning/40 bg-warning/20 text-warning"
+                                          : "border-warning/20 bg-warning-soft text-warning hover:bg-warning/20"
                                       )}
                                     >
                                       <UserMinus className="w-3.5 h-3.5" />
@@ -553,8 +553,8 @@ export default function AdminUsersPage() {
                                       className={cn(
                                         "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all",
                                         isPending && pending?.role === "banned"
-                                          ? "border-red-400/40 bg-red-400/20 text-red-300"
-                                          : "border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                                          ? "border-danger/40 bg-danger/20 text-danger"
+                                          : "border-danger/20 bg-danger-soft text-danger hover:bg-danger/20"
                                       )}
                                     >
                                       <ShieldBan className="w-3.5 h-3.5" />
@@ -577,8 +577,8 @@ export default function AdminUsersPage() {
                                       className={cn(
                                         "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs transition-all font-medium",
                                         isRevokeAccessPending
-                                          ? "border-amber-400/40 bg-amber-400/20 text-amber-300"
-                                          : "border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                                          ? "border-warning/40 bg-warning/20 text-warning"
+                                          : "border-warning/20 bg-warning-soft text-warning hover:bg-warning/20"
                                       )}
                                     >
                                       <PauseCircle className="w-3.5 h-3.5" />
@@ -589,7 +589,7 @@ export default function AdminUsersPage() {
                                   {/* Impersonate */}
                                   <button
                                     onClick={() => impersonateUser(u.id)}
-                                    className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/50 hover:bg-white/[0.08] hover:text-white/80 transition-all"
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-ink-3 hover:bg-white/[0.08] hover:text-ink transition-all"
                                     title="Acessar como este usuário"
                                   >
                                     <Eye className="w-3.5 h-3.5" />
@@ -609,7 +609,7 @@ export default function AdminUsersPage() {
           </table>
 
           {users.length === 0 && (
-            <div className="flex flex-col items-center justify-center gap-3 py-16 text-white/30">
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-ink-3">
               <Users className="w-8 h-8" />
               <p className="text-sm">Nenhum usuário encontrado</p>
             </div>
