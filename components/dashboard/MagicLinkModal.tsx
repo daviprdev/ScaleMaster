@@ -31,14 +31,14 @@ function LinkField({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-white/40 text-xs font-medium uppercase tracking-wider">
+      <label className="text-ink-3 text-xs font-medium uppercase tracking-wider">
         {label}
       </label>
       <div className="flex items-center gap-2">
         <input
           readOnly
           value={url}
-          className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/[0.08] text-[13px] text-[#85B9E9]/80 font-mono focus:outline-none cursor-text select-all"
+          className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/[0.08] text-[13px] text-link/80 font-mono focus:outline-none cursor-text select-all"
           onFocus={(e) => e.target.select()}
         />
       </div>
@@ -48,8 +48,8 @@ function LinkField({
           onClick={onCopy}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[13px] font-medium transition-all border ${
             copied
-              ? "bg-[#00498D]/10 border-[#00498D]/30 text-[#00498D]"
-              : "bg-white/[0.04] border-white/[0.08] text-white/60 hover:bg-white/[0.07] hover:text-white/90"
+              ? "bg-info-soft border-primary/30 text-link"
+              : "bg-white/[0.04] border-white/[0.08] text-ink-2 hover:bg-white/[0.07] hover:text-ink"
           }`}
         >
           {copied ? <CheckCircle2 size={13} /> : <Copy size={13} />}
@@ -57,7 +57,7 @@ function LinkField({
         </button>
         <button
           onClick={() => window.open(url, "_blank")}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[13px] font-medium bg-white/[0.04] border border-white/[0.08] text-white/60 hover:bg-white/[0.07] hover:text-white/90 transition-all"
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-[13px] font-medium bg-white/[0.04] border border-white/[0.08] text-ink-2 hover:bg-white/[0.07] hover:text-ink transition-all"
         >
           <ExternalLink size={13} />
           Abrir
@@ -184,7 +184,7 @@ export default function MagicLinkModal({ open, onClose }: Props) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-overlay backdrop-blur-sm z-50"
             onClick={onClose}
           />
 
@@ -203,19 +203,19 @@ export default function MagicLinkModal({ open, onClose }: Props) {
               {/* Header */}
               <div className="flex items-start justify-between p-5 pb-4 border-b border-white/[0.06]">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-[#00498D]/10 border border-[#00498D]/20 flex items-center justify-center">
-                    <Link2 size={16} className="text-[#00498D]" />
+                  <div className="w-9 h-9 rounded-xl bg-info-soft border border-primary/20 flex items-center justify-center">
+                    <Link2 size={16} className="text-link" />
                   </div>
                   <div>
-                    <h2 className="text-white font-semibold text-[15px] leading-tight">
+                    <h2 className="text-ink font-semibold text-[15px] leading-tight">
                       Seu link pessoal para adicionar contas
                     </h2>
-                    <p className="text-white/40 text-xs mt-0.5">Magic Link · uso único por acesso</p>
+                    <p className="text-ink-3 text-xs mt-0.5">Magic Link · uso único por acesso</p>
                   </div>
                 </div>
                 <button
                   onClick={onClose}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white/70 hover:bg-white/[0.06] transition-all"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-ink-3 hover:text-ink-2 hover:bg-white/[0.06] transition-all"
                 >
                   <X size={14} />
                 </button>
@@ -224,15 +224,15 @@ export default function MagicLinkModal({ open, onClose }: Props) {
               <div className="p-5 space-y-4">
                 {/* Error banner */}
                 {error && (
-                  <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-[13px] leading-relaxed">
+                  <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-danger-soft border border-danger/20 text-danger text-[13px] leading-relaxed">
                     <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
                     <span>{error}</span>
                   </div>
                 )}
 
                 {/* Description */}
-                <p className="text-white/50 text-[13px] leading-relaxed">
-                  Salve o link geral nos favoritos: ao abrir, você escolhe o app em que a conta é testadora e segue para o login do Instagram — <span className="text-white/70">sem precisar estar logado no SaaS</span>.
+                <p className="text-ink-3 text-[13px] leading-relaxed">
+                  Salve o link geral nos favoritos: ao abrir, você escolhe o app em que a conta é testadora e segue para o login do Instagram — <span className="text-ink-2">sem precisar estar logado no SaaS</span>.
                 </p>
 
                 {token && (
@@ -246,18 +246,18 @@ export default function MagicLinkModal({ open, onClose }: Props) {
 
                 {/* App Selector */}
                 <div className="space-y-1.5">
-                  <label className="text-white/40 text-xs font-medium uppercase tracking-wider">
+                  <label className="text-ink-3 text-xs font-medium uppercase tracking-wider">
                     Meta App do link direto
                   </label>
                   <div className="relative">
                     <button
                       onClick={() => setDropdownOpen((v) => !v)}
-                      className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white/80 hover:border-white/20 hover:bg-white/[0.06] transition-all"
+                      className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-ink hover:border-white/20 hover:bg-white/[0.06] transition-all"
                     >
                       <span className="truncate">{appsLoading ? "Carregando…" : selectedLabel}</span>
                       <ChevronDown
                         size={14}
-                        className={`text-white/30 transition-transform flex-shrink-0 ml-2 ${dropdownOpen ? "rotate-180" : ""}`}
+                        className={`text-ink-3 transition-transform flex-shrink-0 ml-2 ${dropdownOpen ? "rotate-180" : ""}`}
                       />
                     </button>
 
@@ -268,12 +268,12 @@ export default function MagicLinkModal({ open, onClose }: Props) {
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -4 }}
                           transition={{ duration: 0.12 }}
-                          className="absolute top-full left-0 right-0 mt-1 rounded-xl bg-[#0a0a0a] border border-white/10 shadow-2xl z-10 max-h-60 overflow-y-auto"
+                          className="absolute top-full left-0 right-0 mt-1 rounded-xl bg-bg border border-white/10 shadow-2xl z-10 max-h-60 overflow-y-auto"
                         >
                           {/* Global option only if env var configured */}
                           <button
                             onClick={() => { setSelectedAppId("__global__"); setDropdownOpen(false); }}
-                            className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left hover:bg-white/[0.05] transition-colors ${selectedAppId === "__global__" ? "text-[#00498D]" : "text-white/70"}`}
+                            className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left hover:bg-white/[0.05] transition-colors ${selectedAppId === "__global__" ? "text-link" : "text-ink-2"}`}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-white/20 flex-shrink-0" />
                             App Global (variáveis de ambiente)
@@ -283,16 +283,16 @@ export default function MagicLinkModal({ open, onClose }: Props) {
                             <button
                               key={app.id}
                               onClick={() => { setSelectedAppId(app.id); setDropdownOpen(false); }}
-                              className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left hover:bg-white/[0.05] transition-colors ${selectedAppId === app.id ? "text-[#00498D]" : "text-white/70"}`}
+                              className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left hover:bg-white/[0.05] transition-colors ${selectedAppId === app.id ? "text-link" : "text-ink-2"}`}
                             >
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#00498D]/50 flex-shrink-0" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-primary/50 flex-shrink-0" />
                               <span className="truncate">{app.app_name}</span>
-                              <span className="text-white/25 text-xs ml-auto flex-shrink-0">{app.ig_app_id.slice(0, 8)}…</span>
+                              <span className="text-ink-3 text-xs ml-auto flex-shrink-0">{app.ig_app_id.slice(0, 8)}…</span>
                             </button>
                           ))}
 
                           {apps.length === 0 && (
-                            <div className="px-3.5 py-2.5 text-xs text-white/30 italic">
+                            <div className="px-3.5 py-2.5 text-xs text-ink-3 italic">
                               Nenhum app BYOC cadastrado
                             </div>
                           )}
@@ -334,7 +334,7 @@ export default function MagicLinkModal({ open, onClose }: Props) {
                   <button
                     onClick={() => handleSubmit(true)}
                     disabled={loading !== null}
-                    className="w-full flex items-center justify-center gap-1.5 text-white/30 hover:text-white/60 text-[11px] transition-colors disabled:opacity-50"
+                    className="w-full flex items-center justify-center gap-1.5 text-ink-3 hover:text-ink-2 text-[11px] transition-colors disabled:opacity-50"
                   >
                     {loading === "generate" ? (
                       <Loader2 size={11} className="animate-spin" />

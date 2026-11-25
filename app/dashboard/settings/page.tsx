@@ -62,9 +62,9 @@ function countryFlag(code: string | null): string {
 }
 
 function DeviceIcon({ type, size = 15 }: { type: string; size?: number }) {
-  if (type === "mobile") return <Smartphone size={size} className="text-[#85B9E9]" />;
-  if (type === "tablet") return <Tablet size={size} className="text-[#85B9E9]" />;
-  return <Monitor size={size} className="text-[#85B9E9]" />;
+  if (type === "mobile") return <Smartphone size={size} className="text-link" />;
+  if (type === "tablet") return <Tablet size={size} className="text-link" />;
+  return <Monitor size={size} className="text-link" />;
 }
 
 // ── Password strength ──────────────────────────────────────────────────────
@@ -75,8 +75,8 @@ function PasswordStrength({ password }: { password: string }) {
         r.test(password)
       ).length;
   if (!password) return null;
-  const bar = ["", "bg-red-500", "bg-yellow-500", "bg-blue-500", "bg-emerald-500"];
-  const text = ["", "text-red-400", "text-yellow-400", "text-blue-400", "text-emerald-400"];
+  const bar = ["", "bg-danger", "bg-warning", "bg-primary", "bg-success"];
+  const text = ["", "text-danger", "text-warning", "text-link", "text-success"];
   const labels = ["", "Fraca", "Razoável", "Boa", "Forte"];
   return (
     <div className="space-y-1.5 mt-2">
@@ -471,17 +471,17 @@ export default function SettingsPage() {
                 <img
                   src={avatarUrl}
                   alt="Foto de perfil"
-                  className="w-16 h-16 rounded-full object-cover shadow-[0_0_20px_rgba(139,92,246,0.3)]"
+                  className="w-16 h-16 rounded-full object-cover shadow-glow"
                 />
               ) : (
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center text-2xl font-bold text-white shadow-[0_0_20px_rgba(139,92,246,0.3)]">
+                <div className="w-16 h-16 rounded-full bg-gradient-primary flex items-center justify-center text-2xl font-bold text-white shadow-glow">
                   {initial}
                 </div>
               )}
               {/* Overlay */}
               <div className="absolute inset-0 rounded-full bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 {uploadingAvatar ? (
-                  <Loader2 size={16} className="text-white animate-spin" />
+                  <Loader2 size={16} className="text-ink animate-spin" />
                 ) : (
                   <Camera size={16} className="text-white" />
                 )}
@@ -495,7 +495,7 @@ export default function SettingsPage() {
                 type="button"
                 disabled={uploadingAvatar}
                 onClick={() => avatarInputRef.current?.click()}
-                className="text-xs text-[#85B9E9] hover:text-[#AFBDD0] mt-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-xs text-link hover:text-link mt-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {uploadingAvatar ? "Enviando..." : "Alterar foto"}
               </button>
@@ -504,7 +504,7 @@ export default function SettingsPage() {
 
           {/* Avatar error */}
           {avatarError && (
-            <div className="flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+            <div className="flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-danger-soft border border-danger/20 text-danger text-xs">
               <div className="flex items-center gap-2">
                 <AlertCircle size={13} className="flex-shrink-0" />
                 {avatarError}
@@ -598,7 +598,7 @@ export default function SettingsPage() {
           )}
 
           {profileError && (
-            <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+            <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-danger-soft border border-danger/20 text-danger text-xs">
               <AlertCircle size={13} className="flex-shrink-0" />
               {profileError}
             </div>
@@ -611,7 +611,7 @@ export default function SettingsPage() {
               className={cn(
                 "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed",
                 profileSuccess
-                  ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
+                  ? "bg-success-soft border border-success/30 text-success"
                   : "btn-primary"
               )}
             >
@@ -650,8 +650,8 @@ export default function SettingsPage() {
               <PasswordStrength password={newPassword} />
             </div>
 
-            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-[#85B9E9]/[0.05] border border-[#85B9E9]/15 text-[11px] text-ink-3">
-              <Mail size={13} className="flex-shrink-0 mt-0.5 text-[#85B9E9]/70" />
+            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-info-soft border border-primary-2/15 text-[11px] text-ink-3">
+              <Mail size={13} className="flex-shrink-0 mt-0.5 text-link/70" />
               <span>
                 Por segurança, enviaremos um código de verificação para o email
                 da conta antes de alterar a senha.
@@ -659,7 +659,7 @@ export default function SettingsPage() {
             </div>
 
             {passwordError && (
-              <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+              <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-danger-soft border border-danger/20 text-danger text-xs">
                 <AlertCircle size={13} className="flex-shrink-0" />
                 {passwordError}
               </div>
@@ -672,7 +672,7 @@ export default function SettingsPage() {
                 className={cn(
                   "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed",
                   passwordSuccess
-                    ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-400"
+                    ? "bg-success-soft border border-success/30 text-success"
                     : "btn-primary"
                 )}
               >
@@ -688,8 +688,8 @@ export default function SettingsPage() {
           </form>
         ) : (
           <form onSubmit={handleConfirmPassword} className="space-y-4">
-            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-[#00498D]/[0.05] border border-[#00498D]/15 text-[11px] text-ink-3">
-              <Mail size={13} className="flex-shrink-0 mt-0.5 text-[#00498D]/70" />
+            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-info-soft border border-primary/15 text-[11px] text-ink-3">
+              <Mail size={13} className="flex-shrink-0 mt-0.5 text-link/70" />
               <span>
                 Enviamos um código de 6 dígitos para{" "}
                 <span className="font-semibold text-ink">{email}</span>.
@@ -716,7 +716,7 @@ export default function SettingsPage() {
             </div>
 
             {passwordError && (
-              <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+              <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-danger-soft border border-danger/20 text-danger text-xs">
                 <AlertCircle size={13} className="flex-shrink-0" />
                 {passwordError}
               </div>
@@ -735,7 +735,7 @@ export default function SettingsPage() {
                   type="button"
                   onClick={handleResendCode}
                   disabled={sendingCode || resendCooldown > 0}
-                  className="text-xs text-[#85B9E9]/70 hover:text-[#85B9E9] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="text-xs text-link/70 hover:text-link transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {resendCooldown > 0
                     ? `Reenviar em ${resendCooldown}s`
@@ -820,9 +820,9 @@ export default function SettingsPage() {
                     className={cn(
                       "flex items-start gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150",
                       isCurrent
-                        ? "bg-[#00498D]/[0.04] border-[#00498D]/20"
+                        ? "bg-info-soft border-primary/20"
                         : isSelected
-                        ? "bg-red-500/[0.07] border-red-500/30 cursor-pointer"
+                        ? "bg-danger-soft border-danger/30 cursor-pointer"
                         : isSelectable
                         ? "bg-surface border-line cursor-pointer hover:bg-surface-raised hover:border-line-control"
                         : "bg-surface border-line"
@@ -833,18 +833,18 @@ export default function SettingsPage() {
                       <div className={cn(
                         "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 border-2 transition-all",
                         isSelected
-                          ? "bg-red-500/20 border-red-500/60"
+                          ? "bg-danger/20 border-danger/60"
                           : "bg-surface-raised border-line-control"
                       )}>
                         {isSelected
-                          ? <Check size={14} className="text-red-400" />
+                          ? <Check size={14} className="text-danger" />
                           : <DeviceIcon type={s.device_type} size={14} />
                         }
                       </div>
                     ) : (
                       <div className={cn(
                         "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5",
-                        isCurrent ? "bg-[#00498D]/10" : "bg-surface-raised"
+                        isCurrent ? "bg-info-soft" : "bg-surface-raised"
                       )}>
                         <DeviceIcon type={s.device_type} />
                       </div>
@@ -855,17 +855,17 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className={cn(
                           "text-sm font-medium",
-                          isSelected ? "text-red-300" : "text-ink"
+                          isSelected ? "text-danger" : "text-ink"
                         )}>
                           {s.browser} · {s.os}
                         </span>
                         {isCurrent && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider bg-[#00498D]/10 border border-[#00498D]/25 text-[#00498D]">
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider bg-info-soft border border-primary/25 text-link">
                             ESTA SESSÃO
                           </span>
                         )}
                         {isSelected && (
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider bg-red-500/10 border border-red-500/25 text-red-400">
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider bg-danger-soft border border-danger/25 text-danger">
                             SELECIONADA
                           </span>
                         )}
@@ -905,12 +905,12 @@ export default function SettingsPage() {
             <div className={cn(
               "rounded-xl border px-4 py-3 flex items-center gap-3 transition-all",
               selectedIds.size > 0
-                ? "bg-red-500/[0.07] border-red-500/25"
+                ? "bg-danger-soft border-danger/25"
                 : "bg-surface-raised border-line"
             )}>
               <span className={cn(
                 "text-sm font-medium flex-1",
-                selectedIds.size > 0 ? "text-red-300" : "text-ink-3"
+                selectedIds.size > 0 ? "text-danger" : "text-ink-3"
               )}>
                 {selectedIds.size === 0
                   ? "Nenhuma sessão selecionada"
@@ -920,11 +920,11 @@ export default function SettingsPage() {
               {selectedIds.size > 0 && (
                 revokeConfirm === "selected" ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-red-400">Deslogar {selectedIds.size} dispositivo(s)?</span>
+                    <span className="text-xs text-danger">Deslogar {selectedIds.size} dispositivo(s)?</span>
                     <button
                       onClick={handleRevokeSelected}
                       disabled={revokingSelected}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-danger/20 border border-danger/40 text-danger hover:bg-danger/30 transition-colors disabled:opacity-50 flex items-center gap-1.5"
                     >
                       {revokingSelected && <Loader2 size={11} className="animate-spin" />}
                       Confirmar
@@ -940,8 +940,8 @@ export default function SettingsPage() {
                   <button
                     onClick={() => setRevokeConfirm("selected")}
                     className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold
-                      bg-red-500/15 border border-red-500/30 text-red-400
-                      hover:bg-red-500/25 transition-colors"
+                      bg-danger-soft border border-danger/30 text-danger
+                      hover:bg-danger/25 transition-colors"
                   >
                     <LogOut size={12} />
                     Deslogar selecionados
@@ -953,7 +953,7 @@ export default function SettingsPage() {
 
           {/* Erro */}
           {sessionError && (
-            <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+            <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-danger-soft border border-danger/20 text-danger text-xs">
               <AlertCircle size={13} className="flex-shrink-0" />
               {sessionError}
               <button className="ml-auto" onClick={() => setSessionError("")}>
@@ -969,13 +969,13 @@ export default function SettingsPage() {
               {sessions.length > 1 && (
                 revokeConfirm === "others" ? (
                   <div className="flex items-center gap-2 flex-1">
-                    <span className="text-xs text-amber-400 flex-1">
+                    <span className="text-xs text-warning flex-1">
                       Deslogar de {sessions.length - 1} outro(s) dispositivo(s)?
                     </span>
                     <button
                       onClick={handleRevokeOthers}
                       disabled={revokingOthers}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-warning-soft border border-warning/30 text-warning hover:bg-warning/20 transition-colors disabled:opacity-50 flex items-center gap-1.5"
                     >
                       {revokingOthers && <Loader2 size={11} className="animate-spin" />}
                       Confirmar
@@ -1004,11 +1004,11 @@ export default function SettingsPage() {
               {/* Deslogar de tudo */}
               {revokeConfirm === "all" ? (
                 <div className="flex items-center gap-2 flex-1">
-                  <span className="text-xs text-red-400 flex-1">Você será deslogado agora. Continuar?</span>
+                  <span className="text-xs text-danger flex-1">Você será deslogado agora. Continuar?</span>
                   <button
                     onClick={handleLogoutAll}
                     disabled={loggingOutAll}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-danger-soft border border-danger/30 text-danger hover:bg-danger/20 transition-colors disabled:opacity-50 flex items-center gap-1.5"
                   >
                     {loggingOutAll && <Loader2 size={11} className="animate-spin" />}
                     Confirmar
@@ -1024,8 +1024,8 @@ export default function SettingsPage() {
                 <button
                   onClick={() => setRevokeConfirm("all")}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold flex-1 justify-center
-                    bg-red-500/[0.06] border border-red-500/20 text-red-400
-                    hover:bg-red-500/[0.10] hover:border-red-500/30
+                    bg-danger-soft border border-danger/20 text-danger
+                    hover:bg-danger-soft hover:border-danger/30
                     transition-all duration-150"
                 >
                   <LogOut size={14} />

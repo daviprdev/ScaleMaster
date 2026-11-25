@@ -28,21 +28,21 @@ interface FailoverLog {
 function HealthBadge({ status }: { status: string }) {
   if (status === "online")
     return (
-      <span className="flex items-center gap-1.5 text-xs font-medium text-green-400">
-        <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+      <span className="flex items-center gap-1.5 text-xs font-medium text-success">
+        <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
         Online
       </span>
     );
   if (status === "error")
     return (
-      <span className="flex items-center gap-1.5 text-xs font-medium text-red-400">
-        <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+      <span className="flex items-center gap-1.5 text-xs font-medium text-danger">
+        <span className="w-1.5 h-1.5 rounded-full bg-danger" />
         Erro
       </span>
     );
   return (
-    <span className="flex items-center gap-1.5 text-xs font-medium text-amber-400">
-      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+    <span className="flex items-center gap-1.5 text-xs font-medium text-warning">
+      <span className="w-1.5 h-1.5 rounded-full bg-warning" />
       Bloqueada
     </span>
   );
@@ -51,7 +51,7 @@ function HealthBadge({ status }: { status: string }) {
 function PriorityLabel({ index }: { index: number }) {
   if (index === 0)
     return (
-      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-[#00498D]/15 border border-[#00498D]/30 text-[#AFBDD0]">
+      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-info-soft border border-primary/30 text-link">
         PRINCIPAL
       </span>
     );
@@ -65,7 +65,7 @@ function PriorityLabel({ index }: { index: number }) {
 function AccountAvatar({ username }: { username: string }) {
   const initials = username.slice(0, 2).toUpperCase();
   return (
-    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00498D] to-[#85B9E9] flex items-center justify-center text-white text-xs font-bold shrink-0">
+    <div className="w-9 h-9 rounded-xl bg-gradient-primary flex items-center justify-center text-white text-xs font-bold shrink-0">
       {initials}
     </div>
   );
@@ -148,10 +148,10 @@ function categoryIcon(cat: string) {
 
 function categoryStyle(color: string): string {
   const map: Record<string, string> = {
-    red:    "bg-red-500/10 border-red-500/20 text-red-400",
-    orange: "bg-orange-500/10 border-orange-500/20 text-orange-400",
-    amber:  "bg-amber-500/10 border-amber-500/20 text-amber-400",
-    blue:   "bg-[#00498D]/10 border-[#00498D]/20 text-[#85B9E9]",
+    red:    "bg-danger-soft border-danger/20 text-danger",
+    orange: "bg-warning-soft border-warning/20 text-warning",
+    amber:  "bg-warning-soft border-warning/20 text-warning",
+    blue:   "bg-info-soft border-primary/20 text-link",
     gray:   "bg-surface-raised border-line text-ink-3",
   };
   return map[color] ?? map.gray;
@@ -159,8 +159,8 @@ function categoryStyle(color: string): string {
 
 function barColor(color: string): string {
   const map: Record<string, string> = {
-    red: "bg-red-500", orange: "bg-orange-500", amber: "bg-amber-400",
-    blue: "bg-[#00498D]", gray: "bg-line-control/30",
+    red: "bg-danger", orange: "bg-warning", amber: "bg-warning",
+    blue: "bg-primary", gray: "bg-line-control/30",
   };
   return map[color] ?? "bg-line-control/30";
 }
@@ -305,8 +305,8 @@ export default function FailoverPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Shield size={20} className="text-[#85B9E9]" />
-            <h1 className="text-xl font-bold text-white">Failover de Contas</h1>
+            <Shield size={20} className="text-link" />
+            <h1 className="text-xl font-bold text-ink">Failover de Contas</h1>
           </div>
           <p className="text-sm text-ink-3">
             Redundância automática — quando uma conta falha, a próxima assume.
@@ -315,7 +315,7 @@ export default function FailoverPage() {
         <button
           onClick={activeTab === "failover" ? load : loadDiag}
           disabled={activeTab === "failover" ? loading : diagLoading}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-raised border border-line text-ink-2 hover:text-white hover:bg-surface-hover text-sm transition-colors disabled:opacity-40"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-raised border border-line text-ink-2 hover:text-ink hover:bg-surface-hover text-sm transition-colors disabled:opacity-40"
         >
           <RefreshCw size={14} className={(loading || diagLoading) ? "animate-spin" : ""} />
           Atualizar
@@ -341,7 +341,7 @@ export default function FailoverPage() {
       </div>
 
       {error && (
-        <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+        <div className="px-4 py-3 rounded-xl bg-danger-soft border border-danger/20 text-danger text-sm">
           {error}
         </div>
       )}
@@ -366,11 +366,11 @@ export default function FailoverPage() {
               {/* Summary cards */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {[
-                  { label: "Quedas 7d", value: diag.summary.total_drops_7d, color: "text-red-400" },
-                  { label: "Em erro", value: diag.summary.accounts_in_error, color: "text-red-400" },
-                  { label: "Online", value: diag.summary.accounts_online, color: "text-green-400" },
-                  { label: "Token expirando", value: diag.summary.tokens_expiring_soon, color: "text-amber-400" },
-                  { label: "Pico/hora", value: diag.summary.max_drops_in_one_hour, color: diag.summary.thundering_herd ? "text-orange-400" : "text-ink-2" },
+                  { label: "Quedas 7d", value: diag.summary.total_drops_7d, color: "text-danger" },
+                  { label: "Em erro", value: diag.summary.accounts_in_error, color: "text-danger" },
+                  { label: "Online", value: diag.summary.accounts_online, color: "text-success" },
+                  { label: "Token expirando", value: diag.summary.tokens_expiring_soon, color: "text-warning" },
+                  { label: "Pico/hora", value: diag.summary.max_drops_in_one_hour, color: diag.summary.thundering_herd ? "text-warning" : "text-ink-2" },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="glass-card rounded-xl p-4 text-center">
                     <div className={`text-2xl font-bold ${color}`}>{value}</div>
@@ -381,10 +381,10 @@ export default function FailoverPage() {
 
               {/* Thundering herd alert */}
               {diag.summary.thundering_herd && (
-                <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-orange-500/10 border border-orange-500/25">
-                  <AlertTriangle size={15} className="text-orange-400 mt-0.5 shrink-0" />
+                <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-warning-soft border border-warning/25">
+                  <AlertTriangle size={15} className="text-warning mt-0.5 shrink-0" />
                   <div>
-                    <p className="text-sm font-semibold text-orange-300">Queda em cascata detectada</p>
+                    <p className="text-sm font-semibold text-warning">Queda em cascata detectada</p>
                     <p className="text-xs text-ink-3 mt-0.5 leading-relaxed">
                       {diag.summary.max_drops_in_one_hour} contas caíram na mesma hora — provável problema no nível do App Meta (não nas contas individuais). Considere distribuir contas em múltiplos Apps (<span className="text-ink-2">Configurações → Apps</span>).
                     </p>
@@ -399,7 +399,7 @@ export default function FailoverPage() {
                   <h2 className="text-sm font-semibold text-ink">Tipo de Erro (7 dias)</h2>
                   {diag.categories.length === 0 ? (
                     <div className="flex items-center gap-2 py-8 justify-center text-ink-3 text-sm">
-                      <CheckCircle2 size={16} className="text-green-500/40" /> Nenhuma queda registrada
+                      <CheckCircle2 size={16} className="text-success/40" /> Nenhuma queda registrada
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -434,7 +434,7 @@ export default function FailoverPage() {
                   </div>
                   {diag.timeline.every(t => t.count === 0) ? (
                     <div className="flex items-center gap-2 py-8 justify-center text-ink-3 text-sm">
-                      <CheckCircle2 size={16} className="text-green-500/40" /> Nenhuma queda neste período
+                      <CheckCircle2 size={16} className="text-success/40" /> Nenhuma queda neste período
                     </div>
                   ) : (
                     <div className="flex items-end gap-0.5 h-24 overflow-x-auto pb-1">
@@ -445,7 +445,7 @@ export default function FailoverPage() {
                         return visible.map((t, i) => (
                           <div key={i} className="flex flex-col items-center gap-0.5 flex-1 min-w-[6px]" title={`${t.hour}: ${t.count} quedas`}>
                             <div
-                              className={`w-full rounded-sm transition-all ${t.count > 0 ? (t.count >= 4 ? "bg-orange-500" : "bg-red-500/70") : "bg-surface-raised"}`}
+                              className={`w-full rounded-sm transition-all ${t.count > 0 ? (t.count >= 4 ? "bg-warning" : "bg-danger/70") : "bg-surface-raised"}`}
                               style={{ height: `${Math.max(4, (t.count / max) * 80)}px` }}
                             />
                             {i % 6 === 0 && (
@@ -471,7 +471,7 @@ export default function FailoverPage() {
                   <div className="space-y-2 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
                     {diag.error_accounts.map(acc => (
                       <div key={acc.id} className="flex items-start gap-3 px-4 py-3 rounded-xl bg-surface-raised border border-line">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500/40 to-red-700/40 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-danger/40 to-danger/40 flex items-center justify-center text-white text-[10px] font-bold shrink-0">
                           {acc.username.slice(0, 2).toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -490,7 +490,7 @@ export default function FailoverPage() {
                               <span className="text-[11px] text-ink-3/50">{timeAgo(acc.lastDropAt)}</span>
                             )}
                             {!acc.hasToken && (
-                              <span className="text-[10px] text-amber-400/70">sem token</span>
+                              <span className="text-[10px] text-warning/70">sem token</span>
                             )}
                           </div>
                         </div>
@@ -536,14 +536,14 @@ export default function FailoverPage() {
               {diag.expiring_tokens.length > 0 && (
                 <div className="glass-card rounded-2xl p-5 space-y-4">
                   <div className="flex items-center gap-2">
-                    <KeyRound size={14} className="text-amber-400" />
+                    <KeyRound size={14} className="text-warning" />
                     <h2 className="text-sm font-semibold text-ink">Tokens Expirando em Breve</h2>
                   </div>
                   <div className="space-y-2">
                     {diag.expiring_tokens.map(t => (
-                      <div key={t.id} className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-amber-500/[0.05] border border-amber-500/15">
+                      <div key={t.id} className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-warning-soft border border-warning/15">
                         <span className="text-sm text-ink-2">@{t.username}</span>
-                        <span className={`text-xs font-semibold ${t.days_left <= 1 ? "text-red-400" : t.days_left <= 3 ? "text-orange-400" : "text-amber-400"}`}>
+                        <span className={`text-xs font-semibold ${t.days_left <= 1 ? "text-danger" : t.days_left <= 3 ? "text-warning" : "text-warning"}`}>
                           {t.days_left === 0 ? "hoje" : `${t.days_left}d restantes`}
                         </span>
                       </div>
@@ -566,11 +566,11 @@ export default function FailoverPage() {
 
       {/* Cleanup banner — aparece quando há contas em erro */}
       {!loading && (healthCounts.error ?? 0) > 0 && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-xl bg-red-500/[0.08] border border-red-500/20">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-xl bg-danger-soft border border-danger/20">
           <div className="flex items-start gap-3">
-            <XCircle size={15} className="text-red-400 mt-0.5 shrink-0" />
+            <XCircle size={15} className="text-danger mt-0.5 shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-red-300">
+              <p className="text-sm font-semibold text-danger">
                 {healthCounts.error} conta(s) com erro ainda dentro dos loops
               </p>
               <p className="text-xs text-ink-3 mt-0.5">
@@ -580,14 +580,14 @@ export default function FailoverPage() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {cleanupResult && (
-              <span className="text-xs text-green-400">{cleanupResult}</span>
+              <span className="text-xs text-success">{cleanupResult}</span>
             )}
             <button
               onClick={cleanupErrorAccounts}
               disabled={cleanupLoading}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 ${
                 cleanupConfirm
-                  ? "bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30"
+                  ? "bg-danger/20 border border-danger/40 text-danger hover:bg-danger/30"
                   : "bg-line-control/15 border border-line-control text-ink-2 hover:text-ink hover:bg-surface-hover"
               }`}
             >
@@ -614,22 +614,22 @@ export default function FailoverPage() {
       {!loading && accounts.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {healthCounts.online > 0 && (
-            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-medium">
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-success-soft border border-success/20 text-success text-xs font-medium">
               <CheckCircle2 size={12} /> {healthCounts.online} online
             </span>
           )}
           {healthCounts.error > 0 && (
-            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium">
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-danger-soft border border-danger/20 text-danger text-xs font-medium">
               <XCircle size={12} /> {healthCounts.error} com erro
             </span>
           )}
           {healthCounts.blocked > 0 && (
-            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium">
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-warning-soft border border-warning/20 text-warning text-xs font-medium">
               <AlertTriangle size={12} /> {healthCounts.blocked} bloqueada
             </span>
           )}
           {saving && (
-            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#00498D]/10 border border-[#00498D]/20 text-[#85B9E9] text-xs font-medium">
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-info-soft border border-primary/20 text-link text-xs font-medium">
               <RefreshCw size={12} className="animate-spin" /> Salvando ordem…
             </span>
           )}
@@ -669,9 +669,9 @@ export default function FailoverPage() {
                   transition={{ duration: 0.18 }}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${
                     idx === 0
-                      ? "bg-[#00498D]/[0.06] border-[#00498D]/20"
+                      ? "bg-info-soft border-primary/20"
                       : acc.health_status !== "online"
-                      ? "bg-red-500/[0.04] border-red-500/15"
+                      ? "bg-danger-soft border-danger/15"
                       : "bg-surface-raised border-line"
                   }`}
                 >
@@ -743,7 +743,7 @@ export default function FailoverPage() {
             </div>
           ) : logs.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <CheckCircle2 size={28} className="text-green-500/30" />
+              <CheckCircle2 size={28} className="text-success/30" />
               <p className="text-sm text-ink-3">Nenhum evento de failover registrado.</p>
               <p className="text-xs text-ink-3/50">
                 Isso é ótimo — significa que suas contas estão saudáveis.
@@ -761,8 +761,8 @@ export default function FailoverPage() {
                     className="flex items-start gap-3 px-4 py-3 rounded-xl bg-surface-raised border border-line hover:bg-surface-raised transition-colors"
                   >
                     {/* Event icon */}
-                    <div className="mt-0.5 p-1.5 rounded-lg bg-red-500/10 border border-red-500/15 shrink-0">
-                      <XCircle size={12} className="text-red-400" />
+                    <div className="mt-0.5 p-1.5 rounded-lg bg-danger-soft border border-danger/15 shrink-0">
+                      <XCircle size={12} className="text-danger" />
                     </div>
 
                     {/* Details */}
@@ -774,7 +774,7 @@ export default function FailoverPage() {
                         <ChevronRight size={10} className="text-ink-3/50 shrink-0" />
                         <span
                           className={`text-xs font-semibold ${
-                            log.backup_account ? "text-[#85B9E9]" : "text-ink-3"
+                            log.backup_account ? "text-link" : "text-ink-3"
                           }`}
                         >
                           {log.backup_account
@@ -782,7 +782,7 @@ export default function FailoverPage() {
                             : "sem backup"}
                         </span>
                         {log.backup_account && (
-                          <span className="text-[10px] text-green-400/70">(assumiu)</span>
+                          <span className="text-[10px] text-success/70">(assumiu)</span>
                         )}
                       </div>
                       {log.error_reason && (
@@ -807,13 +807,13 @@ export default function FailoverPage() {
       </div>
 
       {/* Info box */}
-      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-[#00498D]/[0.06] border border-[#00498D]/15">
-        <Shield size={14} className="text-[#85B9E9] mt-0.5 shrink-0" />
+      <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-info-soft border border-primary/15">
+        <Shield size={14} className="text-link mt-0.5 shrink-0" />
         <p className="text-xs text-ink-3 leading-relaxed">
           Quando uma conta recebe um erro crítico da Meta API (token inválido, conta restrita ou
           bloqueada), o sistema marca-a automaticamente como{" "}
-          <span className="text-red-400/80">Erro</span> e tenta publicar com a próxima conta{" "}
-          <span className="text-green-400/80">Online</span> na lista de prioridade. O registro de
+          <span className="text-danger/80">Erro</span> e tenta publicar com a próxima conta{" "}
+          <span className="text-success/80">Online</span> na lista de prioridade. O registro de
           cada troca fica visível no histórico acima.
         </p>
       </div>

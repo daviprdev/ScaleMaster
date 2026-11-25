@@ -156,12 +156,12 @@ function tokenStatusChip(
 }
 
 const AVATAR_COLORS = [
-  "from-[#00498D] to-[#00346D]",
-  "from-pink-500 to-rose-600",
-  "from-[#85B9E9] to-[#00498D]",
-  "from-emerald-500 to-teal-600",
-  "from-amber-500 to-orange-600",
-  "from-fuchsia-500 to-purple-600",
+  "from-primary to-primary-2",
+  "from-danger to-danger",
+  "from-primary-2 to-primary",
+  "from-success to-success",
+  "from-warning to-warning",
+  "from-danger to-primary",
 ];
 
 function avatarColor(username: string) {
@@ -417,7 +417,7 @@ export function AccountCard({
               className={cn(
                 "flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br ring-2",
                 accountFell
-                  ? "from-red-900 to-red-800 ring-danger/30"
+                  ? "from-danger to-danger ring-danger/30"
                   : cn("ring-line", avatarColor(account.username)),
               )}
             >
@@ -507,7 +507,7 @@ export function AccountCard({
           />
 
           {menuOpen && (
-            <div className="absolute right-0 top-full z-[200] mt-1.5 min-w-[180px] overflow-hidden rounded-xl border border-line bg-surface-raised shadow-pop animate-in fade-in zoom-in-95 duration-150 ease-out origin-top-right">
+            <div className="glass absolute right-0 top-full z-[200] mt-1.5 min-w-[180px] overflow-hidden animate-in fade-in zoom-in-95 duration-150 ease-out origin-top-right">
               <button
                 onClick={() => {
                   onRefresh(account.id);
@@ -722,7 +722,7 @@ export function AccountCard({
                     e.stopPropagation();
                     handleRemoveLabel(i);
                   }}
-                  className="ml-0.5 opacity-0 transition-opacity hover:text-white group-hover/lbl:opacity-100"
+                  className="ml-0.5 opacity-0 transition-opacity hover:text-ink group-hover/lbl:opacity-100"
                 >
                   <X size={9} />
                 </button>
@@ -752,7 +752,7 @@ export function AccountCard({
               <button
                 onClick={handleAddLabel}
                 disabled={!labelText.trim() || savingLabel}
-                className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-white transition-opacity disabled:opacity-40"
+                className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-ink transition-opacity disabled:opacity-40"
                 style={{ background: labelColor }}
               >
                 {savingLabel ? (
