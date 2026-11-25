@@ -18,8 +18,8 @@ export const maxDuration = 60;
 async function isAuthorized(req: NextRequest): Promise<boolean> {
   // hasValidCronSecret é fail-closed: com CRON_SECRET ausente/vazio devolve
   // false, então a rota exige sessão de admin em vez de liberar.
-  const secretParam = new URL(req.url).searchParams.get("secret");
-  if (hasValidCronSecret(secretParam, false)) return true;
+  // Só pelo header: o ?secret= da URL ia parar nos logs do Cloudflare. A tela
+  // da Fila chama com a sessão de admin.
   if (hasValidCronSecret(req.headers.get("authorization"))) return true;
 
   try {

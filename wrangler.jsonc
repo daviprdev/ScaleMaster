@@ -36,6 +36,16 @@
     ]
   },
   "observability": { "enabled": true },
+  // Limites que o Nginx da VPS fazia (limit_req, nginx/nginx.conf), aplicados
+  // em custom-worker.ts antes do Next. Janela de 60 s; o limite já soma o burst.
+  "ratelimits": [
+    { "name": "LIMITE_LOGIN", "namespace_id": "2001", "simple": { "limit": 10, "period": 60 } },
+    { "name": "LIMITE_LOGIN_GERAL", "namespace_id": "2002", "simple": { "limit": 30, "period": 60 } },
+    { "name": "LIMITE_AUTH", "namespace_id": "2003", "simple": { "limit": 20, "period": 60 } },
+    { "name": "LIMITE_BUSCA", "namespace_id": "2004", "simple": { "limit": 20, "period": 60 } },
+    { "name": "LIMITE_POLL", "namespace_id": "2005", "simple": { "limit": 180, "period": 60 } },
+    { "name": "LIMITE_VIDEO", "namespace_id": "2006", "simple": { "limit": 30, "period": 60 } }
+  ],
   "vars": {
     "NEXT_PUBLIC_APP_URL": "https://scalemaster.tech",
     // Ligado na virada (25/11/2026), junto com o desligamento dos timers da VPS.

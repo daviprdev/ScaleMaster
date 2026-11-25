@@ -33,11 +33,38 @@ export default function PushNotificationManager() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  // Inscrição feita com outra chave VAPID não recebe nada (Apple: 400
+  // VapidPkHashMismatch) e o servidor a apaga; o navegador seguia mostrando
+  // "ativado". Aqui ela é descartada e o botão volta; com a chave certa, a
+  // inscrição é reenviada ao servidor (upsert por endpoint).
   const checkExistingSubscription = useCallback(async () => {
     try {
       const reg = await navigator.serviceWorker.getRegistration();
       const sub = await reg?.pushManager.getSubscription();
-      setSubscribed(!!sub);
+      if (!sub) {
+        setSubscribed(false);
+        return;
+      }
+      const keyData = (await fetch("/api/push/vapid-public-key").then((r) => r.json())) as { publicKey?: string };
+      const atual = keyData.publicKey ? urlBase64ToUint8Array(keyData.publicKey) : null;
+      const usada = sub.options?.applicationServerKey ? new Uint8Array(sub.options.applicationServerKey) : null;
+      const mesmaChave = !!atual && !!usada && atual.length === usada.length && atual.every((b, i) => b === usada[i]);
+      if (atual && usada && !mesmaChave) {
+        await fetch("/api/push/unsubscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        }).catch(() => undefined);
+        await sub.unsubscribe();
+        setSubscribed(false);
+        return;
+      }
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sub.toJSON()),
+      }).catch(() => undefined);
+      setSubscribed(true);
     } catch {
       setSubscribed(false);
     }

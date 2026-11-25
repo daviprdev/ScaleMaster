@@ -47,6 +47,10 @@ const DEAD_ACCOUNT_PATTERNS = [
   "this action is blocked",
   "has been blocked from",
   "your account has been disabled",
+  // Meta, code 200 (2026-11-25): a conta perdeu o acesso à API (desativada ou
+  // tirada do app). Em 72 h, 34 falhas em 9 contas que seguiam recebendo posts.
+  // Se for o app inteiro, a guarda de cascata segura.
+  "api access deactivated",
   // "Unsupported request - method type: post" SAIU daqui (2026-11-21): a Meta
   // devolve o mesmo texto para erro do app/permissão e instabilidade dela, não
   // só para conta pessoal. Uma falha dessas marcava 10 contas vivas como caídas

@@ -11,8 +11,10 @@
  */
 // @ts-ignore — `.open-next/worker.js` é gerado no build (opennextjs-cloudflare build)
 import { default as handler } from "./.open-next/worker.js";
+// Limites que o Nginx da VPS fazia (rate limit por rota e corpo de 10 MB).
+import { bloqueioNaBorda, type LimitesEnv } from "./lib/limites-borda";
 
-interface Env {
+interface Env extends LimitesEnv {
   CRON_SECRET?: string;
   CRONS_LIGADOS?: string;
   NEXT_PUBLIC_APP_URL?: string;
@@ -56,7 +58,11 @@ async function chamar(env: Env, rota: Rota): Promise<void> {
 }
 
 export default {
-  fetch: handler.fetch,
+  async fetch(request: Request, env: Env, ctx: unknown): Promise<Response> {
+    const bloqueio = await bloqueioNaBorda(request, env);
+    if (bloqueio) return bloqueio;
+    return handler.fetch(request, env, ctx);
+  },
 
   async scheduled(event: { cron: string }, env: Env): Promise<void> {
     if (env.CRONS_LIGADOS !== "1") {

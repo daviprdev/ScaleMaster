@@ -31,7 +31,22 @@ interface PushPayload {
   data?: Record<string, unknown>;
 }
 
-/** Envia para UMA subscription; poda do banco em 404/410 (subscription morta). */
+/**
+ * Subscription que nunca mais vai receber: 404/410 (morta) ou feita com outra
+ * chave VAPID — Apple responde 400 VapidPkHashMismatch, o FCM 403 "do not
+ * correspond to the credentials used to create the subscription". Sem podar,
+ * o aparelho fica falhando para sempre e o navegador acha que está inscrito.
+ */
+export function isDeadSubscription(statusCode: unknown, body: unknown): boolean {
+  if (statusCode === 404 || statusCode === 410) return true;
+  const text = typeof body === "string" ? body : "";
+  return (
+    (statusCode === 400 && text.includes("VapidPkHashMismatch")) ||
+    (statusCode === 403 && text.includes("do not correspond to the credentials"))
+  );
+}
+
+/** Envia para UMA subscription; poda do banco quando ela não serve mais. */
 async function pushToRow(sub: SubscriptionRow, payload: PushPayload): Promise<boolean> {
   ensureVapid();
   try {
@@ -41,7 +56,8 @@ async function pushToRow(sub: SubscriptionRow, payload: PushPayload): Promise<bo
     );
     return true;
   } catch (err: any) {
-    if (err?.statusCode === 404 || err?.statusCode === 410) {
+    if (isDeadSubscription(err?.statusCode, err?.body)) {
+      console.warn("[web-push] subscription podada:", err?.statusCode, String(err?.body ?? "").slice(0, 80));
       await getSupabaseAdmin().from("push_subscriptions").delete().eq("id", sub.id);
     } else {
       console.warn("[web-push] falha ao enviar:", err?.statusCode, err?.body ?? err?.message);
