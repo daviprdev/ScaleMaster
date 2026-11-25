@@ -158,7 +158,7 @@ export function MidiaPicker({ midias, value = "", onChange, label, error, pastaI
               key={c.nome}
               type="button"
               onClick={() => setAberta(c.nome)}
-              className="flex items-center gap-2 rounded-lg border border-line p-3 text-left transition-colors hover:border-line-control hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              className="flex items-center gap-2 rounded-[14px] border border-line p-3 text-left transition-colors hover:border-line-control hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             >
               <Folder size={18} className="shrink-0 text-accent" />
               <span className="min-w-0">
@@ -207,7 +207,7 @@ export function MidiaPicker({ midias, value = "", onChange, label, error, pastaI
             </label>
           </div>
           {fotosDaPasta.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-line p-4 text-center text-sm text-ink-3">Pasta vazia. Use &ldquo;Enviar fotos&rdquo;.</p>
+            <p className="rounded-[14px] border border-dashed border-line p-4 text-center text-sm text-ink-3">Pasta vazia. Use &ldquo;Enviar fotos&rdquo;.</p>
           ) : (
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
               {fotosDaPasta.map((p) => (
@@ -270,7 +270,7 @@ function Miniatura({ path, escolhida, onEscolher, onExcluir }: { path: string; e
         imagem
       )}
       {escolhida && (
-        <span className="pointer-events-none absolute right-1 top-1 rounded-full bg-accent p-0.5 text-white">
+        <span className="pointer-events-none absolute right-1 top-1 rounded-full bg-accent p-0.5 text-ink">
           <Check size={12} />
         </span>
       )}

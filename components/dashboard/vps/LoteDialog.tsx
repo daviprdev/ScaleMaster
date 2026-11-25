@@ -233,7 +233,7 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
               required
             />
           </div>
-          <div className="flex flex-col gap-1 rounded-lg border border-line p-3">
+          <div className="flex flex-col gap-1 glass-tile p-3">
             <MidiaPicker
               midias={biblioteca}
               pastas={["perfil"]}
@@ -290,7 +290,7 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
           </div>
           {diagnostico && <Banner tone="warning">{diagnostico}</Banner>}
           {teste && (
-            <div className="max-h-72 overflow-y-auto rounded-lg border border-line p-3 text-xs">
+            <div className="max-h-72 overflow-y-auto glass-tile p-3 text-xs">
               <p className="font-medium text-ink-2">
                 Teste: {teste.filter((t) => t.entra).length} de {teste.length} entram no lote
                 {teste.some((t) => !t.entra) ? ` · ${teste.filter((t) => !t.entra).length} ficam fora` : ""}
@@ -309,7 +309,7 @@ export function LoteDialog({ agent, onClose, onSaved }: LoteDialogProps) {
             </div>
           )}
           {foraDoLote.length > 0 && (
-            <div className="rounded-lg border border-danger/40 p-3 text-xs">
+            <div className="rounded-[14px] border border-danger/40 p-3 text-xs">
               <p className="font-medium text-danger">Fora do lote ({foraDoLote.length})</p>
               <ul className="mt-2 flex flex-col gap-1">
                 {foraDoLote.map((p) => (

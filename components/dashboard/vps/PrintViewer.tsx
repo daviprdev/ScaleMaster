@@ -73,11 +73,11 @@ export function PrintViewer({ itens, atual, src, onChange, onClose }: { itens: P
       role="dialog"
       aria-modal="true"
       aria-label={`Print da etapa ${item.label}`}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-3 sm:p-6"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-overlay p-3 sm:p-6"
       onClick={onClose}
     >
       <div
-        className="flex max-h-full w-full max-w-5xl flex-col gap-4 overflow-auto rounded-xl border border-line bg-surface p-4 shadow-2xl sm:flex-row"
+        className="glass flex max-h-full w-full max-w-5xl flex-col gap-4 overflow-auto p-4 sm:flex-row"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-center gap-2">
@@ -95,7 +95,7 @@ export function PrintViewer({ itens, atual, src, onChange, onClose }: { itens: P
             key={item.key}
             src={src(item.key)}
             alt={`Tela do aparelho ao fim da etapa ${item.label}`}
-            className={cn("max-h-[78vh] w-auto rounded-lg border object-contain", erro ? "border-danger" : "border-line")}
+            className={cn("max-h-[78vh] w-auto rounded-[14px] border object-contain", erro ? "border-danger" : "border-line")}
           />
           <button
             type="button"
@@ -123,7 +123,7 @@ export function PrintViewer({ itens, atual, src, onChange, onClose }: { itens: P
             {erro ? "Falhou" : item.status === "done" ? "Concluída" : "Sem resultado"}
           </p>
           {item.message && (
-            <p className={cn("whitespace-pre-wrap break-words rounded-lg border p-3 text-sm", erro ? "border-danger bg-danger-soft text-danger" : "border-line text-ink")}>
+            <p className={cn("whitespace-pre-wrap break-words rounded-[14px] border p-3 text-sm", erro ? "border-danger bg-danger-soft text-danger" : "border-line text-ink")}>
               {item.message}
             </p>
           )}

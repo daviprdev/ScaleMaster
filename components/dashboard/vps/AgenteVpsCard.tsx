@@ -135,7 +135,7 @@ export function AgenteVpsCard({ agent, now, linked, prontas, queued, alerts, sen
             <Stat label="Ligados agora" value={`${cap.ligadas} / ${cap.maxLigadas}`} hint={`vCPU ÷ 2, de 1 a 8${cap.vcpu ? ` · ${cap.vcpu} vCPU` : ""}`} />
             <Stat label="Jobs ao mesmo tempo" value={String(cap.maxCadastro)} hint="vCPU ÷ 2, de 1 a 4; o resto espera na fila" />
             <Stat label="APKs do Instagram" value={cap.versoesIg.length ? cap.versoesIg.join(", ") : "nenhum"} hint="/opt/scalemaster/apks" />
-            <div className={cn("rounded-lg border p-3", ramBaixa ? "border-danger" : "border-line")}>
+            <div className={cn("rounded-[14px] border p-3", ramBaixa ? "border-danger" : "border-line")}>
               <p className="text-xs text-ink-3">RAM livre{ramHost ? " (agora)" : ""}</p>
               <p className={cn("mt-1 text-sm font-medium", ramBaixa ? "text-danger" : "text-ink")}>
                 {livreMb !== null && totalMb > 0 ? `${livreMb.toLocaleString("pt-BR")} MB de ${Math.round(totalMb / 1024)} GB` : "—"}
@@ -152,7 +152,7 @@ export function AgenteVpsCard({ agent, now, linked, prontas, queued, alerts, sen
                 type="button"
                 onClick={alternarLista}
                 aria-expanded={listaAberta}
-                className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-left text-sm hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                className="flex items-center gap-2 rounded-[14px] border border-line px-3 py-2 text-left text-sm hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
               >
                 {listaAberta ? <ChevronDown size={16} className="text-ink-3" /> : <ChevronRight size={16} className="text-ink-3" />}
                 <span className="font-medium text-ink">Containers ({agent.instances.length})</span>
@@ -189,7 +189,7 @@ export function AgenteVpsCard({ agent, now, linked, prontas, queued, alerts, sen
 
 function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="rounded-lg border border-line p-3">
+    <div className="glass-tile p-3">
       <p className="text-xs text-ink-3">{label}</p>
       <p className="mt-1 truncate text-sm font-medium text-ink">{value}</p>
       <p className="mt-1 text-[11px] text-ink-3">{hint}</p>
@@ -330,7 +330,7 @@ export function ConectarVpsDialog({ open, onClose, onCreated }: { open: boolean;
             <p className="text-sm text-ink-2">
               Rode na VPS, dentro de <span className="font-mono text-ink">/opt/scalemaster/agente-vps</span>:
             </p>
-            <div className="flex items-start gap-2 rounded-lg border border-line bg-surface p-3">
+            <div className="flex items-start gap-2 rounded-[14px] border border-line bg-surface p-3">
               <code className="min-w-0 flex-1 break-all font-mono text-xs text-ink">{command}</code>
               <Button variant="secondary" size="sm" icon={copied ? <Check size={14} /> : <Copy size={14} />} onClick={() => void copy()}>
                 {copied ? "Copiado" : "Copiar"}

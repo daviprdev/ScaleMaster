@@ -131,7 +131,7 @@ export function AtividadeDialog({ target, onClose, onSaved }: AtividadeDialogPro
         {passo === "acoes" && (
           <ul className="flex flex-col gap-2">
             {ATIVIDADE_ACOES.map((a) => (
-              <li key={a.key} className="rounded-lg border border-line px-3 py-2.5">
+              <li key={a.key} className="glass-tile px-3 py-2.5">
                 <Checkbox label={a.label} checked={acoes.has(a.key)} onChange={() => alternar(a.key)} />
                 <p className="mt-1 pl-6 text-xs text-ink-2">{a.description}</p>
               </li>
@@ -233,7 +233,7 @@ function MidiaLista({
   };
 
   return (
-    <div className="rounded-lg border border-line p-3">
+    <div className="glass-tile p-3">
       <p className="text-[13px] font-medium text-ink">{ROTULO[uso]}</p>
       <p className="text-xs text-ink-2">
         {uso === "foto" ? "JPG ou PNG." : "JPG, PNG, MP4 ou MOV."}

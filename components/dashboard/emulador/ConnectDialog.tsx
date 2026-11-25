@@ -96,7 +96,7 @@ export function ConnectDialog({ open, onClose, onCreated, agent }: ConnectDialog
             <p className="text-sm text-ink-2">
               Rode no terminal, dentro da pasta <span className="font-mono text-ink">agente-mumu</span>:
             </p>
-            <div className="flex items-start gap-2 rounded-lg border border-line bg-surface p-3">
+            <div className="flex items-start gap-2 rounded-[14px] border border-line bg-surface p-3">
               <code className="min-w-0 flex-1 break-all font-mono text-xs text-ink">{command}</code>
               <Button
                 variant="secondary"
