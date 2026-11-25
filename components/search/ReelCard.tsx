@@ -62,7 +62,7 @@ export function ReelCard({ reel, onDownload }: ReelCardProps) {
     }
   };
 
-  const gradient = reel.gradient ?? "from-[#00498D] to-[#00346D]";
+  const gradient = reel.gradient ?? "from-primary to-primary-2";
 
   return (
     <motion.div
@@ -77,7 +77,7 @@ export function ReelCard({ reel, onDownload }: ReelCardProps) {
       className="relative rounded-2xl overflow-hidden cursor-pointer group
         border border-white/[0.07] hover:border-white/20
         transition-all duration-300
-        hover:shadow-[0_8px_30px_rgba(139,92,246,0.2)]"
+        hover:shadow-glow"
       style={{ aspectRatio: "9/16" }}
     >
       {/* Thumbnail / Gradient placeholder */}
@@ -110,14 +110,14 @@ export function ReelCard({ reel, onDownload }: ReelCardProps) {
             className="absolute inset-0 flex items-center justify-center"
           >
             <div className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center">
-              <Play size={20} className="text-white ml-0.5" fill="white" />
+              <Play size={20} className="text-ink ml-0.5" fill="white" />
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Duration badge */}
-      <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-sm text-[10px] text-white/80">
+      <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-sm text-[10px] text-ink">
         <Clock size={9} />
         {formatDuration(reel.duration)}
       </div>
@@ -138,25 +138,25 @@ export function ReelCard({ reel, onDownload }: ReelCardProps) {
                 icon={Eye}
                 label="Views"
                 value={formatNumber(reel.views)}
-                color="text-[#85B9E9]"
+                color="text-link"
               />
               <MetricRow
                 icon={Heart}
                 label="Curtidas"
                 value={formatNumber(reel.likes)}
-                color="text-pink-400"
+                color="text-danger"
               />
               <MetricRow
                 icon={MessageCircle}
                 label="Comentários"
                 value={formatNumber(reel.comments)}
-                color="text-[#85B9E9]"
+                color="text-link"
               />
             </div>
 
             {/* Caption */}
             <div className="space-y-3">
-              <p className="text-[11px] text-white/60 line-clamp-3 leading-relaxed">
+              <p className="text-[11px] text-ink-2 line-clamp-3 leading-relaxed">
                 {reel.caption || "Sem legenda"}
               </p>
 
@@ -167,8 +167,8 @@ export function ReelCard({ reel, onDownload }: ReelCardProps) {
                 className={cn(
                   "w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
                   downloaded
-                    ? "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400"
-                    : "bg-gradient-to-r from-[#00498D] to-[#85B9E9] hover:from-[#075BA6] hover:to-[#85B9E9] text-white hover:shadow-[0_0_15px_rgba(0,73,141,0.4)]"
+                    ? "bg-success/20 border border-success/40 text-success"
+                    : "bg-gradient-primary hover:from-primary-hover hover:to-primary-2 text-white hover:shadow-glow"
                 )}
               >
                 {downloading ? (
@@ -198,7 +198,7 @@ export function ReelCard({ reel, onDownload }: ReelCardProps) {
               initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 5 }}
-              className="text-[11px] text-white/70 line-clamp-2 leading-tight"
+              className="text-[11px] text-ink-2 line-clamp-2 leading-tight"
             >
               {reel.caption || `Reel de @${reel.owner}`}
             </motion.p>
@@ -231,8 +231,8 @@ function MetricRow({
         <Icon size={15} />
       </div>
       <div>
-        <p className="text-xs text-white/40 leading-none">{label}</p>
-        <p className="text-base font-bold text-white leading-tight">{value}</p>
+        <p className="text-xs text-ink-3 leading-none">{label}</p>
+        <p className="text-base font-bold text-ink leading-tight">{value}</p>
       </div>
     </div>
   );
