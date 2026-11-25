@@ -207,16 +207,22 @@ export async function GET(request: NextRequest) {
           );
         }
 
-        const accUpdate: Record<string, string> = { views_synced_at: new Date().toISOString() };
-        if (reelsBackfillDone) accUpdate.reels_backfilled_at = accUpdate.views_synced_at;
+        const nowIso = new Date().toISOString();
+        const accUpdate: Record<string, string> = {};
+        // Meta recusou todos os dias: não marca como sincronizada, volta no próximo run.
+        const nadaObtido = rows.length === 0 && backfillFailures + recent.failures > 0;
+        if (!nadaObtido) accUpdate.views_synced_at = nowIso;
+        if (reelsBackfillDone) accUpdate.reels_backfilled_at = nowIso;
         // Backfill só é dado como concluído se nenhum dia falhou; senão refaz
         // no próximo run (os dias já obtidos ficam salvos — upsert idempotente).
         if (needsBackfill && backfillFailures === 0) {
-          accUpdate.views_backfilled_at = accUpdate.views_synced_at;
+          accUpdate.views_backfilled_at = nowIso;
           summary.backfilled++;
         }
-        await admin.from("instagram_accounts").update(accUpdate).eq("id", acc.id);
-        summary.synced++;
+        if (Object.keys(accUpdate).length) {
+          await admin.from("instagram_accounts").update(accUpdate).eq("id", acc.id);
+        }
+        if (!nadaObtido) summary.synced++;
       } catch (err) {
         if (err instanceof MetaRateLimitError) {
           summary.rate_limited++;
