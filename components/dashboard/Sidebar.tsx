@@ -28,7 +28,6 @@ import {
   ImagePlay,
   Link2,
   Lock,
-  BookUser,
   UserPlus,
   Bot,
   CheckCircle2,
@@ -82,7 +81,6 @@ const navGroups: NavGroup[] = [
     label: "CONTEÚDO",
     items: [
       { label: "Inspirações",     href: "/dashboard/inspirations",    icon: Sparkles },
-      { label: "Contas Leitoras", href: "/dashboard/contas-leitoras", icon: BookUser },
       { label: "Biblioteca",      href: "/dashboard/library",         icon: FolderOpen },
       { label: "Proxies",         href: "/dashboard/proxy-test",      icon: Globe },
     ],

@@ -277,6 +277,15 @@ interface AccountCardProps {
   selectMode?: boolean;
   selected?: boolean;
   onSelect?: () => void;
+  /** Total de views da conta (account_views_daily); undefined = ainda sem dado. */
+  views?: number | null;
+}
+
+/** 123456 → "123k", 1234567 → "1.2M" (formato curto do contador de views). */
+function formatViews(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${Math.floor(n / 1_000)}k`;
+  return String(n);
 }
 
 export function AccountCard({
@@ -298,6 +307,7 @@ export function AccountCard({
   selectMode,
   selected,
   onSelect,
+  views,
 }: AccountCardProps) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
@@ -640,6 +650,14 @@ export function AccountCard({
             label={`${account.posts_count ?? "—"} posts`}
             muted={account.posts_count == null}
           />
+          {typeof views === "number" && (
+            <div
+              className="flex shrink-0 items-center whitespace-nowrap text-[11px] font-semibold text-emerald-400"
+              title={`${views.toLocaleString("pt-BR")} views no total`}
+            >
+              👁️{formatViews(views)}
+            </div>
+          )}
           <Metric
             icon={<Clock size={11} />}
             label={account.last_post_at ? timeAgo(account.last_post_at) : "—"}

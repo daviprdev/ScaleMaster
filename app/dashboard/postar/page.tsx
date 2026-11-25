@@ -2346,39 +2346,6 @@ export default function PostarPage() {
                         )}
                       </div>
 
-                      {/* Estratégia de prioridade */}
-                      <div className="mt-3">
-                        <p className="text-[10px] text-ink-3 font-medium mb-2 uppercase tracking-wider">Ordem de distribuição</p>
-                        <div className="flex flex-wrap gap-2">
-                          {([
-                            { value: "views", label: "Mais visualizados" },
-                            { value: "least_usage", label: "Menor uso" },
-                            { value: "random", label: "Aleatório" },
-                          ] as const).map((opt) => (
-                            <button
-                              key={opt.value}
-                              type="button"
-                              onClick={() => setPriorityStrategy(opt.value)}
-                              className={cn(
-                                "px-3.5 py-2 rounded-xl text-sm font-bold border transition-all",
-                                priorityStrategy === opt.value
-                                  ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30"
-                                  : "bg-surface-raised text-ink-3 border-line hover:border-line-control hover:text-ink-2"
-                              )}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                        <p className="mt-1.5 text-[10px] text-ink-3">
-                          {priorityStrategy === "views"
-                            ? "Prioriza os Reels com mais views da origem e varia a atribuição entre contas."
-                            : priorityStrategy === "least_usage"
-                            ? "Distribui primeiro os vídeos menos usados historicamente (comportamento anterior)."
-                            : "Sorteia os vídeos sem considerar views nem histórico."}
-                        </p>
-                      </div>
-
                       <p className="mt-3 text-[11px] text-[#85B9E9]/70 leading-relaxed">
                         Vídeos sorteados aleatoriamente da pasta, sem repetir entre as contas. A conta 1 posta
                         o lote inteiro de uma vez, depois a conta 2, depois a conta 3... começando agora,
@@ -2388,6 +2355,41 @@ export default function PostarPage() {
                   )}
                 </AnimatePresence>
               </div>
+              )}
+
+              {/* Ordem de distribuição — vale no modo normal e no Modo Ciclo; a fila ideal usa rodízio fixo */}
+              {!idealVideos && (
+                <div className="mb-5">
+                  <p className="text-[10px] text-ink-3 font-medium mb-2 uppercase tracking-wider">Ordem de distribuição</p>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { value: "views", label: "Mais visualizados" },
+                      { value: "least_usage", label: "Menor uso" },
+                      { value: "random", label: "Aleatório" },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setPriorityStrategy(opt.value)}
+                        className={cn(
+                          "px-3.5 py-2 rounded-xl text-sm font-bold border transition-all",
+                          priorityStrategy === opt.value
+                            ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30"
+                            : "bg-surface-raised text-ink-3 border-line hover:border-line-control hover:text-ink-2"
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-[10px] text-ink-3">
+                    {priorityStrategy === "views"
+                      ? "Prioriza os Reels com mais views da origem e varia a atribuição entre contas."
+                      : priorityStrategy === "least_usage"
+                      ? "Distribui primeiro os vídeos menos usados historicamente (comportamento anterior)."
+                      : "Sorteia os vídeos sem considerar views nem histórico."}
+                  </p>
+                </div>
               )}
 
               {/* Posts por dia + data de início — ocultos no Modo Ciclo */}

@@ -778,6 +778,25 @@ export default function AccountsPage() {
     silentSyncAll();
   }, [fetchAccounts]);
 
+  // Views totais por conta (account_views_daily, atualizada pelo cron
+  // sync-account-views ~1×/hora por conta): relê ao abrir e a cada 5 min.
+  const [viewsTotals, setViewsTotals] = useState<Record<string, number>>({});
+  const fetchViewsTotals = useCallback(async () => {
+    try {
+      const res = await fetch("/api/accounts/views-totals", { cache: "no-store" });
+      if (!res.ok) return;
+      const json = (await res.json()) as { totals?: Record<string, number> };
+      if (json.totals) setViewsTotals(json.totals);
+    } catch {
+      // sem views nesta leitura; tenta de novo no próximo ciclo
+    }
+  }, []);
+  useEffect(() => {
+    fetchViewsTotals();
+    const id = setInterval(fetchViewsTotals, 5 * 60_000);
+    return () => clearInterval(id);
+  }, [fetchViewsTotals]);
+
   // Auto-refresh a cada 60s: atualiza a lista do banco sem chamar a Meta API.
   // Reflete mudanças feitas pelos crons (health_status, followers, etc.) sem precisar recarregar a página.
   useEffect(() => {
@@ -2860,6 +2879,7 @@ export default function AccountsPage() {
                 selectMode={selectMode}
                 selected={selectedIds.has(account.id)}
                 onSelect={() => toggleSelect(account.id)}
+                views={viewsTotals[account.id]}
               />
             ))}
           </AnimatePresence>

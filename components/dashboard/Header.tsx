@@ -53,10 +53,6 @@ const pageTitles: Record<string, { title: string; subtitle: string }> = {
     title: "Meus Apps",
     subtitle: "Gerencie suas credenciais Meta",
   },
-  "/dashboard/contas-leitoras": {
-    title: "Contas Leitoras",
-    subtitle: "Contas dedicadas à raspagem de conteúdo (isoladas das de postagem)",
-  },
   "/dashboard/emulador": {
     title: "Emulador",
     subtitle: "As instâncias do MuMu do seu PC",

@@ -17,7 +17,6 @@ interface TopbarProps extends React.HTMLAttributes<HTMLDivElement> {
 const BREADCRUMB_MAP: Record<string, string> = {
   dashboard: "Início",
   accounts: "Contas",
-  "contas-leitoras": "Contas leitoras",
   "proxy-test": "Proxies",
   failover: "Failover",
   postar: "Postar",

@@ -17,7 +17,6 @@ interface CommandItem {
 const NAV_ITEMS: Omit<CommandItem, "action">[] = [
   { id: "dashboard", label: "Visão geral", keywords: ["início", "home"] },
   { id: "accounts", label: "Contas", keywords: ["contas"] },
-  { id: "contas-leitoras", label: "Contas leitoras", keywords: ["leitora"] },
   { id: "proxy-test", label: "Proxies", keywords: ["proxy"] },
   { id: "failover", label: "Failover" },
   { id: "postar", label: "Postar", keywords: ["publicar", "distribuir"] },

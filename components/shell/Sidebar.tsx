@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
-  UserCheck,
   Shield,
   Shuffle,
   Send,
@@ -51,7 +50,6 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Contas",
     items: [
       { label: "Contas", href: "/dashboard/accounts", icon: Users },
-      { label: "Contas leitoras", href: "/dashboard/contas-leitoras", icon: UserCheck },
       { label: "Proxies", href: "/dashboard/proxy-test", icon: Shield },
       { label: "Failover", href: "/dashboard/failover", icon: Shuffle },
     ],

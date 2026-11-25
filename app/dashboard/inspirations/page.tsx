@@ -23,7 +23,6 @@ import {
   Plus,
   FolderPlus,
   Cpu,
-  BookUser,
   History,
 } from "lucide-react";
 import Link from "next/link";
@@ -982,7 +981,6 @@ export default function InspiracoesPage() {
                 style={{ background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.08)" }}>
                 {([
                   { key: "scrapecreators" as const, label: "HikerAPI", icon: Cpu },
-                  { key: "reader" as const, label: "Conta dedicada", icon: BookUser },
                 ]).map((opt) => (
                   <button
                     key={opt.key}
