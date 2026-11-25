@@ -5,122 +5,97 @@ import { cn } from "@/lib/utils";
 export type StatTone = "positive" | "negative" | "neutral";
 
 interface StatTileProps extends React.HTMLAttributes<HTMLDivElement> {
- label: string;
- value: string;
- delta?: string;
- tone?: StatTone;
- hint?: React.ReactNode;
- icon?: React.ReactNode;
- spark?: number[];
- children?: React.ReactNode;
+  label: string;
+  value: string;
+  delta?: string;
+  tone?: StatTone;
+  hint?: React.ReactNode;
+  icon?: React.ReactNode;
+  /** Fundo do quadrado do ícone (CSS background). Padrão: gradiente primário. */
+  iconBg?: string;
+  /** @deprecated A sparkline foi removida no redesign Aurora Pro; a prop é ignorada. */
+  spark?: number[];
+  children?: React.ReactNode;
 }
 
-const toneStyles: Record<StatTone, string> = {
- positive: "text-success",
- negative: "text-danger",
- neutral: "text-ink-3",
+const tonePill: Record<StatTone, string> = {
+  positive: "bg-success-soft text-success",
+  negative: "bg-danger-soft text-danger",
+  neutral: "bg-white/[0.08] text-ink-2",
 };
 
 const ToneIcon = {
- positive: TrendingUp,
- negative: TrendingDown,
- neutral: Minus,
+  positive: TrendingUp,
+  negative: TrendingDown,
+  neutral: Minus,
 };
 
-/** Simple polyline sparkline — 96×28 in accent color */
-function Sparkline({ data }: { data: number[] }) {
- if (data.length < 2) return null;
- const max = Math.max(...data);
- const min = Math.min(...data);
- const range = max - min || 1;
- const w = 96;
- const h = 28;
- const points = data
- .map((v, i) => {
- const x = (i / (data.length - 1)) * w;
- const y = h - ((v - min) / range) * h;
- return `${x.toFixed(1)},${y.toFixed(1)}`;
- })
- .join(" ");
-
- return (
- <svg
- width={w}
- height={h}
- viewBox={`0 0 ${w} ${h}`}
- className="shrink-0"
- aria-hidden="true"
- >
- <polyline
- points={points}
- fill="none"
- stroke="var(--accent)"
- strokeWidth="1.75"
- strokeLinecap="round"
- strokeLinejoin="round"
- />
- </svg>
- );
-}
-
+/**
+ * KPI card — Aurora Pro.
+ * Ícone em quadrado com gradiente + rótulo, pílula de variação à direita,
+ * valor grande e dica. Sem sparkline.
+ */
 export const StatTile = React.forwardRef<HTMLDivElement, StatTileProps>(
- (
- {
- className,
- label,
- value,
- delta,
- tone = "neutral",
- hint,
- icon,
- spark,
- children,
- ...props
- },
- ref
- ) => {
- const DeltaIcon = ToneIcon[tone];
+  (
+    {
+      className,
+      label,
+      value,
+      delta,
+      tone = "neutral",
+      hint,
+      icon,
+      iconBg,
+      spark: _spark,
+      children,
+      ...props
+    },
+    ref
+  ) => {
+    const DeltaIcon = ToneIcon[tone];
 
- return (
- <div
- ref={ref}
- className={cn(
- "flex flex-col gap-2 rounded-xl border border-line bg-surface p-5",
- className
- )}
- {...props}
- >
- <div className="flex items-start justify-between gap-2">
- <span className="text-[13px] font-medium leading-[18px] text-ink-2">
- {label}
- </span>
- {icon && <span className="text-ink-3">{icon}</span>}
- </div>
+    return (
+      <div
+        ref={ref}
+        className={cn("glass-card flex flex-col gap-3 p-5", className)}
+        {...props}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {icon && (
+              <span
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+                style={{ background: iconBg ?? "var(--gradient-primary)" }}
+              >
+                {icon}
+              </span>
+            )}
+            <span className="truncate text-[13px] font-medium leading-[18px] text-ink-2">
+              {label}
+            </span>
+          </div>
+          {delta && (
+            <span
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums",
+                tonePill[tone]
+              )}
+            >
+              <DeltaIcon size={11} strokeWidth={2.25} />
+              {delta}
+            </span>
+          )}
+        </div>
 
- <div className="flex items-end gap-3">
- <span className="font-mono text-[28px] font-medium leading-[32px] tracking-[-0.02em] tabular-nums text-ink">
- {value}
- </span>
- {delta && (
- <span
- className={cn(
- "inline-flex items-center gap-0.5 text-xs font-medium tabular-nums",
- toneStyles[tone]
- )}
- >
- <DeltaIcon size={12} strokeWidth={2} />
- {delta}
- </span>
- )}
- </div>
+        <span className="text-[30px] font-semibold leading-[36px] tracking-[-0.02em] tabular-nums text-ink">
+          {value}
+        </span>
 
- {hint && <p className="text-xs text-ink-3">{hint}</p>}
+        {hint && <p className="text-xs text-ink-3">{hint}</p>}
 
- {spark && spark.length >= 2 && <Sparkline data={spark} />}
-
- {children}
- </div>
- );
- }
+        {children}
+      </div>
+    );
+  }
 );
 StatTile.displayName = "StatTile";

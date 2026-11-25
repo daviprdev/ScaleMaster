@@ -15,15 +15,15 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const closeMenu = useCallback(() => setMobileOpen(false), []);
 
   return (
-    <div className="relative flex flex-1 min-h-0 overflow-hidden">
+    <div className="relative flex flex-1 min-h-0 overflow-hidden md:gap-4 md:p-4">
       <Sidebar mobileOpen={mobileOpen} onMobileClose={closeMenu} />
 
-      <div className="relative flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="relative flex-1 flex flex-col min-w-0 overflow-hidden md:gap-4">
         <Header onMobileMenuToggle={openMenu} />
 
         <main className="flex-1 overflow-y-auto pl-safe pr-safe">
           {/* pb-24: o fim da página rola para fora do botão flutuante do Raio-X */}
-          <div className="max-w-6xl mx-auto w-full px-4 pt-5 pb-24 sm:px-6 sm:pt-7 lg:px-8 lg:pt-10">
+          <div className="max-w-7xl mx-auto w-full px-4 pt-5 pb-24 sm:px-6 md:px-1 md:pt-0">
             {children}
           </div>
         </main>

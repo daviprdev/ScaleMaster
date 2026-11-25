@@ -33,7 +33,7 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(
  ref={ref}
  role="radiogroup"
  className={cn(
- "inline-flex items-center rounded-lg border border-line bg-surface p-0.5",
+ "inline-flex items-center gap-0.5 rounded-md bg-white/[0.06] p-1",
  className
  )}
  {...props}
@@ -49,12 +49,12 @@ export const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(
  disabled={opt.disabled}
  onClick={() => !opt.disabled && onChange(opt.value)}
  className={cn(
- "relative rounded-md font-medium transition-colors duration-150 ease-in-out",
+ "relative rounded-[9px] font-medium transition-colors duration-150 ease-in-out",
  sizeStyles[size],
  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
  "disabled:opacity-40 disabled:pointer-events-none",
  isActive
- ? "bg-surface-hover text-ink shadow-sm"
+ ? "bg-white/[0.14] text-ink shadow-sm"
  : "text-ink-2 hover:text-ink"
  )}
  >

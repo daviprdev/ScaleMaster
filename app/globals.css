@@ -5,35 +5,46 @@
 /* ── Design tokens — Scale Master v2 ─────────────────────── */
 :root,
 [data-theme="dark"] {
-  --bg: #05070c;
-  --surface: #0a0e17;
-  --surface-raised: #0f1521;
-  --surface-hover: #151c2b;
-  --line: #1b2333;
-  --line-control: #56627d;
-  --ink: #edf0f5;
-  --ink-2: #a7b0c0;
-  --ink-3: #7d879c;
+  /* ── Aurora Pro · Azul Marca ── */
+  --bg: #050b1c;
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-raised: rgba(14, 22, 44, 0.94);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  --line: rgba(255, 255, 255, 0.10);
+  --line-control: rgba(255, 255, 255, 0.22);
+  --ink: #f1f3ff;
+  --ink-2: rgba(235, 238, 255, 0.76);
+  --ink-3: rgba(235, 238, 255, 0.60);
   --brand-navy: #001244;
   --brand-blue: #00498d;
   --brand-silver: #beb8bc;
-  --wordmark: #beb8bc;
-  --primary: #1b64b5;
-  --primary-hover: #2a72c4;
+  --wordmark: #f1f3ff;
+  --primary: #2f7bff;
+  --primary-2: #3fd0ff;
+  --primary-hover: #4a8cff;
   --on-primary: #ffffff;
-  --accent: #7fb2e8;
-  --focus: #7fb2e8;
-  --success: #4cc79a;
-  --success-soft: rgba(76, 199, 154, 0.12);
-  --warning: #e6b450;
-  --warning-soft: rgba(230, 180, 80, 0.12);
-  --danger: #f07178;
-  --danger-soft: rgba(240, 113, 120, 0.12);
-  --info-soft: rgba(127, 178, 232, 0.12);
-  --overlay: rgba(2, 4, 8, 0.72);
-  --chart-fill: rgba(127, 178, 232, 0.10);
-  --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --accent: #3fd0ff;
+  --focus: #3fd0ff;
+  --link: #9cc6ff;
+  --matrix: #3fd0ff;
+  --success: #5ff0b5;
+  --success-soft: rgba(95, 240, 181, 0.12);
+  --warning: #ffc35c;
+  --warning-soft: rgba(255, 195, 92, 0.12);
+  --danger: #ff7a92;
+  --danger-soft: rgba(255, 122, 146, 0.10);
+  --info-soft: rgba(47, 123, 255, 0.20);
+  --overlay: rgba(2, 4, 12, 0.70);
+  --chart-fill: rgba(47, 123, 255, 0.40);
+  --shadow-pop: 0 24px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.10);
   --shadow-frame: 0 40px 120px rgba(0, 18, 68, 0.55);
+  --glow: rgba(47, 123, 255, 0.40);
+  --gradient-primary: linear-gradient(100deg, #2f7bff, #3fd0ff);
+  --aurora:
+    radial-gradient(900px 560px at 10% -8%, rgba(0, 92, 220, 0.42), transparent 60%),
+    radial-gradient(800px 560px at 95% 6%, rgba(40, 200, 255, 0.22), transparent 60%),
+    radial-gradient(1000px 640px at 60% 112%, rgba(0, 73, 141, 0.40), transparent 60%);
+  --glass-blur: 22px;
   --horizon-opacity: 0.55;
   color-scheme: dark;
 }
@@ -66,14 +77,22 @@
   --shadow-pop: 0 16px 40px rgba(10, 18, 32, 0.12), 0 0 0 1px rgba(10, 18, 32, 0.04);
   --shadow-frame: 0 40px 120px rgba(0, 73, 141, 0.16);
   --horizon-opacity: 0.14;
+  --primary-2: #1b64b5;
+  --link: #00498d;
+  --matrix: #00498d;
+  --glow: rgba(0, 73, 141, 0.20);
+  --gradient-primary: linear-gradient(100deg, #00498d, #1b64b5);
+  --aurora: none;
+  --glass-blur: 0px;
   color-scheme: light;
 }
 
 :root {
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-2xl: 28px;
   --radius-full: 999px;
   --sidebar-width: 240px;
   --sidebar-collapsed: 64px;
@@ -97,6 +116,8 @@ body {
   max-width: 100vw;
   overflow-x: hidden;
   background-color: var(--bg);
+  background-image: var(--aurora);
+  background-attachment: fixed;
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -137,24 +158,37 @@ body {
 
   /* ─── Surfaces (remapped from glass/glass-card) ─── */
 
-  /* Heavy surface — modals, dropdowns (was .glass) */
+  /* Glass surface — modals, dropdowns, cards (Aurora Pro) */
+  .glass,
+  .glass-card {
+    position: relative;
+    background: linear-gradient(155deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.02) 60%);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 24px 60px rgba(0, 0, 0, 0.30);
+  }
   .glass {
     background: var(--surface-raised);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-pop);
   }
-
-  /* Standard card (was .glass-card) */
   .glass-card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
     transition: border-color 0.15s ease, background-color 0.15s ease;
   }
   .glass-card:hover {
     border-color: var(--line-control);
-    background: var(--surface-hover);
+  }
+  [data-theme="light"] .glass,
+  [data-theme="light"] .glass-card {
+    background: var(--surface);
+    box-shadow: 0 1px 2px rgba(10, 18, 32, 0.06);
+  }
+
+  /* Soft inner tile (inside glass cards) */
+  .glass-tile {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: var(--radius-lg);
   }
 
   /* Subtle border accent (was .brand-border) */
@@ -164,9 +198,12 @@ body {
 
   /* ─── Typography ── */
 
-  /* Gradient text → plain ink color (no gradient per spec) */
+  /* Gradient text — white → brand cyan */
   .gradient-text {
-    color: var(--ink);
+    background: linear-gradient(90deg, var(--ink), var(--primary-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 
   .page-title {
@@ -219,15 +256,16 @@ body {
     font-size: 0.8125rem;
     line-height: 1.125rem;
     color: var(--on-primary);
-    background: var(--primary);
+    background: var(--gradient-primary);
     border: 1px solid transparent;
+    box-shadow: 0 10px 26px var(--glow), inset 0 1px 0 rgba(255, 255, 255, 0.30);
     cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
+    transition: filter 0.15s ease, box-shadow 0.15s ease;
     white-space: nowrap;
     user-select: none;
   }
   .btn-primary:hover {
-    background: var(--primary-hover);
+    filter: brightness(1.08);
   }
   .btn-primary:active { transform: scale(0.98); }
   .btn-primary:disabled {
@@ -329,6 +367,10 @@ body {
   pointer-events: none;
   z-index: 0;
 }
+
+/* ── Live pulse (status dots) ─────────────────────────────── */
+@keyframes sm-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.animate-live { animation: sm-pulse 1.8s ease-in-out infinite; }
 
 /* ── Focus global ─────────────────────────────────────────── */
 :focus-visible {

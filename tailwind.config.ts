@@ -28,6 +28,8 @@ const config: Config = {
         hover: "var(--primary-hover)",
         fg: "var(--on-primary)",
       },
+      "primary-2": "var(--primary-2)",
+      link: "var(--link)",
       accent: "var(--accent)",
       focus: "var(--focus)",
       wordmark: "var(--wordmark)",
@@ -64,19 +66,25 @@ const config: Config = {
       md: "var(--radius-md)",
       lg: "var(--radius-lg)",
       xl: "var(--radius-xl)",
+      "2xl": "var(--radius-2xl)",
       full: "var(--radius-full)",
     },
     boxShadow: {
       none: "none",
       pop: "var(--shadow-pop)",
       frame: "var(--shadow-frame)",
+      glow: "0 12px 30px var(--glow)",
     },
     fontFamily: {
       sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       serif: ["var(--font-serif)", "Georgia", "serif"],
     },
-    extend: {},
+    extend: {
+      backgroundImage: {
+        "gradient-primary": "var(--gradient-primary)",
+      },
+    },
   },
   plugins: [],
 };
