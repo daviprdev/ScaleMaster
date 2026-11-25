@@ -14,6 +14,7 @@ import { default as handler } from "./.open-next/worker.js";
 
 interface Env {
   CRON_SECRET?: string;
+  CRONS_LIGADOS?: string;
   NEXT_PUBLIC_APP_URL?: string;
   WORKER_SELF_REFERENCE: { fetch(input: Request): Promise<Response> };
 }
@@ -58,6 +59,10 @@ export default {
   fetch: handler.fetch,
 
   async scheduled(event: { cron: string }, env: Env): Promise<void> {
+    if (env.CRONS_LIGADOS !== "1") {
+      console.log(`[cron] desligado (CRONS_LIGADOS != 1): ${event.cron}`);
+      return;
+    }
     const rotas = CRONS[event.cron];
     if (!rotas) {
       console.error(`[cron] expressão sem rotas: ${event.cron}`);
