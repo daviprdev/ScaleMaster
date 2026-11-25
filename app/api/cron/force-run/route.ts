@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { selfFetch } from "@/lib/self-fetch";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { hasValidCronSecret } from "@/lib/cron-auth";
@@ -113,14 +114,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ skipped: true, reason: "Supabase não configurado." });
   }
 
-  // Chama o próprio app pelo endereço interno — montar a URL a partir do Host
-  // da requisição deixava um Host forjado receber o Bearer CRON_SECRET.
-  const baseUrl = process.env.INTERNAL_APP_URL || "http://127.0.0.1:3000";
+  // Chama o próprio app pelo lado de dentro (lib/self-fetch) — montar a URL a
+  // partir do Host da requisição deixava um Host forjado receber o Bearer CRON_SECRET.
   const cronSecret = process.env.CRON_SECRET ?? "";
 
   const callCron = async (path: string): Promise<Record<string, unknown>> => {
     try {
-      const r = await fetch(`${baseUrl}${path}`, {
+      const r = await selfFetch(path, {
         headers: cronSecret ? { Authorization: `Bearer ${cronSecret}` } : {},
         signal: AbortSignal.timeout(55_000),
       });

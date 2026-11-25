@@ -12,7 +12,7 @@
  */
 
 // Insights é endpoint oficial da Meta: conexão direta, sem proxy.
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "./http";
 
 const GRAPH_API = "https://graph.instagram.com/v21.0";
 
@@ -46,7 +46,7 @@ const RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80002]);
 interface GraphError { message?: string; code?: number }
 
 async function getJson(url: string): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
-  const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) });
+  const res = await httpFetch(url, { signal: AbortSignal.timeout(15_000) });
   let data: Record<string, unknown> = {};
   try { data = (await res.json()) as Record<string, unknown>; } catch { /* corpo não-JSON */ }
   return { ok: res.ok && !data.error, status: res.status, data };

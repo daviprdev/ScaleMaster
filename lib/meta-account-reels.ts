@@ -10,7 +10,7 @@
  * por fora. Endpoint oficial da Meta: conexão direta, sem proxy.
  */
 
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "./http";
 import { GRAPH_API, RATE_LIMIT_CODES, MetaRateLimitError } from "@/lib/meta-account-views";
 
 // Brasil não tem horário de verão desde 2019 — offset fixo.
@@ -45,7 +45,7 @@ export async function fetchReelsByDay(
     `&access_token=${encodeURIComponent(token)}`;
 
   for (let page = 0; url && page < MAX_PAGES; page++) {
-    const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) });
+    const res = await httpFetch(url, { signal: AbortSignal.timeout(15_000) });
     let data: {
       data?: Array<{ timestamp?: string; media_product_type?: string }>;
       paging?: { next?: string };

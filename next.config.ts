@@ -12,9 +12,6 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [],
   },
-  // fluent-ffmpeg fica fora do bundle: só monta os argumentos e chama o ffmpeg
-  // do sistema (ver lib/ffmpeg-input.ts)
-  serverExternalPackages: ["fluent-ffmpeg"],
   async headers() {
     return [
       {

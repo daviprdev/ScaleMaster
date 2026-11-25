@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createClient } from "@/lib/supabase/server";
 import {
-  downloadOriginalMedia,
+  streamOriginalToStorage,
   buildLibraryStoragePath,
   toIntegerColumn,
 } from "@/lib/media-ingest";
@@ -146,22 +146,18 @@ export async function POST(req: NextRequest) {
     try {
       const baseName = `reel_${reel.owner || "unknown"}_${(reel.shortCode || reel.id).replace(/[^a-z0-9_-]/gi, "_")}`;
 
-      // ── Download dos bytes ORIGINAIS (zero transformação) ─────────
-      const fileBuffer = await downloadOriginalMedia(reel.videoUrl);
+      // ── Download e upload dos bytes ORIGINAIS em fluxo (zero transformação) ──
+      // O Worker tem 128 MB: o vídeo passa do CDN para o Storage sem ficar
+      // inteiro na memória.
       const storagePath = buildLibraryStoragePath(baseName, randomUUID());
-      console.log(
-        `[save-to-library] original ${(fileBuffer.byteLength / 1_048_576).toFixed(1)} MB → ${storagePath}`
+      const { bytes: fileBytes } = await streamOriginalToStorage(
+        reel.videoUrl,
+        "videos-library",
+        storagePath
       );
-
-      // ── Upload dos MESMOS bytes para o Supabase Storage ──────────
-      const { error: uploadError } = await admin.storage
-        .from("videos-library")
-        .upload(storagePath, fileBuffer, {
-          contentType: "video/mp4",
-          upsert: false,
-        });
-
-      if (uploadError) throw new Error(`Storage: ${uploadError.message}`);
+      console.log(
+        `[save-to-library] original ${(fileBytes / 1_048_576).toFixed(1)} MB → ${storagePath}`
+      );
       uploadedPath = storagePath;
 
       // ── Get public URL ────────────────────────────────────────
@@ -179,7 +175,7 @@ export async function POST(req: NextRequest) {
           original_url: reel.videoUrl,
           storage_path: storagePath,
           public_url: urlData.publicUrl,
-          file_size: fileBuffer.byteLength,
+          file_size: fileBytes,
           owner_username: reel.owner || null,
           caption: captionParaBanco(reel),
           source_url: reel.sourceUrl ?? null,

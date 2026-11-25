@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { refreshMetaToken } from "@/lib/meta-refresh";
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "@/lib/http";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -109,7 +109,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       `?fields=followers_count,media_count,name,profile_picture_url` +
       `&access_token=${encodeURIComponent(token)}`;
     try {
-      const res = await undiciFetch(
+      const res = await httpFetch(
         profileUrl,
         { signal: AbortSignal.timeout(15_000) }
       );
@@ -226,7 +226,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
         `${GRAPH}/${acc.ig_business_account_id}/media` +
         `?fields=timestamp&limit=1` +
         `&access_token=${encodeURIComponent(activeToken)}`;
-      const mediaRes = await undiciFetch(mediaUrl, { signal: AbortSignal.timeout(15_000) });
+      const mediaRes = await httpFetch(mediaUrl, { signal: AbortSignal.timeout(15_000) });
       const mediaData = (await mediaRes.json()) as { data?: Array<{ timestamp: string }> };
       lastPostAt = mediaData.data?.[0]?.timestamp ?? null;
     } catch {
@@ -244,7 +244,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
         `${GRAPH}/${acc.ig_business_account_id}/stories` +
         `?fields=id,timestamp` +
         `&access_token=${encodeURIComponent(activeToken)}`;
-      const storiesRes = await undiciFetch(storiesUrl, { signal: AbortSignal.timeout(15_000) });
+      const storiesRes = await httpFetch(storiesUrl, { signal: AbortSignal.timeout(15_000) });
       if (storiesRes.ok) {
         const storiesData = (await storiesRes.json()) as {
           data?: Array<{ id: string; timestamp?: string }>;

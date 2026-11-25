@@ -10,7 +10,7 @@
  * Alterar o conteúdo, não.
  */
 
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "./http";
 import { isAllowedHost } from "@/lib/safe-media-fetch";
 
 /** Headers de iPhone: o CDN do Instagram devolve 403 para User-Agents genéricos. */
@@ -43,21 +43,21 @@ export function mediaSourceHosts(): string[] {
 }
 
 /**
- * Busca mídia remota com allowlist reavaliada a cada redirect e teto de bytes
- * aplicado durante o download (não depois de bufferizar tudo).
+ * Abre a resposta da mídia remota com allowlist reavaliada a cada redirect.
+ * Recusa de cara um Content-Length acima do teto.
  *
- * undici em vez do fetch global: o Next.js 15 patcheia o fetch global para o
- * sistema de cache dele e pode corromper respostas binárias do CDN do Instagram
- * (já causou downloads de áudio-only em produção).
+ * httpFetch (lib/http) em vez do fetch global: o Next.js 15 patcheia o fetch
+ * global para o sistema de cache dele e pode corromper respostas binárias do
+ * CDN do Instagram (já causou downloads de áudio-only em produção).
  */
-export async function fetchMediaBytes(
+async function openMediaResponse(
   url: string,
   { timeoutMs = 60_000, headers = CDN_DOWNLOAD_HEADERS as Record<string, string> } = {}
-): Promise<Buffer> {
+): Promise<Response> {
   const allowed = mediaSourceHosts();
   const signal = AbortSignal.timeout(timeoutMs);
   let current = url;
-  let response: Awaited<ReturnType<typeof undiciFetch>>;
+  let response: Response;
 
   for (let hop = 0; ; hop++) {
     if (!isAllowedHost(current, allowed)) {
@@ -65,7 +65,7 @@ export async function fetchMediaBytes(
       try { host = new URL(current).hostname; } catch { /* URL inválida */ }
       throw new Error(`Origem de mídia não permitida: ${host}`);
     }
-    response = await undiciFetch(current, { headers, signal, redirect: "manual" });
+    response = await httpFetch(current, { headers, signal, redirect: "manual" });
     const location = response.headers.get("location");
     if (response.status >= 300 && response.status < 400 && location) {
       await response.body?.cancel().catch(() => {});
@@ -84,18 +84,98 @@ export async function fetchMediaBytes(
     await response.body?.cancel().catch(() => {});
     throw new Error(`Mídia acima do limite de ${MAX_MEDIA_BYTES / 1024 / 1024} MB.`);
   }
+  return response;
+}
 
+const TOO_BIG = () => new Error(`Mídia acima do limite de ${MAX_MEDIA_BYTES / 1024 / 1024} MB.`);
+
+/**
+ * Busca mídia remota inteira na memória, com o teto de bytes aplicado durante o
+ * download (não depois de bufferizar tudo). Para vídeos da Biblioteca, prefira
+ * streamOriginalToStorage: o Worker tem só 128 MB de memória.
+ */
+export async function fetchMediaBytes(
+  url: string,
+  opts: { timeoutMs?: number; headers?: Record<string, string> } = {}
+): Promise<Buffer> {
+  const response = await openMediaResponse(url, opts);
   const chunks: Buffer[] = [];
   let total = 0;
-  for await (const chunk of response.body ?? []) {
-    total += chunk.byteLength;
+  const reader = response.body!.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
     if (total > MAX_MEDIA_BYTES) {
-      await response.body?.cancel().catch(() => {});
-      throw new Error(`Mídia acima do limite de ${MAX_MEDIA_BYTES / 1024 / 1024} MB.`);
+      await reader.cancel().catch(() => {});
+      throw TOO_BIG();
     }
-    chunks.push(Buffer.from(chunk));
+    chunks.push(Buffer.from(value));
   }
   return Buffer.concat(chunks, total);
+}
+
+/**
+ * Baixa a mídia e sobe os MESMOS bytes para o Supabase Storage em fluxo, sem
+ * guardar o arquivo inteiro na memória (o Cloudflare Workers tem 128 MB).
+ * Usa a API REST do Storage com a service role, que aceita corpo em stream.
+ */
+export async function streamOriginalToStorage(
+  url: string,
+  bucket: string,
+  storagePath: string,
+  { timeoutMs = 120_000, upsert = false } = {}
+): Promise<{ bytes: number }> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) throw new Error("Supabase não configurado.");
+
+  const response = await openMediaResponse(url, { timeoutMs });
+  let bytes = 0;
+  const counted = response.body!.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        bytes += chunk.byteLength;
+        if (bytes > MAX_MEDIA_BYTES) {
+          controller.error(TOO_BIG());
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    })
+  );
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${serviceKey}`,
+    apikey: serviceKey,
+    "Content-Type": "video/mp4",
+    "x-upsert": upsert ? "true" : "false",
+  };
+  const length = response.headers.get("content-length");
+  if (length) headers["Content-Length"] = length;
+
+  const objectPath = storagePath.split("/").map(encodeURIComponent).join("/");
+  const up = await httpFetch(`${supabaseUrl}/storage/v1/object/${bucket}/${objectPath}`, {
+    method: "POST",
+    headers,
+    body: counted,
+    signal: AbortSignal.timeout(timeoutMs),
+    // Node (Docker/dev) exige duplex para corpo em stream; o Workers ignora.
+    duplex: "half",
+  } as RequestInit);
+  if (!up.ok) {
+    const text = await up.text().catch(() => "");
+    throw new Error(`Storage: HTTP ${up.status} ${text.slice(0, 200)}`);
+  }
+
+  if (bytes < MIN_VALID_BYTES) {
+    await httpFetch(`${supabaseUrl}/storage/v1/object/${bucket}/${objectPath}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
+    }).catch(() => {});
+    throw new Error(`Arquivo muito pequeno para ser uma mídia válida: ${bytes} bytes`);
+  }
+  return { bytes };
 }
 
 /** Baixa a mídia e devolve os bytes originais, sem nenhuma transformação. */

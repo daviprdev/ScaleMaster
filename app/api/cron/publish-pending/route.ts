@@ -14,6 +14,10 @@ import {
 } from "@/lib/publish-proxy-selector";
 import { vpsPublishDispatcher } from "@/lib/vps-publish-proxy";
 
+// decisão: sem proxies no Cloudflare Workers — "Usar minhas proxies" é ignorado
+// e todo post sai direto.
+const PROXIES_LIGADAS = false as boolean;
+
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
@@ -203,7 +207,7 @@ export async function GET(req: NextRequest) {
       // O valor é snapshot da configuração do loop no momento em que o container foi criado.
       let pendingProxy: SelectedProxy | null = null;
       let proxyPoolIdUsed = container.proxy_pool_id_used;
-      if (container.use_proxy_pool === true) {
+      if (PROXIES_LIGADAS && container.use_proxy_pool === true) {
         pendingProxy = await selectProxyForPublish(
           admin,
           container.user_id,
@@ -269,7 +273,7 @@ export async function GET(req: NextRequest) {
 
       // Re-seleciona proxy para a fase de publicação (mesmo proxy do poll).
       let pubProxy: SelectedProxy | null = null;
-      if (container.use_proxy_pool === true) {
+      if (PROXIES_LIGADAS && container.use_proxy_pool === true) {
         pubProxy = await selectProxyForPublish(
           admin,
           container.user_id,

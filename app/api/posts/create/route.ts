@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { publishViaMetaAPI } from "@/lib/meta-publish";
 import { refreshMetaToken, isTokenExpiringSoon } from "@/lib/meta-refresh";
 import { normalizeProcessingMode, resolveMediaUrlNow, isImageMedia } from "@/lib/video-processing";
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "@/lib/http";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -38,7 +38,7 @@ async function postFirstComment(
     `message=${encodeURIComponent(comment)}`,
     `access_token=${encodeURIComponent(token)}`,
   ].join("&");
-  const res = await undiciFetch(`${GRAPH_IG}/${mediaId}/comments`, {
+  const res = await httpFetch(`${GRAPH_IG}/${mediaId}/comments`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: formBody,

@@ -19,8 +19,6 @@
  */
 
 import * as crypto from "crypto";
-import * as fs from "fs";
-import { downloadAndCleanMetadata } from "@/lib/ffmpeg-process";
 
 export type VideoProcessingMode = "original" | "clean_metadata";
 
@@ -54,9 +52,13 @@ type Admin = ReturnType<typeof import("@/lib/supabase").getSupabaseAdmin> & {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Aceita só valores conhecidos; qualquer outra coisa (null, legado, lixo) vira "original". */
-export function normalizeProcessingMode(value: unknown): VideoProcessingMode {
-  return value === "clean_metadata" ? "clean_metadata" : "original";
+/**
+ * Sempre "original": no Cloudflare Workers não há FFmpeg, então o vídeo da
+ * Biblioteca vai para a Meta como está, qualquer que seja o modo gravado.
+ * decisão: limpeza de metadados desligada desde a migração.
+ */
+export function normalizeProcessingMode(_value: unknown): VideoProcessingMode {
+  return "original";
 }
 
 /** Imagens (Stories) não passam por FFmpeg em nenhum modo. */
@@ -304,64 +306,15 @@ export interface VariantRow {
 }
 
 /**
- * Gera a variante clean_metadata: download → stream copy → upload em `variants/`.
- * O arquivo ORIGINAL não é tocado em momento algum.
+ * Gerava a variante clean_metadata com FFmpeg. No Cloudflare Workers não há
+ * FFmpeg; como normalizeProcessingMode sempre devolve "original", nada chama
+ * isto. Fica para não quebrar a assinatura.
  */
 export async function prepareCleanMetadataVariant(
-  admin: Admin,
-  variant: VariantRow
+  _admin: Admin,
+  _variant: VariantRow
 ): Promise<{ ok: true; publicUrl: string } | { ok: false; error: string }> {
-  const attempts = (variant.attempts ?? 0) + 1;
-  const storagePath = variantStoragePath(variant.source_hash);
-  let cleanup: (() => void) | null = null;
-
-  try {
-    const result = await downloadAndCleanMetadata(variant.source_url);
-    cleanup = result.cleanup;
-    const buf = fs.readFileSync(result.outputPath);
-
-    const { error: upErr } = await admin.storage
-      .from(VARIANT_BUCKET)
-      .upload(storagePath, buf, { contentType: "video/mp4", upsert: true });
-    if (upErr) throw new Error(`Storage: ${upErr.message}`);
-
-    const { data: urlData } = admin.storage.from(VARIANT_BUCKET).getPublicUrl(storagePath);
-
-    await admin
-      .from("video_variants")
-      .update({
-        status: "ready",
-        storage_path: storagePath,
-        public_url: urlData.publicUrl,
-        file_size: result.fileSize,
-        error_reason: null,
-        attempts,
-        ready_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        last_used_at: new Date().toISOString(),
-      })
-      .eq("id", variant.id);
-
-    logVideoProcessing("variant-worker", "clean_metadata", {
-      variant: variant.id.slice(0, 8),
-      mb: (result.fileSize / 1_048_576).toFixed(1),
-    });
-    return { ok: true, publicUrl: urlData.publicUrl };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    await admin
-      .from("video_variants")
-      .update({
-        status: "error",
-        error_reason: msg.slice(0, 500),
-        attempts,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", variant.id);
-    return { ok: false, error: msg };
-  } finally {
-    cleanup?.();
-  }
+  return { ok: false, error: "Limpeza de metadados desligada: sem FFmpeg no Cloudflare Workers." };
 }
 
 /**

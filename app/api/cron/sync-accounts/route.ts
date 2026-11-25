@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { refreshMetaToken } from "@/lib/meta-refresh";
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "@/lib/http";
 import { requireCronAuth } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
@@ -95,7 +95,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
       `?fields=followers_count,media_count,name,profile_picture_url` +
       `&access_token=${encodeURIComponent(token)}`;
     try {
-      const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) });
+      const res = await httpFetch(url, { signal: AbortSignal.timeout(15_000) });
       return (await res.json()) as Record<string, unknown>;
     } catch (err) {
       // Falha de rede com a Meta: propaga para o classificador de erro do run,
@@ -152,7 +152,7 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
     const isNewAccount = acc.connected_at &&
       Date.now() - new Date(acc.connected_at).getTime() < NEW_ACCOUNT_AGE_MS;
     if (!isNewAccount) try {
-      const mediaRes = await undiciFetch(
+      const mediaRes = await httpFetch(
         `${GRAPH}/${acc.ig_business_account_id}/media?fields=timestamp&limit=1&access_token=${encodeURIComponent(activeToken)}`,
         { signal: AbortSignal.timeout(10_000) }
       );

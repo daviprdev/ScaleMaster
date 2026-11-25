@@ -34,7 +34,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { ApifyClient } from "apify-client";
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "@/lib/http";
 import { resolveApifyTokens } from "@/lib/apify-token-pool";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireCronAuth } from "@/lib/cron-auth";
@@ -112,7 +112,7 @@ async function downloadAndHost(
 ): Promise<{ url: string; path: string; bytes: number }> {
   const admin = getSupabaseAdmin();
 
-  const res = await undiciFetch(cdnUrl, {
+  const res = await httpFetch(cdnUrl, {
     headers: {
       "User-Agent":
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",

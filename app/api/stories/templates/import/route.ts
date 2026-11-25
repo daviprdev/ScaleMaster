@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "@/lib/http";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,7 +27,7 @@ interface StoryItem {
 // app/api/cron/prefetch-clone-urls/route.ts.
 async function downloadAndHost(mediaUrl: string, mediaType: "image" | "video"): Promise<string> {
   const admin = getSupabaseAdmin();
-  const res = await undiciFetch(mediaUrl, { signal: AbortSignal.timeout(25_000) });
+  const res = await httpFetch(mediaUrl, { signal: AbortSignal.timeout(25_000) });
   if (!res.ok) throw new Error(`CDN respondeu HTTP ${res.status}`);
 
   const buf = Buffer.from(await res.arrayBuffer());
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     `?fields=id,media_type,media_url,timestamp` +
     `&access_token=${encodeURIComponent(acc.meta_access_token)}`;
 
-  const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) });
+  const res = await httpFetch(url, { signal: AbortSignal.timeout(15_000) });
   const json = await res.json() as { data?: StoryItem[]; error?: { message: string } };
 
   if (!res.ok || json.error) {

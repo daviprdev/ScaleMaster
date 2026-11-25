@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "@/lib/http";
 import { hasValidCronSecret } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
@@ -24,7 +24,7 @@ async function fetchProfileFromAPI(
   token: string,
 ): Promise<{ followers_count: number | null; posts_count: number | null }> {
   try {
-    const res = await undiciFetch(
+    const res = await httpFetch(
       `${GRAPH_API}/${igId}?fields=followers_count,media_count&access_token=${encodeURIComponent(token)}`,
       { signal: AbortSignal.timeout(15_000) }
     );

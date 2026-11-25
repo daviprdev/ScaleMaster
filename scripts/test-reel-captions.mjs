@@ -19,6 +19,11 @@ import os from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
 import { MockAgent, setGlobalDispatcher } from "undici";
+import { fetch as undiciFetch } from "undici";
+
+// lib/http usa o fetch global; trocamos pelo da undici do projeto para o
+// MockAgent abaixo interceptar as chamadas à Meta.
+globalThis.fetch = undiciFetch;
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const src = (p) => fs.readFileSync(path.join(ROOT, p), "utf8");
@@ -354,7 +359,7 @@ async function main() {
 
   check("a ingestão continua sem FFmpeg (mídia intocada)",
     !/ffmpeg|video-effects|sanitize/i.test(semComentarios(saveLib)) &&
-    saveLib.includes("downloadOriginalMedia"));
+    saveLib.includes("streamOriginalToStorage"));
 
   // ══════════════════════════════════════════════════════════════════════════
   console.log("\n== 7. Snapshot no post concreto ==\n");

@@ -1,13 +1,12 @@
 // Tokens gerados via Instagram Login funcionam com graph.instagram.com
 const GRAPH_API = "https://graph.instagram.com/v21.0";
 
-// Chamadas à Graph API oficial saem server-to-server: pelo proxy do estoque
-// quando o post usa "Usar minhas proxies" (dispatcher vindo do chamador), senão
-// pelas proxies da VPS (PUBLISH_PROXIES, lib/vps-publish-proxy) ou direto.
-// undici.fetch em vez do fetch global do Next.js: o patch de cache do Next
+// Chamadas à Graph API oficial saem server-to-server, direto (no Cloudflare
+// Workers não há proxy; o `dispatcher` é aceito e ignorado por lib/http).
+// httpFetch em vez do fetch global do Next.js: o patch de cache do Next
 // pode alterar/reter respostas que aqui precisam ser lidas cruas.
 import { randomUUID } from "crypto";
-import { fetch as undiciFetch, type Dispatcher } from "undici";
+import { httpFetch, type Dispatcher } from "./http";
 // Import relativo (e não `@/lib/...`) de propósito: a suíte de testes compila
 // este arquivo isolado com `tsc`, fora do resolver de paths do Next.
 import { validateInstagramCaption, InvalidCaptionError } from "./reel-captions";
@@ -139,7 +138,7 @@ async function createMediaContainer(
     `caption_chars=${captionFinal.length}`
   );
 
-  // undiciFetch: evita o fetch global patcheado pelo Next.js (cache/retentativa)
+  // httpFetch: evita o fetch global patcheado pelo Next.js (cache/retentativa)
   const fetchOpts: Record<string, unknown> = {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -147,7 +146,7 @@ async function createMediaContainer(
     signal: AbortSignal.timeout(45_000),
   };
   if (dispatcher) fetchOpts.dispatcher = dispatcher;
-  const res = await undiciFetch(`${GRAPH_API}/${igAccountId}/media`, fetchOpts as any);
+  const res = await httpFetch(`${GRAPH_API}/${igAccountId}/media`, fetchOpts as any);
 
   // Lê como texto antes de parsear — captura warnings/messages ocultas que a Meta
   // inclui no body mesmo com 200 OK (ex: campo ignorado, scope insuficiente).
@@ -178,7 +177,7 @@ async function pollContainerStatus(
     await new Promise((r) => setTimeout(r, i === 0 ? 5_000 : intervalMs));
     const pollOpts: Record<string, unknown> = { signal: AbortSignal.timeout(45_000) };
     if (dispatcher) pollOpts.dispatcher = dispatcher;
-    const res = await undiciFetch(
+    const res = await httpFetch(
       `${GRAPH_API}/${creationId}?fields=status_code&access_token=${encodeURIComponent(token)}`,
       pollOpts as any
     );
@@ -213,7 +212,7 @@ async function publishContainer(
     signal: AbortSignal.timeout(45_000),
   };
   if (dispatcher) pubOpts.dispatcher = dispatcher;
-  const res = await undiciFetch(`${GRAPH_API}/${igAccountId}/media_publish`, pubOpts as any);
+  const res = await httpFetch(`${GRAPH_API}/${igAccountId}/media_publish`, pubOpts as any);
   const data = (await res.json()) as { id?: string; error?: { message: string } };
   if (!res.ok || !data.id) {
     throw new Error(data.error?.message ?? "Falha ao publicar o container de mídia.");
@@ -251,7 +250,7 @@ export async function updatePostCaption(
     signal: AbortSignal.timeout(45_000),
   };
   if (dispatcher) capOpts.dispatcher = dispatcher;
-  const res = await undiciFetch(`${GRAPH_API}/${mediaId}`, capOpts as any);
+  const res = await httpFetch(`${GRAPH_API}/${mediaId}`, capOpts as any);
   const rawText = await res.text();
   if (!res.ok) {
     console.warn(`[meta] caption update falhou media=${mediaId} http=${res.status}`);
@@ -292,7 +291,7 @@ export async function pollContainerStatusOnce(
 ): Promise<ContainerPollStatus> {
   const pollOnceOpts: Record<string, unknown> = { signal: AbortSignal.timeout(45_000) };
   if (dispatcher) pollOnceOpts.dispatcher = dispatcher;
-  const res = await undiciFetch(
+  const res = await httpFetch(
     `${GRAPH_API}/${creationId}?fields=status_code&access_token=${encodeURIComponent(token)}`,
     pollOnceOpts as any
   );

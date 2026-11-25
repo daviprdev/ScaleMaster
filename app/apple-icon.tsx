@@ -1,14 +1,11 @@
 import { ImageResponse } from "next/og";
-import fs from "fs";
-import path from "path";
+import { brandLogoBase64 } from "@/lib/brand-logo";
 
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
-export default function AppleIcon() {
-  const logoPath = path.join(process.cwd(), "public/brand/scale-master-logo.jpg");
-  const logoData = fs.readFileSync(logoPath);
-  const logoBase64 = logoData.toString("base64");
+export default async function AppleIcon() {
+  const logoBase64 = await brandLogoBase64();
 
   return new ImageResponse(
     (

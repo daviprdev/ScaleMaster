@@ -18,7 +18,7 @@
  * Endpoint oficial da Meta: conexão direta, sem proxy.
  */
 
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "./http";
 
 export const GRAPH_API = "https://graph.instagram.com/v21.0";
 const DAY_S = 86_400;
@@ -67,7 +67,7 @@ export async function fetchAccountWindow(
     `${GRAPH_API}/${igUserId}/insights?metric=${metrics}&period=day&metric_type=total_value` +
     (breakdown ? "&breakdown=media_product_type" : "") +
     `&since=${sinceS}&until=${untilS}&access_token=${encodeURIComponent(token)}`;
-  const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) });
+  const res = await httpFetch(url, { signal: AbortSignal.timeout(15_000) });
   let data: { data?: MetricRow[]; error?: { code?: number; message?: string } } = {};
   try { data = (await res.json()) as typeof data; } catch { /* corpo não-JSON */ }
 

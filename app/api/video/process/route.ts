@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as path from "path";
-import { downloadOriginalMedia, toIntegerColumn } from "@/lib/media-ingest";
+import { streamOriginalToStorage, toIntegerColumn } from "@/lib/media-ingest";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { createClient } from "@/lib/supabase/server";
 
@@ -84,27 +84,15 @@ export async function POST(req: NextRequest) {
   const userId = user.id;
 
   try {
-    // 1. Baixa os bytes ORIGINAIS (sem transformação)
-    const fileBuffer = await downloadOriginalMedia(videoUrl);
-
-    // 2. Gera nome do arquivo no Storage
+    // 1. Gera nome do arquivo no Storage
     const timestamp = Date.now();
     const baseName = filename
       ? filename.replace(/[^a-z0-9_-]/gi, "_")
       : `reel_${timestamp}`;
     const storagePath = `videos/${baseName}_${timestamp}.mp4`;
 
-    // 3. Sobe os MESMOS bytes para o Supabase Storage
-    const { error: uploadError } = await getSupabaseAdmin().storage
-      .from("videos-library")
-      .upload(storagePath, fileBuffer, {
-        contentType: "video/mp4",
-        upsert: false,
-      });
-
-    if (uploadError) {
-      throw new Error(`Storage upload: ${uploadError.message}`);
-    }
+    // 2–3. Baixa os bytes ORIGINAIS e sobe os MESMOS bytes em fluxo (128 MB no Worker)
+    const { bytes: fileBytes } = await streamOriginalToStorage(videoUrl, "videos-library", storagePath);
 
     // 4. Busca a URL pública
     const { data: urlData } = getSupabaseAdmin().storage
@@ -122,7 +110,7 @@ export async function POST(req: NextRequest) {
         original_url: videoUrl,
         storage_path: storagePath,
         public_url: publicUrl,
-        file_size: fileBuffer.byteLength,
+        file_size: fileBytes,
         owner_username: reelData?.owner ?? null,
         caption: reelData?.caption ?? null,
         // Colunas inteiras no Postgres — a duração do Apify é fracionária.

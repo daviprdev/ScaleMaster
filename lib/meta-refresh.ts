@@ -1,5 +1,5 @@
 // Renovação de token é chamada oficial da Meta: conexão direta, sem proxy.
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "./http";
 
 const GRAPH_FB = "https://graph.facebook.com/v19.0";
 const GRAPH_IG = "https://graph.instagram.com";
@@ -37,7 +37,7 @@ async function refreshInstagramToken(
     grant_type: "ig_refresh_token",
     access_token: currentToken,
   });
-  const res = await undiciFetch(
+  const res = await httpFetch(
     `${GRAPH_IG}/refresh_access_token?${params}`,
     { signal: AbortSignal.timeout(45_000) }
   );
@@ -68,7 +68,7 @@ async function refreshFacebookToken(
     client_secret: clientSecret,
     fb_exchange_token: currentToken,
   });
-  const res = await undiciFetch(
+  const res = await httpFetch(
     `${GRAPH_FB}/oauth/access_token?${params}`,
     { signal: AbortSignal.timeout(45_000) }
   );

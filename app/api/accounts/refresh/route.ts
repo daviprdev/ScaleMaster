@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "@/lib/http";
 import { summarizePublishCheck, type PublishCheck } from "@/lib/meta-publish-check";
 
 export const runtime = "nodejs";
@@ -41,7 +41,7 @@ interface GraphStoriesEdge {
 async function fetchMeta(
   url: string,
 ): Promise<Response> {
-  return await undiciFetch(url, { signal: AbortSignal.timeout(12_000) }) as unknown as Response;
+  return await httpFetch(url, { signal: AbortSignal.timeout(12_000) }) as unknown as Response;
 }
 
 async function fetchMetaProfile(

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "@/lib/http";
 
 export const runtime = "nodejs";
 
@@ -25,7 +25,7 @@ async function fetchStoriesForAccount(
       `?fields=id,timestamp` +
       `&access_token=${encodeURIComponent(acc.meta_access_token)}`;
 
-    const res = await undiciFetch(url, { signal: AbortSignal.timeout(8_000) });
+    const res = await httpFetch(url, { signal: AbortSignal.timeout(8_000) });
     if (!res.ok) return { id: acc.id, stories: [] };
     const json = await res.json() as Record<string, unknown>;
     if ((json as any).error || !Array.isArray((json as any).data)) return { id: acc.id, stories: [] };

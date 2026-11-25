@@ -58,3 +58,10 @@ agente-vps/alertas.json
 
 # Pacotes gerados (extensão Scale Master Story)
 /dist/
+
+# Cloudflare Workers (OpenNext): build e estado local do wrangler
+/.open-next/
+/.wrangler/
+.dev.vars*
+.env.production
+cf-secrets*.json

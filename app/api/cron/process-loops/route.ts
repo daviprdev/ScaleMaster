@@ -204,7 +204,7 @@ async function createContainerForAccount(
   const shareToFeed = typeof loop.share_to_feed === "boolean" ? loop.share_to_feed : null;
 
   const containerId = crypto.randomUUID();
-  const useProxyPool = loop.use_proxy_pool === true;
+  const useProxyPool = false as boolean; // decisão: sem proxies no Cloudflare Workers
   const creationProxy = useProxyPool
     ? await selectProxyForPublish(admin, loop.user_id, containerId)
     : null;
@@ -880,10 +880,9 @@ async function processOneLoop(
     // Isso evita dependência da tabela video_processing_jobs e do FFmpeg para o
     // caso padrão (sem efeitos), eliminando o travamento silencioso que impedia
     // todos os posts quando a tabela não existe ou o FFmpeg falha.
-    const hasActiveEffects =
-      loop.effect_mirror || loop.effect_invert || loop.effect_zoom ||
-      loop.effect_blur   || loop.effect_noise  || loop.effect_anti_ai ||
-      textPool.length > 0;
+    // decisão: sem FFmpeg no Cloudflare Workers — efeitos e texto na tela do
+    // loop são ignorados e o vídeo da Biblioteca vai como está.
+    const hasActiveEffects = false as boolean;
 
     if (!hasActiveEffects) {
       // Caminho direto: sem efeito criativo ativo, nao existe re-encode.

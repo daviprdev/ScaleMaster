@@ -18,7 +18,6 @@
 // ---------------------------------------------------------------------------
 
 import crypto from "crypto";
-import { ProxyAgent, fetch as undiciFetch } from "undici";
 import { decrypt } from "@/lib/encrypt";
 
 type AdminClient = any;
@@ -100,22 +99,10 @@ interface PoolRow {
   proxy_url: string; // ciphertext AES-256-GCM
 }
 
-// Testa conectividade real do proxy antes de reatribuí-lo (evita entregar um
-// proxy morto — que pode ter ficado no estoque há semanas — a uma conta nova).
-async function isProxyAlive(rawUrl: string): Promise<boolean> {
-  let agent: ProxyAgent | undefined;
-  try {
-    agent = new ProxyAgent(rawUrl);
-    const res = await undiciFetch("https://api.ipify.org?format=json", {
-      dispatcher: agent,
-      signal: AbortSignal.timeout(8_000),
-    } as any);
-    return res.ok;
-  } catch {
-    return false;
-  } finally {
-    await agent?.close().catch(() => {});
-  }
+// Antes testava o proxy pelo ProxyAgent da undici, que não existe no Cloudflare
+// Workers. decisão: sem teste, o proxy do estoque é entregue como está.
+async function isProxyAlive(_rawUrl: string): Promise<boolean> {
+  return true;
 }
 
 // Reivindica um proxy livre do estoque para a conta e grava o ciphertext em

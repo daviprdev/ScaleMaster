@@ -23,6 +23,10 @@ import { requireCronAuth } from "@/lib/cron-auth";
 import { deferPausedPosts } from "@/lib/fila/pause";
 import { describePublishError, isUserProxyFailure, transientRetryAt } from "@/lib/publish-retry";
 
+// decisão: sem proxies no Cloudflare Workers — "Usar minhas proxies" é ignorado
+// e todo post sai direto.
+const PROXIES_LIGADAS = false as boolean;
+
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
@@ -545,7 +549,7 @@ export async function GET(req: NextRequest) {
         // aqui, não no agendamento — proxies mortos/indisponíveis são ignorados.
         // Sem fallback silencioso: se não há proxy ativo, falha explícita.
         let publishProxy: SelectedProxy | null = null;
-        if (post.use_proxy_pool === true) {
+        if (PROXIES_LIGADAS && post.use_proxy_pool === true) {
           publishProxy = await selectProxyForPublish(
             admin,
             post.user_id!,
@@ -610,7 +614,7 @@ export async function GET(req: NextRequest) {
       // Para posts com proxy já registrado (retry), re-seleciona o mesmo proxy
       // para manter consistência nas fases poll/publish.
       let pollProxy: SelectedProxy | null = null;
-      if (post.use_proxy_pool === true) {
+      if (PROXIES_LIGADAS && post.use_proxy_pool === true) {
         pollProxy = await selectProxyForPublish(
           admin,
           post.user_id!,
@@ -698,7 +702,7 @@ export async function GET(req: NextRequest) {
       console.log(`[publish-scheduled] Publicando ${creationId} (@${account.username})…`);
       // Re-seleciona proxy para a fase de publicação (mesmo proxy da criação).
       let pubProxy: SelectedProxy | null = null;
-      if (post.use_proxy_pool === true) {
+      if (PROXIES_LIGADAS && post.use_proxy_pool === true) {
         pubProxy = await selectProxyForPublish(
           admin,
           post.user_id!,
@@ -751,7 +755,7 @@ export async function GET(req: NextRequest) {
         // Todo retry transitório empurra scheduled_at (lib/publish-retry.ts).
         // Antes, erro de proxy/rede mantinha o horário: 20 posts com proxy morta
         // ocupavam o lote inteiro a cada minuto e travavam a fila atrás deles.
-        const viaUserProxy = isUserProxyFailure(msg, post.use_proxy_pool);
+        const viaUserProxy = isUserProxyFailure(msg, PROXIES_LIGADAS && post.use_proxy_pool);
         const retryUpdate: Record<string, string> = {
           status: "pending",
           error_message: `[RETRY]${viaUserProxy ? " [PROXY do estoque]" : ""} ${msg.slice(0, 300)}`,

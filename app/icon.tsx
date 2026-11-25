@@ -1,15 +1,12 @@
 import { ImageResponse } from "next/og";
-import fs from "fs";
-import path from "path";
+import { brandLogoBase64 } from "@/lib/brand-logo";
 
 export const size = { width: 32, height: 32 };
 export const contentType = "image/png";
 
-export default function Icon() {
+export default async function Icon() {
   // Read the actual logo file
-  const logoPath = path.join(process.cwd(), "public/brand/scale-master-logo.jpg");
-  const logoData = fs.readFileSync(logoPath);
-  const logoBase64 = logoData.toString("base64");
+  const logoBase64 = await brandLogoBase64();
 
   return new ImageResponse(
     (

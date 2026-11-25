@@ -1,4 +1,4 @@
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "./http";
 
 export function hasPythonServer(): boolean {
   return !!process.env.PYTHON_SERVER_URL;
@@ -14,7 +14,7 @@ export async function callPythonServer<T>(
   body: unknown,
   timeoutMs = 45_000,
 ): Promise<T> {
-  const res = await undiciFetch(`${serverUrl()}${endpoint}`, {
+  const res = await httpFetch(`${serverUrl()}${endpoint}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

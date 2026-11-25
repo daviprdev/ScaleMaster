@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { fetch as undiciFetch, ProxyAgent } from "undici";
+import { httpFetch } from "@/lib/http";
+import type { ProxyAgent } from "@/lib/proxy";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { buildAgentFromEncrypted, proxyInit } from "@/lib/proxy";
@@ -61,7 +62,7 @@ function sanitizeUsername(raw: string): string {
  */
 async function fetchIgSession(proxyAgent: ProxyAgent | null): Promise<IgSession | null> {
   try {
-    const res = await undiciFetch(
+    const res = await httpFetch(
       "https://www.instagram.com/",
       proxyInit(proxyAgent, {
         headers: {
@@ -98,7 +99,7 @@ async function checkOneAnonymous(
   session: IgSession | null
 ): Promise<CheckerResult> {
   try {
-    const res = await undiciFetch(
+    const res = await httpFetch(
       `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`,
       proxyInit(proxyAgent, {
         headers: {
@@ -214,7 +215,7 @@ async function checkViaBusinessDiscovery(
 
     // Graph API oficial: conexão direta (o proxy fica só para a consulta
     // anônima ao endpoint web do Instagram, que não é API oficial).
-    const res = await undiciFetch(url, { signal: AbortSignal.timeout(12_000) });
+    const res = await httpFetch(url, { signal: AbortSignal.timeout(12_000) });
     const json = (await res.json()) as {
       business_discovery?: { username?: string; followers_count?: number; profile_picture_url?: string };
       error?: { message?: string };

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { decrypt } from "@/lib/encrypt";
-import { fetch as undiciFetch } from "undici";
+import { httpFetch } from "@/lib/http";
 import { getAppUrl, getInstagramRedirectUri } from "@/lib/app-url";
 import { verifyMagicUserCookie, verifyOAuthState } from "@/lib/oauth-cookie";
 
@@ -84,7 +84,7 @@ async function resolveCredentials(
 }
 
 // OAuth e troca de token são chamadas oficiais da Meta: conexão direta
-// server-to-server, autenticada pelo App (não pela conta) — undiciFetch para
+// server-to-server, autenticada pelo App (não pela conta) — httpFetch para
 // evitar o caching do fetch global do Next.js 15.
 async function fetchWithTimeout(
   url: string,
@@ -92,7 +92,7 @@ async function fetchWithTimeout(
   timeoutMs = FETCH_TIMEOUT_MS
 ): Promise<Response> {
   try {
-    return await undiciFetch(url, {
+    return await httpFetch(url, {
       ...options,
       signal: AbortSignal.timeout(timeoutMs),
     } as any) as unknown as Response;

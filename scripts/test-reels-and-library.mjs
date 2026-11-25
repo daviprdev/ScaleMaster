@@ -62,6 +62,8 @@ async function loadMediaIngest() {
 
   const outFile = path.join(buildDir, "lib", "media-ingest.js");
   if (!fs.existsSync(outFile)) throw new Error("falha ao compilar lib/media-ingest.ts");
+  // O tsc emite `from "./http"` sem extensão; o loader ESM do Node exige o `.js`.
+  fs.writeFileSync(outFile, fs.readFileSync(outFile, "utf8").replace(/from "\.\/http"/g, 'from "./http.js"'));
   return import(pathToFileURL(outFile).href);
 }
 
@@ -108,9 +110,12 @@ export async function fetch(url, init) {
     headers: { get: () => null },
   };
 }
+export const httpFetch = fetch;
 `);
   const js = fs.readFileSync(outFile, "utf8")
     .replace(/from ["']undici["']/g, 'from "./undici-stub.js"')
+    // meta-publish usa lib/http (fetch cru); o stub responde no lugar dele.
+    .replace(/from ["']\.\/http["']/g, 'from "./undici-stub.js"')
     // O tsc emite `from "./reel-captions"` sem extensao; o loader ESM do Node
     // exige o `.js`. So o build de teste precisa disso.
     .replace(/from "(\.\/[^"]+?)"/g, (m, p) => (p.endsWith(".js") ? m : `from "${p}.js"`));

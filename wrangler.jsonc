@@ -1,0 +1,41 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "scalemaster",
+  // custom-worker.ts embrulha o worker do OpenNext e acrescenta os crons.
+  "main": "custom-worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      // Auto-referência: crons e /api/cron/force-run chamam as rotas por aqui
+      // (fetch para o próprio domínio não volta para o mesmo Worker).
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "scalemaster"
+    }
+  ],
+  "routes": [
+    { "pattern": "scalemaster.tech", "custom_domain": true }
+  ],
+  // 14 dos 16 timers systemd da VPS viram estes crons (UTC). Rotas em custom-worker.ts.
+  "triggers": {
+    "crons": [
+      "* * * * *",
+      "*/2 * * * *",
+      "*/5 * * * *",
+      "*/10 * * * *",
+      "*/15 * * * *",
+      "*/30 * * * *",
+      "0 * * * *",
+      "0 */12 * * *",
+      "0 2 * * *"
+    ]
+  },
+  "observability": { "enabled": true },
+  "vars": {
+    "NEXT_PUBLIC_APP_URL": "https://scalemaster.tech"
+  }
+}
