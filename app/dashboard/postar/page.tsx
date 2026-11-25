@@ -2544,6 +2544,7 @@ export default function PostarPage() {
                 stripMentions={stripMentions}
                 onStripHashtagsChange={setStripHashtags}
                 onStripMentionsChange={setStripMentions}
+                showStripToggles={false}
                 originalHint={
                   <>
                     Cada vídeo usará a legenda capturada junto do próprio Reel.{" "}
@@ -2556,26 +2557,26 @@ export default function PostarPage() {
 
               {/* Legendas automáticas só existem dentro do modo Personalizada */}
               {captionMode === "custom" && (
-              <div className="mb-3 p-3.5 rounded-xl border border-line bg-surface">
+              <div className="mb-3 px-3 py-2 rounded-xl border border-line/60 bg-surface-raised/40">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <Sparkles size={13} className="text-brand-blue" />
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={11} className="text-brand-blue/70" />
                     <div>
-                      <p className="text-sm font-medium text-ink">Legendas Automáticas</p>
-                      <p className="text-[10px] text-ink-3">Curiosidades únicas em PT-BR por post</p>
+                      <p className="text-xs font-medium text-ink-2">Legendas Automáticas</p>
+                      <p className="text-[10px] text-ink-3 leading-tight">Curiosidades únicas em PT-BR por post</p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setAutoCaptionEnabled(v => !v)}
                     className={cn(
-                      "relative w-11 h-6 rounded-full transition-colors flex-shrink-0",
+                      "relative w-9 h-5 rounded-full transition-colors flex-shrink-0",
                       autoCaptionEnabled ? "bg-brand-blue/80" : "bg-line-control/30"
                     )}
                   >
                     <span className={cn(
-                      "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform",
-                      autoCaptionEnabled ? "translate-x-5" : "translate-x-0"
+                      "absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform",
+                      autoCaptionEnabled ? "translate-x-4" : "translate-x-0"
                     )} />
                   </button>
                 </div>
