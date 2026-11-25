@@ -95,10 +95,10 @@ function fmtNum(n: number): string {
 }
 
 const LOOP_STATUS_CONFIG = {
-  published:  { label: "Publicado",   color: "text-[var(--brand-blue)]",  bg: "bg-[var(--brand-blue)]/10",  border: "border-[var(--brand-blue)]/25",  dot: "bg-[var(--brand-blue)]"  },
-  pending:    { label: "Aguardando",  color: "text-[var(--electric)]", bg: "bg-[var(--electric)]/10", border: "border-[var(--electric)]/25", dot: "bg-[var(--electric)]" },
-  publishing: { label: "Publicando",  color: "text-amber-400",         bg: "bg-amber-500/10",         border: "border-amber-500/25",         dot: "bg-amber-400"          },
-  error:      { label: "Erro",        color: "text-red-400",           bg: "bg-red-500/10",           border: "border-red-500/25",           dot: "bg-red-500"            },
+  published:  { label: "Publicado",   color: "text-link",  bg: "bg-primary/10",  border: "border-primary/25",  dot: "bg-primary"  },
+  pending:    { label: "Aguardando",  color: "text-primary-2", bg: "bg-primary-2/10", border: "border-primary-2/25", dot: "bg-primary-2" },
+  publishing: { label: "Publicando",  color: "text-warning",         bg: "bg-warning-soft",         border: "border-warning/25",         dot: "bg-warning"          },
+  error:      { label: "Erro",        color: "text-danger",           bg: "bg-danger-soft",           border: "border-danger/25",           dot: "bg-danger"            },
   none:       { label: "Sem atividade", color: "text-ink-3",        bg: "bg-surface-raised",         border: "border-line",         dot: "bg-line-control/30"           },
 };
 
@@ -117,11 +117,11 @@ function Countdown({ ms }: { ms: number | null }) {
 
 function Avatar({ username, size = "md" }: { username: string; size?: "sm" | "md" | "lg" }) {
   const colors = [
-    "from-[var(--brand-blue)]/70 to-[var(--electric)]/70",
-    "from-[#00498D] to-[#00346D]",
-    "from-[#85B9E9] to-[#00498D]",
-    "from-amber-500 to-orange-600",
-    "from-rose-500 to-pink-700",
+    "from-primary/70 to-primary-2/70",
+    "from-primary to-primary-2",
+    "from-primary-2 to-primary",
+    "from-warning to-warning",
+    "from-danger to-danger",
   ];
   const idx = username.charCodeAt(0) % colors.length;
   const sz = size === "sm" ? "w-7 h-7 text-[10px]" : size === "lg" ? "w-10 h-10 text-sm" : "w-8 h-8 text-xs";
@@ -136,27 +136,29 @@ function MetricCard({ label, sub, value, color, icon: Icon, extra }: {
   label: string; sub: string; value: string | number; color: "green" | "cyan" | "red" | "amber" | "blue" | "pink";
   icon: React.ElementType; extra?: React.ReactNode;
 }) {
-  const c = {
-    green:  { border: "border-[var(--brand-blue)]/20",  glow: "from-[var(--brand-blue)]/8",  num: "text-[var(--brand-blue)]",  ic: "text-[var(--brand-blue)]/40"  },
-    cyan:   { border: "border-[var(--electric)]/20", glow: "from-[var(--electric)]/8", num: "text-[var(--electric)]", ic: "text-[var(--electric)]/40" },
-    red:    { border: "border-red-500/20",    glow: "from-red-500/8",    num: "text-red-400",    ic: "text-red-400/40"    },
-    amber:  { border: "border-amber-500/20",  glow: "from-amber-500/8",  num: "text-amber-400",  ic: "text-amber-400/40"  },
-    blue: { border: "border-[#00498D]/20", glow: "from-[#00498D]/8", num: "text-[#85B9E9]", ic: "text-[#85B9E9]/40" },
-    pink:   { border: "border-pink-500/20",   glow: "from-pink-500/8",   num: "text-pink-400",   ic: "text-pink-400/40"   },
+  const bg = {
+    green: "var(--gradient-primary)",
+    cyan:  "linear-gradient(160deg,#3fd0ff,#2f7bff)",
+    red:   "linear-gradient(160deg,#ff7a92,#d6455f)",
+    amber: "linear-gradient(160deg,#ffc35c,#ff8a4c)",
+    blue:  "var(--gradient-primary)",
+    pink:  "linear-gradient(160deg,#c08cff,#ff6ab0)",
   }[color];
   return (
-    <div className={cn("glass-card p-4 border relative overflow-hidden", c.border)}>
-      <div className={cn("absolute inset-0 bg-gradient-to-br to-transparent", c.glow)} />
-      <div className="relative flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <Icon size={13} className={c.ic} />
-          <span className={cn("text-2xl font-bold tabular-nums tracking-tight", c.num)}>{value}</span>
-        </div>
-        <div>
-          <p className="text-xs text-ink-2 font-medium">{label}</p>
-          <p className="text-[10px] text-ink-3">{sub}</p>
-          {extra && <div className="mt-1">{extra}</div>}
-        </div>
+    <div className="glass-card flex flex-col gap-3 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+          style={{ background: bg }}
+        >
+          <Icon size={16} />
+        </span>
+        <span className="text-[26px] font-semibold leading-8 tabular-nums tracking-[-0.02em] text-ink">{value}</span>
+      </div>
+      <div>
+        <p className="text-[13px] text-ink-2 font-medium">{label}</p>
+        <p className="text-xs text-ink-3">{sub}</p>
+        {extra && <div className="mt-1">{extra}</div>}
       </div>
     </div>
   );
@@ -177,23 +179,23 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
   return (
     <div className="glass-card p-5">
       <div className="flex items-center gap-2 mb-5">
-        <div className="w-7 h-7 rounded-xl bg-[var(--electric)]/10 flex items-center justify-center">
-          <Activity size={14} className="text-[var(--electric)]" />
+        <div className="w-7 h-7 rounded-xl bg-primary-2/10 flex items-center justify-center">
+          <Activity size={14} className="text-primary-2" />
         </div>
         <div>
           <h2 className="text-sm font-semibold text-ink">Linha do Tempo</h2>
           <p className="text-[10px] text-ink-3">6h atrás → agora → próximas 3h</p>
         </div>
         <div className="ml-auto flex items-center gap-4 text-[10px] text-ink-3">
-          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[var(--brand-blue)]" />Publicado</span>
-          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[var(--electric)]" />Agendado</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-primary" />Publicado</span>
+          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-primary-2" />Agendado</span>
         </div>
       </div>
 
       <div className="relative h-2 rounded-full bg-surface-raised border border-line overflow-visible mx-2">
         <div className="absolute inset-y-0 left-0 rounded-full bg-surface-raised" style={{ width: `${nowPct}%` }} />
         <div className="absolute top-1/2 -translate-y-1/2 z-20" style={{ left: `${nowPct}%` }}>
-          <div className="w-px h-6 bg-line-2 -translate-x-1/2 -translate-y-2" />
+          <div className="w-px h-6 bg-line -translate-x-1/2 -translate-y-2" />
           <div className="absolute -top-7 left-1/2 -translate-x-1/2 text-[9px] text-ink-3 whitespace-nowrap">agora</div>
         </div>
 
@@ -202,9 +204,9 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
           if (pct < 0 || pct > nowPct) return null;
           return (
             <div key={i} className="absolute top-1/2 -translate-y-1/2 z-10 group" style={{ left: `${pct}%` }}>
-              <div className="w-2.5 h-2.5 rounded-full bg-[var(--brand-blue)] -translate-x-1/2 border border-black/50 cursor-default" />
+              <div className="w-2.5 h-2.5 rounded-full bg-primary -translate-x-1/2 border border-black/50 cursor-default" />
               <div className="absolute bottom-5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center">
-                <div className="bg-black/90 border border-line-2 rounded-lg px-2 py-1 text-[10px] text-ink-2 whitespace-nowrap">
+                <div className="bg-black/90 border border-line rounded-lg px-2 py-1 text-[10px] text-ink-2 whitespace-nowrap">
                   @{p.account_username}<br />
                   <span className="text-ink-3">{new Date(p.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
                 </div>
@@ -218,13 +220,13 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
           if (pct <= nowPct || pct > 100) return null;
           return (
             <div key={i} className="absolute top-1/2 -translate-y-1/2 z-10 group" style={{ left: `${pct}%` }}>
-              <div className="w-2.5 h-2.5 rounded-full bg-[var(--electric)] -translate-x-1/2 border border-black/50 cursor-default animate-pulse" />
+              <div className="w-2.5 h-2.5 rounded-full bg-primary-2 -translate-x-1/2 border border-black/50 cursor-default animate-pulse" />
               <div className="absolute bottom-5 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center">
-                <div className="bg-black/90 border border-line-2 rounded-lg px-2 py-1 text-[10px] text-ink-2 whitespace-nowrap">
+                <div className="bg-black/90 border border-line rounded-lg px-2 py-1 text-[10px] text-ink-2 whitespace-nowrap">
                   @{u.account_username}<br />
                   <span className="text-ink-3">{timeIn(u.at)}</span>
                   {u.retry_count && u.retry_count > 0 && (
-                    <span className="text-amber-400/70"> · retry {u.retry_count}</span>
+                    <span className="text-warning/70"> · retry {u.retry_count}</span>
                   )}
                 </div>
               </div>
@@ -244,12 +246,12 @@ function Timeline({ published, upcoming }: { published: TimelineEntry[]; upcomin
           <p className="text-[10px] text-ink-3 uppercase tracking-wider mb-3">Próximas na fila</p>
           <div className="flex flex-wrap gap-2">
             {upcoming.slice(0, 12).map((u, i) => (
-              <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--electric)]/[0.05] border border-[var(--electric)]/15">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--electric)] animate-pulse shrink-0" />
+              <div key={i} className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-primary-2/[0.05] border border-primary-2/15">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary-2 animate-pulse shrink-0" />
                 <span className="text-[11px] text-ink-2 font-medium">@{u.account_username}</span>
-                <span className="text-[10px] text-[var(--electric)]/70">{timeIn(u.at)}</span>
+                <span className="text-[10px] text-primary-2/70">{timeIn(u.at)}</span>
                 {u.retry_count && u.retry_count > 0 && (
-                  <span className="text-[9px] text-amber-400/60 border border-amber-500/20 rounded px-1">retry {u.retry_count}</span>
+                  <span className="text-[9px] text-warning/60 border border-warning/20 rounded px-1">retry {u.retry_count}</span>
                 )}
               </div>
             ))}
@@ -274,26 +276,26 @@ function LoopAccountCard({ acc }: { acc: AccountStatus }) {
   const errorMsg = acc.last_error ?? (acc.health_status === "error" ? "Conta marcada como erro" : null);
 
   return (
-    <motion.div layout className={cn("glass-card p-4 border flex flex-col gap-3 cursor-default", cfg.border, hasError && "border-red-500/25")}>
+    <motion.div layout className={cn("glass-card p-4 border flex flex-col gap-3 cursor-default", cfg.border, hasError && "border-danger/25")}>
       <div className="flex items-start gap-3">
         <div className="relative">
           <Avatar username={acc.username} size="md" />
-          <span className={cn("absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-black", hasError ? "bg-red-500" : cfg.dot)} />
+          <span className={cn("absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-black", hasError ? "bg-danger" : cfg.dot)} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-semibold text-ink truncate">@{acc.username}</p>
             {acc.in_active_loop && (
-              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#00498D]/15 border border-[#00498D]/20">
-                <Radio size={8} className="text-[#85B9E9] animate-pulse" />
-                <span className="text-[9px] text-[#AFBDD0]">{acc.loop_name ?? "Loop"}</span>
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-info-soft border border-primary/20">
+                <Radio size={8} className="text-link animate-pulse" />
+                <span className="text-[9px] text-link">{acc.loop_name ?? "Loop"}</span>
               </span>
             )}
           </div>
           {acc.display_name && <p className="text-[10px] text-ink-3 truncate">{acc.display_name}</p>}
         </div>
         <span className={cn("shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold border",
-          hasError ? "text-red-400 bg-red-500/10 border-red-500/25" : cn(cfg.color, cfg.bg, cfg.border))}>
+          hasError ? "text-danger bg-danger-soft border-danger/25" : cn(cfg.color, cfg.bg, cfg.border))}>
           {acc.container_status === "published"  && <CheckCircle2 size={10} />}
           {acc.container_status === "pending"    && <Clock size={10} className="animate-pulse" />}
           {acc.container_status === "publishing" && <Loader2 size={10} className="animate-spin" />}
@@ -306,7 +308,7 @@ function LoopAccountCard({ acc }: { acc: AccountStatus }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
         <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-surface-raised border border-line">
           <span className="text-ink-3 text-[9px] uppercase tracking-wider">Último post</span>
-          <span className={cn("font-medium", acc.last_published_at ? "text-[var(--brand-blue)]" : "text-ink-3")}>
+          <span className={cn("font-medium", acc.last_published_at ? "text-link" : "text-ink-3")}>
             {timeAgo(acc.last_published_at)}
           </span>
         </div>
@@ -315,9 +317,9 @@ function LoopAccountCard({ acc }: { acc: AccountStatus }) {
             {acc.container_status === "pending" ? "Próximo" : "Postados 24h"}
           </span>
           {acc.container_status === "pending" ? (
-            <span className="font-medium text-[var(--electric)]">{timeIn(acc.next_publish_at)}</span>
+            <span className="font-medium text-primary-2">{timeIn(acc.next_publish_at)}</span>
           ) : (
-            <span className={cn("font-medium", acc.published_24h > 0 ? "text-[var(--brand-blue)]" : "text-ink-3")}>
+            <span className={cn("font-medium", acc.published_24h > 0 ? "text-link" : "text-ink-3")}>
               {acc.published_24h}
             </span>
           )}
@@ -325,18 +327,18 @@ function LoopAccountCard({ acc }: { acc: AccountStatus }) {
       </div>
 
       {hasError && errorMsg && (
-        <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-red-500/[0.05] border border-red-500/15 cursor-pointer" onClick={() => setExpanded(e => !e)}>
-          <AlertTriangle size={11} className="text-red-400 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-danger-soft border border-danger/15 cursor-pointer" onClick={() => setExpanded(e => !e)}>
+          <AlertTriangle size={11} className="text-danger shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
-            <p className={cn("text-[10px] text-red-400/80 leading-relaxed", !expanded && "line-clamp-1")}>{errorMsg}</p>
-            {errorMsg.length > 60 && <p className="text-[9px] text-red-500/50 mt-0.5">{expanded ? "▲ ocultar" : "▼ ver tudo"}</p>}
+            <p className={cn("text-[10px] text-danger/80 leading-relaxed", !expanded && "line-clamp-1")}>{errorMsg}</p>
+            {errorMsg.length > 60 && <p className="text-[9px] text-danger/50 mt-0.5">{expanded ? "▲ ocultar" : "▼ ver tudo"}</p>}
           </div>
         </div>
       )}
 
       {acc.container_status === "pending" && acc.retry_count > 0 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/[0.04] border border-amber-500/15">
-          <span className="text-[10px] text-amber-400/70">Tentativa #{acc.retry_count + 1} · {timeIn(acc.next_publish_at)}</span>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-warning-soft border border-warning/15">
+          <span className="text-[10px] text-warning/70">Tentativa #{acc.retry_count + 1} · {timeIn(acc.next_publish_at)}</span>
         </div>
       )}
     </motion.div>
@@ -368,24 +370,24 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
     statusDot = "bg-line-control/30"; cardBorder = "border-line";
   } else if (!hasPending && hasFailed && acc.published === 0) {
     statusLabel = "Falhou";
-    statusColor = "text-red-400"; statusBg = "bg-red-500/10"; statusBorder = "border-red-500/25";
-    statusDot = "bg-red-500"; cardBorder = "border-red-500/20";
+    statusColor = "text-danger"; statusBg = "bg-danger-soft"; statusBorder = "border-danger/25";
+    statusDot = "bg-danger"; cardBorder = "border-danger/20";
   } else if (!hasPending) {
     statusLabel = "Concluída";
-    statusColor = "text-[var(--brand-blue)]"; statusBg = "bg-[var(--brand-blue)]/10"; statusBorder = "border-[var(--brand-blue)]/25";
-    statusDot = "bg-[var(--brand-blue)]"; cardBorder = "border-[var(--brand-blue)]/20";
+    statusColor = "text-link"; statusBg = "bg-primary/10"; statusBorder = "border-primary/25";
+    statusDot = "bg-primary"; cardBorder = "border-primary/20";
   } else if (hasOverdue) {
     statusLabel = "Atrasada";
-    statusColor = "text-amber-400"; statusBg = "bg-amber-500/10"; statusBorder = "border-amber-500/25";
-    statusDot = "bg-amber-400"; statusDotAnim = true; cardBorder = "border-amber-500/20";
+    statusColor = "text-warning"; statusBg = "bg-warning-soft"; statusBorder = "border-warning/25";
+    statusDot = "bg-warning"; statusDotAnim = true; cardBorder = "border-warning/20";
   } else if (recentlyPublished) {
     statusLabel = "Publicando";
-    statusColor = "text-[var(--brand-blue)]"; statusBg = "bg-[var(--brand-blue)]/10"; statusBorder = "border-[var(--brand-blue)]/25";
-    statusDot = "bg-[var(--brand-blue)]"; statusDotAnim = true; cardBorder = "border-[var(--brand-blue)]/20";
+    statusColor = "text-link"; statusBg = "bg-primary/10"; statusBorder = "border-primary/25";
+    statusDot = "bg-primary"; statusDotAnim = true; cardBorder = "border-primary/20";
   } else {
     statusLabel = "Na Fila";
-    statusColor = "text-[var(--electric)]"; statusBg = "bg-[var(--electric)]/10"; statusBorder = "border-[var(--electric)]/25";
-    statusDot = "bg-[var(--electric)]"; cardBorder = "border-[var(--electric)]/20";
+    statusColor = "text-primary-2"; statusBg = "bg-primary-2/10"; statusBorder = "border-primary-2/25";
+    statusDot = "bg-primary-2"; cardBorder = "border-primary-2/20";
   }
 
   return (
@@ -427,8 +429,8 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
         <div className="h-1.5 rounded-full bg-surface-hover overflow-hidden">
           <motion.div
             className={cn("h-full rounded-full", hasFailed && !hasPending
-              ? "bg-red-500/50"
-              : "bg-gradient-to-r from-[var(--brand-blue)] to-[var(--electric)]"
+              ? "bg-danger/50"
+              : "bg-gradient-primary"
             )}
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
@@ -440,18 +442,18 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
       {/* Stats grid — operational */}
       <div className="grid grid-cols-3 sm:grid-cols-3 gap-1.5 text-[10px]">
         <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
-          <CheckCircle2 size={11} className="text-[var(--brand-blue)]/60" />
-          <span className="font-bold text-[var(--brand-blue)] tabular-nums">{acc.published}</span>
+          <CheckCircle2 size={11} className="text-link/60" />
+          <span className="font-bold text-link tabular-nums">{acc.published}</span>
           <span className="text-[9px] text-ink-3">publ.</span>
         </div>
         <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
-          <Clock size={11} className={cn(hasPending ? "text-[var(--electric)]/60" : "text-ink-3")} />
-          <span className={cn("font-bold tabular-nums", hasPending ? "text-[var(--electric)]" : "text-ink-3")}>{acc.pending}</span>
+          <Clock size={11} className={cn(hasPending ? "text-primary-2/60" : "text-ink-3")} />
+          <span className={cn("font-bold tabular-nums", hasPending ? "text-primary-2" : "text-ink-3")}>{acc.pending}</span>
           <span className="text-[9px] text-ink-3">fila</span>
         </div>
         <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
-          <XCircle size={11} className={cn(hasFailed ? "text-red-400/60" : "text-ink-3")} />
-          <span className={cn("font-bold tabular-nums", hasFailed ? "text-red-400" : "text-ink-3")}>{acc.failed}</span>
+          <XCircle size={11} className={cn(hasFailed ? "text-danger/60" : "text-ink-3")} />
+          <span className={cn("font-bold tabular-nums", hasFailed ? "text-danger" : "text-ink-3")}>{acc.failed}</span>
           <span className="text-[9px] text-ink-3">falha</span>
         </div>
       </div>
@@ -459,23 +461,23 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
       {/* Stats grid — engagement */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[10px]">
         <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
-          <Eye size={11} className={cn(acc.total_plays > 0 ? "text-[var(--electric)]/60" : "text-ink-3")} />
-          <span className={cn("font-bold tabular-nums", acc.total_plays > 0 ? "text-[var(--electric)]" : "text-ink-3")}>{fmtNum(acc.total_plays)}</span>
+          <Eye size={11} className={cn(acc.total_plays > 0 ? "text-primary-2/60" : "text-ink-3")} />
+          <span className={cn("font-bold tabular-nums", acc.total_plays > 0 ? "text-primary-2" : "text-ink-3")}>{fmtNum(acc.total_plays)}</span>
           <span className="text-[9px] text-ink-3">views</span>
         </div>
         <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
-          <Heart size={11} className={cn(acc.total_likes > 0 ? "text-pink-400/60" : "text-ink-3")} />
-          <span className={cn("font-bold tabular-nums", acc.total_likes > 0 ? "text-pink-400" : "text-ink-3")}>{fmtNum(acc.total_likes)}</span>
+          <Heart size={11} className={cn(acc.total_likes > 0 ? "text-danger/60" : "text-ink-3")} />
+          <span className={cn("font-bold tabular-nums", acc.total_likes > 0 ? "text-danger" : "text-ink-3")}>{fmtNum(acc.total_likes)}</span>
           <span className="text-[9px] text-ink-3">likes</span>
         </div>
         <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
-          <MessageCircle size={11} className={cn(acc.total_comments > 0 ? "text-amber-400/60" : "text-ink-3")} />
-          <span className={cn("font-bold tabular-nums", acc.total_comments > 0 ? "text-amber-400" : "text-ink-3")}>{fmtNum(acc.total_comments)}</span>
+          <MessageCircle size={11} className={cn(acc.total_comments > 0 ? "text-warning/60" : "text-ink-3")} />
+          <span className={cn("font-bold tabular-nums", acc.total_comments > 0 ? "text-warning" : "text-ink-3")}>{fmtNum(acc.total_comments)}</span>
           <span className="text-[9px] text-ink-3">coment.</span>
         </div>
         <div className="flex flex-col items-center gap-0.5 px-1 py-2 rounded-xl bg-surface-raised border border-line">
-          <Users size={11} className={cn(acc.total_reach > 0 ? "text-purple-400/60" : "text-ink-3")} />
-          <span className={cn("font-bold tabular-nums", acc.total_reach > 0 ? "text-purple-400" : "text-ink-3")}>{fmtNum(acc.total_reach)}</span>
+          <Users size={11} className={cn(acc.total_reach > 0 ? "text-link/60" : "text-ink-3")} />
+          <span className={cn("font-bold tabular-nums", acc.total_reach > 0 ? "text-link" : "text-ink-3")}>{fmtNum(acc.total_reach)}</span>
           <span className="text-[9px] text-ink-3">alcance</span>
         </div>
       </div>
@@ -489,33 +491,33 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
         <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-surface-raised border border-line">
           <span className="text-ink-3 text-[9px] uppercase tracking-wider">Último post</span>
-          <span className={cn("font-medium", acc.last_published_at ? "text-[var(--brand-blue)]" : "text-ink-3")}>
+          <span className={cn("font-medium", acc.last_published_at ? "text-link" : "text-ink-3")}>
             {timeAgo(acc.last_published_at)}
           </span>
         </div>
         <div className={cn("flex flex-col gap-0.5 px-3 py-2 rounded-xl border",
           hasOverdue
-            ? "bg-amber-500/[0.04] border-amber-500/15"
+            ? "bg-warning-soft border-warning/15"
             : "bg-surface-raised border-line"
         )}>
           <span className="text-ink-3 text-[9px] uppercase tracking-wider">
             {hasPending ? "Próximo" : "Situação"}
           </span>
           {hasPending ? (
-            <span className={cn("font-medium", hasOverdue ? "text-amber-400" : "text-[var(--electric)]")}>
+            <span className={cn("font-medium", hasOverdue ? "text-warning" : "text-primary-2")}>
               {hasOverdue ? "⏱ " : ""}{timeIn(acc.next_scheduled_at)}
             </span>
           ) : (
-            <span className="font-medium text-[var(--brand-blue)]/60 text-[10px]">✓ concluído</span>
+            <span className="font-medium text-link/60 text-[10px]">✓ concluído</span>
           )}
         </div>
       </div>
 
       {/* Overdue warning */}
       {hasOverdue && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/[0.05] border border-amber-500/15">
-          <AlertTriangle size={11} className="text-amber-400/80 shrink-0" />
-          <span className="text-[10px] text-amber-400/80">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-warning-soft border border-warning/15">
+          <AlertTriangle size={11} className="text-warning/80 shrink-0" />
+          <span className="text-[10px] text-warning/80">
             {acc.overdue_count} post{acc.overdue_count > 1 ? "s" : ""} atrasado{acc.overdue_count > 1 ? "s" : ""} — aguardando o cron
           </span>
         </div>
@@ -524,16 +526,16 @@ function CampaignAccountCard({ acc }: { acc: CampaignAccountStatus }) {
       {/* Error detail (expandable) */}
       {hasFailed && acc.last_error_message && (
         <div
-          className="flex items-start gap-2 px-3 py-2 rounded-xl bg-red-500/[0.05] border border-red-500/15 cursor-pointer"
+          className="flex items-start gap-2 px-3 py-2 rounded-xl bg-danger-soft border border-danger/15 cursor-pointer"
           onClick={() => setExpanded(e => !e)}
         >
-          <XCircle size={11} className="text-red-400 shrink-0 mt-0.5" />
+          <XCircle size={11} className="text-danger shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
-            <p className={cn("text-[10px] text-red-400/80 leading-relaxed break-all", !expanded && "line-clamp-1")}>
+            <p className={cn("text-[10px] text-danger/80 leading-relaxed break-all", !expanded && "line-clamp-1")}>
               {acc.last_error_message}
             </p>
             {acc.last_error_message.length > 55 && (
-              <p className="text-[9px] text-red-500/50 mt-0.5">{expanded ? "▲ ocultar" : "▼ ver tudo"}</p>
+              <p className="text-[9px] text-danger/50 mt-0.5">{expanded ? "▲ ocultar" : "▼ ver tudo"}</p>
             )}
           </div>
         </div>
@@ -577,7 +579,7 @@ function LoopView() {
   }, [fetchData]);
 
   if (loading && !data) {
-    return <div className="flex items-center justify-center h-64"><Loader2 size={24} className="animate-spin text-[var(--electric)]" /></div>;
+    return <div className="flex items-center justify-center h-64"><Loader2 size={24} className="animate-spin text-primary-2" /></div>;
   }
 
   const m = data?.metrics ?? { published_24h: 0, pending: 0, errors_24h: 0, next_publish_in_ms: null, active_loops: 0 };
@@ -585,9 +587,9 @@ function LoopView() {
 
   const LOOP_FILTERS = [
     { key: "all" as const,       label: "Todas",      color: "text-ink-2"          },
-    { key: "published" as const, label: "Publicado",  color: "text-[var(--brand-blue)]"   },
-    { key: "pending" as const,   label: "Aguardando", color: "text-[var(--electric)]" },
-    { key: "error" as const,     label: "Erro",       color: "text-red-400"           },
+    { key: "published" as const, label: "Publicado",  color: "text-link"   },
+    { key: "pending" as const,   label: "Aguardando", color: "text-primary-2" },
+    { key: "error" as const,     label: "Erro",       color: "text-danger"           },
   ];
 
   const filtered = filter === "all" ? allAccounts
@@ -633,8 +635,8 @@ function LoopView() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--brand-blue)] opacity-50" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--brand-blue)]" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-50" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
           </span>
           <p className="text-xs text-ink-3">
             {updatedAt ? `Atualizado ${updatedAt}` : "Carregando..."}
@@ -642,7 +644,7 @@ function LoopView() {
           </p>
         </div>
         <button onClick={() => fetchData(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-line bg-surface-raised text-xs text-ink-3 hover:text-ink-2 hover:border-line-2 transition-all">
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-line bg-surface-raised text-xs text-ink-3 hover:text-ink-2 hover:border-line transition-all">
           <RefreshCw size={12} />Atualizar
         </button>
       </div>
@@ -653,7 +655,7 @@ function LoopView() {
         <MetricCard label="Na fila" sub="aguardando" value={m.pending} color="cyan" icon={Clock} />
         <MetricCard label="Erros" sub="últimas 24h" value={m.errors_24h} color="red" icon={XCircle} />
         <MetricCard label="Próxima postagem" sub="countdown" value="" color="amber" icon={TrendingUp}
-          extra={<p className="text-sm font-bold text-amber-400 tabular-nums"><Countdown ms={m.next_publish_in_ms} /></p>} />
+          extra={<p className="text-sm font-bold text-warning tabular-nums"><Countdown ms={m.next_publish_in_ms} /></p>} />
         <MetricCard label="Loops ativos" sub="em execução" value={m.active_loops} color="blue" icon={Radio} />
       </div>
 
@@ -665,7 +667,7 @@ function LoopView() {
           {LOOP_FILTERS.map(f => (
             <button key={f.key} onClick={() => setFilter(f.key)}
               className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap",
-                filter === f.key ? "bg-line-control/20 border border-line-2 text-ink" : "text-ink-3 hover:text-ink-2 hover:bg-surface-raised")}>
+                filter === f.key ? "bg-line-control/20 border border-line text-ink" : "text-ink-3 hover:text-ink-2 hover:bg-surface-raised")}>
               <span className={f.color}>{f.label}</span>
               {counts[f.key] > 0 && (
                 <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full tabular-nums",
@@ -687,9 +689,9 @@ function LoopView() {
             {groups.map(({ loopName, accounts: groupAccs }) => (
               <div key={loopName ?? "__none__"}>
                 <div className="flex items-center gap-2 mb-3">
-                  <Radio size={11} className={loopName ? "text-[var(--electric)]/60" : "text-ink-3"} />
+                  <Radio size={11} className={loopName ? "text-primary-2/60" : "text-ink-3"} />
                   <span className={cn("text-[11px] font-bold uppercase tracking-widest",
-                    loopName ? "text-[var(--electric)]/70" : "text-ink-3")}>
+                    loopName ? "text-primary-2/70" : "text-ink-3")}>
                     {loopName ?? "Sem loop"}
                   </span>
                   <span className="text-[10px] text-ink-3">{groupAccs.length}</span>
@@ -755,7 +757,7 @@ function CampaignView() {
   }, [fetchData]);
 
   if (loading && !data) {
-    return <div className="flex items-center justify-center h-64"><Loader2 size={24} className="animate-spin text-[var(--electric)]" /></div>;
+    return <div className="flex items-center justify-center h-64"><Loader2 size={24} className="animate-spin text-primary-2" /></div>;
   }
 
   const m = data?.metrics ?? { total_published: 0, total_pending: 0, total_failed: 0, total_overdue: 0, total_likes: 0, total_plays: 0, total_reach: 0, total_comments: 0, active_campaigns: 0, next_publish_in_ms: null };
@@ -763,10 +765,10 @@ function CampaignView() {
 
   const CAMP_FILTERS = [
     { key: "all" as const,       label: "Todas",      color: "text-ink-2"          },
-    { key: "active" as const,    label: "Na Fila",    color: "text-[var(--electric)]" },
-    { key: "overdue" as const,   label: "Atrasadas",  color: "text-amber-400"         },
-    { key: "error" as const,     label: "Com Erros",  color: "text-red-400"           },
-    { key: "completed" as const, label: "Concluídas", color: "text-[var(--brand-blue)]"   },
+    { key: "active" as const,    label: "Na Fila",    color: "text-primary-2" },
+    { key: "overdue" as const,   label: "Atrasadas",  color: "text-warning"         },
+    { key: "error" as const,     label: "Com Erros",  color: "text-danger"           },
+    { key: "completed" as const, label: "Concluídas", color: "text-link"   },
   ];
 
   const filtered = filter === "all"       ? allAccounts
@@ -789,8 +791,8 @@ function CampaignView() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--electric)] opacity-50" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--electric)]" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-2 opacity-50" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-primary-2" />
           </span>
           <p className="text-xs text-ink-3">
             {updatedAt ? `Atualizado ${updatedAt}` : "Carregando..."}
@@ -798,7 +800,7 @@ function CampaignView() {
           </p>
         </div>
         <button onClick={() => fetchData(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-line bg-surface-raised text-xs text-ink-3 hover:text-ink-2 hover:border-line-2 transition-all">
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-line bg-surface-raised text-xs text-ink-3 hover:text-ink-2 hover:border-line transition-all">
           <RefreshCw size={12} />Atualizar
         </button>
       </div>
@@ -810,7 +812,7 @@ function CampaignView() {
         <MetricCard label="Atrasados" sub="fora do prazo" value={m.total_overdue} color="amber" icon={AlertTriangle} />
         <MetricCard label="Falhas" sub="total" value={m.total_failed} color="red" icon={XCircle} />
         <MetricCard label="Próxima postagem" sub="countdown" value="" color="amber" icon={TrendingUp}
-          extra={<p className="text-sm font-bold text-amber-400 tabular-nums"><Countdown ms={m.next_publish_in_ms} /></p>} />
+          extra={<p className="text-sm font-bold text-warning tabular-nums"><Countdown ms={m.next_publish_in_ms} /></p>} />
       </div>
       {/* Metrics — engagement */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mt-3">
@@ -827,7 +829,7 @@ function CampaignView() {
         <div className="glass-card p-16 flex flex-col items-center justify-center text-center">
           <Send size={28} className="text-ink-3 mb-4" />
           <p className="text-sm font-medium text-ink-3 mb-1">Nenhuma campanha ativa</p>
-          <p className="text-xs text-ink-3">Crie uma campanha na aba <span className="text-[var(--electric)]/50">Postar</span> para monitorar aqui</p>
+          <p className="text-xs text-ink-3">Crie uma campanha na aba <span className="text-primary-2/50">Postar</span> para monitorar aqui</p>
         </div>
       ) : (
         <div>
@@ -836,7 +838,7 @@ function CampaignView() {
             {CAMP_FILTERS.map(f => (
               <button key={f.key} onClick={() => setFilter(f.key)}
                 className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap",
-                  filter === f.key ? "bg-line-control/20 border border-line-2 text-ink" : "text-ink-3 hover:text-ink-2 hover:bg-surface-raised")}>
+                  filter === f.key ? "bg-line-control/20 border border-line text-ink" : "text-ink-3 hover:text-ink-2 hover:bg-surface-raised")}>
                 <span className={f.color}>{f.label}</span>
                 {counts[f.key] > 0 && (
                   <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full tabular-nums",
@@ -893,11 +895,11 @@ export default function MonitorPage() {
           className={cn(
             "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all",
             tab === "loop"
-              ? "bg-line-control/20 border border-line-2 text-ink"
+              ? "bg-line-control/20 border border-line text-ink"
               : "text-ink-3 hover:text-ink-2"
           )}
         >
-          <Radio size={14} className={tab === "loop" ? "text-[#85B9E9]" : "text-ink-3"} />
+          <Radio size={14} className={tab === "loop" ? "text-link" : "text-ink-3"} />
           Loop
         </button>
         <button
@@ -905,11 +907,11 @@ export default function MonitorPage() {
           className={cn(
             "flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all",
             tab === "campanhas"
-              ? "bg-line-control/20 border border-line-2 text-ink"
+              ? "bg-line-control/20 border border-line text-ink"
               : "text-ink-3 hover:text-ink-2"
           )}
         >
-          <Send size={14} className={tab === "campanhas" ? "text-[var(--electric)]" : "text-ink-3"} />
+          <Send size={14} className={tab === "campanhas" ? "text-primary-2" : "text-ink-3"} />
           Campanhas
         </button>
       </div>

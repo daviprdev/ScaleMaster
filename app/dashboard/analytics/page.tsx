@@ -18,8 +18,8 @@ import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 // ── Chart theme (recharts doesn't read CSS vars) ──────────────────────────────
-const MATRIX   = "#00498D";
-const ELECTRIC = "#85B9E9";
+const MATRIX   = "#2f7bff";
+const ELECTRIC = "#3fd0ff";
 const GRID     = "rgba(255,255,255,0.04)";
 const AXIS_CLR = "rgba(255,255,255,0.22)";
 
@@ -118,11 +118,11 @@ function timeAgo(dateStr: string | null): string {
 }
 
 const ACC_COLORS = [
-  "from-[#00498D] to-emerald-600",
-  "from-[#85B9E9] to-blue-600",
-  "from-[#00498D] to-[#00346D]",
-  "from-pink-500 to-rose-600",
-  "from-amber-500 to-orange-600",
+  "from-primary to-success",
+  "from-primary-2 to-primary",
+  "from-primary to-primary-2",
+  "from-danger to-danger",
+  "from-warning to-warning",
 ];
 function accountGradient(u: string) {
   let h = 0;
@@ -145,7 +145,7 @@ function CustomTooltip({
   if (!active || !payload?.length) return null;
   const v = payload[0]?.value ?? 0;
   return (
-    <div className="px-3 py-2 rounded-xl bg-black/90 border border-line-2 text-xs backdrop-blur-xl shadow-xl">
+    <div className="px-3 py-2 rounded-xl bg-black/90 border border-line text-xs backdrop-blur-xl shadow-xl">
       <p className="text-ink-3 mb-1">{label}</p>
       <p style={{ color: payload[0]?.color ?? MATRIX }} className="font-bold">
         {valueLabel ?? valueKey ?? ""}: {valueFmt ? valueFmt(v) : v.toLocaleString("pt-BR")}
@@ -171,39 +171,50 @@ function KpiCard({
   const isPositive = (delta ?? 0) > 0;
   const isNeutral  = (delta ?? 0) === 0;
 
+  const iconBg = accent.includes("success")
+    ? "linear-gradient(135deg,#2fd39a,#168a70)"
+    : accent.includes("primary-2")
+      ? "linear-gradient(160deg,#3fd0ff,#2f7bff)"
+      : "var(--gradient-primary)";
+
   return (
-    <div className={cn("glass-card p-5 relative overflow-hidden border", accent)}>
-      <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent" />
-      <div className="relative space-y-3">
-        <div className="flex items-center justify-between">
-          <Icon size={14} className="text-ink-3" />
-          {delta !== undefined && !loading && (
-            <div className={cn(
-              "flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
-              isPositive ? "text-emerald-400 bg-emerald-500/10" :
-              isNeutral  ? "text-ink-3 bg-surface-hover" :
-                           "text-red-400 bg-red-500/10"
-            )}>
-              {isPositive ? <ArrowUpRight size={10} /> : isNeutral ? <Minus size={10} /> : <ArrowDownRight size={10} />}
-              {Math.abs(delta)}%
-            </div>
-          )}
+    <div className="glass-card flex flex-col gap-3 p-5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3)]"
+            style={{ background: iconBg }}
+          >
+            <Icon size={16} />
+          </span>
+          <span className="truncate text-[13px] font-medium text-ink-2">{label}</span>
         </div>
-        {loading ? (
-          <div className="space-y-1.5">
-            <div className="h-7 w-20 rounded bg-line-control/20 animate-pulse" />
-            <div className="h-3 w-14 rounded bg-surface-hover animate-pulse" />
-          </div>
-        ) : (
-          <div>
-            <p className="text-2xl font-bold text-white tracking-tight">{value}</p>
-            <p className="text-[10px] text-ink-3 mt-0.5">{sub ?? label}</p>
-            {deltaLabel && delta !== undefined && (
-              <p className="text-[10px] text-ink-3 mt-0.5">{deltaLabel}</p>
-            )}
-          </div>
+        {delta !== undefined && !loading && (
+          <span className={cn(
+            "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tabular-nums",
+            isPositive ? "text-success bg-success-soft" :
+            isNeutral  ? "text-ink-2 bg-white/[0.08]" :
+                         "text-danger bg-danger-soft"
+          )}>
+            {isPositive ? <ArrowUpRight size={11} /> : isNeutral ? <Minus size={11} /> : <ArrowDownRight size={11} />}
+            {Math.abs(delta)}%
+          </span>
         )}
       </div>
+      {loading ? (
+        <div className="space-y-1.5">
+          <div className="h-8 w-24 rounded-md bg-surface-hover animate-pulse" />
+          <div className="h-3 w-14 rounded bg-surface-hover animate-pulse" />
+        </div>
+      ) : (
+        <div>
+          <p className="text-[30px] font-semibold leading-[36px] tracking-[-0.02em] tabular-nums text-ink">{value}</p>
+          {sub && <p className="text-xs text-ink-3 mt-1">{sub}</p>}
+          {deltaLabel && delta !== undefined && (
+            <p className="text-xs text-ink-3 mt-0.5">{deltaLabel}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -231,8 +242,8 @@ function EmptyGrowthState({ onSync, syncing }: { onSync: () => void; syncing: bo
       animate={{ opacity: 1, y: 0 }}
       className="glass-card p-12 flex flex-col items-center text-center"
     >
-      <div className="w-16 h-16 rounded-2xl bg-[var(--brand-blue)]/8 border border-[var(--brand-blue)]/15 flex items-center justify-center mb-5">
-        <BarChartIcon size={26} className="text-[var(--brand-blue)]/50" />
+      <div className="w-16 h-16 rounded-2xl bg-primary/8 border border-primary/15 flex items-center justify-center mb-5">
+        <BarChartIcon size={26} className="text-link/50" />
       </div>
       <p className="text-ink-2 font-semibold text-base mb-2">Coletando dados...</p>
       <p className="text-sm text-ink-3 max-w-xs leading-relaxed mb-6">
@@ -242,7 +253,7 @@ function EmptyGrowthState({ onSync, syncing }: { onSync: () => void; syncing: bo
       <button
         onClick={onSync}
         disabled={syncing}
-        className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[var(--brand-blue)]/30 bg-[var(--brand-blue)]/8 text-[var(--brand-blue)] text-sm font-semibold hover:bg-[var(--brand-blue)]/15 transition-all disabled:opacity-50"
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-primary/30 bg-primary/8 text-link text-sm font-semibold hover:bg-primary/15 transition-all disabled:opacity-50"
       >
         {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
         {syncing ? "Sincronizando..." : "Iniciar coleta de dados"}
@@ -309,12 +320,12 @@ function PostRow({
 
       <div className="flex-shrink-0 grid grid-cols-3 sm:grid-cols-6 gap-2">
         {[
-          { icon: Heart, label: "Curtidas", value: post.insights_likes, color: "text-pink-400" },
-          { icon: MessageCircle, label: "Comentários", value: post.insights_comments, color: "text-[#85B9E9]" },
-          { icon: Eye, label: "Alcance", value: post.insights_reach, color: "text-[#85B9E9]" },
-          { icon: Play, label: "Plays", value: post.insights_plays, color: "text-emerald-400" },
-          { icon: Share2, label: "Shares", value: post.insights_shares, color: "text-amber-400" },
-          { icon: Bookmark, label: "Salvos", value: post.insights_saved, color: "text-blue-400" },
+          { icon: Heart, label: "Curtidas", value: post.insights_likes, color: "text-danger" },
+          { icon: MessageCircle, label: "Comentários", value: post.insights_comments, color: "text-link" },
+          { icon: Eye, label: "Alcance", value: post.insights_reach, color: "text-link" },
+          { icon: Play, label: "Plays", value: post.insights_plays, color: "text-success" },
+          { icon: Share2, label: "Shares", value: post.insights_shares, color: "text-warning" },
+          { icon: Bookmark, label: "Salvos", value: post.insights_saved, color: "text-link" },
         ].map(({ icon: Icon, label, value, color }) => (
           <div key={label} className="flex flex-col items-center gap-0.5 min-w-[40px]">
             <Icon size={13} className={cn(value !== null ? color : "text-ink-3/40")} />
@@ -333,7 +344,7 @@ function PostRow({
             "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all",
             refreshing
               ? "bg-surface-hover text-ink-3 cursor-not-allowed"
-              : "bg-line-control/15 text-ink-2 hover:bg-line-control/25 hover:text-white border border-line-2"
+              : "bg-line-control/15 text-ink-2 hover:bg-line-control/25 hover:text-ink border border-line"
           )}
         >
           <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
@@ -493,7 +504,7 @@ export default function AnalyticsPage() {
             <button
               onClick={handleSync}
               disabled={syncing}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--brand-blue)]/20 bg-[var(--brand-blue)]/[0.05] text-xs text-[var(--brand-blue)]/70 hover:text-[var(--brand-blue)] hover:border-[var(--brand-blue)]/40 transition-all disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-primary/20 bg-primary/[0.05] text-xs text-link/70 hover:text-link hover:border-primary/40 transition-all disabled:opacity-50"
             >
               {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
               Sincronizar dados
@@ -514,7 +525,7 @@ export default function AnalyticsPage() {
             className={cn(
               "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
               tab === key
-                ? "bg-[var(--brand-blue)]/15 text-[var(--brand-blue)] border border-[var(--brand-blue)]/20"
+                ? "bg-primary/15 text-link border border-primary/20"
                 : "text-ink-3 hover:text-ink-2"
             )}
           >
@@ -534,7 +545,7 @@ export default function AnalyticsPage() {
           <div className="relative w-fit">
             <button
               onClick={() => setSelectorOpen((o) => !o)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-line-2 bg-surface-raised text-sm text-ink-2 hover:text-ink hover:border-line-control transition-all"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-line bg-surface-raised text-sm text-ink-2 hover:text-ink hover:border-line-control transition-all"
             >
               <Users size={14} className="text-ink-3" />
               <span>{selectorLabel}</span>
@@ -547,7 +558,7 @@ export default function AnalyticsPage() {
                   initial={{ opacity: 0, y: -6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
-                  className="absolute top-full mt-2 left-0 z-40 min-w-[220px] glass rounded-xl border border-line-2 shadow-2xl overflow-hidden"
+                  className="absolute top-full mt-2 left-0 z-40 min-w-[220px] glass rounded-xl border border-line shadow-2xl overflow-hidden"
                 >
                   <div className="py-1">
                     <button
@@ -555,8 +566,8 @@ export default function AnalyticsPage() {
                       className={cn(
                         "w-full text-left px-4 py-2.5 text-sm transition-colors",
                         !selectedAccountId && !selectedFolderId
-                          ? "text-[var(--brand-blue)] bg-[var(--brand-blue)]/8"
-                          : "text-ink-2 hover:text-white hover:bg-surface-hover"
+                          ? "text-link bg-primary/8"
+                          : "text-ink-2 hover:text-ink hover:bg-surface-hover"
                       )}
                     >
                       Todas as contas ({growthData.accounts.length})
@@ -572,8 +583,8 @@ export default function AnalyticsPage() {
                             className={cn(
                               "w-full text-left px-4 py-2.5 text-sm transition-colors",
                               selectedFolderId === f.id
-                                ? "text-[var(--brand-blue)] bg-[var(--brand-blue)]/8"
-                                : "text-ink-2 hover:text-white hover:bg-surface-hover"
+                                ? "text-link bg-primary/8"
+                                : "text-ink-2 hover:text-ink hover:bg-surface-hover"
                             )}
                           >
                             📁 {f.name}
@@ -592,8 +603,8 @@ export default function AnalyticsPage() {
                             className={cn(
                               "w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2",
                               selectedAccountId === a.id
-                                ? "text-[var(--brand-blue)] bg-[var(--brand-blue)]/8"
-                                : "text-ink-2 hover:text-white hover:bg-surface-hover"
+                                ? "text-link bg-primary/8"
+                                : "text-ink-2 hover:text-ink hover:bg-surface-hover"
                             )}
                           >
                             <AccountAvatar username={a.username} size="sm" />
@@ -622,7 +633,7 @@ export default function AnalyticsPage() {
               delta={kpi?.followers_growth_pct}
               deltaLabel={`vs. ${growthData?.days ?? 30} dias atrás`}
               icon={Users}
-              accent="border-[var(--brand-blue)]/15"
+              accent="border-primary/15"
               loading={growthLoading}
             />
             <KpiCard
@@ -632,7 +643,7 @@ export default function AnalyticsPage() {
                 : "—"}
               sub={`últimos ${growthData?.days ?? 30} dias`}
               icon={TrendingUp}
-              accent="border-emerald-500/15"
+              accent="border-success/15"
               loading={growthLoading}
             />
             <KpiCard
@@ -640,7 +651,7 @@ export default function AnalyticsPage() {
               value={fmt(kpi?.posts_30d ?? null)}
               sub={`últimos ${growthData?.days ?? 30} dias`}
               icon={Zap}
-              accent="border-[var(--electric)]/15"
+              accent="border-primary-2/15"
               loading={growthLoading}
             />
             <KpiCard
@@ -648,7 +659,7 @@ export default function AnalyticsPage() {
               value={fmt(kpi?.reach_30d ?? null)}
               sub="via Meta Insights"
               icon={Eye}
-              accent="border-[#00498D]/15"
+              accent="border-primary/15"
               loading={growthLoading}
             />
           </div>
@@ -764,8 +775,8 @@ export default function AnalyticsPage() {
           {!growthLoading && (
             <div className="glass-card p-5">
               <div className="flex items-center gap-2 mb-5">
-                <div className="w-7 h-7 rounded-xl bg-amber-500/15 flex items-center justify-center">
-                  <Trophy size={14} className="text-amber-400" />
+                <div className="w-7 h-7 rounded-xl bg-warning-soft flex items-center justify-center">
+                  <Trophy size={14} className="text-warning" />
                 </div>
                 <div>
                   <h2 className="text-sm font-semibold text-ink">Top 3 Vídeos Mais Vistos</h2>
@@ -794,7 +805,7 @@ export default function AnalyticsPage() {
                       {/* Rank */}
                       <div className={cn(
                         "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0",
-                        i === 0 ? "bg-amber-500/20 text-amber-400" :
+                        i === 0 ? "bg-warning/20 text-warning" :
                         i === 1 ? "bg-line-control/20 text-ink-2" :
                                   "bg-surface-hover text-ink-3"
                       )}>
@@ -828,18 +839,18 @@ export default function AnalyticsPage() {
                       {/* Metrics */}
                       <div className="flex items-center gap-4 flex-shrink-0">
                         <div className="text-center">
-                          <p className="text-sm font-bold text-emerald-400">{fmt(video.plays)}</p>
+                          <p className="text-sm font-bold text-success">{fmt(video.plays)}</p>
                           <p className="text-[10px] text-ink-3">plays</p>
                         </div>
                         {video.reach !== null && (
                           <div className="text-center hidden sm:block">
-                            <p className="text-sm font-bold text-[#85B9E9]">{fmt(video.reach)}</p>
+                            <p className="text-sm font-bold text-link">{fmt(video.reach)}</p>
                             <p className="text-[10px] text-ink-3">alcance</p>
                           </div>
                         )}
                         {video.likes !== null && (
                           <div className="text-center hidden sm:block">
-                            <p className="text-sm font-bold text-pink-400">{fmt(video.likes)}</p>
+                            <p className="text-sm font-bold text-danger">{fmt(video.likes)}</p>
                             <p className="text-[10px] text-ink-3">curtidas</p>
                           </div>
                         )}
@@ -914,7 +925,7 @@ export default function AnalyticsPage() {
               <button
                 onClick={() => posts.filter((p) => p.media_id).forEach((p) => handleRefresh(p.id))}
                 disabled={!!refreshingId}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium bg-line-control/15 border border-line-2 text-ink-2 hover:text-white hover:bg-line-control/20 transition-all disabled:opacity-40"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium bg-line-control/15 border border-line text-ink-2 hover:text-ink hover:bg-line-control/20 transition-all disabled:opacity-40"
               >
                 <RefreshCw size={13} className={refreshingId ? "animate-spin" : ""} />
                 Atualizar todos
@@ -926,13 +937,13 @@ export default function AnalyticsPage() {
           {!postsLoading && postSummary && (
             <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
               {[
-                { label: "Publicados", value: fmt(postSummary.total_published), icon: CheckCircle2, color: "bg-[#00498D]/30" },
-                { label: "Curtidas",   value: fmt(postSummary.total_likes),     icon: Heart,        color: "bg-pink-600/30" },
-                { label: "Comentários",value: fmt(postSummary.total_comments),  icon: MessageCircle,color: "bg-cyan-600/30" },
-                { label: "Alcance",    value: fmt(postSummary.total_reach),     icon: Eye,          color: "bg-[#00498D]/30" },
-                { label: "Plays",      value: fmt(postSummary.total_plays),     icon: Play,         color: "bg-emerald-600/30" },
-                { label: "Shares",     value: fmt(postSummary.total_shares),    icon: Share2,       color: "bg-amber-600/30" },
-                { label: "Salvos",     value: fmt(postSummary.total_saved),     icon: Bookmark,     color: "bg-blue-600/30" },
+                { label: "Publicados", value: fmt(postSummary.total_published), icon: CheckCircle2, color: "bg-primary/30" },
+                { label: "Curtidas",   value: fmt(postSummary.total_likes),     icon: Heart,        color: "bg-danger/30" },
+                { label: "Comentários",value: fmt(postSummary.total_comments),  icon: MessageCircle,color: "bg-primary-2/30" },
+                { label: "Alcance",    value: fmt(postSummary.total_reach),     icon: Eye,          color: "bg-primary/30" },
+                { label: "Plays",      value: fmt(postSummary.total_plays),     icon: Play,         color: "bg-success/30" },
+                { label: "Shares",     value: fmt(postSummary.total_shares),    icon: Share2,       color: "bg-warning/30" },
+                { label: "Salvos",     value: fmt(postSummary.total_saved),     icon: Bookmark,     color: "bg-primary/30" },
               ].map(({ label, value, icon: Icon, color }) => (
                 <div key={label} className="glass-card rounded-2xl p-5 flex items-start gap-4">
                   <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", color)}>
@@ -940,18 +951,18 @@ export default function AnalyticsPage() {
                   </div>
                   <div>
                     <p className="text-xs text-ink-3 mb-0.5">{label}</p>
-                    <p className="text-xl font-bold text-white">{value}</p>
+                    <p className="text-xl font-bold text-ink">{value}</p>
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/[0.08] border border-amber-500/20 text-sm text-amber-300/70">
-            <AlertCircle size={16} className="flex-shrink-0 mt-0.5 text-amber-400/60" />
+          <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-warning-soft border border-warning/20 text-sm text-warning/70">
+            <AlertCircle size={16} className="flex-shrink-0 mt-0.5 text-warning/60" />
             <p>
               <strong>Alcance, Plays, Shares e Salvos</strong> requerem a permissão{" "}
-              <code className="text-amber-300 bg-amber-500/10 px-1 rounded">instagram_manage_insights</code> no seu app Meta.
+              <code className="text-warning bg-warning-soft px-1 rounded">instagram_manage_insights</code> no seu app Meta.
             </p>
           </div>
 
