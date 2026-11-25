@@ -1613,9 +1613,7 @@ export default function PostarPage() {
   // Onde o Reel aparece no perfil (share_to_feed da Meta). Padrão: Reels + grade.
   const [shareToFeed, setShareToFeed] = useState(true);
 
-  // "custom" preserva o comportamento histórico desta aba (pool digitado
-  // ou legenda automática). Só muda se o usuário escolher outro modo.
-  const [captionMode, setCaptionMode] = useState<CaptionMode>("custom");
+  const [captionMode, setCaptionMode] = useState<CaptionMode>("original");
   const [stripHashtags, setStripHashtags] = useState(false);
   const [stripMentions, setStripMentions] = useState(false);
 
