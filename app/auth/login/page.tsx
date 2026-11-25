@@ -42,7 +42,7 @@ export default function LoginPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username: trimmed, password }),
         });
-        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; redirect?: string; error?: string };
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
         if (!res.ok || !json.ok) {
           setError(
             json.error ??
@@ -53,7 +53,7 @@ export default function LoginPage() {
           setIsLoading(false);
           return;
         }
-        router.push(json.redirect === "/admin" ? "/admin" : "/dashboard");
+        router.push("/dashboard");
         router.refresh();
       } catch {
         setError("Erro ao entrar. Tente novamente.");
@@ -63,7 +63,7 @@ export default function LoginPage() {
     }
 
     const supabase = createClient();
-    const { data, error } = await supabase.auth.signInWithPassword({ email: trimmed, password });
+    const { error } = await supabase.auth.signInWithPassword({ email: trimmed, password });
 
     if (error) {
       setError(
@@ -75,18 +75,7 @@ export default function LoginPage() {
       return;
     }
 
-    const userId = data.user?.id;
-    let dest = "/dashboard";
-    if (userId) {
-      const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .single();
-      if (roleData?.role === "admin") dest = "/admin";
-    }
-
-    router.push(dest);
+    router.push("/dashboard");
     router.refresh();
   };
 

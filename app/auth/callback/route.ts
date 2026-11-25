@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase";
 import { createTokenClient } from "@/lib/supabase/token-client";
 import { getAppUrl } from "@/lib/app-url";
 
@@ -17,7 +16,7 @@ export async function GET(request: Request) {
     // createTokenClient: com SUPABASE_SECRET_KEY a troca do código conta no
     // limite por IP do cliente, não no da VPS (ver lib/supabase/token-client).
     const supabase = await createTokenClient();
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
       // Se um destino foi passado explicitamente, respeita — mas só caminho
       // interno: "/x" sim; "//evil.com", "@evil.com" ou "/\evil.com" não
@@ -25,20 +24,8 @@ export async function GET(request: Request) {
       if (explicitNext && /^\/(?![/\\])/.test(explicitNext)) {
         return NextResponse.redirect(`${origin}${explicitNext}`);
       }
-      // Caso contrário, redireciona conforme o role. O usuário vem da própria
-      // troca do código; o role pelo admin, porque o client de token pode estar
-      // com a chave secreta.
-      const user = data.user;
-      let dest = "/dashboard";
-      if (user) {
-        const { data: roleData } = await getSupabaseAdmin()
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id)
-          .single();
-        if (roleData?.role === "admin") dest = "/admin";
-      }
-      return NextResponse.redirect(`${origin}${dest}`);
+      // Admin também cai no dashboard; o painel admin abre pela barra lateral.
+      return NextResponse.redirect(`${origin}/dashboard`);
     }
   }
 

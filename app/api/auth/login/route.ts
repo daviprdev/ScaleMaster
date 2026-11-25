@@ -88,14 +88,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (!error && data.user) {
-      // Pelo admin: o client de token pode estar com a chave secreta, e não
-      // está documentado se o PostgREST roda como o usuário nesse caso.
-      const { data: roleData } = await getSupabaseAdmin()
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", data.user.id)
-        .single();
-      return reply({ ok: true, redirect: roleData?.role === "admin" ? "/admin" : "/dashboard" }, 200);
+      return reply({ ok: true }, 200);
     }
 
     if (error?.status === 429) {
