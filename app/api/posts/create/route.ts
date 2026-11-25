@@ -9,7 +9,7 @@ import { fetch as undiciFetch } from "undici";
 export const runtime = "nodejs";
 export const maxDuration = 180;
 
-const GRAPH_IG = "https://graph.instagram.com/v21.0";
+import { graphBase } from "@/lib/meta-graph";
 
 interface AccountRow {
   id: string;
@@ -38,7 +38,7 @@ async function postFirstComment(
     `message=${encodeURIComponent(comment)}`,
     `access_token=${encodeURIComponent(token)}`,
   ].join("&");
-  const res = await undiciFetch(`${GRAPH_IG}/${mediaId}/comments`, {
+  const res = await undiciFetch(`${graphBase(token)}/${mediaId}/comments`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: formBody,

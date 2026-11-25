@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { fetch as undiciFetch } from "undici";
+import { graphBase } from "@/lib/meta-graph";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
   }
 
   const url =
-    `https://graph.instagram.com/v21.0/${acc.ig_business_account_id}/stories` +
+    `${graphBase(acc.meta_access_token)}/${acc.ig_business_account_id}/stories` +
     `?fields=id,media_type,media_url,timestamp` +
     `&access_token=${encodeURIComponent(acc.meta_access_token)}`;
 

@@ -17,7 +17,7 @@ const IG_WEB_APP_ID = "936619743392459";
 const IG_ASBD_ID = "129477";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-const GRAPH = "https://graph.instagram.com/v21.0";
+import { graphBase } from "@/lib/meta-graph";
 
 interface CheckerResult {
   username: string;
@@ -210,7 +210,7 @@ async function checkViaBusinessDiscovery(
 ): Promise<CheckerResult | null> {
   try {
     const fields = `business_discovery.username(${username}){username,followers_count,media_count,profile_picture_url}`;
-    const url = `${GRAPH}/${helper.ig_business_account_id}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(helper.meta_access_token)}`;
+    const url = `${graphBase(helper.meta_access_token)}/${helper.ig_business_account_id}?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(helper.meta_access_token)}`;
 
     // Graph API oficial: conexão direta (o proxy fica só para a consulta
     // anônima ao endpoint web do Instagram, que não é API oficial).

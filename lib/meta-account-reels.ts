@@ -11,7 +11,8 @@
  */
 
 import { fetch as undiciFetch } from "undici";
-import { GRAPH_API, RATE_LIMIT_CODES, MetaRateLimitError } from "@/lib/meta-account-views";
+import { RATE_LIMIT_CODES, MetaRateLimitError } from "@/lib/meta-account-views";
+import { graphBase } from "@/lib/meta-graph";
 
 // Brasil não tem horário de verão desde 2019 — offset fixo.
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
@@ -41,7 +42,7 @@ export async function fetchReelsByDay(
 ): Promise<ReelsByDayResult> {
   const days = new Map<string, number>();
   let url: string | null =
-    `${GRAPH_API}/${igUserId}/media?fields=timestamp,media_product_type&limit=100` +
+    `${graphBase(token)}/${igUserId}/media?fields=timestamp,media_product_type&limit=100` +
     `&access_token=${encodeURIComponent(token)}`;
 
   for (let page = 0; url && page < MAX_PAGES; page++) {

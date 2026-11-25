@@ -26,6 +26,7 @@ interface UserApp {
   id: string;
   app_name: string;
   ig_app_id: string;
+  config_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +35,7 @@ interface FormState {
   app_name: string;
   ig_app_id: string;
   ig_app_secret: string;
+  config_id: string;
 }
 
 type Tab = "apps" | "guide";
@@ -79,8 +81,10 @@ function AppFormModal({
     app_name: initial?.app_name ?? "",
     ig_app_id: initial?.ig_app_id ?? "",
     ig_app_secret: "",
+    config_id: initial?.config_id ?? "",
   });
   const [showSecret, setShowSecret] = useState(false);
+  const unificado = form.config_id.trim() !== "";
 
   function set(field: keyof FormState, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -148,7 +152,23 @@ function AppFormModal({
             </div>
             <div className="space-y-1.5">
               <label className="block text-[10px] font-semibold text-ink-3 uppercase tracking-widest">
-                Instagram App ID *
+                ID da configuração (Login Unificado)
+              </label>
+              <input
+                value={form.config_id}
+                onChange={(e) => set("config_id", e.target.value)}
+                placeholder="vazio = Login do Instagram"
+                className="w-full rounded-xl bg-surface-raised border border-line text-ink placeholder:text-ink-3/50 text-sm px-4 py-2.5 outline-none focus:border-[#00498D]/40 focus:bg-line-control/15 transition-all font-mono"
+              />
+              <p className="text-[10px] text-ink-3 leading-relaxed">
+                {unificado
+                  ? "Login Unificado: use o App ID e o App Secret do Meta (Configurações do app → Básico) e cadastre a URL de callback na configuração."
+                  : "App só com “API setup with Unified login”? Cole aqui a “Identificação da configuração”."}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-semibold text-ink-3 uppercase tracking-widest">
+                {unificado ? "App ID do Meta *" : "Instagram App ID *"}
               </label>
               <input
                 value={form.ig_app_id}
@@ -290,6 +310,11 @@ function AppsTable({
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-ink truncate">
                     {app.app_name}
+                    {app.config_id && (
+                      <span className="ml-2 align-middle text-[9px] font-semibold uppercase tracking-wide text-[#85B9E9] bg-[#00498D]/15 border border-[#00498D]/25 rounded px-1.5 py-0.5">
+                        Unificado
+                      </span>
+                    )}
                   </p>
                   <p className="text-[10px] text-ink-3 mt-0.5">
                     {new Date(app.created_at).toLocaleDateString("pt-BR")}
@@ -577,6 +602,7 @@ export default function AppsPage() {
         ig_app_id: form.ig_app_id,
       };
       if (form.ig_app_secret.trim()) body.ig_app_secret = form.ig_app_secret;
+      if (form.config_id.trim() !== (editingApp.config_id ?? "")) body.config_id = form.config_id.trim();
       const res = await fetch(`/api/apps/${editingApp.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -787,7 +813,7 @@ export default function AppsPage() {
           <AppFormModal
             key={`edit-${editingApp.id}`}
             isEdit
-            initial={{ app_name: editingApp.app_name, ig_app_id: editingApp.ig_app_id }}
+            initial={{ app_name: editingApp.app_name, ig_app_id: editingApp.ig_app_id, config_id: editingApp.config_id ?? "" }}
             onSubmit={handleEdit}
             onClose={() => {
               setEditingApp(null);

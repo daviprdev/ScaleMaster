@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { fetch as undiciFetch } from "undici";
+import { graphBase } from "@/lib/meta-graph";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,7 @@ async function fetchStoriesForAccount(
 ): Promise<{ id: string; stories: StoryItem[] }> {
   try {
     const url =
-      `https://graph.instagram.com/v21.0/${acc.ig_business_account_id}/stories` +
+      `${graphBase(acc.meta_access_token)}/${acc.ig_business_account_id}/stories` +
       `?fields=id,timestamp` +
       `&access_token=${encodeURIComponent(acc.meta_access_token)}`;
 

@@ -19,8 +19,8 @@
  */
 
 import { fetch as undiciFetch } from "undici";
+import { graphBase } from "@/lib/meta-graph";
 
-export const GRAPH_API = "https://graph.instagram.com/v21.0";
 const DAY_S = 86_400;
 // Limites de uso da Graph API + 80002 (freio por conta do Instagram).
 export const RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80002]);
@@ -64,7 +64,7 @@ export async function fetchAccountWindow(
   breakdown = false
 ): Promise<WindowViews> {
   const url =
-    `${GRAPH_API}/${igUserId}/insights?metric=${metrics}&period=day&metric_type=total_value` +
+    `${graphBase(token)}/${igUserId}/insights?metric=${metrics}&period=day&metric_type=total_value` +
     (breakdown ? "&breakdown=media_product_type" : "") +
     `&since=${sinceS}&until=${untilS}&access_token=${encodeURIComponent(token)}`;
   const res = await undiciFetch(url, { signal: AbortSignal.timeout(15_000) });

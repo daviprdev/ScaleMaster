@@ -5,6 +5,7 @@ import { decrypt } from "@/lib/encrypt";
 import { fetch as undiciFetch } from "undici";
 import { getAppUrl, getInstagramRedirectUri } from "@/lib/app-url";
 import { verifyMagicUserCookie, verifyOAuthState } from "@/lib/oauth-cookie";
+import { GRAPH_FB_BASE, UNIFIED_TOKEN_EXPIRES_AT } from "@/lib/meta-graph";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -50,14 +51,15 @@ function metaErrorDetail(
 async function resolveCredentials(
   req: NextRequest,
   userId: string
-): Promise<{ appId: string; appSecret: string; metaAppId: string | null } | null> {
+): Promise<{ appId: string; appSecret: string; metaAppId: string | null; configId: string | null } | null> {
   const appCookieId = req.cookies.get("ig_oauth_app_id")?.value ?? "";
 
   if (appCookieId) {
     const admin = getSupabaseAdmin();
+    // select("*"): config_id pode não existir antes de supabase/user_meta_apps_unified.sql.
     const { data: app, error } = await admin
       .from("user_meta_apps")
-      .select("ig_app_id, ig_app_secret")
+      .select("*")
       .eq("id", appCookieId)
       .eq("user_id", userId)
       .single();
@@ -74,13 +76,13 @@ async function resolveCredentials(
       console.error("[ig/callback] resolveCredentials: falha ao decriptar secret →", (e as Error).message);
       return null;
     }
-    return { appId: app.ig_app_id, appSecret: secret, metaAppId: appCookieId };
+    return { appId: app.ig_app_id, appSecret: secret, metaAppId: appCookieId, configId: app.config_id ?? null };
   }
 
   const appId = process.env.NEXT_PUBLIC_META_CLIENT_ID ?? "";
   const appSecret = process.env.META_CLIENT_SECRET ?? "";
   if (!appId || !appSecret) return null;
-  return { appId, appSecret, metaAppId: null };
+  return { appId, appSecret, metaAppId: null, configId: process.env.META_CONFIG_ID || null };
 }
 
 // OAuth e troca de token são chamadas oficiais da Meta: conexão direta
@@ -257,6 +259,80 @@ async function getIGProfile(token: string) {
   };
 }
 
+type IGProfile = {
+  id: string;
+  username: string;
+  name: string | null;
+  profile_picture_url: string | null;
+  media_count: number | null;
+};
+
+async function readGraphFb<T>(fn: string, res: Response): Promise<T> {
+  detectRateLimit(res);
+  const data = (await res.json()) as T & { error?: { message: string; type?: string; code?: number } };
+  if (data.error) {
+    const detail = metaErrorDetail(fn, res.status, data.error.message, data.error.type, data.error.code);
+    if (data.error.code === 4 || data.error.code === 17 || data.error.code === 32) {
+      throw Object.assign(new Error(detail), { isRateLimit: true });
+    }
+    throw new Error(detail);
+  }
+  if (!res.ok) throw new Error(metaErrorDetail(fn, res.status));
+  return data;
+}
+
+// Login Unificado: o code vira um token de system user (não vence) no Graph do Facebook.
+async function exchangeCodeUnified(code: string, appId: string, appSecret: string): Promise<string> {
+  const params = new URLSearchParams({
+    client_id: appId,
+    client_secret: appSecret,
+    redirect_uri: REDIRECT_URI,
+    code,
+  });
+  const res = await fetchWithTimeout(`${GRAPH_FB_BASE}/oauth/access_token?${params.toString()}`);
+  const data = await readGraphFb<{ access_token?: string }>("exchangeCodeUnified", res);
+  console.log("[ig/callback] exchangeCodeUnified →", res.status, data.access_token ? "ok" : "sem token");
+  if (!data.access_token) throw new Error("[exchangeCodeUnified] resposta sem access_token");
+  return data.access_token;
+}
+
+// O token cobre todas as contas que a pessoa compartilhou na autorização.
+async function getUnifiedProfiles(token: string): Promise<IGProfile[]> {
+  const t = encodeURIComponent(token);
+  const res = await fetchWithTimeout(
+    `${GRAPH_FB_BASE}/me/assigned_instagram_accounts?fields=id,username&limit=100&access_token=${t}`
+  );
+  const list = await readGraphFb<{ data?: Array<{ id: string }> }>("assignedInstagramAccounts", res);
+  const ids = (list.data ?? []).map((a) => a.id).filter(Boolean);
+  console.log("[ig/callback] assignedInstagramAccounts →", res.status, ids.length);
+  if (!ids.length) {
+    throw new Error("[assignedInstagramAccounts] Nenhuma conta do Instagram foi compartilhada na autorização.");
+  }
+
+  return Promise.all(
+    ids.map(async (id) => {
+      const r = await fetchWithTimeout(
+        `${GRAPH_FB_BASE}/${id}?fields=id,username,name,profile_picture_url,media_count&access_token=${t}`
+      );
+      const p = await readGraphFb<{
+        id?: string;
+        username?: string;
+        name?: string;
+        profile_picture_url?: string;
+        media_count?: number;
+      }>("getIGProfileUnified", r);
+      if (!p.id || !p.username) throw new Error(`[getIGProfileUnified] conta ${id} sem username`);
+      return {
+        id: p.id,
+        username: p.username,
+        name: p.name ?? null,
+        profile_picture_url: p.profile_picture_url ?? null,
+        media_count: p.media_count ?? null,
+      };
+    })
+  );
+}
+
 async function upsertAccount(
   admin: ReturnType<typeof getSupabaseAdmin>,
   userId: string,
@@ -408,20 +484,32 @@ export async function GET(req: NextRequest) {
   const admin = getSupabaseAdmin();
 
   try {
-    const { token: shortToken } = await exchangeCode(code, credentials.appId, credentials.appSecret);
-    const { token: longToken, expiresAt } = await getLongLivedToken(shortToken, credentials.appSecret);
-    const profile = await getIGProfile(longToken);
+    let longToken: string;
+    let expiresAt: Date;
+    let profiles: IGProfile[];
 
-    console.log(`[ig/callback] @${profile.username} (id:${profile.id}) → user ${userId}${isMagicLink ? " [magic-link]" : ""}`);
+    if (credentials.configId) {
+      longToken = await exchangeCodeUnified(code, credentials.appId, credentials.appSecret);
+      expiresAt = UNIFIED_TOKEN_EXPIRES_AT;
+      profiles = await getUnifiedProfiles(longToken);
+    } else {
+      const { token: shortToken } = await exchangeCode(code, credentials.appId, credentials.appSecret);
+      ({ token: longToken, expiresAt } = await getLongLivedToken(shortToken, credentials.appSecret));
+      profiles = [await getIGProfile(longToken)];
+    }
 
-    await upsertAccount(admin, userId, profile, longToken, expiresAt, credentials.metaAppId);
+    for (const profile of profiles) {
+      console.log(`[ig/callback] @${profile.username} (id:${profile.id}) → user ${userId}${isMagicLink ? " [magic-link]" : ""}${credentials.configId ? " [unificado]" : ""}`);
 
-    if (profile.media_count !== null) {
-      await admin
-        .from("instagram_accounts")
-        .update({ posts_count: profile.media_count })
-        .eq("user_id", userId)
-        .eq("ig_business_account_id", profile.id);
+      await upsertAccount(admin, userId, profile, longToken, expiresAt, credentials.metaAppId);
+
+      if (profile.media_count !== null) {
+        await admin
+          .from("instagram_accounts")
+          .update({ posts_count: profile.media_count })
+          .eq("user_id", userId)
+          .eq("ig_business_account_id", profile.id);
+      }
     }
 
     // Conta nova nasce SEM proxy (proxy_url = NULL). Desde que as chamadas

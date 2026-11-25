@@ -16,7 +16,9 @@ export async function PATCH(
   const { appId } = await params;
   const body = await request.json();
 
-  const updates: Record<string, string> = { updated_at: new Date().toISOString() };
+  const updates: Record<string, string | null> = { updated_at: new Date().toISOString() };
+  const comConfig = body.config_id !== undefined;
+  if (comConfig) updates.config_id = String(body.config_id).trim() || null;
 
   if (body.app_name !== undefined) {
     const name = String(body.app_name).trim().slice(0, 100);
@@ -42,9 +44,12 @@ export async function PATCH(
     .update(updates)
     .eq("id", appId)
     .eq("user_id", user.id)
-    .select("id, app_name, ig_app_id, created_at, updated_at")
+    .select(comConfig ? "id, app_name, ig_app_id, config_id, created_at, updated_at" : "id, app_name, ig_app_id, created_at, updated_at")
     .single();
 
+  if (error?.code === "42703" || error?.code === "PGRST204") {
+    return NextResponse.json({ error: "Rode supabase/user_meta_apps_unified.sql no Supabase para usar o Login Unificado." }, { status: 500 });
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "App não encontrado." }, { status: 404 });
   return NextResponse.json({ app: data });

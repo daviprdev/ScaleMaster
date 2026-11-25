@@ -7,7 +7,7 @@ import { hasValidCronSecret } from "@/lib/cron-auth";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const GRAPH_API = "https://graph.instagram.com/v21.0";
+import { graphBase } from "@/lib/meta-graph";
 
 interface AccountRow {
   id: string;
@@ -25,7 +25,7 @@ async function fetchProfileFromAPI(
 ): Promise<{ followers_count: number | null; posts_count: number | null }> {
   try {
     const res = await undiciFetch(
-      `${GRAPH_API}/${igId}?fields=followers_count,media_count&access_token=${encodeURIComponent(token)}`,
+      `${graphBase(token)}/${igId}?fields=followers_count,media_count&access_token=${encodeURIComponent(token)}`,
       { signal: AbortSignal.timeout(15_000) }
     );
     const data = (await res.json()) as {
