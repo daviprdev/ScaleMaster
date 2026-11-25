@@ -2,114 +2,93 @@
 
 ## Visão Geral
 
-Plataforma SaaS de automação Instagram hospedada em VPS própria com Supabase gerenciado.
+Plataforma SaaS de automação Instagram no **Cloudflare Workers** (desde 25/11/2026) com Supabase gerenciado.
 
-1. **SaaS Frontend/Backend** (Next.js) — dashboard, API routes, agendamentos systemd
-2. **Python Server** (FastAPI) — scraping, processamento de vídeo, automação browser
+1. **SaaS Frontend/Backend** (Next.js via OpenNext) — dashboard, API routes e Cron Triggers num Worker só
+2. **Python Server** (FastAPI, `python_server/`) — **fora do ar** desde a migração; a raspagem pela conta leitora (`process-scrape-jobs`) não roda. Inspirações seguem pela HikerAPI.
 
 ## Repositório
 
 - **GitHub:** `daviprdev/ScaleMaster`
-- **Branch `main`:** fonte única de verdade → deploy na VPS via git pull + docker compose
+- **Branch `main`:** fonte única de verdade → deploy no Cloudflare com `npm run cf:deploy` a partir do PC do dono
 
 ## Arquitetura
 
-### Produção (VPS + Supabase) — único ambiente
+### Produção (Cloudflare Workers + Supabase) — único ambiente
 
-- **URL Produção:** https://scalemaster.tech
-- **VPS:** `2.25.244.181` (IPv6: `2a02:4780:75:828b::1`) — Hostinger KVM 2, **2 vCPU / 8 GB / 100 GB, Ubuntu 26.04.1 LTS, kernel `7.0.0-42-generic` x86_64**
-- **Checkout:** `/opt/scalemaster`
+- **URL Produção:** https://scalemaster.tech (custom domain do Worker); teste: https://scalemaster.davipr-dev.workers.dev
+- **Worker:** `scalemaster`, plano **Workers Paid** (conta `cb76670dc6a7eba91b555c1553dd466a`); config em `wrangler.jsonc`, adaptador em `open-next.config.ts`, entrada em `custom-worker.ts` (app OpenNext + crons)
+- **DNS:** zona `scalemaster.tech` na Cloudflare (nameservers `corey`/`kiki.ns.cloudflare.com`; domínio registrado na Hostinger)
 - **Framework:** Next.js 15 App Router, Tailwind CSS
 - **Database/Auth/Storage:** Supabase (projeto `nulhkxjpsulkoygmralf`)
-- **Containers:** `scalemaster-app-1` (Next.js :3000) + `scalemaster-python-server-1` (FastAPI :8000), projeto compose `scalemaster`
-- **Proxy Reverso:** Nginx com HTTPS (Let's Encrypt) — `/etc/nginx/sites-enabled/scalemaster.tech`, espelhado em `nginx/nginx.conf`
-- **Agendamentos:** 16 timers systemd (`scalemaster-*.timer`) — nenhum cron roda fora da VPS
+- **Sem FFmpeg e sem proxies:** todo vídeo vai como está na Biblioteca (`normalizeProcessingMode` sempre `original`; efeitos e texto na tela do Loop ignorados); "Usar minhas proxies" e `PUBLISH_PROXIES` não têm efeito, tudo sai direto do Cloudflare.
+- **HTTP do servidor:** `lib/http.ts` (`httpFetch`, fetch original do Next com `no-store`). A undici **não roda** no Workers — nunca importar `undici` em código do app.
+- **Limites que importam:** 128 MB de memória (vídeo vai para o Storage em fluxo, `streamOriginalToStorage`), sem disco (`public/` só pelo binding `ASSETS`, ver `lib/brand-logo.ts`), fetch para o próprio domínio não volta ao Worker (usar `lib/self-fetch.ts` / binding `WORKER_SELF_REFERENCE`).
 - **Design System:** Scale Master — escuro quase preto + azul da logo (#001244/#00498D) + prata (#BEB8BC); tokens em `app/globals.css`, primitivos em `components/ui/`, referência em `docs/design/`.
 
-### Serviços e Portas
+### VPS antiga (desligada)
 
-| Serviço         | Container                   | Porta Interna | Exposição                    |
-| --------------- | --------------------------- | ------------- | ---------------------------- |
-| Next.js App     | scalemaster-app-1           | 3000          | 127.0.0.1:3000 (Nginx proxy) |
-| Python Server   | scalemaster-python-server-1 | 8000          | Rede interna Docker apenas   |
-| Android (teste) | teste-ig                    | 5555 → adb    | 127.0.0.1:6000               |
+`2.25.244.181` (Hostinger KVM 2) ainda com os containers no ar e os 16 timers **desabilitados** desde 25/11 15:18 UTC; o DNS já não aponta para ela. Cancelamento a cargo do dono. A KVM 8 (`187.53.109.83`, agente das Contas VPS) também será cancelada.
 
 ## Deploy
 
-### Procedimento Padrão
+### Procedimento Padrão (PC do dono, Windows)
 
-```bash
-ssh root@2.25.244.181
-cd /opt/scalemaster
+```powershell
 git pull origin main
-docker compose --env-file .env.production up -d --build app python-server
-curl -sf http://127.0.0.1:3000/api/health  # Deve retornar {"status":"ok"}
+npm ci
+npm run cf:deploy          # opennextjs-cloudflare build + deploy
+curl.exe -sf https://scalemaster.tech/api/health   # {"status":"ok"}
 ```
+
+- Exige `npx wrangler login` feito no PC (OAuth do dono). `wrangler whoami` confere.
+- Um `wrangler dev` esquecido trava a pasta `.open-next` (EPERM no build): matar os processos com `scalemaster-cf`/o caminho do checkout na linha de comando.
+- Segredos: `npx wrangler secret put NOME` (ou `secret bulk arquivo.json`); `NEXT_PUBLIC_*` também entram no **build** (o `.env.production` local, fora do git, precisa ter os públicos).
 
 ### Rollback
 
-```bash
-cd /opt/scalemaster
-git revert HEAD  # Ou: git checkout <commit-anterior>
-docker compose --env-file .env.production up -d --build app
+```powershell
+npx wrangler deployments list
+npx wrangler rollback <version-id>
 ```
-
-### Verificações Pré-Deploy
-
-- [ ] Git sem rebase/merge pendente (`ls .git/rebase-merge` deve falhar)
-- [ ] `docker-compose.yml` contém serviços `app` E `python-server`
-- [ ] Arquivo termina com quebra de linha (previne corrupção YAML)
-- [ ] Segredos presentes em `.env.production`
 
 ## Variáveis de Ambiente
 
-### VPS (.env.production)
+Segredos do Worker (`wrangler secret list`); `NEXT_PUBLIC_APP_URL` e `CRONS_LIGADOS` ficam em `vars` do `wrangler.jsonc`.
 
-- `NEXT_PUBLIC_APP_URL=https://scalemaster.tech`
+- `NEXT_PUBLIC_APP_URL=https://scalemaster.tech`, `NEXT_PUBLIC_REDIRECT_BASE_URL`
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase público
-- `SUPABASE_SERVICE_ROLE_KEY` — Admin access (apenas server-side)
-- `SUPABASE_SECRET_KEY` — chave `sb_secret_` (opcional): login por username e `/auth/callback` mandam o IP do cliente no `Sb-Forwarded-For` (exige IP Address Forwarding ligado no Supabase); sem ela, caem na anon key
+- `SUPABASE_SERVICE_ROLE_KEY` — Admin access (apenas server-side; também usada no upload em fluxo do Storage)
+- `SUPABASE_SECRET_KEY` — chave `sb_secret_` (opcional, não configurada): login por username e `/auth/callback` mandam o IP do cliente no `Sb-Forwarded-For`; sem ela, caem na anon key
 - `ENCRYPTION_SECRET` — AES-256-GCM para credenciais OAuth
-- `PYTHON_SERVER_URL=http://python-server:8000` — Comunicação interna
-- `PYTHON_SERVER_SECRET` — Auth entre app e python-server
-- `CRON_SECRET` — Bearer dos timers; **tem que ser igual** ao de `/opt/scalemaster/.env.cron`
-- `META_CLIENT_SECRET` — Meta/Instagram OAuth (modo global fallback)
-- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` — Push notifications
+- `CRON_SECRET` — Bearer que o `custom-worker.ts` manda para as rotas de cron
+- `NEXT_PUBLIC_META_CLIENT_ID`, `META_CLIENT_SECRET` — Meta/Instagram OAuth (modo global fallback)
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `VAPID_EMAIL` — Push notifications
 - `SHARKBOT_WEBHOOK_SECRET`, `APEXVIPS_WEBHOOK_SECRET` — Webhooks de vendas
-- `APIFY_API_TOKEN` — Scraper externo (integração opcional)
-- `PUBLISH_PROXIES` — proxies da VPS (URLs separadas por vírgula) para publicar posts **sem** "Usar minhas proxies"; cada post cai numa delas pelo hash do id, proxy morta é pulada, sem nenhuma viva sai direto (`lib/vps-publish-proxy.ts`). **Vazio desde 2026-10-31**; as 3 URLs antigas estão comentadas logo acima no `.env.production`
-
-### VPS (.env.cron)
-
-- `CRON_SECRET` — lido pelos timers systemd (`EnvironmentFile=/opt/scalemaster/.env.cron`)
+- `HIKERAPI_KEY`, `HIKERAPI_KEYS`, `SCRAPECREATORS_API_KEY`, `APIFY_API_TOKEN` — Inspirações
+- `CRONS_LIGADOS` — `"1"` liga os Cron Triggers; nunca ligar junto com outro executor dos mesmos crons
+- Fora do Worker de propósito: `PYTHON_SERVER_URL`, `PYTHON_SERVER_SECRET`, `PUBLISH_PROXIES`
 
 ### Convenções de Segurança
 
 - Webhooks: fail-closed (HTTP 500 se segredo ausente, 401 se inválido)
 - Logs OAuth: nunca registrar tokens/códigos, apenas user_id/error_type
 - Credenciais por usuário (BYOC): criptografadas com ENCRYPTION_SECRET no banco
+- As proteções que o Nginx fazia (rate limit do login, `/api/cron/*` só local, limite de corpo) **não existem** no Cloudflare; pendente em memória `auditoria-pendente-pos-migracao`.
 
-## Agendamentos (Systemd Timers)
+## Agendamentos (Cron Triggers)
 
-16 timers ativos em produção, gerados por `scripts/generate-systemd-timers.sh`. Listar com:
+14 crons no `wrangler.jsonc` (`triggers.crons`, UTC); a tabela expressão → rotas fica em `CRONS` no `custom-worker.ts`, que chama cada rota pelo binding `WORKER_SELF_REFERENCE` com `Authorization: Bearer CRON_SECRET`. Saíram: `process-videos` (FFmpeg) e `process-scrape-jobs` (python-server).
 
-```bash
-systemctl list-timers --all | grep scalemaster
+- `* * * * *` publish-scheduled · `*/2` publish-pending, finalize-inspiration-scrapes · `*/5` prefetch-clone-urls, process-loops, sync-post-insights · `*/10` sync-distribute-accounts, check-health-alerts · `*/15` sync-account-views, daily-profit-notification · `*/30` story-templates · `0 * * * *` check-views-goal · `0 */12 * * *` refresh-tokens · `0 2 * * *` POST /api/analytics/sync
+
+Saúde (cada disparo loga `[cron] <rota> → HTTP <status>`; rota com erro marca a execução como falha):
+
+```powershell
+npx wrangler tail scalemaster --format pretty
 ```
 
-Principais:
-
-- `scalemaster-publish-scheduled` — Publicação agendada (\* \* \* \* \*)
-- `scalemaster-refresh-tokens` — Renovação tokens Meta (0 _/12 _ \* \*)
-- `scalemaster-process-videos` — Processamento FFmpeg (_/5 _ \* \* \*)
-- `scalemaster-sync-post-insights` — Sincronização métricas (_/5 _ \* \* \*)
-
-Saúde dos timers (todos devem sair com sucesso, não `Failed`):
-
-```bash
-systemctl list-units --failed | grep scalemaster
-journalctl -u scalemaster-publish-scheduled.service --since "-10 min" --no-pager
-```
+Painel: Workers & Pages → scalemaster → Logs / Settings → Triggers.
 
 ## Automação de Instagram: premissas travadas
 
@@ -187,6 +166,8 @@ Tabelas: `supabase/emulador_agente.sql`, `supabase/emulador_contas.sql`, `supaba
 
 ## Aba Contas VPS (agente-vps/)
 
+> **Desligada desde 25/11/2026:** as duas VPS vão ser canceladas e o agente não roda em lugar nenhum; a aba só lista o que está no banco. O histórico abaixo fica como referência.
+
 - **Desde 12/11 o agente roda na KVM 8** (`root@187.53.109.83`, Hostinger KVM 8, Brasil, 8 vCPU / 32 GB / 387 GB, Ubuntu 26.04.1, kernel `7.0.0-38`, hostname `srv2155190`), checkout `/opt/scalemaster`, unit `scalemaster-vps-agent`, capacidade 4 ligadas / 4 cadastros, sem `HOST_TESTE`. O site (app + python-server) continua em `2.25.244.181`, onde o agente antigo foi **apagado** (12/11: unit `scalemaster-vps-agent` e `agente-vps/.env` com o código removidos; a pasta `agente-vps/` continua por ser do repositório). Nunca reinstalar o agente lá: dois agentes com o mesmo código disputam a fila. Deploy do agente: na KVM 8, `git pull` + `systemctl restart scalemaster-vps-agent`. Fotos descem do app (`/api/emulador/agente/midias`), prints sobem (`/api/emulador/agente/prints`), RAM do lote vem do agente (`capacity.ramDisponivelMb`). Migração feita com `exportar.sh`/`importar.sh` (cópia por `rsync` direto entre as VPSs com a chave do PC encaminhada, `ssh -A`); export ainda em `/opt/scalemaster/migracao` nas duas.
 
 - Contas em containers **redroid** (`redroid/redroid:13.0.0-latest`, Android 13 sem tela), uma proxy fixa por conta e kill switch; tudo é docker + adb + props.
@@ -241,7 +222,9 @@ O worker RPA Python (`/opt/worker-rpa`) foi desativado durante a migração. Onb
 
 | Problema                           | Diagnóstico                                      | Solução                                                                             |
 | ---------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| 502 Bad Gateway                    | Container app parado                             | `docker ps`, `docker logs scalemaster-app-1`                                        |
+| Erro 1101/1102 no site             | Worker lançou exceção ou estourou CPU            | `npx wrangler tail scalemaster`; rollback com `wrangler rollback`                   |
+| Build EPERM em `.open-next`        | `wrangler dev` esquecido segurando a pasta       | Matar os processos do checkout e rodar de novo                                      |
+| 502 Bad Gateway (VPS antiga)       | Container app parado                             | `docker ps`, `docker logs scalemaster-app-1`                                        |
 | Python indisponível                | python-server fora                               | Verificar compose tem `python-server`, restart                                      |
 | Webhook retorna 500                | Secret não configurado                           | Adicionar `*_WEBHOOK_SECRET` ao .env.production                                     |
 | OAuth falha callback               | NEXT_PUBLIC_APP_URL errado                       | Confirmar `https://scalemaster.tech`                                                |
@@ -262,6 +245,7 @@ O worker RPA Python (`/opt/worker-rpa`) foi desativado durante a migração. Onb
 
 ## Histórico
 
+- **2026-11-25:** produção migrada para o Cloudflare Workers (OpenNext, plano pago). Crons no Worker desde 15:18 UTC (timers da VPS desabilitados), domínio no Worker desde 15:48 UTC. Sem FFmpeg, sem proxies, sem python-server; aba Contas VPS desligada. Roteiro em `docs/migracao-cloudflare.md`.
 - **2026-11-07:** gate do redroid vencido neste host — `binder_linux` carrega nativo no kernel 7.0.0-42; Instagram x86_64 instalado e estável na tela de login por proxy BR. Build arm64 descartado (SIGSEGV em `libnb.so`).
 - **2026-10-16:** produção 100% na VPS — crons só nos timers systemd, checkout, containers e timers padronizados como `scalemaster`.
 - Relatórios antigos de migração ficam em `docs/` como registro histórico.

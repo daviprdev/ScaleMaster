@@ -17,9 +17,9 @@
       "service": "scalemaster"
     }
   ],
-  // Até a virada o Worker responde só em scalemaster.<conta>.workers.dev.
-  // Na virada: acrescentar
-  //   "routes": [{ "pattern": "scalemaster.tech", "custom_domain": true }],
+  // Virada em 25/11/2026: o domínio vem para o Worker (custom domain); o
+  // workers.dev continua respondendo para testes.
+  "routes": [{ "pattern": "scalemaster.tech", "custom_domain": true }],
   "workers_dev": true,
   // 14 dos 16 timers systemd da VPS viram estes crons (UTC). Rotas em custom-worker.ts.
   "triggers": {
@@ -38,8 +38,8 @@
   "observability": { "enabled": true },
   "vars": {
     "NEXT_PUBLIC_APP_URL": "https://scalemaster.tech",
-    // "1" só na virada, junto com o desligamento dos timers da VPS: com os dois
-    // ligados, VPS e Worker rodam os mesmos crons ao mesmo tempo.
-    "CRONS_LIGADOS": "0"
+    // Ligado na virada (25/11/2026), junto com o desligamento dos timers da VPS.
+    // Nunca ligar com os timers da VPS ativos: os dois rodariam os mesmos crons.
+    "CRONS_LIGADOS": "1"
   }
 }
