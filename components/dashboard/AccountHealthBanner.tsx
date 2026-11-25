@@ -44,27 +44,27 @@ export function AccountHealthBanner({ accounts }: Props) {
   const rest = accounts.slice(3);
 
   return (
-    <div className="relative z-50 shrink-0 border-b border-red-500/30 bg-red-950/60 backdrop-blur-sm">
+    <div className="relative z-50 shrink-0 border-b border-danger/30 bg-danger/15 backdrop-blur-xl">
       <div className="px-4 py-2.5 flex items-start gap-3">
         {/* Ícone */}
-        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+        <AlertTriangle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
 
         {/* Conteúdo */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-red-300">
+            <span className="text-xs font-semibold text-danger">
               {accounts.length} conta{accounts.length > 1 ? "s" : ""} com erro de publicação
             </span>
             <button
               onClick={() => setExpanded(e => !e)}
-              className="flex items-center gap-1 text-[10px] text-red-400/80 hover:text-red-300 transition-colors"
+              className="flex items-center gap-1 text-[10px] text-danger/80 hover:text-danger transition-colors"
             >
               {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               {expanded ? "Ocultar" : "Ver detalhes"}
             </button>
             <Link
               href="/dashboard/failover"
-              className="flex items-center gap-1 text-[10px] text-red-400/80 hover:text-red-300 transition-colors"
+              className="flex items-center gap-1 text-[10px] text-danger/80 hover:text-danger transition-colors"
             >
               <ExternalLink className="w-3 h-3" />
               Gerenciar
@@ -73,7 +73,7 @@ export function AccountHealthBanner({ accounts }: Props) {
 
           {/* Preview sem expandir */}
           {!expanded && (
-            <p className="text-[11px] text-red-400/70 mt-0.5">
+            <p className="text-[11px] text-danger/70 mt-0.5">
               {preview.map(a => `@${a.username}`).join(", ")}
               {rest.length > 0 && ` e mais ${rest.length}…`}
             </p>
@@ -84,15 +84,15 @@ export function AccountHealthBanner({ accounts }: Props) {
             <ul className="mt-2 space-y-1">
               {accounts.map(a => (
                 <li key={a.id} className="flex items-center gap-2 text-[11px]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
-                  <span className="font-medium text-red-300">@{a.username}</span>
-                  <span className="text-red-400/60">—</span>
-                  <span className="text-red-400/80">{ERROR_LABELS[a.errorType]}</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-danger shrink-0" />
+                  <span className="font-medium text-danger">@{a.username}</span>
+                  <span className="text-danger/60">—</span>
+                  <span className="text-danger/80">{ERROR_LABELS[a.errorType]}</span>
                 </li>
               ))}
-              <li className="text-[10px] text-red-500/60 pt-1">
+              <li className="text-[10px] text-danger/60 pt-1">
                 Essas contas foram pausadas automaticamente. Corrija o problema e clique em{" "}
-                <strong className="text-red-400">Restaurar</strong> na página de Failover.
+                <strong className="text-danger">Restaurar</strong> na página de Failover.
               </li>
             </ul>
           )}
@@ -101,7 +101,7 @@ export function AccountHealthBanner({ accounts }: Props) {
         {/* Fechar */}
         <button
           onClick={dismiss}
-          className="shrink-0 p-0.5 rounded text-red-500/60 hover:text-red-300 transition-colors"
+          className="shrink-0 p-0.5 rounded text-danger/60 hover:text-danger transition-colors"
           aria-label="Dispensar aviso"
         >
           <X className="w-3.5 h-3.5" />

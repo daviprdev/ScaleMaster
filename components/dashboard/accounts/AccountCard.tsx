@@ -157,11 +157,11 @@ function tokenStatusChip(
 
 const AVATAR_COLORS = [
   "from-primary to-primary-2",
-  "from-danger to-danger",
+  "from-[#c08cff] to-[#ff6ab0]",
   "from-primary-2 to-primary",
-  "from-success to-success",
-  "from-warning to-warning",
-  "from-danger to-primary",
+  "from-[#2fd39a] to-[#1c7ed6]",
+  "from-[#ffb347] to-[#ff6a5c]",
+  "from-[#5b6bff] to-[#b26bff]",
 ];
 
 function avatarColor(username: string) {
@@ -417,7 +417,7 @@ export function AccountCard({
               className={cn(
                 "flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br ring-2",
                 accountFell
-                  ? "from-danger to-danger ring-danger/30"
+                  ? "from-[#c08cff] to-[#ff6ab0] ring-danger/30"
                   : cn("ring-line", avatarColor(account.username)),
               )}
             >

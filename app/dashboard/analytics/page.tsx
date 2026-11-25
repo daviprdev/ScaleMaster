@@ -121,8 +121,8 @@ const ACC_COLORS = [
   "from-primary to-success",
   "from-primary-2 to-primary",
   "from-primary to-primary-2",
-  "from-danger to-danger",
-  "from-warning to-warning",
+  "from-[#c08cff] to-[#ff6ab0]",
+  "from-[#ffb347] to-[#ff6a5c]",
 ];
 function accountGradient(u: string) {
   let h = 0;

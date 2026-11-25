@@ -79,7 +79,7 @@ export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void
         <button
           onClick={onMobileMenuToggle}
           className="md:hidden w-9 h-9 flex items-center justify-center rounded-xl
-            text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors flex-shrink-0"
+            text-ink-3 hover:text-white hover:bg-white/[0.06] transition-colors flex-shrink-0"
           aria-label="Abrir menu"
         >
           <Menu size={20} />

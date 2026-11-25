@@ -45,23 +45,23 @@ interface Account {
 const GRADIENTS = [
   "from-primary to-primary-2",
   "from-primary-2 to-primary",
-  "from-danger to-danger",
-  "from-success to-success",
-  "from-warning to-warning",
+  "from-[#c08cff] to-[#ff6ab0]",
+  "from-[#2fd39a] to-[#1c7ed6]",
+  "from-[#ffb347] to-[#ff6a5c]",
   "from-primary to-primary",
-  "from-danger to-danger",
+  "from-[#c08cff] to-[#ff6ab0]",
   "from-success to-primary-2",
-  "from-danger to-primary",
-  "from-success to-success",
+  "from-[#5b6bff] to-[#b26bff]",
+  "from-[#2fd39a] to-[#1c7ed6]",
 ];
 
 const AVATAR_COLORS = [
   "from-primary to-primary-2",
-  "from-danger to-danger",
+  "from-[#c08cff] to-[#ff6ab0]",
   "from-primary-2 to-primary",
-  "from-success to-success",
-  "from-warning to-warning",
-  "from-danger to-primary",
+  "from-[#2fd39a] to-[#1c7ed6]",
+  "from-[#ffb347] to-[#ff6a5c]",
+  "from-[#5b6bff] to-[#b26bff]",
 ];
 
 function strHash(s: string): number {

@@ -120,8 +120,8 @@ function Avatar({ username, size = "md" }: { username: string; size?: "sm" | "md
     "from-primary/70 to-primary-2/70",
     "from-primary to-primary-2",
     "from-primary-2 to-primary",
-    "from-warning to-warning",
-    "from-danger to-danger",
+    "from-[#ffb347] to-[#ff6a5c]",
+    "from-[#c08cff] to-[#ff6ab0]",
   ];
   const idx = username.charCodeAt(0) % colors.length;
   const sz = size === "sm" ? "w-7 h-7 text-[10px]" : size === "lg" ? "w-10 h-10 text-sm" : "w-8 h-8 text-xs";

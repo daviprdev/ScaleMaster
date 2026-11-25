@@ -298,8 +298,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   className={cn(
                     "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200",
                     pathname.startsWith("/admin")
-                      ? "bg-amber-500/[0.08] text-amber-300"
-                      : "text-amber-600/60 hover:text-amber-400 hover:bg-amber-500/[0.07]"
+                      ? "bg-warning-soft text-warning"
+                      : "text-warning/60 hover:text-warning hover:bg-warning-soft"
                   )}
                 >
                   <Shield className="flex-shrink-0 relative z-10" size={17} strokeWidth={1.5} />
@@ -317,7 +317,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                     )}
                   </AnimatePresence>
                   {collapsed && pathname.startsWith("/admin") && (
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[55%] bg-amber-400 rounded-r-full" />
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-[55%] bg-warning rounded-r-full" />
                   )}
                 </motion.div>
               </Link>
@@ -337,7 +337,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
               "flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-150 select-none",
               collapsed ? "justify-center" : "",
               menuOpen
-                ? "bg-white/[0.06] border border-[#222]"
+                ? "bg-white/[0.06] border border-line"
                 : "hover:bg-white/[0.04] border border-transparent"
             )}
           >
@@ -360,8 +360,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   exit={{ opacity: 0 }}
                   className="flex-1 min-w-0"
                 >
-                  <p className="text-sm font-semibold text-white/85 truncate leading-tight">{userName}</p>
-                  <p className="text-[11px] text-white/35 leading-tight">Minha Conta</p>
+                  <p className="text-sm font-semibold text-ink truncate leading-tight">{userName}</p>
+                  <p className="text-[11px] text-ink-3 leading-tight">Minha Conta</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -371,7 +371,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex-shrink-0 text-white/25"
+                  className="flex-shrink-0 text-ink-3"
                 >
                   <ChevronUp
                     size={14}
@@ -466,8 +466,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                             className={cn(
                               "relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200",
                               pathname.startsWith("/admin")
-                                ? "bg-amber-500/10 text-amber-300"
-                                : "text-amber-500/50 hover:text-amber-400 hover:bg-amber-500/[0.07]"
+                                ? "bg-warning-soft text-warning"
+                                : "text-warning/50 hover:text-warning hover:bg-warning-soft"
                             )}
                           >
                             <Shield className="flex-shrink-0 relative z-10" size={17} strokeWidth={1.5} />
@@ -483,7 +483,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                     <Link
                       href="/dashboard/settings"
                       onClick={onMobileClose}
-                      className="flex-1 min-w-0 flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/70 hover:bg-white/[0.05] transition-colors"
+                      className="flex-1 min-w-0 flex items-center gap-3 px-3 py-2.5 rounded-xl text-ink-2 hover:bg-white/[0.05] transition-colors"
                     >
                       {userAvatar ? (
                         <img
@@ -497,14 +497,14 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                         </div>
                       )}
                       <div className="flex-1 min-w-0 text-left">
-                        <p className="text-sm font-semibold text-white/85 truncate leading-tight">{userName}</p>
-                        <p className="text-[11px] text-white/35 leading-tight">Minha Conta</p>
+                        <p className="text-sm font-semibold text-ink truncate leading-tight">{userName}</p>
+                        <p className="text-[11px] text-ink-3 leading-tight">Minha Conta</p>
                       </div>
                     </Link>
                     <button
                       onClick={handleLogout}
                       aria-label="Sair"
-                      className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-red-500/60 hover:text-red-400 hover:bg-red-500/[0.07] transition-colors"
+                      className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-xl text-danger/60 hover:text-danger hover:bg-danger-soft transition-colors"
                     >
                       <LogOut size={17} />
                     </button>
@@ -547,16 +547,16 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                   )}
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-white truncate leading-tight">{userName}</p>
-                    <p className="text-xs text-white/30 leading-tight">{userEmail}</p>
+                    <p className="text-xs text-ink-3 leading-tight">{userEmail}</p>
                   </div>
                 </div>
                 <div className="border-t border-white/[0.06]" />
                 <div className="p-1.5 space-y-0.5">
                   <button
                     onClick={() => { closeMenu(); router.push("/dashboard/settings"); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/[0.05] transition-colors"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-ink-2 hover:text-white hover:bg-white/[0.05] transition-colors"
                   >
-                    <User size={15} className="flex-shrink-0 text-white/30" />
+                    <User size={15} className="flex-shrink-0 text-ink-3" />
                     Configurações
                   </button>
                 </div>
@@ -564,7 +564,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose = () => {} }: { mobi
                 <div className="p-1.5">
                   <button
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-500 hover:text-red-400 hover:bg-red-500/[0.07] transition-colors"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-danger hover:text-danger hover:bg-danger-soft transition-colors"
                   >
                     <LogOut size={15} className="flex-shrink-0" />
                     Sair

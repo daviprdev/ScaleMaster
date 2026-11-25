@@ -178,7 +178,7 @@ function SingleMediaUpload({
           </div>
         )}
         {media.status === "error" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-danger/60">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/70 ring-1 ring-inset ring-danger/40">
             <div className="flex flex-col items-center gap-1 px-3 text-center">
               <XCircle size={20} className="text-danger" />
               <span className="text-xs text-danger leading-tight">{media.error ?? "Falha"}</span>

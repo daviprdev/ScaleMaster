@@ -170,11 +170,11 @@ function tokenStatusChip(tokenExpiresAt: string | null, isMetaAccount: boolean) 
 
 const AVATAR_COLORS = [
   "from-primary to-primary-2",
-  "from-danger to-danger",
+  "from-[#c08cff] to-[#ff6ab0]",
   "from-primary-2 to-primary",
-  "from-success to-success",
-  "from-warning to-warning",
-  "from-danger to-primary",
+  "from-[#2fd39a] to-[#1c7ed6]",
+  "from-[#ffb347] to-[#ff6a5c]",
+  "from-[#5b6bff] to-[#b26bff]",
 ];
 
 function avatarColor(username: string) {
