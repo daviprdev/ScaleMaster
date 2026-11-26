@@ -1151,7 +1151,7 @@ export default function AccountsPage() {
           (failed > 0 ? `, ${failed} com erro.` : ".") +
           (blocked.length > 0
             ? ` Suspensas: ${blocked.slice(0, 5).join(", ")}${blocked.length > 5 ? ` e mais ${blocked.length - 5}` : ""}.`
-            : liberadas > 0 ? ` ${liberadas} normal${liberadas !== 1 ? "is" : ""}.` : ""),
+            : liberadas > 0 ? ` ${liberadas} ${liberadas !== 1 ? "normais" : "normal"}.` : ""),
       });
       setSelectedIds(new Set());
       setSelectMode(false);
