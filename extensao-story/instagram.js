@@ -1,11 +1,12 @@
 // Scale Master Story — chamadas ao Instagram, rodando dentro de www.instagram.com.
 // Usa a sessão do próprio perfil (cookies do AdsPower): mesma origem, sem token.
 //
-// Fluxo (1.0.1, conferido em 22/11 — a 1.0.0 mandava a foto pelo www e o configure dava 500):
+// Fluxo (1.0.2; a 1.0.0 mandava a foto pelo www e o configure dava 500):
 //   1. i.instagram.com/rupload_igphoto/fb_uploader_<id>   → foto 1080×1920 com o adesivo desenhado
-//      (sai do service worker: background.js, "sm-upload")
-//   2. www /api/v1/media/configure_to_story/              → upload_id + configure_mode=1 +
-//      story_link_stickers [{x,y,width,height,rotation,link_type:"web",url}] (centro e tamanho em fração da tela)
+//      (da página; senão do service worker, background.js "sm-upload"; por último www)
+//   2. www /api/v1/media/configure_to_story/              → upload_id + configure_mode=1 + campos do app +
+//      story_link_stickers [{x,y,width,height,type:"story_link",link_type:"web",url,…}] (centro e tamanho em fração)
+//      IDs saem do texto cru (pk passa de 2^53); destaque usa "<pk>_<uid>"
 //   3. www /api/v1/highlights/<uid>/highlights_tray/      → acha o destaque pelo nome (sem acento/emoji/caixa)
 //      www /api/v1/highlights/highlight:<pk>/edit_reel/   → junta o story ao destaque existente
 //      www /api/v1/highlights/create_reel/                → ou cria um destaque novo com o story de capa
@@ -74,7 +75,9 @@
       dados = JSON.parse(texto);
     } catch {}
     if (!r.ok || dados?.status === "fail") throw new ErroIG(r.status, dados, texto);
-    return dados ?? {};
+    const saida = dados ?? {};
+    Object.defineProperty(saida, "__texto", { value: texto, enumerable: false });
+    return saida;
   }
 
   const esperar = (ms) => new Promise((ok) => setTimeout(ok, ms));
@@ -96,24 +99,128 @@
   }
 
   async function contaAtual() {
-    sessao();
-    const d = await chamar("/api/v1/accounts/current_user/?edit=true");
-    const u = d.user || {};
+    const s = sessao();
+    let u = {};
+    try {
+      u = (await chamar("/api/v1/accounts/current_user/?edit=true")).user || {};
+    } catch (e) {
+      if (erroDeConta(e)) throw e;
+      // decisão: current_user recusado no web → info pública do próprio uid.
+      u = (await chamar(`/api/v1/users/${s.uid}/info/`)).user || {};
+    }
     return { username: u.username || "", nome: u.full_name || "", foto: u.profile_pic_url || "" };
   }
 
-  async function subirFoto(pedido, csrf) {
-    const r = await chrome.runtime.sendMessage({ tipo: "sm-upload", imagem: pedido.imagem, largura: pedido.largura, altura: pedido.altura, csrf });
-    if (!r?.ok) throw new Error(r?.erro || "O service worker da extensão não respondeu ao envio da foto.");
-    return r.uploadId;
+  function base64ParaBytes(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
   }
 
-  async function configurar(uploadId, link, avisar) {
-    const form = { upload_id: uploadId, configure_mode: "1" };
+  // Envio direto da página (origem www, cookies do perfil). Em i.instagram.com é o mesmo caminho
+  // que o próprio site usa no "Criar"; o CORS do i. libera a origem www.
+  async function uploadDaPagina(host, pedido, csrf) {
+    const bytes = base64ParaBytes(pedido.imagem);
+    const uploadId = String(Date.now());
+    const nome = `fb_uploader_${uploadId}`;
+    const r = await fetch(`https://${host}/rupload_igphoto/${nome}`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "image/jpeg",
+        Offset: "0",
+        "X-Entity-Name": nome,
+        "X-Entity-Type": "image/jpeg",
+        "X-Entity-Length": String(bytes.byteLength),
+        "X-IG-App-ID": APP_ID,
+        "X-ASBD-ID": ASBD_ID,
+        "X-CSRFToken": csrf,
+        "X-Instagram-Rupload-Params": JSON.stringify({
+          upload_id: uploadId,
+          media_type: 1,
+          upload_media_width: pedido.largura,
+          upload_media_height: pedido.altura,
+        }),
+      },
+      body: bytes,
+    });
+    const texto = await r.text();
+    let j = null;
+    try {
+      j = JSON.parse(texto);
+    } catch {}
+    if (!r.ok || j?.status === "fail") throw new ErroIG(r.status, j, texto);
+    return String(j?.upload_id || uploadId);
+  }
+
+  // decisão: três caminhos em ordem; o primeiro que aceitar a foto segue para o configure.
+  //   1. página → i.instagram.com (origem www, igual ao site)
+  //   2. service worker → i.instagram.com (Origin/Referer reescritos para www pelo background)
+  //   3. página → www.instagram.com (o da 1.0.0: sobe, mas o configure já deu 500 com ele)
+  async function subirFoto(pedido, csrf, avisar) {
+    const caminhos = [
+      ["página → i.instagram.com", () => uploadDaPagina("i.instagram.com", pedido, csrf)],
+      [
+        "extensão → i.instagram.com",
+        async () => {
+          const r = await chrome.runtime.sendMessage({ tipo: "sm-upload", imagem: pedido.imagem, largura: pedido.largura, altura: pedido.altura, csrf });
+          if (!r?.ok) throw new Error(r?.erro || "o service worker da extensão não respondeu");
+          return r.uploadId;
+        },
+      ],
+      ["página → www.instagram.com", () => uploadDaPagina("www.instagram.com", pedido, csrf)],
+    ];
+    const erros = [];
+    for (const [nome, enviar] of caminhos) {
+      try {
+        const uploadId = await enviar();
+        avisar(`Foto enviada (${nome}).`);
+        return { uploadId, caminho: nome };
+      } catch (e) {
+        if (erroDeConta(e)) throw e;
+        erros.push(`${nome}: ${e.message}`);
+        avisar(`Envio da foto recusado (${nome}: ${e.message}); tentando outro caminho…`);
+      }
+    }
+    throw new Error(`O Instagram recusou a foto pelos três caminhos. ${erros.join(" | ")}`);
+  }
+
+  async function configurar(s, uploadId, pedido, avisar) {
+    const agora = String(Math.floor(Date.now() / 1000));
+    const form = {
+      ...camposDeSessao(s),
+      upload_id: uploadId,
+      configure_mode: "1",
+      source_type: "4",
+      capture_type: "normal",
+      audience: "default",
+      client_shared_at: agora,
+      client_timestamp: agora,
+      edits: JSON.stringify({ crop_original_size: [pedido.largura, pedido.altura], crop_center: [0, 0], crop_zoom: 1 }),
+      extra: JSON.stringify({ source_width: pedido.largura, source_height: pedido.altura }),
+    };
+    const link = pedido.link;
     if (link) {
+      // decisão: mesmo formato do app (type/is_sticker/tap_state_str_id); sem eles o IG guarda a área mas não abre o link.
       form.story_link_stickers = JSON.stringify([
-        { x: link.x, y: link.y, width: link.width, height: link.height, rotation: 0, link_type: "web", url: link.url },
+        {
+          x: link.x,
+          y: link.y,
+          z: 0,
+          width: link.width,
+          height: link.height,
+          rotation: 0,
+          type: "story_link",
+          is_sticker: true,
+          selected_index: 0,
+          tap_state: 0,
+          link_type: "web",
+          url: link.url,
+          tap_state_str_id: "link_sticker_default",
+        },
       ]);
+      form.story_sticker_ids = "link_sticker_default";
     }
     // decisão: o Instagram às vezes ainda está processando a foto (500/202) — 4 tentativas com espera crescente.
     for (let tentativa = 1; ; tentativa++) {
@@ -125,6 +232,17 @@
         await esperar(tentativa * 3000);
       }
     }
+  }
+
+  // IDs do Instagram passam de 2^53: o pk numérico perde dígitos no JSON.parse. Lê do texto cru.
+  function idsDoStory(dados, uid) {
+    const media = dados.media || {};
+    // decisão: media.id ("<pk>_<uid>") vem como texto e é exato; o regex no texto cru é só plano B.
+    if (typeof media.id === "string" && /^\d+_\d+$/.test(media.id)) return { pk: media.id.split("_")[0], id: media.id };
+    let pk = typeof media.pk_id === "string" && /^\d+$/.test(media.pk_id) ? media.pk_id : "";
+    if (!pk) pk = /"media"\s*:\s*\{\s*(?:"[a-z_]+"\s*:\s*[^{}\[\],]+,\s*)*?"pk"\s*:\s*"?(\d{6,})/.exec(dados.__texto || "")?.[1] || "";
+    if (!pk) return null;
+    return { pk, id: `${pk}_${uid}` };
   }
 
   function temLink(media, url) {
@@ -146,7 +264,7 @@
     return { _csrftoken: s.csrf, _uid: s.uid, _uuid: crypto.randomUUID() };
   }
 
-  async function juntarAoDestaque(s, destaque, pk) {
+  async function juntarAoDestaque(s, destaque, mediaId) {
     const id = destaque.id.replace(/^highlight:/, "");
     const d = await chamar(`/api/v1/highlights/highlight:${id}/edit_reel/`, {
       metodo: "POST",
@@ -154,14 +272,14 @@
         ...camposDeSessao(s),
         source: "story_viewer",
         title: destaque.titulo,
-        added_media_ids: JSON.stringify([pk]),
+        added_media_ids: JSON.stringify([mediaId]),
         removed_media_ids: "[]",
       },
     });
     return d.reel?.id || `highlight:${id}`;
   }
 
-  async function criarDestaque(s, titulo, pk, source) {
+  async function criarDestaque(s, titulo, mediaId, source) {
     const d = await chamar("/api/v1/highlights/create_reel/", {
       metodo: "POST",
       form: {
@@ -169,14 +287,15 @@
         source,
         creation_id: String(Date.now()),
         title: titulo,
-        cover: JSON.stringify({ media_id: pk }),
-        media_ids: JSON.stringify([pk]),
+        cover: JSON.stringify({ media_id: mediaId, crop_rect: JSON.stringify([0, 0.21830457, 1, 0.78094524]) }),
+        media_ids: JSON.stringify([mediaId]),
       },
     });
     return d.reel?.id || "";
   }
 
-  async function destacar(s, pk, destaque, avisar) {
+  // mediaId = "<pk>_<uid>" (formato que edit_reel/create_reel esperam).
+  async function destacar(s, mediaId, destaque, avisar) {
     const titulo = destaque.titulo.trim().slice(0, 30);
     let existente = null;
     if (destaque.modo !== "novo") {
@@ -192,11 +311,11 @@
     let ultimoErro = null;
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
       try {
-        if (existente) return { acao: "juntado", id: await juntarAoDestaque(s, existente, pk), titulo: existente.titulo };
+        if (existente) return { acao: "juntado", id: await juntarAoDestaque(s, existente, mediaId), titulo: existente.titulo };
         // decisão: "self_profile" primeiro; o Instagram aceita "story_viewer_profile" quando recusa o outro.
         for (const source of ["self_profile", "story_viewer_profile"]) {
           try {
-            return { acao: "criado", id: await criarDestaque(s, titulo, pk, source), titulo };
+            return { acao: "criado", id: await criarDestaque(s, titulo, mediaId, source), titulo };
           } catch (e) {
             ultimoErro = e;
             if (erroDeConta(e)) throw e;
@@ -219,21 +338,21 @@
     const s = sessao();
 
     avisar("Enviando a foto para o Instagram…");
-    const uploadId = await subirFoto(pedido, s.csrf);
+    const { uploadId } = await subirFoto(pedido, s.csrf, avisar);
     await esperar(2000);
 
     avisar("Publicando o story com o adesivo de link…");
-    const dados = await configurar(uploadId, pedido.link, avisar);
+    const dados = await configurar(s, uploadId, pedido, avisar);
     const media = dados.media;
-    const pk = String(media?.pk || String(media?.id || "").split("_")[0] || "");
-    if (!/^\d+$/.test(pk)) throw new Error("O Instagram respondeu sem o ID do story. Confira o perfil antes de publicar de novo.");
-    const resultado = { mediaId: String(media.id || pk), pk, linkOk: pedido.link ? temLink(media, pedido.link.url) : true, destaque: null };
+    const ids = idsDoStory(dados, s.uid);
+    if (!ids) throw new Error("O Instagram respondeu sem o ID do story. Confira o perfil antes de publicar de novo.");
+    const resultado = { mediaId: ids.id, pk: ids.pk, linkOk: pedido.link ? temLink(media, pedido.link.url) : true, destaque: null };
 
     if (pedido.destaque?.titulo?.trim()) {
       avisar("Story no ar. Esperando o Instagram liberar para o destaque…");
       await esperar(4000);
       try {
-        resultado.destaque = await destacar(s, pk, pedido.destaque, avisar);
+        resultado.destaque = await destacar(s, ids.id, pedido.destaque, avisar);
       } catch (e) {
         resultado.destaque = { erro: e.message };
       }

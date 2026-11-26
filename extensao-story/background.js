@@ -36,7 +36,36 @@ function resumoHttp(status, texto) {
   return `HTTP ${status}${detalhe ? `: ${detalhe.replace(/&bull;/g, "·").trim()}` : ""}`;
 }
 
+// Pedido do service worker sai com Origin chrome-extension://; o Instagram confere a origem com o csrftoken.
+// Regra de sessão reescreve Origin/Referer para www só nos uploads sem aba (tabId -1 = este service worker).
+const REGRA_ORIGEM = 1;
+async function garantirRegraDeOrigem() {
+  try {
+    await chrome.declarativeNetRequest.updateSessionRules({
+      removeRuleIds: [REGRA_ORIGEM],
+      addRules: [
+        {
+          id: REGRA_ORIGEM,
+          priority: 1,
+          action: {
+            type: "modifyHeaders",
+            requestHeaders: [
+              { header: "origin", operation: "set", value: "https://www.instagram.com" },
+              { header: "referer", operation: "set", value: INSTAGRAM },
+            ],
+          },
+          condition: { urlFilter: "||i.instagram.com/rupload_igphoto/", tabIds: [chrome.tabs.TAB_ID_NONE], resourceTypes: ["xmlhttprequest", "other"] },
+        },
+      ],
+    });
+  } catch (e) {
+    // decisão: sem a regra o envio ainda é tentado; o content script tem outros dois caminhos.
+    console.warn("[sm-story] regra de origem não aplicada:", e?.message || e);
+  }
+}
+
 async function enviarFoto({ imagem, largura, altura, csrf }) {
+  await garantirRegraDeOrigem();
   const bytes = base64ParaBytes(imagem);
   const uploadId = String(Date.now());
   const nome = `fb_uploader_${uploadId}`;
