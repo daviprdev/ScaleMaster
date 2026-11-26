@@ -384,7 +384,7 @@ export async function GET(req: NextRequest) {
           .update({ status: "error", error_message: msg.slice(0, 500) })
           .eq("id", container.id);
         // Conta caída de verdade (checkpoint/token morto) → candidata a vermelho.
-        if (account && isAccountDeadError(msg)) {
+        if (account && isAccountDeadError(msg, container.ig_business_account_id)) {
           deadCandidates.push({
             accountId: account.id,
             username: account.username,

@@ -58,9 +58,22 @@ const DEAD_ACCOUNT_PATTERNS = [
   // usuário recebe o alerta "publish_failures" (check-health-alerts) para analisar.
 ];
 
-export function isAccountDeadError(msg: string): boolean {
+// Login Unificado (graph.facebook.com, 2026-11-26): conta suspensa ou tirada do
+// app não dá 190 de checkpoint, dá code 100 "Object with ID '<ig id>' does not
+// exist, cannot be loaded due to missing permissions…" sobre o ID da PRÓPRIA
+// conta. Só conta quando o ID citado é o da conta: o mesmo texto sobre um
+// container ou mídia não diz nada da conta.
+// decisão: casa pelo ID entre aspas, igual a Meta escreve na mensagem.
+export function isAccountGoneError(msg: string, igAccountId: string | null | undefined): boolean {
+  if (!igAccountId) return false;
+  const lower = msg.toLowerCase();
+  return lower.includes("cannot be loaded due to missing permissions") && msg.includes(`'${igAccountId}'`);
+}
+
+export function isAccountDeadError(msg: string, igAccountId?: string | null): boolean {
   const lower = msg.toLowerCase();
   if (INFRA_EXCLUSIONS.some((p) => lower.includes(p))) return false;
+  if (isAccountGoneError(msg, igAccountId)) return true;
   return DEAD_ACCOUNT_PATTERNS.some((p) => lower.includes(p));
 }
 

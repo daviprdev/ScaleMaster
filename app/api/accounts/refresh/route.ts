@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { httpFetch } from "@/lib/http";
 import { summarizePublishCheck, type PublishCheck } from "@/lib/meta-publish-check";
 import { graphBase } from "@/lib/meta-graph";
+import { isAccountGoneError } from "@/lib/account-health";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -181,7 +182,9 @@ export async function POST(req: NextRequest) {
       errMsgLower.includes("cannot parse access token") ||
       errMsgLower.includes("malformed access token")
     );
-    const isTokenBad = TOKEN_ERROR_CODES.has(code) && !isMetaInfra;
+    // Login Unificado: conta suspensa/tirada do app volta code 100 sobre o próprio ID.
+    const isGone = isAccountGoneError(profile.error.message ?? "", igId);
+    const isTokenBad = (TOKEN_ERROR_CODES.has(code) && !isMetaInfra) || isGone;
 
     console.error(
       `[accounts/refresh] Meta API error for @${(account as Record<string, unknown>).username}: ` +

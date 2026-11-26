@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { refreshMetaToken } from "@/lib/meta-refresh";
 import { httpFetch } from "@/lib/http";
 import { graphBase } from "@/lib/meta-graph";
+import { isAccountGoneError } from "@/lib/account-health";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -127,7 +128,8 @@ async function syncOne(acc: AccountRow, admin: ReturnType<typeof getSupabaseAdmi
 
       // Checkpoint = conta caída de verdade → marca vermelho direto,
       // igual à rota /api/accounts/refresh. Renovar token não resolve checkpoint.
-      if (isCheckpointError(err.code, err.message)) {
+      // Login Unificado: suspensa/tirada do app = code 100 sobre o próprio ID.
+      if (isCheckpointError(err.code, err.message) || isAccountGoneError(err.message ?? "", acc.ig_business_account_id)) {
         console.warn(`[sync-all] 🔴 Checkpoint para @${acc.username} — marcando como error`);
         return {
           id: acc.id, user_id: acc.user_id, username: acc.username,
