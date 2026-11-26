@@ -162,19 +162,19 @@ function tokenStatusChip(tokenExpiresAt: string | null, isMetaAccount: boolean) 
   if (!isMetaAccount || !tokenExpiresAt) return null;
   const days = daysUntilExpiry(tokenExpiresAt);
   if (days === null) return null;
-  if (days < 0) return { label: "Token expirado", color: "bg-red-500/15 text-red-400", icon: "danger" } as const;
-  if (days <= 7) return { label: `Expira em ${days}d`, color: "bg-red-500/15 text-red-400", icon: "danger" } as const;
-  if (days <= 15) return { label: `Expira em ${days}d`, color: "bg-amber-500/15 text-amber-400", icon: "warning" } as const;
+  if (days < 0) return { label: "Token expirado", color: "bg-danger-soft text-danger", icon: "danger" } as const;
+  if (days <= 7) return { label: `Expira em ${days}d`, color: "bg-danger-soft text-danger", icon: "danger" } as const;
+  if (days <= 15) return { label: `Expira em ${days}d`, color: "bg-warning-soft text-warning", icon: "warning" } as const;
   return null;
 }
 
 const AVATAR_COLORS = [
-  "from-[#00498D] to-[#00346D]",
-  "from-pink-500 to-rose-600",
-  "from-[#85B9E9] to-[#00498D]",
-  "from-emerald-500 to-teal-600",
-  "from-amber-500 to-orange-600",
-  "from-fuchsia-500 to-purple-600",
+  "from-primary to-primary-2",
+  "from-[#c08cff] to-[#ff6ab0]",
+  "from-primary-2 to-primary",
+  "from-[#2fd39a] to-[#1c7ed6]",
+  "from-[#ffb347] to-[#ff6a5c]",
+  "from-[#5b6bff] to-[#b26bff]",
 ];
 
 function avatarColor(username: string) {
@@ -398,7 +398,7 @@ function EditProfileModal({
                 )}
                 {uploading && (
                   <div className="absolute inset-0 rounded-full bg-overlay flex items-center justify-center">
-                    <Loader2 size={16} className="animate-spin text-brand-blue" />
+                    <Loader2 size={16} className="animate-spin text-link" />
                   </div>
                 )}
               </div>
@@ -411,7 +411,7 @@ function EditProfileModal({
                   disabled={uploading}
                   className="btn-ghost flex items-center gap-2 px-3 py-2 text-xs disabled:opacity-40"
                 >
-                  <Upload size={13} className="text-brand-blue" />
+                  <Upload size={13} className="text-link" />
                   {uploading ? "Enviando..." : "Enviar foto"}
                 </button>
                 <button
@@ -1520,7 +1520,7 @@ export default function AccountsPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-overlay backdrop-blur-sm z-40"
               onClick={() => setAppPickerOpen(false)}
             />
             <motion.div
@@ -1534,10 +1534,10 @@ export default function AccountsPage() {
               <div className="glass rounded-2xl  w-full max-w-sm max-h-[85vh] flex flex-col p-6 space-y-4 pointer-events-auto overflow-hidden">
                 <div className="flex items-center justify-between flex-shrink-0">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center">
-                      <KeyRound size={13} className="text-[#85B9E9]" />
+                    <div className="w-7 h-7 rounded-lg bg-info-soft border border-primary/20 flex items-center justify-center">
+                      <KeyRound size={13} className="text-link" />
                     </div>
-                    <h3 className="text-base font-bold text-white">Conectar Conta</h3>
+                    <h3 className="text-base font-bold text-ink">Conectar Conta</h3>
                   </div>
                   <button
                     onClick={() => setAppPickerOpen(false)}
@@ -1553,15 +1553,15 @@ export default function AccountsPage() {
                     animate={{ opacity: 1, y: 0 }}
                     className="space-y-4 overflow-y-auto"
                   >
-                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-4 space-y-1.5 text-center">
-                      <p className="text-sm font-semibold text-amber-300">Nenhum App cadastrado</p>
+                    <div className="rounded-xl border border-warning/20 bg-warning-soft px-4 py-4 space-y-1.5 text-center">
+                      <p className="text-sm font-semibold text-warning">Nenhum App cadastrado</p>
                       <p className="text-xs text-ink-3 leading-relaxed">
                         Você precisa cadastrar um App da Meta antes de adicionar uma conta.
                       </p>
                     </div>
                     <button
                       onClick={() => { setAppPickerOpen(false); router.push("/dashboard/apps"); }}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-300 text-sm font-semibold px-4 py-3 hover:bg-blue-600/30 hover:border-blue-500/50 transition-all"
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-primary/20 border border-primary/30 text-link text-sm font-semibold px-4 py-3 hover:bg-primary/30 hover:border-primary/50 transition-all"
                     >
                       <KeyRound size={14} />
                       Configurar Meu Primeiro App
@@ -1584,11 +1584,11 @@ export default function AccountsPage() {
                             setAppPickerOpen(false);
                             window.location.href = `/api/instagram/auth?appId=${app.id}`;
                           }}
-                          className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-surface-raised border border-line hover:bg-brand-blue/10 hover:border-brand-blue/25 transition-all text-left group"
+                          className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-surface-raised border border-line hover:bg-primary/10 hover:border-primary/25 transition-all text-left group"
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-8 h-8 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center flex-shrink-0">
-                              <KeyRound size={13} className="text-[#85B9E9]" />
+                            <div className="w-8 h-8 rounded-lg bg-info-soft border border-primary/20 flex items-center justify-center flex-shrink-0">
+                              <KeyRound size={13} className="text-link" />
                             </div>
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-ink truncate group-hover:text-ink transition-colors">
@@ -1626,7 +1626,7 @@ export default function AccountsPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-overlay backdrop-blur-sm z-40"
               onClick={() => { setShowNewFolderModal(false); setNewFolderName(""); }}
             />
             <motion.div
@@ -1640,10 +1640,10 @@ export default function AccountsPage() {
               <div className="glass rounded-2xl  w-full max-w-xs p-5 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center">
-                      <FolderPlus size={13} className="text-[#85B9E9]" />
+                    <div className="w-7 h-7 rounded-lg bg-info-soft border border-primary/20 flex items-center justify-center">
+                      <FolderPlus size={13} className="text-link" />
                     </div>
-                    <h3 className="text-sm font-bold text-white">Nova Pasta</h3>
+                    <h3 className="text-sm font-bold text-ink">Nova Pasta</h3>
                   </div>
                   <button
                     onClick={() => { setShowNewFolderModal(false); setNewFolderName(""); }}
@@ -1671,7 +1671,7 @@ export default function AccountsPage() {
                   <button
                     onClick={handleCreateFolder}
                     disabled={!newFolderName.trim() || creatingFolder}
-                    className="flex-1 py-2.5 rounded-xl bg-[#00498D]/25 border border-[#00498D]/30 text-[#AFBDD0] text-xs font-semibold hover:bg-[#00498D]/35 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 rounded-xl bg-primary/25 border border-primary/30 text-link text-xs font-semibold hover:bg-primary/35 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
                   >
                     {creatingFolder ? <Loader2 size={12} className="animate-spin" /> : <FolderPlus size={12} />}
                     Criar
@@ -1692,7 +1692,7 @@ export default function AccountsPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-overlay backdrop-blur-sm z-40"
               onClick={() => setRenameModal(null)}
             />
             <motion.div
@@ -1706,10 +1706,10 @@ export default function AccountsPage() {
               <div className="glass rounded-2xl  w-full max-w-xs p-5 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
-                      <Pencil size={13} className="text-amber-400" />
+                    <div className="w-7 h-7 rounded-lg bg-warning-soft border border-warning/20 flex items-center justify-center">
+                      <Pencil size={13} className="text-warning" />
                     </div>
-                    <h3 className="text-sm font-bold text-white">Renomear Pasta</h3>
+                    <h3 className="text-sm font-bold text-ink">Renomear Pasta</h3>
                   </div>
                   <button
                     onClick={() => setRenameModal(null)}
@@ -1736,7 +1736,7 @@ export default function AccountsPage() {
                   <button
                     onClick={handleRenameFolder}
                     disabled={!renameName.trim() || renamingFolder}
-                    className="flex-1 py-2.5 rounded-xl bg-amber-600/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-600/30 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 rounded-xl bg-warning/20 border border-warning/30 text-warning text-xs font-semibold hover:bg-warning/30 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
                   >
                     {renamingFolder ? <Loader2 size={12} className="animate-spin" /> : <Pencil size={12} />}
                     Salvar
@@ -1757,7 +1757,7 @@ export default function AccountsPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-overlay backdrop-blur-sm z-40"
               onClick={() => !deletingFolder && setDeleteDialog(null)}
             />
             <motion.div
@@ -1768,13 +1768,13 @@ export default function AccountsPage() {
               transition={{ duration: 0.15 }}
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
-              <div className="glass rounded-2xl border border-red-500/20 w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+              <div className="glass rounded-2xl border border-danger/20 w-full max-w-xs p-5 space-y-4 pointer-events-auto">
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-red-500/15 border border-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Trash2 size={15} className="text-red-400" />
+                  <div className="w-9 h-9 rounded-xl bg-danger-soft border border-danger/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Trash2 size={15} className="text-danger" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-white">Excluir &quot;{deleteDialog.name}&quot;?</h3>
+                    <h3 className="text-sm font-bold text-ink">Excluir &quot;{deleteDialog.name}&quot;?</h3>
                     <p className="text-xs text-ink-3 mt-1 leading-relaxed">
                       {deleteDialog.count > 0
                         ? `${deleteDialog.count} conta${deleteDialog.count !== 1 ? "s" : ""} dentro desta pasta será${deleteDialog.count !== 1 ? "ão" : ""} excluída${deleteDialog.count !== 1 ? "s" : ""} permanentemente. Esta ação não pode ser desfeita.`
@@ -1794,7 +1794,7 @@ export default function AccountsPage() {
                   <button
                     onClick={handleDeleteFolder}
                     disabled={deletingFolder}
-                    className="flex-1 py-2.5 rounded-xl bg-red-600/20 border border-red-500/30 text-red-400 text-xs font-semibold hover:bg-red-600/30 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 rounded-xl bg-danger/20 border border-danger/30 text-danger text-xs font-semibold hover:bg-danger/30 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
                   >
                     {deletingFolder ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                     Excluir
@@ -1815,7 +1815,7 @@ export default function AccountsPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-overlay backdrop-blur-sm z-40"
               onClick={() => !clearingQueue && setClearQueueDialog(null)}
             />
             <motion.div
@@ -1826,13 +1826,13 @@ export default function AccountsPage() {
               transition={{ duration: 0.15 }}
               className="fixed inset-0 flex items-center justify-center z-50 p-6 pointer-events-none"
             >
-              <div className="glass rounded-2xl border border-amber-500/20 w-full max-w-xs p-5 space-y-4 pointer-events-auto">
+              <div className="glass rounded-2xl border border-warning/20 w-full max-w-xs p-5 space-y-4 pointer-events-auto">
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ListX size={15} className="text-amber-400" />
+                  <div className="w-9 h-9 rounded-xl bg-warning-soft border border-warning/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ListX size={15} className="text-warning" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-white">Excluir vídeos pendentes de @{clearQueueDialog.username}?</h3>
+                    <h3 className="text-sm font-bold text-ink">Excluir vídeos pendentes de @{clearQueueDialog.username}?</h3>
                     <p className="text-xs text-ink-3 mt-1 leading-relaxed">
                       Remove todos os posts e containers aguardando publicação na fila desta conta (Loop, Postar, Clonar). Posts já publicados no Instagram não são afetados. Esta ação não pode ser desfeita.
                     </p>
@@ -1849,7 +1849,7 @@ export default function AccountsPage() {
                   <button
                     onClick={handleClearQueue}
                     disabled={clearingQueue}
-                    className="flex-1 py-2.5 rounded-xl bg-amber-600/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-600/30 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 rounded-xl bg-warning/20 border border-warning/30 text-warning text-xs font-semibold hover:bg-warning/30 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
                   >
                     {clearingQueue ? <Loader2 size={12} className="animate-spin" /> : <ListX size={12} />}
                     Excluir
@@ -1870,7 +1870,7 @@ export default function AccountsPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-overlay backdrop-blur-sm z-40"
               onClick={() => setMoveAccount(null)}
             />
             <motion.div
@@ -1884,11 +1884,11 @@ export default function AccountsPage() {
               <div className="glass rounded-2xl  w-full max-w-xs p-5 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center">
-                      <Folder size={13} className="text-[#85B9E9]" />
+                    <div className="w-7 h-7 rounded-lg bg-info-soft border border-primary/20 flex items-center justify-center">
+                      <Folder size={13} className="text-link" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-white">Mover para pasta</h3>
+                      <h3 className="text-sm font-bold text-ink">Mover para pasta</h3>
                       <p className="text-[11px] text-ink-3">@{moveAccount.username}</p>
                     </div>
                   </div>
@@ -1916,7 +1916,7 @@ export default function AccountsPage() {
                       <span className="text-[9px] text-ink-3 flex-shrink-0">atual</span>
                     )}
                     {movePendingFolderId === null && (
-                      <CheckCircle2 size={12} className="text-[#00498D] flex-shrink-0" />
+                      <CheckCircle2 size={12} className="text-link flex-shrink-0" />
                     )}
                   </button>
 
@@ -1932,20 +1932,20 @@ export default function AccountsPage() {
                         className={cn(
                           "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
                           movePendingFolderId === f.id
-                            ? "bg-[#00498D]/15 border-[#00498D]/30 text-[#AFBDD0]"
+                            ? "bg-info-soft border-primary/30 text-link"
                             : "border-line text-ink-3 hover:bg-surface-hover hover:text-ink-2"
                         )}
                       >
                         <Folder size={12} className={cn(
                           "flex-shrink-0",
-                          movePendingFolderId === f.id ? "text-[#85B9E9]" : "text-[#85B9E9]/50"
+                          movePendingFolderId === f.id ? "text-link" : "text-link/50"
                         )} />
                         <span className="flex-1 truncate">{f.name}</span>
                         {moveAccount.folder_id === f.id && movePendingFolderId !== f.id && (
                           <span className="text-[9px] text-ink-3 flex-shrink-0">atual</span>
                         )}
                         {movePendingFolderId === f.id && (
-                          <CheckCircle2 size={12} className="text-[#85B9E9] flex-shrink-0" />
+                          <CheckCircle2 size={12} className="text-link flex-shrink-0" />
                         )}
                       </button>
                     ))
@@ -1965,7 +1965,7 @@ export default function AccountsPage() {
                       setMoveAccount(null);
                     }}
                     disabled={movingAccountId === moveAccount.id || movePendingFolderId === moveAccount.folder_id}
-                    className="flex-1 py-2.5 rounded-xl bg-[#00498D]/25 border border-[#00498D]/30 text-[#AFBDD0] text-xs font-semibold hover:bg-[#00498D]/35 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 rounded-xl bg-primary/25 border border-primary/30 text-link text-xs font-semibold hover:bg-primary/35 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
                   >
                     {movingAccountId === moveAccount.id
                       ? <Loader2 size={12} className="animate-spin" />
@@ -1989,7 +1989,7 @@ export default function AccountsPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-overlay backdrop-blur-sm z-40"
               onClick={() => !bulkMoving && setBulkMoveOpen(false)}
             />
             <motion.div
@@ -2003,11 +2003,11 @@ export default function AccountsPage() {
               <div className="glass rounded-2xl  w-full max-w-xs p-5 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center">
-                      <Folder size={13} className="text-[#85B9E9]" />
+                    <div className="w-7 h-7 rounded-lg bg-info-soft border border-primary/20 flex items-center justify-center">
+                      <Folder size={13} className="text-link" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-white">Mover para pasta</h3>
+                      <h3 className="text-sm font-bold text-ink">Mover para pasta</h3>
                       <p className="text-[11px] text-ink-3">
                         {selectedIds.size} conta{selectedIds.size !== 1 ? "s" : ""} selecionada{selectedIds.size !== 1 ? "s" : ""}
                       </p>
@@ -2034,7 +2034,7 @@ export default function AccountsPage() {
                     <FolderOpen size={12} className="text-ink-3 flex-shrink-0" />
                     <span className="flex-1">Sem pasta</span>
                     {bulkMovePendingFolderId === null && (
-                      <CheckCircle2 size={12} className="text-[#00498D] flex-shrink-0" />
+                      <CheckCircle2 size={12} className="text-link flex-shrink-0" />
                     )}
                   </button>
 
@@ -2050,17 +2050,17 @@ export default function AccountsPage() {
                         className={cn(
                           "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs transition-all text-left",
                           bulkMovePendingFolderId === f.id
-                            ? "bg-[#00498D]/15 border-[#00498D]/30 text-[#AFBDD0]"
+                            ? "bg-info-soft border-primary/30 text-link"
                             : "border-line text-ink-3 hover:bg-surface-hover hover:text-ink-2"
                         )}
                       >
                         <Folder size={12} className={cn(
                           "flex-shrink-0",
-                          bulkMovePendingFolderId === f.id ? "text-[#85B9E9]" : "text-[#85B9E9]/50"
+                          bulkMovePendingFolderId === f.id ? "text-link" : "text-link/50"
                         )} />
                         <span className="flex-1 truncate">{f.name}</span>
                         {bulkMovePendingFolderId === f.id && (
-                          <CheckCircle2 size={12} className="text-[#85B9E9] flex-shrink-0" />
+                          <CheckCircle2 size={12} className="text-link flex-shrink-0" />
                         )}
                       </button>
                     ))
@@ -2077,7 +2077,7 @@ export default function AccountsPage() {
                   <button
                     onClick={() => handleBulkMove(bulkMovePendingFolderId)}
                     disabled={bulkMoving}
-                    className="flex-1 py-2.5 rounded-xl bg-[#00498D]/25 border border-[#00498D]/30 text-[#AFBDD0] text-xs font-semibold hover:bg-[#00498D]/35 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 rounded-xl bg-primary/25 border border-primary/30 text-link text-xs font-semibold hover:bg-primary/35 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
                   >
                     {bulkMoving
                       ? <Loader2 size={12} className="animate-spin" />
@@ -2101,7 +2101,7 @@ export default function AccountsPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-overlay backdrop-blur-sm z-40"
               onClick={() => !savingProxy && setProxyAccount(null)}
             />
             <motion.div
@@ -2115,11 +2115,11 @@ export default function AccountsPage() {
               <div className="glass rounded-2xl  w-full max-w-sm p-5 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-[#00498D]/10 border border-[#00498D]/20 flex items-center justify-center">
-                      <Globe size={13} className="text-[#00498D]" />
+                    <div className="w-7 h-7 rounded-lg bg-info-soft border border-primary/20 flex items-center justify-center">
+                      <Globe size={13} className="text-link" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-white">Proxy Dedicado</h3>
+                      <h3 className="text-sm font-bold text-ink">Proxy Dedicado</h3>
                       <p className="text-[10px] text-ink-3">@{proxyAccount.username}</p>
                     </div>
                   </div>
@@ -2161,7 +2161,7 @@ export default function AccountsPage() {
                     <button
                       onClick={() => handleSaveProxy(null)}
                       disabled={savingProxy}
-                      className="px-3 py-2.5 rounded-xl bg-red-600/15 border border-red-500/25 text-red-400 text-xs font-semibold hover:bg-red-600/25 disabled:opacity-50 transition-all flex items-center gap-1.5 flex-shrink-0"
+                      className="px-3 py-2.5 rounded-xl bg-danger-soft border border-danger/25 text-danger text-xs font-semibold hover:bg-danger/25 disabled:opacity-50 transition-all flex items-center gap-1.5 flex-shrink-0"
                     >
                       {savingProxy ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                       Remover
@@ -2177,7 +2177,7 @@ export default function AccountsPage() {
                   <button
                     onClick={() => handleSaveProxy(proxyInput.trim() || null)}
                     disabled={!proxyInput.trim() || savingProxy}
-                    className="flex-1 py-2.5 rounded-xl bg-[#00498D]/15 border border-[#00498D]/25 text-[#00498D] text-xs font-semibold hover:bg-[#00498D]/25 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                    className="flex-1 py-2.5 rounded-xl bg-info-soft border border-primary/25 text-link text-xs font-semibold hover:bg-primary/25 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
                   >
                     {savingProxy ? <Loader2 size={12} className="animate-spin" /> : <Globe size={12} />}
                     Salvar
@@ -2198,7 +2198,7 @@ export default function AccountsPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-overlay backdrop-blur-sm z-40"
               onClick={() => { if (!csvImporting) { setShowCsvImport(false); setCsvResults(null); setCsvText(""); } }}
             />
             <motion.div
@@ -2212,10 +2212,10 @@ export default function AccountsPage() {
               <div className="glass rounded-2xl  w-full max-w-lg p-6 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/20 flex items-center justify-center">
-                      <Upload size={13} className="text-blue-400" />
+                    <div className="w-7 h-7 rounded-lg bg-info-soft border border-primary/20 flex items-center justify-center">
+                      <Upload size={13} className="text-link" />
                     </div>
-                    <h3 className="text-base font-bold text-white">Importar Proxies em Massa</h3>
+                    <h3 className="text-base font-bold text-ink">Importar Proxies em Massa</h3>
                   </div>
                   <button
                     onClick={() => { setShowCsvImport(false); setCsvResults(null); setCsvText(""); }}
@@ -2229,7 +2229,7 @@ export default function AccountsPage() {
                 {!csvResults ? (
                   <>
                     <div className="rounded-xl bg-surface-raised border border-line p-3 space-y-1">
-                      <p className="text-[11px] text-ink-3 font-mono">Formato: <span className="text-brand-blue/70">username,http://user:pass@ip:porta</span></p>
+                      <p className="text-[11px] text-ink-3 font-mono">Formato: <span className="text-link/70">username,http://user:pass@ip:porta</span></p>
                       <p className="text-[11px] text-ink-3">Uma conta por linha. Para remover proxy: <span className="text-ink-3 font-mono">username,</span></p>
                       <p className="text-[11px] text-ink-3">Linhas com # são ignoradas.</p>
                     </div>
@@ -2238,7 +2238,7 @@ export default function AccountsPage() {
                       onChange={e => setCsvText(e.target.value)}
                       placeholder={"# Cole aqui — uma linha por conta\nconta1,http://user:pass@203.0.113.1:3128\nconta2,http://user:pass@198.51.100.5:3128\nconta3,"}
                       rows={10}
-                      className="w-full rounded-xl bg-surface border border-line-control text-xs text-ink-2 font-mono placeholder-ink-3 px-3 py-2.5 focus:outline-none focus:border-brand-blue/40 resize-none"
+                      className="w-full rounded-xl bg-surface border border-line-control text-xs text-ink-2 font-mono placeholder-ink-3 px-3 py-2.5 focus:outline-none focus:border-primary/40 resize-none"
                     />
                     <div className="flex gap-2">
                       <button
@@ -2250,7 +2250,7 @@ export default function AccountsPage() {
                       <button
                         onClick={handleCsvImport}
                         disabled={!csvText.trim() || csvImporting}
-                        className="flex-1 py-2.5 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-300 text-xs font-semibold hover:bg-blue-600/30 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                        className="flex-1 py-2.5 rounded-xl bg-primary/20 border border-primary/30 text-link text-xs font-semibold hover:bg-primary/30 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
                       >
                         {csvImporting ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
                         Importar
@@ -2263,24 +2263,24 @@ export default function AccountsPage() {
                       {csvResults.map((r, i) => (
                         <div key={i} className={cn(
                           "flex items-center justify-between px-3 py-2 rounded-lg text-xs",
-                          r.status === "saved" && "bg-[#00498D]/[0.06] border border-[#00498D]/15",
-                          r.status === "removed" && "bg-amber-500/[0.06] border border-amber-500/15",
+                          r.status === "saved" && "bg-info-soft border border-primary/15",
+                          r.status === "removed" && "bg-warning-soft border border-warning/15",
                           r.status === "not_found" && "bg-surface-raised border-line",
-                          r.status === "error" && "bg-red-500/[0.06] border border-red-500/15",
+                          r.status === "error" && "bg-danger-soft border border-danger/15",
                         )}>
                           <span className={cn(
                             "font-mono",
-                            r.status === "saved" && "text-[#00498D]/80",
-                            r.status === "removed" && "text-amber-400/80",
+                            r.status === "saved" && "text-link/80",
+                            r.status === "removed" && "text-warning/80",
                             r.status === "not_found" && "text-ink-3",
-                            r.status === "error" && "text-red-400/80",
+                            r.status === "error" && "text-danger/80",
                           )}>@{r.username.replace(/^@/, "")}</span>
                           <span className={cn(
                             "text-[10px] font-semibold",
-                            r.status === "saved" && "text-[#00498D]/60",
-                            r.status === "removed" && "text-amber-400/60",
+                            r.status === "saved" && "text-link/60",
+                            r.status === "removed" && "text-warning/60",
                             r.status === "not_found" && "text-ink-3/60",
-                            r.status === "error" && "text-red-400/60",
+                            r.status === "error" && "text-danger/60",
                           )}>
                             {r.status === "saved" && "✓ proxy salvo"}
                             {r.status === "removed" && "proxy removido"}
@@ -2299,7 +2299,7 @@ export default function AccountsPage() {
                       </button>
                       <button
                         onClick={() => { setShowCsvImport(false); setCsvResults(null); setCsvText(""); }}
-                        className="flex-1 py-2.5 rounded-xl bg-[#00498D]/15 border border-[#00498D]/25 text-[#00498D] text-xs font-semibold hover:bg-[#00498D]/25 transition-all"
+                        className="flex-1 py-2.5 rounded-xl bg-info-soft border border-primary/25 text-link text-xs font-semibold hover:bg-primary/25 transition-all"
                       >
                         Fechar
                       </button>
@@ -2321,7 +2321,7 @@ export default function AccountsPage() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-overlay backdrop-blur-sm z-40"
               onClick={() => { if (!checkerRunning) { setShowChecker(false); setCheckerResults(null); setCheckerText(""); setCheckerProgress(null); } }}
             />
             <motion.div
@@ -2335,10 +2335,10 @@ export default function AccountsPage() {
               <div className="glass rounded-2xl  w-full max-w-lg p-6 space-y-4 pointer-events-auto">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
-                      <UserSearch size={13} className="text-amber-400" />
+                    <div className="w-7 h-7 rounded-lg bg-warning-soft border border-warning/20 flex items-center justify-center">
+                      <UserSearch size={13} className="text-warning" />
                     </div>
-                    <h3 className="text-base font-bold text-white">Verificador de Perfis</h3>
+                    <h3 className="text-base font-bold text-ink">Verificador de Perfis</h3>
                   </div>
                   <button
                     onClick={() => { if (!checkerRunning) { setShowChecker(false); setCheckerResults(null); setCheckerText(""); setCheckerProgress(null); } }}
@@ -2374,7 +2374,7 @@ export default function AccountsPage() {
                       <button
                         onClick={handleCheckProfiles}
                         disabled={!checkerText.trim()}
-                        className="flex-1 py-2.5 rounded-xl bg-amber-600/20 border border-amber-500/30 text-amber-300 text-xs font-semibold hover:bg-amber-600/30 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
+                        className="flex-1 py-2.5 rounded-xl bg-warning/20 border border-warning/30 text-warning text-xs font-semibold hover:bg-warning/30 disabled:opacity-40 transition-all flex items-center justify-center gap-1.5"
                       >
                         <UserSearch size={12} />
                         Verificar
@@ -2393,28 +2393,28 @@ export default function AccountsPage() {
                       {checkerResults.map((r, i) => (
                         <div key={i} className={cn(
                           "flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs",
-                          r.status === "active" && "bg-[#00498D]/[0.06] border border-[#00498D]/15",
-                          r.status === "not_found" && "bg-red-500/[0.06] border border-red-500/15",
+                          r.status === "active" && "bg-info-soft border border-primary/15",
+                          r.status === "not_found" && "bg-danger-soft border border-danger/15",
                           r.status === "error" && "bg-surface-raised border-line",
                         )}>
                           <span className="flex items-center gap-1.5 min-w-0">
-                            {r.status === "active" && <ShieldCheck size={12} className="text-[#00498D]/80 flex-shrink-0" />}
-                            {r.status === "not_found" && <ShieldOff size={12} className="text-red-400/80 flex-shrink-0" />}
-                            {r.status === "error" && <AlertTriangle size={12} className="text-amber-400/70 flex-shrink-0" />}
+                            {r.status === "active" && <ShieldCheck size={12} className="text-link/80 flex-shrink-0" />}
+                            {r.status === "not_found" && <ShieldOff size={12} className="text-danger/80 flex-shrink-0" />}
+                            {r.status === "error" && <AlertTriangle size={12} className="text-warning/70 flex-shrink-0" />}
                             <span className={cn(
                               "font-mono truncate",
-                              r.status === "active" && "text-[#00498D]/80",
-                              r.status === "not_found" && "text-red-400/80",
+                              r.status === "active" && "text-link/80",
+                              r.status === "not_found" && "text-danger/80",
                               r.status === "error" && "text-ink-3",
                             )}>@{r.username}</span>
-                            {r.is_verified && <BadgeCheck size={11} className="text-[#85B9E9]/70 flex-shrink-0" />}
+                            {r.is_verified && <BadgeCheck size={11} className="text-link/70 flex-shrink-0" />}
                             {r.is_private && <Lock size={10} className="text-ink-3 flex-shrink-0" />}
                           </span>
                           <span className={cn(
                             "text-[10px] font-semibold text-right flex-shrink-0",
-                            r.status === "active" && "text-[#00498D]/60",
-                            r.status === "not_found" && "text-red-400/60",
-                            r.status === "error" && "text-amber-400/60",
+                            r.status === "active" && "text-link/60",
+                            r.status === "not_found" && "text-danger/60",
+                            r.status === "error" && "text-warning/60",
                           )}>
                             {r.status === "active" && typeof r.followers === "number"
                               ? `${r.followers.toLocaleString("pt-BR")} seguidores`
@@ -2440,7 +2440,7 @@ export default function AccountsPage() {
                       <button
                         onClick={() => { setShowChecker(false); setCheckerResults(null); setCheckerText(""); setCheckerProgress(null); }}
                         disabled={checkerRunning}
-                        className="flex-1 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/25 text-amber-300 text-xs font-semibold hover:bg-amber-500/25 transition-all disabled:opacity-40"
+                        className="flex-1 py-2.5 rounded-xl bg-warning-soft border border-warning/25 text-warning text-xs font-semibold hover:bg-warning/25 transition-all disabled:opacity-40"
                       >
                         Fechar
                       </button>
@@ -2465,8 +2465,8 @@ export default function AccountsPage() {
             className={cn(
               "flex items-start gap-2.5 px-4 py-3 rounded-xl text-sm",
               notification.type === "success"
-                ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300"
-                : "bg-red-500/10 border border-red-500/20 text-red-300"
+                ? "bg-success-soft border border-success/20 text-success"
+                : "bg-danger-soft border border-danger/20 text-danger"
             )}
           >
             {notification.type === "success"
@@ -2488,7 +2488,7 @@ export default function AccountsPage() {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Contas do Instagram</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink">Contas do Instagram</h1>
           <p className="text-sm text-ink-3 mt-0.5">
             {accounts.length} conectada{accounts.length !== 1 ? "s" : ""} · {active} ativa{active !== 1 ? "s" : ""}
           </p>
@@ -2511,21 +2511,21 @@ export default function AccountsPage() {
               </button>
               <button
                 onClick={() => { setShowCsvImport(true); setCsvResults(null); setCsvText(""); }}
-                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-blue-500/20 text-blue-400/70 hover:text-blue-300 hover:border-blue-500/40 hover:bg-blue-500/[0.06] transition-all"
+                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-primary/20 text-link/70 hover:text-link hover:border-primary/40 hover:bg-info-soft transition-all"
               >
                 <Upload size={14} />
                 Proxies
               </button>
               <button
                 onClick={() => { setShowChecker(true); setCheckerResults(null); setCheckerProgress(null); setCheckerText(""); }}
-                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-amber-500/20 text-amber-400/70 hover:text-amber-300 hover:border-amber-500/40 hover:bg-amber-500/[0.06] transition-all"
+                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-warning/20 text-warning/70 hover:text-warning hover:border-warning/40 hover:bg-warning-soft transition-all"
               >
                 <UserSearch size={14} />
                 Verificar
               </button>
                             <button
                 onClick={() => setMagicLinkOpen(true)}
-                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-[#00498D]/30 text-[#85B9E9] hover:text-[#a8d1f5] hover:border-[#00498D]/50 hover:bg-[#00498D]/[0.08] transition-all"
+                className="flex items-center gap-1.5 text-sm px-3 py-2.5 rounded-xl border border-primary/30 text-link hover:text-primary-2 hover:border-primary/50 hover:bg-info-soft transition-all"
                 title="Gerar link pessoal para adicionar contas sem login"
               >
                 <LinkIcon size={14} />
@@ -2547,7 +2547,7 @@ export default function AccountsPage() {
                   <button
                     onClick={handleBulkSync}
                     disabled={bulkSyncing || bulkActivating || bulkMoving || bulkDeleting}
-                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-[#85B9E9]/10 border border-[#85B9E9]/30 text-[#85B9E9] hover:bg-[#85B9E9]/20 disabled:opacity-40"
+                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-info-soft border border-primary-2/30 text-link hover:bg-primary-2/20 disabled:opacity-40"
                   >
                     {bulkSyncing
                       ? <Loader2 size={14} className="animate-spin" />
@@ -2561,7 +2561,7 @@ export default function AccountsPage() {
                   <button
                     onClick={handleBulkActivate}
                     disabled={bulkActivating || bulkMoving || bulkDeleting || bulkSyncing}
-                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-[#00498D]/10 border border-[#00498D]/30 text-[#00498D] hover:bg-[#00498D]/20 disabled:opacity-40"
+                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-info-soft border border-primary/30 text-link hover:bg-primary/20 disabled:opacity-40"
                   >
                     {bulkActivating
                       ? <Loader2 size={14} className="animate-spin" />
@@ -2572,7 +2572,7 @@ export default function AccountsPage() {
                   <button
                     onClick={() => { setBulkMovePendingFolderId(null); setBulkMoveOpen(true); }}
                     disabled={bulkMoving || bulkDeleting || bulkActivating || bulkSyncing}
-                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-[#00498D]/15 border border-[#00498D]/30 text-[#AFBDD0] hover:bg-[#00498D]/25 disabled:opacity-40"
+                    className="flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all bg-info-soft border border-primary/30 text-link hover:bg-primary/25 disabled:opacity-40"
                   >
                     <Folder size={14} />
                     {`Mover para pasta (${selectedIds.size})`}
@@ -2583,8 +2583,8 @@ export default function AccountsPage() {
                     className={cn(
                       "flex items-center gap-1.5 text-sm px-4 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-40",
                       confirmBulkDelete
-                        ? "bg-red-600 border border-red-500 text-white hover:bg-red-700"
-                        : "bg-red-600/15 border border-red-500/30 text-red-400 hover:bg-red-600/25"
+                        ? "bg-danger border border-danger text-white hover:bg-danger"
+                        : "bg-danger-soft border border-danger/30 text-danger hover:bg-danger/25"
                     )}
                   >
                     {bulkDeleting
@@ -2611,7 +2611,7 @@ export default function AccountsPage() {
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 transition-all",
             activeFolderId === null
-              ? "bg-[#00498D]/12 text-[#00498D] border border-[#00498D]/25"
+              ? "bg-info-soft text-link border border-primary/25"
               : "text-ink-3 hover:text-ink-2 hover:bg-surface-hover border border-transparent"
           )}
         >
@@ -2638,7 +2638,7 @@ export default function AccountsPage() {
               style={{
                 opacity: isDragging ? 0.4 : 1,
                 cursor: "grab",
-                outline: isOver ? "1px solid rgba(139,92,246,0.5)" : undefined,
+                outline: isOver ? "1px solid rgba(47,123,255,0.5)" : undefined,
                 borderRadius: isOver ? "8px" : undefined,
                 transition: "opacity 0.15s, outline 0.1s",
               }}
@@ -2649,7 +2649,7 @@ export default function AccountsPage() {
                   "flex items-center gap-1.5 pl-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all rounded-l-lg",
                   isActive ? "pr-1" : "pr-3 rounded-r-lg",
                   isActive
-                    ? "bg-[#00498D]/12 text-[#AFBDD0] border border-[#00498D]/25 border-r-0"
+                    ? "bg-info-soft text-link border border-primary/25 border-r-0"
                     : "text-ink-3 hover:text-ink-2 hover:bg-surface-hover border border-transparent"
                 )}
               >
@@ -2657,7 +2657,7 @@ export default function AccountsPage() {
                 {folder.name}
                 <span className={cn(
                   "text-[9px] px-1 py-0.5 rounded-full",
-                  isActive ? "bg-brand-blue/20 text-accent/70" : "bg-line-control/10 text-ink-3"
+                  isActive ? "bg-primary/20 text-accent/70" : "bg-line-control/10 text-ink-3"
                 )}>
                   {folder.account_count}
                 </span>
@@ -2672,7 +2672,7 @@ export default function AccountsPage() {
                     setFolderMenuPos({ top: rect.bottom + 6, left: rect.left });
                     setOpenFolderMenuId(menuOpen ? null : folder.id);
                   }}
-                  className="h-full px-2 flex items-center rounded-r-lg bg-[#00498D]/12 border border-[#00498D]/25 border-l-0 text-[#85B9E9]/50 hover:text-[#AFBDD0] transition-colors"
+                  className="h-full px-2 flex items-center rounded-r-lg bg-info-soft border border-primary/25 border-l-0 text-link/50 hover:text-link transition-colors"
                 >
                   <Settings2 size={11} />
                 </button>
@@ -2687,7 +2687,7 @@ export default function AccountsPage() {
                     exit={{ opacity: 0, scale: 0.9, y: -4 }}
                     transition={{ duration: 0.1 }}
                     style={{ position: "fixed", top: folderMenuPos.top, left: folderMenuPos.left }}
-                    className="z-[200] min-w-[148px] bg-surface-raised border border-line rounded-xl shadow-2xl overflow-hidden"
+                    className="glass z-[200] min-w-[148px] overflow-hidden"
                   >
                     <button
                       onClick={() => {
@@ -2697,7 +2697,7 @@ export default function AccountsPage() {
                       }}
                       className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-ink-2 hover:bg-surface-hover hover:text-ink transition-colors"
                     >
-                      <Pencil size={12} className="text-amber-400" /> Renomear Pasta
+                      <Pencil size={12} className="text-warning" /> Renomear Pasta
                     </button>
                     <div className="h-px bg-line" />
                     <button
@@ -2705,7 +2705,7 @@ export default function AccountsPage() {
                         setDeleteDialog({ id: folder.id, name: folder.name, count: folder.account_count });
                         setOpenFolderMenuId(null);
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-red-400/70 hover:bg-red-500/[0.08] hover:text-red-400 transition-colors"
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-xs text-danger/70 hover:bg-danger-soft hover:text-danger transition-colors"
                     >
                       <Trash2 size={12} /> Excluir Pasta
                     </button>
@@ -2719,7 +2719,7 @@ export default function AccountsPage() {
         {/* Nova pasta button */}
         <button
           onClick={() => setShowNewFolderModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 text-ink-3 hover:text-accent hover:bg-brand-blue/[0.06] border border-transparent hover:border-brand-blue/20 transition-all"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex-shrink-0 text-ink-3 hover:text-accent hover:bg-primary/[0.06] border border-transparent hover:border-primary/20 transition-all"
         >
           <FolderPlus size={11} className="flex-shrink-0" />
           Nova Pasta
@@ -2744,8 +2744,8 @@ export default function AccountsPage() {
                 "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all",
                 sortMode === key
                   ? key === "story_expiring"
-                    ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                    : "bg-[#85B9E9]/10 border-[#85B9E9]/30 text-[#85B9E9]"
+                    ? "bg-warning-soft border-warning/30 text-warning"
+                    : "bg-info-soft border-primary-2/30 text-link"
                   : "bg-surface-raised border-line text-ink-3 hover:text-ink-2 hover:border-line-control"
               )}
             >
@@ -2781,7 +2781,7 @@ export default function AccountsPage() {
                     return next;
                   });
                 }}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-[#00498D]/[0.06] border-[#00498D]/20 text-[#00498D]/70 hover:text-[#00498D] hover:border-[#00498D]/40 transition-all"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border bg-info-soft border-primary/20 text-link/70 hover:text-link hover:border-primary/40 transition-all"
               >
                 <CheckCircle2 size={11} />
                 {filteredAccounts.length > 0 && filteredAccounts.every(a => selectedIds.has(a.id)) ? "Desmarcar todas" : "Selecionar todas"}
@@ -2814,7 +2814,7 @@ export default function AccountsPage() {
               ? <Folder size={24} className="text-ink-3/50" />
               : accounts.length === 0
                 ? <Instagram size={24} className="text-ink-3/50" />
-                : <CheckCircle2 size={24} className="text-[#00498D]/40" />
+                : <CheckCircle2 size={24} className="text-link/40" />
             }
           </div>
           <div className="space-y-1">
@@ -2834,7 +2834,7 @@ export default function AccountsPage() {
               </>
             ) : (
               <>
-                <p className="text-[#00498D]/70 text-sm font-semibold">Tudo organizado</p>
+                <p className="text-link/70 text-sm font-semibold">Tudo organizado</p>
                 <p className="text-ink-3/60 text-xs max-w-xs">
                   Todas as contas estão dentro de uma pasta. Use as abas acima para gerenciá-las.
                 </p>

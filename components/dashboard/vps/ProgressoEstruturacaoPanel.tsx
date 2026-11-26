@@ -50,7 +50,7 @@ export function ProgressoEstruturacaoPanel({ jobs }: { jobs: readonly VpsJob[] }
       </Card>
 
       <Card title="Log da estruturação" description={`Etapas das contas da rodada, na ordem em que chegam (últimas ${LOG_MAX} linhas).`}>
-        <div ref={caixa} className="h-56 overflow-y-auto rounded-lg border border-line bg-surface-raised p-3 font-mono text-xs leading-5" aria-live="polite">
+        <div ref={caixa} className="h-56 overflow-y-auto rounded-[14px] border border-line bg-surface-raised p-3 font-mono text-xs leading-5" aria-live="polite">
           {linhas.length === 0 ? (
             <p className="text-ink-3">Esperando o agente…</p>
           ) : (

@@ -45,12 +45,12 @@ interface ScheduledPost {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const AVATAR_COLORS = [
-  "from-[#00498D] to-[#00346D]",
-  "from-pink-500 to-rose-600",
-  "from-[#85B9E9] to-[#00498D]",
-  "from-emerald-500 to-teal-600",
-  "from-amber-500 to-orange-600",
-  "from-fuchsia-500 to-purple-600",
+  "from-primary to-primary-2",
+  "from-[#c08cff] to-[#ff6ab0]",
+  "from-primary-2 to-primary",
+  "from-[#2fd39a] to-[#1c7ed6]",
+  "from-[#ffb347] to-[#ff6a5c]",
+  "from-[#5b6bff] to-[#b26bff]",
 ];
 
 function avatarGradient(username: string) {
@@ -80,10 +80,10 @@ function relativeTime(iso: string, future = false): string {
 // ── Status config ─────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<PostStatus, { label: string; color: string }> = {
-  pending:    { label: "Pendente",      color: "bg-amber-500/15 text-amber-400 border-amber-500/20" },
-  publishing: { label: "Publicando...", color: "bg-blue-500/15 text-blue-400 border-blue-500/20" },
-  published:  { label: "Publicado",     color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" },
-  failed:     { label: "Falha",         color: "bg-red-500/15 text-red-400 border-red-500/20" },
+  pending:    { label: "Pendente",      color: "bg-warning-soft text-warning border-warning/20" },
+  publishing: { label: "Publicando...", color: "bg-info-soft text-link border-primary/20" },
+  published:  { label: "Publicado",     color: "bg-success-soft text-success border-success/20" },
+  failed:     { label: "Falha",         color: "bg-danger-soft text-danger border-danger/20" },
   cancelled:  { label: "Cancelado",     color: "bg-surface-raised text-ink-3/60 border-line" },
 };
 
@@ -137,7 +137,7 @@ function PostRow({
       <div
         className={cn(
           "w-10 rounded-lg flex-shrink-0 bg-gradient-to-br",
-          account ? avatarGradient(account.username) : "from-[#00498D] to-[#00346D]"
+          account ? avatarGradient(account.username) : "from-primary to-primary-2"
         )}
         style={{ aspectRatio: "9/16" }}
       />
@@ -173,13 +173,13 @@ function PostRow({
           </span>
           {post.status === "pending" && (
             <span className={cn(
-              new Date(post.scheduled_at) < new Date() ? "text-red-400/70" : "text-amber-400/70"
+              new Date(post.scheduled_at) < new Date() ? "text-danger/70" : "text-warning/70"
             )}>
               {relativeTime(post.scheduled_at, true)}
             </span>
           )}
           {post.status === "published" && post.published_at && (
-            <span className="text-emerald-400/60">
+            <span className="text-success/60">
               publicado {relativeTime(post.published_at)}
             </span>
           )}
@@ -190,8 +190,8 @@ function PostRow({
 
         {/* Error box */}
         {post.status === "failed" && post.error_message && (
-          <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-red-500/8 border border-red-500/15">
-            <p className="text-[11px] text-red-400/80 line-clamp-2 leading-snug">
+          <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-danger-soft border border-danger/15">
+            <p className="text-[11px] text-danger/80 line-clamp-2 leading-snug">
               {post.error_message}
             </p>
           </div>
@@ -213,7 +213,7 @@ function PostRow({
             <button
               onClick={() => onRetry(post.id)}
               disabled={busy}
-              className="flex items-center gap-1 text-[11px] text-amber-400/70 hover:text-amber-400 transition-colors disabled:opacity-40"
+              className="flex items-center gap-1 text-[11px] text-warning/70 hover:text-warning transition-colors disabled:opacity-40"
             >
               {busy ? <Loader2 size={9} className="animate-spin" /> : <RotateCcw size={9} />}
               Reagendar
@@ -223,7 +223,7 @@ function PostRow({
             <button
               onClick={() => onDelete(post.id)}
               disabled={busy}
-              className="flex items-center gap-1 text-[11px] text-red-400/40 hover:text-red-400 transition-colors disabled:opacity-40"
+              className="flex items-center gap-1 text-[11px] text-danger/40 hover:text-danger transition-colors disabled:opacity-40"
             >
               {busy ? <Loader2 size={9} className="animate-spin" /> : <Trash2 size={9} />}
               Remover
@@ -362,10 +362,10 @@ export default function SchedulePage() {
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Agendamentos</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink">Agendamentos</h1>
           <p className="text-sm text-ink-3 mt-0.5">
             {counts.all} total · {counts.pending} pendente{counts.pending !== 1 ? "s" : ""} · {counts.published} publicado{counts.published !== 1 ? "s" : ""}
-            {counts.failed > 0 && <span className="text-red-400/70"> · {counts.failed} com falha</span>}
+            {counts.failed > 0 && <span className="text-danger/70"> · {counts.failed} com falha</span>}
           </p>
         </div>
         <a href="/dashboard/posts" className="btn-primary flex items-center gap-2 text-sm px-4 py-2.5">
@@ -386,7 +386,7 @@ export default function SchedulePage() {
               className={cn(
                 "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors",
                 filter === key
-                  ? "bg-[#00498D]/25 text-[#AFBDD0] border border-[#00498D]/30"
+                  ? "bg-primary/25 text-link border border-primary/30"
                   : "text-ink-3 hover:text-ink-2 hover:bg-surface-raised border border-transparent"
               )}
             >
@@ -394,7 +394,7 @@ export default function SchedulePage() {
               {count > 0 && (
                 <span className={cn(
                   "text-[10px] px-1.5 py-px rounded-full",
-                  filter === key ? "bg-[#00498D]/30 text-[#AFBDD0]" : "bg-line-control/10 text-ink-3"
+                  filter === key ? "bg-primary/30 text-link" : "bg-line-control/10 text-ink-3"
                 )}>
                   {count}
                 </span>
@@ -461,7 +461,7 @@ export default function SchedulePage() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
-            className="flex items-center gap-2 text-xs text-blue-400/70"
+            className="flex items-center gap-2 text-xs text-link/70"
           >
             <Loader2 size={11} className="animate-spin" />
             Atualizando automaticamente enquanto há posts sendo publicados...

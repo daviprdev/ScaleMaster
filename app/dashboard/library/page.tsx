@@ -494,7 +494,7 @@ export default function LibraryPage() {
         {showNewFolder && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm"
             onClick={() => { setShowNewFolder(false); setNewFolderName(""); }}
           >
             <motion.div
@@ -504,11 +504,11 @@ export default function LibraryPage() {
               className="glass w-full max-w-sm rounded-2xl p-6 space-y-5 border border-line"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#00498D]/20 flex items-center justify-center">
-                  <FolderPlus size={18} className="text-[#85B9E9]" />
+                <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
+                  <FolderPlus size={18} className="text-link" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-white">Nova Pasta</h3>
+                  <h3 className="text-sm font-semibold text-ink">Nova Pasta</h3>
                   <p className="text-xs text-ink-3">Organize seus vídeos por tema ou campanha</p>
                 </div>
               </div>
@@ -534,7 +534,7 @@ export default function LibraryPage() {
         {movingVideo && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm"
             onClick={() => setMovingVideo(null)}
           >
             <motion.div
@@ -544,11 +544,11 @@ export default function LibraryPage() {
               className="glass w-full max-w-sm rounded-2xl p-6 space-y-4 border border-line"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#85B9E9]/20 flex items-center justify-center">
-                  <FolderInput size={18} className="text-[#85B9E9]" />
+                <div className="w-10 h-10 rounded-xl bg-primary-2/20 flex items-center justify-center">
+                  <FolderInput size={18} className="text-link" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-white">Mover vídeo</h3>
+                  <h3 className="text-sm font-semibold text-ink">Mover vídeo</h3>
                   <p className="text-xs text-ink-3 truncate">{movingVideo.filename.slice(0, 36)}</p>
                 </div>
               </div>
@@ -560,11 +560,11 @@ export default function LibraryPage() {
                     className={cn(
                       "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150",
                       movingTo === f.id
-                        ? "bg-[#00498D]/20 border border-[#00498D]/40 text-white"
+                        ? "bg-primary/20 border border-primary/40 text-ink"
                         : "border border-transparent text-ink-2 hover:bg-surface-raised hover:text-ink"
                     )}
                   >
-                    <Folder size={15} className="flex-shrink-0 text-[#85B9E9]" />
+                    <Folder size={15} className="flex-shrink-0 text-link" />
                     <span className="truncate">{f.name}</span>
                     {movingTo === f.id && <CheckMark />}
                   </button>
@@ -590,7 +590,7 @@ export default function LibraryPage() {
         {bulkMovingOpen && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm"
             onClick={() => setBulkMovingOpen(false)}
           >
             <motion.div
@@ -600,11 +600,11 @@ export default function LibraryPage() {
               className="glass w-full max-w-sm rounded-2xl p-6 space-y-4 border border-line"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#85B9E9]/20 flex items-center justify-center">
-                  <FolderInput size={18} className="text-[#85B9E9]" />
+                <div className="w-10 h-10 rounded-xl bg-primary-2/20 flex items-center justify-center">
+                  <FolderInput size={18} className="text-link" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-white">Mover {selectedIds.size} vídeo{selectedIds.size !== 1 ? "s" : ""}</h3>
+                  <h3 className="text-sm font-semibold text-ink">Mover {selectedIds.size} vídeo{selectedIds.size !== 1 ? "s" : ""}</h3>
                   <p className="text-xs text-ink-3">Selecione a pasta de destino</p>
                 </div>
               </div>
@@ -616,11 +616,11 @@ export default function LibraryPage() {
                     className={cn(
                       "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-150",
                       bulkMoveTo === f.id
-                        ? "bg-[#00498D]/20 border border-[#00498D]/40 text-white"
+                        ? "bg-primary/20 border border-primary/40 text-ink"
                         : "border border-transparent text-ink-2 hover:bg-surface-raised hover:text-ink"
                     )}
                   >
-                    <Folder size={15} className="flex-shrink-0 text-[#85B9E9]" />
+                    <Folder size={15} className="flex-shrink-0 text-link" />
                     <span className="truncate">{f.name}</span>
                     {bulkMoveTo === f.id && <CheckMark />}
                   </button>
@@ -646,34 +646,34 @@ export default function LibraryPage() {
         {deletingFolder && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm"
             onClick={() => setDeletingFolder(null)}
           >
             <motion.div
               initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
               transition={{ type: "spring", duration: 0.35 }}
               onClick={e => e.stopPropagation()}
-              className="glass w-full max-w-sm rounded-2xl p-6 space-y-4 border border-red-500/20"
+              className="glass w-full max-w-sm rounded-2xl p-6 space-y-4 border border-danger/20"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center">
-                  <Trash2 size={18} className="text-red-400" />
+                <div className="w-10 h-10 rounded-xl bg-danger-soft flex items-center justify-center">
+                  <Trash2 size={18} className="text-danger" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-white">Excluir pasta e vídeos</h3>
-                  <p className="text-xs text-red-400/70">Ação permanente e irreversível</p>
+                  <h3 className="text-sm font-semibold text-ink">Excluir pasta e vídeos</h3>
+                  <p className="text-xs text-danger/70">Ação permanente e irreversível</p>
                 </div>
               </div>
               <p className="text-sm text-ink-2">
-                Tem certeza que deseja excluir <span className="text-white font-medium">&ldquo;{deletingFolder.name}&rdquo;</span>?
+                Tem certeza que deseja excluir <span className="text-ink font-medium">&ldquo;{deletingFolder.name}&rdquo;</span>?
               </p>
               <p className="text-xs text-ink-3 leading-relaxed">
-                <span className="text-red-400/90 font-medium">Todos os vídeos desta pasta serão apagados</span>{" "}
+                <span className="text-danger/90 font-medium">Todos os vídeos desta pasta serão apagados</span>{" "}
                 de vez — do banco e do armazenamento. Não há como recuperar. Loops que usavam
                 esta pasta serão pausados e campanhas sincronizadas, desligadas.
               </p>
               {deleteFolderError && (
-                <p className="text-xs text-red-400 leading-relaxed">{deleteFolderError}</p>
+                <p className="text-xs text-danger leading-relaxed">{deleteFolderError}</p>
               )}
               <div className="flex gap-3">
                 <button
@@ -688,7 +688,7 @@ export default function LibraryPage() {
                   type="button"
                   onClick={() => handleDeleteFolder(deletingFolder)}
                   disabled={deletingFolderLoading}
-                  className="flex-1 flex items-center justify-center gap-2 text-sm py-2.5 rounded-xl bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 flex items-center justify-center gap-2 text-sm py-2.5 rounded-xl bg-danger/20 border border-danger/40 text-danger hover:bg-danger/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {deletingFolderLoading
                     ? <><Loader2 size={14} className="animate-spin" /> Excluindo…</>
@@ -705,7 +705,7 @@ export default function LibraryPage() {
         {renamingFolder && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm"
             onClick={() => setRenamingFolder(null)}
           >
             <motion.div
@@ -715,11 +715,11 @@ export default function LibraryPage() {
               className="glass w-full max-w-sm rounded-2xl p-6 space-y-5 border border-line"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#00498D]/20 flex items-center justify-center">
-                  <Pencil size={18} className="text-[#85B9E9]" />
+                <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
+                  <Pencil size={18} className="text-link" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-white">Renomear Pasta</h3>
+                  <h3 className="text-sm font-semibold text-ink">Renomear Pasta</h3>
                   <p className="text-xs text-ink-3">Escolha um novo nome para a pasta</p>
                 </div>
               </div>
@@ -755,7 +755,7 @@ export default function LibraryPage() {
           {currentFolder && (
             <>
               <ChevronRight size={13} className="text-ink-3" />
-              <span className="text-white font-medium">{currentFolder.name}</span>
+              <span className="text-ink font-medium">{currentFolder.name}</span>
             </>
           )}
         </div>
@@ -767,7 +767,7 @@ export default function LibraryPage() {
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#00498D]/10 border border-[#00498D]/25 text-[#00498D]/80 text-xs font-medium"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-info-soft border border-primary/25 text-link/80 text-xs font-medium"
               >
                 <CheckCircle2 size={13} /> {deleteFolderResult}
               </motion.span>
@@ -779,7 +779,7 @@ export default function LibraryPage() {
             onClick={handleCleanupOrphans}
             disabled={cleaningOrphans}
             title="Remove registros da Biblioteca cujo arquivo já não existe no armazenamento. Nenhum vídeo é apagado."
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400/70 hover:text-amber-300 hover:bg-amber-500/15 hover:border-amber-500/35 text-xs font-medium transition-all duration-200 flex-shrink-0 disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-warning-soft border border-warning/20 text-warning/70 hover:text-warning hover:bg-warning-soft hover:border-warning/35 text-xs font-medium transition-all duration-200 flex-shrink-0 disabled:opacity-50"
           >
             {cleaningOrphans
               ? <Loader2 size={13} className="animate-spin" />
@@ -811,13 +811,13 @@ export default function LibraryPage() {
           "relative rounded-2xl border-2 border-dashed transition-all duration-200 cursor-pointer",
           "flex flex-col items-center justify-center gap-3 py-10 px-6 text-center",
           isDragOver
-            ? "border-[#00498D]/60 bg-[#00498D]/10 scale-[1.01]"
-            : "border-line-control bg-surface hover:border-brand-blue/30 hover:bg-brand-blue/5"
+            ? "border-primary/60 bg-info-soft scale-[1.01]"
+            : "border-line-control bg-surface hover:border-primary/30 hover:bg-primary/5"
         )}
       >
         <input ref={fileInputRef} type="file" accept="video/*" multiple className="hidden" onChange={handleFileInput} />
-        <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-colors", isDragOver ? "bg-[#00498D]/20" : "bg-surface-raised")}>
-          <UploadCloud size={22} className={isDragOver ? "text-[#85B9E9]" : "text-ink-3"} />
+        <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-colors", isDragOver ? "bg-primary/20" : "bg-surface-raised")}>
+          <UploadCloud size={22} className={isDragOver ? "text-link" : "text-ink-3"} />
         </div>
         <div>
           <p className="text-sm font-semibold text-ink-2">
@@ -840,7 +840,7 @@ export default function LibraryPage() {
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-line">
               <div className="flex items-center gap-2">
-                <Film size={14} className="text-[#85B9E9]" />
+                <Film size={14} className="text-link" />
                 <span className="text-xs font-semibold text-ink-2">
                   {activeUploads > 0 ? `Enviando ${activeUploads} arquivo${activeUploads > 1 ? "s" : ""}...` : "Uploads concluídos"}
                 </span>
@@ -856,24 +856,24 @@ export default function LibraryPage() {
                 {uploads.map(item => (
                   <motion.div key={item.id} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="px-4 py-3 space-y-2">
                     <div className="flex items-center gap-3">
-                      <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", item.status === "done" ? "bg-emerald-500/15 text-emerald-400" : item.status === "error" ? "bg-red-500/15 text-red-400" : item.status === "skipped" ? "bg-amber-500/15 text-amber-400" : "bg-[#00498D]/15 text-[#85B9E9]")}>
+                      <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", item.status === "done" ? "bg-success-soft text-success" : item.status === "error" ? "bg-danger-soft text-danger" : item.status === "skipped" ? "bg-warning-soft text-warning" : "bg-info-soft text-link")}>
                         {item.status === "done" ? <CheckCircle2 size={14} /> : item.status === "error" ? <AlertCircle size={14} /> : item.status === "skipped" ? <CheckCircle2 size={14} /> : item.status === "uploading" ? <Loader2 size={13} className="animate-spin" /> : <Film size={13} />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-ink-2 truncate">{item.file.name}</p>
                         {item.status === "error"
-                          ? <p className="text-[10px] text-red-400 truncate">{item.error}</p>
+                          ? <p className="text-[10px] text-danger truncate">{item.error}</p>
                           : item.status === "skipped"
-                          ? <p className="text-[10px] text-amber-400 truncate">Já existe na biblioteca. Ignorado.</p>
+                          ? <p className="text-[10px] text-warning truncate">Já existe na biblioteca. Ignorado.</p>
                           : <p className="text-[10px] text-ink-3">{formatBytes(item.file.size)}</p>}
                       </div>
-                      <span className={cn("text-[10px] font-semibold flex-shrink-0", item.status === "done" ? "text-emerald-400" : item.status === "error" ? "text-red-400" : item.status === "skipped" ? "text-amber-400" : "text-ink-3")}>
+                      <span className={cn("text-[10px] font-semibold flex-shrink-0", item.status === "done" ? "text-success" : item.status === "error" ? "text-danger" : item.status === "skipped" ? "text-warning" : "text-ink-3")}>
                         {item.status === "done" ? "Concluído" : item.status === "error" ? "Erro" : item.status === "skipped" ? "Ignorado" : item.status === "uploading" ? `${item.progress}%` : "Na fila"}
                       </span>
                     </div>
                     {item.status !== "error" && item.status !== "skipped" && (
                       <div className="h-1 rounded-full bg-line-control/20 overflow-hidden">
-                        <motion.div className={cn("h-full rounded-full", item.status === "done" ? "bg-emerald-500" : "bg-gradient-to-r from-[#00498D] to-[#85B9E9]")} initial={{ width: "0%" }} animate={{ width: `${item.progress}%` }} transition={{ duration: 0.35, ease: "easeOut" }} />
+                        <motion.div className={cn("h-full rounded-full", item.status === "done" ? "bg-success" : "bg-gradient-primary")} initial={{ width: "0%" }} animate={{ width: `${item.progress}%` }} transition={{ duration: 0.35, ease: "easeOut" }} />
                       </div>
                     )}
                   </motion.div>
@@ -896,7 +896,7 @@ export default function LibraryPage() {
             className="flex items-center gap-1.5 text-xs text-ink-3 hover:text-ink-2 transition-colors"
           >
             {allSelected
-              ? <><CheckSquare size={13} className="text-[#00498D]" /> Desmarcar todos</>
+              ? <><CheckSquare size={13} className="text-link" /> Desmarcar todos</>
               : <><Square size={13} /> Selecionar todos</>
             }
           </button>
@@ -1010,9 +1010,9 @@ export default function LibraryPage() {
             >
               <div
                 className="w-24 h-24 rounded-3xl flex items-center justify-center"
-                style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.18)" }}
+                style={{ background: "rgba(47,123,255,0.08)", border: "1px solid rgba(47,123,255,0.18)" }}
               >
-                <FolderPlus size={40} className="text-[#85B9E9]/60" />
+                <FolderPlus size={40} className="text-link/60" />
               </div>
               <div>
                 <p className="text-ink-2 font-semibold text-lg mb-2">Nenhuma pasta criada</p>
@@ -1048,7 +1048,7 @@ export default function LibraryPage() {
             }}
           >
             <AlertCircle size={15} style={{ color: "rgba(255,80,70,0.9)", flexShrink: 0 }} />
-            <span className="text-xs text-red-300 flex-1">{bulkError}</span>
+            <span className="text-xs text-danger flex-1">{bulkError}</span>
             <button
               onClick={() => setBulkError(null)}
               className="flex-shrink-0 text-ink-3 hover:text-ink-2 transition-colors"
@@ -1073,16 +1073,16 @@ export default function LibraryPage() {
               className="flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl"
               style={{
                 background: "rgba(8,8,12,0.92)",
-                border: "1px solid rgba(0,73,141,0.2)",
+                border: "1px solid rgba(47,123,255,0.2)",
                 backdropFilter: "blur(20px)",
-                boxShadow: "0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,73,141,0.1)",
+                boxShadow: "0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(47,123,255,0.1)",
               }}
             >
               <div
                 className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: "rgba(0,73,141,0.12)", border: "1px solid rgba(0,73,141,0.25)" }}
+                style={{ background: "rgba(47,123,255,0.12)", border: "1px solid rgba(47,123,255,0.25)" }}
               >
-                <CheckSquare size={14} style={{ color: "#00498D" }} />
+                <CheckSquare size={14} style={{ color: "var(--link)" }} />
               </div>
               <span className="text-sm font-semibold text-ink whitespace-nowrap">
                 {selectedIds.size} vídeo{selectedIds.size !== 1 ? "s" : ""} selecionado{selectedIds.size !== 1 ? "s" : ""}
@@ -1101,9 +1101,9 @@ export default function LibraryPage() {
                 onClick={() => { setBulkMoveTo("__root__"); setBulkMovingOpen(true); }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 whitespace-nowrap"
                 style={{
-                  background: "rgba(133,185,233,0.12)",
-                  border: "1px solid rgba(133,185,233,0.30)",
-                  color: "rgba(133,185,233,0.90)",
+                  background: "rgba(63,208,255,0.12)",
+                  border: "1px solid rgba(63,208,255,0.30)",
+                  color: "var(--link)",
                 }}
               >
                 <FolderInput size={12} /> Mover {selectedIds.size}
@@ -1136,7 +1136,7 @@ export default function LibraryPage() {
 
 function CheckMark() {
   return (
-    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" className="ml-auto text-[#85B9E9]">
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" className="ml-auto text-link">
       <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -1145,12 +1145,12 @@ function CheckMark() {
 // ── FolderCard ────────────────────────────────────────────────
 
 const FOLDER_GRADIENTS = [
-  { bg: "from-[#00498D]/20 to-[#00346D]/10", icon: "text-[#85B9E9]", border: "border-[#00498D]/20 hover:border-[#00498D]/40", glow: "hover:shadow-[0_4px_20px_rgba(0,73,141,0.2)]" },
-  { bg: "from-[#85B9E9]/20 to-[#00498D]/10", icon: "text-[#85B9E9]", border: "border-[#85B9E9]/20 hover:border-[#85B9E9]/40", glow: "hover:shadow-[0_4px_20px_rgba(133,185,233,0.2)]" },
-  { bg: "from-pink-500/20 to-rose-700/10", icon: "text-pink-400", border: "border-pink-500/20 hover:border-pink-500/40", glow: "hover:shadow-[0_4px_20px_rgba(236,72,153,0.2)]" },
-  { bg: "from-emerald-500/20 to-teal-700/10", icon: "text-emerald-400", border: "border-emerald-500/20 hover:border-emerald-500/40", glow: "hover:shadow-[0_4px_20px_rgba(16,185,129,0.2)]" },
-  { bg: "from-amber-500/20 to-orange-700/10", icon: "text-amber-400", border: "border-amber-500/20 hover:border-amber-500/40", glow: "hover:shadow-[0_4px_20px_rgba(245,158,11,0.2)]" },
-  { bg: "from-[#00346D]/20 to-[#00498D]/10", icon: "text-[#85B9E9]", border: "border-[#00346D]/20 hover:border-[#00346D]/40", glow: "hover:shadow-[0_4px_20px_rgba(0,52,109,0.2)]" },
+  { bg: "from-primary/20 to-primary/10", icon: "text-link", border: "border-primary/20 hover:border-primary/40", glow: "hover:shadow-glow" },
+  { bg: "from-primary-2/20 to-primary/10", icon: "text-link", border: "border-primary-2/20 hover:border-primary-2/40", glow: "hover:shadow-glow" },
+  { bg: "from-danger/20 to-danger/10", icon: "text-danger", border: "border-danger/20 hover:border-danger/40", glow: "hover:shadow-[0_4px_20px_rgba(236,72,153,0.2)]" },
+  { bg: "from-success/20 to-success/10", icon: "text-success", border: "border-success/20 hover:border-success/40", glow: "hover:shadow-[0_4px_20px_rgba(16,185,129,0.2)]" },
+  { bg: "from-warning/20 to-warning/10", icon: "text-warning", border: "border-warning/20 hover:border-warning/40", glow: "hover:shadow-[0_4px_20px_rgba(245,158,11,0.2)]" },
+  { bg: "from-primary/20 to-primary/10", icon: "text-link", border: "border-primary/20 hover:border-primary/40", glow: "hover:shadow-[0_4px_20px_rgba(0,52,109,0.2)]" },
 ];
 
 interface FolderCardProps {
@@ -1196,7 +1196,7 @@ function FolderCard({ folder, index, onClick, onDelete, onRename }: FolderCardPr
             </button>
             <button
               onClick={e => { e.stopPropagation(); onDelete(); }}
-              className="w-6 h-6 rounded-lg bg-black/40 border border-red-500/30 flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors"
+              className="w-6 h-6 rounded-lg bg-black/40 border border-danger/30 flex items-center justify-center text-danger hover:bg-danger/20 transition-colors"
             >
               <X size={10} />
             </button>

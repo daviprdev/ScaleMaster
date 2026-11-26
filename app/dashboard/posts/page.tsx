@@ -43,25 +43,25 @@ interface Account {
 
 // ── Helpers ───────────────────────────────────────────────────
 const GRADIENTS = [
-  "from-[#00498D] to-[#00346D]",
-  "from-[#85B9E9] to-[#00498D]",
-  "from-pink-500 to-rose-700",
-  "from-emerald-500 to-teal-700",
-  "from-amber-500 to-orange-700",
-  "from-[#00346D] to-[#00498D]",
-  "from-red-500 to-pink-700",
-  "from-teal-500 to-cyan-700",
-  "from-fuchsia-500 to-purple-700",
-  "from-lime-500 to-green-700",
+  "from-primary to-primary-2",
+  "from-primary-2 to-primary",
+  "from-[#c08cff] to-[#ff6ab0]",
+  "from-[#2fd39a] to-[#1c7ed6]",
+  "from-[#ffb347] to-[#ff6a5c]",
+  "from-primary to-primary",
+  "from-[#c08cff] to-[#ff6ab0]",
+  "from-success to-primary-2",
+  "from-[#5b6bff] to-[#b26bff]",
+  "from-[#2fd39a] to-[#1c7ed6]",
 ];
 
 const AVATAR_COLORS = [
-  "from-[#00498D] to-[#00346D]",
-  "from-pink-500 to-rose-600",
-  "from-[#85B9E9] to-[#00498D]",
-  "from-emerald-500 to-teal-600",
-  "from-amber-500 to-orange-600",
-  "from-fuchsia-500 to-purple-600",
+  "from-primary to-primary-2",
+  "from-[#c08cff] to-[#ff6ab0]",
+  "from-primary-2 to-primary",
+  "from-[#2fd39a] to-[#1c7ed6]",
+  "from-[#ffb347] to-[#ff6a5c]",
+  "from-[#5b6bff] to-[#b26bff]",
 ];
 
 function strHash(s: string): number {
@@ -105,7 +105,7 @@ function StepBadge({ n, done }: { n: number; done: boolean }) {
   return (
     <span className={cn(
       "w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 transition-colors",
-      done ? "bg-[#00498D] text-white" : "bg-line-control/20 text-ink-3"
+      done ? "bg-primary text-white" : "bg-line-control/20 text-ink-3"
     )}>
       {done ? <Check size={11} /> : n}
     </span>
@@ -326,16 +326,16 @@ export default function PostsPage() {
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ type: "spring", bounce: 0.4, delay: 0.1 }}
-          className="w-20 h-20 rounded-full bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center mb-6"
+          className="w-20 h-20 rounded-full bg-success-soft border border-success/25 flex items-center justify-center mb-6"
         >
-          <CheckCircle2 size={36} className="text-emerald-400" />
+          <CheckCircle2 size={36} className="text-success" />
         </motion.div>
 
         <motion.h2
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="text-2xl font-bold text-white mb-2"
+          className="text-2xl font-bold text-ink mb-2"
         >
           {success.count} posts agendados!
         </motion.h2>
@@ -382,7 +382,7 @@ export default function PostsPage() {
 
       {/* Cabeçalho */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold tracking-tight text-white">Agendamento em Massa</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink">Agendamento em Massa</h1>
         <p className="text-sm text-ink-3 mt-0.5">
           Distribua vídeos para múltiplas contas em lotes automáticos e embaralhados
         </p>
@@ -395,7 +395,7 @@ export default function PostsPage() {
             <StepBadge n={1} done={selectedVideoIds.size > 0} />
             <h2 className="font-semibold text-ink text-sm">Selecionar Vídeos</h2>
             {selectedVideoIds.size > 0 && (
-              <span className="text-[10px] bg-[#00498D]/20 text-[#AFBDD0] px-2 py-0.5 rounded-full font-medium">
+              <span className="text-[10px] bg-primary/20 text-link px-2 py-0.5 rounded-full font-medium">
                 {selectedVideoIds.size} selecionado{selectedVideoIds.size !== 1 ? "s" : ""}
               </span>
             )}
@@ -404,7 +404,7 @@ export default function PostsPage() {
             {selectedVideoIds.size < videos.length && videos.length > 0 && (
               <button
                 onClick={selectAllVideos}
-                className="text-[11px] text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
+                className="text-[11px] text-link hover:text-link transition-colors"
               >
                 Todos
               </button>
@@ -430,7 +430,7 @@ export default function PostsPage() {
             <p className="text-ink-3 text-sm">Nenhum vídeo na biblioteca.</p>
             <a
               href="/dashboard/library"
-              className="text-xs text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
+              className="text-xs text-link hover:text-link transition-colors"
             >
               Ir para a Biblioteca →
             </a>
@@ -447,7 +447,7 @@ export default function PostsPage() {
                     "relative rounded-xl overflow-hidden transition-all text-left group",
                     "border-2",
                     sel
-                      ? "border-[#00498D] ring-2 ring-[#00498D]/20 scale-[0.98]"
+                      ? "border-primary ring-2 ring-primary/20 scale-[0.98]"
                       : "border-transparent hover:border-line-control"
                   )}
                 >
@@ -463,8 +463,8 @@ export default function PostsPage() {
                       </span>
                     )}
                     {sel && (
-                      <div className="absolute inset-0 bg-[#00498D]/15 flex items-start justify-start p-1.5">
-                        <div className="w-4 h-4 rounded-full bg-[#00498D] flex items-center justify-center shadow-lg">
+                      <div className="absolute inset-0 bg-info-soft flex items-start justify-start p-1.5">
+                        <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center shadow-lg">
                           <Check size={9} className="text-white" />
                         </div>
                       </div>
@@ -489,7 +489,7 @@ export default function PostsPage() {
             <StepBadge n={2} done={selectedAccountIds.size > 0} />
             <h2 className="font-semibold text-ink text-sm">Selecionar Contas</h2>
             {selectedAccountIds.size > 0 && (
-              <span className="text-[10px] bg-[#00498D]/20 text-[#AFBDD0] px-2 py-0.5 rounded-full font-medium">
+              <span className="text-[10px] bg-primary/20 text-link px-2 py-0.5 rounded-full font-medium">
                 {selectedAccountIds.size} selecionada{selectedAccountIds.size !== 1 ? "s" : ""}
               </span>
             )}
@@ -498,7 +498,7 @@ export default function PostsPage() {
             {selectedAccountIds.size < accounts.length && accounts.length > 0 && (
               <button
                 onClick={selectAllAccounts}
-                className="text-[11px] text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
+                className="text-[11px] text-link hover:text-link transition-colors"
               >
                 Todas
               </button>
@@ -524,7 +524,7 @@ export default function PostsPage() {
             <p className="text-ink-3 text-sm">Nenhuma conta ativa conectada.</p>
             <a
               href="/dashboard/accounts"
-              className="text-xs text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
+              className="text-xs text-link hover:text-link transition-colors"
             >
               Conectar contas →
             </a>
@@ -540,7 +540,7 @@ export default function PostsPage() {
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left",
                     sel
-                      ? "border-[#00498D] bg-[#00498D]/[0.07]"
+                      ? "border-primary bg-info-soft"
                       : "border-line bg-surface hover:border-line-control hover:bg-surface-raised"
                   )}
                 >
@@ -573,7 +573,7 @@ export default function PostsPage() {
                     )}
                   </div>
 
-                  {sel && <Check size={14} className="text-[#85B9E9] flex-shrink-0" />}
+                  {sel && <Check size={14} className="text-link flex-shrink-0" />}
                 </button>
               );
             })}
@@ -622,7 +622,7 @@ export default function PostsPage() {
                 {captions.length > 1 && (
                   <button
                     onClick={() => removeCaption(i)}
-                    className="mt-1.5 w-7 h-7 rounded-lg flex items-center justify-center text-ink-3/50 hover:bg-red-500/10 hover:text-red-400 transition-colors flex-shrink-0"
+                    className="mt-1.5 w-7 h-7 rounded-lg flex items-center justify-center text-ink-3/50 hover:bg-danger-soft hover:text-danger transition-colors flex-shrink-0"
                   >
                     <X size={13} />
                   </button>
@@ -635,7 +635,7 @@ export default function PostsPage() {
         <button
           onClick={addCaption}
           disabled={captions.length >= 10}
-          className="mt-3 flex items-center gap-2 text-xs text-[#85B9E9] hover:text-[#AFBDD0] transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+          className="mt-3 flex items-center gap-2 text-xs text-link hover:text-link transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
         >
           <Plus size={13} />
           Adicionar Variação de Legenda
@@ -712,33 +712,33 @@ export default function PostsPage() {
             className="mt-5 flex flex-wrap gap-x-5 gap-y-2 pt-4 border-t border-line"
           >
             <div className="flex items-center gap-1.5 text-xs text-ink-3">
-              <Sparkles size={11} className="text-[#85B9E9]" />
+              <Sparkles size={11} className="text-link" />
               <span>
-                <span className="text-white font-semibold">{totalPosts}</span> posts no total
+                <span className="text-ink font-semibold">{totalPosts}</span> posts no total
               </span>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-ink-3">
-              <Layers size={11} className="text-[#85B9E9]" />
+              <Layers size={11} className="text-link" />
               <span>
-                <span className="text-white font-semibold">{batchesPerAccount}</span>{" "}
+                <span className="text-ink font-semibold">{batchesPerAccount}</span>{" "}
                 lote{batchesPerAccount !== 1 ? "s" : ""} por conta
               </span>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-ink-3">
-              <Clock size={11} className="text-pink-400" />
+              <Clock size={11} className="text-danger" />
               <span>
                 início em{" "}
-                <span className="text-white font-semibold">
+                <span className="text-ink font-semibold">
                   {fmtDate(new Date(startDatetime))}
                 </span>
               </span>
             </div>
             {endDate && intervalHours > 0 && (
               <div className="flex items-center gap-1.5 text-xs text-ink-3">
-                <CalendarRange size={11} className="text-amber-400" />
+                <CalendarRange size={11} className="text-warning" />
                 <span>
                   último lote em{" "}
-                  <span className="text-white font-semibold">{fmtDate(endDate)}</span>
+                  <span className="text-ink font-semibold">{fmtDate(endDate)}</span>
                 </span>
               </div>
             )}
@@ -747,7 +747,7 @@ export default function PostsPage() {
       </SectionCard>
 
       {/* ── Barra de ação sticky ── */}
-      <div className="sticky bottom-0 -mx-6 px-6 pr-20 pb-5 pt-4 bg-gradient-to-t from-[#030712] via-[#030712]/80 to-transparent pointer-events-none">
+      <div className="sticky bottom-0 -mx-6 px-6 pr-20 pb-5 pt-4 bg-gradient-to-t from-bg via-bg/80 to-transparent pointer-events-none">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -759,14 +759,14 @@ export default function PostsPage() {
             {totalPosts > 0 ? (
               <>
                 <span className="text-xs text-ink-3">
-                  <span className="text-white font-semibold">{totalPosts}</span> posts
+                  <span className="text-ink font-semibold">{totalPosts}</span> posts
                 </span>
                 <span className="text-xs text-ink-3">
-                  <span className="text-white font-semibold">{selectedAccountIds.size}</span>{" "}
+                  <span className="text-ink font-semibold">{selectedAccountIds.size}</span>{" "}
                   conta{selectedAccountIds.size !== 1 ? "s" : ""}
                 </span>
                 <span className="text-xs text-ink-3">
-                  <span className="text-white font-semibold">{batchesPerAccount}</span>{" "}
+                  <span className="text-ink font-semibold">{batchesPerAccount}</span>{" "}
                   lote{batchesPerAccount !== 1 ? "s" : ""} por conta
                 </span>
               </>
@@ -779,7 +779,7 @@ export default function PostsPage() {
 
           {/* Erro inline */}
           {error && (
-            <div className="flex items-center gap-1.5 text-xs text-red-400 max-w-xs">
+            <div className="flex items-center gap-1.5 text-xs text-danger max-w-xs">
               <AlertCircle size={12} className="flex-shrink-0" />
               {error}
             </div>

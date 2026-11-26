@@ -150,14 +150,14 @@ export default function PushNotificationManager() {
   };
 
   if (supportState === "checking") {
-    return <div className="text-sm text-white/40">Verificando suporte a notificações…</div>;
+    return <div className="text-sm text-ink-3">Verificando suporte a notificações…</div>;
   }
 
   if (supportState === "unsupported") {
     return (
       <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-        <AlertCircle size={16} className="text-white/30 shrink-0" />
-        <p className="text-sm text-white/45">
+        <AlertCircle size={16} className="text-ink-3 shrink-0" />
+        <p className="text-sm text-ink-3">
           Este navegador não suporta notificações push.
         </p>
       </div>
@@ -166,9 +166,9 @@ export default function PushNotificationManager() {
 
   if (supportState === "ios-needs-install") {
     return (
-      <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-amber-500/[0.06] border border-amber-500/20">
-        <AlertCircle size={16} className="text-amber-400 shrink-0" />
-        <p className="text-sm text-amber-200/80">
+      <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-warning-soft border border-warning/20">
+        <AlertCircle size={16} className="text-warning shrink-0" />
+        <p className="text-sm text-warning/80">
           No iPhone, primeiro adicione o Scale Master à Tela de Início (Compartilhar → Adicionar à
           Tela de Início) e abra por esse ícone para poder ativar notificações.
         </p>
@@ -180,12 +180,12 @@ export default function PushNotificationManager() {
     <div className="space-y-3">
       <div className="flex items-center justify-between px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
         <div className="flex items-center gap-3">
-          <span className={`shrink-0 ${subscribed ? "text-[#00498D]" : "text-white/30"}`}>
+          <span className={`shrink-0 ${subscribed ? "text-link" : "text-ink-3"}`}>
             {subscribed ? <BellRing size={16} /> : <Bell size={16} />}
           </span>
           <div>
-            <p className="text-sm font-medium text-white/80">Notificações push</p>
-            <p className="text-xs text-white/40">
+            <p className="text-sm font-medium text-ink">Notificações push</p>
+            <p className="text-xs text-ink-3">
               {subscribed
                 ? "Ativas neste dispositivo."
                 : "Receba avisos de vendas, mensagens do admin e resumos do sistema."}
@@ -195,7 +195,7 @@ export default function PushNotificationManager() {
         <button
           onClick={subscribed ? handleUnsubscribe : handleSubscribe}
           disabled={busy}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150 shrink-0 ${subscribed ? "bg-red-500/[0.06] border border-red-500/20 text-red-400 hover:bg-red-500/[0.10]" : "bg-[#00498D]/[0.08] border border-[#00498D]/25 text-[#00498D] hover:bg-[#00498D]/[0.14]"}`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150 shrink-0 ${subscribed ? "bg-danger-soft border border-danger/20 text-danger hover:bg-danger-soft" : "bg-info-soft border border-primary/25 text-link hover:bg-info-soft"}`}
         >
           {busy && <Loader2 size={14} className="animate-spin" />}
           {subscribed ? <BellOff size={14} /> : <Bell size={14} />}
@@ -203,9 +203,9 @@ export default function PushNotificationManager() {
         </button>
       </div>
       {error && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/[0.06] border border-red-500/20">
-          <AlertCircle size={14} className="text-red-400 shrink-0" />
-          <p className="text-xs text-red-300/80">{error}</p>
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-danger-soft border border-danger/20">
+          <AlertCircle size={14} className="text-danger shrink-0" />
+          <p className="text-xs text-danger/80">{error}</p>
         </div>
       )}
     </div>

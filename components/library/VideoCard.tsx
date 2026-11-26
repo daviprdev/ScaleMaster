@@ -151,15 +151,15 @@ export function VideoCard({
       style={{
         aspectRatio: "9/16",
         border: selected
-          ? "1.5px solid rgba(0,73,141,0.55)"
+          ? "1.5px solid rgba(47,123,255,0.55)"
           : "0.5px solid rgba(255,255,255,0.08)",
         boxShadow: selected
-          ? "0 0 0 1px rgba(0,73,141,0.12), 0 4px 20px rgba(0,73,141,0.14)"
+          ? "0 0 0 1px rgba(47,123,255,0.12), 0 4px 20px rgba(47,123,255,0.14)"
           : undefined,
         transition: "border-color 0.2s, box-shadow 0.2s",
         ...(hovered && !selected ? {
-          borderColor: "rgba(0,73,141,0.32)",
-          boxShadow: "0 0 0 0.5px rgba(133,185,233,0.1), 0 8px 28px rgba(0,73,141,0.12)",
+          borderColor: "rgba(47,123,255,0.32)",
+          boxShadow: "0 0 0 0.5px rgba(63,208,255,0.1), 0 8px 28px rgba(47,123,255,0.12)",
         } : {}),
       }}
     >
@@ -182,10 +182,10 @@ export function VideoCard({
           className="absolute inset-0 flex items-center justify-center"
           style={{
             background:
-              "linear-gradient(160deg, rgba(0,73,141,0.07) 0%, rgba(18,18,18,1) 50%, rgba(133,185,233,0.05) 100%)",
+              "linear-gradient(160deg, rgba(47,123,255,0.07) 0%, rgba(18,18,18,1) 50%, rgba(63,208,255,0.05) 100%)",
           }}
         >
-          <Film size={28} style={{ color: "rgba(0,73,141,0.18)" }} />
+          <Film size={28} style={{ color: "var(--link)" }} />
         </div>
       )}
 
@@ -212,11 +212,11 @@ export function VideoCard({
             <div
               className="w-5 h-5 rounded-md flex items-center justify-center transition-all duration-150 cursor-pointer"
               style={{
-                background: selected ? "#00498D" : "rgba(0,0,0,0.60)",
+                background: selected ? "#2f7bff" : "rgba(0,0,0,0.60)",
                 border: selected
-                  ? "1.5px solid #00498D"
+                  ? "1.5px solid #3fd0ff"
                   : "1.5px solid rgba(255,255,255,0.35)",
-                boxShadow: selected ? "0 0 8px rgba(0,73,141,0.4)" : undefined,
+                boxShadow: selected ? "0 0 8px rgba(47,123,255,0.4)" : undefined,
               }}
             >
               {selected && (
@@ -239,7 +239,7 @@ export function VideoCard({
             className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors hover:brightness-125"
             style={{
               background: "rgba(0,0,0,0.70)",
-              color: "rgba(133,185,233,0.85)",
+              color: "var(--link)",
               backdropFilter: "blur(4px)",
             }}
           >
@@ -256,18 +256,18 @@ export function VideoCard({
                 className="absolute inset-0 z-30 p-3 flex flex-col cursor-pointer"
                 style={{ background: "rgba(0,0,0,0.92)", backdropFilter: "blur(6px)" }}
               >
-                <p className="text-[9px] uppercase tracking-widest text-white/30 font-semibold mb-1.5 flex-shrink-0">
+                <p className="text-[9px] uppercase tracking-widest text-ink-3 font-semibold mb-1.5 flex-shrink-0">
                   Legenda original
                 </p>
                 <div className="flex-1 overflow-y-auto">
                   {/* Conteúdo EXTERNO: renderizado como texto puro. Nada de
                       dangerouslySetInnerHTML — o React escapa e
                       whitespace-pre-wrap preserva as quebras de linha. */}
-                  <p className="text-[11px] text-white/65 whitespace-pre-wrap break-words leading-relaxed">
+                  <p className="text-[11px] text-ink-2 whitespace-pre-wrap break-words leading-relaxed">
                     {video.caption}
                   </p>
                 </div>
-                <p className="text-[9px] text-white/25 mt-2 flex-shrink-0">Clique para fechar</p>
+                <p className="text-[9px] text-ink-3 mt-2 flex-shrink-0">Clique para fechar</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -281,7 +281,7 @@ export function VideoCard({
             className="px-2 py-0.5 rounded-full text-[10px] font-medium mb-1"
             style={{
               background: "rgba(0,0,0,0.70)",
-              color: "rgba(0,73,141,0.8)",
+              color: "var(--link)",
               backdropFilter: "blur(4px)",
             }}
           >
@@ -316,7 +316,7 @@ export function VideoCard({
               style={{
                 background: "rgba(0,0,0,0.45)",
                 border: "1px solid rgba(255,255,255,0.20)",
-                boxShadow: "0 0 14px rgba(0,73,141,0.16)",
+                boxShadow: "0 0 14px rgba(47,123,255,0.16)",
                 backdropFilter: "blur(6px)",
               }}
             >
@@ -397,22 +397,22 @@ export function VideoCard({
                 whileTap={{ scale: 0.95 }}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
                 style={{
-                  background: "rgba(0,73,141,0.1)",
-                  border: "0.5px solid rgba(0,73,141,0.3)",
-                  color: "rgba(0,73,141,0.9)",
-                  boxShadow: "0 0 12px rgba(0,73,141,0.1)",
+                  background: "rgba(47,123,255,0.1)",
+                  border: "0.5px solid rgba(47,123,255,0.3)",
+                  color: "var(--link)",
+                  boxShadow: "0 0 12px rgba(47,123,255,0.1)",
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.background =
-                    "rgba(0,73,141,0.18)";
+                    "rgba(47,123,255,0.18)";
                   (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                    "0 0 20px rgba(0,73,141,0.2)";
+                    "0 0 20px rgba(47,123,255,0.2)";
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLButtonElement).style.background =
-                    "rgba(0,73,141,0.1)";
+                    "rgba(47,123,255,0.1)";
                   (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                    "0 0 12px rgba(0,73,141,0.1)";
+                    "0 0 12px rgba(47,123,255,0.1)";
                 }}
               >
                 <Send size={13} />
@@ -425,17 +425,17 @@ export function VideoCard({
                   whileTap={{ scale: 0.95 }}
                   className="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium transition-all duration-200"
                   style={{
-                    border: "0.5px solid rgba(133,185,233,0.2)",
-                    background: "rgba(133,185,233,0.06)",
-                    color: "rgba(133,185,233,0.75)",
+                    border: "0.5px solid rgba(63,208,255,0.2)",
+                    background: "rgba(63,208,255,0.06)",
+                    color: "var(--link)",
                   }}
                   onMouseEnter={(e) => {
                     (e.currentTarget as HTMLButtonElement).style.background =
-                      "rgba(133,185,233,0.12)";
+                      "rgba(63,208,255,0.12)";
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLButtonElement).style.background =
-                      "rgba(133,185,233,0.06)";
+                      "rgba(63,208,255,0.06)";
                   }}
                 >
                   <CalendarClock size={11} />

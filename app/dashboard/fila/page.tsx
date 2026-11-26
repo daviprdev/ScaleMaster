@@ -255,7 +255,7 @@ function ListSkeleton() {
   return (
     <div className="flex flex-col gap-2" aria-busy="true" aria-label="Carregando os vídeos">
       {[0, 1, 2, 3, 4, 5].map((i) => (
-        <div key={i} className="flex items-center gap-4 rounded-xl border border-line bg-surface px-4 py-3">
+        <div key={i} className="glass-card flex items-center gap-4 px-4 py-3">
           <Skeleton width="48px" height="85px" radius="8px" className="shrink-0" />
           <Skeleton height="16px" width="40%" />
         </div>

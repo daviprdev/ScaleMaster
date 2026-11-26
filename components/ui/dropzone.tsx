@@ -81,7 +81,7 @@ export const Dropzone = React.forwardRef<HTMLDivElement, DropzoneProps>(
           className="sr-only"
           tabIndex={-1}
         />
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-hover text-ink-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-info-soft text-link">
           <Upload size={20} strokeWidth={1.75} />
         </div>
         <div className="flex flex-col gap-1">

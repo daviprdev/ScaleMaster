@@ -41,15 +41,15 @@ export default async function AddChooseAppPage({
   ];
 
   return (
-    <div className="min-h-dvh bg-black flex items-center justify-center p-4 pt-safe pb-safe">
+    <div className="min-h-dvh flex items-center justify-center p-4 pt-safe pb-safe">
       <div className="glass-card rounded-2xl p-6 max-w-sm w-full space-y-5">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#00498D]/10 border border-[#00498D]/20 flex items-center justify-center flex-shrink-0">
-            <Link2 size={16} className="text-[#00498D]" />
+          <div className="w-9 h-9 rounded-xl bg-info-soft border border-primary/20 flex items-center justify-center flex-shrink-0">
+            <Link2 size={16} className="text-primary" />
           </div>
           <div>
-            <h1 className="text-white font-semibold text-[15px] leading-tight">Em qual app conectar?</h1>
-            <p className="text-white/40 text-xs mt-0.5">Escolha o app em que esta conta é testadora.</p>
+            <h1 className="text-ink font-semibold text-[15px] leading-tight">Em qual app conectar?</h1>
+            <p className="text-ink-3 text-xs mt-0.5">Escolha o app em que esta conta é testadora.</p>
           </div>
         </div>
 
@@ -57,11 +57,11 @@ export default async function AddChooseAppPage({
             Vai pela rota /add/{token}/convite, que redireciona para a página da Meta no mesmo navegador. */}
         <a
           href={`/add/${token}/convite`}
-          className="w-full flex items-center gap-2.5 px-3.5 py-3 rounded-xl bg-[#00498D]/15 border border-[#00498D]/30 text-sm text-white/90 hover:bg-[#00498D]/25 transition-all"
+          className="w-full flex items-center gap-2.5 px-3.5 py-3 rounded-xl bg-info-soft border border-primary/30 text-sm text-ink hover:border-primary/50 transition-all"
         >
-          <UserCheck size={14} className="text-[#BEB8BC] flex-shrink-0" />
+          <UserCheck size={14} className="text-ink-2 flex-shrink-0" />
           <span>Aceitar convites de testador</span>
-          <ChevronRight size={14} className="text-white/30 ml-auto flex-shrink-0" />
+          <ChevronRight size={14} className="text-ink-3 ml-auto flex-shrink-0" />
         </a>
 
         {options.length > 0 ? (
@@ -71,24 +71,24 @@ export default async function AddChooseAppPage({
               <a
                 key={option.key}
                 href={`/add/oauth/${token}?app=${option.key}`}
-                className="w-full flex items-center gap-2.5 px-3.5 py-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-sm text-white/80 hover:border-white/20 hover:bg-white/[0.06] transition-all"
+                className="w-full flex items-center gap-2.5 px-3.5 py-3 rounded-xl bg-surface border border-line text-sm text-ink-2 hover:border-line-control hover:bg-surface-hover transition-all"
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-[#00498D]/50 flex-shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-primary/50 flex-shrink-0" />
                 <span className="min-w-0 flex flex-col">
                   <span className="truncate">{option.name}</span>
-                  <span className="text-[11px] text-white/35">ID {option.igAppId}</span>
+                  <span className="text-[11px] text-ink-3">ID {option.igAppId}</span>
                 </span>
-                <ChevronRight size={14} className="text-white/30 ml-auto flex-shrink-0" />
+                <ChevronRight size={14} className="text-ink-3 ml-auto flex-shrink-0" />
               </a>
             ))}
           </div>
         ) : (
-          <p className="text-white/50 text-sm leading-relaxed">
+          <p className="text-ink-3 text-sm leading-relaxed">
             Nenhum app cadastrado. Cadastre um app em Meus Apps no ScaleMaster.
           </p>
         )}
 
-        <p className="text-white/25 text-[11px] leading-relaxed">
+        <p className="text-ink-3 text-[11px] leading-relaxed">
           Ainda não é testadora? Aceite o convite primeiro e volte para esta página. Depois de escolher o app, é só autorizar no Instagram com a conta que vai ser conectada.
         </p>
       </div>

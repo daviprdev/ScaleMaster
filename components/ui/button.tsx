@@ -17,9 +17,9 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    "bg-primary text-primary-fg border-transparent hover:bg-primary-hover",
+    "bg-gradient-primary text-primary-fg border-transparent shadow-glow hover:brightness-110",
   secondary:
-    "bg-transparent text-ink border-line-control hover:bg-surface-hover hover:text-ink",
+    "bg-white/[0.06] text-ink border-line hover:bg-white/[0.12] hover:text-ink",
   ghost:
     "bg-transparent text-ink-2 border-transparent hover:bg-surface-hover hover:text-ink",
   danger:
@@ -28,8 +28,8 @@ const variantStyles: Record<ButtonVariant, string> = {
 
 const sizeStyles: Record<ButtonSize, string> = {
   sm: "h-8 px-3 text-xs gap-1.5",
-  md: "h-9 px-4 text-[13px] gap-2",
-  lg: "h-11 px-5 text-sm gap-2.5",
+  md: "h-10 px-4 text-[13px] gap-2",
+  lg: "h-[46px] px-5 text-sm font-semibold gap-2.5",
 };
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -54,7 +54,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <Comp
         ref={ref}
         className={cn(
-          "inline-flex items-center justify-center rounded-md border font-medium transition-colors duration-150 ease-in-out",
+          "inline-flex items-center justify-center rounded-md border font-medium transition-[background-color,filter,color] duration-150 ease-in-out",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
           "disabled:opacity-40 disabled:pointer-events-none",
           "select-none whitespace-nowrap",

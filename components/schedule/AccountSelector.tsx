@@ -35,10 +35,10 @@ export function AccountSelector({ accounts, selected, onChange }: AccountSelecto
     <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-white/70">
+        <p className="text-sm font-semibold text-ink-2">
           Selecione as contas
           {selected.length > 0 && (
-            <span className="ml-2 px-1.5 py-0.5 rounded-full bg-[#00498D]/20 text-[#AFBDD0] text-[10px] font-bold">
+            <span className="ml-2 px-1.5 py-0.5 rounded-full bg-primary/20 text-link text-[10px] font-bold">
               {selected.length}
             </span>
           )}
@@ -46,14 +46,14 @@ export function AccountSelector({ accounts, selected, onChange }: AccountSelecto
         <div className="flex gap-2 text-[11px]">
           <button
             onClick={selectAll}
-            className="text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
+            className="text-link hover:text-link transition-colors"
           >
             Todas
           </button>
-          <span className="text-white/20">·</span>
+          <span className="text-ink-3">·</span>
           <button
             onClick={clearAll}
-            className="text-white/30 hover:text-white/60 transition-colors"
+            className="text-ink-3 hover:text-ink-2 transition-colors"
           >
             Limpar
           </button>
@@ -72,14 +72,14 @@ export function AccountSelector({ accounts, selected, onChange }: AccountSelecto
               className={cn(
                 "w-full flex items-center gap-3 px-3 py-3 rounded-xl border transition-all duration-200 text-left",
                 isSelected
-                  ? "bg-[#00498D]/15 border-[#00498D]/40"
+                  ? "bg-info-soft border-primary/40"
                   : "bg-white/[0.03] border-white/[0.07] hover:border-white/15 hover:bg-white/[0.06]"
               )}
             >
               {/* Avatar */}
               <div
                 className={cn(
-                  "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-white",
+                  "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-ink",
                   account.avatar_color
                 )}
               >
@@ -90,11 +90,11 @@ export function AccountSelector({ accounts, selected, onChange }: AccountSelecto
               <div className="flex-1 min-w-0">
                 <p className={cn(
                   "text-sm font-semibold truncate transition-colors",
-                  isSelected ? "text-[#AFBDD0]" : "text-white/70"
+                  isSelected ? "text-link" : "text-ink-2"
                 )}>
                   @{account.username}
                 </p>
-                <p className="text-[11px] text-white/30 truncate">
+                <p className="text-[11px] text-ink-3 truncate">
                   {account.display_name}
                   {account.followers && (
                     <> · {(account.followers / 1000).toFixed(1)}K seguidores</>
@@ -106,12 +106,12 @@ export function AccountSelector({ accounts, selected, onChange }: AccountSelecto
               <div className="flex items-center gap-2 flex-shrink-0">
                 <div className={cn(
                   "w-1.5 h-1.5 rounded-full",
-                  account.is_active ? "bg-emerald-400" : "bg-white/20"
+                  account.is_active ? "bg-success" : "bg-white/20"
                 )} />
                 <div className={cn(
                   "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
                   isSelected
-                    ? "border-[#00498D] bg-[#00498D]"
+                    ? "border-primary bg-primary"
                     : "border-white/20"
                 )}>
                   {isSelected && <Check size={11} className="text-white" strokeWidth={3} />}
@@ -122,7 +122,7 @@ export function AccountSelector({ accounts, selected, onChange }: AccountSelecto
         })}
 
         {/* Add account placeholder */}
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-white/10 text-white/25 hover:border-[#00498D]/30 hover:text-[#85B9E9]/60 transition-all text-sm">
+        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-white/10 text-ink-3 hover:border-primary/30 hover:text-link/60 transition-all text-sm">
           <div className="w-9 h-9 rounded-full bg-white/[0.03] flex items-center justify-center">
             <Plus size={14} />
           </div>

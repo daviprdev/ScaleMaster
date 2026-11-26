@@ -164,11 +164,11 @@ function ProxyPoolSection() {
     <div className="glass-card rounded-2xl p-6 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#85B9E9]/10 border border-[#85B9E9]/20 flex items-center justify-center flex-shrink-0">
-            <Database size={16} className="text-[#85B9E9]" />
+          <div className="w-9 h-9 rounded-xl bg-info-soft border border-primary-2/20 flex items-center justify-center flex-shrink-0">
+            <Database size={16} className="text-link" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">Estoque de Proxies</p>
+            <p className="text-sm font-semibold text-ink">Estoque de Proxies</p>
             <p className="text-xs text-ink-3 mt-0.5 leading-relaxed">
               Proxies armazenados aqui são atribuídos automaticamente a cada conta nova no momento
               da conexão. Ao excluir uma conta (ou trocar o proxy dela), a entrada volta ao estoque
@@ -179,7 +179,7 @@ function ProxyPoolSection() {
         </div>
         <button
           onClick={() => setShowAdd(v => !v)}
-          className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border border-[#85B9E9]/25 text-[#85B9E9]/80 hover:text-[#85B9E9] hover:border-[#85B9E9]/45 hover:bg-[#85B9E9]/[0.06] transition-all flex-shrink-0"
+          className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl border border-primary-2/25 text-link/80 hover:text-link hover:border-primary-2/45 hover:bg-info-soft transition-all flex-shrink-0"
         >
           {showAdd ? <X size={13} /> : <Plus size={13} />}
           {showAdd ? "Fechar" : "Adicionar"}
@@ -191,8 +191,8 @@ function ProxyPoolSection() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {[
             { label: "Total", value: pool.total, cls: "text-ink-2" },
-            { label: "Livres", value: pool.free, cls: "text-[#00498D]" },
-            { label: "Em uso", value: pool.in_use, cls: "text-[#85B9E9]" },
+            { label: "Livres", value: pool.free, cls: "text-link" },
+            { label: "Em uso", value: pool.in_use, cls: "text-link" },
           ].map(c => (
             <div key={c.label} className="rounded-xl border border-line bg-surface px-3 py-2.5">
               <p className={cn("text-lg font-bold tabular-nums", c.cls)}>{c.value}</p>
@@ -212,8 +212,8 @@ function ProxyPoolSection() {
             className={cn(
               "flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-medium",
               notice.type === "success"
-                ? "bg-[#00498D]/8 border-[#00498D]/20 text-[#00498D]"
-                : "bg-red-500/8 border-red-500/25 text-red-300"
+                ? "bg-info-soft border-primary/20 text-link"
+                : "bg-danger-soft border-danger/25 text-danger"
             )}
           >
             {notice.type === "success" ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
@@ -258,7 +258,7 @@ function ProxyPoolSection() {
           <button
             onClick={handleAssignAll}
             disabled={assigning || pool.free === 0}
-            className="flex items-center gap-1.5 text-xs px-3.5 py-2.5 rounded-xl font-semibold bg-[#00498D]/10 border border-[#00498D]/25 text-[#00498D] hover:bg-[#00498D]/20 transition-all disabled:opacity-40"
+            className="flex items-center gap-1.5 text-xs px-3.5 py-2.5 rounded-xl font-semibold bg-info-soft border border-primary/25 text-link hover:bg-primary/20 transition-all disabled:opacity-40"
           >
             {assigning ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
             Atribuir às contas sem proxy
@@ -267,7 +267,7 @@ function ProxyPoolSection() {
             onClick={handleSwapFailed}
             disabled={swapping}
             title="Descarta o proxy das contas com falha nos últimos 30min e atribui um substituto livre do estoque"
-            className="flex items-center gap-1.5 text-xs px-3.5 py-2.5 rounded-xl font-semibold bg-amber-500/10 border border-amber-500/25 text-amber-300 hover:bg-amber-500/20 transition-all disabled:opacity-40"
+            className="flex items-center gap-1.5 text-xs px-3.5 py-2.5 rounded-xl font-semibold bg-warning-soft border border-warning/25 text-warning hover:bg-warning/20 transition-all disabled:opacity-40"
           >
             {swapping ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             Trocar proxies com falha
@@ -292,15 +292,15 @@ function ProxyPoolSection() {
             >
               <span className={cn(
                 "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                item.assigned_username ? "bg-[#85B9E9]" : "bg-[#00498D]"
+                item.assigned_username ? "bg-primary-2" : "bg-primary"
               )} />
               <span className="text-xs font-mono text-ink-2 flex-1 truncate">{item.display}</span>
               {item.assigned_username ? (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#85B9E9]/10 text-[#85B9E9] font-semibold">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-info-soft text-link font-semibold">
                   @{item.assigned_username}
                 </span>
               ) : (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00498D]/10 text-[#00498D] font-semibold">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-info-soft text-link font-semibold">
                   livre
                 </span>
               )}
@@ -309,7 +309,7 @@ function ProxyPoolSection() {
                   onClick={() => handleRemove(item.id)}
                   disabled={removingId === item.id}
                   title="Remover do estoque"
-                  className="text-ink-3/50 hover:text-red-400 transition-colors flex-shrink-0"
+                  className="text-ink-3/50 hover:text-danger transition-colors flex-shrink-0"
                 >
                   {removingId === item.id
                     ? <Loader2 size={12} className="animate-spin" />
@@ -354,7 +354,7 @@ export default function ProxyTestPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-white">Proxies</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-ink">Proxies</h1>
         <p className="text-sm text-ink-3 mt-0.5">
           Estoque com atribuição automática e verificação do IP real de cada conta.
         </p>
@@ -364,11 +364,11 @@ export default function ProxyTestPage() {
 
       <div className="glass-card rounded-2xl p-6 space-y-4">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#00498D]/10 border border-[#00498D]/20 flex items-center justify-center flex-shrink-0">
-            <Shield size={16} className="text-[#00498D]" />
+          <div className="w-9 h-9 rounded-xl bg-info-soft border border-primary/20 flex items-center justify-center flex-shrink-0">
+            <Shield size={16} className="text-link" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">Verificar IPs</p>
+            <p className="text-sm font-semibold text-ink">Verificar IPs</p>
             <p className="text-xs text-ink-3 mt-0.5 leading-relaxed">
               Cada conta faz uma requisição ao serviço <span className="font-mono text-ink-2">api.ipify.org</span> através
               do seu proxy configurado. O IP retornado é o que a Meta API enxerga — deve ser diferente por conta.
@@ -399,8 +399,8 @@ export default function ProxyTestPage() {
             <div className={cn(
               "flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-semibold",
               allUnique
-                ? "bg-[#00498D]/8 border-[#00498D]/20 text-[#00498D]"
-                : "bg-amber-500/8 border-amber-500/20 text-amber-300"
+                ? "bg-info-soft border-primary/20 text-link"
+                : "bg-warning-soft border-warning/20 text-warning"
             )}>
               {allUnique
                 ? <CheckCircle2 size={16} className="flex-shrink-0" />
@@ -430,15 +430,15 @@ export default function ProxyTestPage() {
                     )}>
                       <div className={cn(
                         "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                        r.ip ? "bg-[#00498D]" : "bg-red-400"
+                        r.ip ? "bg-primary" : "bg-danger"
                       )} />
                       <span className="text-sm text-ink font-medium">@{r.username}</span>
                       <span className={cn(
                         "text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase",
                         r.source === "dedicado"
-                          ? "bg-[#00498D]/15 text-[#85B9E9]"
+                          ? "bg-info-soft text-link"
                           : r.source === "template"
-                          ? "bg-blue-500/15 text-blue-400"
+                          ? "bg-info-soft text-link"
                           : "bg-surface-raised text-ink-3"
                       )}>
                         {r.source}
@@ -455,9 +455,9 @@ export default function ProxyTestPage() {
                       i < results.length - 1 && "border-b border-line"
                     )}>
                       {r.ip ? (
-                        <span className="text-xs font-mono text-[#85B9E9]">{r.ip}</span>
+                        <span className="text-xs font-mono text-link">{r.ip}</span>
                       ) : (
-                        <span className="text-xs text-red-400/70">{r.error ?? "erro"}</span>
+                        <span className="text-xs text-danger/70">{r.error ?? "erro"}</span>
                       )}
                     </div>
                   </div>

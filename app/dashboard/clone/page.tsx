@@ -681,7 +681,7 @@ export default function ClonePage() {
           {searchState === "error" && (
             <motion.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="mt-3 flex items-center gap-2 text-sm text-red-400"
+              className="mt-3 flex items-center gap-2 text-sm text-danger"
             >
               <AlertCircle size={14} className="flex-shrink-0" />
               {searchError}
@@ -693,7 +693,7 @@ export default function ClonePage() {
       {/* ── Perfis Salvos ─────────────────────────────────────────────────────── */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <Bookmark size={14} style={{ color: "var(--electric)" }} />
+          <Bookmark size={14} style={{ color: "var(--primary-2)" }} />
           <h2 className="text-sm font-bold uppercase tracking-widest text-ink-2">Perfis Salvos</h2>
         </div>
 
@@ -725,14 +725,14 @@ export default function ClonePage() {
                     "glass-card rounded-xl p-3 flex items-center gap-3 cursor-pointer hover:border-matrix/20 transition-all group relative",
                     "min-w-[180px] max-w-[220px]"
                   )}
-                  style={profile?.username === sp.username ? { border: "1px solid rgba(0,73,141,0.25)" } : {}}
+                  style={profile?.username === sp.username ? { border: "1px solid rgba(47,123,255,0.25)" } : {}}
                 >
                   {/* Avatar */}
                   {sp.profilePicUrl ? (
-                    <img src={sp.profilePicUrl} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-line-2" />
+                    <img src={sp.profilePicUrl} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-line" />
                   ) : (
                     <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-                      style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", color: "#000" }}>
+                      style={{ background: "var(--gradient-primary)", color: "#000" }}>
                       {sp.username.charAt(0).toUpperCase()}
                     </div>
                   )}
@@ -774,11 +774,11 @@ export default function ClonePage() {
                         <img
                           src={profile.profilePicUrl}
                           alt={profile.username}
-                          className="w-16 h-16 rounded-full object-cover border-2 border-matrix/30 shadow-[0_0_16px_rgba(0,73,141,0.2)]"
+                          className="w-16 h-16 rounded-full object-cover border-2 border-matrix/30 shadow-glow"
                         />
                       ) : (
                         <div className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold"
-                          style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", color: "#000" }}>
+                          style={{ background: "var(--gradient-primary)", color: "#000" }}>
                           {profile.username.charAt(0).toUpperCase()}
                         </div>
                       )}
@@ -808,7 +808,7 @@ export default function ClonePage() {
                             "flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
                             profileSaved
                               ? "border-matrix/40 text-matrix bg-matrix/10"
-                              : "border-line-2 text-ink-3 hover:text-matrix hover:border-matrix/30"
+                              : "border-line text-ink-3 hover:text-matrix hover:border-matrix/30"
                           )}
                         >
                           <Bookmark size={12} className={profileSaved ? "fill-current" : ""} />
@@ -831,7 +831,7 @@ export default function ClonePage() {
                     ].map(({ label, value, icon: Icon }) => (
                       <div key={label} className="rounded-xl p-3 text-center" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
                         <Icon size={14} className="mx-auto mb-1 text-ink-3" />
-                        <div className="font-bold text-base" style={{ color: "var(--electric)" }}>{value}</div>
+                        <div className="font-bold text-base" style={{ color: "var(--primary-2)" }}>{value}</div>
                         <div className="text-[10px] text-ink-3 mt-0.5">{label}</div>
                       </div>
                     ))}
@@ -843,7 +843,7 @@ export default function ClonePage() {
               <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="flex flex-col items-center justify-center py-20 text-center glass-card rounded-2xl">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
-                  style={{ background: "rgba(0,73,141,0.06)", border: "1px solid rgba(0,73,141,0.12)" }}>
+                  style={{ background: "rgba(47,123,255,0.06)", border: "1px solid rgba(47,123,255,0.12)" }}>
                   <Loader2 size={28} className="animate-spin" style={{ color: "var(--brand-blue)" }} />
                 </div>
                 <h3 className="text-lg font-semibold text-ink-2 mb-1">
@@ -855,7 +855,7 @@ export default function ClonePage() {
               <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="flex flex-col items-center justify-center py-20 text-center glass-card rounded-2xl">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
-                  style={{ background: "rgba(0,73,141,0.06)", border: "1px solid rgba(0,73,141,0.12)" }}>
+                  style={{ background: "rgba(47,123,255,0.06)", border: "1px solid rgba(47,123,255,0.12)" }}>
                   <Copy size={28} style={{ color: "var(--brand-blue)" }} />
                 </div>
                 <h3 className="text-lg font-semibold text-ink-2 mb-1">Busque um perfil para começar</h3>
@@ -884,7 +884,7 @@ export default function ClonePage() {
                       ? "border-matrix/60 text-matrix"
                       : "border-line text-ink-3 hover:text-ink-2 hover:border-line-control"
                   )}
-                  style={reelCount === opt.value ? { background: "rgba(0,73,141,0.08)" } : {}}
+                  style={reelCount === opt.value ? { background: "rgba(47,123,255,0.08)" } : {}}
                 >
                   {opt.label}
                   {opt.value !== -1 && stats && opt.value > stats.reelCount && (
@@ -914,7 +914,7 @@ export default function ClonePage() {
                       ? "border-electric/60 text-electric"
                       : "border-line text-ink-3 hover:text-ink-2 hover:border-line-control"
                   )}
-                  style={postsPerDay === n ? { background: "rgba(133,185,233,0.08)" } : {}}
+                  style={postsPerDay === n ? { background: "rgba(63,208,255,0.08)" } : {}}
                 >
                   {n}
                 </button>
@@ -951,7 +951,7 @@ export default function ClonePage() {
                 onClick={() => setAutoCaptionEnabled(v => !v)}
                 className={cn(
                   "relative w-11 h-6 rounded-full transition-colors flex-shrink-0",
-                  autoCaptionEnabled ? "bg-[#00498D]/80" : "bg-line-control/20"
+                  autoCaptionEnabled ? "bg-primary/80" : "bg-line-control/20"
                 )}
               >
                 <span className={cn(
@@ -996,7 +996,7 @@ export default function ClonePage() {
               originalHint={
                 <>
                   Cada Reel clonado leva a legenda da publicação original dele.{" "}
-                  <span className="text-amber-300/80">
+                  <span className="text-warning/80">
                     Reels sem legenda serão publicados sem legenda.
                   </span>
                 </>
@@ -1072,13 +1072,13 @@ export default function ClonePage() {
                                     "flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all text-xs",
                                     sel ? "text-ink" : "text-ink-3 hover:text-ink-2"
                                   )}
-                                  style={sel ? { background: "rgba(0,73,141,0.05)", border: "1px solid rgba(0,73,141,0.15)" } : { border: "1px solid transparent" }}
+                                  style={sel ? { background: "rgba(47,123,255,0.05)", border: "1px solid rgba(47,123,255,0.15)" } : { border: "1px solid transparent" }}
                                 >
                                   {acc.avatar_url ? (
                                     <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
                                   ) : (
                                     <div className="w-5 h-5 rounded-full flex-shrink-0 text-[9px] font-bold flex items-center justify-center"
-                                      style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", color: "#000" }}>
+                                      style={{ background: "var(--gradient-primary)", color: "#000" }}>
                                       {acc.username.charAt(0).toUpperCase()}
                                     </div>
                                   )}
@@ -1151,7 +1151,7 @@ export default function ClonePage() {
             </button>
 
             {submitError && (
-              <p className="text-xs text-red-400 flex items-center gap-1.5">
+              <p className="text-xs text-danger flex items-center gap-1.5">
                 <AlertCircle size={12} /> {submitError}
               </p>
             )}
@@ -1163,7 +1163,7 @@ export default function ClonePage() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.97 }}
                   className="rounded-xl border border-matrix/25 p-3 space-y-1.5"
-                  style={{ background: "rgba(0,73,141,0.04)" }}
+                  style={{ background: "rgba(47,123,255,0.04)" }}
                 >
                   <div className="flex items-center gap-2 text-matrix font-semibold text-sm">
                     <CheckCircle2 size={15} />
@@ -1188,7 +1188,7 @@ export default function ClonePage() {
       {historyItems.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <BarChart2 size={15} style={{ color: "var(--electric)" }} />
+            <BarChart2 size={15} style={{ color: "var(--primary-2)" }} />
             <h2 className="text-sm font-bold uppercase tracking-widest text-ink-2">Histórico de Clones</h2>
             <button
               onClick={loadCampaigns}
@@ -1213,7 +1213,7 @@ export default function ClonePage() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="glass-card p-4 rounded-2xl"
-                  style={campaign && campaign.pending > 0 ? { border: "1px solid rgba(0,73,141,0.12)" } : {}}
+                  style={campaign && campaign.pending > 0 ? { border: "1px solid rgba(47,123,255,0.12)" } : {}}
                 >
                   <div className="flex items-start gap-4">
 
@@ -1223,11 +1223,11 @@ export default function ClonePage() {
                         <img
                           src={record.profile_pic_url}
                           alt={record.profile_username}
-                          className="w-12 h-12 rounded-full object-cover border border-line-2"
+                          className="w-12 h-12 rounded-full object-cover border border-line"
                         />
                       ) : (
                         <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0"
-                          style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", color: "#000" }}>
+                          style={{ background: "var(--gradient-primary)", color: "#000" }}>
                           {record.profile_username.charAt(0).toUpperCase()}
                         </div>
                       )}
@@ -1239,7 +1239,7 @@ export default function ClonePage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-ink text-sm">@{record.profile_username}</span>
                         {campaign && campaign.pending > 0 ? (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(0,73,141,0.12)", color: "var(--brand-blue)", border: "1px solid rgba(0,73,141,0.2)" }}>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(47,123,255,0.12)", color: "var(--brand-blue)", border: "1px solid rgba(47,123,255,0.2)" }}>
                             Ativo
                           </span>
                         ) : isCancelled ? (
@@ -1247,7 +1247,7 @@ export default function ClonePage() {
                             Cancelado
                           </span>
                         ) : (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(133,185,233,0.08)", color: "var(--electric)", border: "1px solid rgba(133,185,233,0.15)" }}>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "rgba(63,208,255,0.08)", color: "var(--primary-2)", border: "1px solid rgba(63,208,255,0.15)" }}>
                             Concluído
                           </span>
                         )}
@@ -1267,7 +1267,7 @@ export default function ClonePage() {
                               className="h-full rounded-full"
                               style={{
                                 background: campaign.pending > 0
-                                  ? "linear-gradient(90deg, var(--brand-blue), var(--electric))"
+                                  ? "linear-gradient(90deg, var(--brand-blue), var(--primary-2))"
                                   : "rgba(255,255,255,0.2)"
                               }}
                             />
@@ -1292,7 +1292,7 @@ export default function ClonePage() {
                                   <img src={acc.avatar_url} alt="" className="w-4 h-4 rounded-full object-cover flex-shrink-0" />
                                 ) : (
                                   <div className="w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold flex-shrink-0"
-                                    style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", color: "#000" }}>
+                                    style={{ background: "var(--gradient-primary)", color: "#000" }}>
                                     {acc.username.charAt(0).toUpperCase()}
                                   </div>
                                 )}
@@ -1330,7 +1330,7 @@ export default function ClonePage() {
                         </div>
                         {campaign && campaign.failed > 0 && (
                           <div className="text-center">
-                            <div className="text-sm font-bold text-red-400">{campaign.failed.toLocaleString()}</div>
+                            <div className="text-sm font-bold text-danger">{campaign.failed.toLocaleString()}</div>
                             <div className="text-[9px] text-ink-3 uppercase tracking-wider">Falhas</div>
                           </div>
                         )}
@@ -1344,8 +1344,8 @@ export default function ClonePage() {
                           className={cn(
                             "flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg border transition-all",
                             confirmCancel === record.campaign_id
-                              ? "border-red-500/50 text-red-400 bg-red-500/10"
-                              : "border-line-2 text-ink-3 hover:text-red-400 hover:border-red-500/30"
+                              ? "border-danger/50 text-danger bg-danger-soft"
+                              : "border-line text-ink-3 hover:text-danger hover:border-danger/30"
                           )}
                         >
                           {cancellingId === record.campaign_id ? (
@@ -1372,7 +1372,7 @@ export default function ClonePage() {
                               <button
                                 onClick={() => handleDeleteHistory(record.campaign_id)}
                                 disabled={deletingId === record.campaign_id}
-                                className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg border border-red-500/50 text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-all"
+                                className="flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-lg border border-danger/50 text-danger bg-danger-soft hover:bg-danger/20 transition-all"
                               >
                                 {deletingId === record.campaign_id
                                   ? <Loader2 size={11} className="animate-spin" />
@@ -1380,7 +1380,7 @@ export default function ClonePage() {
                               </button>
                               <button
                                 onClick={() => setConfirmDelete(null)}
-                                className="text-[11px] px-2.5 py-1.5 rounded-lg border border-line-2 text-ink-3 hover:text-ink-2 transition-all"
+                                className="text-[11px] px-2.5 py-1.5 rounded-lg border border-line text-ink-3 hover:text-ink-2 transition-all"
                               >
                                 Não
                               </button>
@@ -1392,7 +1392,7 @@ export default function ClonePage() {
                               animate={{ opacity: 1 }}
                               exit={{ opacity: 0 }}
                               onClick={() => setConfirmDelete(record.campaign_id)}
-                              className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg border border-line-2 text-ink-3 hover:text-red-400 hover:border-red-500/30 transition-all"
+                              className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg border border-line text-ink-3 hover:text-danger hover:border-danger/30 transition-all"
                             >
                               <Trash2 size={11} />
                               Excluir

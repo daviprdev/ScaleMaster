@@ -141,8 +141,8 @@ export default function AdminDashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-white/40 gap-2">
-        <Loader2 className="w-5 h-5 animate-spin text-[#00498D]" />
+      <div className="flex items-center justify-center py-24 text-ink-3 gap-2">
+        <Loader2 className="w-5 h-5 animate-spin text-link" />
         <span className="text-sm">Carregando painel…</span>
       </div>
     );
@@ -150,7 +150,7 @@ export default function AdminDashboardPage() {
 
   if (error || !stats) {
     return (
-      <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-400">
+      <div className="flex items-center gap-3 rounded-2xl border border-danger/20 bg-danger-soft px-4 py-3 text-sm text-danger">
         <AlertCircle className="w-4 h-4 shrink-0" />
         {error ?? "Erro ao carregar dados"}
       </div>
@@ -164,36 +164,36 @@ export default function AdminDashboardPage() {
       label: "Usuários cadastrados",
       value: stats.totalUsers,
       icon: Users,
-      color: "text-[#00498D]",
-      border: "border-[#00498D]/20",
+      color: "text-link",
+      border: "border-primary/20",
       breakdown: [
-        { label: "Aprovados", value: stats.usersByStatus?.approved ?? 0, color: "text-emerald-400" },
-        { label: "Pendentes", value: stats.usersByStatus?.pending  ?? 0, color: "text-amber-400" },
-        { label: "Banidos",   value: stats.usersByStatus?.banned   ?? 0, color: "text-red-400" },
+        { label: "Aprovados", value: stats.usersByStatus?.approved ?? 0, color: "text-success" },
+        { label: "Pendentes", value: stats.usersByStatus?.pending  ?? 0, color: "text-warning" },
+        { label: "Banidos",   value: stats.usersByStatus?.banned   ?? 0, color: "text-danger" },
       ],
     },
     {
       label: "Contas Meta conectadas",
       value: stats.totalAccounts,
       icon: Instagram,
-      color: "text-[#85B9E9]",
-      border: "border-[#85B9E9]/20",
+      color: "text-link",
+      border: "border-primary-2/20",
       breakdown: null,
     },
     {
       label: "Posts pendentes",
       value: stats.totalScheduled,
       icon: Clock,
-      color: "text-amber-400",
-      border: "border-amber-500/20",
+      color: "text-warning",
+      border: "border-warning/20",
       breakdown: null,
     },
     {
       label: "Posts publicados",
       value: stats.totalPublished,
       icon: CheckCircle2,
-      color: "text-emerald-400",
-      border: "border-emerald-500/20",
+      color: "text-success",
+      border: "border-success/20",
       breakdown: null,
     },
   ];
@@ -220,14 +220,14 @@ export default function AdminDashboardPage() {
                 <Icon className="w-5 h-5" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-2xl font-bold text-white metric-value">{value.toLocaleString("pt-BR")}</p>
-                <p className="text-xs text-white/40 mt-0.5">{label}</p>
+                <p className="text-2xl font-bold text-ink metric-value">{value.toLocaleString("pt-BR")}</p>
+                <p className="text-xs text-ink-3 mt-0.5">{label}</p>
               </div>
             </div>
             {breakdown && (
               <div className="mt-3 pt-3 border-t border-white/[0.06] flex gap-3 flex-wrap">
                 {breakdown.map((b) => (
-                  <span key={b.label} className="text-[11px] text-white/40">
+                  <span key={b.label} className="text-[11px] text-ink-3">
                     <span className={cn("font-semibold", b.color)}>{b.value}</span>{" "}{b.label}
                   </span>
                 ))}
@@ -242,19 +242,19 @@ export default function AdminDashboardPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-[#00498D]" />
-              <h2 className="text-sm font-semibold text-white">Crescimento de usuários</h2>
+              <TrendingUp className="w-4 h-4 text-link" />
+              <h2 className="text-sm font-semibold text-ink">Crescimento de usuários</h2>
             </div>
-            <p className="text-xs text-white/40 mt-0.5">Últimos 30 dias</p>
+            <p className="text-xs text-ink-3 mt-0.5">Últimos 30 dias</p>
           </div>
-          <span className="text-xs text-white/30">+{totalNewUsers} novos usuários</span>
+          <span className="text-xs text-ink-3">+{totalNewUsers} novos usuários</span>
         </div>
         <ResponsiveContainer width="100%" height={240}>
           <AreaChart data={stats.userGrowth} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="gradUsers" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#00498D" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#00498D" stopOpacity={0} />
+                <stop offset="5%"  stopColor="var(--link)" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="var(--link)" stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#ffffff06" vertical={false} />
@@ -271,7 +271,7 @@ export default function AdminDashboardPage() {
             <Tooltip
               contentStyle={{
                 background: "rgba(0,0,0,0.88)",
-                border: "1px solid rgba(0,73,141,0.15)",
+                border: "1px solid rgba(47,123,255,0.15)",
                 borderRadius: 12,
                 fontSize: 12,
                 color: "#fff",
@@ -281,9 +281,9 @@ export default function AdminDashboardPage() {
             />
             <Area
               type="monotone" dataKey="users"
-              stroke="#00498D" strokeWidth={2}
+              stroke="#2f7bff" strokeWidth={2}
               fill="url(#gradUsers)" dot={false}
-              activeDot={{ r: 4, fill: "#00498D", stroke: "#000", strokeWidth: 2 }}
+              activeDot={{ r: 4, fill: "#2f7bff", stroke: "#000", strokeWidth: 2 }}
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -293,9 +293,9 @@ export default function AdminDashboardPage() {
       {sales && (
         <div className="glass-card rounded-2xl p-6">
           <div className="flex items-center gap-2 mb-4">
-            <DollarSign className="w-4 h-4 text-[#00498D]" />
-            <h2 className="text-sm font-semibold text-white">Vendas</h2>
-            <span className="text-xs text-white/30">ApexVips · SharkBot</span>
+            <DollarSign className="w-4 h-4 text-link" />
+            <h2 className="text-sm font-semibold text-ink">Vendas</h2>
+            <span className="text-xs text-ink-3">ApexVips · SharkBot</span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -306,19 +306,19 @@ export default function AdminDashboardPage() {
               { label: "Total geral", value: sales.totals.allTime },
             ].map((c) => (
               <div key={c.label} className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
-                <p className="text-lg font-bold text-white metric-value">{formatBRL(c.value)}</p>
-                <p className="text-[11px] text-white/40 mt-0.5">{c.label}</p>
+                <p className="text-lg font-bold text-ink metric-value">{formatBRL(c.value)}</p>
+                <p className="text-[11px] text-ink-3 mt-0.5">{c.label}</p>
               </div>
             ))}
           </div>
 
           {sales.sales.length === 0 ? (
-            <p className="text-sm text-white/30 text-center py-6">Nenhuma venda registrada ainda.</p>
+            <p className="text-sm text-ink-3 text-center py-6">Nenhuma venda registrada ainda.</p>
           ) : (
             <div className="overflow-x-auto -mx-2">
               <table className="w-full text-sm min-w-[520px]">
                 <thead>
-                  <tr className="text-left text-white/30 text-xs border-b border-white/[0.06]">
+                  <tr className="text-left text-ink-3 text-xs border-b border-white/[0.06] bg-white/[0.04]">
                     <th className="px-2 py-2 font-medium">Cliente</th>
                     <th className="px-2 py-2 font-medium">Plano</th>
                     <th className="px-2 py-2 font-medium">Valor</th>
@@ -327,13 +327,13 @@ export default function AdminDashboardPage() {
                 </thead>
                 <tbody>
                   {sales.sales.map((s) => (
-                    <tr key={s.id} className="border-b border-white/[0.03] last:border-0">
-                      <td className="px-2 py-2.5 text-white/70">{s.customer ?? "—"}</td>
-                      <td className="px-2 py-2.5 text-white/50">{s.planName ?? "—"}</td>
-                      <td className="px-2 py-2.5 text-[#00498D] font-medium">
+                    <tr key={s.id} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.04] transition-colors">
+                      <td className="px-2 py-2.5 text-ink-2">{s.customer ?? "—"}</td>
+                      <td className="px-2 py-2.5 text-ink-3">{s.planName ?? "—"}</td>
+                      <td className="px-2 py-2.5 text-link font-medium">
                         {s.amount != null ? formatBRL(s.amount) : "—"}
                       </td>
-                      <td className="px-2 py-2.5 text-white/40">
+                      <td className="px-2 py-2.5 text-ink-3">
                         {new Date(s.createdAt).toLocaleString("pt-BR", {
                           day: "2-digit",
                           month: "2-digit",
@@ -353,15 +353,15 @@ export default function AdminDashboardPage() {
       {/* Announcement broadcaster */}
       <div className="glass-card rounded-2xl p-6">
         <div className="flex items-center gap-2 mb-1">
-          <Megaphone className="w-4 h-4 text-amber-400" />
-          <h2 className="text-sm font-semibold text-white">Central de Avisos</h2>
+          <Megaphone className="w-4 h-4 text-warning" />
+          <h2 className="text-sm font-semibold text-ink">Central de Avisos</h2>
           {announcement && (
-            <span className="ml-1 inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300 font-medium">
+            <span className="ml-1 inline-flex items-center rounded-full border border-warning/30 bg-warning-soft px-2 py-0.5 text-[10px] text-warning font-medium">
               Aviso ativo
             </span>
           )}
         </div>
-        <p className="text-xs text-white/40 mb-4">
+        <p className="text-xs text-ink-3 mb-4">
           Digite uma mensagem e clique em Disparar para exibir um banner para todos os usuários logados.
           Clique em Limpar para remover o banner.
         </p>
@@ -380,8 +380,8 @@ export default function AdminDashboardPage() {
             className={cn(
               "inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all shrink-0",
               annSaved
-                ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-                : "border-amber-500/30 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 disabled:opacity-40 disabled:cursor-not-allowed"
+                ? "border-success/30 bg-success-soft text-success"
+                : "border-warning/30 bg-warning-soft text-warning hover:bg-warning/25 disabled:opacity-40 disabled:cursor-not-allowed"
             )}
           >
             {annLoading ? <Loader2 className="w-4 h-4 animate-spin" />
@@ -393,7 +393,7 @@ export default function AdminDashboardPage() {
             <button
               onClick={clearAnnouncement}
               disabled={annLoading}
-              className="inline-flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/20 transition-all shrink-0 disabled:opacity-40"
+              className="inline-flex items-center gap-2 rounded-xl border border-danger/20 bg-danger-soft px-4 py-2.5 text-sm text-danger hover:bg-danger/20 transition-all shrink-0 disabled:opacity-40"
             >
               <Trash2 className="w-4 h-4" />
               Limpar

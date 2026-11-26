@@ -38,7 +38,7 @@ function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (
       onClick={() => onChange(!checked)}
       className={cn(
         "relative inline-flex w-11 h-6 rounded-full transition-colors duration-300 focus:outline-none shrink-0 disabled:opacity-40",
-        checked ? "bg-[#00498D]/60" : "bg-white/10"
+        checked ? "bg-primary/60" : "bg-white/10"
       )}
     >
       <motion.span
@@ -68,10 +68,10 @@ function Row({
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
       <div className="flex items-center gap-3 min-w-0">
-        <span className="text-white/30 shrink-0">{icon}</span>
+        <span className="text-ink-3 shrink-0">{icon}</span>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-white/80">{title}</p>
-          <p className="text-xs text-white/40">{description}</p>
+          <p className="text-sm font-medium text-ink">{title}</p>
+          <p className="text-xs text-ink-3">{description}</p>
         </div>
       </div>
       <Toggle checked={checked} onChange={onChange} disabled={disabled} />
@@ -131,7 +131,7 @@ export default function NotificationAlertSettings() {
   }, []);
 
   if (loading) {
-    return <div className="text-sm text-white/40">Carregando preferências…</div>;
+    return <div className="text-sm text-ink-3">Carregando preferências…</div>;
   }
 
   return (
@@ -156,10 +156,10 @@ export default function NotificationAlertSettings() {
         <div className="px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <span className="text-white/30 shrink-0"><TrendingUp size={16} /></span>
+              <span className="text-ink-3 shrink-0"><TrendingUp size={16} /></span>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-white/80">Lucro diário</p>
-                <p className="text-xs text-white/40">Resumo do faturamento do dia, todo dia no horário escolhido.</p>
+                <p className="text-sm font-medium text-ink">Lucro diário</p>
+                <p className="text-xs text-ink-3">Resumo do faturamento do dia, todo dia no horário escolhido.</p>
               </div>
             </div>
             <Toggle
@@ -170,7 +170,7 @@ export default function NotificationAlertSettings() {
           </div>
           {settings.daily_profit_enabled && (
             <div className="flex items-center gap-2 pl-7">
-              <label className="text-xs text-white/40">Horário (Brasília)</label>
+              <label className="text-xs text-ink-3">Horário (Brasília)</label>
               <input
                 type="time"
                 value={settings.daily_profit_time}
@@ -187,10 +187,10 @@ export default function NotificationAlertSettings() {
       <div className="px-4 py-3.5 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="text-white/30 shrink-0"><Eye size={16} /></span>
+            <span className="text-ink-3 shrink-0"><Eye size={16} /></span>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-white/80">Meta de views do dia</p>
-              <p className="text-xs text-white/40">Avisa quando suas contas passarem desta marca no dia.</p>
+              <p className="text-sm font-medium text-ink">Meta de views do dia</p>
+              <p className="text-xs text-ink-3">Avisa quando suas contas passarem desta marca no dia.</p>
             </div>
           </div>
           <Toggle
@@ -224,10 +224,10 @@ export default function NotificationAlertSettings() {
                 className="input-glass text-sm px-3 py-1.5 w-32"
                 placeholder="100000"
               />
-              <span className="text-xs text-white/40">views</span>
+              <span className="text-xs text-ink-3">views</span>
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-white/40">Horário (Brasília)</label>
+              <label className="text-xs text-ink-3">Horário (Brasília)</label>
               <select
                 value={settings.daily_views_goal_time}
                 onChange={(e) => patch({ daily_views_goal_time: e.target.value })}

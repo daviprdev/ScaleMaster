@@ -43,7 +43,7 @@ export function BrandLogo({
       </div>
       {!symbolOnly && (
         <span
-          className={`font-bold whitespace-nowrap ${textSize} ${gradientText ? "gradient-text" : "text-white"}`}
+          className={`font-bold whitespace-nowrap ${textSize} ${gradientText ? "gradient-text" : "text-ink"}`}
         >
           Scale Master
         </span>
@@ -98,7 +98,7 @@ export function BrandLogoLarge({
         style={{
           width: size,
           height: size,
-          boxShadow: "0 0 24px rgba(0, 73, 141, 0.3)"
+          boxShadow: "0 0 24px rgba(47,123,255,0.3)"
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}

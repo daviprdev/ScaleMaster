@@ -542,7 +542,7 @@ export function InspirationCard({ reel, onProcess, onVideoUrlRecovered, saveFold
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setCaptionOpen(v => !v); }}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium text-white/40 hover:text-white/70 transition-colors"
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium text-ink-3 hover:text-ink-2 transition-colors"
                 >
                   <FileText size={11} />{captionOpen ? "Ocultar legenda" : "Ver legenda"}
                 </button>

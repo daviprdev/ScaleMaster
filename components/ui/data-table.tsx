@@ -56,7 +56,7 @@ export function DataTable<T>({
 
   if (loading) {
     return (
-      <div className={cn("rounded-xl border border-line bg-surface p-5", className)} {...props}>
+      <div className={cn("glass-card p-5", className)} {...props}>
         <div className="flex flex-col gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} height="20px" />
@@ -68,19 +68,19 @@ export function DataTable<T>({
 
   if (rows.length === 0 && empty) {
     return (
-      <div className={cn("rounded-xl border border-line bg-surface", className)} {...props}>
+      <div className={cn("glass-card", className)} {...props}>
         {empty}
       </div>
     );
   }
 
   return (
-    <div className={cn("overflow-hidden rounded-xl border border-line bg-surface", className)} {...props}>
+    <div className={cn("glass-card overflow-hidden", className)} {...props}>
       {/* Desktop table */}
       <div className="hidden sm:block overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-line">
+            <tr className="border-b border-white/[0.06] bg-white/[0.04]">
               {selectable && (
                 <th className="w-10 px-4 py-3">
                   <input
@@ -115,8 +115,8 @@ export function DataTable<T>({
                 <tr
                   key={key}
                   className={cn(
-                    "border-b border-line transition-colors duration-150 last:border-b-0",
-                    isSelected ? "bg-info-soft" : "hover:bg-surface-hover"
+                    "border-b border-white/[0.06] transition-colors duration-150 last:border-b-0",
+                    isSelected ? "bg-info-soft" : "hover:bg-white/[0.04]"
                   )}
                 >
                   {selectable && (
@@ -160,7 +160,7 @@ export function DataTable<T>({
             <div
               key={key}
               className={cn(
-                "border-b border-line p-4 last:border-b-0",
+                "border-b border-white/[0.06] p-4 last:border-b-0",
                 isSelected ? "bg-info-soft" : ""
               )}
             >

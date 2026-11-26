@@ -1,5 +1,9 @@
 import type { Config } from "tailwindcss";
 
+// decisão: color-mix deixa os tokens aceitarem opacidade (bg-danger/20); com var() puro o Tailwind não gera a classe.
+const token = (name: string) =>
+  `color-mix(in srgb, var(${name}) calc(<alpha-value> * 100%), transparent)`;
+
 const config: Config = {
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -8,7 +12,7 @@ const config: Config = {
   ],
   theme: {
     colors: {
-      bg: "var(--bg)",
+      bg: token("--bg"),
       surface: {
         DEFAULT: "var(--surface)",
         raised: "var(--surface-raised)",
@@ -19,33 +23,35 @@ const config: Config = {
         control: "var(--line-control)",
       },
       ink: {
-        DEFAULT: "var(--ink)",
+        DEFAULT: token("--ink"),
         2: "var(--ink-2)",
         3: "var(--ink-3)",
       },
       primary: {
-        DEFAULT: "var(--primary)",
-        hover: "var(--primary-hover)",
-        fg: "var(--on-primary)",
+        DEFAULT: token("--primary"),
+        hover: token("--primary-hover"),
+        fg: token("--on-primary"),
       },
-      accent: "var(--accent)",
-      focus: "var(--focus)",
-      wordmark: "var(--wordmark)",
+      "primary-2": token("--primary-2"),
+      link: token("--link"),
+      accent: token("--accent"),
+      focus: token("--focus"),
+      wordmark: token("--wordmark"),
       brand: {
-        navy: "var(--brand-navy)",
-        blue: "var(--brand-blue)",
-        silver: "var(--brand-silver)",
+        navy: token("--brand-navy"),
+        blue: token("--brand-blue"),
+        silver: token("--brand-silver"),
       },
       success: {
-        DEFAULT: "var(--success)",
+        DEFAULT: token("--success"),
         soft: "var(--success-soft)",
       },
       warning: {
-        DEFAULT: "var(--warning)",
+        DEFAULT: token("--warning"),
         soft: "var(--warning-soft)",
       },
       danger: {
-        DEFAULT: "var(--danger)",
+        DEFAULT: token("--danger"),
         soft: "var(--danger-soft)",
       },
       info: {
@@ -64,19 +70,25 @@ const config: Config = {
       md: "var(--radius-md)",
       lg: "var(--radius-lg)",
       xl: "var(--radius-xl)",
+      "2xl": "var(--radius-2xl)",
       full: "var(--radius-full)",
     },
     boxShadow: {
       none: "none",
       pop: "var(--shadow-pop)",
       frame: "var(--shadow-frame)",
+      glow: "0 12px 30px var(--glow)",
     },
     fontFamily: {
       sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       serif: ["var(--font-serif)", "Georgia", "serif"],
     },
-    extend: {},
+    extend: {
+      backgroundImage: {
+        "gradient-primary": "var(--gradient-primary)",
+      },
+    },
   },
   plugins: [],
 };

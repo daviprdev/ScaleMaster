@@ -95,7 +95,7 @@ function JobRow({ job, busy, now, onContinue, onRemove, onReply }: JobRowProps) 
       : `instância #${job.instanceIndex} (cópia da #${job.templateIndex})`;
 
   return (
-    <li className="rounded-lg border border-line p-4">
+    <li className="glass-tile p-4">
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-ink">{job.label ?? "Conta"}</p>
@@ -154,7 +154,7 @@ function PromptBox({ job, busy, onReply }: { job: EmulatorJob; busy: boolean; on
   if (!prompt) return null;
 
   return (
-    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-line bg-warning-soft p-3">
+    <div className="mt-3 flex flex-col gap-3 rounded-[14px] border border-line bg-warning-soft p-3">
       <p className="text-sm text-ink">{prompt.texto}</p>
       {prompt.tipo === "codigo" ? (
         <form

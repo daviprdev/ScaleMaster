@@ -2,18 +2,19 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 
+// Aurora Pro: Sora (texto) + JetBrains Mono (números/código), ambas locais (Workers)
 const geist = localFont({
-  src: "../public/fonts/geist-latin.woff2",
+  src: "../public/fonts/sora-latin.woff2",
   variable: "--font-sans",
   display: "swap",
-  weight: "400 600",
+  weight: "100 800",
 });
 
 const geistMono = localFont({
-  src: "../public/fonts/geist-mono-latin.woff2",
+  src: "../public/fonts/jetbrains-mono-latin.woff2",
   variable: "--font-mono",
   display: "swap",
-  weight: "400 500",
+  weight: "100 800",
 });
 
 // Instrument Serif mantida via Google Fonts (fonte decorativa secundária);
@@ -44,7 +45,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#05070c",
+  themeColor: "#050b1c",
 };
 
 /**
@@ -81,7 +82,7 @@ export default function RootLayout({
       </head>
       <body
         className={`antialiased ${geist.className}`}
-        style={{ background: "var(--bg)", color: "var(--ink)" }}
+        style={{ backgroundColor: "var(--bg)", color: "var(--ink)" }}
       >
         {children}
       </body>

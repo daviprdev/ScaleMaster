@@ -92,7 +92,7 @@ export function NotificationPopover({
       {open && (
         <div
           ref={panelRef}
-          className="absolute right-0 top-full z-50 mt-2 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-surface-raised shadow-pop animate-in fade-in zoom-in-95 duration-200 ease-out origin-top-right"
+          className="glass absolute right-0 top-full z-50 mt-2 w-[360px] max-w-[calc(100vw-2rem)] animate-in fade-in zoom-in-95 duration-200 ease-out origin-top-right"
           role="dialog"
           aria-label="Notificações"
         >

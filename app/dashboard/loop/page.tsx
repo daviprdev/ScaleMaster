@@ -249,7 +249,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       className={cn(
         "relative inline-flex w-11 h-6 rounded-full transition-all duration-200 focus:outline-none flex-shrink-0",
         checked
-          ? "bg-[#00498D] "
+          ? "bg-primary "
           : "bg-line-control/20"
       )}
     >
@@ -266,7 +266,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 function SectionLabel({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
     <div className="flex items-center gap-2 mb-3">
-      <Icon size={13} className="text-[#85B9E9]/80" />
+      <Icon size={13} className="text-link/80" />
       <span className="text-[10px] font-bold uppercase tracking-widest text-ink-3">{label}</span>
     </div>
   );
@@ -339,32 +339,32 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
         <div className="h-2 rounded-full bg-surface-hover overflow-hidden flex">
           {publishedPct > 0 && (
             <div
-              className="h-full bg-emerald-500 transition-all duration-700"
+              className="h-full bg-success transition-all duration-700"
               style={{ width: `${publishedPct}%` }}
             />
           )}
           {errorPct > 0 && (
             <div
-              className="h-full bg-red-500/70 transition-all duration-700"
+              className="h-full bg-danger/70 transition-all duration-700"
               style={{ width: `${errorPct}%` }}
             />
           )}
         </div>
         {/* Badges */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-success-soft text-success border border-success/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-success" />
             {progress.published} publicado{progress.published !== 1 ? "s" : ""}
           </span>
           {progress.errors > 0 && (
-            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-danger-soft text-danger border border-danger/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-danger" />
               {progress.errors} erro{progress.errors !== 1 ? "s" : ""}
             </span>
           )}
           {progress.pending > 0 && (
-            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-warning-soft text-warning border border-warning/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />
               {progress.pending} em fila
             </span>
           )}
@@ -381,17 +381,17 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
       {(engagement.total_plays > 0 || engagement.total_likes > 0 || engagement.total_comments > 0) ? (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div className="flex flex-col items-center gap-0.5 p-2 rounded-xl bg-surface-raised border border-line">
-            <Eye size={12} className="text-[#85B9E9]/70" />
+            <Eye size={12} className="text-link/70" />
             <span className="text-sm font-bold text-ink">{formatNumber(engagement.total_plays)}</span>
             <span className="text-[9px] text-ink-3 uppercase tracking-wide">Views</span>
           </div>
           <div className="flex flex-col items-center gap-0.5 p-2 rounded-xl bg-surface-raised border border-line">
-            <Heart size={12} className="text-pink-400/70" />
+            <Heart size={12} className="text-danger/70" />
             <span className="text-sm font-bold text-ink">{formatNumber(engagement.total_likes)}</span>
             <span className="text-[9px] text-ink-3 uppercase tracking-wide">Curtidas</span>
           </div>
           <div className="flex flex-col items-center gap-0.5 p-2 rounded-xl bg-surface-raised border border-line">
-            <MessageCircle size={12} className="text-[#85B9E9]/70" />
+            <MessageCircle size={12} className="text-link/70" />
             <span className="text-sm font-bold text-ink">{formatNumber(engagement.total_comments)}</span>
             <span className="text-[9px] text-ink-3 uppercase tracking-wide">Comentários</span>
           </div>
@@ -422,7 +422,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
                   className={cn(
                     "text-[9px] px-2 py-0.5 rounded-full border transition-colors",
                     rankingSort === s.key
-                      ? "bg-[#85B9E9]/15 border-[#85B9E9]/40 text-[#AFBDD0]"
+                      ? "bg-info-soft border-primary-2/40 text-link"
                       : "bg-surface-raised border-line text-ink-3 hover:text-ink-2"
                   )}
                 >
@@ -452,16 +452,16 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
                 className={cn(
                   "flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all",
                   isChampion
-                    ? "bg-amber-500/[0.06] border-amber-500/20"
+                    ? "bg-warning-soft border-warning/20"
                     : "bg-surface-raised border-line"
                 )}
               >
                 {/* Rank number */}
                 <span className={cn(
                   "text-[10px] font-bold w-4 flex-shrink-0 text-center",
-                  isChampion ? "text-amber-400" : "text-ink-3"
+                  isChampion ? "text-warning" : "text-ink-3"
                 )}>
-                  {isChampion ? <Crown size={12} className="text-amber-400" /> : `#${idx + 1}`}
+                  {isChampion ? <Crown size={12} className="text-warning" /> : `#${idx + 1}`}
                 </span>
 
                 {/* Avatar */}
@@ -472,15 +472,15 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
                     alt={acc.username}
                     className={cn(
                       "w-6 h-6 rounded-full object-cover flex-shrink-0",
-                      isChampion ? "ring-1 ring-amber-400/50" : "ring-1 ring-white/10"
+                      isChampion ? "ring-1 ring-warning/50" : "ring-1 ring-white/10"
                     )}
                   />
                 ) : (
                   <div className={cn(
-                    "w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0",
+                    "w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-ink flex-shrink-0",
                     isChampion
-                      ? "bg-gradient-to-br from-amber-400 to-orange-500"
-                      : "bg-gradient-to-br from-[#00498D] to-[#85B9E9]"
+                      ? "bg-gradient-primary"
+                      : "bg-gradient-primary"
                   )}>
                     {acc.username.charAt(0).toUpperCase()}
                   </div>
@@ -490,7 +490,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
                 <div className="flex-1 min-w-0">
                   <p className={cn(
                     "text-xs font-semibold truncate",
-                    isChampion ? "text-amber-300" : "text-ink-2"
+                    isChampion ? "text-warning" : "text-ink-2"
                   )}>
                     @{acc.username}
                   </p>
@@ -503,7 +503,7 @@ function LoopAnalyticsPanel({ loopId }: { loopId: string }) {
                 {/* Score */}
                 <span className={cn(
                   "text-[10px] font-bold flex-shrink-0",
-                  isChampion ? "text-amber-400" : "text-ink-3"
+                  isChampion ? "text-warning" : "text-ink-3"
                 )}>
                   {engagementLabel}
                 </span>
@@ -543,7 +543,7 @@ function LoopCard({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="glass-card p-5 space-y-4 hover:border-line-2 transition-all duration-200"
+      className="glass-card p-5 space-y-4 hover:border-line transition-all duration-200"
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
@@ -551,10 +551,10 @@ function LoopCard({
           <div className={cn(
             "w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors",
             isActive
-              ? "bg-[#00498D]/20 "
+              ? "bg-primary/20 "
               : "bg-surface-raised"
           )}>
-            <Repeat2 size={16} className={isActive ? "text-[#85B9E9]" : "text-ink-3"} />
+            <Repeat2 size={16} className={isActive ? "text-link" : "text-ink-3"} />
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-ink truncate">{loop.name}</p>
@@ -567,7 +567,7 @@ function LoopCard({
         <span className={cn(
           "flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border",
           isActive
-            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+            ? "bg-success-soft text-success border-success/20"
             : "bg-surface-raised text-ink-3 border-line"
         )}>
           {isActive ? "Ativo" : "Pausado"}
@@ -610,10 +610,10 @@ function LoopCard({
       {/* Accounts / Account Folder */}
       {loop.account_folder_id ? (
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-[#00498D]/20 bg-[#00498D]/[0.07]">
-            <Folder size={11} className="text-[#85B9E9]/70 flex-shrink-0" />
-            <span className="text-[11px] text-[#AFBDD0]/80 font-medium">{accountFolder?.name ?? "Pasta"}</span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#00498D]/20 text-[#85B9E9] font-semibold uppercase tracking-wide">Auto</span>
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-primary/20 bg-info-soft">
+            <Folder size={11} className="text-link/70 flex-shrink-0" />
+            <span className="text-[11px] text-link/80 font-medium">{accountFolder?.name ?? "Pasta"}</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/20 text-link font-semibold uppercase tracking-wide">Auto</span>
           </div>
           <span className="text-[10px] text-ink-3">novas contas entram automaticamente</span>
         </div>
@@ -630,20 +630,20 @@ function LoopCard({
                 className={cn(
                   "flex items-center gap-1.5 px-2 py-0.5 rounded-lg border",
                   fell
-                    ? "bg-red-500/[0.07] border-red-500/20"
+                    ? "bg-danger-soft border-danger/20"
                     : "bg-surface-raised border-line"
                 )}
               >
                 <div className={cn(
-                  "w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0",
-                  fell ? "bg-red-500/40" : "bg-gradient-to-br from-[#00498D] to-[#85B9E9]"
+                  "w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-ink flex-shrink-0",
+                  fell ? "bg-danger/40" : "bg-gradient-primary"
                 )}>
                   {acc.username.charAt(0).toUpperCase()}
                 </div>
-                <span className={cn("text-[10px]", fell ? "text-red-400/80" : "text-ink-2")}>
+                <span className={cn("text-[10px]", fell ? "text-danger/80" : "text-ink-2")}>
                   @{acc.username}
                 </span>
-                {fell && <AlertCircle size={9} className="text-red-400 flex-shrink-0" />}
+                {fell && <AlertCircle size={9} className="text-danger flex-shrink-0" />}
               </div>
             );
           })}
@@ -676,8 +676,8 @@ function LoopCard({
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150",
             isActive
-              ? "bg-surface-hover text-ink-2 hover:bg-amber-500/10 hover:text-amber-400 border border-transparent hover:border-amber-500/20"
-              : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20"
+              ? "bg-surface-hover text-ink-2 hover:bg-warning-soft hover:text-warning border border-transparent hover:border-warning/20"
+              : "bg-success-soft text-success border border-success/20 hover:bg-success/20"
           )}
         >
           {isActive ? <Pause size={11} /> : <Play size={11} />}
@@ -696,8 +696,8 @@ function LoopCard({
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150",
             analyticsOpen
-              ? "bg-[#00498D]/15 text-[#AFBDD0] border border-[#00498D]/25"
-              : "text-ink-3 hover:text-[#85B9E9] hover:bg-[#00498D]/10"
+              ? "bg-info-soft text-link border border-primary/25"
+              : "text-ink-3 hover:text-link hover:bg-info-soft"
           )}
         >
           <BarChart2 size={11} />
@@ -706,7 +706,7 @@ function LoopCard({
         </button>
         <button
           onClick={() => onDelete(loop)}
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ink-3 hover:text-red-400 hover:bg-red-500/[0.07] transition-all duration-150"
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ink-3 hover:text-danger hover:bg-danger-soft transition-all duration-150"
         >
           <Trash2 size={11} />
         </button>
@@ -756,8 +756,8 @@ function MediaLimitSelector({
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-150",
                 active
-                  ? "bg-[#00498D]/20 border-[#00498D]/50 text-[#AFBDD0]"
-                  : "bg-surface-raised border-line text-ink-2 hover:text-ink hover:border-line-2"
+                  ? "bg-primary/20 border-primary/50 text-link"
+                  : "bg-surface-raised border-line text-ink-2 hover:text-ink hover:border-line"
               )}
             >
               {label}
@@ -881,8 +881,8 @@ function AccountsMultiSelect({
           className={cn(
             "text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition-all",
             allSelected
-              ? "bg-[#00498D]/10 border-[#00498D]/25 text-[#00498D]"
-              : "border-line text-ink-3 hover:text-[#00498D] hover:border-[#00498D]/20 hover:bg-[#00498D]/[0.05]"
+              ? "bg-info-soft border-primary/25 text-link"
+              : "border-line text-ink-3 hover:text-link hover:border-primary/20 hover:bg-info-soft"
           )}
         >
           {allSelected ? <><Check size={10} className="inline mr-1" />Todas selecionadas</> : "Selecionar todas"}
@@ -891,7 +891,7 @@ function AccountsMultiSelect({
           <button
             type="button"
             onClick={() => onChange([])}
-            className="text-[11px] font-semibold px-3 py-1.5 rounded-lg border border-line text-ink-3 hover:text-red-400 hover:border-red-500/20 hover:bg-red-500/[0.05] transition-all"
+            className="text-[11px] font-semibold px-3 py-1.5 rounded-lg border border-line text-ink-3 hover:text-danger hover:border-danger/20 hover:bg-danger-soft transition-all"
           >
             Limpar
           </button>
@@ -918,25 +918,25 @@ function AccountsMultiSelect({
                 className={cn(
                   "w-full flex items-center gap-2 px-3 py-2 text-left transition-colors",
                   fullySel
-                    ? "bg-[#00498D]/10"
+                    ? "bg-info-soft"
                     : "hover:bg-surface-raised"
                 )}
               >
                 <div className={cn(
                   "w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all",
                   fullySel
-                    ? "bg-[#00498D] border-[#00498D]"
+                    ? "bg-primary border-primary"
                     : partial
-                      ? "bg-[#00498D]/30 border-[#00498D]/40"
-                      : "border-line-2"
+                      ? "bg-primary/30 border-primary/40"
+                      : "border-line"
                 )}>
                   {fullySel && <Check size={9} className="text-white" />}
-                  {partial && <div className="w-1.5 h-1.5 rounded-sm bg-[#85B9E9]" />}
+                  {partial && <div className="w-1.5 h-1.5 rounded-sm bg-primary-2" />}
                 </div>
-                <Folder size={11} className="flex-shrink-0 text-[#85B9E9]/70" />
+                <Folder size={11} className="flex-shrink-0 text-link/70" />
                 <span className={cn(
                   "text-xs font-semibold flex-1 truncate",
-                  fullySel ? "text-[#AFBDD0]" : partial ? "text-ink-2" : "text-ink-3"
+                  fullySel ? "text-link" : partial ? "text-ink-2" : "text-ink-3"
                 )}>
                   {folderName}
                 </span>
@@ -962,16 +962,16 @@ function AccountsMultiSelect({
                       className={cn(
                         "flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border transition-all",
                         fell
-                          ? "border-red-500/15 bg-red-500/[0.06] text-red-400/50 cursor-not-allowed"
+                          ? "border-danger/15 bg-danger-soft text-danger/50 cursor-not-allowed"
                           : isSel
-                            ? "border-[#00498D]/40 bg-[#00498D]/15 text-[#AFBDD0] cursor-pointer hover:bg-[#00498D]/25"
+                            ? "border-primary/40 bg-info-soft text-link cursor-pointer hover:bg-primary/25"
                             : queues
                               ? "border-success bg-success-soft text-success cursor-pointer"
-                              : "border-line bg-surface-raised text-ink-3 cursor-pointer hover:text-ink-2 hover:border-line-2"
+                              : "border-line bg-surface-raised text-ink-3 cursor-pointer hover:text-ink-2 hover:border-line"
                       )}
                     >
-                      {fell && <AlertTriangle size={8} className="flex-shrink-0 text-red-400/60" />}
-                      {isSel && !fell && <Check size={8} className="flex-shrink-0 text-[#85B9E9]" />}
+                      {fell && <AlertTriangle size={8} className="flex-shrink-0 text-danger/60" />}
+                      {isSel && !fell && <Check size={8} className="flex-shrink-0 text-link" />}
                       <span className="font-medium">@{acc.username}</span>
                     </button>
                   );
@@ -1087,7 +1087,7 @@ function LoopCaptionEditor({
             <div>
               <div className="relative">
                 <div className="absolute top-3 left-3 flex items-center gap-1 pointer-events-none z-10">
-                  <span className="text-[10px] font-mono text-[#00498D]/50 bg-[#00498D]/10 rounded-md px-1.5 py-0.5">
+                  <span className="text-[10px] font-mono text-link/50 bg-info-soft rounded-md px-1.5 py-0.5">
                     #{i + 1}
                   </span>
                 </div>
@@ -1096,13 +1096,13 @@ function LoopCaptionEditor({
                   placeholder={`Variação ${i + 1}...`}
                   value={cap}
                   onChange={e => update(i, e.target.value)}
-                  className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-surface-hover border border-line-2 text-white text-sm placeholder-white/20 resize-none focus:outline-none focus:border-[#00498D]/40 focus:ring-1 focus:ring-[#00498D]/20 transition-all leading-relaxed"
+                  className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-surface-hover border border-line text-ink text-sm placeholder-ink-3 resize-none focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all leading-relaxed"
                   maxLength={2200}
                 />
                 <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
                   <span className={cn(
                     "text-[10px] transition-colors",
-                    cap.length > 1980 ? "text-yellow-400" : "text-ink-3"
+                    cap.length > 1980 ? "text-warning" : "text-ink-3"
                   )}>
                     {cap.length}/2200
                   </span>
@@ -1110,7 +1110,7 @@ function LoopCaptionEditor({
                     <button
                       type="button"
                       onClick={() => remove(i)}
-                      className="w-6 h-6 rounded-lg flex items-center justify-center text-ink-3 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                      className="w-6 h-6 rounded-lg flex items-center justify-center text-ink-3 hover:text-danger hover:bg-danger-soft transition-colors"
                     >
                       <Trash2 size={11} />
                     </button>
@@ -1130,8 +1130,8 @@ function LoopCaptionEditor({
                   >
                     {savedFeedback === i ? (
                       <div className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5">
-                        <CheckCircle2 size={11} className="text-[#00498D]" />
-                        <span className="text-[10px] text-[#00498D]">Salva na biblioteca!</span>
+                        <CheckCircle2 size={11} className="text-link" />
+                        <span className="text-[10px] text-link">Salva na biblioteca!</span>
                       </div>
                     ) : savingFor === i ? (
                       <div className="flex items-center gap-2 px-1 pt-1.5 pb-0.5">
@@ -1141,13 +1141,13 @@ function LoopCaptionEditor({
                           onChange={e => setSaveTitle(e.target.value)}
                           onKeyDown={e => { if (e.key === "Enter") handleSave(i); if (e.key === "Escape") { setSavingFor(null); setSaveTitle(""); } }}
                           placeholder="Nome da legenda (opcional)..."
-                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-surface-hover border border-line-2 text-white text-xs placeholder-white/25 focus:outline-none focus:border-[#00498D]/40 transition-all"
+                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-surface-hover border border-line text-ink text-xs placeholder-ink-3 focus:outline-none focus:border-primary/40 transition-all"
                         />
                         <button
                           type="button"
                           onClick={() => handleSave(i)}
                           disabled={savingApi}
-                          className="px-3 py-1.5 rounded-lg bg-[#00498D]/15 text-[#00498D] text-xs font-medium hover:bg-[#00498D]/25 transition-all disabled:opacity-50 flex items-center gap-1"
+                          className="px-3 py-1.5 rounded-lg bg-info-soft text-link text-xs font-medium hover:bg-primary/25 transition-all disabled:opacity-50 flex items-center gap-1"
                         >
                           {savingApi ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
                           Salvar
@@ -1164,9 +1164,9 @@ function LoopCaptionEditor({
                       <button
                         type="button"
                         onClick={() => { setSavingFor(i); setSaveTitle(""); }}
-                        className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5 text-[10px] text-ink-3 hover:text-[#00498D]/60 transition-colors group"
+                        className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5 text-[10px] text-ink-3 hover:text-link/60 transition-colors group"
                       >
-                        <Save size={9} className="group-hover:text-[#00498D]/60 transition-colors" />
+                        <Save size={9} className="group-hover:text-link/60 transition-colors" />
                         Salvar esta legenda para usar depois
                       </button>
                     )}
@@ -1183,7 +1183,7 @@ function LoopCaptionEditor({
         <button
           type="button"
           onClick={add}
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-line-2 text-ink-3 text-sm hover:border-[#00498D]/40 hover:text-[#00498D]/60 transition-all"
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-line text-ink-3 text-sm hover:border-primary/40 hover:text-link/60 transition-all"
         >
           <Plus size={14} />
           Adicionar variação
@@ -1196,14 +1196,14 @@ function LoopCaptionEditor({
             className={cn(
               "flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-all",
               showLibrary
-                ? "border-[#85B9E9]/40 bg-[#85B9E9]/[0.08] text-[#85B9E9]"
-                : "border-line-2 text-ink-3 hover:border-[#85B9E9]/40 hover:text-[#85B9E9]/70"
+                ? "border-primary-2/40 bg-info-soft text-link"
+                : "border-line text-ink-3 hover:border-primary-2/40 hover:text-link/70"
             )}
           >
             <Library size={14} />
             Usar Salva
             {savedCaptions.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-[#85B9E9]/15 text-[#85B9E9] text-[9px] font-mono">
+              <span className="px-1.5 py-0.5 rounded-full bg-info-soft text-link text-[9px] font-mono">
                 {savedCaptions.length}
               </span>
             )}
@@ -1216,11 +1216,11 @@ function LoopCaptionEditor({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -6, scale: 0.97 }}
                 transition={{ duration: 0.14 }}
-                className="absolute z-30 bottom-full mb-2 right-0 w-80 bg-[#0d111b] border border-line-2 rounded-2xl shadow-2xl overflow-hidden"
+                className="absolute z-30 bottom-full mb-2 right-0 w-80 glass overflow-hidden"
               >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-line">
                   <div className="flex items-center gap-2">
-                    <BookMarked size={13} className="text-[#85B9E9]" />
+                    <BookMarked size={13} className="text-link" />
                     <span className="text-xs font-semibold text-ink-2">Biblioteca de Legendas</span>
                   </div>
                   <button type="button" onClick={() => setShowLibrary(false)} className="text-ink-3 hover:text-ink-2 transition-colors">
@@ -1251,7 +1251,7 @@ function LoopCaptionEditor({
                           className="flex-1 text-left min-w-0"
                         >
                           {sc.title && (
-                            <p className="text-xs font-medium text-[#85B9E9]/80 truncate mb-0.5">{sc.title}</p>
+                            <p className="text-xs font-medium text-link/80 truncate mb-0.5">{sc.title}</p>
                           )}
                           <p className="text-xs text-ink-2 line-clamp-2 leading-relaxed">{sc.content}</p>
                           <p className="text-[9px] text-ink-3 mt-1">Clique para adicionar</p>
@@ -1259,7 +1259,7 @@ function LoopCaptionEditor({
                         <button
                           type="button"
                           onClick={() => removeFromLibrary(sc.id)}
-                          className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center text-ink-3 hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
+                          className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center text-ink-3 hover:text-danger transition-all flex-shrink-0 mt-0.5"
                         >
                           <Trash2 size={11} />
                         </button>
@@ -1392,7 +1392,7 @@ function LoopFormModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-overlay backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
@@ -1401,16 +1401,16 @@ function LoopFormModal({
         exit={{ scale: 0.93, opacity: 0, y: 20 }}
         transition={{ type: "spring", damping: 28, stiffness: 320 }}
         onClick={e => e.stopPropagation()}
-        className="glass w-full max-w-2xl rounded-2xl border border-line-2 flex flex-col max-h-[92vh]"
+        className="glass w-full max-w-2xl rounded-2xl border border-line flex flex-col max-h-[92vh]"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-line flex-shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-[#00498D]/20 flex items-center justify-center">
-              <Repeat2 size={16} className="text-[#85B9E9]" />
+            <div className="w-8 h-8 rounded-xl bg-primary/20 flex items-center justify-center">
+              <Repeat2 size={16} className="text-link" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">
+              <h2 className="text-sm font-semibold text-ink">
                 {editingLoop ? "Editar Loop" : "Novo Loop"}
               </h2>
               <p className="text-xs text-ink-3">Configure a publicação automática em ciclo</p>
@@ -1448,7 +1448,7 @@ function LoopFormModal({
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold transition-all",
                   form.accountMode === "folder"
-                    ? "bg-[#00498D]/20 text-[#AFBDD0] border-r border-[#00498D]/20"
+                    ? "bg-primary/20 text-link border-r border-primary/20"
                     : "text-ink-3 hover:text-ink-2 border-r border-line"
                 )}
               >
@@ -1461,7 +1461,7 @@ function LoopFormModal({
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold transition-all",
                   form.accountMode === "specific"
-                    ? "bg-[#00498D]/20 text-[#AFBDD0]"
+                    ? "bg-primary/20 text-link"
                     : "text-ink-3 hover:text-ink-2"
                 )}
               >
@@ -1485,7 +1485,7 @@ function LoopFormModal({
                   ))}
                 </select>
                 {accountFolders.length === 0 && (
-                  <p className="text-xs text-amber-400/60 flex items-center gap-1.5">
+                  <p className="text-xs text-warning/60 flex items-center gap-1.5">
                     <AlertCircle size={11} />
                     Nenhuma pasta de contas encontrada. Crie pastas na aba Contas primeiro.
                   </p>
@@ -1521,7 +1521,7 @@ function LoopFormModal({
               ))}
             </select>
             {folders.length === 0 && (
-              <p className="text-xs text-amber-400/60 mt-2 flex items-center gap-1.5">
+              <p className="text-xs text-warning/60 mt-2 flex items-center gap-1.5">
                 <AlertCircle size={11} />
                 Nenhuma pasta encontrada. Crie pastas na Biblioteca primeiro.
               </p>
@@ -1580,7 +1580,7 @@ function LoopFormModal({
             <div className="space-y-3 p-4 rounded-xl border border-line bg-surface-raised">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-ink-3">10 min</span>
-                <span className="text-base font-bold text-[#AFBDD0]">
+                <span className="text-base font-bold text-link">
                   {formatInterval(form.intervalMinutes)}
                 </span>
                 <span className="text-xs text-ink-3">24h</span>
@@ -1597,7 +1597,7 @@ function LoopFormModal({
                   background: `linear-gradient(to right, rgb(124,58,237) 0%, rgb(124,58,237) ${sliderPct}%, rgba(255,255,255,0.08) ${sliderPct}%, rgba(255,255,255,0.08) 100%)`
                 }}
               />
-              <p className="text-[11px] text-amber-400/50 flex items-center gap-1.5">
+              <p className="text-[11px] text-warning/50 flex items-center gap-1.5">
                 <AlertCircle size={10} />
                 Mínimo 10 minutos para evitar bloqueios automáticos do Instagram.
               </p>
@@ -1612,7 +1612,7 @@ function LoopFormModal({
                 <span className="text-xs text-ink-3">Auto</span>
                 <span className={cn(
                   "text-base font-bold",
-                  form.accountStaggerSeconds ? "text-green-400" : "text-ink-3"
+                  form.accountStaggerSeconds ? "text-success" : "text-ink-3"
                 )}>
                   {form.accountStaggerSeconds ? `${form.accountStaggerSeconds}s` : "Automático"}
                 </span>
@@ -1709,7 +1709,7 @@ function LoopFormModal({
               onChange={handleCoverSelect}
             />
             {form.coverPreviewUrl ? (
-              <div className="relative rounded-xl overflow-hidden border border-line-2 group">
+              <div className="relative rounded-xl overflow-hidden border border-line group">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={form.coverPreviewUrl}
@@ -1720,14 +1720,14 @@ function LoopFormModal({
                   <button
                     type="button"
                     onClick={() => coverInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-lg bg-line-control/20 text-white text-xs hover:bg-line-control/30 transition-colors"
+                    className="px-3 py-1.5 rounded-lg bg-line-control/20 text-ink text-xs hover:bg-line-control/30 transition-colors"
                   >
                     Trocar
                   </button>
                   <button
                     type="button"
                     onClick={removeCover}
-                    className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-xs hover:bg-red-500/30 transition-colors"
+                    className="px-3 py-1.5 rounded-lg bg-danger/20 text-danger text-xs hover:bg-danger/30 transition-colors"
                   >
                     Remover
                   </button>
@@ -1737,7 +1737,7 @@ function LoopFormModal({
               <button
                 type="button"
                 onClick={() => coverInputRef.current?.click()}
-                className="w-full h-24 rounded-xl border-2 border-dashed border-line flex flex-col items-center justify-center gap-2 text-ink-3 hover:text-ink-2 hover:border-[#00498D]/25 transition-all duration-150"
+                className="w-full h-24 rounded-xl border-2 border-dashed border-line flex flex-col items-center justify-center gap-2 text-ink-3 hover:text-ink-2 hover:border-primary/25 transition-all duration-150"
               >
                 <ImageIcon size={20} />
                 <span className="text-xs">Clique para adicionar uma capa</span>
@@ -1759,7 +1759,7 @@ function LoopFormModal({
               originalHint={
                   <>
                     Cada vídeo usará sua própria legenda original.{" "}
-                    <span className="text-amber-300/80">
+                    <span className="text-warning/80">
                       Vídeos sem legenda original serão publicados sem legenda.
                     </span>
                   </>
@@ -1792,8 +1792,8 @@ function LoopFormModal({
                   className={cn(
                     "px-3.5 py-2 rounded-xl text-sm font-bold border transition-all",
                     form.priorityStrategy === opt.value
-                      ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30"
-                      : "bg-surface-raised text-ink-3 border-line hover:border-line-2 hover:text-ink-2"
+                      ? "bg-info-soft text-link border-primary-2/30"
+                      : "bg-surface-raised text-ink-3 border-line hover:border-line hover:text-ink-2"
                   )}
                 >
                   {opt.label}
@@ -1814,7 +1814,7 @@ function LoopFormModal({
             <motion.div
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
+              className="flex items-center gap-2 px-4 py-3 rounded-xl bg-danger-soft border border-danger/20 text-danger text-sm"
             >
               <AlertCircle size={14} className="flex-shrink-0" />
               {error}
@@ -2075,8 +2075,8 @@ export default function LoopPage() {
             <div className="w-24 h-24 rounded-3xl bg-surface-raised border border-line flex items-center justify-center">
               <Repeat2 size={36} className="text-ink-3" />
             </div>
-            <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-[#00498D]/20 border border-[#00498D]/30 flex items-center justify-center">
-              <Infinity size={12} className="text-[#85B9E9]" />
+            <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">
+              <Infinity size={12} className="text-link" />
             </div>
           </div>
           <div>

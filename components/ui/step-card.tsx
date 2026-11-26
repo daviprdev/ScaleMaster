@@ -14,7 +14,7 @@ export const StepCard = React.forwardRef<HTMLDivElement, StepCardProps>(
       <div
         ref={ref}
         className={cn(
-          "rounded-xl border border-line bg-surface p-5",
+          "glass-card p-5",
           className
         )}
         {...props}

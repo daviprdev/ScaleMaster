@@ -117,7 +117,7 @@ export function ContasVpsCard({ jobs, devices, busy, now, onAction, onReply, onE
               <button
                 type="button"
                 onClick={() => setAberta(g.chave)}
-                className="flex w-full items-start gap-3 rounded-lg border border-line p-4 pr-12 text-left transition-colors hover:border-line-control hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                className="flex w-full items-start gap-3 rounded-[14px] border border-line p-4 pr-12 text-left transition-colors hover:border-line-control hover:bg-white/[0.04] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
               >
                 <span className={cn("mt-0.5 shrink-0", aba === "estruturadas" ? "text-success" : "text-accent")}>
                   <Folder size={22} />
@@ -248,7 +248,7 @@ function IsolamentoBox({ isolamento, doLote, queimada }: { isolamento: Isolament
     ["Android ID", isolamento.androidId],
   ];
   return (
-    <div className="mt-3 rounded-lg border border-line p-3">
+    <div className="mt-3 glass-tile p-3">
       <p className={cn("flex items-center gap-1.5 text-xs font-medium", escudo.cor)}>
         <escudo.Icone size={14} className="shrink-0" />
         Isolamento · {isolamento.rotacao ? "rotação detectada, sessão não fixa" : escudo.texto}
@@ -290,7 +290,7 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, onPasta, no
   const prontidao = noSaas ? "pronta" : prontidaoDaConta(estrutura);
 
   return (
-    <li className={cn("rounded-lg border p-4", prontidao === "pronta" ? "border-success" : "border-line")}>
+    <li className={cn("rounded-[14px] border p-4", prontidao === "pronta" ? "border-success" : "border-line")}>
       <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-ink">
@@ -367,7 +367,7 @@ function JobRow({ job, device, busy, now, onAction, onReply, onEdit, onPasta, no
       </div>
 
       {desafio && (
-        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-warning-soft p-3" data-testid="desafio-pendente">
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-[14px] border border-line bg-warning-soft p-3" data-testid="desafio-pendente">
           <p className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-ink">
             <AlertTriangle size={14} className="shrink-0 text-warning" />
             <span>
@@ -522,7 +522,7 @@ function PromptBox({ job, busy, onReply }: { job: VpsJob; busy: boolean; onReply
   if (!prompt) return null;
 
   return (
-    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-line bg-warning-soft p-3">
+    <div className="mt-3 flex flex-col gap-3 rounded-[14px] border border-line bg-warning-soft p-3">
       <p className="text-sm text-ink">{prompt.texto}</p>
       {prompt.tipo === "codigo" ? (
         <form
@@ -645,7 +645,7 @@ function InformacoesBox({ jobId }: { jobId: string }) {
   const cp = info.codigoPortal;
   const hora = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—");
   return (
-    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-line bg-surface-raised p-3 text-xs">
+    <div className="mt-3 flex flex-col gap-3 rounded-[14px] border border-line bg-surface-raised p-3 text-xs">
       <p className="font-medium text-ink-2">Informações</p>
       <dl className="grid gap-2 sm:grid-cols-2">
         {linhas.map(([rotulo, mostrar, valor, chave]) => (
@@ -743,7 +743,7 @@ function AlvosResultado({ alvos, print, ampliar }: { alvos: AlvoResultado[]; pri
   return (
     <ul className="mt-3 flex flex-col gap-2">
       {alvos.map((a) => (
-        <li key={a.n} className={cn("rounded-lg border p-2.5", a.resultado === "falhou" ? "border-danger" : "border-line")}>
+        <li key={a.n} className={cn("rounded-[14px] border p-2.5", a.resultado === "falhou" ? "border-danger" : "border-line")}>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
             <Badge tone={RESULTADO_ALVO[a.resultado].tone} dot>
               {RESULTADO_ALVO[a.resultado].label}

@@ -97,7 +97,7 @@ export function PostModal({ video, onClose }: PostModalProps) {
   const allOk = results?.every(r => r.status === "ok");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -108,19 +108,19 @@ export function PostModal({ video, onClose }: PostModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#00498D] to-[#00346D] flex items-center justify-center">
+            <div className="w-7 h-7 rounded-lg bg-gradient-primary flex items-center justify-center">
               <Instagram size={14} className="text-white" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-white/85">Postar agora</p>
-              <p className="text-[10px] text-white/30 truncate max-w-[200px]">
+              <p className="text-sm font-semibold text-ink">Postar agora</p>
+              <p className="text-[10px] text-ink-3 truncate max-w-[200px]">
                 {video.filename.replace(/_clean_\d+\.mp4$/, "")}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-lg bg-white/[0.05] hover:bg-white/[0.10] flex items-center justify-center text-white/40 hover:text-white/70 transition-all"
+            className="w-7 h-7 rounded-lg bg-white/[0.05] hover:bg-white/[0.10] flex items-center justify-center text-ink-3 hover:text-ink-2 transition-all"
           >
             <X size={14} />
           </button>
@@ -134,8 +134,8 @@ export function PostModal({ video, onClose }: PostModalProps) {
               <div className={cn(
                 "flex items-center gap-2.5 px-3.5 py-3 rounded-xl text-sm font-medium",
                 allOk
-                  ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
-                  : "bg-amber-500/10 border border-amber-500/20 text-amber-400"
+                  ? "bg-success-soft border border-success/20 text-success"
+                  : "bg-warning-soft border border-warning/20 text-warning"
               )}>
                 {allOk ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
                 {allOk
@@ -150,8 +150,8 @@ export function PostModal({ video, onClose }: PostModalProps) {
                     className={cn(
                       "flex items-center gap-3 px-3 py-2.5 rounded-xl border text-xs",
                       r.status === "ok"
-                        ? "bg-emerald-500/8 border-emerald-500/15 text-emerald-300"
-                        : "bg-red-500/8 border-red-500/15 text-red-400"
+                        ? "bg-success-soft border-success/15 text-success"
+                        : "bg-danger-soft border-danger/15 text-danger"
                     )}
                   >
                     {r.status === "ok"
@@ -172,7 +172,7 @@ export function PostModal({ video, onClose }: PostModalProps) {
 
               <button
                 onClick={onClose}
-                className="w-full py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white/80 hover:bg-white/8 text-sm font-medium transition-all"
+                className="w-full py-2.5 rounded-xl bg-white/5 border border-white/10 text-ink-2 hover:text-ink hover:bg-white/8 text-sm font-medium transition-all"
               >
                 Fechar
               </button>
@@ -184,17 +184,17 @@ export function PostModal({ video, onClose }: PostModalProps) {
             <>
                   {/* Account selector */}
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+                <p className="text-xs font-semibold text-ink-3 uppercase tracking-wider">
                   Contas
                 </p>
 
                 {loadingAccounts ? (
-                  <div className="flex items-center gap-2 py-4 text-white/30 text-sm">
+                  <div className="flex items-center gap-2 py-4 text-ink-3 text-sm">
                     <Loader2 size={14} className="animate-spin" />
                     Carregando contas...
                   </div>
                 ) : accounts.length === 0 ? (
-                  <p className="text-sm text-white/30 py-2">
+                  <p className="text-sm text-ink-3 py-2">
                     Nenhuma conta conectada. Vá em Contas para adicionar.
                   </p>
                 ) : (
@@ -213,31 +213,31 @@ export function PostModal({ video, onClose }: PostModalProps) {
                             !hasSession
                               ? "opacity-40 cursor-not-allowed border-white/[0.05] bg-white/[0.02]"
                               : isSelected
-                                ? "bg-[#00498D]/15 border-[#00498D]/35"
+                                ? "bg-info-soft border-primary/35"
                                 : "bg-white/[0.03] border-white/[0.07] hover:border-white/15 hover:bg-white/[0.06]"
                           )}
                         >
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00498D] to-[#00346D] flex items-center justify-center flex-shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-gradient-primary flex items-center justify-center flex-shrink-0">
                             <Instagram size={14} className="text-white" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <p className={cn("text-sm font-medium truncate", isSelected ? "text-[#AFBDD0]" : "text-white/70")}>
+                              <p className={cn("text-sm font-medium truncate", isSelected ? "text-link" : "text-ink-2")}>
                                 @{acc.username}
                               </p>
                               {isMeta && (
-                                <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-blue-500/20 text-blue-300 border border-blue-500/25">
+                                <span className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-primary/20 text-link border border-primary/25">
                                   META
                                 </span>
                               )}
                             </div>
-                            <p className="text-[10px] text-white/25">
+                            <p className="text-[10px] text-ink-3">
                               {!hasSession ? "Reconecte para postar" : acc.display_name ?? ""}
                             </p>
                           </div>
                           <div className={cn(
                             "w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0",
-                            isSelected ? "border-[#00498D] bg-[#00498D]" : "border-white/20"
+                            isSelected ? "border-primary bg-primary" : "border-white/20"
                           )}>
                             {isSelected && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
                           </div>
@@ -250,7 +250,7 @@ export function PostModal({ video, onClose }: PostModalProps) {
 
               {/* Caption */}
               <div className="space-y-2">
-                <p className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+                <p className="text-xs font-semibold text-ink-3 uppercase tracking-wider">
                   Legenda
                 </p>
 
@@ -281,7 +281,7 @@ export function PostModal({ video, onClose }: PostModalProps) {
                       rows={3}
                       className="w-full input-glass rounded-xl px-3.5 py-3 text-sm resize-none"
                     />
-                    <p className="text-[10px] text-white/20 text-right">{caption.length} caracteres</p>
+                    <p className="text-[10px] text-ink-3 text-right">{caption.length} caracteres</p>
                   </>
                 )}
               </div>
@@ -294,8 +294,8 @@ export function PostModal({ video, onClose }: PostModalProps) {
                 className={cn(
                   "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all",
                   posting || !selectedIds.length
-                    ? "bg-white/5 border border-white/10 text-white/30 cursor-not-allowed"
-                    : "bg-gradient-to-r from-[#00498D] to-[#00346D] hover:from-[#075BA6] hover:to-[#00346D] text-white hover:shadow-[0_0_20px_rgba(0,73,141,0.35)]"
+                    ? "bg-white/5 border border-white/10 text-ink-3 cursor-not-allowed"
+                    : "bg-gradient-primary hover:from-primary-hover hover:to-primary text-white hover:shadow-glow"
                 )}
               >
                 {posting ? (

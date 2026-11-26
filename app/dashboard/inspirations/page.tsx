@@ -120,7 +120,7 @@ function ImportingModal({ username, done, sourceLabel }: { username: string; don
           <div className="relative w-16 h-16">
             <div
               className={`w-16 h-16 rounded-full border-2 transition-all duration-500 ${
-                done ? "border-[#00498D]/40" : "border-[#85B9E9]/20 border-t-[#85B9E9] animate-spin"
+                done ? "border-primary/40" : "border-primary-2/20 border-t-primary-2 animate-spin"
               }`}
             />
             {done && (
@@ -129,7 +129,7 @@ function ImportingModal({ username, done, sourceLabel }: { username: string; don
                 animate={{ scale: 1 }}
                 className="absolute inset-0 flex items-center justify-center"
               >
-                <CheckCircle2 size={28} className="text-brand-blue" />
+                <CheckCircle2 size={28} className="text-link" />
               </motion.div>
             )}
           </div>
@@ -150,7 +150,7 @@ function ImportingModal({ username, done, sourceLabel }: { username: string; don
           </div>
           <div className="h-[3px] rounded-full" style={{ background: "rgba(255,255,255,0.07)" }}>
             <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-brand-blue to-accent"
+              className="h-full rounded-full bg-gradient-primary"
               animate={{ width: `${progress}%` }}
               transition={{ duration: 0.4, ease: "easeOut" }}
             />
@@ -166,9 +166,9 @@ function ImportingModal({ username, done, sourceLabel }: { username: string; don
           ].map((step, i) => (
             <div key={i} className="flex items-center gap-3">
               {step.done ? (
-                <CheckCircle2 size={14} className="text-brand-blue flex-shrink-0" />
+                <CheckCircle2 size={14} className="text-link flex-shrink-0" />
               ) : (
-                <Loader2 size={14} style={{ color: "var(--electric)" }} className="animate-spin flex-shrink-0" />
+                <Loader2 size={14} style={{ color: "var(--primary-2)" }} className="animate-spin flex-shrink-0" />
               )}
               <span className="text-sm" style={{ color: step.done ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.75)" }}>
                 {step.label}
@@ -193,14 +193,14 @@ function MockCard({ index }: { index: number }) {
     >
       {/* Shimmer overlay */}
       <div className="absolute inset-0 pointer-events-none"
-        style={{ background: "linear-gradient(135deg, rgba(0,73,141,0.02) 0%, transparent 60%, rgba(133,185,233,0.02) 100%)" }} />
+        style={{ background: "linear-gradient(135deg, rgba(47,123,255,0.02) 0%, transparent 60%, rgba(63,208,255,0.02) 100%)" }} />
 
       {/* Fake thumbnail area */}
       <div className="relative h-32 flex items-center justify-center"
         style={{ background: "rgba(0,0,0,0.35)", borderBottom: "0.5px solid rgba(255,255,255,0.07)" }}>
         <Film size={28} style={{ color: "rgba(255,255,255,0.08)" }} />
         <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider"
-          style={{ background: "rgba(0,73,141,0.08)", color: "rgba(0,73,141,0.4)", border: "0.5px solid rgba(0,73,141,0.15)" }}>
+          style={{ background: "rgba(47,123,255,0.08)", color: "var(--link)", border: "0.5px solid rgba(47,123,255,0.15)" }}>
           REEL
         </div>
       </div>
@@ -225,9 +225,9 @@ function MockCard({ index }: { index: number }) {
           disabled
           className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all cursor-not-allowed"
           style={{
-            background: "rgba(0,73,141,0.06)",
-            border: "0.5px solid rgba(0,73,141,0.18)",
-            color: "rgba(0,73,141,0.35)",
+            background: "rgba(47,123,255,0.06)",
+            border: "0.5px solid rgba(47,123,255,0.18)",
+            color: "var(--link)",
           }}
         >
           <Plus size={12} />
@@ -262,7 +262,7 @@ function HistoryCard({
     >
       {/* Ambient glow on hover */}
       <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-300"
-        style={{ background: "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0,73,141,0.04) 0%, transparent 70%)" }} />
+        style={{ background: "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(47,123,255,0.04) 0%, transparent 70%)" }} />
 
       {/* Delete */}
       <button
@@ -276,7 +276,7 @@ function HistoryCard({
       {/* Avatar + username */}
       <div className="flex items-center gap-3 pr-7 relative z-10">
         <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0"
-          style={{ background: "linear-gradient(135deg, #00498D, #85B9E9)", boxShadow: "0 0 10px rgba(0,73,141,0.2)" }}>
+          style={{ background: "var(--gradient-primary)", boxShadow: "0 0 10px rgba(47,123,255,0.2)" }}>
           {profile.profile_pic_url && !imgError ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -300,8 +300,8 @@ function HistoryCard({
       {/* Stats */}
       <div className="flex items-center gap-2 relative z-10">
         <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
-          style={{ background: "rgba(0,73,141,0.05)", border: "0.5px solid rgba(0,73,141,0.12)" }}>
-          <Film size={10} className="text-brand-blue" />
+          style={{ background: "rgba(47,123,255,0.05)", border: "0.5px solid rgba(47,123,255,0.12)" }}>
+          <Film size={10} className="text-link" />
           <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.55)" }}>{profile.video_count} reels</span>
         </div>
         <span className="text-[11px] ml-auto" style={{ color: "rgba(255,255,255,0.22)" }}>{timeAgo(profile.scraped_at)}</span>
@@ -312,16 +312,16 @@ function HistoryCard({
         onClick={() => onView(profile)}
         className="relative z-10 w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all"
         style={{
-          background: "rgba(0,73,141,0.07)",
-          border: "0.5px solid rgba(0,73,141,0.22)",
-          color: "rgba(0,73,141,0.8)",
+          background: "rgba(47,123,255,0.07)",
+          border: "0.5px solid rgba(47,123,255,0.22)",
+          color: "var(--link)",
         }}
         onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,73,141,0.14)";
-          (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 14px rgba(0,73,141,0.1)";
+          (e.currentTarget as HTMLButtonElement).style.background = "rgba(47,123,255,0.14)";
+          (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 14px rgba(47,123,255,0.1)";
         }}
         onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,73,141,0.07)";
+          (e.currentTarget as HTMLButtonElement).style.background = "rgba(47,123,255,0.07)";
           (e.currentTarget as HTMLButtonElement).style.boxShadow = "none";
         }}
       >
@@ -937,8 +937,8 @@ export default function InspiracoesPage() {
           className="flex items-start gap-3"
         >
           <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: "linear-gradient(135deg, rgba(0,73,141,0.15), rgba(133,185,233,0.1))", border: "0.5px solid rgba(0,73,141,0.25)", boxShadow: "0 0 18px rgba(0,73,141,0.12)" }}>
-            <Sparkles size={18} className="text-brand-blue" />
+            style={{ background: "linear-gradient(135deg, rgba(47,123,255,0.15), rgba(63,208,255,0.1))", border: "0.5px solid rgba(47,123,255,0.25)", boxShadow: "0 0 18px rgba(47,123,255,0.12)" }}>
+            <Sparkles size={18} className="text-link" />
           </div>
           <div>
             <h1 className="page-title">Inspirações e Scraper</h1>
@@ -961,7 +961,7 @@ export default function InspiracoesPage() {
         >
           {/* Accent gradient */}
           <div className="absolute inset-0 pointer-events-none"
-            style={{ background: "linear-gradient(135deg, rgba(0,73,141,0.04) 0%, transparent 50%, rgba(133,185,233,0.03) 100%)" }} />
+            style={{ background: "linear-gradient(135deg, rgba(47,123,255,0.04) 0%, transparent 50%, rgba(63,208,255,0.03) 100%)" }} />
 
           <div className="relative p-6">
             {/* Label */}
@@ -988,7 +988,7 @@ export default function InspiracoesPage() {
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
                     style={
                       source === opt.key
-                        ? { background: "rgba(0,73,141,0.12)", border: "0.5px solid rgba(0,73,141,0.35)", color: "rgba(0,73,141,0.95)" }
+                        ? { background: "rgba(47,123,255,0.12)", border: "0.5px solid rgba(47,123,255,0.35)", color: "var(--link)" }
                         : { background: "transparent", border: "0.5px solid transparent", color: "rgba(255,255,255,0.4)" }
                     }
                   >
@@ -1047,7 +1047,7 @@ export default function InspiracoesPage() {
             {/* Input row */}
             <div className="flex gap-3">
               <div className="relative flex-1">
-                <AtSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-blue" />
+                <AtSign size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-link" />
                 <input
                   ref={inputRef}
                   value={username}
@@ -1079,14 +1079,14 @@ export default function InspiracoesPage() {
         {runningSearches.length > 0 && (
           <div
             className="flex items-start gap-3 px-4 py-3 rounded-xl text-sm"
-            style={{ background: "rgba(133,185,233,0.06)", border: "0.5px solid rgba(133,185,233,0.2)", color: "rgba(133,185,233,0.85)" }}
+            style={{ background: "rgba(63,208,255,0.06)", border: "0.5px solid rgba(63,208,255,0.2)", color: "var(--link)" }}
           >
             <Loader2 size={15} className="animate-spin mt-0.5 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <p>
                 Buscando {runningSearches.map((s) => `@${s.username}`).join(", ")} em segundo plano.
               </p>
-              <p className="text-xs mt-0.5" style={{ color: "rgba(133,185,233,0.55)" }}>
+              <p className="text-xs mt-0.5" style={{ color: "var(--link)" }}>
                 Pode sair da página — o resultado é salvo no histórico sozinho quando terminar. Não precisa pesquisar de novo.
               </p>
             </div>
@@ -1197,10 +1197,10 @@ export default function InspiracoesPage() {
                   className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:cursor-not-allowed"
                   style={
                     bulkSaveProgress !== null
-                      ? { background: "rgba(0,73,141,0.06)", border: "0.5px solid rgba(0,73,141,0.15)", color: "rgba(0,73,141,0.4)" }
+                      ? { background: "rgba(47,123,255,0.06)", border: "0.5px solid rgba(47,123,255,0.15)", color: "var(--link)" }
                       : !saveFolderId
                       ? { background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.35)" }
-                      : { background: "rgba(0,73,141,0.12)", border: "0.5px solid rgba(0,73,141,0.4)", color: "rgba(0,73,141,0.95)", boxShadow: "0 0 16px rgba(0,73,141,0.15)" }
+                      : { background: "rgba(47,123,255,0.12)", border: "0.5px solid rgba(47,123,255,0.4)", color: "var(--link)", boxShadow: "0 0 16px rgba(47,123,255,0.15)" }
                   }
                 >
                   {bulkSaveProgress !== null ? (
@@ -1240,7 +1240,7 @@ export default function InspiracoesPage() {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all"
                   style={
                     showFilters
-                      ? { background: "rgba(0,73,141,0.1)", border: "0.5px solid rgba(0,73,141,0.25)", color: "rgba(0,73,141,0.85)" }
+                      ? { background: "rgba(47,123,255,0.1)", border: "0.5px solid rgba(47,123,255,0.25)", color: "var(--link)" }
                       : { background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.4)" }
                   }
                 >
@@ -1260,7 +1260,7 @@ export default function InspiracoesPage() {
                   style={
                     bulkSaveResult.saved === 0
                       ? { background: "rgba(255,59,48,0.08)", border: "0.5px solid rgba(255,59,48,0.2)", color: "rgba(255,100,90,0.9)" }
-                      : { background: "rgba(0,73,141,0.07)", border: "0.5px solid rgba(0,73,141,0.2)", color: "rgba(0,73,141,0.9)" }
+                      : { background: "rgba(47,123,255,0.07)", border: "0.5px solid rgba(47,123,255,0.2)", color: "var(--link)" }
                   }
                 >
                   {bulkSaveResult.saved === 0 ? <AlertCircle size={15} /> : <CheckCircle2 size={15} />}
@@ -1284,7 +1284,7 @@ export default function InspiracoesPage() {
                   style={
                     bulkResult.saved === 0
                       ? { background: "rgba(255,59,48,0.08)", border: "0.5px solid rgba(255,59,48,0.2)", color: "rgba(255,100,90,0.9)" }
-                      : { background: "rgba(0,73,141,0.07)", border: "0.5px solid rgba(0,73,141,0.2)", color: "rgba(0,73,141,0.9)" }
+                      : { background: "rgba(47,123,255,0.07)", border: "0.5px solid rgba(47,123,255,0.2)", color: "var(--link)" }
                   }
                 >
                   {bulkResult.saved === 0 ? <AlertCircle size={15} /> : <CheckCircle2 size={15} />}
@@ -1313,7 +1313,7 @@ export default function InspiracoesPage() {
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all"
                       style={
                         sortBy === opt.key
-                          ? { background: "rgba(0,73,141,0.1)", border: "0.5px solid rgba(0,73,141,0.25)", color: "rgba(0,73,141,0.85)" }
+                          ? { background: "rgba(47,123,255,0.1)", border: "0.5px solid rgba(47,123,255,0.25)", color: "var(--link)" }
                           : { background: "rgba(255,255,255,0.04)", border: "0.5px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.35)" }
                       }
                     >
@@ -1357,7 +1357,7 @@ export default function InspiracoesPage() {
                 <button
                   onClick={() => { handleBack(); }}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all"
-                  style={{ background: "rgba(0,73,141,0.07)", border: "0.5px solid rgba(0,73,141,0.2)", color: "rgba(0,73,141,0.7)" }}
+                  style={{ background: "rgba(47,123,255,0.07)", border: "0.5px solid rgba(47,123,255,0.2)", color: "var(--link)" }}
                 >
                   <ArrowLeft size={11} />
                   Voltar e buscar outro perfil
@@ -1401,9 +1401,9 @@ export default function InspiracoesPage() {
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
                 {/* Info banner */}
                 <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                  style={{ background: "rgba(133,185,233,0.05)", border: "0.5px solid rgba(133,185,233,0.12)" }}>
-                  <Sparkles size={14} style={{ color: "var(--electric)" }} className="flex-shrink-0" />
-                  <p className="text-xs" style={{ color: "rgba(133,185,233,0.7)" }}>
+                  style={{ background: "rgba(63,208,255,0.05)", border: "0.5px solid rgba(63,208,255,0.12)" }}>
+                  <Sparkles size={14} style={{ color: "var(--primary-2)" }} className="flex-shrink-0" />
+                  <p className="text-xs" style={{ color: "var(--link)" }}>
                     Pesquise um perfil acima para ver os Reels. Seu histórico ficará salvo aqui.
                   </p>
                 </div>

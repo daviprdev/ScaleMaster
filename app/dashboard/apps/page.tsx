@@ -55,7 +55,7 @@ function CopyButton({ text }: { text: string }) {
       onClick={copy}
       className="flex items-center gap-1 text-[10px] text-ink-3 hover:text-ink-2 transition-colors flex-shrink-0"
     >
-      {copied ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
+      {copied ? <Check size={10} className="text-success" /> : <Copy size={10} />}
       {copied ? "Copiado!" : "Copiar"}
     </button>
   );
@@ -96,7 +96,7 @@ function AppFormModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/65 backdrop-blur-sm z-40"
+        className="fixed inset-0 bg-overlay backdrop-blur-sm z-40"
         onClick={onClose}
       />
       <motion.div
@@ -110,10 +110,10 @@ function AppFormModal({
           {/* Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-[#00498D]/15 border border-[#00498D]/20 flex items-center justify-center">
-                <KeyRound size={13} className="text-[#85B9E9]" />
+              <div className="w-7 h-7 rounded-lg bg-info-soft border border-primary/20 flex items-center justify-center">
+                <KeyRound size={13} className="text-link" />
               </div>
-              <h2 className="text-base font-bold text-white">
+              <h2 className="text-base font-bold text-ink">
                 {isEdit ? "Editar App" : "Cadastrar Novo App"}
               </h2>
             </div>
@@ -126,12 +126,12 @@ function AppFormModal({
           </div>
 
           {/* Callback URL */}
-          <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3 space-y-1.5">
-            <p className="text-[10px] font-semibold text-blue-300 uppercase tracking-wide">
+          <div className="rounded-xl border border-primary/20 bg-info-soft p-3 space-y-1.5">
+            <p className="text-[10px] font-semibold text-link uppercase tracking-wide">
               URL de Callback — adicione no Meta Developers
             </p>
             <div className="flex items-center gap-2">
-              <code className="flex-1 text-[11px] text-blue-200 font-mono break-all">
+              <code className="flex-1 text-[11px] text-link font-mono break-all">
                 {CALLBACK_URL}
               </code>
               <CopyButton text={CALLBACK_URL} />
@@ -147,7 +147,7 @@ function AppFormModal({
                 value={form.app_name}
                 onChange={(e) => set("app_name", e.target.value)}
                 placeholder="ex: Meu App de Produção"
-                className="w-full rounded-xl bg-surface-raised border border-line text-ink placeholder:text-ink-3/50 text-sm px-4 py-2.5 outline-none focus:border-[#00498D]/40 focus:bg-line-control/15 transition-all"
+                className="w-full rounded-xl bg-surface-raised border border-line text-ink placeholder:text-ink-3/50 text-sm px-4 py-2.5 outline-none focus:border-primary/40 focus:bg-line-control/15 transition-all"
               />
             </div>
             <div className="space-y-1.5">
@@ -158,7 +158,7 @@ function AppFormModal({
                 value={form.config_id}
                 onChange={(e) => set("config_id", e.target.value)}
                 placeholder="vazio = Login do Instagram"
-                className="w-full rounded-xl bg-surface-raised border border-line text-ink placeholder:text-ink-3/50 text-sm px-4 py-2.5 outline-none focus:border-[#00498D]/40 focus:bg-line-control/15 transition-all font-mono"
+                className="w-full rounded-xl bg-surface-raised border border-line text-ink placeholder:text-ink-3/50 text-sm px-4 py-2.5 outline-none focus:border-primary/40 focus:bg-line-control/15 transition-all font-mono"
               />
               <p className="text-[10px] text-ink-3 leading-relaxed">
                 {unificado
@@ -174,7 +174,7 @@ function AppFormModal({
                 value={form.ig_app_id}
                 onChange={(e) => set("ig_app_id", e.target.value)}
                 placeholder="ex: 1234567890"
-                className="w-full rounded-xl bg-surface-raised border border-line text-ink placeholder:text-ink-3/50 text-sm px-4 py-2.5 outline-none focus:border-[#00498D]/40 focus:bg-line-control/15 transition-all font-mono"
+                className="w-full rounded-xl bg-surface-raised border border-line text-ink placeholder:text-ink-3/50 text-sm px-4 py-2.5 outline-none focus:border-primary/40 focus:bg-line-control/15 transition-all font-mono"
               />
             </div>
             <div className="space-y-1.5">
@@ -192,7 +192,7 @@ function AppFormModal({
                   value={form.ig_app_secret}
                   onChange={(e) => set("ig_app_secret", e.target.value)}
                   placeholder={isEdit ? "••••••••••••••••" : "Cole o App Secret aqui"}
-                  className="w-full rounded-xl bg-surface-raised border border-line text-ink placeholder:text-ink-3/50 text-sm px-4 py-2.5 pr-10 outline-none focus:border-[#00498D]/40 focus:bg-line-control/15 transition-all font-mono"
+                  className="w-full rounded-xl bg-surface-raised border border-line text-ink placeholder:text-ink-3/50 text-sm px-4 py-2.5 pr-10 outline-none focus:border-primary/40 focus:bg-line-control/15 transition-all font-mono"
                 />
                 <button
                   type="button"
@@ -211,7 +211,7 @@ function AppFormModal({
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
+                className="flex items-center gap-2 text-xs text-danger bg-danger-soft border border-danger/20 rounded-lg px-3 py-2"
               >
                 <AlertCircle size={13} className="flex-shrink-0" />
                 {error}
@@ -304,14 +304,14 @@ function AppsTable({
             >
               {/* Nome */}
               <div className="flex items-center gap-3 min-w-0 pr-6">
-                <div className="w-9 h-9 rounded-xl bg-[#00498D]/[0.12] border border-[#00498D]/20 flex items-center justify-center flex-shrink-0">
-                  <KeyRound size={14} className="text-[#85B9E9]" />
+                <div className="w-9 h-9 rounded-xl bg-info-soft border border-primary/20 flex items-center justify-center flex-shrink-0">
+                  <KeyRound size={14} className="text-link" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-ink truncate">
                     {app.app_name}
                     {app.config_id && (
-                      <span className="ml-2 align-middle text-[9px] font-semibold uppercase tracking-wide text-[#85B9E9] bg-[#00498D]/15 border border-[#00498D]/25 rounded px-1.5 py-0.5">
+                      <span className="ml-2 align-middle text-[9px] font-semibold uppercase tracking-wide text-link bg-info-soft border border-primary/25 rounded px-1.5 py-0.5">
                         Unificado
                       </span>
                     )}
@@ -324,7 +324,7 @@ function AppsTable({
 
               {/* App ID */}
               <div className="flex items-center gap-2 pr-6 min-w-0">
-                <code className="text-xs text-[#AFBDD0] font-mono truncate">
+                <code className="text-xs text-link font-mono truncate">
                   {revealed
                     ? app.ig_app_id
                     : `${app.ig_app_id.slice(0, 4)}${"•".repeat(
@@ -364,7 +364,7 @@ function AppsTable({
                         setConfirmDeleteId(null);
                       }}
                       disabled={isDeleting}
-                      className="text-[11px] text-red-400 hover:text-red-300 font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
+                      className="text-[11px] text-danger hover:text-danger font-semibold transition-colors disabled:opacity-50 whitespace-nowrap"
                     >
                       {isDeleting ? (
                         <Loader2 size={11} className="animate-spin" />
@@ -383,14 +383,14 @@ function AppsTable({
                   <>
                     <button
                       onClick={() => onEdit(app)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-3 hover:text-[#85B9E9] hover:bg-[#00498D]/10 transition-colors"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-3 hover:text-link hover:bg-info-soft transition-colors"
                       title="Editar"
                     >
                       <Edit2 size={13} />
                     </button>
                     <button
                       onClick={() => setConfirmDeleteId(app.id)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-3/50 hover:text-red-400 hover:bg-red-500/[0.08] transition-colors"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-ink-3/50 hover:text-danger hover:bg-danger-soft transition-colors"
                       title="Excluir"
                     >
                       <Trash2 size={13} />
@@ -440,44 +440,44 @@ const GUIDE_STEPS = [
     title: "Crie uma conta no Meta Developers",
     body: "Acesse developers.facebook.com e faça login com seu Facebook/Meta. Se ainda não tiver uma conta de desenvolvedor, crie gratuitamente.",
     link: { label: "Abrir Meta Developers", url: "https://developers.facebook.com/apps" },
-    accent: "border-blue-500/25 bg-blue-500/[0.05]",
-    numColor: "text-blue-400",
+    accent: "border-primary/25 bg-info-soft",
+    numColor: "text-link",
   },
   {
     num: "02",
     title: "Crie um novo App",
     body: "Clique em 'My Apps' → 'Create App'. Selecione o tipo Business ou Consumer e preencha o nome. Anote o App ID gerado automaticamente.",
-    accent: "border-[#00498D]/25 bg-[#00498D]/[0.05]",
-    numColor: "text-[#85B9E9]",
+    accent: "border-primary/25 bg-info-soft",
+    numColor: "text-link",
   },
   {
     num: "03",
     title: "Adicione o produto Instagram",
     body: "No painel do app, vá em 'Add a Product' e selecione Instagram. Escolha 'Instagram API with Instagram Login' (não o Instagram Basic Display legado).",
-    accent: "border-pink-500/25 bg-pink-500/[0.05]",
-    numColor: "text-pink-400",
+    accent: "border-danger/25 bg-danger-soft",
+    numColor: "text-danger",
   },
   {
     num: "04",
     title: "Configure a URL de Callback",
     body: "Em Instagram → Configurações → Valid OAuth Redirect URIs, adicione a URL abaixo. Sem ela, o fluxo de autorização será rejeitado pelo Meta.",
     extra: CALLBACK_URL,
-    accent: "border-[#85B9E9]/25 bg-[#85B9E9]/[0.05]",
-    numColor: "text-[#85B9E9]",
+    accent: "border-primary-2/25 bg-info-soft",
+    numColor: "text-link",
   },
   {
     num: "05",
     title: "Copie o App ID e App Secret",
     body: "Em 'App Settings' → 'Basic', copie o App ID visível e clique em 'Show' ao lado do App Secret. Guarde esses valores — o secret é sensível.",
-    accent: "border-amber-500/25 bg-amber-500/[0.05]",
-    numColor: "text-amber-400",
+    accent: "border-warning/25 bg-warning-soft",
+    numColor: "text-warning",
   },
   {
     num: "06",
     title: "Cadastre no Scale Master",
     body: "Na aba 'Meus Apps', clique em 'Novo App', informe o nome, App ID e App Secret. O secret é criptografado com AES-256 antes de ser salvo.",
-    accent: "border-emerald-500/25 bg-emerald-500/[0.05]",
-    numColor: "text-emerald-400",
+    accent: "border-success/25 bg-success-soft",
+    numColor: "text-success",
   },
 ] as const;
 
@@ -488,8 +488,8 @@ function HowToGuide() {
       animate={{ opacity: 1, y: 0 }}
       className="space-y-4 max-w-3xl"
     >
-      <div className="rounded-xl border border-line bg-surface px-5 py-4 flex items-start gap-3">
-        <Info size={15} className="text-[#85B9E9] mt-0.5 flex-shrink-0" />
+      <div className="glass-card px-5 py-4 flex items-start gap-3">
+        <Info size={15} className="text-link mt-0.5 flex-shrink-0" />
         <p className="text-sm text-ink-3 leading-relaxed">
           O modelo{" "}
           <strong className="text-ink-2">BYOC (Bring Your Own Credentials)</strong> permite usar
@@ -529,7 +529,7 @@ function HowToGuide() {
             <p className="text-xs text-ink-3 leading-relaxed pl-9">{step.body}</p>
             {"extra" in step && step.extra && (
               <div className="ml-9 flex items-center gap-2 rounded-lg bg-black/25 border border-line px-3 py-2">
-                <code className="flex-1 text-[11px] text-cyan-300 font-mono break-all">
+                <code className="flex-1 text-[11px] text-primary-2 font-mono break-all">
                   {step.extra}
                 </code>
                 <CopyButton text={step.extra} />
@@ -644,7 +644,7 @@ export default function AppsPage() {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Meus Apps Meta</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-ink">Meus Apps Meta</h1>
           <p className="text-sm text-ink-3 mt-1">
             Gerencie as credenciais do Meta Developers para conectar suas contas Instagram.
           </p>
@@ -661,7 +661,7 @@ export default function AppsPage() {
                 setFormError(null);
               }}
               whileTap={{ scale: 0.97 }}
-              className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl font-semibold text-white transition-all duration-200 bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] active:scale-95"
+              className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl font-semibold text-white transition-all duration-200 bg-primary hover:bg-primary hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] active:scale-95"
             >
               <Plus size={15} />
               Novo App
@@ -689,7 +689,7 @@ export default function AppsPage() {
             className={cn(
               "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
               activeTab === tab.id
-                ? "bg-[#00498D]/25 text-[#AFBDD0] border border-[#00498D]/30 shadow-[0_0_12px_rgba(139,92,246,0.15)]"
+                ? "bg-primary/25 text-link border border-primary/30 shadow-glow"
                 : "text-ink-3 hover:text-ink-2 hover:bg-surface-raised"
             )}
           >
@@ -706,7 +706,7 @@ export default function AppsPage() {
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="flex items-center gap-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3"
+            className="flex items-center gap-2 text-sm text-danger bg-danger-soft border border-danger/20 rounded-xl px-4 py-3"
           >
             <AlertCircle size={15} className="flex-shrink-0" />
             <span className="flex-1">{pageError}</span>
@@ -754,7 +754,7 @@ export default function AppsPage() {
                       setFormError(null);
                     }}
                     whileTap={{ scale: 0.97 }}
-                    className="flex items-center gap-2 text-sm px-5 py-2.5 rounded-xl font-semibold text-white transition-all duration-200 bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] active:scale-95"
+                    className="flex items-center gap-2 text-sm px-5 py-2.5 rounded-xl font-semibold text-white transition-all duration-200 bg-primary hover:bg-primary hover:shadow-[0_0_20px_rgba(59,130,246,0.4)] active:scale-95"
                   >
                     <Plus size={14} /> Cadastrar primeiro app
                   </motion.button>

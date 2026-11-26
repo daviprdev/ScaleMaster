@@ -55,11 +55,11 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           value={value}
           onChange={handleChange}
           className={cn(
-            "min-h-[80px] w-full rounded-md border bg-surface px-3 py-2 text-sm text-ink transition-colors duration-150 ease-in-out",
-            "border-line-control placeholder:text-ink-3",
-            "focus:border-focus focus:outline-2 focus:outline-offset-2 focus:outline-focus",
+            "min-h-[80px] w-full rounded-md border bg-white/[0.05] px-3 py-2 text-sm text-ink transition-colors duration-150 ease-in-out",
+            "border-white/10 hover:border-line-control placeholder:text-ink-3",
+            "focus:border-focus focus:outline-none focus:ring-[3px] focus:ring-focus/25",
             "disabled:opacity-40 disabled:pointer-events-none",
-            error && "border-danger focus:border-danger focus:outline-danger",
+            error && "border-danger focus:border-danger focus:ring-danger/25",
             className
           )}
           {...props}

@@ -69,9 +69,9 @@ export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void
 
   return (
     <header
-      className="h-14 md:h-16 flex items-center justify-between px-4 md:px-6
-        border-b border-white/[0.07] sticky top-0 z-10 flex-shrink-0"
-      style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(22px) saturate(160%)", WebkitBackdropFilter: "blur(22px) saturate(160%)" }}
+      className="h-14 md:h-16 flex items-center justify-between px-4 md:px-5
+        border-b border-white/[0.07] md:border md:border-white/10 md:rounded-[18px] sticky top-0 z-10 flex-shrink-0"
+      style={{ background: "linear-gradient(155deg, rgba(255,255,255,.07), rgba(255,255,255,.02))", backdropFilter: "blur(22px) saturate(140%)", WebkitBackdropFilter: "blur(22px) saturate(140%)" }}
     >
       {/* Mobile: hamburger + logo | Desktop: page title */}
       <div className="flex items-center gap-3 min-w-0">
@@ -79,7 +79,7 @@ export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void
         <button
           onClick={onMobileMenuToggle}
           className="md:hidden w-9 h-9 flex items-center justify-center rounded-xl
-            text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors flex-shrink-0"
+            text-ink-3 hover:text-white hover:bg-white/[0.06] transition-colors flex-shrink-0"
           aria-label="Abrir menu"
         >
           <Menu size={20} />
@@ -88,7 +88,7 @@ export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void
         {/* Logo — mobile only */}
         <div className="md:hidden flex items-center gap-2 flex-shrink-0">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg,#00498D,#85B9E9)", boxShadow: "0 0 10px rgba(0,73,141,0.4)" }}>
+            style={{ background: "var(--gradient-primary)", boxShadow: "0 0 12px var(--glow)" }}>
             <Zap size={14} className="text-black" strokeWidth={2.5} />
           </div>
           <span className="font-bold text-sm gradient-text">Scale Master</span>
@@ -99,19 +99,18 @@ export function Header({ onMobileMenuToggle }: { onMobileMenuToggle?: () => void
           <h1 className="text-base font-bold text-white leading-tight truncate">
             {page.title}
           </h1>
-          <p className="text-xs text-white/35 leading-tight truncate">{page.subtitle}</p>
+          <p className="text-xs text-ink-3 leading-tight truncate">{page.subtitle}</p>
         </div>
       </div>
 
       {/* Actions */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        <button className="relative w-9 h-9 rounded-xl bg-black/30 border border-white/[0.08]
-          flex items-center justify-center text-white/40 hover:text-white
-          hover:border-matrix/40 hover:shadow-[0_0_12px_rgba(0,73,141,0.18)]
+        <button aria-label="Notificações" className="relative w-10 h-10 rounded-[13px] bg-white/[0.06] border border-white/10
+          flex items-center justify-center text-ink-2 hover:text-white hover:bg-white/[0.12]
           transition-all duration-300">
-          <Bell size={15} strokeWidth={1.5} />
-          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full"
-            style={{ background: "var(--matrix)", boxShadow: "0 0 6px rgba(0,73,141,0.8)" }} />
+          <Bell size={16} strokeWidth={1.75} />
+          <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full"
+            style={{ background: "var(--primary-2)", boxShadow: "0 0 6px var(--primary-2)" }} />
         </button>
 
         {pathname === "/dashboard/schedule" && (

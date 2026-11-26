@@ -235,7 +235,7 @@ function DistributePreview({
   return (
     <div className="glass-card rounded-2xl p-5 space-y-5">
       <div className="flex items-center gap-2">
-        <Zap size={14} className="text-[#85B9E9]" />
+        <Zap size={14} className="text-link" />
         <span className="text-xs font-semibold uppercase tracking-widest text-ink-3">Resumo</span>
       </div>
 
@@ -247,7 +247,7 @@ function DistributePreview({
         <>
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: "Vídeos/conta", value: videosPerAccount, color: "text-brand-navy" },
+              { label: "Vídeos/conta", value: videosPerAccount, color: "text-link" },
               { label: "Contas", value: totalAccounts, color: "text-accent" },
               { label: "Total de posts", value: totalPosts, color: "text-ink" },
               { label: "Duração", value: `${days}d`, color: "text-ink" },
@@ -264,7 +264,7 @@ function DistributePreview({
           <div className="space-y-1.5">
             <div className="flex justify-between text-[10px]">
               <span className="text-ink-3 uppercase tracking-wider">Início</span>
-              <span className="text-brand-blue font-mono">{formatDatetime(startDatetime)}</span>
+              <span className="text-link font-mono">{formatDatetime(startDatetime)}</span>
             </div>
             {lastSlotIso && (
               <div className="flex justify-between text-[10px]">
@@ -274,11 +274,11 @@ function DistributePreview({
             )}
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-blue/5 border border-brand-blue/20">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-primary/5 border border-primary/20">
             {rotation
-              ? <Repeat size={12} className="text-brand-blue flex-shrink-0" />
-              : <Shuffle size={12} className="text-brand-blue flex-shrink-0" />}
-            <p className="text-[10px] text-brand-blue/80">
+              ? <Repeat size={12} className="text-link flex-shrink-0" />
+              : <Shuffle size={12} className="text-link flex-shrink-0" />}
+            <p className="text-[10px] text-link/80">
               {rotation
                 ? "Rodízio: cada conta começa num vídeo diferente e não repete vídeo no ciclo"
                 : "Cada conta recebe os vídeos em ordem aleatória única"}
@@ -294,7 +294,7 @@ function DistributePreview({
                 <div key={i} className="flex items-center gap-3">
                   <span className="text-accent/60 font-mono text-[10px] w-28 flex-shrink-0">{s}</span>
                   <div className="flex-1 h-[3px] rounded-full bg-line overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-brand-blue/60 to-accent/60 w-full" />
+                    <div className="h-full rounded-full bg-gradient-to-r from-primary/60 to-accent/60 w-full" />
                   </div>
                   <span className="text-ink-3 text-[10px] w-16 text-right">{totalAccounts} conta{totalAccounts !== 1 ? "s" : ""}</span>
                 </div>
@@ -415,7 +415,7 @@ function CaptionEditor({
             <div>
               <div className="relative">
                 <div className="absolute top-3 left-3 flex items-center gap-1.5 pointer-events-none z-10">
-                  <span className="text-[10px] font-mono text-[#00498D]/50 bg-[#00498D]/10 rounded-md px-1.5 py-0.5">
+                  <span className="text-[10px] font-mono text-link/50 bg-info-soft rounded-md px-1.5 py-0.5">
                     #{i + 1}
                   </span>
                 </div>
@@ -424,7 +424,7 @@ function CaptionEditor({
                   onChange={e => update(i, e.target.value)}
                   rows={3}
                   placeholder={`Legenda ${i + 1}...`}
-                  className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-surface-raised border border-line-control text-ink text-sm placeholder-ink-3 resize-none focus:outline-none focus:border-brand-blue/40 focus:ring-1 focus:ring-brand-blue/20 transition-all leading-relaxed"
+                  className="w-full pl-14 pr-10 pt-3 pb-3 rounded-xl bg-surface-raised border border-line-control text-ink text-sm placeholder-ink-3 resize-none focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all leading-relaxed"
                 />
                 <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
                   {(() => {
@@ -480,8 +480,8 @@ function CaptionEditor({
                   >
                     {savedFeedback === i ? (
                       <div className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5">
-                        <CheckCircle2 size={11} className="text-[#00498D]" />
-                        <span className="text-[10px] text-[#00498D]">Salva na biblioteca!</span>
+                        <CheckCircle2 size={11} className="text-link" />
+                        <span className="text-[10px] text-link">Salva na biblioteca!</span>
                       </div>
                     ) : savingFor === i ? (
                       <div className="flex items-center gap-2 px-1 pt-1.5 pb-0.5">
@@ -491,12 +491,12 @@ function CaptionEditor({
                           onChange={e => setSaveTitle(e.target.value)}
                           onKeyDown={e => { if (e.key === "Enter") handleSave(i); if (e.key === "Escape") { setSavingFor(null); setSaveTitle(""); } }}
                           placeholder="Nome da legenda (opcional)..."
-                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-surface-raised border border-line-control text-ink text-xs placeholder-ink-3 focus:outline-none focus:border-brand-blue/40 transition-all"
+                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-surface-raised border border-line-control text-ink text-xs placeholder-ink-3 focus:outline-none focus:border-primary/40 transition-all"
                         />
                         <button
                           onClick={() => handleSave(i)}
                           disabled={savingApi}
-                          className="px-3 py-1.5 rounded-lg bg-[#00498D]/15 text-[#00498D] text-xs font-medium hover:bg-[#00498D]/25 transition-all disabled:opacity-50 flex items-center gap-1"
+                          className="px-3 py-1.5 rounded-lg bg-info-soft text-link text-xs font-medium hover:bg-primary/25 transition-all disabled:opacity-50 flex items-center gap-1"
                         >
                           {savingApi ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
                           Salvar
@@ -511,9 +511,9 @@ function CaptionEditor({
                     ) : (
                       <button
                         onClick={() => { setSavingFor(i); setSaveTitle(""); }}
-                        className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5 text-[10px] text-ink-3 hover:text-brand-blue/60 transition-colors group"
+                        className="flex items-center gap-1.5 px-1 pt-1.5 pb-0.5 text-[10px] text-ink-3 hover:text-link/60 transition-colors group"
                       >
-                        <Save size={9} className="group-hover:text-[#00498D]/60 transition-colors" />
+                        <Save size={9} className="group-hover:text-link/60 transition-colors" />
                         Salvar esta legenda para usar depois
                       </button>
                     )}
@@ -529,7 +529,7 @@ function CaptionEditor({
         <button
           type="button"
           onClick={add}
-          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-line-control text-ink-3 text-sm hover:border-brand-blue/40 hover:text-brand-blue/60 transition-all"
+          className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-line-control text-ink-3 text-sm hover:border-primary/40 hover:text-link/60 transition-all"
         >
           <Plus size={14} />
           Adicionar Legenda
@@ -542,14 +542,14 @@ function CaptionEditor({
             className={cn(
               "flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-all",
               showLibrary
-                ? "border-[#85B9E9]/40 bg-[#85B9E9]/8 text-[#85B9E9]"
+                ? "border-primary-2/40 bg-info-soft text-link"
                 : "border-line-control text-ink-3 hover:border-accent/40 hover:text-accent/70"
             )}
           >
             <Library size={14} />
             Usar Salva
             {savedCaptions.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-[#85B9E9]/15 text-[#85B9E9] text-[9px] font-mono">
+              <span className="px-1.5 py-0.5 rounded-full bg-info-soft text-link text-[9px] font-mono">
                 {savedCaptions.length}
               </span>
             )}
@@ -562,11 +562,11 @@ function CaptionEditor({
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -6, scale: 0.97 }}
                 transition={{ duration: 0.14 }}
-                className="absolute z-30 bottom-full mb-2 right-0 w-80 bg-surface-raised border border-line rounded-2xl shadow-2xl overflow-hidden"
+                className="glass absolute z-30 bottom-full mb-2 right-0 w-80 overflow-hidden"
               >
                 <div className="flex items-center justify-between px-4 py-3 border-b border-line">
                   <div className="flex items-center gap-2">
-                    <BookMarked size={13} className="text-[#85B9E9]" />
+                    <BookMarked size={13} className="text-link" />
                     <span className="text-xs font-semibold text-ink-2">Biblioteca de Legendas</span>
                   </div>
                   <button onClick={() => setShowLibrary(false)} className="text-ink-3 hover:text-ink-2 transition-colors">
@@ -633,7 +633,7 @@ function SectionCard({ children, className, title, description, actions }: { chi
       </Card>
     );
   }
-  return <div className={cn("rounded-xl border border-line bg-surface p-5", className)}>{children}</div>;
+  return <div className={cn("glass-card p-5", className)}>{children}</div>;
 }
 
 function SectionLabel({ Icon, children }: { Icon: React.ElementType; children: React.ReactNode }) {
@@ -820,7 +820,7 @@ function EditCampaignModal({
                   <div className="space-y-2.5 p-3.5 rounded-xl border border-line bg-surface-raised">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-ink-3">Auto</span>
-                      <span className={cn("text-sm font-bold", staggerSeconds ? "text-brand-blue" : "text-ink-3")}>
+                      <span className={cn("text-sm font-bold", staggerSeconds ? "text-link" : "text-ink-3")}>
                         {staggerSeconds ? `${staggerSeconds}s` : "Automático"}
                       </span>
                       <span className="text-xs text-ink-3">5 min</span>
@@ -840,10 +840,10 @@ function EditCampaignModal({
                 </div>
 
                 {/* Legendas */}
-                <div className="p-3.5 rounded-xl border border-line bg-surface">
+                <div className="glass-tile p-3.5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <Sparkles size={13} className="text-brand-blue" />
+                      <Sparkles size={13} className="text-link" />
                       <div>
                         <p className="text-sm font-medium text-ink">Legendas Automáticas</p>
                         <p className="text-[10px] text-ink-3">Curiosidades únicas em PT-BR por post</p>
@@ -852,7 +852,7 @@ function EditCampaignModal({
                     <button
                       type="button"
                       onClick={() => setCaptionMode(m => m === "auto" ? "manual" : "auto")}
-                      className={cn("relative w-11 h-6 rounded-full transition-all flex-shrink-0", captionMode === "auto" ? "bg-brand-blue" : "bg-line-control/30")}
+                      className={cn("relative w-11 h-6 rounded-full transition-all flex-shrink-0", captionMode === "auto" ? "bg-primary" : "bg-line-control/30")}
                     >
                       <span className={cn("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all", captionMode === "auto" ? "left-[22px]" : "left-0.5")} />
                     </button>
@@ -875,7 +875,7 @@ function EditCampaignModal({
                           onChange={e => setCaptionsText(e.target.value)}
                           rows={5}
                           placeholder={"Uma legenda por linha...\nSorteada aleatoriamente em cada post."}
-                          className="w-full mt-3 px-3 py-2.5 rounded-xl bg-surface-raised border border-line-control text-ink text-sm placeholder-ink-3 resize-none focus:outline-none focus:border-brand-blue/40 focus:ring-1 focus:ring-brand-blue/20 transition-all leading-relaxed"
+                          className="w-full mt-3 px-3 py-2.5 rounded-xl bg-surface-raised border border-line-control text-ink text-sm placeholder-ink-3 resize-none focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all leading-relaxed"
                         />
                       </motion.div>
                     )}
@@ -1008,7 +1008,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <Loader2 size={24} className="animate-spin text-[#00498D]" />
+        <Loader2 size={24} className="animate-spin text-link" />
       </div>
     );
   }
@@ -1021,7 +1021,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
         </div>
         <p className="text-ink-3 text-sm mb-1">Nenhuma campanha encontrada</p>
         <p className="text-ink-3/50 text-xs mb-5">Crie sua primeira distribuição</p>
-        <button onClick={onCreateNew} className="px-5 py-2.5 rounded-xl bg-[#00498D]/10 text-[#00498D] text-sm font-medium hover:bg-[#00498D]/20 transition-all border border-[#00498D]/20">
+        <button onClick={onCreateNew} className="px-5 py-2.5 rounded-xl bg-info-soft text-link text-sm font-medium hover:bg-primary/20 transition-all border border-primary/20">
           Nova Distribuição
         </button>
       </div>
@@ -1042,8 +1042,8 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
         <div className="flex items-center gap-4 text-xs text-ink-3">
           {running.length > 0 && (
             <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00498D] shadow-[0_0_4px_#00498D] animate-pulse" />
-              <span className="text-[#00498D]/70">{running.length} executando</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_4px_var(--primary)] animate-pulse" />
+              <span className="text-link/70">{running.length} executando</span>
             </span>
           )}
           {pausedCount > 0 && (
@@ -1089,27 +1089,27 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
           if (isPaused) {
             statusLabel = "Pausada"; statusCls = "bg-surface-raised text-ink-2"; statusBorder = "border-line-control"; dotCls = "bg-ink-3";
           } else if (!isRunning) {
-            statusLabel = "Concluída"; statusCls = "bg-[#00498D]/10 text-[#00498D]"; statusBorder = "border-[#00498D]/20"; dotCls = "bg-[#00498D]";
+            statusLabel = "Concluída"; statusCls = "bg-info-soft text-link"; statusBorder = "border-primary/20"; dotCls = "bg-primary";
           } else if (stuckProxy > 0) {
-            statusLabel = "Proxy offline"; statusCls = "bg-danger-soft text-danger"; statusBorder = "border-danger/25"; dotCls = "bg-red-400"; dotPulse = true;
+            statusLabel = "Proxy offline"; statusCls = "bg-danger-soft text-danger"; statusBorder = "border-danger/25"; dotCls = "bg-danger"; dotPulse = true;
           } else if (isStuck) {
-            statusLabel = "Travada"; statusCls = "bg-danger-soft text-danger"; statusBorder = "border-danger/25"; dotCls = "bg-red-400"; dotPulse = true;
+            statusLabel = "Travada"; statusCls = "bg-danger-soft text-danger"; statusBorder = "border-danger/25"; dotCls = "bg-danger"; dotPulse = true;
           } else if (isOverdue) {
-            statusLabel = "Atrasada"; statusCls = "bg-amber-500/10 text-amber-400"; statusBorder = "border-amber-500/20"; dotCls = "bg-amber-400"; dotPulse = true;
+            statusLabel = "Atrasada"; statusCls = "bg-warning-soft text-warning"; statusBorder = "border-warning/20"; dotCls = "bg-warning"; dotPulse = true;
           } else if (recentPub) {
-            statusLabel = "Publicando"; statusCls = "bg-[#00498D]/10 text-[#00498D]"; statusBorder = "border-[#00498D]/20"; dotCls = "bg-[#00498D]"; dotPulse = true;
+            statusLabel = "Publicando"; statusCls = "bg-info-soft text-link"; statusBorder = "border-primary/20"; dotCls = "bg-primary"; dotPulse = true;
           } else {
-            statusLabel = "Na Fila"; statusCls = "bg-[#85B9E9]/10 text-[#85B9E9]"; statusBorder = "border-[#85B9E9]/20"; dotCls = "bg-[#85B9E9]";
+            statusLabel = "Na Fila"; statusCls = "bg-info-soft text-link"; statusBorder = "border-primary-2/20"; dotCls = "bg-primary-2";
           }
 
           const cardBorder = isStuck
-            ? "border-red-500/25"
+            ? "border-danger/25"
             : isOverdue
-            ? "border-amber-500/15"
+            ? "border-warning/15"
             : hasFailed && isCompleted
-              ? "border-red-500/15"
+              ? "border-danger/15"
               : isRunning
-                ? "border-[#85B9E9]/10"
+                ? "border-primary-2/10"
                 : "border-line";
 
           return (
@@ -1133,7 +1133,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                   {campaign.is_synced && (
                     <span
                       title={`Contas novas em ${(campaign.synced_folder_names ?? []).join(", ")} entram automaticamente`}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold border whitespace-nowrap bg-[#85B9E9]/10 text-[#85B9E9] border-[#85B9E9]/20"
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold border whitespace-nowrap bg-info-soft text-link border-primary-2/20"
                     >
                       <RefreshCw size={9} />
                       Sincronizada
@@ -1190,14 +1190,14 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[10px]">
                   <span className="text-ink-3 tabular-nums">{campaign.published} de {campaign.total} posts publicados</span>
-                  <span className={cn("font-bold tabular-nums", progress >= 100 ? "text-brand-blue" : isRunning ? "text-accent" : "text-ink-3")}>{progress}%</span>
+                  <span className={cn("font-bold tabular-nums", progress >= 100 ? "text-link" : isRunning ? "text-accent" : "text-ink-3")}>{progress}%</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-line overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
                     transition={{ duration: 0.7, ease: "easeOut" }}
-                    className={cn("h-full rounded-full", hasFailed && isCompleted ? "bg-red-500/50" : isPaused ? "bg-line-control" : "bg-gradient-to-r from-[#00498D]/70 to-[#85B9E9]/70")}
+                    className={cn("h-full rounded-full", hasFailed && isCompleted ? "bg-danger/50" : isPaused ? "bg-line-control" : "bg-gradient-to-r from-primary/70 to-primary-2/70")}
                   />
                 </div>
               </div>
@@ -1236,7 +1236,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                     </div>
                     {/* 0 lido é número; "—" só enquanto nenhuma conta foi lida */}
                     {campaign.account_engagement.some(e => e.synced_posts > 0) ? (
-                      <span className="text-[9px] tabular-nums text-[#85B9E9]/60">{(campaign.total_plays ?? 0).toLocaleString("pt-BR")} views totais</span>
+                      <span className="text-[9px] tabular-nums text-link/60">{(campaign.total_plays ?? 0).toLocaleString("pt-BR")} views totais</span>
                     ) : (
                       <span className="text-[9px] tabular-nums text-ink-3/60" title="ainda não lido">— views totais</span>
                     )}
@@ -1270,7 +1270,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                             <span className="flex-1 truncate text-ink-2">@{eng.username}</span>
                             <div className="flex items-center gap-2.5 tabular-nums">
                               <span className={cn("font-bold", eng.synced_posts === 0 ? "text-ink-3/40" : eng.total_plays > 0 ? "text-accent" : "text-ink-3")} title={eng.synced_posts > 0 ? "Views" : "Views · ainda não lido"}>{eng.synced_posts > 0 ? eng.total_plays.toLocaleString("pt-BR") : "—"}</span>
-                              <span className={cn("font-medium", eng.synced_posts === 0 ? "text-ink-3/40" : eng.total_likes > 0 ? "text-pink-400" : "text-ink-3")} title={eng.synced_posts > 0 ? "Likes" : "Likes · ainda não lido"}>{eng.synced_posts > 0 ? eng.total_likes.toLocaleString("pt-BR") : "—"}</span>
+                              <span className={cn("font-medium", eng.synced_posts === 0 ? "text-ink-3/40" : eng.total_likes > 0 ? "text-danger" : "text-ink-3")} title={eng.synced_posts > 0 ? "Likes" : "Likes · ainda não lido"}>{eng.synced_posts > 0 ? eng.total_likes.toLocaleString("pt-BR") : "—"}</span>
                               <span className={cn("font-medium", eng.synced_posts === 0 ? "text-ink-3/40" : eng.total_comments > 0 ? "text-warning" : "text-ink-3")} title={eng.synced_posts > 0 ? "Comentários" : "Comentários · ainda não lido"}>{eng.synced_posts > 0 ? eng.total_comments.toLocaleString("pt-BR") : "—"}</span>
                             </div>
                           </div>
@@ -1288,7 +1288,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
               <div className="grid grid-cols-2 gap-2 text-[11px]">
                 <div className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-surface-raised border border-line">
                   <span className="text-ink-3 text-[9px] uppercase tracking-wider">Último publicado</span>
-                  <span className={cn("font-medium", campaign.last_published_at ? "text-brand-blue" : "text-ink-3")}>
+                  <span className={cn("font-medium", campaign.last_published_at ? "text-link" : "text-ink-3")}>
                     {campTimeAgo(campaign.last_published_at)}
                   </span>
                 </div>
@@ -1369,19 +1369,19 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
               {/* ── Error message ── */}
               {hasFailed && campaign.last_error_message && (
                 <div
-                  className="flex items-start gap-2 px-3 py-2 rounded-xl bg-red-500/[0.05] border border-red-500/15 cursor-pointer"
+                  className="flex items-start gap-2 px-3 py-2 rounded-xl bg-danger-soft border border-danger/15 cursor-pointer"
                   onClick={() => setExpandedError(errExpanded ? null : campaign.campaign_id)}
                 >
-                  <AlertCircle size={11} className="text-red-400 shrink-0 mt-0.5" />
+                  <AlertCircle size={11} className="text-danger shrink-0 mt-0.5" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold text-red-400 mb-0.5">
+                    <p className="text-[11px] font-semibold text-danger mb-0.5">
                       {campaign.failed} postage{campaign.failed !== 1 ? "ns falharam" : "m falhou"} — erro retornado pela Meta:
                     </p>
-                    <p className={cn("text-[10px] text-red-400/80 leading-relaxed break-all", !errExpanded && "line-clamp-1")}>
+                    <p className={cn("text-[10px] text-danger/80 leading-relaxed break-all", !errExpanded && "line-clamp-1")}>
                       {campaign.last_error_message}
                     </p>
                     {campaign.last_error_message.length > 55 && (
-                      <p className="text-[9px] text-red-500/50 mt-0.5">{errExpanded ? "▲ ocultar" : "▼ ver tudo"}</p>
+                      <p className="text-[9px] text-danger/50 mt-0.5">{errExpanded ? "▲ ocultar" : "▼ ver tudo"}</p>
                     )}
                   </div>
                 </div>
@@ -1393,7 +1393,7 @@ function CampaignsList({ accounts, onCreateNew }: { accounts: Account[]; onCreat
                   {campAccounts.slice(0, 6).map(acc => (
                     acc.avatar_url
                       ? <img key={acc.id} src={acc.avatar_url} alt={acc.username} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-bg object-cover" />
-                      : <div key={acc.id} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-bg bg-gradient-to-br from-brand-blue/30 to-accent/30 flex items-center justify-center"><span className="text-[7px] font-bold text-ink">{acc.username.charAt(0).toUpperCase()}</span></div>
+                      : <div key={acc.id} title={`@${acc.username}`} className="w-5 h-5 rounded-full border border-bg bg-gradient-to-br from-primary/30 to-accent/30 flex items-center justify-center"><span className="text-[7px] font-bold text-ink">{acc.username.charAt(0).toUpperCase()}</span></div>
                   ))}
                   {campAccounts.length === 0 && campaign.account_ids.slice(0, 6).map(id => (
                     <div key={id} className="w-5 h-5 rounded-full border border-bg bg-line-control/30" />
@@ -2028,8 +2028,8 @@ export default function PostarPage() {
                           className={cn(
                             "flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all cursor-pointer group",
                             isExpanded
-                              ? allSelected ? "border-brand-blue/30 bg-brand-blue/5" : someSelected ? "border-accent/20 bg-accent/3" : "border-line bg-surface-raised"
-                              : allSelected ? "border-brand-blue/25 bg-brand-blue/4" : someSelected ? "border-accent/15 bg-accent/[0.02]" : "border-line bg-surface hover:border-line-control"
+                              ? allSelected ? "border-primary/30 bg-primary/5" : someSelected ? "border-accent/20 bg-accent/3" : "border-line bg-surface-raised"
+                              : allSelected ? "border-primary/25 bg-primary/4" : someSelected ? "border-accent/15 bg-accent/[0.02]" : "border-line bg-surface hover:border-line-control"
                           )}
                           onClick={() => toggleExpand(group.id)}
                         >
@@ -2039,7 +2039,7 @@ export default function PostarPage() {
                               className={cn("flex-shrink-0 transition-transform duration-200 text-ink-3", isExpanded && "rotate-180")}
                             />
                             <span className="text-sm leading-none">{isNoFolder ? "📂" : "📁"}</span>
-                            <span className={cn("text-sm font-medium truncate", allSelected ? "text-brand-blue" : someSelected ? "text-accent" : "text-ink-2 group-hover:text-ink")}>
+                            <span className={cn("text-sm font-medium truncate", allSelected ? "text-link" : someSelected ? "text-accent" : "text-ink-2 group-hover:text-ink")}>
                               {group.name}
                             </span>
                             <span className="text-xs text-ink-3 font-mono flex-shrink-0">({group.accounts.length})</span>
@@ -2057,8 +2057,8 @@ export default function PostarPage() {
                               className={cn(
                                 "text-[10px] px-2.5 py-1 rounded-lg border transition-all whitespace-nowrap",
                                 allSelected
-                                  ? "border-[#00498D]/30 text-[#00498D]/70 hover:bg-[#00498D]/10"
-                                  : "border-line text-ink-3 hover:border-brand-blue/30 hover:text-brand-blue/60"
+                                  ? "border-primary/30 text-link/70 hover:bg-info-soft"
+                                  : "border-line text-ink-3 hover:border-primary/30 hover:text-link/60"
                               )}
                             >
                               {allSelected ? "desmarcar" : "selecionar"}
@@ -2098,7 +2098,7 @@ export default function PostarPage() {
                                       className={cn(
                                         "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all relative",
                                         isSelected
-                                          ? "border-brand-blue/40 bg-brand-blue/8 text-brand-blue"
+                                          ? "border-primary/40 bg-primary/8 text-link"
                                           : queues
                                             ? "border-success bg-success-soft text-success"
                                             : "border-line bg-surface text-ink-2 hover:border-line-control hover:text-ink"
@@ -2107,12 +2107,12 @@ export default function PostarPage() {
                                       {acc.avatar_url ? (
                                         <img src={acc.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
                                       ) : (
-                                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#00498D]/40 to-[#85B9E9]/40 flex-shrink-0 flex items-center justify-center">
+                                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary/40 to-primary-2/40 flex-shrink-0 flex items-center justify-center">
                                           <span className="text-[8px] font-bold text-black">{acc.username.charAt(0).toUpperCase()}</span>
                                         </div>
                                       )}
                                       <span className="text-xs font-medium leading-none">@{acc.username}</span>
-                                      {isSelected && <Check size={9} className="text-[#00498D] flex-shrink-0" strokeWidth={3} />}
+                                      {isSelected && <Check size={9} className="text-link flex-shrink-0" strokeWidth={3} />}
                                     </button>
                                   );
                                 })}
@@ -2127,14 +2127,14 @@ export default function PostarPage() {
               )}
 
               {selectedAccountIds.length > 0 && (
-                <p className="mt-3 text-xs text-[#00498D]/60 font-mono">
+                <p className="mt-3 text-xs text-link/60 font-mono">
                   {selectedAccountIds.length} conta{selectedAccountIds.length !== 1 ? "s" : ""} selecionada{selectedAccountIds.length !== 1 ? "s" : ""}
                 </p>
               )}
 
               {/* Fila ideal não sincroniza com pasta: a lista de contas é fixa. */}
               {fullySelectedFolders.length > 0 && !idealVideos && (
-                <div className="mt-3 p-3.5 rounded-xl border border-line bg-surface">
+                <div className="glass-tile mt-3 p-3.5">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <RefreshCw size={13} className="text-accent flex-shrink-0" />
@@ -2208,7 +2208,7 @@ export default function PostarPage() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -6 }}
                         transition={{ duration: 0.12 }}
-                        className="absolute z-20 top-full left-0 right-0 mt-1 bg-surface-raised border border-line rounded-xl shadow-2xl overflow-y-auto max-h-72"
+                        className="glass absolute z-20 top-full left-0 right-0 mt-1 overflow-y-auto max-h-72"
                       >
                         {folders.map(f => (
                           <button
@@ -2216,7 +2216,7 @@ export default function PostarPage() {
                             onClick={() => { setSelectedFolderId(f.id); setFolderOpen(false); }}
                             className={cn(
                               "w-full flex items-center justify-between px-4 py-3 text-sm text-left hover:bg-surface-hover transition-colors",
-                              selectedFolderId === f.id && "bg-brand-blue/5 text-brand-blue"
+                              selectedFolderId === f.id && "bg-primary/5 text-link"
                             )}
                           >
                             <span className="text-ink">📁 {f.name}</span>
@@ -2252,7 +2252,7 @@ export default function PostarPage() {
                         className={cn(
                           "flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all border",
                           videoCount === value
-                            ? "bg-brand-blue/15 text-brand-blue border-brand-blue/30"
+                            ? "bg-primary/15 text-link border-primary/30"
                             : isDisabled
                               ? "bg-surface text-ink-3/40 border-line cursor-not-allowed"
                               : "bg-surface-raised text-ink-3 border-line hover:border-line-control hover:text-ink-2"
@@ -2281,7 +2281,7 @@ export default function PostarPage() {
 
               {/* Toggle Modo Ciclo — escondido na fila ideal (o rodízio precisa da cadência) */}
               {!idealVideos && (
-              <div className="mb-5 rounded-xl border border-line bg-surface p-3.5">
+              <div className="glass-tile mb-5 p-3.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <Zap size={13} className="text-accent" />
@@ -2319,7 +2319,7 @@ export default function PostarPage() {
                               className={cn(
                                 "px-3.5 py-2 rounded-xl text-sm font-bold border transition-all",
                                 videoCount === n
-                                  ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30"
+                                  ? "bg-info-soft text-link border-primary-2/30"
                                   : "bg-surface-raised text-ink-3 border-line hover:border-line-control hover:text-ink-2"
                               )}
                             >
@@ -2340,13 +2340,13 @@ export default function PostarPage() {
                           />
                         </div>
                         {selectedFolderId && folderVideoCount > 0 && videoCount > folderVideoCount && (
-                          <p className="mt-1.5 text-[10px] text-amber-400/70">
+                          <p className="mt-1.5 text-[10px] text-warning/70">
                             A pasta tem só {folderVideoCount} vídeos — cada conta receberá {folderVideoCount}.
                           </p>
                         )}
                       </div>
 
-                      <p className="mt-3 text-[11px] text-[#85B9E9]/70 leading-relaxed">
+                      <p className="mt-3 text-[11px] text-link/70 leading-relaxed">
                         Vídeos sorteados aleatoriamente da pasta, sem repetir entre as contas. A conta 1 posta
                         o lote inteiro de uma vez, depois a conta 2, depois a conta 3... começando agora,
                         sem agendamento e sem distribuição por dias.
@@ -2374,7 +2374,7 @@ export default function PostarPage() {
                         className={cn(
                           "px-3.5 py-2 rounded-xl text-sm font-bold border transition-all",
                           priorityStrategy === opt.value
-                            ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30"
+                            ? "bg-info-soft text-link border-primary-2/30"
                             : "bg-surface-raised text-ink-3 border-line hover:border-line-control hover:text-ink-2"
                         )}
                       >
@@ -2419,7 +2419,7 @@ export default function PostarPage() {
                               className={cn(
                                 "flex flex-col items-center px-3.5 py-2 rounded-xl border transition-all",
                                 postsPerDay === n
-                                  ? "bg-[#85B9E9]/15 text-[#85B9E9] border-[#85B9E9]/30"
+                                  ? "bg-info-soft text-link border-primary-2/30"
                                   : "bg-surface-raised text-ink-3 border-line hover:border-line-control hover:text-ink-2"
                               )}
                             >
@@ -2440,7 +2440,7 @@ export default function PostarPage() {
                         min={minDatetime}
                         onFocus={refreshMinDatetime}
                         onChange={e => setStartDatetime(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl bg-surface-raised border border-line-control text-ink text-sm focus:outline-none focus:border-brand-blue/40 focus:ring-1 focus:ring-brand-blue/20 transition-all [color-scheme:dark]"
+                        className="w-full px-4 py-3 rounded-xl bg-surface-raised border border-line-control text-ink text-sm focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all [color-scheme:dark]"
                       />
                     </div>
                   </motion.div>
@@ -2455,7 +2455,7 @@ export default function PostarPage() {
                     <span className="text-xs text-ink-3">Auto</span>
                     <span className={cn(
                       "text-base font-bold",
-                      accountStaggerSeconds ? "text-brand-blue" : "text-ink-3"
+                      accountStaggerSeconds ? "text-link" : "text-ink-3"
                     )}>
                       {accountStaggerSeconds ? `${accountStaggerSeconds}s` : "Automático"}
                     </span>
@@ -2479,7 +2479,7 @@ export default function PostarPage() {
                     }}
                   />
                   {accountStaggerSeconds ? (
-                    <p className="text-[11px] text-brand-blue">
+                    <p className="text-[11px] text-link">
                       {accountStaggerSeconds}s entre cada conta — arraste até o início para automático
                     </p>
                   ) : burstMode ? (
@@ -2548,7 +2548,7 @@ export default function PostarPage() {
                 originalHint={
                   <>
                     Cada vídeo usará a legenda capturada junto do próprio Reel.{" "}
-                    <span className="text-amber-300/80">
+                    <span className="text-warning/80">
                       Vídeos sem legenda original serão publicados sem legenda.
                     </span>
                   </>
@@ -2560,7 +2560,7 @@ export default function PostarPage() {
               <div className="mb-3 px-3 py-2 rounded-xl border border-line/60 bg-surface-raised/40">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Sparkles size={11} className="text-brand-blue/70" />
+                    <Sparkles size={11} className="text-link/70" />
                     <div>
                       <p className="text-xs font-medium text-ink-2">Legendas Automáticas</p>
                       <p className="text-[10px] text-ink-3 leading-tight">Curiosidades únicas em PT-BR por post</p>
@@ -2571,7 +2571,7 @@ export default function PostarPage() {
                     onClick={() => setAutoCaptionEnabled(v => !v)}
                     className={cn(
                       "relative w-9 h-5 rounded-full transition-colors flex-shrink-0",
-                      autoCaptionEnabled ? "bg-brand-blue/80" : "bg-line-control/30"
+                      autoCaptionEnabled ? "bg-primary/80" : "bg-line-control/30"
                     )}
                   >
                     <span className={cn(
@@ -2674,7 +2674,7 @@ export default function PostarPage() {
                 { icon: Clock, text: accountStaggerSeconds ? `${accountStaggerSeconds}s de stagger entre contas` : "Stagger automático entre contas — sem burst simultâneo" },
               ].map(({ icon: Icon, text }) => (
                 <div key={text} className="flex items-start gap-2">
-                  <Icon size={10} className="text-[#00498D]/50 mt-0.5 flex-shrink-0" />
+                  <Icon size={10} className="text-link/50 mt-0.5 flex-shrink-0" />
                   <p className="text-[10px] text-ink-3 leading-relaxed">{text}</p>
                 </div>
               ))}

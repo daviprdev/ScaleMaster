@@ -121,7 +121,7 @@ export default function AdminAccountsPage() {
           </p>
         </div>
         {!loading && (
-          <div className="flex items-center gap-3 text-sm text-white/30">
+          <div className="flex items-center gap-3 text-sm text-ink-3">
             <span>{users.length} usuários</span>
             <span className="w-1 h-1 rounded-full bg-white/20" />
             <span>{totalAccounts} contas</span>
@@ -133,17 +133,17 @@ export default function AdminAccountsPage() {
       {!loading && !error && (expiredCount > 0 || expiringCount > 0) && (
         <div className="flex flex-wrap gap-3">
           {expiredCount > 0 && (
-            <div className="flex items-center gap-2 rounded-2xl border border-red-500/25 bg-red-500/[0.06] px-4 py-2.5">
-              <TriangleAlert className="w-4 h-4 text-red-400 shrink-0" />
-              <span className="text-sm text-red-300 font-medium">
+            <div className="flex items-center gap-2 rounded-2xl border border-danger/25 bg-danger-soft px-4 py-2.5">
+              <TriangleAlert className="w-4 h-4 text-danger shrink-0" />
+              <span className="text-sm text-danger font-medium">
                 {expiredCount} {expiredCount === 1 ? "conta com token expirado" : "contas com tokens expirados"}
               </span>
             </div>
           )}
           {expiringCount > 0 && (
-            <div className="flex items-center gap-2 rounded-2xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-2.5">
-              <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="text-sm text-amber-300 font-medium">
+            <div className="flex items-center gap-2 rounded-2xl border border-warning/25 bg-warning-soft px-4 py-2.5">
+              <Clock className="w-4 h-4 text-warning shrink-0" />
+              <span className="text-sm text-warning font-medium">
                 {expiringCount} {expiringCount === 1 ? "conta expirando em ≤7 dias" : "contas expirando em ≤7 dias"}
               </span>
             </div>
@@ -153,20 +153,20 @@ export default function AdminAccountsPage() {
 
       {/* Loading */}
       {loading && (
-        <div className="flex items-center justify-center py-20 text-white/40 gap-2">
-          <Loader2 className="w-5 h-5 animate-spin text-[#00498D]" />
+        <div className="flex items-center justify-center py-20 text-ink-3 gap-2">
+          <Loader2 className="w-5 h-5 animate-spin text-link" />
           <span className="text-sm">Carregando contas…</span>
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-400">
+        <div className="flex items-center gap-3 rounded-2xl border border-danger/20 bg-danger-soft px-4 py-3 text-sm text-danger">
           <AlertCircle className="w-4 h-4 shrink-0" />
           {error}
           <button
             onClick={() => setError(null)}
-            className="ml-auto text-red-400/60 hover:text-red-400"
+            className="ml-auto text-danger/60 hover:text-danger"
           >
             ✕
           </button>
@@ -177,7 +177,7 @@ export default function AdminAccountsPage() {
       {!loading && !error && (
         <>
           {users.length === 0 ? (
-            <div className="glass-card rounded-2xl flex flex-col items-center justify-center gap-3 py-16 text-white/30">
+            <div className="glass-card rounded-2xl flex flex-col items-center justify-center gap-3 py-16 text-ink-3">
               <Users className="w-8 h-8" />
               <p className="text-sm">Nenhuma conta conectada na plataforma</p>
             </div>
@@ -200,13 +200,13 @@ export default function AdminAccountsPage() {
                       className="w-full flex items-center gap-4 px-4 py-3.5 hover:bg-white/[0.03] transition-colors text-left"
                     >
                       {/* Avatar initial */}
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00498D]/25 to-[#85B9E9]/25 border border-white/10 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary/25 to-primary-2/25 border border-white/10 flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
                         {userInitial(user.email)}
                       </div>
 
                       {/* Email */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-white/90 truncate">
+                        <p className="text-sm font-medium text-ink truncate">
                           {user.email}
                         </p>
                       </div>
@@ -217,8 +217,8 @@ export default function AdminAccountsPage() {
                           className={cn(
                             "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
                             activeCount > 0
-                              ? "bg-[#85B9E9]/10 text-[#85B9E9] border-[#85B9E9]/20"
-                              : "bg-white/5 text-white/30 border-white/10"
+                              ? "bg-info-soft text-link border-primary-2/20"
+                              : "bg-white/5 text-ink-3 border-white/10"
                           )}
                         >
                           <Instagram className="w-3 h-3" />
@@ -230,7 +230,7 @@ export default function AdminAccountsPage() {
                         <motion.span
                           animate={{ rotate: isOpen ? 180 : 0 }}
                           transition={{ duration: 0.2 }}
-                          className="text-white/30"
+                          className="text-ink-3"
                         >
                           <ChevronDown className="w-4 h-4" />
                         </motion.span>
@@ -250,7 +250,7 @@ export default function AdminAccountsPage() {
                         >
                           <div className="border-t border-white/[0.06] divide-y divide-white/[0.04]">
                             {user.accounts.length === 0 ? (
-                              <p className="px-12 py-4 text-xs text-white/25">
+                              <p className="px-12 py-4 text-xs text-ink-3">
                                 Nenhuma conta conectada
                               </p>
                             ) : (
@@ -267,17 +267,17 @@ export default function AdminAccountsPage() {
                                     className="flex items-center gap-3 px-4 pl-16 py-3"
                                   >
                                     {/* Instagram icon */}
-                                    <div className="w-8 h-8 rounded-full bg-pink-500/10 border border-pink-500/20 flex items-center justify-center flex-shrink-0">
-                                      <Instagram className="w-4 h-4 text-pink-400" />
+                                    <div className="w-8 h-8 rounded-full bg-danger-soft border border-danger/20 flex items-center justify-center flex-shrink-0">
+                                      <Instagram className="w-4 h-4 text-danger" />
                                     </div>
 
                                     {/* Username */}
                                     <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-medium text-white/90">
+                                      <p className="text-sm font-medium text-ink">
                                         @{acc.username}
                                       </p>
                                       {acc.display_name && (
-                                        <p className="text-xs text-white/30 truncate">
+                                        <p className="text-xs text-ink-3 truncate">
                                           {acc.display_name}
                                         </p>
                                       )}
@@ -289,10 +289,10 @@ export default function AdminAccountsPage() {
                                         className={cn(
                                           "inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 flex-shrink-0",
                                           days < 0
-                                            ? "bg-red-500/10 text-red-400 border-red-500/20"
+                                            ? "bg-danger-soft text-danger border-danger/20"
                                             : days <= 7
-                                            ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                                            : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                            ? "bg-warning-soft text-warning border-warning/20"
+                                            : "bg-success-soft text-success border-success/20"
                                         )}
                                       >
                                         <Clock className="w-3 h-3" />
@@ -301,7 +301,7 @@ export default function AdminAccountsPage() {
                                           : `${days}d restantes`}
                                       </span>
                                     ) : (
-                                      <span className="text-white/20 text-xs flex-shrink-0">
+                                      <span className="text-ink-3 text-xs flex-shrink-0">
                                         —
                                       </span>
                                     )}
@@ -311,8 +311,8 @@ export default function AdminAccountsPage() {
                                       className={cn(
                                         "inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 flex-shrink-0",
                                         isActive
-                                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                          : "bg-red-500/10 text-red-400 border-red-500/20"
+                                          ? "bg-success-soft text-success border-success/20"
+                                          : "bg-danger-soft text-danger border-danger/20"
                                       )}
                                     >
                                       <ShieldCheck className="w-3 h-3" />
@@ -321,7 +321,7 @@ export default function AdminAccountsPage() {
 
                                     {/* Revoke button */}
                                     {isRevoking ? (
-                                      <Loader2 className="w-4 h-4 animate-spin text-white/30 flex-shrink-0" />
+                                      <Loader2 className="w-4 h-4 animate-spin text-ink-3 flex-shrink-0" />
                                     ) : (
                                       <button
                                         onClick={(e) => {
@@ -331,8 +331,8 @@ export default function AdminAccountsPage() {
                                         className={cn(
                                           "inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs transition-all flex-shrink-0",
                                           isPending
-                                            ? "border-red-400/40 bg-red-400/20 text-red-300"
-                                            : "border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                                            ? "border-danger/40 bg-danger/20 text-danger"
+                                            : "border-danger/20 bg-danger-soft text-danger hover:bg-danger/20"
                                         )}
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />

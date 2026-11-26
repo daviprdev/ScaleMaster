@@ -66,12 +66,12 @@ interface Stats {
 
 // ── Helpers ───────────────────────────────────────────────────
 const AVATAR_COLORS = [
-  "from-[#00498D] to-[#00346D]",
-  "from-pink-500 to-rose-600",
-  "from-[#85B9E9] to-[#00498D]",
-  "from-emerald-500 to-teal-600",
-  "from-amber-500 to-orange-600",
-  "from-fuchsia-500 to-purple-600",
+  "from-primary to-primary-2",
+  "from-[#c08cff] to-[#ff6ab0]",
+  "from-primary-2 to-primary",
+  "from-[#2fd39a] to-[#1c7ed6]",
+  "from-[#ffb347] to-[#ff6a5c]",
+  "from-[#5b6bff] to-[#b26bff]",
 ];
 
 function strHash(s: string): number {
@@ -244,7 +244,7 @@ export default function PublicadosPage() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-        <Loader2 size={32} className="animate-spin text-[#85B9E9]" />
+        <Loader2 size={32} className="animate-spin text-link" />
         <p className="text-ink-3 text-sm">Carregando publicações...</p>
       </div>
     );
@@ -256,8 +256,8 @@ export default function PublicadosPage() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-              <CheckCircle2 size={22} className="text-[#85B9E9]" />
+            <h1 className="text-2xl font-bold tracking-tight text-ink flex items-center gap-2.5">
+              <CheckCircle2 size={22} className="text-link" />
               Publicados
             </h1>
             <p className="text-sm text-ink-3 mt-0.5">
@@ -268,7 +268,7 @@ export default function PublicadosPage() {
           <button
             onClick={() => fetchData(selectedAccountId)}
             disabled={refreshing}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-line bg-surface text-ink-2 hover:text-white hover:border-line-control transition-all text-sm disabled:opacity-40"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-line bg-surface text-ink-2 hover:text-ink hover:border-line-control transition-all text-sm disabled:opacity-40"
           >
             <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
             Atualizar
@@ -291,8 +291,8 @@ export default function PublicadosPage() {
               className={cn(
                 "flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm transition-all",
                 selectedAccount
-                  ? "border-[#85B9E9]/40 bg-[#85B9E9]/10 text-[#85B9E9]"
-                  : "border-line bg-surface text-ink-2 hover:text-white hover:border-line-control"
+                  ? "border-primary-2/40 bg-info-soft text-link"
+                  : "border-line bg-surface text-ink-2 hover:text-ink hover:border-line-control"
               )}
             >
               <Filter size={14} />
@@ -304,7 +304,7 @@ export default function PublicadosPage() {
                       e.stopPropagation();
                       handleClearFilter();
                     }}
-                    className="ml-1 w-4 h-4 rounded-full bg-[#85B9E9]/20 flex items-center justify-center hover:bg-[#85B9E9]/40 transition-colors"
+                    className="ml-1 w-4 h-4 rounded-full bg-primary-2/20 flex items-center justify-center hover:bg-primary-2/40 transition-colors"
                   >
                     <X size={10} />
                   </button>
@@ -346,14 +346,14 @@ export default function PublicadosPage() {
                       className={cn(
                         "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all",
                         !selectedAccountId
-                          ? "bg-[#85B9E9]/10 text-[#85B9E9]"
+                          ? "bg-info-soft text-link"
                           : "text-ink-2 hover:bg-surface-hover hover:text-ink"
                       )}
                     >
                       <Users size={15} className="flex-shrink-0" />
                       <span className="font-medium">Todas as contas</span>
                       {!selectedAccountId && (
-                        <CheckCircle2 size={14} className="ml-auto text-[#85B9E9]" />
+                        <CheckCircle2 size={14} className="ml-auto text-link" />
                       )}
                     </button>
 
@@ -374,7 +374,7 @@ export default function PublicadosPage() {
                             className={cn(
                               "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all",
                               isSelected
-                                ? "bg-[#85B9E9]/10 text-[#85B9E9]"
+                                ? "bg-info-soft text-link"
                                 : "text-ink-2 hover:bg-surface-hover hover:text-ink"
                             )}
                           >
@@ -402,7 +402,7 @@ export default function PublicadosPage() {
                               </span>
                             )}
                             {isSelected && (
-                              <CheckCircle2 size={14} className="text-[#85B9E9] flex-shrink-0" />
+                              <CheckCircle2 size={14} className="text-link flex-shrink-0" />
                             )}
                           </button>
                         );
@@ -464,7 +464,7 @@ export default function PublicadosPage() {
             className="mt-3 pt-3 border-t border-line flex items-center gap-2 text-xs text-ink-3"
           >
             <span>
-              Mostrando <span className="text-white font-semibold">{filteredItems.length}</span>{" "}
+              Mostrando <span className="text-ink font-semibold">{filteredItems.length}</span>{" "}
               de {total} publicações
             </span>
             <button
@@ -474,7 +474,7 @@ export default function PublicadosPage() {
                 setTypeFilter("all");
                 fetchData(null);
               }}
-              className="ml-auto text-[#85B9E9] hover:text-[#AFBDD0] transition-colors"
+              className="ml-auto text-link hover:text-link transition-colors"
             >
               Limpar filtros
             </button>
@@ -500,7 +500,7 @@ export default function PublicadosPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-line">
+              <tr className="border-b border-white/[0.06] bg-white/[0.04]">
                 <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-ink-3">
                   Publicado em
                 </th>
@@ -553,7 +553,7 @@ export default function PublicadosPage() {
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: Math.min(idx * 0.02, 0.3) }}
-                    className="border-b border-line hover:bg-surface-hover transition-colors"
+                    className="border-b border-white/[0.06] hover:bg-white/[0.04] transition-colors"
                   >
                     {/* Data */}
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -599,8 +599,8 @@ export default function PublicadosPage() {
                         className={cn(
                           "inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold",
                           item.type === "story"
-                            ? "bg-pink-500/15 text-pink-400"
-                            : "bg-amber-500/15 text-amber-400"
+                            ? "bg-danger-soft text-danger"
+                            : "bg-warning-soft text-warning"
                         )}
                       >
                         {item.type === "story" ? <ImagePlay size={9} /> : <Film size={9} />}
@@ -679,7 +679,7 @@ export default function PublicadosPage() {
                 {formatNumber(stats.total_views)} views (Postar + Loop)
               </span>
               <span className="flex items-center gap-1">
-                <TrendingUp size={11} className="text-[#85B9E9]" />
+                <TrendingUp size={11} className="text-link" />
                 {formatNumber(stats.total_reach)} alcance
               </span>
             </span>
@@ -707,14 +707,14 @@ function StatCard({
   borderColor: string;
 }) {
   return (
-    <div className={cn("rounded-xl border p-3.5", bgColor, borderColor)}>
-      <div className="flex items-center gap-2 mb-1.5">
-        <span className={color}>{icon}</span>
-        <span className="text-[10px] font-bold uppercase tracking-widest text-ink-3">
+    <div className={cn("glass-card p-4", borderColor)}>
+      <div className="flex items-center gap-2.5 mb-2">
+        <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px]", bgColor, color)}>{icon}</span>
+        <span className="text-[13px] font-medium text-ink-2">
           {label}
         </span>
       </div>
-      <p className={cn("text-xl font-bold tabular-nums", color)}>{value}</p>
+      <p className="text-[26px] font-semibold leading-8 tracking-[-0.02em] tabular-nums text-ink">{value}</p>
     </div>
   );
 }
@@ -736,7 +736,7 @@ function TypeButton({
       className={cn(
         "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
         active
-          ? "bg-[#85B9E9]/15 text-[#85B9E9]"
+          ? "bg-info-soft text-link"
           : "text-ink-3 hover:text-ink-2 hover:bg-surface-raised"
       )}
     >

@@ -39,7 +39,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         {/* Overlay */}
         <div
-          className="absolute inset-0 bg-overlay transition-opacity duration-200"
+          className="absolute inset-0 bg-overlay backdrop-blur-sm transition-opacity duration-200"
           onClick={preventClose ? undefined : onClose}
           aria-hidden="true"
         />
@@ -51,7 +51,7 @@ export const Dialog = React.forwardRef<HTMLDivElement, DialogProps>(
           aria-labelledby={title ? "dialog-title" : undefined}
           aria-describedby={description ? "dialog-desc" : undefined}
           className={cn(
-            "relative w-full max-w-md rounded-xl border border-line bg-surface-raised p-6 shadow-pop",
+            "glass relative w-full max-w-md rounded-xl p-6",
             "animate-in fade-in zoom-in-95 duration-200 ease-out",
             className
           )}
@@ -116,7 +116,7 @@ export function ConfirmDialog({
   const btnClass =
     variant === "danger"
       ? "bg-danger text-white hover:bg-danger/90"
-      : "bg-primary text-primary-fg hover:bg-primary-hover";
+      : "bg-gradient-primary text-primary-fg shadow-glow hover:brightness-110";
 
   return (
     <Dialog {...dialogProps}>

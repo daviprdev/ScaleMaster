@@ -62,7 +62,7 @@ export function ProgressoLotePanel({ jobs, conectadasSaas }: { jobs: readonly Vp
       total.suspensas ? `${total.suspensas} suspensa${total.suspensas === 1 ? "" : "s"}` : "",
     ].filter(Boolean);
     return (
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-line bg-surface px-4 py-3 text-sm" data-testid="painel-progresso">
+      <div className="glass-card flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-sm" data-testid="painel-progresso">
         <span className="inline-flex items-center gap-1.5 font-medium text-ink">
           <UserPlus size={14} className="text-ink-3" />
           {total.total} conta{total.total === 1 ? "" : "s"}
@@ -111,7 +111,7 @@ export function ProgressoLotePanel({ jobs, conectadasSaas }: { jobs: readonly Vp
       </Card>
 
       <Card title="Log" description={`Etapas das contas da rodada, na ordem em que chegam (últimas ${LOG_MAX} linhas).`}>
-        <div ref={caixa} className="h-56 overflow-y-auto rounded-lg border border-line bg-surface-raised p-3 font-mono text-xs leading-5" aria-live="polite">
+        <div ref={caixa} className="h-56 overflow-y-auto rounded-[14px] border border-line bg-surface-raised p-3 font-mono text-xs leading-5" aria-live="polite">
           {linhas.length === 0 ? (
             <p className="text-ink-3">{lote ? "Esperando o agente…" : "Nenhuma rodada em andamento."}</p>
           ) : (
