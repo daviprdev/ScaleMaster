@@ -26,6 +26,8 @@ const DAY_S = 86_400;
 export const RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80002]);
 
 export class MetaRateLimitError extends Error {}
+/** code=10 "Application does not have permission": nenhuma variante da chamada passa. */
+export class MetaPermissionError extends Error {}
 
 export interface WindowViews {
   views: number | null;
@@ -75,6 +77,7 @@ export async function fetchAccountWindow(
     const code = data.error?.code;
     const msg = data.error?.message ?? `HTTP ${res.status}`;
     if (typeof code === "number" && RATE_LIMIT_CODES.has(code)) throw new MetaRateLimitError(msg);
+    if (code === 10) throw new MetaPermissionError(`code=10 ${msg}`);
     throw new Error(`code=${code ?? "-"} ${msg}`);
   }
 
@@ -130,15 +133,17 @@ export interface DailyViewsResult {
  */
 async function windowWithFallback(igUserId: string, token: string, sinceS: number, untilS: number): Promise<WindowViews> {
   // 1ª tentativa com breakdown (stories); recusado → como antes, sem breakdown.
+  // Permissão recusada vale para as três formas: falha já, sem as outras duas
+  // chamadas (eram 3 por dia recusado e o run inteiro estourava em poucas contas).
   try {
     return await fetchAccountWindow(igUserId, token, sinceS, untilS, "views,reach", true);
   } catch (err) {
-    if (err instanceof MetaRateLimitError) throw err;
+    if (err instanceof MetaRateLimitError || err instanceof MetaPermissionError) throw err;
   }
   try {
     return await fetchAccountWindow(igUserId, token, sinceS, untilS);
   } catch (err) {
-    if (err instanceof MetaRateLimitError) throw err;
+    if (err instanceof MetaRateLimitError || err instanceof MetaPermissionError) throw err;
     return { ...(await fetchAccountWindow(igUserId, token, sinceS, untilS, "views")), reach: null, story_views: null };
   }
 }
@@ -187,9 +192,15 @@ export async function backfillDailyViews(
       chunkViews = (await fetchAccountWindow(igUserId, token, utcDayStart(start - 1, nowMs), utcDayStart(end - 1, nowMs), "views")).views;
     } catch (err) {
       if (err instanceof MetaRateLimitError) throw err;
+      result.lastError = err instanceof Error ? err.message : String(err);
+      // Permissão recusada: detalhar os 30 dias só daria 30 recusas (eram ~90
+      // chamadas por bloco). Fica como falha e o backfill volta no próximo run.
+      if (err instanceof MetaPermissionError) {
+        result.failures++;
+        continue;
+      }
       // Não dá para saber se o bloco tem views: detalha dia a dia mesmo assim.
       chunkViews = -1;
-      result.lastError = err instanceof Error ? err.message : String(err);
     }
     if (!chunkViews) continue;
     const days: number[] = [];
