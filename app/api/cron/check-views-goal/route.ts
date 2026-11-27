@@ -125,11 +125,13 @@ async function checkViewsGoal(admin: ReturnType<typeof getSupabaseAdmin>): Promi
     const { user_id, daily_views_goal } = setting;
 
     // Soma views de hoje do usuário (todas as contas)
-    const { data: viewsData, error: viewsErr } = await admin
-      .from("account_views_daily")
-      .select("views")
-      .eq("user_id", user_id)
-      .eq("day", dateKey);
+    // Mesma fonte do card de Visualizações (ganho dos posts por dia BRT,
+    // senão o insight da conta).
+    const viewsOf = (src: string) =>
+      (admin as any).from(src).select("views").eq("user_id", user_id).eq("day", dateKey);
+    let { data: viewsData, error: viewsErr } = await viewsOf("account_views_effective");
+    // View ainda não criada (supabase/views_ganho_dos_posts.sql): tabela antiga.
+    if (viewsErr) ({ data: viewsData, error: viewsErr } = await viewsOf("account_views_daily"));
 
     if (viewsErr) {
       console.error(`[cron/check-views-goal] Erro ao buscar views para ${user_id}:`, viewsErr.message);
@@ -137,7 +139,7 @@ async function checkViewsGoal(admin: ReturnType<typeof getSupabaseAdmin>): Promi
       continue;
     }
 
-    const totalViews = (viewsData ?? []).reduce((sum, row) => sum + Number(row.views ?? 0), 0);
+    const totalViews = ((viewsData ?? []) as { views: number | null }[]).reduce((sum: number, row) => sum + Number(row.views ?? 0), 0);
 
     // Verifica se já atingiu a meta
     if (totalViews < daily_views_goal) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { fetchAllRows } from "@/lib/video-history";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,14 +34,20 @@ export async function GET() {
       .eq("user_id", user.id)
       .eq("is_active", true),
 
-    admin
-      .from("scheduled_posts")
-      .select("id, account_id, campaign_id, status, scheduled_at, published_at, media_id, insights_likes, insights_plays, insights_reach, insights_comments, insights_fetched_at, error_message")
-      .eq("user_id", user.id)
-      .not("campaign_id", "is", null)
-      // pending/publishing (any date), failed (recent), published (last 24h)
-      .or(`status.in.(pending,publishing,failed),published_at.gte.${since24h},scheduled_at.gte.${since24h}`)
-      .order("scheduled_at", { ascending: true }),
+    // Paginado: sem `.range()` o PostgREST corta em 1000 linhas e as views,
+    // curtidas e contagens do Monitor saíam menores em silêncio.
+    fetchAllRows((from, to) =>
+      admin
+        .from("scheduled_posts")
+        .select("id, account_id, campaign_id, status, scheduled_at, published_at, media_id, insights_likes, insights_plays, insights_reach, insights_comments, insights_fetched_at, error_message")
+        .eq("user_id", user.id)
+        .not("campaign_id", "is", null)
+        // pending/publishing (any date), failed (recent), published (last 24h)
+        .or(`status.in.(pending,publishing,failed),published_at.gte.${since24h},scheduled_at.gte.${since24h}`)
+        .order("scheduled_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to)
+    ).then((data) => ({ data, error: null })),
   ]);
 
   const accounts = (accountsRes.data ?? []) as {

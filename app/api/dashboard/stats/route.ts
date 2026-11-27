@@ -310,11 +310,10 @@ export async function GET() {
       loop: loopPublishedTodayRes.count ?? 0,
     },
     views: {
-      // Buckets são dias UTC (única granularidade em que a Meta soma sem
-      // sobreposição), mas "hoje" é escolhido pela data de Brasília: o card
-      // vira à meia-noite BRT. Total e recortes somam todas as contas que já
-      // existiram (caídas, desativadas e excluídas). Ver
-      // supabase/account_stats_keep_deleted.sql.
+      // Por conta e dia de Brasília: ganho de views dos posts (cada leitura
+      // do sync-post-insights); conta/dia sem post lido cai no insight da
+      // conta (dia UTC). Total e recortes somam todas as contas que já
+      // existiram. Ver supabase/views_ganho_dos_posts.sql.
       total: Number(viewsSummary?.total ?? 0),
       today: Number(viewsSummary?.today ?? 0),
       yesterday: Number(viewsSummary?.yesterday ?? 0),

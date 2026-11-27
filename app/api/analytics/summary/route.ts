@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/video-history";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -43,16 +44,34 @@ export async function GET() {
   // Cast to typed rows — new columns not yet in generated Supabase types
   const rows = (posts ?? []) as unknown as PostRow[];
 
-  const totalLikes = rows.reduce((s, p) => s + (p.insights_likes ?? 0), 0);
-  const totalComments = rows.reduce((s, p) => s + (p.insights_comments ?? 0), 0);
-  const totalReach = rows.reduce((s, p) => s + (p.insights_reach ?? 0), 0);
-  const totalPlays = rows.reduce((s, p) => s + (p.insights_plays ?? 0), 0);
-  const totalShares = rows.reduce((s, p) => s + (p.insights_shares ?? 0), 0);
-  const totalSaved = rows.reduce((s, p) => s + (p.insights_saved ?? 0), 0);
+  // Os cards somam TODOS os posts publicados; a lista segue com os 100 mais
+  // recentes. Antes os totais eram só desses 100 (e "Publicados" travava em 100).
+  type TotRow = Pick<PostRow, "insights_likes" | "insights_comments" | "insights_reach" | "insights_plays" | "insights_shares" | "insights_saved">;
+  let all: TotRow[] = rows;
+  try {
+    all = await fetchAllRows<TotRow>((from, to) =>
+      supabase
+        .from("scheduled_posts")
+        .select("insights_likes, insights_comments, insights_reach, insights_plays, insights_shares, insights_saved")
+        .eq("user_id", user.id)
+        .eq("status", "published")
+        .order("id", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{ data: TotRow[] | null; error: { message: string } | null }>
+    );
+  } catch (e) {
+    console.error("[analytics/summary] totais falharam:", (e as Error).message);
+  }
+
+  const totalLikes = all.reduce((s, p) => s + (p.insights_likes ?? 0), 0);
+  const totalComments = all.reduce((s, p) => s + (p.insights_comments ?? 0), 0);
+  const totalReach = all.reduce((s, p) => s + (p.insights_reach ?? 0), 0);
+  const totalPlays = all.reduce((s, p) => s + (p.insights_plays ?? 0), 0);
+  const totalShares = all.reduce((s, p) => s + (p.insights_shares ?? 0), 0);
+  const totalSaved = all.reduce((s, p) => s + (p.insights_saved ?? 0), 0);
 
   return NextResponse.json({
     summary: {
-      total_published: rows.length,
+      total_published: all.length,
       total_likes: totalLikes,
       total_comments: totalComments,
       total_reach: totalReach,
