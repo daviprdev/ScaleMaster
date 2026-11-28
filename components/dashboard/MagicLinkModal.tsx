@@ -18,6 +18,10 @@ interface Props {
 
 const APP_BASE = getAppUrlClient();
 
+// Login do Meta Business Suite (Facebook, Instagram ou SSO): story com link pelo caminho oficial.
+const BUSINESS_SUITE_URL =
+  "https://business.facebook.com/business/loginpage/?next=https%3A%2F%2Fbusiness.facebook.com%2F%3Fnav_ref%3Dbiz_unified_f3_login_page_to_mbs&login_options%5B0%5D=FB&login_options%5B1%5D=IG&login_options%5B2%5D=SSO&config_ref=biz_login_tool_flavor_mbs";
+
 function LinkField({
   label,
   url,
@@ -74,7 +78,7 @@ export default function MagicLinkModal({ open, onClose }: Props) {
   const [savedAppId, setSavedAppId] = useState<string>("__global__");
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState<"generate" | "save" | null>(null);
-  const [copied, setCopied] = useState<"geral" | "direto" | null>(null);
+  const [copied, setCopied] = useState<"geral" | "direto" | "suite" | null>(null);
   const [appsLoading, setAppsLoading] = useState(true);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -162,7 +166,7 @@ export default function MagicLinkModal({ open, onClose }: Props) {
     }
   }
 
-  async function handleCopy(kind: "geral" | "direto", url: string) {
+  async function handleCopy(kind: "geral" | "direto" | "suite", url: string) {
     if (!url) return;
     await navigator.clipboard.writeText(url);
     setCopied(kind);
@@ -344,6 +348,15 @@ export default function MagicLinkModal({ open, onClose }: Props) {
                     Gerar novo link (os dois links atuais param de funcionar)
                   </button>
                 )}
+
+                <div className="pt-4 border-t border-white/[0.06]">
+                  <LinkField
+                    label="Meta Business Suite · story com link"
+                    url={BUSINESS_SUITE_URL}
+                    copied={copied === "suite"}
+                    onCopy={() => handleCopy("suite", BUSINESS_SUITE_URL)}
+                  />
+                </div>
               </div>
             </div>
           </motion.div>
